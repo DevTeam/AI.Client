@@ -1,0 +1,28 @@
+# Документация AI.Client
+
+Документы описывают согласованную архитектуру и являются исходным контрактом для реализации. При изменении ключевого решения сначала создаётся или обновляется ADR, затем синхронно обновляются затронутые документы.
+
+## Порядок чтения
+
+1. [Требования и границы продукта](01-product-requirements.md)
+2. [Архитектура](02-architecture.md)
+3. [Доменная модель](03-domain-model.md)
+4. [JSON-хранилище](04-storage.md)
+5. [MCP-интеграция](05-mcp-integration.md)
+6. [Безопасность](06-security.md)
+7. [AI endpoints и agent loop](07-ai-and-agent-loop.md)
+8. [План реализации](08-implementation-plan.md)
+9. [Стратегия тестирования](09-testing.md)
+10. [Эксплуатация и диагностика](10-operations.md)
+
+## Принятые решения
+
+- [ADR-001: Hosted Blazor WebAssembly](decisions/ADR-001-hosted-blazor-wasm.md)
+- [ADR-002: JSON-граф из неизменяемых узлов](decisions/ADR-002-immutable-json-graph.md)
+- [ADR-003: Права отдельно для каждого MCP-инструмента](decisions/ADR-003-per-tool-permissions.md)
+- [ADR-004: Responses API как основной OpenAI-протокол](decisions/ADR-004-openai-responses-api.md)
+- [ADR-005: Быстрые модульные тесты на xUnit](decisions/ADR-005-unit-testing.md)
+
+## Статусы документов
+
+Все перечисленные документы имеют статус `Accepted` и фиксируют решения, принятые до начала реализации. Версии NuGet-пакетов должны централизованно задаваться в `Directory.Packages.props`; при реализации выбирается последняя совместимая стабильная версия и фиксируется lock-файлом.

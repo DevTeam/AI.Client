@@ -1,0 +1,427 @@
+@* Split out of Home.razor so that typing in the composer doesn't re-render the whole message
+   list: Blazor only re-renders a child component if ShouldRender() says so, so this component
+   can be skipped entirely on renders where none of its parameters actually changed (see
+   ShouldRender below). Without this boundary, every keystroke in the composer (which lives in
+   Home and calls StateHasChanged on the whole page) also rebuilt and diffed this list. *@
+@inject IMarkdownRenderer MarkdownRenderer
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="messages-area">
+@if (SelectedChat is not null)
+{
+    <nav class="history-markers" aria-hidden="true" @ref="_historyMarkers">
+        @{
+            var forkPoints = GetForkPointIds();
+            var historyEntries = BuildHistoryEntries(GetVisibleBranchMessages(), forkPoints);
+        }
+        @for (var index = 0; index < historyEntries.Count; index++)
+        {
+            var entry = historyEntries[index];
+            var isLast = index == historyEntries.Count - 1 && SelectedRun is not { Status: ChatRunStatus.Generating };
+            <button class="history-marker @GetHistoryMarkerClass(entry, isLast)" type="button" tabindex="-1"
+                    data-target="message-@entry.Question.Id"
+                    data-question="@entry.Question.Content"
+                    data-answer="@(entry.Answer?.Content ?? string.Empty)"
+                    data-fork="@(entry.HasFork ? "true" : string.Empty)"
+                    data-created="@entry.Question.CreatedAt.ToString("o")"></button>
+        }
+        @if (SelectedRun is { Status: ChatRunStatus.Generating })
+        {
+            <button class="history-marker history-marker-assistant history-marker-generating" type="button" tabindex="-1" data-target="message-streaming" data-question="Generating..." data-answer="" data-fork=""></button>
+        }
+    </nav>
+    <div class="history-marker-tip" role="tooltip" aria-hidden="true"></div>
+    <div class="history-scroll-hint history-scroll-hint-up" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 14 5-5 5 5" /></svg></div>
+    <div class="history-scroll-hint history-scroll-hint-down" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5" /></svg></div>
+}
+<div class="workspace-messages" @ref="_messagesContainer">
+    @if (!HasSelectedProject)
+    {
+        <div class="workspace-empty"><h2>Select a project</h2><p>Choose a project on the left or create a new one.</p></div>
+    }
+    else if (SelectedChat is null)
+    {
+        <div class="workspace-empty"><h2>Start a conversation</h2><p>Write a message below. A new chat will be created automatically.</p></div>
+    }
+    else
+    {
+        @foreach (var message in GetVisibleBranchMessages())
+        {
+            <article id="message-@message.Id" class="workspace-message @message.Role.ToLowerInvariant() @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)">
+                @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
+                <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div>
+                <div class="message-actions">
+                    <button class="icon-action" type="button" title="Copy Markdown" aria-label="Copy Markdown" @onclick="() => OnCopyMessage.InvokeAsync(message.Content)"><AppIcon Name="copy" /></button>
+                    <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
+                    @if (message.Role == "User") { <button class="icon-action" type="button" title="Edit and branch" aria-label="Edit and branch" @onclick="() => OnEditAndBranch.InvokeAsync(message)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Edit and replace branch" aria-label="Edit and replace branch" @onclick="() => OnEditAndReplaceBranch.InvokeAsync(message)"><AppIcon Name="edit-replace" /></button> }
+                </div>
+                @if (GetBranchOptions(message).Count > 1 || ForkSourceId == message.Id)
+                {
+                    <div class="message-branch-indicator" @onkeydown="args => OnBranchPickerKeyDown.InvokeAsync(args)">
+                        <span class="branch-connector" aria-hidden="true"></span>
+                        @if (ForkSourceId == message.Id)
+                        {
+                            <span class="branch-pending" title="The branch will be created after you send its first message"><AppIcon Name="git-branch" /><span>New branch</span></span>
+                        }
+                        else
+                        {
+                            var options = GetBranchOptions(message);
+                            <button class="branch-picker-trigger" type="button" title="Choose branch" aria-label="Choose branch" aria-expanded="@(MessageBranchMenuId == message.Id ? "true" : "false")" @onclick="() => OnToggleBranchMenu.InvokeAsync(message.Id)"><AppIcon Name="git-branch" /><span>Branch @GetActiveBranchPosition(options) of @options.Count</span></button>
+                            @if (MessageBranchMenuId == message.Id)
+                            {
+                                <span class="branch-picker-menu" role="menu">
+                                    @foreach (var option in options)
+                                    {
+                                        var selected = IsMessageInActiveBranch(option.Id);
+                                        <button class="@(selected ? "selected" : string.Empty)" type="button" role="menuitem" title="@GetBranchOptionTitle(option)" @onclick="() => OnSelectBranch.InvokeAsync(option.Id)">@if (selected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }<span>@GetBranchOptionTitle(option)</span></button>
+                                    }
+                                </span>
+                            }
+                        }
+                    </div>
+                }
+            </article>
+        }
+        @if (SelectedRun is { Status: ChatRunStatus.Generating } activeRun && !string.IsNullOrEmpty(activeRun.StreamingContent))
+        {
+            <article id="message-streaming" class="workspace-message assistant streaming"><div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(activeRun.StreamingContent))</div></article>
+        }
+    }
+</div>
+</div>
+
+@code {
+    [Parameter] public bool HasSelectedProject { get; set; }
+    [Parameter] public ChatDetails? SelectedChat { get; set; }
+    [Parameter] public Guid? BranchLeafId { get; set; }
+    [Parameter] public Guid? ForkSourceId { get; set; }
+    [Parameter] public Guid? MessageBranchMenuId { get; set; }
+    [Parameter] public ChatRunSnapshot? SelectedRun { get; set; }
+    [Parameter] public EventCallback<string> OnCopyMessage { get; set; }
+    [Parameter] public EventCallback<ChatMessageView> OnForkFromMessage { get; set; }
+    [Parameter] public EventCallback<ChatMessageView> OnEditAndBranch { get; set; }
+    [Parameter] public EventCallback<ChatMessageView> OnEditAndReplaceBranch { get; set; }
+    [Parameter] public EventCallback<Guid> OnToggleBranchMenu { get; set; }
+    [Parameter] public EventCallback<Guid> OnSelectBranch { get; set; }
+    [Parameter] public EventCallback<KeyboardEventArgs> OnBranchPickerKeyDown { get; set; }
+
+    private ElementReference _historyMarkers;
+    private ElementReference _messagesContainer;
+    private IJSObjectReference? _historyMarkersModule;
+    private IJSObjectReference? _historyMarkersHandle;
+    private IJSObjectReference? _scrollModule;
+    private int _historyMarkerCount = -1;
+
+    // Everything above is set by Home on every one of its renders (i.e. on every composer
+    // keystroke), since Blazor always calls SetParametersAsync on a child regardless of whether
+    // the values actually changed. ShouldRender is what turns "parameters were reassigned" into
+    // "parameters actually changed" — without it, this component would rebuild and diff its own
+    // render tree (the whole message list) just as often as before the split.
+    private ChatDetails? _renderedSelectedChat;
+    private Guid? _renderedBranchLeafId;
+    private Guid? _renderedForkSourceId;
+    private Guid? _renderedMessageBranchMenuId;
+    private ChatRunSnapshot? _renderedSelectedRun;
+    private bool _renderedHasSelectedProject;
+
+    protected override bool ShouldRender()
+    {
+        var changed = !ReferenceEquals(_renderedSelectedChat, SelectedChat)
+            || _renderedBranchLeafId != BranchLeafId
+            || _renderedForkSourceId != ForkSourceId
+            || _renderedMessageBranchMenuId != MessageBranchMenuId
+            || !ReferenceEquals(_renderedSelectedRun, SelectedRun)
+            || _renderedHasSelectedProject != HasSelectedProject;
+
+        _renderedSelectedChat = SelectedChat;
+        _renderedBranchLeafId = BranchLeafId;
+        _renderedForkSourceId = ForkSourceId;
+        _renderedMessageBranchMenuId = MessageBranchMenuId;
+        _renderedSelectedRun = SelectedRun;
+        _renderedHasSelectedProject = HasSelectedProject;
+
+        return changed;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _historyMarkersModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/historyMarkers.js");
+                _scrollModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
+            }
+            catch (JSException)
+            {
+                _historyMarkersModule = null;
+            }
+        }
+
+        await SyncHistoryMarkersAsync();
+    }
+
+    public async Task ScrollToBottomAsync()
+    {
+        if (_scrollModule is not null)
+        {
+            await _scrollModule.InvokeVoidAsync("scrollToBottom", _messagesContainer);
+        }
+    }
+
+    // The strip is attached only while a chat is open, and re-measured whenever the number of
+    // markers changes: the marker elements themselves are re-created by Blazor on every such change.
+    private async Task SyncHistoryMarkersAsync()
+    {
+        if (_historyMarkersModule is null) return;
+
+        if (SelectedChat is null)
+        {
+            await DisposeHistoryMarkersAsync();
+            _historyMarkerCount = -1;
+            return;
+        }
+
+        var count = GetVisibleBranchMessages().Count;
+        if (_historyMarkersHandle is not null && count == _historyMarkerCount) return;
+
+        _historyMarkerCount = count;
+        await DisposeHistoryMarkersAsync();
+        try
+        {
+            _historyMarkersHandle = await _historyMarkersModule.InvokeAsync<IJSObjectReference>("attach", _historyMarkers, _messagesContainer);
+        }
+        catch (JSException)
+        {
+            _historyMarkersHandle = null;
+        }
+    }
+
+    private async Task DisposeHistoryMarkersAsync()
+    {
+        if (_historyMarkersHandle is null) return;
+        try
+        {
+            await _historyMarkersHandle.InvokeVoidAsync("dispose");
+            await _historyMarkersHandle.DisposeAsync();
+        }
+        catch (JSException)
+        {
+        }
+        _historyMarkersHandle = null;
+    }
+
+    // _selectedChat is always replaced wholesale rather than mutated, so a reference check on it
+    // (plus the branch leaf) is a cheap, correct invalidation key for the message chain, the
+    // fork-point set, and the per-message sibling lookup used by the branch picker.
+    private object? _branchCacheChat;
+    private Guid? _branchCacheBranchLeafId;
+    private IReadOnlyList<ChatMessageView> _branchCacheMessages = [];
+    private Dictionary<Guid, List<ChatMessageView>> _branchCacheChildrenByParent = [];
+    private HashSet<Guid> _branchCacheForkPoints = [];
+
+    private void EnsureBranchCache()
+    {
+        if (ReferenceEquals(_branchCacheChat, SelectedChat) && _branchCacheBranchLeafId == BranchLeafId)
+        {
+            return;
+        }
+
+        // _markdownCache is keyed by message id and never shrinks on its own — switching chats
+        // never revisits an old message's id, so without this it would hold every message ever
+        // viewed for the lifetime of the component (this component is never recreated; Home keeps
+        // a single instance across chat switches). Pruning to the newly selected chat's own
+        // messages whenever the CHAT reference changes (not just the branch leaf, so switching
+        // branches within the same chat keeps its cache) bounds the cache to
+        // one chat's worth of messages.
+        if (!ReferenceEquals(_branchCacheChat, SelectedChat))
+        {
+            PruneMessageCaches();
+        }
+
+        _branchCacheChat = SelectedChat;
+        _branchCacheBranchLeafId = BranchLeafId;
+        _branchCacheMessages = ComputeVisibleBranchMessages();
+
+        var childrenByParent = new Dictionary<Guid, List<ChatMessageView>>();
+        if (SelectedChat is not null)
+        {
+            foreach (var item in SelectedChat.Messages)
+            {
+                if (item.ParentId is not { } parentId) continue;
+                if (!childrenByParent.TryGetValue(parentId, out var siblings))
+                {
+                    siblings = [];
+                    childrenByParent[parentId] = siblings;
+                }
+                siblings.Add(item);
+            }
+            foreach (var siblings in childrenByParent.Values)
+            {
+                siblings.Sort((a, b) => a.CreatedAt.CompareTo(b.CreatedAt));
+            }
+        }
+        _branchCacheChildrenByParent = childrenByParent;
+        _branchCacheForkPoints = childrenByParent
+            .Where(pair => pair.Value.Count > 1)
+            .Select(pair => pair.Key)
+            .ToHashSet();
+    }
+
+    private IReadOnlyList<ChatMessageView> GetVisibleBranchMessages()
+    {
+        EnsureBranchCache();
+        return _branchCacheMessages;
+    }
+
+    private IReadOnlyList<ChatMessageView> ComputeVisibleBranchMessages()
+    {
+        if (SelectedChat is null || BranchLeafId is null)
+        {
+            return SelectedChat?.Messages.OrderBy(item => item.CreatedAt).ToArray() ?? [];
+        }
+
+        var byId = SelectedChat.Messages.ToDictionary(item => item.Id);
+        var branch = new List<ChatMessageView>();
+        var currentId = BranchLeafId;
+        while (currentId is { } messageId && byId.TryGetValue(messageId, out var message))
+        {
+            branch.Add(message);
+            currentId = message.ParentId;
+        }
+
+        branch.Reverse();
+        return branch;
+    }
+
+    private HashSet<Guid> GetForkPointIds()
+    {
+        EnsureBranchCache();
+        return _branchCacheForkPoints;
+    }
+
+    private List<ChatMessageView> GetBranchOptions(ChatMessageView message)
+    {
+        EnsureBranchCache();
+        return _branchCacheChildrenByParent.TryGetValue(message.Id, out var options) ? options : [];
+    }
+
+    // The strip only shows the user's own questions (see BuildHistoryEntries), so every marker in
+    // the loop is "history-marker-user" — brightness-by-role no longer distinguishes anything
+    // there. Only the separate trailing "Generating" marker still uses history-marker-assistant.
+    private readonly record struct HistoryEntry(ChatMessageView Question, ChatMessageView? Answer, bool HasFork);
+
+    // chain is the full branch (user + assistant, root to leaf); a question's answer is simply
+    // the next message in the chain when that next message is the assistant's reply to it.
+    private static List<HistoryEntry> BuildHistoryEntries(IReadOnlyList<ChatMessageView> chain, HashSet<Guid> forkPoints)
+    {
+        var entries = new List<HistoryEntry>();
+        for (var index = 0; index < chain.Count; index++)
+        {
+            if (chain[index].Role != "User") continue;
+            var answer = index + 1 < chain.Count && chain[index + 1].Role == "Assistant" ? chain[index + 1] : null;
+            var hasFork = forkPoints.Contains(chain[index].Id) || (answer is not null && forkPoints.Contains(answer.Id));
+            entries.Add(new HistoryEntry(chain[index], answer, hasFork));
+        }
+        return entries;
+    }
+
+    private string GetHistoryMarkerClass(HistoryEntry entry, bool isLast)
+    {
+        var classes = new List<string>(3) { "history-marker-user" };
+
+        if (entry.HasFork)
+        {
+            classes.Add("history-marker-fork");
+        }
+
+        // Only IsIncomplete is per-message; the run status describes the branch as a whole, so it
+        // can only be attributed to the last question's answer, not the question itself.
+        if (entry.Answer is { IsIncomplete: true })
+        {
+            classes.Add("history-marker-incomplete");
+        }
+        else if (isLast && SelectedRun is { } run)
+        {
+            if (run.Status == ChatRunStatus.Failed) classes.Add("history-marker-failed");
+            else if (run.Status is ChatRunStatus.Interrupted or ChatRunStatus.Paused) classes.Add("history-marker-incomplete");
+            else if (run.HasUnreadResponse) classes.Add("history-marker-unread");
+        }
+
+        return string.Join(' ', classes);
+    }
+
+    private bool IsActiveBranchLeaf(ChatMessageView message) => message.Id == BranchLeafId;
+
+    private readonly Dictionary<Guid, (string Content, string Html)> _markdownCache = [];
+
+    // Markdig + HtmlSanitizer are not cheap; caching by message id means a re-render only
+    // re-parses messages whose content actually changed (in practice, just the one being edited).
+    private string RenderMarkdownCached(Guid messageId, string content)
+    {
+        if (_markdownCache.TryGetValue(messageId, out var cached) && cached.Content == content)
+        {
+            return cached.Html;
+        }
+        var html = MarkdownRenderer.Render(content);
+        _markdownCache[messageId] = (content, html);
+        return html;
+    }
+
+    private static string GetMessagePreview(string content)
+    {
+        var text = content.ReplaceLineEndings(" ").Trim();
+        return text[..Math.Min(text.Length, 36)] + (text.Length > 36 ? "…" : string.Empty);
+    }
+
+    private void PruneMessageCaches()
+    {
+        var liveIds = SelectedChat?.Messages.Select(message => message.Id).ToHashSet() ?? [];
+        foreach (var key in _markdownCache.Keys.Where(id => !liveIds.Contains(id)).ToList())
+        {
+            _markdownCache.Remove(key);
+        }
+    }
+
+    private string GetBranchOptionTitle(ChatMessageView sibling)
+    {
+        var siblings = SelectedChat?.Messages
+            .Where(message => message.ParentId == sibling.ParentId)
+            .OrderBy(message => message.CreatedAt)
+            .ToArray() ?? [];
+        if (siblings.Length > 0 && siblings[0].Id == sibling.Id)
+        {
+            return sibling.Role == "Assistant" ? "Original response" : "Original message";
+        }
+
+        return GetMessagePreview(sibling.Content);
+    }
+
+    private bool IsMessageInActiveBranch(Guid messageId)
+    {
+        if (SelectedChat is null || BranchLeafId is not { } leafId) return false;
+        var byId = SelectedChat.Messages.ToDictionary(message => message.Id);
+        var current = leafId;
+        while (byId.TryGetValue(current, out var message))
+        {
+            if (current == messageId) return true;
+            if (message.ParentId is not { } parentId) break;
+            current = parentId;
+        }
+        return false;
+    }
+
+    private int GetActiveBranchPosition(IReadOnlyList<ChatMessageView> options)
+    {
+        var index = options.ToList().FindIndex(option => IsMessageInActiveBranch(option.Id));
+        return index < 0 ? 1 : index + 1;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisposeHistoryMarkersAsync();
+        if (_historyMarkersModule is not null) await _historyMarkersModule.DisposeAsync();
+        if (_scrollModule is not null) await _scrollModule.DisposeAsync();
+    }
+}

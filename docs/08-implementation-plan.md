@@ -1,6 +1,15 @@
 # План реализации
 
+## Выполнено: локальная история чатов
+
+- Чат принадлежит проекту и содержит дерево сообщений с явной ссылкой на родительское сообщение.
+- Выбранная ветка формирует контекст от корня до leaf message; альтернативные ответы остаются отдельными ветками.
+- Чаты хранятся локально в JSON в каталоге проекта с revision и atomic temporary-file replace.
+- Добавлены same-origin API и минимальный UI: создание чата, выбор чата и сохранение пары user/assistant после live-chat completion.
+
 Статус: Accepted
+
+Фактическое выполнение этапов и результаты проверок ведутся в отдельном журнале [«Ход реализации»](11-implementation-progress.md). Этап считается завершённым только после выполнения всех указанных для него exit criteria.
 
 Каждый этап завершается работающим vertical slice и проверяемыми exit criteria.
 
@@ -12,8 +21,9 @@
 - Ввести strongly typed UUID v7 IDs, clock и result/error contracts.
 - Добавить test projects на xUnit с Shouldly и Moq.
 - Добавить CI build и быстрый unit-test suite без внешних ресурсов.
+- Использовать отдельное build-приложение по образцу `dotnet-matrix/build`: Pure.DI composition root, интерфейсный target на каждую операцию и CLI-команды для build, test, verify и publish.
 
-Готово, когда solution собирается, composition roots проверяются, а Domain не зависит от Infrastructure.
+Готово, когда solution собирается, composition roots проверяются, Domain не зависит от Infrastructure, а `dotnet run --project build -- verify` выполняет build и быстрый unit-test suite.
 
 ## Этап 1. Projects и локальное storage ядро
 
@@ -24,6 +34,8 @@
 - Добавить recovery после незавершённой atomic write.
 
 Готово, когда проект переживает перезапуск, конфликт revision обнаруживается, а secrets отсутствуют в JSON.
+
+Текущий прогресс: project metadata и security settings CRUD, revision conflict и recovery реализованы. Добавлен временный live chat preview для проверки OpenAI-compatible endpoint без сохранения credentials. MCP configuration сохраняется локально, но transport ещё не запускается. Следующий этап — endpoint profiles и защищённое хранение credentials в Host.
 
 ## Этап 2. Hosted WASM shell
 
@@ -140,3 +152,22 @@
 5. UI/API composition.
 6. Security negative tests.
 7. Документация и acceptance check.
+
+## Выполнено: Markdown в чате
+
+- Ответы и сохранённые сообщения отображаются как Markdown через Markdig с расширениями.
+- Встроенный HTML Markdown отключён, а полученный HTML дополнительно очищается HtmlSanitizer перед передачей в `MarkupString`.
+- В истории сохраняется исходный текст Markdown, поэтому повторный рендеринг не меняет данные чата.
+
+## Выполнено: ветвление чатов
+
+- Пользователь выбирает любую сохранённую точку через **Branch from this message**.
+- Новая отправка создаёт дочернюю пару user/assistant и не меняет существующее продолжение.
+- В OpenAI-compatible запрос передаётся только путь от корня до выбранной точки плюс новый user message.
+
+## Выполнено: workspace UI
+
+- Экран перестроен в трёхпанельный workspace по принятому референсу: проекты и чаты слева, активный диалог и composer в центре, настройки проекта и endpoint profiles справа.
+- Основной сценарий теперь линейный: выбрать проект, создать чат, выбрать endpoint, написать сообщение.
+- Endpoint profile редактируется как отдельная карточка с подписанными полями и явным статусом сохранения.
+- Security и MCP отделены от ежедневного сценария чата и показаны как advanced settings.

@@ -2,6 +2,12 @@
 
 Статус: Accepted
 
+## Текущий live chat preview
+
+Для ранней ручной проверки реализован Host-only adapter к OpenAI-compatible `POST {baseUrl}/chat/completions`. Web UI передаёт base URL, model, сообщение и необязательный API key в локальный Host; Host отправляет один non-streaming request с `messages` и `stream: false`.
+
+API key не сохраняется в JSON, browser storage, логах или source code. Он существует только в памяти UI и в одном same-origin запросе до Host. Этот preview не является endpoint profile или agent loop: история не сохраняется, streaming и MCP tools ещё не включены. Постоянные endpoint profiles и защищённое credential storage остаются следующим этапом.
+
 ## Provider-neutral contract
 
 Application layer не зависит от OpenAI SDK:
@@ -117,4 +123,3 @@ Retry разрешён для transient transport failures до начала sid
 ## Контекст ветки
 
 Путь root → head преобразуется в provider input. Технические сообщения аудита не добавляются автоматически. Tool call и tool result включаются парой, сохраняя исходные IDs. При превышении context window применяется явно видимая стратегия compaction; исходные nodes не изменяются.
-

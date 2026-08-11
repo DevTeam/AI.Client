@@ -29,6 +29,27 @@
 - [План реализации](docs/08-implementation-plan.md)
 - [Стратегия тестирования](docs/09-testing.md)
 - [Эксплуатация и диагностика](docs/10-operations.md)
+- [Ход реализации](docs/11-implementation-progress.md)
 
 Принятые архитектурные решения находятся в [docs/decisions](docs/decisions).
 
+## Automation
+
+Repository automation is implemented as a separate .NET application in [build](build). It follows the same Pure.DI target-oriented approach as `dotnet-matrix/build`.
+
+```powershell
+dotnet run --project build -- build
+dotnet run --project build -- test
+dotnet run --project build -- verify
+dotnet run --project build -- publish
+```
+
+`verify` is the standard local and CI validation command. Command output is written to `artifacts/logs`.
+
+## Rider
+
+Shared Rider run configurations are stored in [`.run`](.run). Select one from Rider's run-configuration menu:
+
+- `AI.Client Host` starts the local application at `http://localhost:52173` in Development mode;
+- `Verify AI.Client` builds the solution and runs the fast unit test suite;
+- `Publish AI.Client` publishes the Host to `artifacts/publish`.

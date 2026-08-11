@@ -2,6 +2,16 @@
 
 Статус: Accepted
 
+## Endpoint credentials
+
+Endpoint profile metadata is stored in the project JSON document. API keys are excluded from that document and are stored by the Host gateway in a separate local file protected with Windows DPAPI (`CurrentUser`). The WebAssembly client receives only a `HasCredential` flag. When a saved profile is selected for a chat request, the Host resolves its credential locally before calling the OpenAI-compatible endpoint.
+
+## Текущий security settings API
+
+Настройки доступа проекта изменяются отдельной revisioned операцией `PUT /api/projects/{projectId}/security`. Один запрос содержит полный набор directory grants, MCP server bindings и per-tool policies; Host валидирует их как единое состояние и сохраняет атомарно. Несовпадение revision возвращает `409 Conflict` и не применяет частичное изменение.
+
+Tool policy может ссылаться только на MCP server, присутствующий в том же документе настроек. UI предлагает `Ask` по умолчанию и не запускает MCP transport при его конфигурировании. Discovery инструментов, запуск server process и выдача фактических разрешений будут добавлены вместе с MCP connection manager.
+
 ## Границы доверия
 
 ```mermaid
@@ -144,4 +154,14 @@ Markdown source
 ## Audit
 
 Записываются project/policy changes, approvals, denials, MCP process starts, tool calls, canonical targets, result status, hashes и correlation IDs. Секреты и полный чувствительный content в audit не пишутся.
+# Current scope
 
+Глобальный раздел Security в текущей итерации является информационной страницей. Directory access задаётся только на уровне проекта:
+
+- `Read only`;
+- `Read/write`;
+- доступ всегда рекурсивный;
+- канонический путь symbolic link или junction не может выходить за границы grant;
+- при пересечении директорий применяется наиболее специфичный grant.
+
+MCP policy задаётся глобально на уровне MCP server и не переопределяется проектом.

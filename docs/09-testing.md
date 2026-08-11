@@ -2,6 +2,10 @@
 
 Статус: Accepted
 
+## Markdown renderer
+
+Markdown rendering is isolated behind `IMarkdownRenderer`. The implementation disables source HTML in Markdig and sanitizes generated output before it is rendered as `MarkupString`. Future renderer tests must stay pure and use only string input/output; they must not require a browser runtime.
+
 ## Обязательный стек
 
 - xUnit — test framework и runner.
@@ -36,25 +40,25 @@
 
 ## Структура теста
 
-Используется Arrange–Act–Assert. Один тест проверяет одно наблюдаемое поведение. Название описывает условие и результат:
+Используется стиль `Given`–`When`–`Then` из `CSharpInteractive.Tests/CISettingsTests.cs`. Один тест проверяет одно наблюдаемое поведение. Test class является `public`, зависимости создаются как поля через `Mock<T>`, а создание SUT выносится в instance-метод `CreateInstance`. Для набора граничных значений используется `[Theory]` и `[InlineData]`. Название начинается с `Should` и описывает наблюдаемое поведение:
 
 ```csharp
 [Fact]
-public async Task RunAsync_WhenToolIsDenied_DoesNotCallMcpServer()
+public async Task ShouldNotCallMcpServerWhenToolIsDenied()
 {
-    // Arrange
+    // Given
     var connection = new Mock<IMcpConnection>();
     var policy = new Mock<IToolPolicyEvaluator>();
     policy
         .Setup(i => i.EvaluateAsync(It.IsAny<ToolInvocation>(), It.IsAny<CancellationToken>()))
         .ReturnsAsync(PolicyDecision.Deny);
 
-    var sut = CreateSut(connection.Object, policy.Object);
+    var agent = CreateInstance(connection.Object, policy.Object);
 
-    // Act
-    var result = await sut.RunAsync(CreateRequest(), CancellationToken.None);
+    // When
+    var result = await agent.RunAsync(CreateRequest(), CancellationToken.None);
 
-    // Assert
+    // Then
     result.Status.ShouldBe(AgentRunStatus.Completed);
     connection.Verify(
         i => i.CallToolAsync(It.IsAny<ToolCall>(), It.IsAny<CancellationToken>()),
@@ -62,7 +66,7 @@ public async Task RunAsync_WhenToolIsDenied_DoesNotCallMcpServer()
 }
 ```
 
-`CreateSut` и object mothers/builders могут использоваться для уменьшения шума, но не должны скрывать значимые входные данные теста.
+`CreateInstance` и object mothers/builders могут использоваться для уменьшения шума, но не должны скрывать значимые входные данные теста. Comments in test code are written in English.
 
 ## Test seams
 
@@ -208,4 +212,3 @@ Playwright и другие end-to-end инструменты в test suite не 
 - Повторный запуск даёт тот же результат.
 - Полный suite остаётся быстрым; заметное замедление рассматривается как regression.
 - Build и test проходят одинаково локально и в CI.
-

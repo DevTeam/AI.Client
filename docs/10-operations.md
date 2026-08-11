@@ -1,5 +1,43 @@
 # Эксплуатация и диагностика
 
+## Testing a saved endpoint profile
+
+1. Start the Host configuration in Rider.
+2. Create or select a project.
+3. Add an endpoint profile with the `/v1` base URL and model name.
+4. Enter the API key and save endpoint profiles. The key is protected locally for the current Windows user and is not shown again.
+5. Choose the profile in **Live chat**, enter a message, and select **Send**.
+
+## Локальная автоматизация
+
+Все повторяемые операции запускаются через отдельное build-приложение в каталоге `build`. Оно построено по подходу `dotnet-matrix/build`: composition root Pure.DI создаёт интерфейсные targets, а CLI выбирает нужную операцию.
+
+```powershell
+dotnet run --project build -- build
+dotnet run --project build -- test
+dotnet run --project build -- verify
+dotnet run --project build -- publish --output artifacts/publish
+```
+
+`verify` является обязательной проверкой перед передачей изменений: он останавливается на первой ошибке и выполняет сборку перед запуском быстрых unit tests. Вывод дочерних `dotnet` процессов сохраняется в `artifacts/logs`; каталог не включается в source control.
+
+## Проверка OpenAI-compatible endpoint
+
+1. Запустить `AI.Client Host` в Rider или `dotnet run --project src/AI.Client.Host`.
+2. Открыть `http://localhost:52173`.
+3. В разделе **Live chat** указать base URL в форме `https://host/v1`, model и, если endpoint требует аутентификацию, API key.
+4. Отправить короткое сообщение.
+
+Base URL должен уже содержать API version prefix, если его ожидает корпоративный gateway. Клиент добавляет только `/chat/completions`. API key является временным: после refresh страницы он не сохраняется.
+
+## Rider
+
+Versioned-конфигурации Rider находятся в каталоге `.run` и доступны сразу после открытия solution:
+
+- `AI.Client Host` запускает Host в Development mode на `http://localhost:52173`;
+- `Verify AI.Client` выполняет обязательную проверку `verify`;
+- `Publish AI.Client` публикует Host в `artifacts/publish`.
+
 Статус: Accepted
 
 ## Локальный запуск
@@ -88,4 +126,3 @@ Credentials экспортируются только отдельной явн�
 ## Метрики без telemetry
 
 Локально доступны latency, token usage, tool count, retry count, context size и storage size. Внешняя telemetry по умолчанию отключена и не входит в MVP.
-

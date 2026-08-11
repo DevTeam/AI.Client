@@ -1,5 +1,9 @@
 # Архитектура
 
+## Текущий API-срез
+
+Host предоставляет same-origin API `/api/projects` для CRUD метаданных проекта. `PUT` и `DELETE` принимают revision и возвращают `409 Conflict` при stale update. Web обращается к нему через интерфейс `IProjectApi`; browser не получает доступ к локальному файловому хранилищу напрямую.
+
 Статус: Accepted
 
 ## Общая схема

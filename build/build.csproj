@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>AI.Client.Build</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Pure.DI" PrivateAssets="all" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+</Project>

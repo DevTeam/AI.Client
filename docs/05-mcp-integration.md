@@ -2,6 +2,10 @@
 
 Статус: Accepted
 
+## Текущий статус configuration UI
+
+Project settings уже хранят MCP server binding с именем, transport (`Stdio` или `StreamableHttp`) и флагом enabled. UI позволяет редактировать bindings и связанные per-tool policies, но это только локальная конфигурация: процесс не запускается, HTTP transport не открывается и `tools/list` не вызывается. Эти действия относятся к отдельному этапу MCP connection manager.
+
 ## Версия и negotiation
 
 Клиент использует официальный C# SDK Model Context Protocol и согласовывает protocol revision через MCP initialization. Нельзя жёстко предполагать draft-функции без negotiated capability.
@@ -134,4 +138,14 @@ history:write
 ```
 
 Host обрабатывает `401` и `403 insufficient_scope` через `WWW-Authenticate`. Широкие wildcard scopes по умолчанию не запрашиваются.
+# Global MCP configuration
 
+MCP servers являются глобальными и доступны всем проектам. Первая итерация реализует только JSON storage и UI конфигурации:
+
+- transports `StreamableHttp` и `Stdio`;
+- enable/disable;
+- server-wide policy `Allow`, `Ask` или `Deny`;
+- command, arguments, working directory и environment variables для stdio;
+- write-only credential для Streamable HTTP.
+
+Подключение, `Test`, `tools/list`, discovered tools и agent tool calls отложены и не показываются в UI до реализации.

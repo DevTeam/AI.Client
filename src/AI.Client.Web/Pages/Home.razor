@@ -1,0 +1,2094 @@
+﻿@page "/"
+@using System.Text.Json
+@inject IClientMetadata ClientMetadata
+@inject IProjectApi ProjectApi
+@inject IChatApi ChatApi
+@inject IChatHistoryApi ChatHistoryApi
+@inject IJSRuntime JSRuntime
+@inject IWorkspaceLayoutService WorkspaceLayoutService
+@inject IGlobalSettingsApi GlobalSettingsApi
+@inject IChatRunsApi ChatRunsApi
+@implements IAsyncDisposable
+
+<PageTitle>@ClientMetadata.ProductName</PageTitle>
+
+<main class="workspace-shell @(_isSidebarCollapsed ? "left-collapsed" : string.Empty)" @ref="_workspace">
+    <button class="icon-action sidebar-toggle" type="button" title="@(_isSidebarCollapsed ? "Show sidebar" : "Hide sidebar")" aria-label="@(_isSidebarCollapsed ? "Show sidebar" : "Hide sidebar")" aria-expanded="@(_isSidebarCollapsed ? "false" : "true")" @onclick="ToggleLeftPanelAsync"><AppIcon Name="@(_isSidebarCollapsed ? "chevron-right" : "chevron-left")" /></button>
+    <aside class="workspace-sidebar">
+        <div class="sidebar-heading">
+            <button type="button" class="sidebar-heading-toggle" aria-expanded="@(_isSettingsSectionExpanded ? "true" : "false")" aria-controls="global-settings-nav" @onclick="ToggleSettingsSection">
+                <AppIcon Name="chevron-right" />
+                <span>Settings</span>
+            </button>
+        </div>
+        @if (_isSettingsSectionExpanded)
+        {
+            <nav id="global-settings-nav" class="global-nav" aria-label="Global settings">
+                @foreach (var section in new[] { "Connections", "Security", "MCP" })
+                {
+                    <button class="workspace-nav-item @(_globalSection == section ? "selected" : string.Empty)" type="button" @onclick="() => OpenGlobalSection(section)">@section</button>
+                }
+            </nav>
+        }
+        <div class="sidebar-heading">
+            <button type="button" class="sidebar-heading-toggle" aria-expanded="@(_isProjectsSectionExpanded ? "true" : "false")" aria-controls="projects-nav" @onclick="ToggleProjectsSection">
+                <AppIcon Name="chevron-right" />
+                <span>Projects</span>
+            </button>
+            <button type="button" title="New project" aria-label="New project" @onclick="CreateProjectAsync">＋</button>
+        </div>
+        @if (_isProjectsSectionExpanded)
+        {
+        <div id="projects-nav">
+        @if (_isLoading)
+        {
+            <p>Loading...</p>
+        }
+        @foreach (var project in _projects)
+        {
+            <div class="project-nav-row @(_globalSection is null && project.Id == _selectedProject?.Id ? "selected" : string.Empty) @(_draggedProjectId == project.Id ? "dragging" : string.Empty) @GetRunStatusClass(GetProjectRun(project.Id))" title="@GetProjectRunTitle(project.Id)" draggable="true" @ondragstart="() => OnProjectDragStart(project.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnProjectDrop(project)" @oncontextmenu="() => OnProjectContextMenu(project)" @oncontextmenu:preventDefault="true">
+                @if (_editingProjectId == project.Id)
+                {
+                    <input class="sidebar-inline-editor" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveProjectTitleAsync(project))" @onblur="() => SaveProjectTitleAsync(project)" aria-label="Project name" />
+                }
+                else
+                {
+                    <button class="workspace-nav-item" type="button" @onclick="() => SelectProjectAsync(project)">▣ @project.Name</button>
+                }
+                @if (project.Id == _selectedProject?.Id)
+                {
+                    <button class="icon-action project-action-button project-new-chat-button" type="button" title="New chat" aria-label="New chat" @onclick="CreateChatAsync"><AppIcon Name="plus" /></button>
+                    <button class="icon-action project-action-button project-rename-button" type="button" title="Rename" aria-label="Rename project" @onclick="BeginProjectRename"><AppIcon Name="edit" /></button>
+                    <button class="icon-action project-action-button project-menu-button" type="button" title="Project settings" aria-label="Project settings" @onclick="ToggleProjectMenu"><AppIcon Name="more" /></button>
+                }
+            </div>
+            @if (project.Id == _selectedProject?.Id)
+            {
+                <nav class="workspace-chat-list" aria-label="Chats in @project.Name" @onkeydown="OnChatListKeyDown">
+                    @foreach (var chat in _chats)
+                    {
+                        <div class="chat-nav-row @(_globalSection is null && chat.Id == _selectedChat?.Id && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty) @GetRunStatusClass(GetRun(chat.Id, chat.Id))" title="@GetRunTitle(GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
+                            @if (_editingChatId == chat.Id)
+                            {
+                                <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveChatTitleAsync(chat))" @onblur="() => SaveChatTitleAsync(chat)" aria-label="Chat name" />
+                            }
+                            else
+                            {
+                                <button class="workspace-nav-item chat-link" type="button" @onclick="() => SelectChatAsync(chat.Id)">@chat.Title</button>
+                            }
+                            <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat)"><AppIcon Name="edit" /></button>
+                            <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenu(chat.Id)"><AppIcon Name="more" /></button>
+                            @if (_chatMenuId == chat.Id)
+                            {
+                                <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                                    @if (_isConfirmingChatDelete)
+                                    {
+                                        <div class="project-menu-confirm"><span>Are you sure?</span><button class="danger compact-action" type="button" @onclick="() => DeleteChatAsync(chat)">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelChatDelete">Cancel</button></div>
+                                    }
+                                    else
+                                    {
+                                        <button class="menu-danger" type="button" role="menuitem" @onclick="ConfirmChatDelete"><AppIcon Name="trash" />Delete chat</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        @if (_selectedChat?.Id == chat.Id)
+                        {
+                            @foreach (var branch in GetBranchTreeItems())
+                            {
+                                <div class="chat-nav-row branch-nav-row @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty) @GetRunStatusClass(GetBranchRun(chat.Id, branch))" title="@GetRunTitle(GetBranchRun(chat.Id, branch))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
+                                    <span class="branch-tree-line" aria-hidden="true"></span>
+                                    @if (_editingBranchId == branch.RootId)
+                                    {
+                                        <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveBranchTitleAsync(branch))" @onblur="() => SaveBranchTitleAsync(branch)" aria-label="Branch name" />
+                                    }
+                                    else
+                                    {
+                                        <button class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)"><AppIcon Name="git-branch" /><span>@branch.Title</span></button>
+                                    }
+                                    <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename branch" @onclick="() => BeginBranchRename(branch)"><AppIcon Name="edit" /></button>
+                                    <button class="icon-action chat-row-action chat-menu-button @(_branchMenuId == branch.RootId ? "menu-open" : string.Empty)" type="button" title="Branch menu" aria-label="Branch menu" @onclick="() => ToggleBranchMenu(branch.RootId)"><AppIcon Name="more" /></button>
+                                    @if (_branchMenuId == branch.RootId)
+                                    {
+                                        <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                                            <button class="menu-danger" type="button" role="menuitem" @onclick="() => DeleteBranchAsync(branch)"><AppIcon Name="trash" />Delete branch</button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                    }
+                    @if (_chats.Count == 0) { <span class="empty-hint">No chats yet</span> }
+                </nav>
+            }
+        }
+        </div>
+        }
+    </aside>
+
+    <div class="workspace-resizer" data-side="left" role="separator" aria-label="Resize project sidebar"></div>
+
+    @if (_globalSection is not null)
+    {
+        <section class="global-workspace" aria-label="@_globalSection">
+            @if (_globalSection == "Connections")
+            {
+                <header class="global-header"><div><h1>Connections</h1><p>OpenAI-compatible endpoints available to every project.</p></div></header>
+                <div class="global-editor-layout">
+                    <div class="settings-list-column">
+                        <nav class="settings-list">@foreach (var connectionItem in _connections) { <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span>@connectionItem.Name</span><small>@(connectionItem.IsDefault ? "Default" : connectionItem.Enabled ? "Enabled" : "Unavailable")</small></button>@if (connectionItem.Id == _selectedConnectionId) { <button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button> }</div> }</nav>
+                        <button class="icon-action settings-list-add" type="button" title="Add connection" aria-label="Add connection" @onclick="AddConnection"><AppIcon Name="plus" /></button>
+                    </div>
+                    @if (GetSelectedConnection() is { } connection)
+                    {
+                        <div class="global-form"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label></div><label>Name<InputText @bind-Value="connection.Name" /></label><label>Base URL<InputText @bind-Value="connection.BaseUrl" /></label><label>Model<InputText @bind-Value="connection.Model" /></label><label>API key<InputText type="password" @bind-Value="connection.Secret" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></div>
+                    }
+                </div>
+                <footer class="global-actions"><button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
+            }
+            else if (_globalSection == "Security")
+            {
+                <header class="global-header"><div><h1>Security</h1><p>Global confirmation and application policies.</p></div></header><div class="settings-placeholder"><h3>Notifications</h3><p>Show a local browser notification when a background chat finishes or fails while this application is not focused.</p><button type="button" @onclick="EnableNotificationsAsync">@(_notificationsEnabled ? "Notifications enabled" : "Enable notifications")</button><p>Directory access is configured independently for each project.</p></div>
+            }
+            else
+            {
+                <header class="global-header"><div><h1>MCP</h1><p>Global MCP servers available to every project.</p></div></header>
+                <div class="global-editor-layout">
+                    <div class="settings-list-column">
+                        <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => _selectedMcpServerId = serverItem.Id"><span>@serverItem.Name</span><small>@serverItem.Transport · @serverItem.Policy</small></button>@if (serverItem.Id == _selectedMcpServerId) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</div> }</nav>
+                        <button class="icon-action settings-list-add" type="button" title="Add MCP server" aria-label="Add MCP server" @onclick="AddGlobalMcpServer"><AppIcon Name="plus" /></button>
+                    </div>
+                    @if (GetSelectedMcpServer() is { } server)
+                    {
+                        <div class="global-form"><label>Name<InputText @bind-Value="server.Name" /></label><label>Transport<select @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option></select></label><label>Policy<select @bind="server.Policy"><option>Allow</option><option>Ask</option><option>Deny</option></select></label><label class="checkbox"><input type="checkbox" @bind="server.Enabled" /> Enabled</label>@if (server.Transport == "StreamableHttp") { <label>URL<InputText @bind-Value="server.Url" /></label><label>Credential<InputText type="password" @bind-Value="server.Secret" placeholder="@(server.HasCredential ? "Saved; enter to replace" : "Optional")" /></label> } else { <label>Command<InputText @bind-Value="server.Command" /></label><label>Arguments<InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label><label>Working directory<InputText @bind-Value="server.WorkingDirectory" /></label><label>Environment variables<InputTextArea @bind-Value="server.EnvironmentText" placeholder="NAME=value" /></label> }</div>
+                    }
+                </div>
+                <footer class="global-actions"><button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
+            }
+        </section>
+    }
+    else
+    {
+    <section class="workspace-conversation" aria-label="Chat">
+        @if ((_isSidebarCollapsed || !_isProjectsSectionExpanded) && _selectedProject is not null)
+        {
+            <header class="conversation-context-header">
+                <span class="conversation-context-project">@_selectedProject.Name</span>
+                @if (GetContextBranchTitle() is { } contextBranchTitle)
+                {
+                    <AppIcon Name="chevron-right" />
+                    <span class="conversation-context-branch">@contextBranchTitle</span>
+                }
+            </header>
+        }
+        <MessageFeed @ref="_messageFeed"
+            HasSelectedProject="@(_selectedProject is not null)"
+            SelectedChat="@_selectedChat"
+            BranchLeafId="@_branchLeafId"
+            ForkSourceId="@_forkSourceId"
+            MessageBranchMenuId="@_messageBranchMenuId"
+            SelectedRun="@GetSelectedRun()"
+            OnCopyMessage="CopyMessageAsync"
+            OnForkFromMessage="ForkFromMessageAsync"
+            OnEditAndBranch="EditAndBranchAsync"
+            OnEditAndReplaceBranch="EditAndReplaceBranchAsync"
+            OnToggleBranchMenu="ToggleMessageBranchMenu"
+            OnSelectBranch="SelectMessageBranch"
+            OnBranchPickerKeyDown="HandleBranchPickerKeyDown" />
+        @if (GetSelectedRun() is { } selectedRun && selectedRun.Queue.Count > 0)
+        {
+            <section class="chat-queue"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @selectedRun.Queue.Count</span><AppIcon Name="chevron-right" /></button>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in selectedRun.Queue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span>@GetMessagePreview(item.Content)</span><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }@if (selectedRun.Status is ChatRunStatus.Paused or ChatRunStatus.Interrupted or ChatRunStatus.Failed) { <div class="queue-actions"><button type="button" @onclick="ResumeQueueAsync">Resume</button><button type="button" class="secondary-action" @onclick="ClearQueueAsync">Clear</button></div> }</section>
+        }
+        <div class="composer-status" role="status">
+            @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <span>Generating...</span> }
+            else if (GetSelectedRun()?.Status == ChatRunStatus.Paused) { <span>Stopped · queue paused</span> }
+            else if (GetSelectedRun()?.Status == ChatRunStatus.Interrupted) { <span>Interrupted · resume when ready</span> }
+            else if (GetSelectedRun() is { Status: ChatRunStatus.Failed } failedRun) { <span class="error">Failed: @failedRun.Error</span> }
+            else if (GetReplaceSource() is { } replaceSource) { <span class="fork-mode replace-mode"><AppIcon Name="edit-replace" /><span>Replacing branch from “@GetMessagePreview(replaceSource.Content)”</span><button class="icon-action" type="button" title="Cancel replacement" aria-label="Cancel replacement" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
+            else if (GetForkSource() is { } forkSource) { <span class="fork-mode"><AppIcon Name="fork" /><span>Forking from “@GetMessagePreview(forkSource.Content)”</span><button class="icon-action" type="button" title="Cancel fork" aria-label="Cancel fork" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
+            else { <span>@GetComposerHint()</span> }
+        </div>
+        <footer class="workspace-composer">
+            <textarea @ref="_composer" @bind="_chat.Message" @bind:event="oninput" @onkeydown="HandleComposerKeyDown" placeholder="@(_replaceSourceId is not null ? "Edit the message to replace this branch..." : _forkSourceId is not null ? "Write the first message in the new branch..." : "Message the assistant...")" aria-label="Message"></textarea>
+            <div class="composer-footer">
+                <div class="composer-endpoint">
+                    <button class="composer-endpoint-trigger" type="button" title="Endpoint for this chat" aria-label="Endpoint for this chat" aria-haspopup="true" aria-expanded="@(_isEndpointMenuOpen ? "true" : "false")" @onclick="ToggleEndpointMenu" disabled="@(_connections.Count == 0)">
+                        <span>@GetEndpointDisplayName()</span>
+                        <AppIcon Name="chevron-down" />
+                    </button>
+                    @if (_isEndpointMenuOpen)
+                    {
+                        <div class="context-menu-backdrop" @onclick="CloseEndpointMenu"></div>
+                        <span class="composer-endpoint-menu" role="menu">
+                            @foreach (var connection in _connections.Where(item => item.Enabled))
+                            {
+                                var isSelected = connection.Id == _chat.CredentialProfileId;
+                                <button type="button" role="menuitem" class="@(isSelected ? "selected" : string.Empty)" @onclick="() => SelectChatEndpointAsync(connection.Id)">
+                                    @if (isSelected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }
+                                    <span>@connection.Name</span>
+                                    @if (connection.IsDefault) { <span class="composer-endpoint-default">Default</span> }
+                                </button>
+                            }
+                        </span>
+                    }
+                </div>
+                @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation" aria-label="Stop generation" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> } else { <button class="composer-send" type="button" title="Send message" aria-label="Send message" @onclick="SendChatAsync" disabled="@(!CanSendMessage())"><AppIcon Name="arrow-up" /></button> }
+            </div>
+            @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
+        </footer>
+    </section>
+    }
+
+    @if (_isProjectMenuOpen && _selectedProject is not null)
+    {
+        <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
+        <div class="project-menu" role="menu" @onclick:stopPropagation="true">
+            <button type="button" role="menuitem" @onclick="OpenProjectSettings"><AppIcon Name="sliders" />Project settings</button>
+            @if (_isConfirmingProjectDelete)
+            {
+                <div class="project-menu-confirm"><span>Are you sure?</span><button class="danger compact-action" type="button" @onclick="DeleteProjectAsync">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelProjectDelete">Cancel</button></div>
+            }
+            else
+            {
+                <button class="menu-danger" type="button" role="menuitem" @onclick="ConfirmProjectDelete"><AppIcon Name="trash" />Delete project</button>
+            }
+        </div>
+    }
+
+    @if (_chatMenuId is not null)
+    {
+        <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
+    }
+
+    @if (_isProjectSettingsOpen && _selectedProject is not null)
+    {
+        <div class="modal-backdrop" @onclick="CancelCurrentSettingsAsync">
+            <section class="project-settings-modal" role="dialog" aria-modal="true" aria-labelledby="project-settings-title" @onclick:stopPropagation="true" @onkeydown="HandleProjectSettingsKeyDownAsync">
+                <header><div><strong id="project-settings-title">Project settings</strong><span>@_selectedProject.Name</span></div></header>
+            <div class="settings-content">
+                <EditForm Model="_editor" class="workspace-form">
+                    <DataAnnotationsValidator />
+                    <label>Name<InputText @bind-Value="_editor.Name" /></label>
+                    <label>Description<InputTextArea @bind-Value="_editor.Description" /></label>
+                    <label>Connection<select @bind="_editor.ConnectionId"><option value="">No connection</option>@foreach (var connection in _connections) { <option value="@connection.Id" disabled="@(!connection.Enabled)">@connection.Name@(!connection.Enabled ? " (Unavailable)" : string.Empty)</option> }</select></label>
+                </EditForm>
+                <section class="directory-settings"><div class="section-heading"><div><h3>Allowed directories</h3><p>Access is always recursive.</p></div><button class="icon-action" type="button" title="Add directory" aria-label="Add directory" @onclick="AddDirectoryGrant"><AppIcon Name="plus" /></button></div>@foreach (var directory in _security.DirectoryGrants) { <div class="directory-row"><InputText @bind-Value="directory.CanonicalRoot" placeholder="C:\Projects\App" /><select @bind="directory.Mode"><option>Read only</option><option>Read/write</option></select><button class="icon-action" type="button" title="Remove directory" aria-label="Remove directory" @onclick="() => RemoveDirectoryGrant(directory.Id)">−</button></div> }</section>
+                @if (!string.IsNullOrEmpty(_error)) { <p class="error" role="alert">@_error</p> }
+            </div>
+            <footer class="settings-modal-actions">
+                <button type="button" @onclick="SaveProjectSettingsAsync">Save</button>
+                <button type="button" class="secondary-action" @onclick="CancelCurrentSettingsAsync">Cancel</button>
+            </footer>
+            </section>
+        </div>
+    }
+</main>
+
+<div class="toast-region" aria-live="polite" aria-atomic="true">
+    @if (_toast is not null)
+    {
+        <div class="toast @_toast.Kind" role="status"><AppIcon Name="@(_toast.Kind == "success" ? "check" : "x")" /><span>@_toast.Message</span><button class="icon-action" type="button" title="Dismiss notification" aria-label="Dismiss notification" @onclick="DismissToast"><AppIcon Name="x" /></button></div>
+    }
+</div>
+
+@code {
+    private readonly List<ProjectSummary> _projects = [];
+    private ProjectSummary? _selectedProject;
+    private bool _isProjectMenuOpen;
+    private bool _isProjectSettingsOpen;
+    private bool _isConfirmingProjectDelete;
+    private Guid? _chatMenuId;
+    private Guid? _branchMenuId;
+    private Guid? _messageBranchMenuId;
+    private bool _isEndpointMenuOpen;
+    private Guid? _editingProjectId;
+    private Guid? _editingChatId;
+    private Guid? _editingBranchId;
+    private string _editingTitle = string.Empty;
+    private bool _isCompletingInlineEdit;
+    private ElementReference _editingInput;
+    private bool _focusEditingInputPending;
+    private IJSObjectReference? _inlineEditorModule;
+    private bool _isConfirmingChatDelete;
+    private Guid? _draggedProjectId;
+    private Guid? _draggedChatId;
+    private bool _isSettingsSectionExpanded;
+    private bool _isProjectsSectionExpanded = true;
+    private bool _isSidebarCollapsed;
+    private const string SidebarCollapsedKey = "ai-client.sidebar-collapsed.v1";
+    private string? _globalSection;
+    private readonly List<ConnectionEditor> _connections = [];
+    private readonly List<GlobalMcpServerEditor> _globalMcpServers = [];
+    private Guid? _selectedConnectionId;
+    private Guid? _selectedMcpServerId;
+    private ProjectEditor _editor = new();
+    private ProjectSecurityEditor _security = new();
+    private readonly List<EndpointProfileEditor> _endpointProfiles = [];
+    private string? _error;
+    private readonly List<ChatSummary> _chats = [];
+    private ChatDetails? _selectedChat;
+    private Guid? _branchLeafId;
+    private Guid? _forkSourceId;
+    private Guid? _replaceSourceId;
+    private Guid? _pendingBranchAnchorId;
+    private bool _isLoading = true;
+    private readonly ChatEditor _chat = new();
+    private string? _chatError;
+    private ToastMessage? _toast;
+    private CancellationTokenSource? _toastCancellation;
+    private string _settingsTab = "Endpoints";
+    private Guid? _selectedEndpointId;
+    private Guid? _defaultEndpointProfileId;
+    private ElementReference _composer;
+    private MessageFeed? _messageFeed;
+    private bool _scrollMessagesToBottom;
+    private IJSObjectReference? _composerModule;
+    private IJSObjectReference? _composerHandle;
+    private DotNetObjectReference<Home>? _dotNetReference;
+    private ElementReference _workspace;
+    private bool _attachComposer = true;
+    private bool _composerNeedsResize;
+    private readonly Dictionary<RunKey, ChatRunSnapshot> _runs = [];
+    private bool _isQueueExpanded;
+    private bool _isSubmittingMessage;
+    private Guid? _editingQueueId;
+    private string _editingQueueText = string.Empty;
+    private bool _applicationFocused = true;
+    private bool _notificationsEnabled;
+    private IJSObjectReference? _runEventsModule;
+    private IJSObjectReference? _runEventsSubscription;
+    private IJSObjectReference? _focusSubscription;
+    private IJSObjectReference? _queueDragSubscription;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGlobalSettingsAsync();
+        foreach (var run in await ChatRunsApi.GetAsync(CancellationToken.None)) StoreRun(run);
+        await LoadProjectsAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetReference = DotNetObjectReference.Create(this);
+            await WorkspaceLayoutService.AttachAsync(_workspace);
+            await LoadSidebarCollapsedAsync();
+            await WorkspaceLayoutService.WatchPhoneModeAsync(_dotNetReference, PhoneModeBreakpointPx);
+            try
+            {
+                _composerModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
+                _inlineEditorModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/inlineEditor.js");
+                _runEventsModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/runEvents.js");
+                _runEventsSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("subscribe", _dotNetReference);
+                _focusSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchFocus", _dotNetReference);
+                _queueDragSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchQueueDrag", _dotNetReference);
+                _applicationFocused = await _runEventsModule.InvokeAsync<bool>("isFocused");
+                _notificationsEnabled = await _runEventsModule.InvokeAsync<bool>("notificationsEnabled");
+            }
+            catch (JSException)
+            {
+                _composerModule = null;
+            }
+
+            StateHasChanged();
+        }
+
+        if (_globalSection is null && _attachComposer && _composerModule is not null && _dotNetReference is not null)
+        {
+            if (_composerHandle is not null)
+            {
+                await _composerHandle.InvokeVoidAsync("dispose");
+                await _composerHandle.DisposeAsync();
+            }
+
+            try
+            {
+                _composerHandle = await _composerModule.InvokeAsync<IJSObjectReference>("attach", _composer, _dotNetReference);
+            }
+            catch (JSException)
+            {
+                _composerModule = null;
+                _composerHandle = null;
+            }
+            _attachComposer = false;
+        }
+
+        if (_scrollMessagesToBottom && _messageFeed is not null)
+        {
+            _scrollMessagesToBottom = false;
+            await _messageFeed.ScrollToBottomAsync();
+        }
+
+        if (_composerNeedsResize && _composerHandle is not null)
+        {
+            _composerNeedsResize = false;
+            await _composerHandle.InvokeVoidAsync("resize");
+        }
+
+        if (_focusEditingInputPending && _inlineEditorModule is not null)
+        {
+            _focusEditingInputPending = false;
+            await _inlineEditorModule.InvokeVoidAsync("focusAndSelect", _editingInput);
+        }
+    }
+
+    [JSInvokable]
+    public Task SendFromKeyboard() => CanSendMessage() ? SendChatAsync() : Task.CompletedTask;
+
+    [JSInvokable]
+    public async Task OnRunSnapshot(string json)
+    {
+        var snapshots = JsonSerializer.Deserialize<IReadOnlyList<ChatRunSnapshot>>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? [];
+        foreach (var snapshot in snapshots)
+        {
+            _runs.TryGetValue(new RunKey(snapshot.ChatId, snapshot.BranchId), out var previous);
+            StoreRun(snapshot);
+            if (snapshot.ChatId == _selectedChat?.Id)
+            {
+                var isSelectedRun = snapshot.BranchId == GetSelectedRun()?.BranchId;
+                var isPendingBranchRun = _pendingBranchAnchorId is { } pendingId && snapshot.BranchId == pendingId;
+                if (isSelectedRun || isPendingBranchRun) _scrollMessagesToBottom = true;
+                if ((isSelectedRun || isPendingBranchRun) && previous?.Status == ChatRunStatus.Generating && snapshot.Status != ChatRunStatus.Generating && _selectedProject is not null)
+                {
+                    _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, snapshot.ChatId, CancellationToken.None);
+                    SelectPendingBranchOrLatestMessage();
+                    await LoadChatsAsync(_selectedProject.Id);
+                }
+                if ((isSelectedRun || isPendingBranchRun) && _applicationFocused && snapshot.HasUnreadResponse) await MarkSelectedChatReadAsync();
+            }
+            if (!_applicationFocused && previous?.Status == ChatRunStatus.Generating && snapshot.Status is ChatRunStatus.Completed or ChatRunStatus.Failed)
+            {
+                var chat = _chats.FirstOrDefault(item => item.Id == snapshot.ChatId);
+                if (_runEventsModule is not null) await _runEventsModule.InvokeVoidAsync("notify", _selectedProject?.Name ?? "AI.Client", $"{chat?.Title ?? "Chat"}: {snapshot.Status}");
+            }
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnApplicationFocusChanged(bool focused)
+    {
+        _applicationFocused = focused;
+        if (focused) await MarkSelectedChatReadAsync();
+    }
+
+    private Task HandleComposerKeyDown(KeyboardEventArgs args) =>
+        _composerModule is null && args.Key == "Enter" && !args.ShiftKey && CanSendMessage()
+            ? SendChatAsync()
+            : Task.CompletedTask;
+
+    private const int PhoneModeBreakpointPx = 720;
+
+    [JSInvokable]
+    public void OnEnterPhoneMode()
+    {
+        _isSettingsSectionExpanded = false;
+        _isProjectsSectionExpanded = false;
+        _isSidebarCollapsed = false;
+        StateHasChanged();
+    }
+
+    private async Task CreateProjectAsync()
+    {
+        try
+        {
+            var project = await ProjectApi.CreateAsync(new CreateProjectRequest("Untitled project", string.Empty), CancellationToken.None);
+            _isProjectsSectionExpanded = true;
+            await LoadProjectsAsync(project.Id);
+            ShowToast("Project created.", "success");
+        }
+        catch (HttpRequestException)
+        {
+            _error = "The local gateway is unavailable.";
+        }
+    }
+
+    private async Task SelectProjectAsync(ProjectSummary project)
+    {
+        _globalSection = null;
+        _attachComposer = true;
+        _selectedProject = project;
+        _isProjectMenuOpen = false;
+        _isProjectSettingsOpen = false;
+        _isConfirmingProjectDelete = false;
+        _chatMenuId = null;
+        _branchMenuId = null;
+        _isConfirmingChatDelete = false;
+        _selectedChat = null;
+        _branchLeafId = null;
+        _editor = new ProjectEditor(project.Name, project.Description, project.Revision);
+        _error = null;
+        await LoadSecurityAsync(project.Id);
+    }
+
+    private async Task SaveProjectAsync()
+    {
+        if (_selectedProject is null)
+        {
+            return;
+        }
+
+        var result = await ProjectApi.UpdateAsync(
+            _selectedProject.Id,
+            new UpdateProjectRequest(_editor.Name, _editor.Description, _editor.Revision, _editor.ConnectionId),
+            CancellationToken.None);
+        if (result.Status == ProjectUpdateStatus.Updated && result.Project is not null)
+        {
+            await LoadProjectsAsync(result.Project.Id);
+            ShowToast("Project saved.", "success");
+            CloseProjectSettings();
+            return;
+        }
+
+        _error = result.Status == ProjectUpdateStatus.Conflict
+            ? "This project was changed elsewhere. Reload it before saving."
+            : "This project no longer exists.";
+    }
+
+    private async Task DeleteProjectAsync()
+    {
+        if (_selectedProject is null)
+        {
+            return;
+        }
+
+        var result = await ProjectApi.DeleteAsync(_selectedProject.Id, _editor.Revision, CancellationToken.None);
+        if (result.IsDeleted)
+        {
+            await LoadProjectsAsync();
+            _isProjectMenuOpen = false;
+            _isProjectSettingsOpen = false;
+            _isConfirmingProjectDelete = false;
+            ShowToast("Project deleted.", "success");
+            return;
+        }
+
+        _error = result.Revision > 0
+            ? "This project was changed elsewhere. Reload it before deleting."
+            : "This project no longer exists.";
+    }
+
+    private async Task LoadProjectsAsync(Guid? selectedId = null)
+    {
+        try
+        {
+            _isLoading = true;
+            _error = null;
+            _projects.Clear();
+            _projects.AddRange(await ProjectApi.ListAsync(CancellationToken.None));
+            await ApplyProjectOrderAsync();
+            var project = selectedId is null
+                ? _projects.FirstOrDefault()
+                : _projects.SingleOrDefault(item => item.Id == selectedId);
+            if (project is not null)
+            {
+                await SelectProjectAsync(project);
+            }
+            else
+            {
+                _selectedProject = null;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _error = "The local gateway is unavailable.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadSecurityAsync(Guid id)
+    {
+        var project = await ProjectApi.GetAsync(id, CancellationToken.None);
+        if (project is not null && _selectedProject?.Id == id)
+        {
+            _security = ProjectSecurityEditor.From(project);
+            _editor.ConnectionId = project.ConnectionId ?? GetDefaultConnection()?.Id;
+            _defaultEndpointProfileId = _editor.ConnectionId;
+            if (_defaultEndpointProfileId is { } defaultId)
+            {
+                SelectGlobalConnection(defaultId);
+            }
+            else
+            {
+                var defaultConnection = GetDefaultConnection();
+                if (defaultConnection is not null) SelectGlobalConnection(defaultConnection.Id);
+            }
+            await LoadChatsAsync(id);
+        }
+    }
+
+    private async Task SendChatAsync()
+    {
+        if (_isSubmittingMessage || _selectedProject is null || string.IsNullOrWhiteSpace(_chat.Message))
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_chat.BaseUrl) || string.IsNullOrWhiteSpace(_chat.Model))
+        {
+            _chatError = "Select or configure an endpoint before sending a message.";
+            return;
+        }
+
+        _isSubmittingMessage = true;
+        var prompt = _chat.Message.Trim();
+        try
+        {
+            _chatError = null;
+            if (_selectedChat is null)
+            {
+                // The connection actually selected in the composer (_chat.CredentialProfileId),
+                // not the project's own default (_defaultEndpointProfileId) — those can differ
+                // once the composer endpoint picker lets a chat override the project's default,
+                // and using the project default here silently discarded that choice for brand
+                // new chats (it only took effect later, via UpdateEndpointAsync on an existing one).
+                _selectedChat = await ChatHistoryApi.CreateAsync(
+                    _selectedProject.Id,
+                    new CreateChatRequest(CreateChatTitle(prompt), _chat.CredentialProfileId),
+                    CancellationToken.None);
+            }
+            if (_replaceSourceId is { } replaceSourceId)
+            {
+                var replaceSource = _selectedChat.Messages.Single(message => message.Id == replaceSourceId);
+                var deleteResult = await ChatHistoryApi.DeleteBranchAsync(
+                    _selectedProject.Id,
+                    _selectedChat.Id,
+                    replaceSourceId,
+                    _selectedChat.Revision,
+                    CancellationToken.None);
+                if (!deleteResult.IsDeleted)
+                {
+                    throw new InvalidOperationException("The branch changed before it could be replaced.");
+                }
+
+                _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, _selectedChat.Id, CancellationToken.None)
+                    ?? throw new InvalidOperationException("The chat no longer exists.");
+                _branchLeafId = replaceSource.ParentId;
+                _replaceSourceId = null;
+            }
+            var messageId = Guid.CreateVersion7();
+            var runBranchId = _forkSourceId is not null ? messageId : GetSelectedRunBranchId();
+            if (_forkSourceId is not null)
+            {
+                _pendingBranchAnchorId = messageId;
+            }
+            var snapshot = await ChatRunsApi.EnqueueAsync(_selectedProject.Id, _selectedChat.Id,
+                new EnqueueChatMessageRequest(Guid.CreateVersion7(), messageId, prompt, _branchLeafId, runBranchId), CancellationToken.None);
+            StoreRun(snapshot);
+            _messageBranchMenuId = null;
+            _forkSourceId = null;
+            _replaceSourceId = null;
+            _chat.Message = string.Empty;
+            _composerNeedsResize = true;
+            _scrollMessagesToBottom = true;
+            await LoadChatsAsync(_selectedProject.Id);
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _chatError = "The endpoint did not accept the request. Verify the base URL, model, and API key.";
+        }
+        finally
+        {
+            _isSubmittingMessage = false;
+        }
+    }
+
+    private async Task StopGenerationAsync()
+    {
+        if (_selectedProject is null || _selectedChat is null) return;
+        var snapshot = await ChatRunsApi.StopAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None);
+        if (snapshot is not null) StoreRun(snapshot);
+    }
+
+    private bool CanSendMessage() =>
+        !_isSubmittingMessage
+        && _selectedProject is not null
+        && !string.IsNullOrWhiteSpace(_chat.Message);
+
+    private string GetComposerHint()
+    {
+        if (_selectedProject is null) return "Select a project";
+        if (string.IsNullOrWhiteSpace(_chat.BaseUrl) || string.IsNullOrWhiteSpace(_chat.Model)) return "Select or configure an endpoint";
+        return _selectedChat is null ? "A new chat will be created on send" : "Continuing selected chat";
+    }
+
+    private void AddDirectoryGrant() => _security.DirectoryGrants.Add(new DirectoryGrantEditor());
+
+    private void RemoveDirectoryGrant(Guid id) => _security.DirectoryGrants.RemoveAll(item => item.Id == id);
+
+    private async Task CreateChatAsync()
+    {
+        if (_selectedProject is null) return;
+        _globalSection = null;
+        _attachComposer = true;
+        _selectedChat = null;
+        _branchLeafId = null;
+        if (_defaultEndpointProfileId is { } endpointId)
+        {
+            SelectChatProfile(new ChangeEventArgs { Value = endpointId.ToString() });
+        }
+        _chat.Message = string.Empty;
+        if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("focus");
+    }
+
+    private async Task SelectChatAsync(Guid chatId)
+    {
+        _globalSection = null;
+        _attachComposer = true;
+        CloseContextMenus();
+        if (_selectedProject is not null)
+        {
+            _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, chatId, CancellationToken.None);
+            _branchLeafId = GetOriginalBranchLeaf(_selectedChat);
+            if (_selectedChat?.EndpointProfileId is { } endpointId)
+            {
+                SelectChatProfile(new ChangeEventArgs { Value = endpointId.ToString() });
+            }
+            _scrollMessagesToBottom = true;
+            await MarkSelectedChatReadAsync();
+        }
+    }
+
+    private ChatRunSnapshot? GetRun(Guid chatId, Guid branchId) => _runs.GetValueOrDefault(new RunKey(chatId, branchId));
+    private ChatRunSnapshot? GetBranchRun(Guid chatId, BranchTreeItem branch)
+    {
+        var direct = GetRun(chatId, branch.RootId);
+        if (direct is not null) return direct;
+        return null;
+    }
+    private ChatRunSnapshot? GetSelectedRun()
+    {
+        if (_selectedChat is null) return null;
+        return GetRun(_selectedChat.Id, GetSelectedRunBranchId());
+    }
+    private void StoreRun(ChatRunSnapshot run)
+    {
+        var key = new RunKey(run.ChatId, run.BranchId);
+        if (!_runs.TryGetValue(key, out var current) || run.Revision >= current.Revision)
+        {
+            _runs[key] = run;
+        }
+    }
+    // Generating is a live state and always shown; every other status (Paused/Interrupted/Failed,
+    // same as Completed) is only shown while unread — MarkRead() (called as soon as the chat is
+    // opened) clears it, so it never lingers after being seen once.
+    private static bool IsVisibleRun(ChatRunSnapshot run) => run.Status == ChatRunStatus.Generating || run.HasUnreadResponse;
+    private BranchTreeItem? GetSelectedBranchItem()
+    {
+        if (_selectedChat is null || _branchLeafId is null) return null;
+        return GetBranchTreeItems()
+            .Where(branch => IsMessageInBranch(_branchLeafId.Value, branch.RootId))
+            .OrderByDescending(branch => branch.Depth)
+            .ThenByDescending(branch => branch.RootId)
+            .FirstOrDefault();
+    }
+
+    private Guid? GetSelectedBranchId() => GetSelectedBranchItem()?.RootId;
+
+    private string? GetContextBranchTitle() =>
+        _selectedChat is null ? null : GetSelectedBranchItem()?.Title ?? _selectedChat.Title;
+    private Guid GetSelectedRunBranchId() => _selectedChat is null ? Guid.Empty : GetSelectedBranchId() ?? _selectedChat.Id;
+    private ChatRunSnapshot? GetProjectRun(Guid projectId) => GetProjectRuns(projectId)
+        .Where(IsVisibleRun)
+        .OrderBy(item => item.Status == ChatRunStatus.Failed ? 0 : item.Status == ChatRunStatus.Generating ? 1 : item.HasUnreadResponse ? 2 : 3)
+        .FirstOrDefault();
+    private string GetProjectRunTooltip(Guid projectId) { var runs = GetProjectRuns(projectId).ToArray(); return $"{runs.Count(item => item.Status == ChatRunStatus.Generating)} generating · {runs.Count(item => item.HasUnreadResponse)} unread · {runs.Count(item => item.Status == ChatRunStatus.Failed)} failed"; }
+    private IEnumerable<ChatRunSnapshot> GetProjectRuns(Guid projectId)
+    {
+        return _runs.Values.Where(run => run.ProjectId == projectId);
+    }
+    private string? GetProjectRunTitle(Guid projectId) => GetProjectRun(projectId) is null ? null : GetProjectRunTooltip(projectId);
+    private static string? GetRunTitle(ChatRunSnapshot? run) => run is null || !IsVisibleRun(run) ? null : GetRunTooltip(run);
+    private static string GetRunStatusClass(ChatRunSnapshot? run) => run switch
+    {
+        // A property pattern never matches null, so without this explicit case a null run
+        // (e.g. GetProjectRun found nothing visible) fell through to the `_` arm below and was
+        // incorrectly classified as unread instead of "no status at all".
+        null => string.Empty,
+        { Status: ChatRunStatus.Generating } => "run-status-generating",
+        { HasUnreadResponse: false } => string.Empty,
+        { Status: ChatRunStatus.Failed } => "run-status-failed",
+        { Status: ChatRunStatus.Interrupted or ChatRunStatus.Paused } => "run-status-interrupted",
+        _ => "run-status-unread"
+    };
+    private static string GetRunTooltip(ChatRunSnapshot run) => run.HasUnreadResponse ? $"{run.Status} · unread response" : run.Status.ToString();
+
+    private async Task MarkSelectedChatReadAsync()
+    {
+        if (_selectedProject is null || _selectedChat is null || GetSelectedRun()?.HasUnreadResponse != true) return;
+        var snapshot = await ChatRunsApi.MarkReadAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None);
+        if (snapshot is not null) StoreRun(snapshot);
+    }
+
+    private void BeginQueueEdit(QueuedChatMessage item) { _editingQueueId = item.Id; _editingQueueText = item.Content; }
+    private async Task HandleQueueEditKeyAsync(KeyboardEventArgs args, Guid id)
+    {
+        if (args.Key == "Enter") await SaveQueuedMessageAsync(id);
+        else if (args.Key == "Escape") _editingQueueId = null;
+    }
+    private async Task SaveQueuedMessageAsync(Guid id)
+    {
+        if (_editingQueueId != id || _selectedProject is null || _selectedChat is null) return;
+        var snapshot = await ChatRunsApi.UpdateQueuedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), id, new UpdateQueuedMessageRequest(Guid.CreateVersion7(), _editingQueueText), CancellationToken.None);
+        if (snapshot is not null) StoreRun(snapshot);
+        _editingQueueId = null;
+    }
+    private async Task MoveQueuedMessageAsync(Guid id, int offset)
+    {
+        if (_selectedProject is null || _selectedChat is null || GetSelectedRun() is not { } run) return;
+        var position = run.Queue.ToList().FindIndex(item => item.Id == id) + offset;
+        var snapshot = await ChatRunsApi.UpdateQueuedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), id, new UpdateQueuedMessageRequest(Guid.CreateVersion7(), Position: position), CancellationToken.None);
+        if (snapshot is not null) StoreRun(snapshot);
+    }
+    [JSInvokable]
+    public async Task DropQueuedMessageAsync(string draggedValue, string targetValue)
+    {
+        if (!Guid.TryParse(draggedValue, out var draggedId) || !Guid.TryParse(targetValue, out var targetId) || draggedId == targetId || GetSelectedRun() is not { } run) return;
+        var position = run.Queue.ToList().FindIndex(item => item.Id == targetId);
+        if (_selectedProject is null || _selectedChat is null || position < 0) return;
+        var snapshot = await ChatRunsApi.UpdateQueuedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), draggedId, new UpdateQueuedMessageRequest(Guid.CreateVersion7(), Position: position), CancellationToken.None);
+        if (snapshot is not null) StoreRun(snapshot);
+    }
+    private async Task RemoveQueuedMessageAsync(Guid id)
+    {
+        if (_selectedProject is null || _selectedChat is null) return;
+        var snapshot = await ChatRunsApi.RemoveQueuedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), id, Guid.CreateVersion7(), CancellationToken.None);
+        if (snapshot is not null) StoreRun(snapshot);
+    }
+    private async Task ResumeQueueAsync() { if (_selectedProject is null || _selectedChat is null) return; var snapshot = await ChatRunsApi.ResumeAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None); if (snapshot is not null) StoreRun(snapshot); }
+    private async Task ClearQueueAsync() { if (_selectedProject is null || _selectedChat is null) return; var snapshot = await ChatRunsApi.ClearAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None); if (snapshot is not null) StoreRun(snapshot); }
+    private async Task EnableNotificationsAsync() { if (_runEventsModule is null) return; _notificationsEnabled = await _runEventsModule.InvokeAsync<string>("enableNotifications") == "granted"; }
+
+    private async Task LoadChatsAsync(Guid projectId)
+    {
+        _chats.Clear();
+        _chats.AddRange(await ChatHistoryApi.ListAsync(projectId, CancellationToken.None));
+        await ApplyChatOrderAsync(projectId);
+        if (_selectedChat is not null)
+        {
+            _selectedChat = await ChatHistoryApi.GetAsync(projectId, _selectedChat.Id, CancellationToken.None);
+        }
+    }
+
+    private Task SelectBranchAsync(Guid messageId)
+    {
+        if (_selectedChat is null || _selectedProject is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        _branchLeafId = messageId;
+        return Task.CompletedTask;
+    }
+
+    private static string CreateChatTitle(string message) => string.IsNullOrWhiteSpace(message)
+        ? "New chat"
+        : message.Trim()[..Math.Min(message.Trim().Length, 48)];
+
+    private async Task CopyMessageAsync(string markdown)
+    {
+        if (_composerModule is not null)
+        {
+            await _composerModule.InvokeVoidAsync("copyText", markdown);
+            ShowToast("Markdown copied.", "success");
+        }
+    }
+
+    private async Task EditAndBranchAsync(ChatMessageView message)
+    {
+        _forkSourceId = message.ParentId;
+        _branchLeafId = message.ParentId;
+        _chat.Message = message.Content;
+        _composerNeedsResize = true;
+        if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("focus");
+    }
+
+    private async Task EditAndReplaceBranchAsync(ChatMessageView message)
+    {
+        _replaceSourceId = message.Id;
+        _forkSourceId = null;
+        _branchLeafId = message.ParentId;
+        _chat.Message = message.Content;
+        _composerNeedsResize = true;
+        if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("focus");
+    }
+
+    private async Task ForkFromMessageAsync(ChatMessageView message)
+    {
+        if (message.Id == _branchLeafId) return;
+        _messageBranchMenuId = null;
+        _branchLeafId = message.Id;
+        _forkSourceId = message.Id;
+        _chat.Message = string.Empty;
+        _composerNeedsResize = true;
+        if (_composerHandle is not null)
+        {
+            await _composerHandle.InvokeVoidAsync("focus");
+        }
+    }
+
+    private void CancelBranchOperation()
+    {
+        _messageBranchMenuId = null;
+        _forkSourceId = null;
+        _replaceSourceId = null;
+        _branchLeafId = GetOriginalBranchLeaf(_selectedChat);
+        _chat.Message = string.Empty;
+        _composerNeedsResize = true;
+    }
+
+    private ChatMessageView? GetForkSource() =>
+        _forkSourceId is { } id ? _selectedChat?.Messages.FirstOrDefault(message => message.Id == id) : null;
+
+    private ChatMessageView? GetReplaceSource() =>
+        _replaceSourceId is { } id ? _selectedChat?.Messages.FirstOrDefault(message => message.Id == id) : null;
+
+    private static string GetMessagePreview(string content)
+    {
+        var text = content.ReplaceLineEndings(" ").Trim();
+        return text[..Math.Min(text.Length, 36)] + (text.Length > 36 ? "…" : string.Empty);
+    }
+
+    private void SwitchBranch(Guid siblingId)
+    {
+        if (_selectedChat is null) return;
+        var current = siblingId;
+        while (true)
+        {
+            var child = _selectedChat.Messages
+                .Where(item => item.ParentId == current)
+                .OrderBy(item => item.CreatedAt)
+                .FirstOrDefault();
+            if (child is null) break;
+            current = child.Id;
+        }
+
+        _branchLeafId = current;
+    }
+
+    private void ToggleMessageBranchMenu(Guid messageId) =>
+        _messageBranchMenuId = _messageBranchMenuId == messageId ? null : messageId;
+
+    private void SelectMessageBranch(Guid siblingId)
+    {
+        SwitchBranch(siblingId);
+        _messageBranchMenuId = null;
+    }
+
+    private void HandleBranchPickerKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") _messageBranchMenuId = null;
+    }
+
+    private void SelectPendingBranchOrLatestMessage()
+    {
+        if (_selectedChat is null) return;
+        if (_pendingBranchAnchorId is { } anchorId)
+        {
+            var root = _selectedChat.Messages
+                .Where(message => message.Id == anchorId && message.Role == "User")
+                .FirstOrDefault();
+            if (root is not null)
+            {
+                SwitchBranch(root.Id);
+                _pendingBranchAnchorId = null;
+                return;
+            }
+        }
+        _branchLeafId = _selectedChat.Messages.LastOrDefault()?.Id;
+    }
+
+    private IReadOnlyList<ChatCompletionMessage> BuildCompletionContext()
+    {
+        if (_selectedChat is null || _branchLeafId is null)
+        {
+            return [];
+        }
+
+        var byId = _selectedChat.Messages.ToDictionary(item => item.Id);
+        var branch = new List<ChatCompletionMessage>();
+        var currentId = _branchLeafId;
+        while (currentId is { } messageId && byId.TryGetValue(messageId, out var message))
+        {
+            branch.Add(new ChatCompletionMessage(message.Role.ToLowerInvariant(), message.Content));
+            currentId = message.ParentId;
+        }
+
+        branch.Reverse();
+        branch.Add(new ChatCompletionMessage("user", _chat.Message));
+        return branch;
+    }
+
+    private void AddEndpointProfile()
+    {
+        var endpoint = new EndpointProfileEditor();
+        _endpointProfiles.Add(endpoint);
+        _selectedEndpointId = endpoint.Id;
+        ShowToast("Complete the endpoint fields, then select Save.", "info");
+    }
+
+    private void SelectSettingsTab(string tab) => _settingsTab = tab;
+
+    private void ToggleProjectMenu()
+    {
+        _isProjectMenuOpen = !_isProjectMenuOpen;
+        _isConfirmingProjectDelete = false;
+        _chatMenuId = null;
+        _isConfirmingChatDelete = false;
+    }
+
+    private void ToggleChatMenu(Guid chatId)
+    {
+        _chatMenuId = _chatMenuId == chatId ? null : chatId;
+        _isConfirmingChatDelete = false;
+        _isProjectMenuOpen = false;
+        _isConfirmingProjectDelete = false;
+    }
+
+    private void ToggleBranchMenu(Guid branchId)
+    {
+        _branchMenuId = _branchMenuId == branchId ? null : branchId;
+        _chatMenuId = null;
+        _isProjectMenuOpen = false;
+    }
+
+    private void BeginProjectRename()
+    {
+        if (_selectedProject is null) return;
+        CancelInlineEdit();
+        _editingProjectId = _selectedProject.Id;
+        _editingTitle = _selectedProject.Name;
+        _focusEditingInputPending = true;
+        CloseContextMenus();
+    }
+
+    private void BeginChatRename(ChatSummary chat)
+    {
+        CancelInlineEdit();
+        _editingChatId = chat.Id;
+        _editingTitle = chat.Title;
+        _focusEditingInputPending = true;
+        CloseContextMenus();
+    }
+
+    private void BeginBranchRename(BranchTreeItem branch)
+    {
+        CancelInlineEdit();
+        _editingBranchId = branch.RootId;
+        _editingTitle = branch.Title;
+        _focusEditingInputPending = true;
+        CloseContextMenus();
+    }
+
+    private async Task HandleInlineEditKeyAsync(KeyboardEventArgs args, Func<Task> save)
+    {
+        if (args.Key == "Escape") { CancelInlineEdit(); return; }
+        if (args.Key == "Enter") await save();
+    }
+
+    private void CancelInlineEdit()
+    {
+        _editingProjectId = null;
+        _editingChatId = null;
+        _editingBranchId = null;
+        _editingTitle = string.Empty;
+    }
+
+    private async Task SaveProjectTitleAsync(ProjectSummary project)
+    {
+        if (_editingProjectId != project.Id || _isCompletingInlineEdit) return;
+        if (string.IsNullOrWhiteSpace(_editingTitle)) { CancelInlineEdit(); return; }
+        _isCompletingInlineEdit = true;
+        try
+        {
+            var details = await ProjectApi.GetAsync(project.Id, CancellationToken.None);
+            if (details is null) return;
+            var result = await ProjectApi.UpdateAsync(project.Id, new UpdateProjectRequest(_editingTitle.Trim(), details.Description, details.Revision, details.ConnectionId), CancellationToken.None);
+            if (result.Status == ProjectUpdateStatus.Updated) await LoadProjectsAsync(project.Id);
+        }
+        finally { _isCompletingInlineEdit = false; CancelInlineEdit(); }
+    }
+
+    private async Task SaveChatTitleAsync(ChatSummary chat)
+    {
+        if (_editingChatId != chat.Id || _selectedProject is null || _isCompletingInlineEdit) return;
+        if (string.IsNullOrWhiteSpace(_editingTitle)) { CancelInlineEdit(); return; }
+        _isCompletingInlineEdit = true;
+        try
+        {
+            var renamed = await ChatHistoryApi.RenameAsync(_selectedProject.Id, chat.Id, new RenameChatRequest(_editingTitle.Trim(), chat.Revision), CancellationToken.None);
+            if (renamed is not null) { _selectedChat = renamed; await LoadChatsAsync(_selectedProject.Id); }
+        }
+        finally { _isCompletingInlineEdit = false; CancelInlineEdit(); }
+    }
+
+    private async Task SaveBranchTitleAsync(BranchTreeItem branch)
+    {
+        if (_editingBranchId != branch.RootId || _selectedProject is null || _selectedChat is null || _isCompletingInlineEdit) return;
+        if (string.IsNullOrWhiteSpace(_editingTitle)) { CancelInlineEdit(); return; }
+        _isCompletingInlineEdit = true;
+        try
+        {
+            var renamed = await ChatHistoryApi.RenameBranchAsync(_selectedProject.Id, _selectedChat.Id, branch.RootId, new RenameChatBranchRequest(_editingTitle.Trim(), _selectedChat.Revision), CancellationToken.None);
+            if (renamed is not null) _selectedChat = renamed;
+        }
+        finally { _isCompletingInlineEdit = false; CancelInlineEdit(); }
+    }
+
+    private async Task DeleteBranchAsync(BranchTreeItem branch)
+    {
+        if (_selectedProject is null || _selectedChat is null) return;
+        var result = await ChatHistoryApi.DeleteBranchAsync(_selectedProject.Id, _selectedChat.Id, branch.RootId, _selectedChat.Revision, CancellationToken.None);
+        if (!result.IsDeleted) { ShowToast("Branch was not deleted. Reload the chat and try again.", "error"); return; }
+        _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, _selectedChat.Id, CancellationToken.None);
+        _branchLeafId = result.ParentMessageId ?? _selectedChat?.Messages.LastOrDefault()?.Id;
+        _branchMenuId = null;
+        await LoadChatsAsync(_selectedProject.Id);
+    }
+
+    // _selectedChat is always replaced wholesale rather than mutated, so caching this by
+    // reference is a safe, cheap invalidation key.
+    // GetSelectedRun() (which reads this indirectly via GetSelectedBranchItem) is called ~9
+    // times per render from the markup — without this cache, every one of those calls rebuilt
+    // the entire branch tree (GroupBy + several ToDictionary + DistinctBy + a per-root depth
+    // walk) from scratch, on every single render, including the one triggered by every composer
+    // keystroke.
+    private object? _branchTreeCacheChat;
+    private IReadOnlyList<BranchTreeItem> _branchTreeCache = [];
+
+    private IReadOnlyList<BranchTreeItem> GetBranchTreeItems()
+    {
+        if (ReferenceEquals(_branchTreeCacheChat, _selectedChat))
+        {
+            return _branchTreeCache;
+        }
+        _branchTreeCacheChat = _selectedChat;
+        _branchTreeCache = ComputeBranchTreeItems();
+        return _branchTreeCache;
+    }
+
+    private IReadOnlyList<BranchTreeItem> ComputeBranchTreeItems()
+    {
+        if (_selectedChat is null) return [];
+        var messages = _selectedChat.Messages;
+        var children = messages.GroupBy(message => message.ParentId ?? Guid.Empty).ToDictionary(group => group.Key, group => group.OrderBy(message => message.CreatedAt).ToArray());
+        var roots = children.Values
+            .Where(group => group.Length > 1)
+            .SelectMany(group => group.Skip(1).Where(message => message.Role == "User"))
+            .DistinctBy(message => message.Id)
+            .OrderBy(message => message.CreatedAt)
+            .ToArray();
+        var rootIds = roots.Select(root => root.Id).ToHashSet();
+        return roots.Select(root => new BranchTreeItem(root.Id, GetBranchTitle(root), GetBranchDepth(root, roots), FindBranchLeaf(root.Id, children, rootIds))).ToArray();
+    }
+
+    private string GetBranchTitle(ChatMessageView root) =>
+        _selectedChat?.BranchTitles?.GetValueOrDefault(root.Id) ?? CreateChatTitle(root.Content);
+
+    private int GetBranchDepth(ChatMessageView root, IReadOnlyList<ChatMessageView> roots)
+    {
+        var byId = _selectedChat!.Messages.ToDictionary(message => message.Id);
+        var rootIds = roots.Select(message => message.Id).ToHashSet();
+        var depth = 1;
+        var parent = root.ParentId;
+        while (parent is { } id && byId.TryGetValue(id, out var message)) { if (rootIds.Contains(id)) depth++; parent = message.ParentId; }
+        return depth;
+    }
+
+    private static Guid FindBranchLeaf(Guid rootId, IReadOnlyDictionary<Guid, ChatMessageView[]> children, IReadOnlySet<Guid> branchRootIds)
+    {
+        var current = rootId;
+        while (children.TryGetValue(current, out var descendants) && descendants.Length > 0)
+        {
+            var next = descendants.LastOrDefault(message => !branchRootIds.Contains(message.Id));
+            if (next is null) break;
+            current = next.Id;
+        }
+        return current;
+    }
+
+    private static Guid? GetOriginalBranchLeaf(ChatDetails? chat)
+    {
+        if (chat is null || chat.Messages.Count == 0) return null;
+        var children = chat.Messages
+            .GroupBy(message => message.ParentId ?? Guid.Empty)
+            .ToDictionary(group => group.Key, group => group.OrderBy(message => message.CreatedAt).ToArray());
+        var current = children.GetValueOrDefault(Guid.Empty)?.FirstOrDefault()?.Id;
+        if (current is null) return null;
+        while (children.TryGetValue(current.Value, out var descendants) && descendants.Length > 0)
+        {
+            current = descendants[0].Id;
+        }
+        return current;
+    }
+
+    private async Task SelectBranchTreeItemAsync(BranchTreeItem branch)
+    {
+        if (_selectedProject is null || _selectedChat is null) return;
+
+        var refreshedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, _selectedChat.Id, CancellationToken.None);
+        if (refreshedChat is not null)
+        {
+            _selectedChat = refreshedChat;
+        }
+
+        var refreshedBranch = GetBranchTreeItems().FirstOrDefault(item => item.RootId == branch.RootId);
+        _branchLeafId = refreshedBranch?.LeafId ?? branch.LeafId;
+        _scrollMessagesToBottom = true;
+        await MarkSelectedChatReadAsync();
+    }
+
+    private bool IsMessageInBranch(Guid leafId, Guid rootId)
+    {
+        var byId = _selectedChat!.Messages.ToDictionary(message => message.Id);
+        var current = leafId;
+        while (byId.TryGetValue(current, out var message)) { if (current == rootId) return true; if (message.ParentId is not { } parent) break; current = parent; }
+        return false;
+    }
+
+    private async Task OnProjectContextMenu(ProjectSummary project)
+    {
+        if (_selectedProject?.Id != project.Id)
+        {
+            await SelectProjectAsync(project);
+        }
+        _isProjectMenuOpen = true;
+        _isConfirmingProjectDelete = false;
+        _chatMenuId = null;
+        _isConfirmingChatDelete = false;
+    }
+
+    private void OnChatContextMenu(Guid chatId)
+    {
+        _chatMenuId = chatId;
+        _isConfirmingChatDelete = false;
+        _isProjectMenuOpen = false;
+        _isConfirmingProjectDelete = false;
+    }
+
+    private async Task OnBackdropContextMenu(MouseEventArgs e)
+    {
+        CloseContextMenus();
+        await WorkspaceLayoutService.ForwardContextMenuAsync(e.ClientX, e.ClientY, ".context-menu-backdrop");
+    }
+
+    private async Task OnChatListKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "ArrowDown" or "ArrowUp" or "Home" or "End")
+        {
+            await WorkspaceLayoutService.FocusAdjacentItemAsync(".workspace-chat-list", ".chat-link", e.Key);
+        }
+    }
+
+    private void OnDragOver()
+    {
+    }
+
+    private void OnProjectDragStart(Guid projectId) => _draggedProjectId = projectId;
+
+    private async Task OnProjectDrop(ProjectSummary targetProject)
+    {
+        var draggedId = _draggedProjectId;
+        _draggedProjectId = null;
+        if (draggedId is not { } id || id == targetProject.Id)
+        {
+            return;
+        }
+
+        var draggedIndex = _projects.FindIndex(p => p.Id == id);
+        var targetIndex = _projects.FindIndex(p => p.Id == targetProject.Id);
+        if (draggedIndex < 0 || targetIndex < 0)
+        {
+            return;
+        }
+
+        var item = _projects[draggedIndex];
+        _projects.RemoveAt(draggedIndex);
+        _projects.Insert(targetIndex, item);
+        await SaveOrderAsync(ProjectOrderKey, _projects.Select(p => p.Id));
+    }
+
+    private void OnChatDragStart(Guid chatId) => _draggedChatId = chatId;
+
+    private async Task OnChatDrop(ChatSummary targetChat)
+    {
+        var draggedId = _draggedChatId;
+        _draggedChatId = null;
+        if (draggedId is not { } id || id == targetChat.Id || _selectedProject is null)
+        {
+            return;
+        }
+
+        var draggedIndex = _chats.FindIndex(c => c.Id == id);
+        var targetIndex = _chats.FindIndex(c => c.Id == targetChat.Id);
+        if (draggedIndex < 0 || targetIndex < 0)
+        {
+            return;
+        }
+
+        var item = _chats[draggedIndex];
+        _chats.RemoveAt(draggedIndex);
+        _chats.Insert(targetIndex, item);
+        await SaveOrderAsync(ChatOrderKey(_selectedProject.Id), _chats.Select(c => c.Id));
+    }
+
+    private const string ProjectOrderKey = "ai-client.project-order.v1";
+
+    private static string ChatOrderKey(Guid projectId) => $"ai-client.chat-order.v1.{projectId}";
+
+    private async Task ApplyProjectOrderAsync()
+    {
+        var order = await LoadOrderAsync(ProjectOrderKey);
+        if (order.Count == 0)
+        {
+            return;
+        }
+
+        var ordered = ApplyOrder(_projects, order, p => p.Id);
+        _projects.Clear();
+        _projects.AddRange(ordered);
+    }
+
+    private async Task ApplyChatOrderAsync(Guid projectId)
+    {
+        var order = await LoadOrderAsync(ChatOrderKey(projectId));
+        if (order.Count == 0)
+        {
+            return;
+        }
+
+        var ordered = ApplyOrder(_chats, order, c => c.Id);
+        _chats.Clear();
+        _chats.AddRange(ordered);
+    }
+
+    private async Task<List<Guid>> LoadOrderAsync(string key)
+    {
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", key);
+            return string.IsNullOrEmpty(json) ? [] : JsonSerializer.Deserialize<List<Guid>>(json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private Task SaveOrderAsync(string key, IEnumerable<Guid> ids) =>
+        JSRuntime.InvokeVoidAsync("localStorage.setItem", key, JsonSerializer.Serialize(ids)).AsTask();
+
+    private static List<T> ApplyOrder<T>(IReadOnlyList<T> items, List<Guid> order, Func<T, Guid> idSelector)
+    {
+        var byId = items.ToDictionary(idSelector);
+        var result = new List<T>(items.Count);
+        var used = new HashSet<Guid>();
+        foreach (var id in order)
+        {
+            if (byId.TryGetValue(id, out var item) && used.Add(id))
+            {
+                result.Add(item);
+            }
+        }
+
+        foreach (var item in items)
+        {
+            if (used.Add(idSelector(item)))
+            {
+                result.Add(item);
+            }
+        }
+
+        return result;
+    }
+
+    private void CloseContextMenus()
+    {
+        _isProjectMenuOpen = false;
+        _isConfirmingProjectDelete = false;
+        _chatMenuId = null;
+        _isConfirmingChatDelete = false;
+    }
+
+    private void ConfirmChatDelete() => _isConfirmingChatDelete = true;
+
+    private void CancelChatDelete() => CloseContextMenus();
+
+    private async Task DeleteChatAsync(ChatSummary chat)
+    {
+        if (_selectedProject is null) return;
+        foreach (var run in _runs.Values.Where(item => item.ChatId == chat.Id).ToArray())
+        {
+            if (run.Status == ChatRunStatus.Generating) await ChatRunsApi.StopAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
+            await ChatRunsApi.ClearAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
+        }
+        var result = await ChatHistoryApi.DeleteAsync(_selectedProject.Id, chat.Id, chat.Revision, CancellationToken.None);
+        if (!result.IsDeleted)
+        {
+            _chatError = "The chat changed elsewhere. Reload it before deleting.";
+            CloseContextMenus();
+            return;
+        }
+
+        if (_selectedChat?.Id == chat.Id)
+        {
+            _selectedChat = null;
+            _branchLeafId = null;
+            _chat.Message = string.Empty;
+            _composerNeedsResize = true;
+        }
+
+        CloseContextMenus();
+        await LoadChatsAsync(_selectedProject.Id);
+        ShowToast("Chat deleted.", "success");
+    }
+
+    private void OpenProjectSettings()
+    {
+        _isProjectMenuOpen = false;
+        if (_selectedProject is not null)
+        {
+            _editor = new ProjectEditor(_selectedProject.Name, _selectedProject.Description, _editor.Revision)
+            {
+                ConnectionId = _editor.ConnectionId
+            };
+        }
+        _isProjectSettingsOpen = true;
+    }
+
+    private void CloseProjectSettings() => _isProjectSettingsOpen = false;
+
+    private void ConfirmProjectDelete() => _isConfirmingProjectDelete = true;
+
+    private void CancelProjectDelete() => CloseContextMenus();
+
+    private void SelectEndpoint(Guid endpointId) => _selectedEndpointId = endpointId;
+
+    private void SelectEndpointFromPicker(ChangeEventArgs args) =>
+        _selectedEndpointId = Guid.TryParse(args.Value?.ToString(), out var endpointId) ? endpointId : null;
+
+    private EndpointProfileEditor? GetSelectedEndpoint() =>
+        _selectedEndpointId is { } id ? _endpointProfiles.SingleOrDefault(item => item.Id == id) : null;
+
+    private void RemoveEndpoint(Guid endpointId)
+    {
+        _endpointProfiles.RemoveAll(item => item.Id == endpointId);
+        _selectedEndpointId = _endpointProfiles.FirstOrDefault()?.Id;
+        if (_defaultEndpointProfileId == endpointId)
+        {
+            _defaultEndpointProfileId = null;
+        }
+        ShowToast("Endpoint removed from the draft. Select Save to apply changes.", "info");
+    }
+
+    private void SetDefaultEndpoint(Guid endpointId, ChangeEventArgs args) =>
+        _defaultEndpointProfileId = args.Value is true ? endpointId : null;
+
+    private void CancelGeneralChanges()
+    {
+        if (_selectedProject is not null)
+        {
+            var connectionId = _editor.ConnectionId;
+            _editor = new ProjectEditor(_selectedProject.Name, _selectedProject.Description, _selectedProject.Revision)
+            {
+                ConnectionId = connectionId
+            };
+        }
+
+        CloseProjectSettings();
+    }
+
+    private async Task CancelEndpointChanges()
+    {
+        if (_selectedProject is not null)
+        {
+            await LoadSecurityAsync(_selectedProject.Id);
+            ShowToast("Endpoint changes cancelled.", "info");
+        }
+
+        CloseProjectSettings();
+    }
+
+    private async Task CancelSecurityChangesAsync()
+    {
+        if (_selectedProject is not null)
+        {
+            await LoadSecurityAsync(_selectedProject.Id);
+        }
+
+        CloseProjectSettings();
+    }
+
+    private Task CancelCurrentSettingsAsync() => _settingsTab switch
+    {
+        "General" => CancelGeneralSettingsAsync(),
+        "Endpoints" => CancelEndpointChanges(),
+        "Security" => CancelSecurityChangesAsync(),
+        _ => CloseProjectSettingsAsync()
+    };
+
+    private Task HandleProjectSettingsKeyDownAsync(KeyboardEventArgs args) =>
+        args.Key == "Escape" ? CancelCurrentSettingsAsync() : Task.CompletedTask;
+
+    private Task SaveCurrentSettingsAsync() => _settingsTab switch
+    {
+        "General" => SaveProjectAsync(),
+        "Endpoints" => SaveEndpointProfilesAsync(),
+        "Security" => SaveSecurityAsync(),
+        _ => CloseProjectSettingsAsync()
+    };
+
+    private void RemoveSelectedEndpoint()
+    {
+        if (_selectedEndpointId is { } endpointId)
+        {
+            RemoveEndpoint(endpointId);
+        }
+    }
+
+    private Task CancelGeneralSettingsAsync()
+    {
+        CancelGeneralChanges();
+        return Task.CompletedTask;
+    }
+
+    private Task CloseProjectSettingsAsync()
+    {
+        CloseProjectSettings();
+        return Task.CompletedTask;
+    }
+
+    private void SelectChatProfile(ChangeEventArgs args)
+    {
+        if (Guid.TryParse(args.Value?.ToString(), out var profileId)) SelectGlobalConnection(profileId);
+    }
+
+    private async Task SelectChatProfileAsync(ChangeEventArgs args)
+    {
+        SelectChatProfile(args);
+        if (_selectedProject is not null && _selectedChat is not null)
+        {
+            _selectedChat = await ChatHistoryApi.UpdateEndpointAsync(
+                _selectedProject.Id,
+                _selectedChat.Id,
+                new UpdateChatEndpointRequest(_chat.CredentialProfileId, _selectedChat.Revision),
+                CancellationToken.None);
+            ShowToast("Chat endpoint updated.", "success");
+        }
+    }
+
+    private void ToggleEndpointMenu() => _isEndpointMenuOpen = !_isEndpointMenuOpen;
+
+    private void CloseEndpointMenu() => _isEndpointMenuOpen = false;
+
+    private async Task SelectChatEndpointAsync(Guid connectionId)
+    {
+        _isEndpointMenuOpen = false;
+        await SelectChatProfileAsync(new ChangeEventArgs { Value = connectionId.ToString() });
+    }
+
+    private string GetEndpointDisplayName() =>
+        _connections.Count == 0
+            ? "No connection"
+            : _connections.SingleOrDefault(item => item.Id == _chat.CredentialProfileId)?.Name ?? "Select connection";
+
+    private async Task SaveEndpointProfilesAsync()
+    {
+        if (_selectedProject is null)
+        {
+            return;
+        }
+
+        ProjectUpdateResult result;
+        try
+        {
+            result = await ProjectApi.UpdateEndpointProfilesAsync(
+                _selectedProject.Id,
+                new UpdateEndpointProfilesRequest(
+                    _editor.Revision,
+                    _endpointProfiles.Select(item => item.ToSettings()).ToArray(),
+                    _defaultEndpointProfileId),
+                CancellationToken.None);
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            ShowToast("Endpoints were not saved. Check the base URL and model.", "error");
+            return;
+        }
+        if (result.Status != ProjectUpdateStatus.Updated || result.Project is null)
+        {
+            _error = result.Status == ProjectUpdateStatus.Conflict
+                ? "Endpoint profiles were changed elsewhere. Reload the project before saving."
+                : "This project no longer exists.";
+            ShowToast(_error, "error");
+            return;
+        }
+
+        foreach (var profile in _endpointProfiles.Where(item => !string.IsNullOrWhiteSpace(item.ApiKey)))
+        {
+            await ProjectApi.SetEndpointCredentialAsync(
+                _selectedProject.Id,
+                profile.Id,
+                new UpdateEndpointCredentialRequest(profile.ApiKey),
+                CancellationToken.None);
+        }
+
+        var selectedProfileId = _endpointProfiles.FirstOrDefault()?.Id;
+        await LoadProjectsAsync(result.Project.Id);
+        if (selectedProfileId is { } profileId)
+        {
+            SelectChatProfile(new ChangeEventArgs { Value = profileId.ToString() });
+        }
+
+        ShowToast("Endpoints saved.", "success");
+        CloseProjectSettings();
+    }
+
+    private void ToggleSettingsSection() => _isSettingsSectionExpanded = !_isSettingsSectionExpanded;
+
+    private void ToggleProjectsSection() => _isProjectsSectionExpanded = !_isProjectsSectionExpanded;
+
+    private async Task ToggleLeftPanelAsync()
+    {
+        _isSidebarCollapsed = !_isSidebarCollapsed;
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", SidebarCollapsedKey, _isSidebarCollapsed ? "true" : "false");
+    }
+
+    private async Task LoadSidebarCollapsedAsync()
+    {
+        var stored = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", SidebarCollapsedKey);
+        _isSidebarCollapsed = stored == "true";
+    }
+
+    private void ShowToast(string message, string kind)
+    {
+        _toastCancellation?.Cancel();
+        _toastCancellation?.Dispose();
+        _toastCancellation = new CancellationTokenSource();
+        _toast = new ToastMessage(message, kind);
+        _ = DismissToastLaterAsync(_toastCancellation.Token);
+    }
+
+    private async Task DismissToastLaterAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4), cancellationToken);
+            await InvokeAsync(DismissToast);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void DismissToast()
+    {
+        _toast = null;
+        StateHasChanged();
+    }
+
+    private void OpenGlobalSection(string section)
+    {
+        CloseContextMenus();
+        _globalSection = section;
+        _attachComposer = true;
+    }
+
+    private async Task LoadGlobalSettingsAsync()
+    {
+        var settings = await GlobalSettingsApi.GetAsync(CancellationToken.None);
+        _connections.Clear();
+        _connections.AddRange(settings.Connections.Select(ConnectionEditor.From));
+        _globalMcpServers.Clear();
+        _globalMcpServers.AddRange(settings.McpServers.Select(GlobalMcpServerEditor.From));
+        _selectedConnectionId = _connections.FirstOrDefault()?.Id;
+        _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
+    }
+
+    private void AddConnection()
+    {
+        var connection = new ConnectionEditor();
+        _connections.Add(connection);
+        _selectedConnectionId = connection.Id;
+    }
+
+    private void RemoveConnection()
+    {
+        if (_selectedConnectionId is not { } id) return;
+        _connections.RemoveAll(item => item.Id == id);
+        _selectedConnectionId = _connections.FirstOrDefault()?.Id;
+    }
+
+    private void SelectConnection(Guid id) => _selectedConnectionId = id;
+
+    private ConnectionEditor? GetSelectedConnection() =>
+        _connections.SingleOrDefault(item => item.Id == _selectedConnectionId);
+
+    private ConnectionEditor? GetDefaultConnection() =>
+        _connections.FirstOrDefault(item => item.IsDefault && item.Enabled)
+        ?? _connections.FirstOrDefault(item => item.Enabled);
+
+    private void SetDefaultConnection(Guid id, ChangeEventArgs args)
+    {
+        if (args.Value is not true) return;
+        foreach (var connection in _connections) connection.IsDefault = connection.Id == id;
+    }
+
+    private void AddGlobalMcpServer()
+    {
+        var server = new GlobalMcpServerEditor();
+        _globalMcpServers.Add(server);
+        _selectedMcpServerId = server.Id;
+    }
+
+    private void RemoveGlobalMcpServer()
+    {
+        if (_selectedMcpServerId is not { } id) return;
+        _globalMcpServers.RemoveAll(item => item.Id == id);
+        _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
+    }
+
+    private GlobalMcpServerEditor? GetSelectedMcpServer() =>
+        _globalMcpServers.SingleOrDefault(item => item.Id == _selectedMcpServerId);
+
+    private async Task SaveGlobalSettingsAsync()
+    {
+        try
+        {
+            var settings = await GlobalSettingsApi.SaveAsync(
+                new SaveGlobalSettingsRequest(
+                    _connections.Select(item => item.ToSettings()).ToArray(),
+                    _globalMcpServers.Select(item => item.ToSettings()).ToArray()),
+                CancellationToken.None);
+            foreach (var connection in _connections.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))
+                await GlobalSettingsApi.SetConnectionCredentialAsync(connection.Id, connection.Secret, CancellationToken.None);
+            foreach (var server in _globalMcpServers.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))
+                await GlobalSettingsApi.SetMcpCredentialAsync(server.Id, server.Secret, CancellationToken.None);
+            await LoadGlobalSettingsAsync();
+            ShowToast("Global settings saved.", "success");
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            ShowToast("Global settings were not saved. Check required fields.", "error");
+        }
+    }
+
+    private void SelectGlobalConnection(Guid id)
+    {
+        var connection = _connections.SingleOrDefault(item => item.Id == id && item.Enabled) ?? GetDefaultConnection();
+        _chat.CredentialProfileId = connection?.Id;
+        _chat.BaseUrl = connection?.BaseUrl ?? string.Empty;
+        _chat.Model = connection?.Model ?? string.Empty;
+        _chat.ApiKey = null;
+    }
+
+    private async Task SaveProjectSettingsAsync()
+    {
+        if (_selectedProject is null) return;
+        var securityResult = await ProjectApi.UpdateSecurityAsync(
+            _selectedProject.Id,
+            _security.ToRequest(),
+            CancellationToken.None);
+        if (securityResult.Status != ProjectUpdateStatus.Updated || securityResult.Project is null)
+        {
+            _error = "Project directories were not saved. Reload the project and try again.";
+            return;
+        }
+
+        _editor.Revision = securityResult.Project.Revision;
+        await SaveProjectAsync();
+    }
+
+    private void AddMcpServer() => _security.McpServers.Add(new McpServerEditor());
+
+    private void AddToolPolicy() => _security.ToolPolicies.Add(new ToolPolicyEditor
+    {
+        ServerId = _security.McpServers[0].Id
+    });
+
+    private async Task SaveSecurityAsync()
+    {
+        if (_selectedProject is null)
+        {
+            return;
+        }
+
+        var result = await ProjectApi.UpdateSecurityAsync(_selectedProject.Id, _security.ToRequest(), CancellationToken.None);
+        if (result.Status == ProjectUpdateStatus.Updated && result.Project is not null)
+        {
+            await LoadProjectsAsync(result.Project.Id);
+            ShowToast("Security settings saved.", "success");
+            CloseProjectSettings();
+            return;
+        }
+
+        _error = result.Status == ProjectUpdateStatus.Conflict
+            ? "Security settings were changed elsewhere. Reload the project before saving."
+            : "This project no longer exists.";
+    }
+
+    private sealed class ProjectEditor
+    {
+        public ProjectEditor()
+        {
+        }
+
+        public ProjectEditor(string name, string description, long revision)
+        {
+            Name = name;
+            Description = description;
+            Revision = revision;
+        }
+
+        public string Name { get; set; } = string.Empty;
+
+        public string Description { get; set; } = string.Empty;
+
+        public long Revision { get; set; }
+
+        public Guid? ConnectionId { get; set; }
+    }
+
+    private sealed class ProjectSecurityEditor
+    {
+        public long Revision { get; set; }
+
+        public List<DirectoryGrantEditor> DirectoryGrants { get; } = [];
+
+        public List<McpServerEditor> McpServers { get; } = [];
+
+        public List<ToolPolicyEditor> ToolPolicies { get; } = [];
+
+        public static ProjectSecurityEditor From(ProjectDetails project)
+        {
+            var editor = new ProjectSecurityEditor { Revision = project.Revision };
+            editor.DirectoryGrants.AddRange(project.DirectoryGrants.Select(item => new DirectoryGrantEditor
+            {
+                Id = item.Id,
+                DisplayName = item.DisplayName,
+                CanonicalRoot = item.CanonicalRoot,
+                Recursive = item.Recursive,
+                ToolNames = string.Join(", ", item.ToolNames),
+                Mode = item.ToolNames.Contains("write", StringComparer.OrdinalIgnoreCase) ? "Read/write" : "Read only"
+            }));
+            editor.McpServers.AddRange(project.McpServers.Select(item => new McpServerEditor
+            {
+                Id = item.Id,
+                DisplayName = item.DisplayName,
+                Transport = item.Transport,
+                Enabled = item.Enabled
+            }));
+            editor.ToolPolicies.AddRange(project.ToolPolicies.Select(item => new ToolPolicyEditor
+            {
+                ServerId = item.ServerId,
+                Name = item.Name,
+                SchemaHash = item.SchemaHash,
+                Decision = item.Decision,
+                MaxCallsPerRun = item.MaxCallsPerRun,
+                TimeoutSeconds = item.TimeoutSeconds
+            }));
+            return editor;
+        }
+
+        public UpdateProjectSecurityRequest ToRequest() => new(
+            Revision,
+            DirectoryGrants.Select(item => new DirectoryGrantSettings(
+                item.Id,
+                item.DisplayName,
+                item.CanonicalRoot,
+                item.Recursive,
+                item.ToolNames.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))).ToArray(),
+            McpServers.Select(item => new AI.Client.Contracts.Projects.McpServerSettings(item.Id, item.DisplayName, item.Transport, item.Enabled)).ToArray(),
+            ToolPolicies.Select(item => new ToolPolicySettings(
+                item.ServerId,
+                item.Name,
+                item.SchemaHash,
+                item.Decision,
+                item.MaxCallsPerRun,
+                item.TimeoutSeconds)).ToArray());
+    }
+
+    private sealed class DirectoryGrantEditor
+    {
+        public Guid Id { get; set; } = Guid.CreateVersion7();
+
+        public string DisplayName { get; set; } = "Directory";
+
+        public string CanonicalRoot { get; set; } = string.Empty;
+
+        public bool Recursive { get; set; } = true;
+
+        public string ToolNames { get; set; } = "read";
+
+        public string Mode
+        {
+            get => ToolNames.Contains("write", StringComparison.OrdinalIgnoreCase) ? "Read/write" : "Read only";
+            set => ToolNames = value == "Read/write" ? "read, write, edit, delete" : "read";
+        }
+    }
+
+    private sealed class McpServerEditor
+    {
+        public Guid Id { get; set; } = Guid.CreateVersion7();
+
+        public string DisplayName { get; set; } = "MCP server";
+
+        public string Transport { get; set; } = "Stdio";
+
+        public bool Enabled { get; set; } = true;
+    }
+
+    private sealed class ToolPolicyEditor
+    {
+        public Guid ServerId { get; set; }
+
+        public string Name { get; set; } = "tool";
+
+        public string SchemaHash { get; set; } = "pending-discovery";
+
+        public string Decision { get; set; } = "Ask";
+
+        public int MaxCallsPerRun { get; set; } = 20;
+
+        public long TimeoutSeconds { get; set; } = 120;
+    }
+
+    private sealed class EndpointProfileEditor
+    {
+        public Guid Id { get; set; } = Guid.CreateVersion7();
+
+        public string Name { get; set; } = "OpenAI-compatible endpoint";
+
+        public string BaseUrl { get; set; } = string.Empty;
+
+        public string Model { get; set; } = string.Empty;
+
+        public string? ApiKey { get; set; }
+
+        public bool HasCredential { get; set; }
+
+        public static EndpointProfileEditor From(EndpointProfileSettings profile) => new()
+        {
+            Id = profile.Id,
+            Name = profile.Name,
+            BaseUrl = profile.BaseUrl,
+            Model = profile.Model,
+            HasCredential = profile.HasCredential
+        };
+
+        public EndpointProfileSettings ToSettings() => new(Id, Name, BaseUrl, Model, HasCredential);
+    }
+
+    private sealed class ChatEditor
+    {
+        public string BaseUrl { get; set; } = string.Empty;
+
+        public string Model { get; set; } = string.Empty;
+
+        public string? ApiKey { get; set; }
+
+        public Guid? CredentialProfileId { get; set; }
+
+        public string Message { get; set; } = string.Empty;
+    }
+
+    private sealed class ConnectionEditor
+    {
+        public Guid Id { get; set; } = Guid.CreateVersion7();
+        public string Name { get; set; } = "OpenAI connection";
+        public string BaseUrl { get; set; } = string.Empty;
+        public string Model { get; set; } = string.Empty;
+        public bool Enabled { get; set; } = true;
+        public bool IsDefault { get; set; }
+        public bool HasCredential { get; set; }
+        public string? Secret { get; set; }
+
+        public static ConnectionEditor From(ConnectionSettings item) => new()
+        {
+            Id = item.Id, Name = item.Name, BaseUrl = item.BaseUrl, Model = item.Model,
+            Enabled = item.Enabled, IsDefault = item.IsDefault, HasCredential = item.HasCredential
+        };
+
+        public ConnectionSettings ToSettings() =>
+            new(Id, Name, BaseUrl, Model, Enabled, IsDefault, HasCredential);
+    }
+
+    private sealed class GlobalMcpServerEditor
+    {
+        public Guid Id { get; set; } = Guid.CreateVersion7();
+        public string Name { get; set; } = "MCP server";
+        public string Transport { get; set; } = "StreamableHttp";
+        public bool Enabled { get; set; } = true;
+        public string Policy { get; set; } = "Ask";
+        public string? Url { get; set; }
+        public string? Command { get; set; }
+        public string ArgumentsText { get; set; } = string.Empty;
+        public string? WorkingDirectory { get; set; }
+        public string EnvironmentText { get; set; } = string.Empty;
+        public bool HasCredential { get; set; }
+        public string? Secret { get; set; }
+
+        public static GlobalMcpServerEditor From(AI.Client.Contracts.Settings.McpServerSettings item) => new()
+        {
+            Id = item.Id, Name = item.Name, Transport = item.Transport, Enabled = item.Enabled,
+            Policy = item.Policy, Url = item.Url, Command = item.Command,
+            ArgumentsText = string.Join(Environment.NewLine, item.Arguments),
+            WorkingDirectory = item.WorkingDirectory,
+            EnvironmentText = string.Join(Environment.NewLine, item.EnvironmentVariables.Select(variable =>
+                variable.IsSecret ? $"secret:{variable.Name}=" : $"{variable.Name}={variable.Value}")),
+            HasCredential = item.HasCredential
+        };
+
+        public AI.Client.Contracts.Settings.McpServerSettings ToSettings() => new(
+            Id, Name, Transport, Enabled, Policy, Url, Command,
+            ArgumentsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            WorkingDirectory,
+            EnvironmentText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(line => line.Split('=', 2))
+                .Where(parts => parts.Length == 2)
+                .Select(parts => new McpEnvironmentVariableSettings(
+                    parts[0].StartsWith("secret:", StringComparison.OrdinalIgnoreCase) ? parts[0][7..] : parts[0],
+                    parts[1],
+                    parts[0].StartsWith("secret:", StringComparison.OrdinalIgnoreCase),
+                    false)).ToArray(),
+            HasCredential);
+    }
+
+    private sealed record BranchTreeItem(Guid RootId, string Title, int Depth, Guid LeafId);
+    private readonly record struct RunKey(Guid ChatId, Guid BranchId);
+
+    private sealed record ToastMessage(string Message, string Kind);
+
+    public async ValueTask DisposeAsync()
+    {
+        _toastCancellation?.Cancel();
+        _toastCancellation?.Dispose();
+        if (_composerHandle is not null)
+        {
+            await _composerHandle.InvokeVoidAsync("dispose");
+            await _composerHandle.DisposeAsync();
+        }
+
+        if (_composerModule is not null)
+        {
+            await _composerModule.DisposeAsync();
+        }
+
+        if (_inlineEditorModule is not null)
+        {
+            await _inlineEditorModule.DisposeAsync();
+        }
+
+        if (_runEventsSubscription is not null) { await _runEventsSubscription.InvokeVoidAsync("dispose"); await _runEventsSubscription.DisposeAsync(); }
+        if (_focusSubscription is not null) { await _focusSubscription.InvokeVoidAsync("dispose"); await _focusSubscription.DisposeAsync(); }
+        if (_queueDragSubscription is not null) { await _queueDragSubscription.InvokeVoidAsync("dispose"); await _queueDragSubscription.DisposeAsync(); }
+        if (_runEventsModule is not null) await _runEventsModule.DisposeAsync();
+
+        _dotNetReference?.Dispose();
+        await WorkspaceLayoutService.DisposeAsync();
+    }
+}

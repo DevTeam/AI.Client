@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\AI.Client.Application\AI.Client.Application.csproj" />
+    <ProjectReference Include="..\AI.Client.Contracts\AI.Client.Contracts.csproj" />
+    <ProjectReference Include="..\AI.Client.Infrastructure\AI.Client.Infrastructure.csproj" />
+    <ProjectReference Include="..\AI.Client.Web\AI.Client.Web.csproj"
+                      Aliases="AIClientWeb" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" />
+    <PackageReference Include="Pure.DI" PrivateAssets="all" />
+    <PackageReference Include="Pure.DI.MS" />
+  </ItemGroup>
+</Project>

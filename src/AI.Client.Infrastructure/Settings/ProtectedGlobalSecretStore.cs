@@ -1,0 +1,34 @@
+using AI.Client.Application.Settings;
+using AI.Client.Infrastructure.Credentials;
+using AI.Client.Infrastructure.Storage;
+using System.Text;
+
+namespace AI.Client.Infrastructure.Settings;
+
+public sealed class ProtectedGlobalSecretStore(
+    ITextFileSystem fileSystem,
+    GlobalSettingsPaths paths,
+    IUserDataProtector protector) : IGlobalSecretStore
+{
+    public async Task<string?> GetAsync(string scope, Guid id, CancellationToken cancellationToken)
+    {
+        var value = await fileSystem.ReadTextAsync(paths.GetSecretPath(scope, id), cancellationToken);
+        return value is null ? null : Encoding.UTF8.GetString(protector.Unprotect(Convert.FromBase64String(value)));
+    }
+
+    public async Task SetAsync(string scope, Guid id, string? value, CancellationToken cancellationToken)
+    {
+        var path = paths.GetSecretPath(scope, id);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            await fileSystem.DeleteAsync(path, cancellationToken);
+            return;
+        }
+
+        var protectedValue = protector.Protect(Encoding.UTF8.GetBytes(value.Trim()));
+        await fileSystem.WriteTextAsync(path, Convert.ToBase64String(protectedValue), cancellationToken);
+    }
+
+    public Task<bool> ExistsAsync(string scope, Guid id, CancellationToken cancellationToken) =>
+        fileSystem.ExistsAsync(paths.GetSecretPath(scope, id), cancellationToken);
+}

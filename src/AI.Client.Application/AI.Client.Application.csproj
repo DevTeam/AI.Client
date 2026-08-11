@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\AI.Client.Contracts\AI.Client.Contracts.csproj" />
+    <ProjectReference Include="..\AI.Client.Domain\AI.Client.Domain.csproj" />
+  </ItemGroup>
+</Project>

@@ -2,6 +2,14 @@
 
 Статус: Accepted
 
+## Текущий статус реализации
+
+Реализован первый storage slice для `Project`: versioned JSON document (`SchemaVersion = 1`), revision для optimistic concurrency, запись через temporary file с последующим move и recovery временного файла после прерванной операции. Repository доступен Host через `IProjectRepository` и хранит локальные данные в `%LocalAppData%\AI.Client\projects`.
+
+Автоматические тесты используют только in-memory implementation `ITextFileSystem`; production implementation `PhysicalTextFileSystem` не участвует в test suite. Полный список выполненных работ и следующих задач находится в [журнале реализации](11-implementation-progress.md).
+
+Project repository поддерживает create/update/delete через `SaveAsync` и `DeleteAsync`, а также list. Удаление, как и update, требует ожидаемый revision и возвращает conflict при конкурентном изменении.
+
 ## Выбранный формат
 
 Хранилище использует дерево каталогов и неизменяемый JSON-файл на каждый message node. Метаданные проекта, refs веток, agent runs и аудит хранятся отдельно.
@@ -146,3 +154,12 @@ Content object после записи неизменяем. Проверка SH
 ## Credentials
 
 API keys, OAuth refresh tokens и session secrets не сохраняются в этом дереве. JSON содержит только `CredentialReference`.
+# Global settings
+
+Глобальные настройки разделены по назначению и хранятся рядом с каталогом проектов:
+
+- `connections.json` — OpenAI-compatible Connections;
+- `mcp-servers.json` — глобальные MCP server definitions;
+- `credentials/*.protected` — write-only secrets, защищённые платформенным data protector.
+
+Project JSON хранит только `ConnectionId` и project-scoped directory grants. MCP servers не входят в область проекта. Chat JSON продолжает хранить идентификатор Connection, выбранного при создании чата.

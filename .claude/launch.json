@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ai-client-host",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/AI.Client.Host"],
+      "port": 52173
+    }
+  ]
+}

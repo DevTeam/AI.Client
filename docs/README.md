@@ -14,6 +14,8 @@
 8. [План реализации](08-implementation-plan.md)
 9. [Стратегия тестирования](09-testing.md)
 10. [Эксплуатация и диагностика](10-operations.md)
+11. [Ход реализации](11-implementation-progress.md)
+12. [UX decisions](12-ux-decisions.md)
 
 ## Принятые решения
 
@@ -26,3 +28,9 @@
 ## Статусы документов
 
 Все перечисленные документы имеют статус `Accepted` и фиксируют решения, принятые до начала реализации. Версии NuGet-пакетов должны централизованно задаваться в `Directory.Packages.props`; при реализации выбирается последняя совместимая стабильная версия и фиксируется lock-файлом.
+
+Фактическое состояние работ, результаты проверок и следующий инкремент фиксируются в документе [«Ход реализации»](11-implementation-progress.md). Он имеет статус `Active` и обновляется после каждого завершённого инкремента.
+
+## Language convention
+
+All UI text, source-code comments, identifiers and technical messages introduced by the project are written in English. Project documentation is maintained in Russian unless a document explicitly requires another language.

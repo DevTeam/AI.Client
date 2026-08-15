@@ -16,6 +16,7 @@
 10. [Эксплуатация и диагностика](10-operations.md)
 11. [Ход реализации](11-implementation-progress.md)
 12. [UX decisions](12-ux-decisions.md)
+13. [Composer rules](15-composer-rules.md)
 
 ## Принятые решения
 

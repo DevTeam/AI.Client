@@ -45,7 +45,18 @@ internal sealed class ChatRunDispatcher(
     public async IAsyncEnumerable<IReadOnlyList<ChatRunSnapshot>> SubscribeAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var id = Guid.NewGuid();
-        var channel = Channel.CreateBounded<IReadOnlyList<ChatRunSnapshot>>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropOldest });
+        // Capacity was 1 with DropOldest — fine for high-frequency streaming-chunk updates (each
+        // one supersedes the last anyway), but a single queued run cycles through several
+        // semantically distinct Publish() calls in quick succession with no real delay between
+        // them (Complete() for one queue item immediately followed by Start() for the next).
+        // With capacity 1, the "Completed" snapshot — the one Home.razor's OnRunSnapshot watches
+        // for (Generating -> non-Generating) to know it's safe to refetch the chat and show the
+        // newly materialized messages — routinely got overwritten by the next item's "Generating"
+        // snapshot before this reader ever drained it. The symptom: messages/replies only ever
+        // appeared once the ENTIRE queue finished, not as each item completed. A larger buffer
+        // gives the reader room to catch up without losing any transition; DropOldest stays as a
+        // safety net against a stalled/disconnected subscriber, not as the normal path.
+        var channel = Channel.CreateBounded<IReadOnlyList<ChatRunSnapshot>>(new BoundedChannelOptions(64) { FullMode = BoundedChannelFullMode.DropOldest });
         _subscribers[id] = channel;
         channel.Writer.TryWrite(await GetSnapshotAsync(cancellationToken));
         try { await foreach (var snapshot in channel.Reader.ReadAllAsync(cancellationToken)) yield return snapshot; }
@@ -125,6 +136,19 @@ internal sealed class ChatRunDispatcher(
         {
             _runtimes.TryRemove(item.Key, out _);
             item.Value.Cancellation?.Dispose();
+        }
+    }
+
+    public async Task WarmUpAsync(CancellationToken cancellationToken)
+    {
+        foreach (var state in await repository.ListAsync(cancellationToken))
+        {
+            var key = new RunKey(state.ProjectId, state.ChatId, state.BranchId);
+            // GetOrAdd, not indexer assignment: if something already raced this runtime into
+            // existence (e.g. a request arrived while warm-up was still reading the repository),
+            // that live instance is the one workers/pending operations reference — overwriting it
+            // here would silently orphan whatever's already in flight against it.
+            _runtimes.GetOrAdd(key, _ => new ChatRuntime(state));
         }
     }
 

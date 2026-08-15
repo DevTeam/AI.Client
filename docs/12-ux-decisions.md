@@ -15,10 +15,13 @@
 
 ## Composer
 
-- `Enter` отправляет сообщение; `Shift+Enter` добавляет строку; `Ctrl+Enter` также отправляет.
+- `Enter` отправляет сообщение; `Shift+Enter` добавляет строку; `Ctrl+Enter` ставит в очередь;
+  `Ctrl+Alt+Enter` форкает ветку и запускает её немедленно.
 - Во время IME composition сообщение не отправляется.
 - После отправки composer очищается и сохраняет focus.
 - Streaming и Stop реализуются отдельным этапом.
+- Полные правила «статус ветки × действие» (Send/Queue/Fork, авто-Resume, pre-pause, запрет
+  Edit&Replace во время генерации) — см. [Composer rules](15-composer-rules.md).
 
 ## Endpoint profiles
 

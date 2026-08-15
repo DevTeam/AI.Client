@@ -1,5 +1,6 @@
 using AI.Client.Web.Chat;
 using AI.Client.Web.Chats;
+using AI.Client.Web.Composer;
 using AI.Client.Web.Projects;
 using AI.Client.Web.Markdown;
 using AI.Client.Web.Layout;
@@ -30,8 +31,10 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IWorkspaceStateService>()
             .Root<IGlobalSettingsApi>()
             .Root<IChatRunsApi>()
+            .Root<IChatComposerService>()
             .Singleton<ClientMetadata>()
             .Singleton<SafeMarkdownRenderer, WorkspaceLayoutService, WorkspaceStateService>()
+            .Singleton<ChatComposerService>()
             .Transient<ProjectApi, ChatApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi>()
             .Transient((NavigationManager navigationManager) =>
                 new HttpClient { BaseAddress = new Uri(navigationManager.BaseUri) });

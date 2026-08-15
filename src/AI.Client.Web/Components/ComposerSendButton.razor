@@ -1,0 +1,23 @@
+<span class="composer-send-wrapper">
+    <button class="composer-send" type="button" disabled="@Disabled" aria-label="Send message" @onclick="OnClick">
+        <AppIcon Name="arrow-up" />
+    </button>
+    <span class="composer-send-tooltip" role="tooltip">
+        <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Send ? "active" : string.Empty)"><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send</span></span>
+        <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Queue ? "active" : string.Empty)"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Queue for later</span></span>
+        <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Fork ? "active" : string.Empty)"><kbd>Ctrl</kbd><span>+</span><kbd>Alt</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send in a forked session</span></span>
+    </span>
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public SendMode ActiveMode { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnClick { get; set; }
+
+    public enum SendMode { Send, Queue, Fork }
+}

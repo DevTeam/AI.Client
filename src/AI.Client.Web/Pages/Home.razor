@@ -9,6 +9,7 @@
 @inject IWorkspaceStateService WorkspaceStateService
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject IChatRunsApi ChatRunsApi
+@inject IChatComposerService Composer
 @implements IAsyncDisposable
 
 <PageTitle>@ClientMetadata.ProductName</PageTitle>
@@ -47,14 +48,14 @@
         }
         @foreach (var project in _projects)
         {
-            <div class="project-nav-row @(_globalSection is null && project.Id == _selectedProject?.Id ? "selected" : string.Empty) @(_draggedProjectId == project.Id ? "dragging" : string.Empty) @GetRunStatusClass(GetProjectRun(project.Id))" title="@GetProjectRunTitle(project.Id)" draggable="true" @ondragstart="() => OnProjectDragStart(project.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnProjectDrop(project)" @oncontextmenu="() => OnProjectContextMenu(project)" @oncontextmenu:preventDefault="true">
+            <div class="project-nav-row @(_globalSection is null && project.Id == _selectedProject?.Id ? "selected" : string.Empty) @(_draggedProjectId == project.Id ? "dragging" : string.Empty)" title="@GetProjectRunTitle(project.Id)" draggable="true" @ondragstart="() => OnProjectDragStart(project.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnProjectDrop(project)" @oncontextmenu="() => OnProjectContextMenu(project)" @oncontextmenu:preventDefault="true">
                 @if (_editingProjectId == project.Id)
                 {
                     <input class="sidebar-inline-editor" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveProjectTitleAsync(project))" @onblur="() => SaveProjectTitleAsync(project)" aria-label="Project name" />
                 }
                 else
                 {
-                    <button class="workspace-nav-item" type="button" @onclick="() => SelectProjectAsync(project)">▣ @project.Name</button>
+                    <button class="workspace-nav-item" type="button" @onclick="() => SelectProjectAsync(project)"><span class="status-dot @GetRunStatusClass(GetProjectRun(project.Id))"></span><span class="nav-item-label">▣ @project.Name</span></button>
                 }
                 @if (project.Id == _selectedProject?.Id)
                 {
@@ -68,14 +69,14 @@
                 <nav class="workspace-chat-list" aria-label="Chats in @project.Name" @onkeydown="OnChatListKeyDown">
                     @foreach (var chat in _chats)
                     {
-                        <div class="chat-nav-row @(_globalSection is null && chat.Id == _selectedChat?.Id && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty) @GetRunStatusClass(GetRun(chat.Id, chat.Id))" title="@GetRunTitle(GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
+                        <div class="chat-nav-row @(_globalSection is null && chat.Id == _selectedChat?.Id && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty)" title="@GetRunTitle(GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
                             @if (_editingChatId == chat.Id)
                             {
                                 <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveChatTitleAsync(chat))" @onblur="() => SaveChatTitleAsync(chat)" aria-label="Chat name" />
                             }
                             else
                             {
-                                <button class="workspace-nav-item chat-link" type="button" @onclick="() => SelectChatAsync(chat.Id)">@chat.Title</button>
+                                <button class="workspace-nav-item chat-link" type="button" @onclick="() => SelectChatAsync(chat.Id)"><span class="status-dot @GetRunStatusClass(GetRun(chat.Id, chat.Id))"></span><span class="nav-item-label">@chat.Title</span></button>
                             }
                             <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat)"><AppIcon Name="edit" /></button>
                             <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenu(chat.Id)"><AppIcon Name="more" /></button>
@@ -97,7 +98,7 @@
                         {
                             @foreach (var branch in GetBranchTreeItems())
                             {
-                                <div class="chat-nav-row branch-nav-row @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty) @GetRunStatusClass(GetBranchRun(chat.Id, branch))" title="@GetRunTitle(GetBranchRun(chat.Id, branch))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
+                                <div class="chat-nav-row branch-nav-row @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" title="@GetRunTitle(GetBranchRun(chat.Id, branch))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
                                     <span class="branch-tree-line" aria-hidden="true"></span>
                                     @if (_editingBranchId == branch.RootId)
                                     {
@@ -105,7 +106,7 @@
                                     }
                                     else
                                     {
-                                        <button class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)"><AppIcon Name="git-branch" /><span>@branch.Title</span></button>
+                                        <button class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)"><span class="status-dot @GetRunStatusClass(GetBranchRun(chat.Id, branch))"></span><AppIcon Name="git-branch" /><span class="nav-item-label">@branch.Title</span></button>
                                     }
                                     <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename branch" @onclick="() => BeginBranchRename(branch)"><AppIcon Name="edit" /></button>
                                     <button class="icon-action chat-row-action chat-menu-button @(_branchMenuId == branch.RootId ? "menu-open" : string.Empty)" type="button" title="Branch menu" aria-label="Branch menu" @onclick="() => ToggleBranchMenu(branch.RootId)"><AppIcon Name="more" /></button>
@@ -189,6 +190,7 @@
             ForkSourceId="@_forkSourceId"
             MessageBranchMenuId="@_messageBranchMenuId"
             SelectedRun="@GetSelectedRun()"
+            GetRunForBranch="@(messageId => _selectedChat is null ? null : GetRun(_selectedChat.Id, BranchLeafHelpers.RunBranchIdFor(messageId, _selectedChat)))"
             OnCopyMessage="CopyMessageAsync"
             OnForkFromMessage="ForkFromMessageAsync"
             OnEditAndBranch="EditAndBranchAsync"
@@ -198,13 +200,13 @@
             OnBranchPickerKeyDown="HandleBranchPickerKeyDown" />
         @if (GetSelectedRun() is { } selectedRun && selectedRun.Queue.Count > 0)
         {
-            <section class="chat-queue"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @selectedRun.Queue.Count</span><AppIcon Name="chevron-right" /></button>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in selectedRun.Queue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span>@GetMessagePreview(item.Content)</span><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }@if (selectedRun.Status is ChatRunStatus.Paused or ChatRunStatus.Interrupted or ChatRunStatus.Failed) { <div class="queue-actions"><button type="button" @onclick="ResumeQueueAsync">Resume</button><button type="button" class="secondary-action" @onclick="ClearQueueAsync">Clear</button></div> }</section>
+            <section class="chat-queue"><div class="queue-header"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @selectedRun.Queue.Count</span><AppIcon Name="chevron-right" /></button>@if (selectedRun.Status is ChatRunStatus.Paused or ChatRunStatus.Interrupted or ChatRunStatus.Failed) { <div class="queue-actions"><button type="button" class="queue-action-button queue-action-resume" title="Resume queue" aria-label="Resume queue" @onclick="ResumeQueueAsync"><AppIcon Name="play" /></button><button type="button" class="queue-action-button queue-action-clear" title="Clear queue" aria-label="Clear queue" @onclick="ClearQueueAsync"><AppIcon Name="x" /></button></div> }</div>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in selectedRun.Queue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span title="@item.Content">@GetSingleLine(item.Content)</span><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }</section>
         }
         <div class="composer-status" role="status">
             @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <span>Generating...</span> }
-            else if (GetSelectedRun()?.Status == ChatRunStatus.Paused) { <span>Stopped · queue paused</span> }
-            else if (GetSelectedRun()?.Status == ChatRunStatus.Interrupted) { <span>Interrupted · resume when ready</span> }
-            else if (GetSelectedRun() is { Status: ChatRunStatus.Failed } failedRun) { <span class="error">Failed: @failedRun.Error</span> }
+            else if (GetSelectedRun() is { Status: ChatRunStatus.Paused } pausedRun) { <span>@($"Stopped · queue paused{GetHeldRunEnterHint(pausedRun)}")</span> }
+            else if (GetSelectedRun() is { Status: ChatRunStatus.Interrupted } interruptedRun) { <span>@($"Interrupted · resume when ready{GetHeldRunEnterHint(interruptedRun)}")</span> }
+            else if (GetSelectedRun() is { Status: ChatRunStatus.Failed } failedRun) { <span class="error">@($"Failed: {failedRun.Error}{GetHeldRunEnterHint(failedRun)}")</span> }
             else if (GetReplaceSource() is { } replaceSource) { <span class="fork-mode replace-mode"><AppIcon Name="edit-replace" /><span>Replacing branch from “@GetMessagePreview(replaceSource.Content)”</span><button class="icon-action" type="button" title="Cancel replacement" aria-label="Cancel replacement" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
             else if (GetForkSource() is { } forkSource) { <span class="fork-mode"><AppIcon Name="fork" /><span>Forking from “@GetMessagePreview(forkSource.Content)”</span><button class="icon-action" type="button" title="Cancel fork" aria-label="Cancel fork" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
             else { <span>@GetComposerHint()</span> }
@@ -233,7 +235,7 @@
                         </span>
                     }
                 </div>
-                @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation" aria-label="Stop generation" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> } else { <button class="composer-send" type="button" title="Send message" aria-label="Send message" @onclick="SendChatAsync" disabled="@(!CanSendMessage())"><AppIcon Name="arrow-up" /></button> }
+                @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation" aria-label="Stop generation" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> } else { <ComposerSendButton ActiveMode="@GetComposerSendMode()" Disabled="@(!CanSendMessage())" OnClick="@(() => SubmitComposerAsync(ComposerSubmitMode.Send))" /> }
             </div>
             @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
         </footer>
@@ -366,6 +368,8 @@
     private IJSObjectReference? _runEventsSubscription;
     private IJSObjectReference? _focusSubscription;
     private IJSObjectReference? _queueDragSubscription;
+    private bool _composerCtrlDown;
+    private bool _composerAltDown;
 
     protected override async Task OnInitializedAsync()
     {
@@ -450,12 +454,43 @@
     }
 
     [JSInvokable]
-    public Task SendFromKeyboard() => CanSendMessage() ? SendChatAsync() : Task.CompletedTask;
+    public Task SendFromKeyboard() => SubmitComposerAsync(ComposerSubmitMode.Send);
+
+    [JSInvokable]
+    public Task QueueFromKeyboard() => SubmitComposerAsync(ComposerSubmitMode.Queue);
+
+    [JSInvokable]
+    public Task ForkFromKeyboard() => SubmitComposerAsync(ComposerSubmitMode.Fork);
+
+    [JSInvokable]
+    public Task OnComposerModifiersChanged(bool ctrl, bool alt)
+    {
+        if (_composerCtrlDown == ctrl && _composerAltDown == alt) return Task.CompletedTask;
+        _composerCtrlDown = ctrl;
+        _composerAltDown = alt;
+        return InvokeAsync(StateHasChanged);
+    }
 
     [JSInvokable]
     public async Task OnRunSnapshot(string json)
     {
         var snapshots = JsonSerializer.Deserialize<IReadOnlyList<ChatRunSnapshot>>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? [];
+
+        // Every event here is the FULL current set of live runs (ChatRunDispatcher.Publish()
+        // always sends _runtimes.Values.ToArray(), never a partial diff) — so anything in our
+        // local _runs cache that ISN'T in this batch has been removed server-side (branch
+        // deleted -> ReconcileChatAsync, chat deleted -> DeleteChatAsync) and must be dropped
+        // here too. Without this, _runs only ever grew: StoreRun adds/updates but nothing ever
+        // called _runs.Remove, so a deleted branch's last-known Paused/Interrupted snapshot sat
+        // in the cache forever — GetProjectRun/GetProjectRuns scan _runs.Values unconditionally,
+        // so the project kept showing a status badge for a branch that no longer existed
+        // anywhere in the UI (no chat/branch row left to click "Resume"/"Clear" on to fix it).
+        var liveKeys = snapshots.Select(item => new RunKey(item.ChatId, item.BranchId)).ToHashSet();
+        foreach (var staleKey in _runs.Keys.Where(key => !liveKeys.Contains(key)).ToArray())
+        {
+            _runs.Remove(staleKey);
+        }
+
         foreach (var snapshot in snapshots)
         {
             _runs.TryGetValue(new RunKey(snapshot.ChatId, snapshot.BranchId), out var previous);
@@ -489,10 +524,12 @@
         if (focused) await MarkSelectedChatReadAsync();
     }
 
-    private Task HandleComposerKeyDown(KeyboardEventArgs args) =>
-        _composerModule is null && args.Key == "Enter" && !args.ShiftKey && CanSendMessage()
-            ? SendChatAsync()
-            : Task.CompletedTask;
+    // The actual Enter handling lives in chatComposer.js — it dispatches to SendFromKeyboard /
+    // QueueFromKeyboard / ForkFromKeyboard based on the Ctrl/Alt modifiers, and runs first because
+    // it's attached to the DOM event directly. This Blazor handler is kept only so the
+    // textarea still raises @onkeydown (e.g. for testability); it must not also send, or every
+    // Enter press would enqueue twice.
+    private Task HandleComposerKeyDown(KeyboardEventArgs args) => Task.CompletedTask;
 
     private const int PhoneModeBreakpointPx = 720;
 
@@ -648,79 +685,125 @@
         }
     }
 
-    private async Task SendChatAsync()
+    private async Task SubmitComposerAsync(ComposerSubmitMode mode)
     {
-        if (_isSubmittingMessage || _selectedProject is null || string.IsNullOrWhiteSpace(_chat.Message))
-        {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(_chat.BaseUrl) || string.IsNullOrWhiteSpace(_chat.Model))
-        {
-            _chatError = "Select or configure an endpoint before sending a message.";
-            return;
-        }
+        if (_isSubmittingMessage || !CanSendMessage()) return;
 
         _isSubmittingMessage = true;
-        var prompt = _chat.Message.Trim();
+        _chatError = null;
+        ComposerSubmitOutcome.Accepted? pendingUiUpdate = null;
         try
         {
-            _chatError = null;
-            if (_selectedChat is null)
-            {
-                // The connection actually selected in the composer (_chat.CredentialProfileId),
-                // not the project's own default (_defaultEndpointProfileId) — those can differ
-                // once the composer endpoint picker lets a chat override the project's default,
-                // and using the project default here silently discarded that choice for brand
-                // new chats (it only took effect later, via UpdateEndpointAsync on an existing one).
-                _selectedChat = await ChatHistoryApi.CreateAsync(
-                    _selectedProject.Id,
-                    new CreateChatRequest(CreateChatTitle(prompt), _chat.CredentialProfileId),
-                    CancellationToken.None);
-            }
-            if (_replaceSourceId is { } replaceSourceId)
-            {
-                var replaceSource = _selectedChat.Messages.Single(message => message.Id == replaceSourceId);
-                var deleteResult = await ChatHistoryApi.DeleteBranchAsync(
-                    _selectedProject.Id,
-                    _selectedChat.Id,
-                    replaceSourceId,
-                    _selectedChat.Revision,
-                    CancellationToken.None);
-                if (!deleteResult.IsDeleted)
-                {
-                    throw new InvalidOperationException("The branch changed before it could be replaced.");
-                }
+            // _branchLeafId already points at the replace target's parent by the time we get
+            // here (set in EditAndReplaceBranchAsync), so GetSelectedRun() here re-checks the
+            // branch the replacement will actually land on, not the one the replaced message
+            // originally lived on — re-validating against a race is the whole point.
+            var replaceSourceIsGenerating = _replaceSourceId is not null && GetSelectedRun()?.Status == ChatRunStatus.Generating;
+            var request = new ComposerSubmitRequest(
+                mode,
+                _selectedProject?.Id,
+                _selectedChat,
+                _branchLeafId,
+                _forkSourceId,
+                _replaceSourceId,
+                replaceSourceIsGenerating,
+                _chat.CredentialProfileId,
+                _chat.BaseUrl,
+                _chat.Model,
+                _chat.Message,
+                GetSelectedRun());
 
-                _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, _selectedChat.Id, CancellationToken.None)
-                    ?? throw new InvalidOperationException("The chat no longer exists.");
-                _branchLeafId = replaceSource.ParentId;
-                _replaceSourceId = null;
-            }
-            var messageId = Guid.CreateVersion7();
-            var runBranchId = _forkSourceId is not null ? messageId : GetSelectedRunBranchId();
-            if (_forkSourceId is not null)
+            var outcome = await Composer.SubmitAsync(request, CancellationToken.None);
+
+            switch (outcome)
             {
-                _pendingBranchAnchorId = messageId;
+                case ComposerSubmitOutcome.Rejected rejected:
+                    _chatError = rejected.Reason;
+                    return;
+                case ComposerSubmitOutcome.Accepted accepted:
+                    // ApplyAcceptedRunState runs (and StoreRun completes) BEFORE the guard is
+                    // released in `finally` below — that's what makes GetSelectedRun() see this
+                    // message's queue entry before a second, fast Ctrl+Enter can read the run
+                    // cache. An earlier version of this guard released right after SubmitAsync
+                    // returned but before StoreRun ran, leaving exactly that window open: two
+                    // Ctrl+Enter presses in quick succession could both compute their enqueue
+                    // anchor off the SAME stale (pre-StoreRun) run, silently forking the branch
+                    // instead of queuing sequentially.
+                    //
+                    // FinishAcceptedUiUpdatesAsync (JS interop, sidebar refresh) is deliberately
+                    // NOT awaited here, inside the guard — a subsequent fix held the guard
+                    // through that too and it round-trips a real LoadChatsAsync network call,
+                    // which was slow enough that a THIRD rapid Ctrl+Enter got silently dropped
+                    // by the `_isSubmittingMessage` check above instead of being queued. None of
+                    // that work affects what the next submission's GetSelectedRun() sees, so it
+                    // runs after the guard drops.
+                    ApplyAcceptedRunState(accepted);
+                    pendingUiUpdate = accepted;
+                    break;
             }
-            var snapshot = await ChatRunsApi.EnqueueAsync(_selectedProject.Id, _selectedChat.Id,
-                new EnqueueChatMessageRequest(Guid.CreateVersion7(), messageId, prompt, _branchLeafId, runBranchId), CancellationToken.None);
-            StoreRun(snapshot);
-            _messageBranchMenuId = null;
-            _forkSourceId = null;
-            _replaceSourceId = null;
-            _chat.Message = string.Empty;
-            _composerNeedsResize = true;
-            _scrollMessagesToBottom = true;
-            await LoadChatsAsync(_selectedProject.Id);
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
             _chatError = "The endpoint did not accept the request. Verify the base URL, model, and API key.";
+            return;
         }
         finally
         {
             _isSubmittingMessage = false;
+        }
+
+        if (pendingUiUpdate is not null)
+        {
+            await FinishAcceptedUiUpdatesAsync(pendingUiUpdate);
+        }
+    }
+
+    private void ApplyAcceptedRunState(ComposerSubmitOutcome.Accepted accepted)
+    {
+        // Accepted outcome is always safe to project onto component state: the service has
+        // already persisted the chat, message and run. We just sync local UI state. Kept
+        // synchronous (no JS interop, no network calls) so it finishes — and StoreRun's cache
+        // update takes effect — before the submit guard in SubmitComposerAsync is released.
+        _selectedChat = accepted.Chat;
+        StoreRun(accepted.Snapshot);
+        if (accepted.UpdatedBranchLeafId is { } updatedLeaf)
+        {
+            _branchLeafId = updatedLeaf;
+            // For a fresh message we anchor the pending branch on it so OnRunSnapshot can
+            // advance to the new leaf once the assistant finishes. The service doesn't set
+            // this because it's purely a UI bookkeeping signal.
+            _pendingBranchAnchorId = accepted.RunBranchId == accepted.Snapshot.ChatId ? null : accepted.RunBranchId;
+        }
+        _messageBranchMenuId = null;
+        _forkSourceId = null;
+        _replaceSourceId = null;
+        _chat.Message = string.Empty;
+    }
+
+    private async Task FinishAcceptedUiUpdatesAsync(ComposerSubmitOutcome.Accepted accepted)
+    {
+        // The textarea's DOM value is independent from the bound _chat.Message — Blazor will
+        // sync it on the next render, but for Queue mode the snapshot that triggers a render
+        // doesn't always arrive (the dispatcher only Publishes when the worker actually
+        // starts). Force a render + tell the JS module to clear the DOM and resize, so the
+        // composer visibly empties the moment Ctrl+Enter is pressed instead of staying full.
+        await InvokeAsync(StateHasChanged);
+        if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("reset");
+        _composerNeedsResize = true;
+        _scrollMessagesToBottom = true;
+
+        // Refresh chat list in a guarded block so a transient failure (network blip,
+        // revision conflict) doesn't roll back the projection already applied in
+        // ApplyAcceptedRunState. The queue is already visible from accepted.Snapshot, so the
+        // worst case is a stale sidebar that the next OnRunSnapshot event will fix.
+        try
+        {
+            await LoadChatsAsync(accepted.Chat.ProjectId);
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            // The queue is visible from the snapshot — a stale sidebar isn't worth a render
+            // failure. The next snapshot event will reconcile it.
         }
     }
 
@@ -734,14 +817,49 @@
     private bool CanSendMessage() =>
         !_isSubmittingMessage
         && _selectedProject is not null
-        && !string.IsNullOrWhiteSpace(_chat.Message);
+        && !string.IsNullOrWhiteSpace(_chat.Message)
+        && !string.IsNullOrWhiteSpace(_chat.BaseUrl)
+        && !string.IsNullOrWhiteSpace(_chat.Model);
 
     private string GetComposerHint()
     {
         if (_selectedProject is null) return "Select a project";
         if (string.IsNullOrWhiteSpace(_chat.BaseUrl) || string.IsNullOrWhiteSpace(_chat.Model)) return "Select or configure an endpoint";
-        return _selectedChat is null ? "A new chat will be created on send" : "Continuing selected chat";
+        var baseHint = _selectedChat is null ? "A new chat will be created on send" : "Continuing selected chat";
+        // Mirror the modifier-to-action mapping in chatComposer.js so the hint above the
+        // textarea and the Enter-key behaviour always agree on what will happen on press. The
+        // Paused/Interrupted/Failed statuses never reach this method — the composer-status markup
+        // shows its own status text for those instead (see GetHeldRunEnterHint for their Enter
+        // hint suffix).
+        if (_composerAltDown && _composerCtrlDown) return $"{baseHint} · fork on Enter";
+        if (_composerCtrlDown) return $"{baseHint} · queue on Enter";
+        return baseHint;
     }
+
+    // Appended to the "Stopped"/"Interrupted"/"Failed" status text so it's never ambiguous what
+    // pressing Enter will actually do while a run is held — covers all three send modes, not
+    // just plain Enter:
+    //   - Plain Enter auto-resumes the held run before enqueuing (ChatComposerService Step 7) —
+    //     without a hint here, a held run just showed its status with no indication that Enter
+    //     would resume everything (queued or not) instead of quietly appending to a paused queue.
+    //   - Ctrl+Enter (Queue) does NOT re-trigger pre-pause on an already-held run (Step 5 only
+    //     pre-pauses Idle/Generating/Completed) — the message queues but the run stays held,
+    //     which is easy to misread as "did my Ctrl+Enter do nothing?" without saying so.
+    //   - Ctrl+Alt+Enter (Fork) always starts immediately regardless of the source branch's
+    //     paused state — worth calling out since it's the one mode that ignores "Stopped".
+    private string GetHeldRunEnterHint(ChatRunSnapshot run)
+    {
+        if (_composerAltDown && _composerCtrlDown) return " · fork on Enter, starts immediately";
+        if (_composerCtrlDown) return " · queue on Enter, stays paused";
+        return run.Queue.Count > 0 ? " · resume queue and send on Enter" : " · resume and send on Enter";
+    }
+
+    private ComposerSendButton.SendMode GetComposerSendMode() =>
+        _composerAltDown && _composerCtrlDown
+            ? ComposerSendButton.SendMode.Fork
+            : _composerCtrlDown
+                ? ComposerSendButton.SendMode.Queue
+                : ComposerSendButton.SendMode.Send;
 
     private void AddDirectoryGrant() => _security.DirectoryGrants.Add(new DirectoryGrantEditor());
 
@@ -845,20 +963,8 @@
         return _runs.Values.Where(run => run.ProjectId == projectId);
     }
     private string? GetProjectRunTitle(Guid projectId) => GetProjectRun(projectId) is null ? null : GetProjectRunTooltip(projectId);
-    private static string? GetRunTitle(ChatRunSnapshot? run) => run is null || !IsVisibleRun(run) ? null : GetRunTooltip(run);
-    private static string GetRunStatusClass(ChatRunSnapshot? run) => run switch
-    {
-        // A property pattern never matches null, so without this explicit case a null run
-        // (e.g. GetProjectRun found nothing visible) fell through to the `_` arm below and was
-        // incorrectly classified as unread instead of "no status at all".
-        null => string.Empty,
-        { Status: ChatRunStatus.Generating } => "run-status-generating",
-        { HasUnreadResponse: false } => string.Empty,
-        { Status: ChatRunStatus.Failed } => "run-status-failed",
-        { Status: ChatRunStatus.Interrupted or ChatRunStatus.Paused } => "run-status-interrupted",
-        _ => "run-status-unread"
-    };
-    private static string GetRunTooltip(ChatRunSnapshot run) => run.HasUnreadResponse ? $"{run.Status} · unread response" : run.Status.ToString();
+    private static string? GetRunTitle(ChatRunSnapshot? run) => run is null || !IsVisibleRun(run) ? null : RunStatusPresentation.GetStatusTooltip(run);
+    private static string GetRunStatusClass(ChatRunSnapshot? run) => RunStatusPresentation.GetStatusClass(run);
 
     private async Task MarkSelectedChatReadAsync()
     {
@@ -952,6 +1058,16 @@
 
     private async Task EditAndReplaceBranchAsync(ChatMessageView message)
     {
+        // MessageFeed only ever renders the ancestor chain of _branchLeafId, so `message` is
+        // necessarily on the branch GetSelectedRun() already reflects — checking it here (before
+        // _branchLeafId moves to the parent below) tells us whether a response is still being
+        // generated at or beyond this message. The button itself mirrors this same condition
+        // (see MessageFeed's disabled state) so this is a defense-in-depth check, not the only gate.
+        if (GetSelectedRun()?.Status == ChatRunStatus.Generating)
+        {
+            _chatError = "Can't replace this message while a response is being generated on this branch.";
+            return;
+        }
         _replaceSourceId = message.Id;
         _forkSourceId = null;
         _branchLeafId = message.ParentId;
@@ -995,6 +1111,13 @@
         var text = content.ReplaceLineEndings(" ").Trim();
         return text[..Math.Min(text.Length, 36)] + (text.Length > 36 ? "…" : string.Empty);
     }
+
+    // Unlike GetMessagePreview, this doesn't cut at a fixed character count — the queue row is a
+    // fixed-width single-line flex cell (.queue-item > span has overflow/ellipsis/nowrap), so CSS
+    // already truncates whatever doesn't fit with "…", correctly following the row's actual
+    // rendered width instead of a guessed character count that's wrong for both narrow and wide
+    // layouts. Newlines are still collapsed so a multi-line queued message doesn't wrap the row.
+    private static string GetSingleLine(string content) => content.ReplaceLineEndings(" ").Trim();
 
     private void SwitchBranch(Guid siblingId)
     {

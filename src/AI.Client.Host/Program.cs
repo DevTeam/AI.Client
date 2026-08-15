@@ -273,4 +273,11 @@ app.MapDelete(
 
 app.MapFallbackToFile("index.html");
 
+// Runtimes otherwise load lazily per-branch on first mutating call — without this, any run
+// nobody has touched since the last restart is missing from the SSE stream (which only ever
+// reflects the live in-memory set) even though GET /api/runs still reports it (that endpoint
+// reads the persisted store directly). A client that reconciles its own cache off the stream
+// would see such a run vanish the moment anything else triggers a Publish().
+await app.Services.GetRequiredService<IChatRunDispatcher>().WarmUpAsync(CancellationToken.None);
+
 await app.RunAsync();

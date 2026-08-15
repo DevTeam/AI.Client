@@ -54,7 +54,7 @@
                 <div class="message-actions">
                     <button class="icon-action" type="button" title="Copy Markdown" aria-label="Copy Markdown" @onclick="() => OnCopyMessage.InvokeAsync(message.Content)"><AppIcon Name="copy" /></button>
                     <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
-                    @if (message.Role == "User") { <button class="icon-action" type="button" title="Edit and branch" aria-label="Edit and branch" @onclick="() => OnEditAndBranch.InvokeAsync(message)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Edit and replace branch" aria-label="Edit and replace branch" @onclick="() => OnEditAndReplaceBranch.InvokeAsync(message)"><AppIcon Name="edit-replace" /></button> }
+                    @if (message.Role == "User") { <button class="icon-action" type="button" title="Edit and branch" aria-label="Edit and branch" @onclick="() => OnEditAndBranch.InvokeAsync(message)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="@(IsBranchGenerating() ? "Can't replace while a response is being generated on this branch" : "Edit and replace branch")" aria-label="Edit and replace branch" disabled="@IsBranchGenerating()" @onclick="() => OnEditAndReplaceBranch.InvokeAsync(message)"><AppIcon Name="edit-replace" /></button> }
                 </div>
                 @if (GetBranchOptions(message).Count > 1 || ForkSourceId == message.Id)
                 {
@@ -74,7 +74,8 @@
                                     @foreach (var option in options)
                                     {
                                         var selected = IsMessageInActiveBranch(option.Id);
-                                        <button class="@(selected ? "selected" : string.Empty)" type="button" role="menuitem" title="@GetBranchOptionTitle(option)" @onclick="() => OnSelectBranch.InvokeAsync(option.Id)">@if (selected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }<span>@GetBranchOptionTitle(option)</span></button>
+                                        var optionRun = GetOptionRun(option);
+                                        <button class="@(selected ? "selected" : string.Empty)" type="button" role="menuitem" title="@(optionRun is null ? GetBranchOptionTitle(option) : $"{GetBranchOptionTitle(option)} · {RunStatusPresentation.GetStatusTooltip(optionRun)}")" @onclick="() => OnSelectBranch.InvokeAsync(option.Id)">@if (selected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }<span class="status-dot @GetOptionStatusClass(option)"></span><span class="branch-option-label">@GetBranchOptionTitle(option)</span></button>
                                     }
                                 </span>
                             }
@@ -98,6 +99,14 @@
     [Parameter] public Guid? ForkSourceId { get; set; }
     [Parameter] public Guid? MessageBranchMenuId { get; set; }
     [Parameter] public ChatRunSnapshot? SelectedRun { get; set; }
+    /// <summary>
+    /// Looks up the run governing an arbitrary message's branch — given ANY message id (not
+    /// necessarily a fork root), resolves to whichever run actually covers it (its own run if
+    /// it's a fork root, or an ancestor's) and returns that run. Used to show a status dot per
+    /// option in the branch picker, for branches other than the currently active one (which
+    /// already has its own run available via <see cref="SelectedRun"/>).
+    /// </summary>
+    [Parameter] public Func<Guid, ChatRunSnapshot?>? GetRunForBranch { get; set; }
     [Parameter] public EventCallback<string> OnCopyMessage { get; set; }
     [Parameter] public EventCallback<ChatMessageView> OnForkFromMessage { get; set; }
     [Parameter] public EventCallback<ChatMessageView> OnEditAndBranch { get; set; }
@@ -380,6 +389,10 @@
 
     private bool IsActiveBranchLeaf(ChatMessageView message) => message.Id == BranchLeafId;
 
+    // Every message rendered here is an ancestor of BranchLeafId, i.e. part of the same branch
+    // SelectedRun tracks — so "is this branch generating" is a single check, not per-message.
+    private bool IsBranchGenerating() => SelectedRun?.Status == ChatRunStatus.Generating;
+
     private readonly Dictionary<Guid, (string Content, string Html)> _markdownCache = [];
 
     // Markdig + HtmlSanitizer are not cheap; caching by message id means a re-render only
@@ -423,6 +436,16 @@
 
         return GetMessagePreview(sibling.Content);
     }
+
+    // GetRunForBranch resolves any option's message id to its actual governing run branch
+    // (walking up to the nearest fork-root ancestor, or the chat's own id — see
+    // BranchLeafHelpers.RunBranchIdFor). For the currently active option specifically,
+    // SelectedRun already IS that exact run, so we use it directly rather than resolving from
+    // scratch — same result, cheaper.
+    private ChatRunSnapshot? GetOptionRun(ChatMessageView option) =>
+        IsMessageInActiveBranch(option.Id) ? SelectedRun : GetRunForBranch?.Invoke(option.Id);
+
+    private string GetOptionStatusClass(ChatMessageView option) => RunStatusPresentation.GetStatusClass(GetOptionRun(option));
 
     private bool IsMessageInActiveBranch(Guid messageId)
     {

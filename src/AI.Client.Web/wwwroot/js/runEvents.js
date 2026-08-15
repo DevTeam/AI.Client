@@ -1,23 +1,35 @@
 export function subscribe(dotNetReference) {
     const source = new EventSource("api/runs/events");
-    let latest = null;
-    let scheduled = false;
+    // FIFO queue, not a single "latest wins" slot: each event already carries a full snapshot of
+    // every run, but Home.razor's OnRunSnapshot depends on seeing the SPECIFIC edge transition
+    // (Generating -> non-Generating) for each queued message to know it's safe to refetch the
+    // chat — dropping an in-between snapshot in favor of the newest one meant a run that cycled
+    // Generating -> Completed -> Generating (processing the next queued item) skipped straight
+    // over the Completed snapshot, so the UI only ever caught up once the whole queue drained.
+    //
+    // Dispatch is also no longer scheduled via requestAnimationFrame — rAF is unreliable in this
+    // app's environment (doesn't fire promptly, or at all, in some conditions/backgrounded tabs),
+    // which compounded the same symptom: even a snapshot that DID make it into `latest` could sit
+    // unprocessed indefinitely waiting for a frame that never came. Dispatching directly off the
+    // event (a plain async call, not requestAnimationFrame) processes each entry as soon as the
+    // previous one finishes.
+    const queue = [];
     let dispatching = false;
     const dispatch = async () => {
-        scheduled = false;
-        if (dispatching || latest === null) return;
+        if (dispatching) return;
         dispatching = true;
-        const snapshot = latest;
-        latest = null;
-        try { await dotNetReference.invokeMethodAsync("OnRunSnapshot", snapshot); }
-        finally {
+        try {
+            while (queue.length > 0) {
+                const snapshot = queue.shift();
+                await dotNetReference.invokeMethodAsync("OnRunSnapshot", snapshot);
+            }
+        } finally {
             dispatching = false;
-            if (latest !== null && !scheduled) { scheduled = true; requestAnimationFrame(dispatch); }
         }
     };
     source.addEventListener("snapshot", event => {
-        latest = event.data;
-        if (!scheduled && !dispatching) { scheduled = true; requestAnimationFrame(dispatch); }
+        queue.push(event.data);
+        dispatch();
     });
     return { dispose: () => source.close() };
 }

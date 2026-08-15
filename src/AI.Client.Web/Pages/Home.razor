@@ -6,6 +6,7 @@
 @inject IChatHistoryApi ChatHistoryApi
 @inject IJSRuntime JSRuntime
 @inject IWorkspaceLayoutService WorkspaceLayoutService
+@inject IWorkspaceStateService WorkspaceStateService
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject IChatRunsApi ChatRunsApi
 @implements IAsyncDisposable
@@ -209,7 +210,7 @@
             else { <span>@GetComposerHint()</span> }
         </div>
         <footer class="workspace-composer">
-            <textarea @ref="_composer" @bind="_chat.Message" @bind:event="oninput" @onkeydown="HandleComposerKeyDown" placeholder="@(_replaceSourceId is not null ? "Edit the message to replace this branch..." : _forkSourceId is not null ? "Write the first message in the new branch..." : "Message the assistant...")" aria-label="Message"></textarea>
+            <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@(_replaceSourceId is not null ? "Edit the message to replace this branch..." : _forkSourceId is not null ? "Write the first message in the new branch..." : "Message the assistant...")" aria-label="Message"></textarea>
             <div class="composer-footer">
                 <div class="composer-endpoint">
                     <button class="composer-endpoint-trigger" type="button" title="Endpoint for this chat" aria-label="Endpoint for this chat" aria-haspopup="true" aria-expanded="@(_isEndpointMenuOpen ? "true" : "false")" @onclick="ToggleEndpointMenu" disabled="@(_connections.Count == 0)">
@@ -334,6 +335,12 @@
     private bool _isLoading = true;
     private readonly ChatEditor _chat = new();
     private string? _chatError;
+
+    // "Where was I" restoration (last project, last chat/branch per project, composer drafts)
+    // lives in WorkspaceStateService — Home just calls it at the right lifecycle points. Only the
+    // pending scroll-restore signal stays here, since it's consumed by THIS component's own
+    // OnAfterRenderAsync, not by the service.
+    private string? _pendingScrollRestoreKey;
     private ToastMessage? _toast;
     private CancellationTokenSource? _toastCancellation;
     private string _settingsTab = "Endpoints";
@@ -364,7 +371,8 @@
     {
         await LoadGlobalSettingsAsync();
         foreach (var run in await ChatRunsApi.GetAsync(CancellationToken.None)) StoreRun(run);
-        await LoadProjectsAsync();
+        await WorkspaceStateService.InitializeAsync();
+        await LoadProjectsAsync(WorkspaceStateService.LastProjectId);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -416,8 +424,16 @@
 
         if (_scrollMessagesToBottom && _messageFeed is not null)
         {
+            // An explicit "just sent/received a message" always wins over a stale pending
+            // restore from whatever chat/branch switch happened to precede it in this render.
             _scrollMessagesToBottom = false;
+            _pendingScrollRestoreKey = null;
             await _messageFeed.ScrollToBottomAsync();
+        }
+        else if (_pendingScrollRestoreKey is { } restoreKey && _messageFeed is not null)
+        {
+            _pendingScrollRestoreKey = null;
+            await _messageFeed.RestoreScrollPositionAsync(restoreKey);
         }
 
         if (_composerNeedsResize && _composerHandle is not null)
@@ -520,6 +536,17 @@
         _editor = new ProjectEditor(project.Name, project.Description, project.Revision);
         _error = null;
         await LoadSecurityAsync(project.Id);
+        await WorkspaceStateService.SetLastProjectIdAsync(project.Id);
+
+        var context = WorkspaceStateService.GetProjectContext(project.Id);
+        if (context.ChatId is { } chatId && _chats.Any(chat => chat.Id == chatId))
+        {
+            await SelectChatAsync(chatId);
+        }
+        else
+        {
+            RestoreComposerDraft();
+        }
     }
 
     private async Task SaveProjectAsync()
@@ -580,7 +607,7 @@
             await ApplyProjectOrderAsync();
             var project = selectedId is null
                 ? _projects.FirstOrDefault()
-                : _projects.SingleOrDefault(item => item.Id == selectedId);
+                : _projects.SingleOrDefault(item => item.Id == selectedId) ?? _projects.FirstOrDefault();
             if (project is not null)
             {
                 await SelectProjectAsync(project);
@@ -744,12 +771,28 @@
         {
             _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, chatId, CancellationToken.None);
             _branchLeafId = GetOriginalBranchLeaf(_selectedChat);
+
+            // Prefer the branch this chat was last left on, within this project, if it's still
+            // part of the chat (a branch can be deleted independently of the chat itself).
+            var context = WorkspaceStateService.GetProjectContext(_selectedProject.Id);
+            if (_selectedChat is not null
+                && context.ChatId == chatId
+                && context.BranchLeafId is { } rememberedBranchLeafId
+                && _selectedChat.Messages.Any(message => message.Id == rememberedBranchLeafId))
+            {
+                _branchLeafId = rememberedBranchLeafId;
+            }
+
             if (_selectedChat?.EndpointProfileId is { } endpointId)
             {
                 SelectChatProfile(new ChangeEventArgs { Value = endpointId.ToString() });
             }
-            _scrollMessagesToBottom = true;
+            RestoreComposerDraft();
+            // Whether to jump to the bottom or restore the last-viewed message is decided in
+            // MessageFeed (it knows whether a saved position exists) — see OnAfterRenderAsync.
+            _pendingScrollRestoreKey = GetScrollPositionKey();
             await MarkSelectedChatReadAsync();
+            await WorkspaceStateService.SetProjectContextAsync(_selectedProject.Id, _selectedChat?.Id, _branchLeafId);
         }
     }
 
@@ -973,10 +1016,21 @@
     private void ToggleMessageBranchMenu(Guid messageId) =>
         _messageBranchMenuId = _messageBranchMenuId == messageId ? null : messageId;
 
-    private void SelectMessageBranch(Guid siblingId)
+    // Deliberate, user-driven branch switch — unlike SwitchBranch's OTHER caller
+    // (SelectPendingBranchOrLatestMessage, an automatic advance after a response completes, which
+    // must NOT restore a draft over whatever the user might already be typing for the next
+    // message), this one really did just change "the current branch", so it gets the same
+    // draft/scroll/context handling as the sidebar branch-tree picker.
+    private async Task SelectMessageBranch(Guid siblingId)
     {
         SwitchBranch(siblingId);
         _messageBranchMenuId = null;
+        RestoreComposerDraft();
+        _pendingScrollRestoreKey = GetScrollPositionKey();
+        if (_selectedProject is not null && _selectedChat is not null)
+        {
+            await WorkspaceStateService.SetProjectContextAsync(_selectedProject.Id, _selectedChat.Id, _branchLeafId);
+        }
     }
 
     private void HandleBranchPickerKeyDown(KeyboardEventArgs args)
@@ -1238,8 +1292,10 @@
 
         var refreshedBranch = GetBranchTreeItems().FirstOrDefault(item => item.RootId == branch.RootId);
         _branchLeafId = refreshedBranch?.LeafId ?? branch.LeafId;
-        _scrollMessagesToBottom = true;
+        RestoreComposerDraft();
+        _pendingScrollRestoreKey = GetScrollPositionKey();
         await MarkSelectedChatReadAsync();
+        await WorkspaceStateService.SetProjectContextAsync(_selectedProject.Id, _selectedChat.Id, _branchLeafId);
     }
 
     private bool IsMessageInBranch(Guid leafId, Guid rootId)
@@ -1663,6 +1719,27 @@
         var stored = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", SidebarCollapsedKey);
         _isSidebarCollapsed = stored == "true";
     }
+
+    private void OnComposerInput(ChangeEventArgs args)
+    {
+        _chat.Message = args.Value?.ToString() ?? string.Empty;
+        WorkspaceStateService.QueueComposerDraftSave(GetComposerDraftKey(), _chat.Message);
+    }
+
+    // Keyed by (chat, branch) when the chat already exists — each branch keeps its own separate
+    // draft, same granularity as the scroll-position key — or by project id for a draft typed
+    // before the first message creates the chat (there's no branch yet at that point). Empty
+    // when neither a project nor a chat is selected — WorkspaceStateService treats that as
+    // "nothing to persist".
+    private string GetComposerDraftKey() => _selectedChat is not null
+        ? $"{_selectedChat.Id}:{_branchLeafId}"
+        : _selectedProject is not null ? $"new:{_selectedProject.Id}" : string.Empty;
+
+    private void RestoreComposerDraft() => _chat.Message = WorkspaceStateService.GetComposerDraft(GetComposerDraftKey());
+
+    // Identifies the (chat, branch) pair for the "last visible message" persisted from
+    // historyMarkers.js — null when there's no chat open (nothing to scroll).
+    private string? GetScrollPositionKey() => _selectedChat is null ? null : $"{_selectedChat.Id}:{_branchLeafId}";
 
     private void ShowToast(string message, string kind)
     {

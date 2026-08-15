@@ -5,6 +5,7 @@ using AI.Client.Web.Markdown;
 using AI.Client.Web.Layout;
 using AI.Client.Web.Settings;
 using AI.Client.Web.Runs;
+using AI.Client.Web.State;
 using Microsoft.AspNetCore.Components;
 using System.Diagnostics;
 using Pure.DI;
@@ -26,10 +27,11 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatHistoryApi>()
             .Root<IMarkdownRenderer>()
             .Root<IWorkspaceLayoutService>()
+            .Root<IWorkspaceStateService>()
             .Root<IGlobalSettingsApi>()
             .Root<IChatRunsApi>()
             .Singleton<ClientMetadata>()
-            .Singleton<SafeMarkdownRenderer, WorkspaceLayoutService>()
+            .Singleton<SafeMarkdownRenderer, WorkspaceLayoutService, WorkspaceStateService>()
             .Transient<ProjectApi, ChatApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi>()
             .Transient((NavigationManager navigationManager) =>
                 new HttpClient { BaseAddress = new Uri(navigationManager.BaseUri) });

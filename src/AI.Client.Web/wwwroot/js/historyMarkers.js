@@ -46,6 +46,24 @@ const HoverScrollIntervalMs = 16;
 
 const GitBranchIconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="6" cy="19" r="2"/><path d="M6 7v10M8 15h3a7 7 0 0 0 7-6"/></svg>';
 
+// "Which message was on screen" is remembered per (chat, branch) key, not per scroll offset in
+// px — heights can shift between sessions (font loading, markdown re-render), but a message id
+// is stable, and scrollIntoView puts it back in the same relative spot regardless.
+const ScrollPositionKeyPrefix = "ai-client.scroll.v1:";
+const ScrollPersistDebounceMs = 400;
+
+// Restores the message a (chat, branch) was last scrolled to, if any was ever recorded — called
+// by MessageFeed.razor before deciding whether to fall back to scrolling to the bottom instead.
+export function restoreScrollPosition(scroller, key) {
+    if (!key) return false;
+    const savedId = localStorage.getItem(ScrollPositionKeyPrefix + key);
+    if (!savedId) return false;
+    const target = document.getElementById(savedId);
+    if (!target) return false;
+    target.scrollIntoView({ block: "start" });
+    return true;
+}
+
 // "14:32" for today, "14:32 05.03" for any other day — the date is dropped when it wouldn't add
 // information, since "today" is the overwhelmingly common case while browsing recent history.
 const formatMessageTime = isoString => {
@@ -60,10 +78,11 @@ const formatMessageTime = isoString => {
     return `${time} ${shortDate}`;
 };
 
-export function attach(strip, scroller) {
+export function attach(strip, scroller, scrollKey) {
     let offsets = [];
     let measuredHeight = -1;
     let hoverY = null;
+    let scrollPersistTimer = null;
     // Lives as a sibling of the strip, not inside it: the strip clips its own overflow-x to
     // support the internal auto-scroll, which would hide a tooltip anchored inside it.
     const tip = strip.parentElement.querySelector(":scope > .history-marker-tip");
@@ -179,6 +198,27 @@ export function attach(strip, scroller) {
         hintDown.classList.toggle("visible", canScrollDown);
     };
 
+    // Debounced (400ms after scrolling settles), not written on every scroll event — this is a
+    // localStorage write, and unlike everything else in this module it deliberately does NOT run
+    // synchronously on every scroll tick. Scans every message (not just the user-question
+    // markers, which no longer cover assistant replies) for whichever one sits at the same
+    // "quarter down the viewport" anchor the fisheye itself uses, so re-opening the chat lands on
+    // the same message the marker-based logic would have picked as "active".
+    const persistScrollPosition = () => {
+        if (!scrollKey) return;
+        clearTimeout(scrollPersistTimer);
+        scrollPersistTimer = setTimeout(() => {
+            const articles = [...scroller.querySelectorAll(".workspace-message[id]")];
+            if (articles.length === 0) return;
+            const anchor = scroller.scrollTop + scroller.clientHeight * 0.25;
+            let current = articles[0];
+            for (const article of articles) {
+                if (article.offsetTop <= anchor) current = article; else break;
+            }
+            localStorage.setItem(ScrollPositionKeyPrefix + scrollKey, current.id);
+        }, ScrollPersistDebounceMs);
+    };
+
     // Called directly from every listener below, not through requestAnimationFrame: rAF is
     // throttled or skipped by the browser in several ordinary situations (unfocused window,
     // reduced/battery-saver states, backgrounded preview panes), and a hover effect that only
@@ -292,7 +332,9 @@ export function attach(strip, scroller) {
     const onHintUpEnter = () => startHoverScroll(-1, hintUp);
     const onHintDownEnter = () => startHoverScroll(1, hintDown);
 
-    scroller.addEventListener("scroll", render, { passive: true });
+    const onScroll = () => { render(); persistScrollPosition(); };
+
+    scroller.addEventListener("scroll", onScroll, { passive: true });
     strip.addEventListener("click", onClick);
     strip.addEventListener("mousemove", onMouseMove);
     strip.addEventListener("mouseleave", onMouseLeave);
@@ -306,7 +348,8 @@ export function attach(strip, scroller) {
         refresh: () => { measuredHeight = -1; render(); },
         dispose: () => {
             stopHoverScroll();
-            scroller.removeEventListener("scroll", render);
+            clearTimeout(scrollPersistTimer);
+            scroller.removeEventListener("scroll", onScroll);
             strip.removeEventListener("click", onClick);
             strip.removeEventListener("mousemove", onMouseMove);
             strip.removeEventListener("mouseleave", onMouseLeave);

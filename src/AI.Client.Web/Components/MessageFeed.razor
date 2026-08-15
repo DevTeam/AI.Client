@@ -170,6 +170,32 @@
         }
     }
 
+    // Restores the last-viewed message for `key` (as persisted by historyMarkers.js while the
+    // user scrolls), falling back to the bottom of the feed when there's nothing saved for it
+    // yet (a chat/branch never viewed before) — same default as the old unconditional
+    // scroll-to-bottom this replaced.
+    public async Task RestoreScrollPositionAsync(string key)
+    {
+        if (_historyMarkersModule is null)
+        {
+            await ScrollToBottomAsync();
+            return;
+        }
+        try
+        {
+            var restored = await _historyMarkersModule.InvokeAsync<bool>("restoreScrollPosition", _messagesContainer, key);
+            if (!restored) await ScrollToBottomAsync();
+        }
+        catch (JSException)
+        {
+            await ScrollToBottomAsync();
+        }
+    }
+
+    // Identifies the (chat, branch) pair whose scroll position historyMarkers.js should persist
+    // while attached — null while no chat is open (nothing to track).
+    private string? GetScrollKey() => SelectedChat is null ? null : $"{SelectedChat.Id}:{BranchLeafId}";
+
     // The strip is attached only while a chat is open, and re-measured whenever the number of
     // markers changes: the marker elements themselves are re-created by Blazor on every such change.
     private async Task SyncHistoryMarkersAsync()
@@ -190,7 +216,7 @@
         await DisposeHistoryMarkersAsync();
         try
         {
-            _historyMarkersHandle = await _historyMarkersModule.InvokeAsync<IJSObjectReference>("attach", _historyMarkers, _messagesContainer);
+            _historyMarkersHandle = await _historyMarkersModule.InvokeAsync<IJSObjectReference>("attach", _historyMarkers, _messagesContainer, GetScrollKey());
         }
         catch (JSException)
         {

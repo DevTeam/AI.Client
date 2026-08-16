@@ -1,7 +1,7 @@
-using Build.Targets;
-using System.CommandLine;
-
 namespace Build;
+
+using Targets;
+using System.CommandLine;
 
 internal sealed class BuildApplication(
     string[] args,

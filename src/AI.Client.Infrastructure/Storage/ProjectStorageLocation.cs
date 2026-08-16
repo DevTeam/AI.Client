@@ -4,7 +4,7 @@ public sealed class ProjectStorageLocation
 {
     public ProjectStorageLocation()
     {
-        RootDirectory = Path.Combine(
+        RootDirectory = Environment.GetEnvironmentVariable("AI_CLIENT_DATA_DIRECTORY") ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "AI.Client");
     }

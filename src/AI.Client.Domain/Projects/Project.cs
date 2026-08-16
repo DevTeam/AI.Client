@@ -1,18 +1,17 @@
-using AI.Client.Domain.Common;
-
 namespace AI.Client.Domain.Projects;
+
+using Common;
 
 public sealed class Project
 {
     private readonly Dictionary<DirectoryGrantId, DirectoryGrant> _directoryGrants = [];
     private readonly Dictionary<McpServerId, McpServerBinding> _mcpServers = [];
     private readonly Dictionary<ToolIdentity, ToolPolicy> _toolPolicies = [];
-    private readonly Dictionary<EndpointProfileId, EndpointProfile> _endpointProfiles = [];
 
     public Project(
         ProjectId id,
         string name,
-        string description,
+        string? description,
         DateTimeOffset createdAt)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -43,51 +42,22 @@ public sealed class Project
 
     public IReadOnlyCollection<ToolPolicy> ToolPolicies => _toolPolicies.Values;
 
-    public IReadOnlyCollection<EndpointProfile> EndpointProfiles => _endpointProfiles.Values;
 
-    public EndpointProfileId? DefaultEndpointProfileId { get; private set; }
 
-    public EndpointProfileId? ConnectionId { get; private set; }
+    public ConnectionId? ConnectionId { get; private set; }
 
-    public void SetConnection(EndpointProfileId? connectionId, DateTimeOffset updatedAt)
+    public void SetConnection(ConnectionId? connectionId, DateTimeOffset updatedAt)
     {
         EnsureTimestampDoesNotMoveBackwards(updatedAt);
         ConnectionId = connectionId;
         UpdatedAt = updatedAt;
     }
 
-    public void ReplaceEndpointProfiles(IEnumerable<EndpointProfile> endpointProfiles, DateTimeOffset updatedAt)
-    {
-        ArgumentNullException.ThrowIfNull(endpointProfiles);
-        EnsureTimestampDoesNotMoveBackwards(updatedAt);
-        var profiles = endpointProfiles.ToDictionary(profile => profile.Id);
-        _endpointProfiles.Clear();
-        foreach (var profile in profiles)
-        {
-            _endpointProfiles.Add(profile.Key, profile.Value);
-        }
 
-        if (DefaultEndpointProfileId is { } defaultId && !_endpointProfiles.ContainsKey(defaultId))
-        {
-            DefaultEndpointProfileId = null;
-        }
 
-        UpdatedAt = updatedAt;
-    }
 
-    public void SetDefaultEndpointProfile(EndpointProfileId? endpointProfileId, DateTimeOffset updatedAt)
-    {
-        EnsureTimestampDoesNotMoveBackwards(updatedAt);
-        if (endpointProfileId is { } profileId && !_endpointProfiles.ContainsKey(profileId))
-        {
-            throw new DomainException("Default endpoint profile must belong to the project.");
-        }
 
-        DefaultEndpointProfileId = endpointProfileId;
-        UpdatedAt = updatedAt;
-    }
-
-    public void UpdateDetails(string name, string description, DateTimeOffset updatedAt)
+    public void UpdateDetails(string name, string? description, DateTimeOffset updatedAt)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -164,6 +134,7 @@ public sealed class Project
         var grants = directoryGrants.ToDictionary(grant => grant.Id);
         var servers = mcpServers.ToDictionary(server => server.Id);
         var policies = toolPolicies.ToDictionary(policy => policy.Tool);
+        // ReSharper disable once ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
         foreach (var policy in policies.Values)
         {
             if (!servers.ContainsKey(policy.Tool.ServerId))

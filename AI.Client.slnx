@@ -14,6 +14,7 @@
     <Project Path="src/AI.Client.Web/AI.Client.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AI.Client.Web.Tests/AI.Client.Web.Tests.csproj" />
     <Project Path="tests/AI.Client.Application.Tests/AI.Client.Application.Tests.csproj" />
     <Project Path="tests/AI.Client.Domain.Tests/AI.Client.Domain.Tests.csproj" />
     <Project Path="tests/AI.Client.Infrastructure.Tests/AI.Client.Infrastructure.Tests.csproj" />

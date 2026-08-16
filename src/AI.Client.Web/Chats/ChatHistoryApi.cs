@@ -1,8 +1,8 @@
+namespace AI.Client.Web.Chats;
+
 using AI.Client.Contracts.Chats;
 using System.Net;
 using System.Net.Http.Json;
-
-namespace AI.Client.Web.Chats;
 
 public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
 {
@@ -23,14 +23,6 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<ChatDetails>(cancellationToken)
             ?? throw new InvalidOperationException("Chat creation response is empty.");
-    }
-
-    public async Task<ChatDetails?> AppendMessageAsync(Guid projectId, Guid chatId, AppendChatMessageRequest request, CancellationToken cancellationToken)
-    {
-        using var response = await httpClient.PostAsJsonAsync($"api/projects/{projectId}/chats/{chatId}/messages", request, cancellationToken);
-        if (response.StatusCode == HttpStatusCode.NotFound) return null;
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ChatDetails>(cancellationToken);
     }
 
     public async Task<ChatDetails?> UpdateEndpointAsync(
@@ -86,6 +78,6 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
     public async Task<ChatBranchDeleteResult> DeleteBranchAsync(Guid projectId, Guid chatId, Guid branchId, long revision, CancellationToken cancellationToken)
     {
         using var response = await httpClient.DeleteAsync($"api/projects/{projectId}/chats/{chatId}/branches/{branchId}?revision={revision}", cancellationToken);
-        return await response.Content.ReadFromJsonAsync<ChatBranchDeleteResult>(cancellationToken) ?? new(false, 0, null);
+        return await response.Content.ReadFromJsonAsync<ChatBranchDeleteResult>(cancellationToken) ?? new ChatBranchDeleteResult(false, 0, null);
     }
 }

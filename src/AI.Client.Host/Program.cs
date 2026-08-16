@@ -1,5 +1,4 @@
 using AI.Client.Host;
-using AI.Client.Application.Chat;
 using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Settings;
@@ -16,10 +15,25 @@ using AI.Client.Infrastructure.Storage;
 var builder = WebApplication.CreateBuilder(args);
 var storageLocation = new ProjectStorageLocation();
 builder.Logging.AddProvider(new JsonLineFileLoggerProvider(storageLocation.RootDirectory));
+builder.Services.AddHostedService<ChatRunHostedService>();
 var composition = new Composition();
 builder.Host.UseServiceProviderFactory(composition);
 
 var app = builder.Build();
+
+app.Use(async (context, next) =>
+{
+    try { await next(context); }
+    catch (Exception error) when (!context.Response.HasStarted && error is ArgumentException or AI.Client.Domain.Common.DomainException)
+    {
+        await Results.Problem(error.Message, statusCode: StatusCodes.Status400BadRequest).ExecuteAsync(context);
+    }
+    catch (InvalidOperationException error) when (!context.Response.HasStarted)
+    {
+        await Results.Problem(error.Message, statusCode: StatusCodes.Status409Conflict).ExecuteAsync(context);
+    }
+});
+
 
 app.Use(async (context, next) =>
 {
@@ -32,6 +46,30 @@ app.Use(async (context, next) =>
         context.Response.OnStarting(() =>
         {
             context.Response.Headers.CacheControl = "no-store";
+            return Task.CompletedTask;
+        });
+    }
+    else if (context.Request.Path.StartsWithSegments("/_framework"))
+    {
+        // Every _framework asset is content-hashed (a changed file gets a new filename), so a
+        // successful (200) response is safe to cache forever and needs no help here. A 404 is
+        // the dangerous case: it can happen transiently — e.g. a request lands in the narrow
+        // window between Kestrel accepting connections and static assets finishing staging on
+        // startup — and unlike the hashed filename it's for, that specific 404 is NOT immutable:
+        // the same URL starts returning 200 moments later once staging finishes, but the browser
+        // has no way to know that from a bare 404 response. Confirmed live: a wasm file that
+        // reproducibly 404'd on every normal load (surviving even a manual page reload) started
+        // working the instant a request explicitly bypassed the cache — the browser had cached
+        // that transient 404 as if it were the asset's permanent state, and kept replaying it
+        // indefinitely because the hashed filename never changes to naturally invalidate it, and
+        // WASM startup depends on every one of these assemblies loading, so a single poisoned
+        // entry breaks the whole app until the user manually clears their cache.
+        context.Response.OnStarting(() =>
+        {
+            if (context.Response.StatusCode == StatusCodes.Status404NotFound)
+            {
+                context.Response.Headers.CacheControl = "no-store";
+            }
             return Task.CompletedTask;
         });
     }
@@ -51,6 +89,10 @@ app.MapGet(
             Status = "ready"
         }));
 
+app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/submit",
+    (Guid projectId, Guid chatId, SubmitChatMessageRequest request, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) =>
+        dispatcher.SubmitAsync(projectId, chatId, request, cancellationToken));
+
 app.MapGet("/api/runs", (IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.GetSnapshotAsync(cancellationToken));
 
 app.MapGet("/api/runs/events", async (IChatRunDispatcher dispatcher, HttpResponse response, CancellationToken cancellationToken) =>
@@ -64,26 +106,23 @@ app.MapGet("/api/runs/events", async (IChatRunDispatcher dispatcher, HttpRespons
     }
 });
 
-app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue",
-    (Guid projectId, Guid chatId, EnqueueChatMessageRequest request, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.EnqueueAsync(projectId, chatId, request, cancellationToken));
-
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/stop",
-    (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.StopAsync(projectId, chatId, branchId, operationId, cancellationToken));
+    (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.StopAsync(projectId, chatId, branchId, cancellationToken, operationId));
 
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/read",
-    (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.MarkReadAsync(projectId, chatId, branchId, operationId, cancellationToken));
+    (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.MarkReadAsync(projectId, chatId, branchId, cancellationToken, operationId));
 
 app.MapPut("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/{messageId:guid}",
     (Guid projectId, Guid chatId, Guid messageId, Guid branchId, UpdateQueuedMessageRequest request, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.UpdateQueuedAsync(projectId, chatId, branchId, messageId, request, cancellationToken));
 
 app.MapDelete("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/{messageId:guid}",
-    (Guid projectId, Guid chatId, Guid messageId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.RemoveQueuedAsync(projectId, chatId, branchId, messageId, operationId, cancellationToken));
+    (Guid projectId, Guid chatId, Guid messageId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.RemoveQueuedAsync(projectId, chatId, branchId, messageId, cancellationToken, operationId));
 
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/resume",
-    (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.ResumeAsync(projectId, chatId, branchId, operationId, cancellationToken));
+    (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.ResumeAsync(projectId, chatId, branchId, cancellationToken, operationId));
 
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/clear",
-    (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.ClearAsync(projectId, chatId, branchId, operationId, cancellationToken));
+    (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.ClearAsync(projectId, chatId, branchId, cancellationToken, operationId));
 
 app.MapPost(
     "/api/chat/completions",
@@ -171,23 +210,17 @@ app.MapPut(
 
 app.MapDelete(
     "/api/projects/{projectId:guid}/chats/{chatId:guid}/branches/{branchId:guid}",
-    async (Guid projectId, Guid chatId, Guid branchId, long revision, IChatService service, IChatRunDispatcher runs, CancellationToken cancellationToken) =>
+    async (Guid projectId, Guid chatId, Guid branchId, long revision, IChatService _, IChatRunDispatcher runs, CancellationToken cancellationToken) =>
     {
-        var result = await service.DeleteBranchAsync(projectId, chatId, branchId, revision, cancellationToken);
-        if (result.IsDeleted)
-        {
-            var chat = await service.GetAsync(projectId, chatId, cancellationToken);
-            if (chat is not null) await runs.ReconcileChatAsync(projectId, chatId, ChatBranchIds.Get(chat), cancellationToken);
-        }
+        var result = await runs.DeleteBranchAsync(projectId, chatId, branchId, revision, cancellationToken);
         return result.IsDeleted ? Results.Ok(result) : result.Revision == 0 ? Results.NotFound() : Results.Conflict(result);
     });
 
 app.MapDelete(
     "/api/projects/{projectId:guid}/chats/{chatId:guid}",
-    async (Guid projectId, Guid chatId, long revision, IChatService service, IChatRunDispatcher runs, CancellationToken cancellationToken) =>
+    async (Guid projectId, Guid chatId, long revision, IChatService _, IChatRunDispatcher runs, CancellationToken cancellationToken) =>
     {
-        var result = await service.DeleteAsync(projectId, chatId, revision, cancellationToken);
-        if (result.IsDeleted) await runs.DeleteChatAsync(projectId, chatId, cancellationToken);
+        var result = await runs.DeleteChatAsync(projectId, chatId, revision, cancellationToken);
         return result.IsDeleted
             ? Results.NoContent()
             : result.Revision == 0 ? Results.NotFound() : Results.Conflict(result);
@@ -240,44 +273,16 @@ app.MapPut(
         };
     });
 
-app.MapPut(
-    "/api/projects/{id:guid}/endpoints",
-    async (Guid id, UpdateEndpointProfilesRequest request, IProjectService service, CancellationToken cancellationToken) =>
-    {
-        var result = await service.UpdateEndpointProfilesAsync(id, request, cancellationToken);
-        return result.Status switch
-        {
-            ProjectUpdateStatus.Updated => Results.Ok(result.Project),
-            ProjectUpdateStatus.Conflict => Results.Conflict(result),
-            _ => Results.NotFound()
-        };
-    });
-
-app.MapPut(
-    "/api/projects/{id:guid}/endpoints/{profileId:guid}/credential",
-    async (Guid id, Guid profileId, UpdateEndpointCredentialRequest request, IProjectService service, CancellationToken cancellationToken) =>
-        await service.SetEndpointCredentialAsync(id, profileId, request.ApiKey, cancellationToken)
-            ? Results.NoContent()
-            : Results.NotFound());
-
 app.MapDelete(
     "/api/projects/{id:guid}",
-    async (Guid id, long revision, IProjectService service, IChatRunDispatcher runs, CancellationToken cancellationToken) =>
+    async (Guid id, long revision, IProjectService _, IChatRunDispatcher runs, CancellationToken cancellationToken) =>
     {
-        var result = await service.DeleteAsync(id, revision, cancellationToken);
-        if (result.IsDeleted) await runs.DeleteProjectAsync(id, cancellationToken);
+        var result = await runs.DeleteProjectAsync(id, revision, cancellationToken);
         return result.IsDeleted
             ? Results.NoContent()
             : result.Revision == 0 ? Results.NotFound() : Results.Conflict(result);
     });
 
 app.MapFallbackToFile("index.html");
-
-// Runtimes otherwise load lazily per-branch on first mutating call — without this, any run
-// nobody has touched since the last restart is missing from the SSE stream (which only ever
-// reflects the live in-memory set) even though GET /api/runs still reports it (that endpoint
-// reads the persisted store directly). A client that reconciles its own cache off the stream
-// would see such a run vanish the moment anything else triggers a Publish().
-await app.Services.GetRequiredService<IChatRunDispatcher>().WarmUpAsync(CancellationToken.None);
 
 await app.RunAsync();

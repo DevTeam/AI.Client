@@ -1,10 +1,11 @@
+// ReSharper disable UseCollectionExpression
+namespace AI.Client.Infrastructure.Tests.Storage;
+
 using AI.Client.Application.Projects;
 using AI.Client.Domain.Projects;
 using AI.Client.Infrastructure.Storage;
 using Shouldly;
 using Xunit;
-
-namespace AI.Client.Infrastructure.Tests.Storage;
 
 public class JsonProjectRepositoryTests
 {
@@ -26,12 +27,12 @@ public class JsonProjectRepositoryTests
         // Then
         saveResult.ShouldBe(ProjectSaveResult.Saved(1));
         restoredProject.ShouldNotBeNull();
-        restoredProject.Name.ShouldBe("Project");
-        restoredProject.DirectoryGrants.ShouldHaveSingleItem().CanonicalRoot.ShouldBe("C:\\Project\\src");
-        restoredProject.McpServers.ShouldHaveSingleItem().DisplayName.ShouldBe("Files");
-        restoredProject.ToolPolicies.ShouldHaveSingleItem().Decision.ShouldBe(ToolPolicyDecision.Ask);
-        restoredProject.DefaultEndpointProfileId.ShouldBe(
-            new EndpointProfileId(Guid.Parse("019f0000-0000-7000-8000-000000000004")));
+        restoredProject.Project.Name.ShouldBe("Project");
+        restoredProject.Project.DirectoryGrants.ShouldHaveSingleItem().CanonicalRoot.ShouldBe(@"C:\Project\src");
+        restoredProject.Project.McpServers.ShouldHaveSingleItem().DisplayName.ShouldBe("Files");
+        restoredProject.Project.ToolPolicies.ShouldHaveSingleItem().Decision.ShouldBe(ToolPolicyDecision.Ask);
+        restoredProject.Project.ConnectionId.ShouldBe(
+            new ConnectionId(Guid.Parse("019f0000-0000-7000-8000-000000000004")));
         _fileSystem.MoveOperations.ShouldHaveSingleItem().ShouldBe((GetTemporaryPath(), GetProjectPath(), true));
     }
 
@@ -57,15 +58,14 @@ public class JsonProjectRepositoryTests
         // Given
         var repository = CreateInstance();
         var project = CreateProject();
-        var serializer = new ProjectDocumentSerializer();
-        _fileSystem.Add(GetTemporaryPath(), serializer.Serialize(project, 1));
+        _fileSystem.Add(GetTemporaryPath(), ProjectDocumentSerializer.Serialize(project, 1));
 
         // When
         var restoredProject = await repository.GetAsync(_projectId, CancellationToken.None);
 
         // Then
         restoredProject.ShouldNotBeNull();
-        restoredProject.Id.ShouldBe(_projectId);
+        restoredProject.Project.Id.ShouldBe(_projectId);
         _fileSystem.Exists(GetTemporaryPath()).ShouldBeFalse();
         _fileSystem.Exists(GetProjectPath()).ShouldBeTrue();
         _fileSystem.MoveOperations.ShouldHaveSingleItem().ShouldBe((GetTemporaryPath(), GetProjectPath(), false));
@@ -77,9 +77,8 @@ public class JsonProjectRepositoryTests
         // Given
         var repository = CreateInstance();
         var project = CreateProject();
-        var serializer = new ProjectDocumentSerializer();
-        _fileSystem.Add(GetProjectPath(), serializer.Serialize(project, 1));
-        _fileSystem.Add(GetTemporaryPath(), serializer.Serialize(project, 2));
+        _fileSystem.Add(GetProjectPath(), ProjectDocumentSerializer.Serialize(project, 1));
+        _fileSystem.Add(GetTemporaryPath(), ProjectDocumentSerializer.Serialize(project, 2));
 
         // When
         var restoredProject = await repository.GetAsync(_projectId, CancellationToken.None);
@@ -96,17 +95,17 @@ public class JsonProjectRepositoryTests
     public void ShouldRejectInvalidProjectDocument(string json)
     {
         // Given
-        var serializer = new ProjectDocumentSerializer();
 
         // When
-        var action = () => serializer.Deserialize(json);
+        // ReSharper disable once ConvertToLocalFunction
+        var action = () => ProjectDocumentSerializer.Deserialize(json);
 
         // Then
         Should.Throw<Exception>(action);
     }
 
     private JsonProjectRepository CreateInstance() =>
-        new(_fileSystem, new ProjectStoragePaths("storage"), new ProjectDocumentSerializer());
+        new(_fileSystem, new ProjectStoragePaths("storage"));
 
     private Project CreateProject() => new(_projectId, "Project", "Description", _createdAt);
 
@@ -118,7 +117,7 @@ public class JsonProjectRepositoryTests
             new DirectoryGrant(
                 new DirectoryGrantId(Guid.Parse("019f0000-0000-7000-8000-000000000003")),
                 "Source",
-                "C:\\Project\\src",
+                @"C:\Project\src",
                 true,
                 ["read", "write"]),
             _createdAt);
@@ -126,13 +125,7 @@ public class JsonProjectRepositoryTests
         project.SetToolPolicy(
             new ToolPolicy(new ToolIdentity(serverId, "write", "schema"), ToolPolicyDecision.Ask),
             _createdAt);
-        var endpoint = new EndpointProfile(
-            new EndpointProfileId(Guid.Parse("019f0000-0000-7000-8000-000000000004")),
-            "Local",
-            "https://llm.example/v1",
-            "model");
-        project.ReplaceEndpointProfiles([endpoint], _createdAt);
-        project.SetDefaultEndpointProfile(endpoint.Id, _createdAt);
+        project.SetConnection(new ConnectionId(Guid.Parse("019f0000-0000-7000-8000-000000000004")), _createdAt);
         return project;
     }
 
@@ -158,6 +151,10 @@ public class JsonProjectRepositoryTests
                 .Where(path => path.StartsWith(directoryPath, StringComparison.Ordinal)
                                && path.EndsWith(".json", StringComparison.Ordinal))
                 .ToArray());
+
+        public Task<IReadOnlyList<string>> ListFilesRecursivelyAsync(string directoryPath, string searchPattern, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<string>>(_files.Keys.Where(path => path.StartsWith(directoryPath, StringComparison.Ordinal)
+                && System.IO.Enumeration.FileSystemName.MatchesSimpleExpression(searchPattern, Path.GetFileName(path))).ToArray());
 
         public Task<string?> ReadTextAsync(string path, CancellationToken cancellationToken) =>
             Task.FromResult(_files.GetValueOrDefault(path));

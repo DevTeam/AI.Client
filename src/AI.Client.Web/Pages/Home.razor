@@ -1,14 +1,15 @@
 ﻿@page "/"
+@using System.Diagnostics.CodeAnalysis
 @using System.Text.Json
 @inject IClientMetadata ClientMetadata
 @inject IProjectApi ProjectApi
-@inject IChatApi ChatApi
 @inject IChatHistoryApi ChatHistoryApi
-@inject IJSRuntime JSRuntime
+@inject IJSRuntime JsRuntime
 @inject IWorkspaceLayoutService WorkspaceLayoutService
 @inject IWorkspaceStateService WorkspaceStateService
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject IChatRunsApi ChatRunsApi
+@inject RunStateService RunState
 @inject IChatComposerService Composer
 @implements IAsyncDisposable
 
@@ -132,42 +133,8 @@
 
     @if (_globalSection is not null)
     {
-        <section class="global-workspace" aria-label="@_globalSection">
-            @if (_globalSection == "Connections")
-            {
-                <header class="global-header"><div><h1>Connections</h1><p>OpenAI-compatible endpoints available to every project.</p></div></header>
-                <div class="global-editor-layout">
-                    <div class="settings-list-column">
-                        <nav class="settings-list">@foreach (var connectionItem in _connections) { <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span>@connectionItem.Name</span><small>@(connectionItem.IsDefault ? "Default" : connectionItem.Enabled ? "Enabled" : "Unavailable")</small></button>@if (connectionItem.Id == _selectedConnectionId) { <button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button> }</div> }</nav>
-                        <button class="icon-action settings-list-add" type="button" title="Add connection" aria-label="Add connection" @onclick="AddConnection"><AppIcon Name="plus" /></button>
-                    </div>
-                    @if (GetSelectedConnection() is { } connection)
-                    {
-                        <div class="global-form"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label></div><label>Name<InputText @bind-Value="connection.Name" /></label><label>Base URL<InputText @bind-Value="connection.BaseUrl" /></label><label>Model<InputText @bind-Value="connection.Model" /></label><label>API key<InputText type="password" @bind-Value="connection.Secret" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></div>
-                    }
-                </div>
-                <footer class="global-actions"><button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
-            }
-            else if (_globalSection == "Security")
-            {
-                <header class="global-header"><div><h1>Security</h1><p>Global confirmation and application policies.</p></div></header><div class="settings-placeholder"><h3>Notifications</h3><p>Show a local browser notification when a background chat finishes or fails while this application is not focused.</p><button type="button" @onclick="EnableNotificationsAsync">@(_notificationsEnabled ? "Notifications enabled" : "Enable notifications")</button><p>Directory access is configured independently for each project.</p></div>
-            }
-            else
-            {
-                <header class="global-header"><div><h1>MCP</h1><p>Global MCP servers available to every project.</p></div></header>
-                <div class="global-editor-layout">
-                    <div class="settings-list-column">
-                        <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => _selectedMcpServerId = serverItem.Id"><span>@serverItem.Name</span><small>@serverItem.Transport · @serverItem.Policy</small></button>@if (serverItem.Id == _selectedMcpServerId) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</div> }</nav>
-                        <button class="icon-action settings-list-add" type="button" title="Add MCP server" aria-label="Add MCP server" @onclick="AddGlobalMcpServer"><AppIcon Name="plus" /></button>
-                    </div>
-                    @if (GetSelectedMcpServer() is { } server)
-                    {
-                        <div class="global-form"><label>Name<InputText @bind-Value="server.Name" /></label><label>Transport<select @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option></select></label><label>Policy<select @bind="server.Policy"><option>Allow</option><option>Ask</option><option>Deny</option></select></label><label class="checkbox"><input type="checkbox" @bind="server.Enabled" /> Enabled</label>@if (server.Transport == "StreamableHttp") { <label>URL<InputText @bind-Value="server.Url" /></label><label>Credential<InputText type="password" @bind-Value="server.Secret" placeholder="@(server.HasCredential ? "Saved; enter to replace" : "Optional")" /></label> } else { <label>Command<InputText @bind-Value="server.Command" /></label><label>Arguments<InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label><label>Working directory<InputText @bind-Value="server.WorkingDirectory" /></label><label>Environment variables<InputTextArea @bind-Value="server.EnvironmentText" placeholder="NAME=value" /></label> }</div>
-                    }
-                </div>
-                <footer class="global-actions"><button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
-            }
-        </section>
+        <GlobalSettingsPanel Section="@_globalSection" NotificationsEnabled="_notificationsEnabled"
+            EnableNotifications="EnableNotificationsAsync" Saved="LoadGlobalSettingsAsync" />
     }
     else
     {
@@ -198,7 +165,7 @@
             OnToggleBranchMenu="ToggleMessageBranchMenu"
             OnSelectBranch="SelectMessageBranch"
             OnBranchPickerKeyDown="HandleBranchPickerKeyDown" />
-        @if (GetSelectedRun() is { } selectedRun && selectedRun.Queue.Count > 0)
+        @if (GetSelectedRun() is { Queue.Count: > 0 } selectedRun)
         {
             <section class="chat-queue"><div class="queue-header"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @selectedRun.Queue.Count</span><AppIcon Name="chevron-right" /></button>@if (selectedRun.Status is ChatRunStatus.Paused or ChatRunStatus.Interrupted or ChatRunStatus.Failed) { <div class="queue-actions"><button type="button" class="queue-action-button queue-action-resume" title="Resume queue" aria-label="Resume queue" @onclick="ResumeQueueAsync"><AppIcon Name="play" /></button><button type="button" class="queue-action-button queue-action-clear" title="Clear queue" aria-label="Clear queue" @onclick="ClearQueueAsync"><AppIcon Name="x" /></button></div> }</div>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in selectedRun.Queue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span title="@item.Content">@GetSingleLine(item.Content)</span><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }</section>
         }
@@ -295,6 +262,8 @@
 </div>
 
 @code {
+    private sealed record BranchTreeItem(Guid RootId, string Title, int Depth, Guid LeafId);
+
     private readonly List<ProjectSummary> _projects = [];
     private ProjectSummary? _selectedProject;
     private bool _isProjectMenuOpen;
@@ -320,17 +289,14 @@
     private bool _isSidebarCollapsed;
     private const string SidebarCollapsedKey = "ai-client.sidebar-collapsed.v1";
     private string? _globalSection;
-    private readonly List<ConnectionEditor> _connections = [];
-    private readonly List<GlobalMcpServerEditor> _globalMcpServers = [];
-    private Guid? _selectedConnectionId;
-    private Guid? _selectedMcpServerId;
+    private readonly List<ConnectionSettings> _connections = [];
     private ProjectEditor _editor = new();
     private ProjectSecurityEditor _security = new();
-    private readonly List<EndpointProfileEditor> _endpointProfiles = [];
     private string? _error;
     private readonly List<ChatSummary> _chats = [];
     private ChatDetails? _selectedChat;
     private Guid? _branchLeafId;
+    private Guid? _selectedBranchId;
     private Guid? _forkSourceId;
     private Guid? _replaceSourceId;
     private Guid? _pendingBranchAnchorId;
@@ -338,16 +304,11 @@
     private readonly ChatEditor _chat = new();
     private string? _chatError;
 
-    // "Where was I" restoration (last project, last chat/branch per project, composer drafts)
-    // lives in WorkspaceStateService — Home just calls it at the right lifecycle points. Only the
-    // pending scroll-restore signal stays here, since it's consumed by THIS component's own
-    // OnAfterRenderAsync, not by the service.
     private string? _pendingScrollRestoreKey;
     private ToastMessage? _toast;
     private CancellationTokenSource? _toastCancellation;
-    private string _settingsTab = "Endpoints";
-    private Guid? _selectedEndpointId;
-    private Guid? _defaultEndpointProfileId;
+    private const string SettingsTab = "General";
+    private Guid? _defaultConnectionId;
     private ElementReference _composer;
     private MessageFeed? _messageFeed;
     private bool _scrollMessagesToBottom;
@@ -357,7 +318,6 @@
     private ElementReference _workspace;
     private bool _attachComposer = true;
     private bool _composerNeedsResize;
-    private readonly Dictionary<RunKey, ChatRunSnapshot> _runs = [];
     private bool _isQueueExpanded;
     private bool _isSubmittingMessage;
     private Guid? _editingQueueId;
@@ -389,9 +349,9 @@
             await WorkspaceLayoutService.WatchPhoneModeAsync(_dotNetReference, PhoneModeBreakpointPx);
             try
             {
-                _composerModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
-                _inlineEditorModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/inlineEditor.js");
-                _runEventsModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/runEvents.js");
+                _composerModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
+                _inlineEditorModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/inlineEditor.js");
+                _runEventsModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/runEvents.js");
                 _runEventsSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("subscribe", _dotNetReference);
                 _focusSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchFocus", _dotNetReference);
                 _queueDragSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchQueueDrag", _dotNetReference);
@@ -476,38 +436,28 @@
     {
         var snapshots = JsonSerializer.Deserialize<IReadOnlyList<ChatRunSnapshot>>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? [];
 
-        // Every event here is the FULL current set of live runs (ChatRunDispatcher.Publish()
-        // always sends _runtimes.Values.ToArray(), never a partial diff) — so anything in our
-        // local _runs cache that ISN'T in this batch has been removed server-side (branch
-        // deleted -> ReconcileChatAsync, chat deleted -> DeleteChatAsync) and must be dropped
-        // here too. Without this, _runs only ever grew: StoreRun adds/updates but nothing ever
-        // called _runs.Remove, so a deleted branch's last-known Paused/Interrupted snapshot sat
-        // in the cache forever — GetProjectRun/GetProjectRuns scan _runs.Values unconditionally,
-        // so the project kept showing a status badge for a branch that no longer existed
-        // anywhere in the UI (no chat/branch row left to click "Resume"/"Clear" on to fix it).
-        var liveKeys = snapshots.Select(item => new RunKey(item.ChatId, item.BranchId)).ToHashSet();
-        foreach (var staleKey in _runs.Keys.Where(key => !liveKeys.Contains(key)).ToArray())
-        {
-            _runs.Remove(staleKey);
-        }
+        RunState.RemoveMissing(snapshots);
 
         foreach (var snapshot in snapshots)
         {
-            _runs.TryGetValue(new RunKey(snapshot.ChatId, snapshot.BranchId), out var previous);
+            RunState.Runs.TryGetValue(new RunKey(snapshot.ChatId, snapshot.BranchId), out var previous);
             StoreRun(snapshot);
             if (snapshot.ChatId == _selectedChat?.Id)
             {
-                var isSelectedRun = snapshot.BranchId == GetSelectedRun()?.BranchId;
+                var isSelectedRun = snapshot.BranchId == GetSelectedRunBranchId();
                 var isPendingBranchRun = _pendingBranchAnchorId is { } pendingId && snapshot.BranchId == pendingId;
                 if (isSelectedRun || isPendingBranchRun) _scrollMessagesToBottom = true;
-                if ((isSelectedRun || isPendingBranchRun) && previous?.Status == ChatRunStatus.Generating && snapshot.Status != ChatRunStatus.Generating && _selectedProject is not null)
+                if (snapshot.ChatRevision > _selectedChat.Revision && _selectedProject is not null)
                 {
                     _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, snapshot.ChatId, CancellationToken.None);
-                    SelectPendingBranchOrLatestMessage();
                     await LoadChatsAsync(_selectedProject.Id);
                 }
+                if ((isSelectedRun || isPendingBranchRun) && _selectedChat?.Branches?.SingleOrDefault(branch => branch.Id == snapshot.BranchId)?.HeadMessageId is { } head)
+                    _branchLeafId = head;
                 if ((isSelectedRun || isPendingBranchRun) && _applicationFocused && snapshot.HasUnreadResponse) await MarkSelectedChatReadAsync();
             }
+
+            // ReSharper disable once InvertIf
             if (!_applicationFocused && previous?.Status == ChatRunStatus.Generating && snapshot.Status is ChatRunStatus.Completed or ChatRunStatus.Failed)
             {
                 var chat = _chats.FirstOrDefault(item => item.Id == snapshot.ChatId);
@@ -524,12 +474,7 @@
         if (focused) await MarkSelectedChatReadAsync();
     }
 
-    // The actual Enter handling lives in chatComposer.js — it dispatches to SendFromKeyboard /
-    // QueueFromKeyboard / ForkFromKeyboard based on the Ctrl/Alt modifiers, and runs first because
-    // it's attached to the DOM event directly. This Blazor handler is kept only so the
-    // textarea still raises @onkeydown (e.g. for testability); it must not also send, or every
-    // Enter press would enqueue twice.
-    private Task HandleComposerKeyDown(KeyboardEventArgs args) => Task.CompletedTask;
+    private static Task HandleComposerKeyDown(KeyboardEventArgs args) => Task.CompletedTask;
 
     private const int PhoneModeBreakpointPx = 720;
 
@@ -569,6 +514,7 @@
         _branchMenuId = null;
         _isConfirmingChatDelete = false;
         _selectedChat = null;
+        _selectedBranchId = null;
         _branchLeafId = null;
         _editor = new ProjectEditor(project.Name, project.Description, project.Revision);
         _error = null;
@@ -597,11 +543,11 @@
             _selectedProject.Id,
             new UpdateProjectRequest(_editor.Name, _editor.Description, _editor.Revision, _editor.ConnectionId),
             CancellationToken.None);
-        if (result.Status == ProjectUpdateStatus.Updated && result.Project is not null)
+        if (result is { Status: ProjectUpdateStatus.Updated, Project: not null })
         {
             await LoadProjectsAsync(result.Project.Id);
             ShowToast("Project saved.", "success");
-            CloseProjectSettings();
+            await CloseProjectSettingsAsync();
             return;
         }
 
@@ -671,8 +617,8 @@
         {
             _security = ProjectSecurityEditor.From(project);
             _editor.ConnectionId = project.ConnectionId ?? GetDefaultConnection()?.Id;
-            _defaultEndpointProfileId = _editor.ConnectionId;
-            if (_defaultEndpointProfileId is { } defaultId)
+            _defaultConnectionId = _editor.ConnectionId;
+            if (_defaultConnectionId is { } defaultId)
             {
                 SelectGlobalConnection(defaultId);
             }
@@ -711,7 +657,8 @@
                 _chat.BaseUrl,
                 _chat.Model,
                 _chat.Message,
-                GetSelectedRun());
+                GetSelectedRun(),
+                _selectedChat is null ? null : GetSelectedRunBranchId());
 
             var outcome = await Composer.SubmitAsync(request, CancellationToken.None);
 
@@ -764,8 +711,10 @@
         // already persisted the chat, message and run. We just sync local UI state. Kept
         // synchronous (no JS interop, no network calls) so it finishes — and StoreRun's cache
         // update takes effect — before the submit guard in SubmitComposerAsync is released.
-        _selectedChat = accepted.Chat;
+        if (_selectedChat?.Id != accepted.Chat.Id || _selectedChat.Revision < accepted.Chat.Revision) _selectedChat = accepted.Chat;
+        _selectedBranchId = accepted.RunBranchId;
         StoreRun(accepted.Snapshot);
+        _pendingBranchAnchorId = accepted.RunBranchId;
         if (accepted.UpdatedBranchLeafId is { } updatedLeaf)
         {
             _branchLeafId = updatedLeaf;
@@ -832,21 +781,9 @@
         // shows its own status text for those instead (see GetHeldRunEnterHint for their Enter
         // hint suffix).
         if (_composerAltDown && _composerCtrlDown) return $"{baseHint} · fork on Enter";
-        if (_composerCtrlDown) return $"{baseHint} · queue on Enter";
-        return baseHint;
+        return _composerCtrlDown ? $"{baseHint} · queue on Enter" : baseHint;
     }
 
-    // Appended to the "Stopped"/"Interrupted"/"Failed" status text so it's never ambiguous what
-    // pressing Enter will actually do while a run is held — covers all three send modes, not
-    // just plain Enter:
-    //   - Plain Enter auto-resumes the held run before enqueuing (ChatComposerService Step 7) —
-    //     without a hint here, a held run just showed its status with no indication that Enter
-    //     would resume everything (queued or not) instead of quietly appending to a paused queue.
-    //   - Ctrl+Enter (Queue) does NOT re-trigger pre-pause on an already-held run (Step 5 only
-    //     pre-pauses Idle/Generating/Completed) — the message queues but the run stays held,
-    //     which is easy to misread as "did my Ctrl+Enter do nothing?" without saying so.
-    //   - Ctrl+Alt+Enter (Fork) always starts immediately regardless of the source branch's
-    //     paused state — worth calling out since it's the one mode that ignores "Stopped".
     private string GetHeldRunEnterHint(ChatRunSnapshot run)
     {
         if (_composerAltDown && _composerCtrlDown) return " · fork on Enter, starts immediately";
@@ -871,10 +808,11 @@
         _globalSection = null;
         _attachComposer = true;
         _selectedChat = null;
+        _selectedBranchId = null;
         _branchLeafId = null;
-        if (_defaultEndpointProfileId is { } endpointId)
+        if (_defaultConnectionId is { } endpointId)
         {
-            SelectChatProfile(new ChangeEventArgs { Value = endpointId.ToString() });
+            await SelectChatProfileAsync(new ChangeEventArgs { Value = endpointId.ToString() });
         }
         _chat.Message = string.Empty;
         if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("focus");
@@ -887,13 +825,24 @@
         CloseContextMenus();
         if (_selectedProject is not null)
         {
+            // Clicking the chat's own sidebar entry while a DIFFERENT one of its branches is
+            // already open is the only explicit way back to the main branch (there's no separate
+            // "main branch" row next to the fork rows) — it must always land there. Restoring the
+            // remembered branch here too made it a no-op once any branch had ever been visited:
+            // SelectBranchTreeItemAsync had just written that branch as "last left on" for this
+            // exact chat, so the restore step below immediately re-selected it right back,
+            // permanently masking the reset. The remembered-branch restore is for the OTHER case
+            // this method serves — arriving at this chat from somewhere else (a different chat, a
+            // fresh page load) — which is exactly what "already viewing this chat" rules out.
+            var wasAlreadyOnThisChat = _selectedChat?.Id == chatId;
             _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, chatId, CancellationToken.None);
             _branchLeafId = GetOriginalBranchLeaf(_selectedChat);
 
             // Prefer the branch this chat was last left on, within this project, if it's still
             // part of the chat (a branch can be deleted independently of the chat itself).
             var context = WorkspaceStateService.GetProjectContext(_selectedProject.Id);
-            if (_selectedChat is not null
+            if (!wasAlreadyOnThisChat
+                && _selectedChat is not null
                 && context.ChatId == chatId
                 && context.BranchLeafId is { } rememberedBranchLeafId
                 && _selectedChat.Messages.Any(message => message.Id == rememberedBranchLeafId))
@@ -901,9 +850,11 @@
                 _branchLeafId = rememberedBranchLeafId;
             }
 
-            if (_selectedChat?.EndpointProfileId is { } endpointId)
+            _selectedBranchId = _selectedChat?.Branches?.FirstOrDefault(branch => branch.HeadMessageId == _branchLeafId)?.Id ?? _selectedChat?.Id;
+            if (_selectedChat?.ConnectionId is { } endpointId)
             {
-                SelectChatProfile(new ChangeEventArgs { Value = endpointId.ToString() });
+                // Restore the selection without persisting an endpoint change when opening a chat.
+                SelectGlobalConnection(endpointId);
             }
             RestoreComposerDraft();
             // Whether to jump to the bottom or restore the last-viewed message is decided in
@@ -914,45 +865,19 @@
         }
     }
 
-    private ChatRunSnapshot? GetRun(Guid chatId, Guid branchId) => _runs.GetValueOrDefault(new RunKey(chatId, branchId));
-    private ChatRunSnapshot? GetBranchRun(Guid chatId, BranchTreeItem branch)
-    {
-        var direct = GetRun(chatId, branch.RootId);
-        if (direct is not null) return direct;
-        return null;
-    }
-    private ChatRunSnapshot? GetSelectedRun()
-    {
-        if (_selectedChat is null) return null;
-        return GetRun(_selectedChat.Id, GetSelectedRunBranchId());
-    }
-    private void StoreRun(ChatRunSnapshot run)
-    {
-        var key = new RunKey(run.ChatId, run.BranchId);
-        if (!_runs.TryGetValue(key, out var current) || run.Revision >= current.Revision)
-        {
-            _runs[key] = run;
-        }
-    }
-    // Generating is a live state and always shown; every other status (Paused/Interrupted/Failed,
-    // same as Completed) is only shown while unread — MarkRead() (called as soon as the chat is
-    // opened) clears it, so it never lingers after being seen once.
+    private ChatRunSnapshot? GetRun(Guid chatId, Guid branchId) => RunState.Runs.GetValueOrDefault(new RunKey(chatId, branchId));
+    private ChatRunSnapshot? GetBranchRun(Guid chatId, BranchTreeItem branch) => GetRun(chatId, branch.RootId);
+    private ChatRunSnapshot? GetSelectedRun() => _selectedChat is not null ? GetRun(_selectedChat.Id, GetSelectedRunBranchId()) : null;
+    private void StoreRun(ChatRunSnapshot run) => RunState.Store(run);
     private static bool IsVisibleRun(ChatRunSnapshot run) => run.Status == ChatRunStatus.Generating || run.HasUnreadResponse;
-    private BranchTreeItem? GetSelectedBranchItem()
-    {
-        if (_selectedChat is null || _branchLeafId is null) return null;
-        return GetBranchTreeItems()
-            .Where(branch => IsMessageInBranch(_branchLeafId.Value, branch.RootId))
-            .OrderByDescending(branch => branch.Depth)
-            .ThenByDescending(branch => branch.RootId)
-            .FirstOrDefault();
-    }
+    private BranchTreeItem? GetSelectedBranchItem() =>
+        GetBranchTreeItems().FirstOrDefault(branch => branch.RootId == _selectedBranchId);
 
     private Guid? GetSelectedBranchId() => GetSelectedBranchItem()?.RootId;
 
     private string? GetContextBranchTitle() =>
         _selectedChat is null ? null : GetSelectedBranchItem()?.Title ?? _selectedChat.Title;
-    private Guid GetSelectedRunBranchId() => _selectedChat is null ? Guid.Empty : GetSelectedBranchId() ?? _selectedChat.Id;
+    private Guid GetSelectedRunBranchId() => _selectedChat is null ? Guid.Empty : _selectedBranchId ?? _selectedChat.Id;
     private ChatRunSnapshot? GetProjectRun(Guid projectId) => GetProjectRuns(projectId)
         .Where(IsVisibleRun)
         .OrderBy(item => item.Status == ChatRunStatus.Failed ? 0 : item.Status == ChatRunStatus.Generating ? 1 : item.HasUnreadResponse ? 2 : 3)
@@ -960,7 +885,7 @@
     private string GetProjectRunTooltip(Guid projectId) { var runs = GetProjectRuns(projectId).ToArray(); return $"{runs.Count(item => item.Status == ChatRunStatus.Generating)} generating · {runs.Count(item => item.HasUnreadResponse)} unread · {runs.Count(item => item.Status == ChatRunStatus.Failed)} failed"; }
     private IEnumerable<ChatRunSnapshot> GetProjectRuns(Guid projectId)
     {
-        return _runs.Values.Where(run => run.ProjectId == projectId);
+        return RunState.Runs.Values.Where(run => run.ProjectId == projectId);
     }
     private string? GetProjectRunTitle(Guid projectId) => GetProjectRun(projectId) is null ? null : GetProjectRunTooltip(projectId);
     private static string? GetRunTitle(ChatRunSnapshot? run) => run is null || !IsVisibleRun(run) ? null : RunStatusPresentation.GetStatusTooltip(run);
@@ -976,8 +901,15 @@
     private void BeginQueueEdit(QueuedChatMessage item) { _editingQueueId = item.Id; _editingQueueText = item.Content; }
     private async Task HandleQueueEditKeyAsync(KeyboardEventArgs args, Guid id)
     {
-        if (args.Key == "Enter") await SaveQueuedMessageAsync(id);
-        else if (args.Key == "Escape") _editingQueueId = null;
+        switch (args.Key)
+        {
+            case "Enter":
+                await SaveQueuedMessageAsync(id);
+                break;
+            case "Escape":
+                _editingQueueId = null;
+                break;
+        }
     }
     private async Task SaveQueuedMessageAsync(Guid id)
     {
@@ -1014,29 +946,18 @@
 
     private async Task LoadChatsAsync(Guid projectId)
     {
+        var chats = await ChatHistoryApi.ListAsync(projectId, CancellationToken.None);
+        var order = await LoadOrderAsync(ChatOrderKey(projectId));
+        if (_selectedProject?.Id != projectId) return;
         _chats.Clear();
-        _chats.AddRange(await ChatHistoryApi.ListAsync(projectId, CancellationToken.None));
-        await ApplyChatOrderAsync(projectId);
-        if (_selectedChat is not null)
+        _chats.AddRange(ApplyOrder(chats, order, chat => chat.Id));
+        if (_selectedChat is { } selected)
         {
-            _selectedChat = await ChatHistoryApi.GetAsync(projectId, _selectedChat.Id, CancellationToken.None);
+            var refreshed = await ChatHistoryApi.GetAsync(projectId, selected.Id, CancellationToken.None);
+            if (_selectedChat?.Id == selected.Id && refreshed is not null && refreshed.Revision >= _selectedChat.Revision)
+                _selectedChat = refreshed;
         }
     }
-
-    private Task SelectBranchAsync(Guid messageId)
-    {
-        if (_selectedChat is null || _selectedProject is null)
-        {
-            return Task.CompletedTask;
-        }
-
-        _branchLeafId = messageId;
-        return Task.CompletedTask;
-    }
-
-    private static string CreateChatTitle(string message) => string.IsNullOrWhiteSpace(message)
-        ? "New chat"
-        : message.Trim()[..Math.Min(message.Trim().Length, 48)];
 
     private async Task CopyMessageAsync(string markdown)
     {
@@ -1112,11 +1033,6 @@
         return text[..Math.Min(text.Length, 36)] + (text.Length > 36 ? "…" : string.Empty);
     }
 
-    // Unlike GetMessagePreview, this doesn't cut at a fixed character count — the queue row is a
-    // fixed-width single-line flex cell (.queue-item > span has overflow/ellipsis/nowrap), so CSS
-    // already truncates whatever doesn't fit with "…", correctly following the row's actual
-    // rendered width instead of a guessed character count that's wrong for both narrow and wide
-    // layouts. Newlines are still collapsed so a multi-line queued message doesn't wrap the row.
     private static string GetSingleLine(string content) => content.ReplaceLineEndings(" ").Trim();
 
     private void SwitchBranch(Guid siblingId)
@@ -1139,11 +1055,6 @@
     private void ToggleMessageBranchMenu(Guid messageId) =>
         _messageBranchMenuId = _messageBranchMenuId == messageId ? null : messageId;
 
-    // Deliberate, user-driven branch switch — unlike SwitchBranch's OTHER caller
-    // (SelectPendingBranchOrLatestMessage, an automatic advance after a response completes, which
-    // must NOT restore a draft over whatever the user might already be typing for the next
-    // message), this one really did just change "the current branch", so it gets the same
-    // draft/scroll/context handling as the sidebar branch-tree picker.
     private async Task SelectMessageBranch(Guid siblingId)
     {
         SwitchBranch(siblingId);
@@ -1160,55 +1071,6 @@
     {
         if (args.Key == "Escape") _messageBranchMenuId = null;
     }
-
-    private void SelectPendingBranchOrLatestMessage()
-    {
-        if (_selectedChat is null) return;
-        if (_pendingBranchAnchorId is { } anchorId)
-        {
-            var root = _selectedChat.Messages
-                .Where(message => message.Id == anchorId && message.Role == "User")
-                .FirstOrDefault();
-            if (root is not null)
-            {
-                SwitchBranch(root.Id);
-                _pendingBranchAnchorId = null;
-                return;
-            }
-        }
-        _branchLeafId = _selectedChat.Messages.LastOrDefault()?.Id;
-    }
-
-    private IReadOnlyList<ChatCompletionMessage> BuildCompletionContext()
-    {
-        if (_selectedChat is null || _branchLeafId is null)
-        {
-            return [];
-        }
-
-        var byId = _selectedChat.Messages.ToDictionary(item => item.Id);
-        var branch = new List<ChatCompletionMessage>();
-        var currentId = _branchLeafId;
-        while (currentId is { } messageId && byId.TryGetValue(messageId, out var message))
-        {
-            branch.Add(new ChatCompletionMessage(message.Role.ToLowerInvariant(), message.Content));
-            currentId = message.ParentId;
-        }
-
-        branch.Reverse();
-        branch.Add(new ChatCompletionMessage("user", _chat.Message));
-        return branch;
-    }
-
-    private void AddEndpointProfile()
-    {
-        var endpoint = new EndpointProfileEditor();
-        _endpointProfiles.Add(endpoint);
-        _selectedEndpointId = endpoint.Id;
-        ShowToast("Complete the endpoint fields, then select Save.", "info");
-    }
-
-    private void SelectSettingsTab(string tab) => _settingsTab = tab;
 
     private void ToggleProjectMenu()
     {
@@ -1263,8 +1125,14 @@
 
     private async Task HandleInlineEditKeyAsync(KeyboardEventArgs args, Func<Task> save)
     {
-        if (args.Key == "Escape") { CancelInlineEdit(); return; }
-        if (args.Key == "Enter") await save();
+        switch (args.Key)
+        {
+            case "Escape":
+                CancelInlineEdit(); return;
+            case "Enter":
+                await save();
+                break;
+        }
     }
 
     private void CancelInlineEdit()
@@ -1327,13 +1195,6 @@
         await LoadChatsAsync(_selectedProject.Id);
     }
 
-    // _selectedChat is always replaced wholesale rather than mutated, so caching this by
-    // reference is a safe, cheap invalidation key.
-    // GetSelectedRun() (which reads this indirectly via GetSelectedBranchItem) is called ~9
-    // times per render from the markup — without this cache, every one of those calls rebuilt
-    // the entire branch tree (GroupBy + several ToDictionary + DistinctBy + a per-root depth
-    // walk) from scratch, on every single render, including the one triggered by every composer
-    // keystroke.
     private object? _branchTreeCacheChat;
     private IReadOnlyList<BranchTreeItem> _branchTreeCache = [];
 
@@ -1351,57 +1212,26 @@
     private IReadOnlyList<BranchTreeItem> ComputeBranchTreeItems()
     {
         if (_selectedChat is null) return [];
-        var messages = _selectedChat.Messages;
-        var children = messages.GroupBy(message => message.ParentId ?? Guid.Empty).ToDictionary(group => group.Key, group => group.OrderBy(message => message.CreatedAt).ToArray());
-        var roots = children.Values
-            .Where(group => group.Length > 1)
-            .SelectMany(group => group.Skip(1).Where(message => message.Role == "User"))
-            .DistinctBy(message => message.Id)
-            .OrderBy(message => message.CreatedAt)
-            .ToArray();
-        var rootIds = roots.Select(root => root.Id).ToHashSet();
-        return roots.Select(root => new BranchTreeItem(root.Id, GetBranchTitle(root), GetBranchDepth(root, roots), FindBranchLeaf(root.Id, children, rootIds))).ToArray();
+        var branches = _selectedChat.Branches ?? [];
+        return branches.Where(branch => branch.Id != _selectedChat.Id && branch.HeadMessageId is not null)
+            // ReSharper disable once UseCollectionExpression
+            .Select(branch => new BranchTreeItem(branch.Id, branch.Title, GetBranchDepth(branch, branches), branch.HeadMessageId!.Value)).ToArray();
     }
 
-    private string GetBranchTitle(ChatMessageView root) =>
-        _selectedChat?.BranchTitles?.GetValueOrDefault(root.Id) ?? CreateChatTitle(root.Content);
-
-    private int GetBranchDepth(ChatMessageView root, IReadOnlyList<ChatMessageView> roots)
+    private static int GetBranchDepth(ChatBranchView branch, IReadOnlyList<ChatBranchView> branches)
     {
-        var byId = _selectedChat!.Messages.ToDictionary(message => message.Id);
-        var rootIds = roots.Select(message => message.Id).ToHashSet();
         var depth = 1;
-        var parent = root.ParentId;
-        while (parent is { } id && byId.TryGetValue(id, out var message)) { if (rootIds.Contains(id)) depth++; parent = message.ParentId; }
+        var visited = new HashSet<Guid> { branch.Id };
+        while (branch.ParentBranchId is { } id && visited.Add(id) && branches.FirstOrDefault(item => item.Id == id) is { } parent)
+        {
+            if (parent.ParentBranchId is not null) depth++;
+            branch = parent;
+        }
         return depth;
     }
 
-    private static Guid FindBranchLeaf(Guid rootId, IReadOnlyDictionary<Guid, ChatMessageView[]> children, IReadOnlySet<Guid> branchRootIds)
-    {
-        var current = rootId;
-        while (children.TryGetValue(current, out var descendants) && descendants.Length > 0)
-        {
-            var next = descendants.LastOrDefault(message => !branchRootIds.Contains(message.Id));
-            if (next is null) break;
-            current = next.Id;
-        }
-        return current;
-    }
-
-    private static Guid? GetOriginalBranchLeaf(ChatDetails? chat)
-    {
-        if (chat is null || chat.Messages.Count == 0) return null;
-        var children = chat.Messages
-            .GroupBy(message => message.ParentId ?? Guid.Empty)
-            .ToDictionary(group => group.Key, group => group.OrderBy(message => message.CreatedAt).ToArray());
-        var current = children.GetValueOrDefault(Guid.Empty)?.FirstOrDefault()?.Id;
-        if (current is null) return null;
-        while (children.TryGetValue(current.Value, out var descendants) && descendants.Length > 0)
-        {
-            current = descendants[0].Id;
-        }
-        return current;
-    }
+    private static Guid? GetOriginalBranchLeaf(ChatDetails? chat) =>
+        chat?.Branches?.SingleOrDefault(branch => branch.Id == chat.Id)?.HeadMessageId;
 
     private async Task SelectBranchTreeItemAsync(BranchTreeItem branch)
     {
@@ -1414,19 +1244,12 @@
         }
 
         var refreshedBranch = GetBranchTreeItems().FirstOrDefault(item => item.RootId == branch.RootId);
+        _selectedBranchId = branch.RootId;
         _branchLeafId = refreshedBranch?.LeafId ?? branch.LeafId;
         RestoreComposerDraft();
         _pendingScrollRestoreKey = GetScrollPositionKey();
         await MarkSelectedChatReadAsync();
         await WorkspaceStateService.SetProjectContextAsync(_selectedProject.Id, _selectedChat.Id, _branchLeafId);
-    }
-
-    private bool IsMessageInBranch(Guid leafId, Guid rootId)
-    {
-        var byId = _selectedChat!.Messages.ToDictionary(message => message.Id);
-        var current = leafId;
-        while (byId.TryGetValue(current, out var message)) { if (current == rootId) return true; if (message.ParentId is not { } parent) break; current = parent; }
-        return false;
     }
 
     private async Task OnProjectContextMenu(ProjectSummary project)
@@ -1463,7 +1286,7 @@
         }
     }
 
-    private void OnDragOver()
+    private static void OnDragOver()
     {
     }
 
@@ -1532,24 +1355,11 @@
         _projects.AddRange(ordered);
     }
 
-    private async Task ApplyChatOrderAsync(Guid projectId)
-    {
-        var order = await LoadOrderAsync(ChatOrderKey(projectId));
-        if (order.Count == 0)
-        {
-            return;
-        }
-
-        var ordered = ApplyOrder(_chats, order, c => c.Id);
-        _chats.Clear();
-        _chats.AddRange(ordered);
-    }
-
     private async Task<List<Guid>> LoadOrderAsync(string key)
     {
         try
         {
-            var json = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", key);
+            var json = await JsRuntime.InvokeAsync<string?>("localStorage.getItem", key);
             return string.IsNullOrEmpty(json) ? [] : JsonSerializer.Deserialize<List<Guid>>(json) ?? [];
         }
         catch (JsonException)
@@ -1559,7 +1369,7 @@
     }
 
     private Task SaveOrderAsync(string key, IEnumerable<Guid> ids) =>
-        JSRuntime.InvokeVoidAsync("localStorage.setItem", key, JsonSerializer.Serialize(ids)).AsTask();
+        JsRuntime.InvokeVoidAsync("localStorage.setItem", key, JsonSerializer.Serialize(ids)).AsTask();
 
     private static List<T> ApplyOrder<T>(IReadOnlyList<T> items, List<Guid> order, Func<T, Guid> idSelector)
     {
@@ -1574,14 +1384,7 @@
             }
         }
 
-        foreach (var item in items)
-        {
-            if (used.Add(idSelector(item)))
-            {
-                result.Add(item);
-            }
-        }
-
+        result.AddRange(items.Where(item => used.Add(idSelector(item))));
         return result;
     }
 
@@ -1600,7 +1403,7 @@
     private async Task DeleteChatAsync(ChatSummary chat)
     {
         if (_selectedProject is null) return;
-        foreach (var run in _runs.Values.Where(item => item.ChatId == chat.Id).ToArray())
+        foreach (var run in RunState.Runs.Values.Where(item => item.ChatId == chat.Id).ToArray())
         {
             if (run.Status == ChatRunStatus.Generating) await ChatRunsApi.StopAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
             await ChatRunsApi.ClearAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
@@ -1616,6 +1419,7 @@
         if (_selectedChat?.Id == chat.Id)
         {
             _selectedChat = null;
+        _selectedBranchId = null;
             _branchLeafId = null;
             _chat.Message = string.Empty;
             _composerNeedsResize = true;
@@ -1645,28 +1449,6 @@
 
     private void CancelProjectDelete() => CloseContextMenus();
 
-    private void SelectEndpoint(Guid endpointId) => _selectedEndpointId = endpointId;
-
-    private void SelectEndpointFromPicker(ChangeEventArgs args) =>
-        _selectedEndpointId = Guid.TryParse(args.Value?.ToString(), out var endpointId) ? endpointId : null;
-
-    private EndpointProfileEditor? GetSelectedEndpoint() =>
-        _selectedEndpointId is { } id ? _endpointProfiles.SingleOrDefault(item => item.Id == id) : null;
-
-    private void RemoveEndpoint(Guid endpointId)
-    {
-        _endpointProfiles.RemoveAll(item => item.Id == endpointId);
-        _selectedEndpointId = _endpointProfiles.FirstOrDefault()?.Id;
-        if (_defaultEndpointProfileId == endpointId)
-        {
-            _defaultEndpointProfileId = null;
-        }
-        ShowToast("Endpoint removed from the draft. Select Save to apply changes.", "info");
-    }
-
-    private void SetDefaultEndpoint(Guid endpointId, ChangeEventArgs args) =>
-        _defaultEndpointProfileId = args.Value is true ? endpointId : null;
-
     private void CancelGeneralChanges()
     {
         if (_selectedProject is not null)
@@ -1681,17 +1463,6 @@
         CloseProjectSettings();
     }
 
-    private async Task CancelEndpointChanges()
-    {
-        if (_selectedProject is not null)
-        {
-            await LoadSecurityAsync(_selectedProject.Id);
-            ShowToast("Endpoint changes cancelled.", "info");
-        }
-
-        CloseProjectSettings();
-    }
-
     private async Task CancelSecurityChangesAsync()
     {
         if (_selectedProject is not null)
@@ -1699,35 +1470,18 @@
             await LoadSecurityAsync(_selectedProject.Id);
         }
 
-        CloseProjectSettings();
+        await CloseProjectSettingsAsync();
     }
 
-    private Task CancelCurrentSettingsAsync() => _settingsTab switch
+    private Task CancelCurrentSettingsAsync() => SettingsTab switch
     {
         "General" => CancelGeneralSettingsAsync(),
-        "Endpoints" => CancelEndpointChanges(),
         "Security" => CancelSecurityChangesAsync(),
         _ => CloseProjectSettingsAsync()
     };
 
     private Task HandleProjectSettingsKeyDownAsync(KeyboardEventArgs args) =>
         args.Key == "Escape" ? CancelCurrentSettingsAsync() : Task.CompletedTask;
-
-    private Task SaveCurrentSettingsAsync() => _settingsTab switch
-    {
-        "General" => SaveProjectAsync(),
-        "Endpoints" => SaveEndpointProfilesAsync(),
-        "Security" => SaveSecurityAsync(),
-        _ => CloseProjectSettingsAsync()
-    };
-
-    private void RemoveSelectedEndpoint()
-    {
-        if (_selectedEndpointId is { } endpointId)
-        {
-            RemoveEndpoint(endpointId);
-        }
-    }
 
     private Task CancelGeneralSettingsAsync()
     {
@@ -1775,58 +1529,6 @@
             ? "No connection"
             : _connections.SingleOrDefault(item => item.Id == _chat.CredentialProfileId)?.Name ?? "Select connection";
 
-    private async Task SaveEndpointProfilesAsync()
-    {
-        if (_selectedProject is null)
-        {
-            return;
-        }
-
-        ProjectUpdateResult result;
-        try
-        {
-            result = await ProjectApi.UpdateEndpointProfilesAsync(
-                _selectedProject.Id,
-                new UpdateEndpointProfilesRequest(
-                    _editor.Revision,
-                    _endpointProfiles.Select(item => item.ToSettings()).ToArray(),
-                    _defaultEndpointProfileId),
-                CancellationToken.None);
-        }
-        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
-        {
-            ShowToast("Endpoints were not saved. Check the base URL and model.", "error");
-            return;
-        }
-        if (result.Status != ProjectUpdateStatus.Updated || result.Project is null)
-        {
-            _error = result.Status == ProjectUpdateStatus.Conflict
-                ? "Endpoint profiles were changed elsewhere. Reload the project before saving."
-                : "This project no longer exists.";
-            ShowToast(_error, "error");
-            return;
-        }
-
-        foreach (var profile in _endpointProfiles.Where(item => !string.IsNullOrWhiteSpace(item.ApiKey)))
-        {
-            await ProjectApi.SetEndpointCredentialAsync(
-                _selectedProject.Id,
-                profile.Id,
-                new UpdateEndpointCredentialRequest(profile.ApiKey),
-                CancellationToken.None);
-        }
-
-        var selectedProfileId = _endpointProfiles.FirstOrDefault()?.Id;
-        await LoadProjectsAsync(result.Project.Id);
-        if (selectedProfileId is { } profileId)
-        {
-            SelectChatProfile(new ChangeEventArgs { Value = profileId.ToString() });
-        }
-
-        ShowToast("Endpoints saved.", "success");
-        CloseProjectSettings();
-    }
-
     private void ToggleSettingsSection() => _isSettingsSectionExpanded = !_isSettingsSectionExpanded;
 
     private void ToggleProjectsSection() => _isProjectsSectionExpanded = !_isProjectsSectionExpanded;
@@ -1834,12 +1536,12 @@
     private async Task ToggleLeftPanelAsync()
     {
         _isSidebarCollapsed = !_isSidebarCollapsed;
-        await JSRuntime.InvokeVoidAsync("localStorage.setItem", SidebarCollapsedKey, _isSidebarCollapsed ? "true" : "false");
+        await JsRuntime.InvokeVoidAsync("localStorage.setItem", SidebarCollapsedKey, _isSidebarCollapsed ? "true" : "false");
     }
 
     private async Task LoadSidebarCollapsedAsync()
     {
-        var stored = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", SidebarCollapsedKey);
+        var stored = await JsRuntime.InvokeAsync<string?>("localStorage.getItem", SidebarCollapsedKey);
         _isSidebarCollapsed = stored == "true";
     }
 
@@ -1849,19 +1551,12 @@
         WorkspaceStateService.QueueComposerDraftSave(GetComposerDraftKey(), _chat.Message);
     }
 
-    // Keyed by (chat, branch) when the chat already exists — each branch keeps its own separate
-    // draft, same granularity as the scroll-position key — or by project id for a draft typed
-    // before the first message creates the chat (there's no branch yet at that point). Empty
-    // when neither a project nor a chat is selected — WorkspaceStateService treats that as
-    // "nothing to persist".
     private string GetComposerDraftKey() => _selectedChat is not null
         ? $"{_selectedChat.Id}:{_branchLeafId}"
         : _selectedProject is not null ? $"new:{_selectedProject.Id}" : string.Empty;
 
     private void RestoreComposerDraft() => _chat.Message = WorkspaceStateService.GetComposerDraft(GetComposerDraftKey());
 
-    // Identifies the (chat, branch) pair for the "last visible message" persisted from
-    // historyMarkers.js — null when there's no chat open (nothing to scroll).
     private string? GetScrollPositionKey() => _selectedChat is null ? null : $"{_selectedChat.Id}:{_branchLeafId}";
 
     private void ShowToast(string message, string kind)
@@ -1902,80 +1597,11 @@
     {
         var settings = await GlobalSettingsApi.GetAsync(CancellationToken.None);
         _connections.Clear();
-        _connections.AddRange(settings.Connections.Select(ConnectionEditor.From));
-        _globalMcpServers.Clear();
-        _globalMcpServers.AddRange(settings.McpServers.Select(GlobalMcpServerEditor.From));
-        _selectedConnectionId = _connections.FirstOrDefault()?.Id;
-        _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
+        _connections.AddRange(settings.Connections);
     }
 
-    private void AddConnection()
-    {
-        var connection = new ConnectionEditor();
-        _connections.Add(connection);
-        _selectedConnectionId = connection.Id;
-    }
-
-    private void RemoveConnection()
-    {
-        if (_selectedConnectionId is not { } id) return;
-        _connections.RemoveAll(item => item.Id == id);
-        _selectedConnectionId = _connections.FirstOrDefault()?.Id;
-    }
-
-    private void SelectConnection(Guid id) => _selectedConnectionId = id;
-
-    private ConnectionEditor? GetSelectedConnection() =>
-        _connections.SingleOrDefault(item => item.Id == _selectedConnectionId);
-
-    private ConnectionEditor? GetDefaultConnection() =>
-        _connections.FirstOrDefault(item => item.IsDefault && item.Enabled)
-        ?? _connections.FirstOrDefault(item => item.Enabled);
-
-    private void SetDefaultConnection(Guid id, ChangeEventArgs args)
-    {
-        if (args.Value is not true) return;
-        foreach (var connection in _connections) connection.IsDefault = connection.Id == id;
-    }
-
-    private void AddGlobalMcpServer()
-    {
-        var server = new GlobalMcpServerEditor();
-        _globalMcpServers.Add(server);
-        _selectedMcpServerId = server.Id;
-    }
-
-    private void RemoveGlobalMcpServer()
-    {
-        if (_selectedMcpServerId is not { } id) return;
-        _globalMcpServers.RemoveAll(item => item.Id == id);
-        _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
-    }
-
-    private GlobalMcpServerEditor? GetSelectedMcpServer() =>
-        _globalMcpServers.SingleOrDefault(item => item.Id == _selectedMcpServerId);
-
-    private async Task SaveGlobalSettingsAsync()
-    {
-        try
-        {
-            var settings = await GlobalSettingsApi.SaveAsync(
-                new SaveGlobalSettingsRequest(
-                    _connections.Select(item => item.ToSettings()).ToArray(),
-                    _globalMcpServers.Select(item => item.ToSettings()).ToArray()),
-                CancellationToken.None);
-            foreach (var connection in _connections.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))
-                await GlobalSettingsApi.SetConnectionCredentialAsync(connection.Id, connection.Secret, CancellationToken.None);
-            foreach (var server in _globalMcpServers.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))
-                await GlobalSettingsApi.SetMcpCredentialAsync(server.Id, server.Secret, CancellationToken.None);
-            await LoadGlobalSettingsAsync();
-            ShowToast("Global settings saved.", "success");
-        }
-        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
-        {
-            ShowToast("Global settings were not saved. Check required fields.", "error");
-        }
-    }
+    private ConnectionSettings? GetDefaultConnection() =>
+        _connections.FirstOrDefault(item => item is { IsDefault: true, Enabled: true });
 
     private void SelectGlobalConnection(Guid id)
     {
@@ -2003,34 +1629,6 @@
         await SaveProjectAsync();
     }
 
-    private void AddMcpServer() => _security.McpServers.Add(new McpServerEditor());
-
-    private void AddToolPolicy() => _security.ToolPolicies.Add(new ToolPolicyEditor
-    {
-        ServerId = _security.McpServers[0].Id
-    });
-
-    private async Task SaveSecurityAsync()
-    {
-        if (_selectedProject is null)
-        {
-            return;
-        }
-
-        var result = await ProjectApi.UpdateSecurityAsync(_selectedProject.Id, _security.ToRequest(), CancellationToken.None);
-        if (result.Status == ProjectUpdateStatus.Updated && result.Project is not null)
-        {
-            await LoadProjectsAsync(result.Project.Id);
-            ShowToast("Security settings saved.", "success");
-            CloseProjectSettings();
-            return;
-        }
-
-        _error = result.Status == ProjectUpdateStatus.Conflict
-            ? "Security settings were changed elsewhere. Reload the project before saving."
-            : "This project no longer exists.";
-    }
-
     private sealed class ProjectEditor
     {
         public ProjectEditor()
@@ -2055,13 +1653,13 @@
 
     private sealed class ProjectSecurityEditor
     {
-        public long Revision { get; set; }
+        private long Revision { get; init; }
 
         public List<DirectoryGrantEditor> DirectoryGrants { get; } = [];
 
-        public List<McpServerEditor> McpServers { get; } = [];
+        private List<McpServerEditor> McpServers { get; } = [];
 
-        public List<ToolPolicyEditor> ToolPolicies { get; } = [];
+        private List<ToolPolicyEditor> ToolPolicies { get; } = [];
 
         public static ProjectSecurityEditor From(ProjectDetails project)
         {
@@ -2101,7 +1699,9 @@
                 item.DisplayName,
                 item.CanonicalRoot,
                 item.Recursive,
+                // ReSharper disable once UseCollectionExpression
                 item.ToolNames.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))).ToArray(),
+            // ReSharper disable once UseCollectionExpression
             McpServers.Select(item => new AI.Client.Contracts.Projects.McpServerSettings(item.Id, item.DisplayName, item.Transport, item.Enabled)).ToArray(),
             ToolPolicies.Select(item => new ToolPolicySettings(
                 item.ServerId,
@@ -2109,12 +1709,14 @@
                 item.SchemaHash,
                 item.Decision,
                 item.MaxCallsPerRun,
+                // ReSharper disable once UseCollectionExpression
                 item.TimeoutSeconds)).ToArray());
     }
 
+    [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]
     private sealed class DirectoryGrantEditor
     {
-        public Guid Id { get; set; } = Guid.CreateVersion7();
+        public Guid Id { get; init; } = Guid.CreateVersion7();
 
         public string DisplayName { get; set; } = "Directory";
 
@@ -2131,6 +1733,7 @@
         }
     }
 
+    [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]
     private sealed class McpServerEditor
     {
         public Guid Id { get; set; } = Guid.CreateVersion7();
@@ -2142,6 +1745,7 @@
         public bool Enabled { get; set; } = true;
     }
 
+    [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]
     private sealed class ToolPolicyEditor
     {
         public Guid ServerId { get; set; }
@@ -2157,38 +1761,13 @@
         public long TimeoutSeconds { get; set; } = 120;
     }
 
-    private sealed class EndpointProfileEditor
-    {
-        public Guid Id { get; set; } = Guid.CreateVersion7();
-
-        public string Name { get; set; } = "OpenAI-compatible endpoint";
-
-        public string BaseUrl { get; set; } = string.Empty;
-
-        public string Model { get; set; } = string.Empty;
-
-        public string? ApiKey { get; set; }
-
-        public bool HasCredential { get; set; }
-
-        public static EndpointProfileEditor From(EndpointProfileSettings profile) => new()
-        {
-            Id = profile.Id,
-            Name = profile.Name,
-            BaseUrl = profile.BaseUrl,
-            Model = profile.Model,
-            HasCredential = profile.HasCredential
-        };
-
-        public EndpointProfileSettings ToSettings() => new(Id, Name, BaseUrl, Model, HasCredential);
-    }
-
     private sealed class ChatEditor
     {
         public string BaseUrl { get; set; } = string.Empty;
 
         public string Model { get; set; } = string.Empty;
 
+        // ReSharper disable once UnusedAutoPropertyAccessor.Local
         public string? ApiKey { get; set; }
 
         public Guid? CredentialProfileId { get; set; }
@@ -2196,77 +1775,16 @@
         public string Message { get; set; } = string.Empty;
     }
 
-    private sealed class ConnectionEditor
-    {
-        public Guid Id { get; set; } = Guid.CreateVersion7();
-        public string Name { get; set; } = "OpenAI connection";
-        public string BaseUrl { get; set; } = string.Empty;
-        public string Model { get; set; } = string.Empty;
-        public bool Enabled { get; set; } = true;
-        public bool IsDefault { get; set; }
-        public bool HasCredential { get; set; }
-        public string? Secret { get; set; }
-
-        public static ConnectionEditor From(ConnectionSettings item) => new()
-        {
-            Id = item.Id, Name = item.Name, BaseUrl = item.BaseUrl, Model = item.Model,
-            Enabled = item.Enabled, IsDefault = item.IsDefault, HasCredential = item.HasCredential
-        };
-
-        public ConnectionSettings ToSettings() =>
-            new(Id, Name, BaseUrl, Model, Enabled, IsDefault, HasCredential);
-    }
-
-    private sealed class GlobalMcpServerEditor
-    {
-        public Guid Id { get; set; } = Guid.CreateVersion7();
-        public string Name { get; set; } = "MCP server";
-        public string Transport { get; set; } = "StreamableHttp";
-        public bool Enabled { get; set; } = true;
-        public string Policy { get; set; } = "Ask";
-        public string? Url { get; set; }
-        public string? Command { get; set; }
-        public string ArgumentsText { get; set; } = string.Empty;
-        public string? WorkingDirectory { get; set; }
-        public string EnvironmentText { get; set; } = string.Empty;
-        public bool HasCredential { get; set; }
-        public string? Secret { get; set; }
-
-        public static GlobalMcpServerEditor From(AI.Client.Contracts.Settings.McpServerSettings item) => new()
-        {
-            Id = item.Id, Name = item.Name, Transport = item.Transport, Enabled = item.Enabled,
-            Policy = item.Policy, Url = item.Url, Command = item.Command,
-            ArgumentsText = string.Join(Environment.NewLine, item.Arguments),
-            WorkingDirectory = item.WorkingDirectory,
-            EnvironmentText = string.Join(Environment.NewLine, item.EnvironmentVariables.Select(variable =>
-                variable.IsSecret ? $"secret:{variable.Name}=" : $"{variable.Name}={variable.Value}")),
-            HasCredential = item.HasCredential
-        };
-
-        public AI.Client.Contracts.Settings.McpServerSettings ToSettings() => new(
-            Id, Name, Transport, Enabled, Policy, Url, Command,
-            ArgumentsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-            WorkingDirectory,
-            EnvironmentText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(line => line.Split('=', 2))
-                .Where(parts => parts.Length == 2)
-                .Select(parts => new McpEnvironmentVariableSettings(
-                    parts[0].StartsWith("secret:", StringComparison.OrdinalIgnoreCase) ? parts[0][7..] : parts[0],
-                    parts[1],
-                    parts[0].StartsWith("secret:", StringComparison.OrdinalIgnoreCase),
-                    false)).ToArray(),
-            HasCredential);
-    }
-
-    private sealed record BranchTreeItem(Guid RootId, string Title, int Depth, Guid LeafId);
-    private readonly record struct RunKey(Guid ChatId, Guid BranchId);
-
     private sealed record ToastMessage(string Message, string Kind);
 
     public async ValueTask DisposeAsync()
     {
-        _toastCancellation?.Cancel();
-        _toastCancellation?.Dispose();
+        if (_toastCancellation is not null)
+        {
+            await _toastCancellation.CancelAsync();
+            _toastCancellation.Dispose();
+        }
+
         if (_composerHandle is not null)
         {
             await _composerHandle.InvokeVoidAsync("dispose");

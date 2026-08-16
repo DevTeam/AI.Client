@@ -1,7 +1,7 @@
+namespace AI.Client.Web.Markdown;
+
 using Ganss.Xss;
 using Markdig;
-
-namespace AI.Client.Web.Markdown;
 
 public sealed class SafeMarkdownRenderer : IMarkdownRenderer
 {
@@ -13,5 +13,5 @@ public sealed class SafeMarkdownRenderer : IMarkdownRenderer
     private readonly HtmlSanitizer _sanitizer = new();
 
     public string Render(string markdown) =>
-        _sanitizer.Sanitize(Markdig.Markdown.ToHtml(markdown ?? string.Empty, _pipeline));
+        _sanitizer.Sanitize(Markdown.ToHtml(markdown, _pipeline));
 }

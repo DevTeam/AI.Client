@@ -1,8 +1,8 @@
-using AI.Client.Domain.Projects;
-
 namespace AI.Client.Infrastructure.Storage;
 
-public sealed class ProjectStoragePaths(string rootDirectory) : IProjectStoragePaths
+using AI.Client.Domain.Projects;
+
+public sealed class ProjectStoragePaths(string rootDirectory)
 {
     public string ProjectsDirectory => Path.Combine(rootDirectory, "projects");
 

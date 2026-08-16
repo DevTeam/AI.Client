@@ -1,3 +1,5 @@
+namespace AI.Client.Application.Tests.Chats;
+
 using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Contracts.Chats;
@@ -7,12 +9,10 @@ using Moq;
 using Shouldly;
 using Xunit;
 
-namespace AI.Client.Application.Tests.Chats;
-
 public class ChatServiceTests
 {
     private readonly Mock<IChatRepository> _repository = new(MockBehavior.Strict);
-    private readonly Mock<IProjectIdGenerator> _idGenerator = new(MockBehavior.Strict);
+    private readonly Mock<IIdGenerator> _idGenerator = new(MockBehavior.Strict);
     private readonly Mock<IClock> _clock = new(MockBehavior.Strict);
     private readonly ProjectId _projectId = new(Guid.Parse("019f0000-0000-7000-8000-000000000001"));
     private readonly ChatId _chatId = new(Guid.Parse("019f0000-0000-7000-8000-000000000002"));
@@ -77,5 +77,5 @@ public class ChatServiceTests
         _idGenerator.Verify(i => i.Create(), Times.Never);
     }
 
-    private ChatService CreateInstance() => new(_repository.Object, _idGenerator.Object, _clock.Object);
+    private ChatService CreateInstance() => new(_repository.Object, _idGenerator.Object, _clock.Object, new ChatSynchronization());
 }

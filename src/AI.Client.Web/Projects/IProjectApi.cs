@@ -1,6 +1,6 @@
-using AI.Client.Contracts.Projects;
-
 namespace AI.Client.Web.Projects;
+
+using AI.Client.Contracts.Projects;
 
 public interface IProjectApi
 {
@@ -12,21 +12,12 @@ public interface IProjectApi
 
     Task<ProjectUpdateResult> UpdateAsync(Guid id, UpdateProjectRequest request, CancellationToken cancellationToken);
 
-    Task<ProjectSecurityUpdateResult> UpdateSecurityAsync(
+    Task<ProjectUpdateResult> UpdateSecurityAsync(
         Guid id,
         UpdateProjectSecurityRequest request,
         CancellationToken cancellationToken);
 
-    Task<ProjectUpdateResult> UpdateEndpointProfilesAsync(
-        Guid id,
-        UpdateEndpointProfilesRequest request,
-        CancellationToken cancellationToken);
 
-    Task<bool> SetEndpointCredentialAsync(
-        Guid projectId,
-        Guid profileId,
-        UpdateEndpointCredentialRequest request,
-        CancellationToken cancellationToken);
 
     Task<ProjectDeleteResult> DeleteAsync(Guid id, long revision, CancellationToken cancellationToken);
 }

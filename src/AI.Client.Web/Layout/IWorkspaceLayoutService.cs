@@ -1,7 +1,7 @@
+namespace AI.Client.Web.Layout;
+
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
-
-namespace AI.Client.Web.Layout;
 
 public interface IWorkspaceLayoutService : IAsyncDisposable
 {

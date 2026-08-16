@@ -1,6 +1,6 @@
-using AI.Client.Domain.Common;
-
 namespace AI.Client.Domain.Projects;
+
+using Common;
 
 public readonly record struct ProjectId
 {

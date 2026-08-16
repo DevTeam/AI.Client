@@ -1,6 +1,6 @@
-using AI.Client.Application.Projects;
-
 namespace AI.Client.Infrastructure.Projects;
+
+using AI.Client.Application.Projects;
 
 public sealed class SystemClock : IClock
 {

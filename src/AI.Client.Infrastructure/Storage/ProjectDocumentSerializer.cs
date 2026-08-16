@@ -1,15 +1,16 @@
 using AI.Client.Application.Projects;
 using AI.Client.Domain.Projects;
 using System.Text.Json;
+// ReSharper disable UseCollectionExpression
 
 namespace AI.Client.Infrastructure.Storage;
 
-public sealed class ProjectDocumentSerializer : IProjectDocumentSerializer
+public static class ProjectDocumentSerializer
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
-    public string Serialize(Project project, long revision)
+    public static string Serialize(Project project, long revision)
     {
         ArgumentNullException.ThrowIfNull(project);
         ArgumentOutOfRangeException.ThrowIfNegative(revision);
@@ -40,17 +41,11 @@ public sealed class ProjectDocumentSerializer : IProjectDocumentSerializer
                 policy.Decision,
                 policy.MaxCallsPerRun,
                 policy.Timeout.Ticks)).ToArray(),
-            project.EndpointProfiles.Select(profile => new EndpointProfileDocument(
-                profile.Id.Value,
-                profile.Name,
-                profile.BaseUrl,
-                profile.Model)).ToArray(),
-            project.DefaultEndpointProfileId?.Value,
             project.ConnectionId?.Value),
             Options);
     }
 
-    public StoredProject Deserialize(string json)
+    public static StoredProject Deserialize(string json)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
         var document = JsonSerializer.Deserialize<ProjectDocument>(json, Options)
@@ -109,26 +104,15 @@ public sealed class ProjectDocumentSerializer : IProjectDocumentSerializer
                 document.UpdatedAt);
         }
 
-        if (document.EndpointProfiles is { Length: > 0 })
-        {
-            project.ReplaceEndpointProfiles(document.EndpointProfiles.Select(profile => new EndpointProfile(
-                new EndpointProfileId(profile.Id),
-                profile.Name,
-                profile.BaseUrl,
-                profile.Model)), document.UpdatedAt);
-            project.SetDefaultEndpointProfile(
-                document.DefaultEndpointProfileId is { } defaultId ? new EndpointProfileId(defaultId) : null,
-                document.UpdatedAt);
-        }
-
         project.SetConnection(
-            document.ConnectionId is { } connectionId ? new EndpointProfileId(connectionId) : null,
+            document.ConnectionId is { } connectionId ? new ConnectionId(connectionId) : null,
             document.UpdatedAt);
 
         return new StoredProject(project, document.Revision);
     }
 
     private sealed record ProjectDocument(
+        // ReSharper disable once MemberHidesStaticFromOuterClass
         int SchemaVersion,
         long Revision,
         Guid Id,
@@ -139,8 +123,6 @@ public sealed class ProjectDocumentSerializer : IProjectDocumentSerializer
         DirectoryGrantDocument[] DirectoryGrants,
         McpServerDocument[] McpServers,
         ToolPolicyDocument[] ToolPolicies,
-        EndpointProfileDocument[]? EndpointProfiles = null,
-        Guid? DefaultEndpointProfileId = null,
         Guid? ConnectionId = null);
 
     private sealed record DirectoryGrantDocument(
@@ -160,5 +142,4 @@ public sealed class ProjectDocumentSerializer : IProjectDocumentSerializer
         int MaxCallsPerRun,
         long TimeoutTicks);
 
-    private sealed record EndpointProfileDocument(Guid Id, string Name, string BaseUrl, string Model);
 }

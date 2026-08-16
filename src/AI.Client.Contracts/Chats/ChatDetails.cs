@@ -7,6 +7,6 @@ public sealed record ChatDetails(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     long Revision,
-    Guid? EndpointProfileId,
+    Guid? ConnectionId,
     IReadOnlyList<ChatMessageView> Messages,
-    IReadOnlyDictionary<Guid, string>? BranchTitles = null);
+    IReadOnlyList<ChatBranchView>? Branches = null);

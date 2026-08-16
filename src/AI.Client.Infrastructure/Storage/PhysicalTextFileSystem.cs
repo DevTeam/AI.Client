@@ -2,6 +2,12 @@ namespace AI.Client.Infrastructure.Storage;
 
 public sealed class PhysicalTextFileSystem : ITextFileSystem
 {
+    public Task<IReadOnlyList<string>> ListFilesRecursivelyAsync(string directoryPath, string searchPattern, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<IReadOnlyList<string>>(Directory.Exists(directoryPath)
+            ? Directory.GetFiles(directoryPath, searchPattern, SearchOption.AllDirectories) : []);
+    }
     public Task<bool> ExistsAsync(string path, CancellationToken cancellationToken) =>
         Task.FromResult(File.Exists(path));
 

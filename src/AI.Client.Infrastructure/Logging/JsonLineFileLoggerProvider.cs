@@ -1,11 +1,11 @@
+namespace AI.Client.Infrastructure.Logging;
+
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
-namespace AI.Client.Infrastructure.Logging;
-
 public sealed class JsonLineFileLoggerProvider : ILoggerProvider
 {
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private readonly string _logsDirectory;
     private readonly int _retentionDays;
 
@@ -85,6 +85,7 @@ public sealed class JsonLineFileLoggerProvider : ILoggerProvider
             Func<TState, Exception?, string> formatter)
         {
             if (!IsEnabled(logLevel)) return;
+            // ReSharper disable once HeapView.PossibleBoxingAllocation
             var properties = state is IEnumerable<KeyValuePair<string, object?>> values
                 ? values.Where(item => item.Key != "{OriginalFormat}").ToDictionary(item => item.Key, item => item.Value)
                 : new Dictionary<string, object?>();

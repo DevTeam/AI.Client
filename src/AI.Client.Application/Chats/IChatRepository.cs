@@ -1,8 +1,8 @@
+namespace AI.Client.Application.Chats;
+
 using AI.Client.Contracts.Chats;
 using AI.Client.Domain.Chats;
 using AI.Client.Domain.Projects;
-
-namespace AI.Client.Application.Chats;
 
 public interface IChatRepository
 {

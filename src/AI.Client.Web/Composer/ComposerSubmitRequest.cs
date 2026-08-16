@@ -1,7 +1,8 @@
+// ReSharper disable NotAccessedPositionalProperty.Global
+namespace AI.Client.Web.Composer;
+
 using AI.Client.Contracts.Chats;
 using AI.Client.Contracts.Runs;
-
-namespace AI.Client.Web.Composer;
 
 /// <summary>
 /// Snapshot of the composer + chat state at the moment the user pressed Enter. Passed to the
@@ -14,15 +15,10 @@ public sealed record ComposerSubmitRequest(
     Guid? BranchLeafId,
     Guid? ForkSourceId,
     Guid? ReplaceSourceId,
-    /// <summary>
-    /// Whether the branch <see cref="ReplaceSourceId"/> is being replaced on is currently
-    /// Generating. Computed by the caller (it depends on live run-stream state the service
-    /// doesn't hold) and re-checked here so a race between opening the edit box and pressing
-    /// Enter can't delete a branch out from under an in-flight response.
-    /// </summary>
     bool ReplaceSourceIsGenerating,
     Guid? CredentialProfileId,
     string? EndpointBaseUrl,
     string? EndpointModel,
     string Message,
-    ChatRunSnapshot? SelectedRun);
+    ChatRunSnapshot? SelectedRun,
+    Guid? SelectedBranchId = null);

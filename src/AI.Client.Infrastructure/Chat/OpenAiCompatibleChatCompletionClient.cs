@@ -1,10 +1,10 @@
+namespace AI.Client.Infrastructure.Chat;
+
 using AI.Client.Application.Chat;
 using AI.Client.Contracts.Chat;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-
-namespace AI.Client.Infrastructure.Chat;
 
 public sealed class OpenAiCompatibleChatCompletionClient(
     HttpClient httpClient,
@@ -32,19 +32,17 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         }
 
         var endpoint = new Uri(baseUri.ToString().TrimEnd('/') + "/chat/completions");
-        using var message = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        using var message = new HttpRequestMessage(HttpMethod.Post, endpoint);
+        message.Content = JsonContent.Create(new
         {
-            Content = JsonContent.Create(new
-            {
-                model = request.Model.Trim(),
-                messages = (request.ContextMessages is { Count: > 0 }
+            model = request.Model.Trim(),
+            messages = (request.ContextMessages is { Count: > 0 }
                     ? request.ContextMessages
                     : [new ChatCompletionMessage("user", request.Message.Trim())])
-                    .Select(item => new { role = item.Role, content = item.Content })
-                    .ToArray(),
-                stream = false
-            })
-        };
+                .Select(item => new { role = item.Role, content = item.Content })
+                .ToArray(),
+            stream = false
+        });
         if (!string.IsNullOrWhiteSpace(request.ApiKey))
         {
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", request.ApiKey.Trim());

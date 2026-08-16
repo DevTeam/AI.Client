@@ -1,5 +1,4 @@
 using AI.Client.Web;
-using AI.Client.Web.Projects;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 

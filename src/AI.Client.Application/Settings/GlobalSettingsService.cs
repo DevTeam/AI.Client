@@ -1,7 +1,8 @@
+// ReSharper disable UseCollectionExpression
+namespace AI.Client.Application.Settings;
+
 using AI.Client.Contracts.Settings;
 using System.Text.Json;
-
-namespace AI.Client.Application.Settings;
 
 public sealed class GlobalSettingsService(
     IGlobalSettingsRepository repository,
@@ -80,14 +81,14 @@ public sealed class GlobalSettingsService(
 
     public async Task<bool> SetConnectionCredentialAsync(Guid id, string? value, CancellationToken cancellationToken)
     {
-        if (!(await repository.LoadAsync(cancellationToken)).Connections.Any(item => item.Id == id)) return false;
+        if ((await repository.LoadAsync(cancellationToken)).Connections.All(item => item.Id != id)) return false;
         await secretStore.SetAsync("connection", id, value, cancellationToken);
         return true;
     }
 
     public async Task<bool> SetMcpCredentialAsync(Guid id, string? value, CancellationToken cancellationToken)
     {
-        if (!(await repository.LoadAsync(cancellationToken)).McpServers.Any(item => item.Id == id)) return false;
+        if ((await repository.LoadAsync(cancellationToken)).McpServers.All(item => item.Id != id)) return false;
         await secretStore.SetAsync("mcp", id, value, cancellationToken);
         return true;
     }

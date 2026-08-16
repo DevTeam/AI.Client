@@ -1,11 +1,12 @@
-using AI.Client.Application.Projects;
+// ReSharper disable UseCollectionExpression
+namespace AI.Client.Application.Chats;
+
+using Projects;
 using AI.Client.Contracts.Chats;
 using AI.Client.Domain.Chats;
 using AI.Client.Domain.Projects;
 
-namespace AI.Client.Application.Chats;
-
-public sealed class ChatService(IChatRepository repository, IProjectIdGenerator idGenerator, IClock clock) : IChatService
+public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, ChatSynchronization synchronization) : IChatService
 {
     public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken) =>
         (await repository.ListAsync(new ProjectId(projectId), cancellationToken))
@@ -29,16 +30,22 @@ public sealed class ChatService(IChatRepository repository, IProjectIdGenerator 
         ArgumentNullException.ThrowIfNull(request);
         var now = clock.UtcNow;
         var chat = new ChatThread(
-            new ChatId(idGenerator.Create().Value),
+            new ChatId(idGenerator.Create()),
             new ProjectId(projectId),
             request.Title,
             now,
-            request.EndpointProfileId is { } endpointId ? new EndpointProfileId(endpointId) : null);
+            request.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null);
         var result = await repository.SaveAsync(chat, 0, cancellationToken);
         return ToDetails(chat, result.Revision);
     }
 
-    public async Task<ChatDetails?> AppendMessageAsync(
+    public async Task<ChatDetails?> AppendMessageAsync(Guid projectId, Guid chatId, AppendChatMessageRequest request, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        return await AppendMessageCoreAsync(projectId, chatId, request, cancellationToken);
+    }
+
+    internal async Task<ChatDetails?> AppendMessageCoreAsync(
         Guid projectId,
         Guid chatId,
         AppendChatMessageRequest request,
@@ -57,13 +64,15 @@ public sealed class ChatService(IChatRepository repository, IProjectIdGenerator 
         }
 
         var now = clock.UtcNow;
+        if (request.ReplaceSourceId is { } replaceId)
+            stored.Chat.DeleteBranch(new ChatMessageId(replaceId), now);
         stored.Chat.AddMessage(new ChatMessage(
-            new ChatMessageId(request.Id ?? idGenerator.Create().Value),
+            new ChatMessageId(request.Id ?? idGenerator.Create()),
             request.ParentId is { } parentId ? new ChatMessageId(parentId) : null,
             role,
             request.Content,
             now,
-            request.IsIncomplete), now);
+            request.IsIncomplete), now, request.BranchId);
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
@@ -74,6 +83,7 @@ public sealed class ChatService(IChatRepository repository, IProjectIdGenerator 
         UpdateChatEndpointRequest request,
         CancellationToken cancellationToken)
     {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         ArgumentNullException.ThrowIfNull(request);
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
         if (stored is null)
@@ -81,8 +91,8 @@ public sealed class ChatService(IChatRepository repository, IProjectIdGenerator 
             return null;
         }
 
-        stored.Chat.SetEndpointProfile(
-            request.EndpointProfileId is { } endpointId ? new EndpointProfileId(endpointId) : null,
+        stored.Chat.SetConnection(
+            request.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null,
             clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
@@ -94,6 +104,7 @@ public sealed class ChatService(IChatRepository repository, IProjectIdGenerator 
         RenameChatRequest request,
         CancellationToken cancellationToken)
     {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
         if (stored is null) return null;
         stored.Chat.Rename(request.Title, clock.UtcNow);
@@ -101,15 +112,19 @@ public sealed class ChatService(IChatRepository repository, IProjectIdGenerator 
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
 
-    public Task<ChatDeleteResult> DeleteAsync(
+    public async Task<ChatDeleteResult> DeleteAsync(
         Guid projectId,
         Guid chatId,
         long revision,
-        CancellationToken cancellationToken) =>
-        repository.DeleteAsync(new ProjectId(projectId), new ChatId(chatId), revision, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        return await repository.DeleteAsync(new ProjectId(projectId), new ChatId(chatId), revision, cancellationToken);
+    }
 
     public async Task<ChatDetails?> RenameBranchAsync(Guid projectId, Guid chatId, Guid branchId, RenameChatBranchRequest request, CancellationToken cancellationToken)
     {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
         if (stored is null) return null;
         stored.Chat.RenameBranch(new ChatMessageId(branchId), request.Title, clock.UtcNow);
@@ -119,11 +134,14 @@ public sealed class ChatService(IChatRepository repository, IProjectIdGenerator 
 
     public async Task<ChatBranchDeleteResult> DeleteBranchAsync(Guid projectId, Guid chatId, Guid branchId, long revision, CancellationToken cancellationToken)
     {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
-        if (stored is null) return new(false, 0, null);
-        var parentId = stored.Chat.DeleteBranch(new ChatMessageId(branchId), clock.UtcNow);
+        if (stored is null) return new ChatBranchDeleteResult(false, 0, null);
+        var root = stored.Chat.Branches.SingleOrDefault(branch => branch.Id == branchId)?.RootMessageId
+            ?? throw new ArgumentException("Only an alternative branch can be deleted.");
+        var parentId = stored.Chat.DeleteBranch(root, clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, revision, cancellationToken);
-        return new(result.IsSaved, result.Revision, parentId?.Value);
+        return new ChatBranchDeleteResult(result.IsSaved, result.Revision, parentId?.Value);
     }
 
     private static ChatDetails ToDetails(ChatThread chat, long revision) => new(
@@ -133,7 +151,7 @@ public sealed class ChatService(IChatRepository repository, IProjectIdGenerator 
         chat.CreatedAt,
         chat.UpdatedAt,
         revision,
-        chat.EndpointProfileId?.Value,
+        chat.ConnectionId?.Value,
         chat.Messages
             .OrderBy(item => item.CreatedAt)
             .Select(item => new ChatMessageView(
@@ -144,5 +162,5 @@ public sealed class ChatService(IChatRepository repository, IProjectIdGenerator 
                 item.CreatedAt,
                 item.IsIncomplete))
             .ToArray(),
-        chat.BranchTitles.ToDictionary(item => item.Key.Value, item => item.Value));
+        chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title, branch.ParentBranchId, branch.RootMessageId?.Value)).ToArray());
 }

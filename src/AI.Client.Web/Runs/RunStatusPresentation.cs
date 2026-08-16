@@ -1,6 +1,6 @@
-using AI.Client.Contracts.Runs;
-
 namespace AI.Client.Web.Runs;
+
+using AI.Client.Contracts.Runs;
 
 /// <summary>
 /// Single source of truth for "what color/class does this run's status get" — shared between

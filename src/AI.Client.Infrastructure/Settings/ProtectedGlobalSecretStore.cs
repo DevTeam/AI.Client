@@ -1,9 +1,9 @@
-using AI.Client.Application.Settings;
-using AI.Client.Infrastructure.Credentials;
-using AI.Client.Infrastructure.Storage;
-using System.Text;
-
 namespace AI.Client.Infrastructure.Settings;
+
+using AI.Client.Application.Settings;
+using Credentials;
+using Storage;
+using System.Text;
 
 public sealed class ProtectedGlobalSecretStore(
     ITextFileSystem fileSystem,

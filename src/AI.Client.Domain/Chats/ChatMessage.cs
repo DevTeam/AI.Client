@@ -1,6 +1,6 @@
-using AI.Client.Domain.Common;
-
 namespace AI.Client.Domain.Chats;
+
+using Common;
 
 public sealed class ChatMessage(
     ChatMessageId id,

@@ -1,6 +1,6 @@
-namespace AI.Client.Contracts.Settings;
+// ReSharper disable NotAccessedPositionalProperty.Global
 
-public sealed record McpEnvironmentVariableSettings(string Name, string? Value, bool IsSecret, bool HasSecret);
+namespace AI.Client.Contracts.Settings;
 
 public sealed record McpServerSettings(
     Guid Id,

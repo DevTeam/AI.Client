@@ -1,9 +1,9 @@
+namespace AI.Client.Infrastructure.Chat;
+
 using AI.Client.Contracts.Chat;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-
-namespace AI.Client.Infrastructure.Chat;
 
 public sealed class ChatCompletionSseParser : IChatCompletionSseParser
 {
@@ -82,12 +82,14 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
             }
 
             var content = contentElement.GetString();
-            if (!string.IsNullOrEmpty(content))
+            if (string.IsNullOrEmpty(content))
             {
-                hasContent = true;
-                contentIdleTimer.Restart();
-                yield return new ChatCompletionChunk(content, model);
+                continue;
             }
+
+            hasContent = true;
+            contentIdleTimer.Restart();
+            yield return new ChatCompletionChunk(content, model);
         }
     }
 }

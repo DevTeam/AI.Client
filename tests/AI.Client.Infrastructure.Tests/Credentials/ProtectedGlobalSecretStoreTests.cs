@@ -1,15 +1,17 @@
+// ReSharper disable UseCollectionExpression
+namespace AI.Client.Infrastructure.Tests.Credentials;
+
 using AI.Client.Domain.Projects;
 using AI.Client.Infrastructure.Credentials;
 using AI.Client.Infrastructure.Storage;
+using Settings;
 using Shouldly;
 using Xunit;
 
-namespace AI.Client.Infrastructure.Tests.Credentials;
-
-public class ProtectedEndpointCredentialStoreTests
+public class ProtectedGlobalSecretStoreTests
 {
     private readonly InMemoryTextFileSystem _fileSystem = new();
-    private readonly EndpointProfileId _profileId = new(Guid.Parse("019f0000-0000-7000-8000-000000000001"));
+    private readonly ConnectionId _profileId = new(Guid.Parse("019f0000-0000-7000-8000-000000000001"));
 
     [Fact]
     public async Task ShouldProtectKeyBeforeWritingAndRestoreItOnRead()
@@ -18,13 +20,13 @@ public class ProtectedEndpointCredentialStoreTests
         var store = CreateInstance();
 
         // When
-        await store.SetAsync(_profileId, " secret ", CancellationToken.None);
-        var key = await store.GetAsync(_profileId, CancellationToken.None);
+        await store.SetAsync("connection", _profileId.Value, " secret ", CancellationToken.None);
+        var key = await store.GetAsync("connection", _profileId.Value, CancellationToken.None);
 
         // Then
         key.ShouldBe("secret");
         _fileSystem.Get(GetPath()).ShouldNotContain("secret");
-        (await store.ExistsAsync(_profileId, CancellationToken.None)).ShouldBeTrue();
+        (await store.ExistsAsync("connection", _profileId.Value, CancellationToken.None)).ShouldBeTrue();
     }
 
     [Fact]
@@ -32,21 +34,21 @@ public class ProtectedEndpointCredentialStoreTests
     {
         // Given
         var store = CreateInstance();
-        await store.SetAsync(_profileId, "secret", CancellationToken.None);
+        await store.SetAsync("connection", _profileId.Value, "secret", CancellationToken.None);
 
         // When
-        await store.SetAsync(_profileId, " ", CancellationToken.None);
+        await store.SetAsync("connection", _profileId.Value, " ", CancellationToken.None);
 
         // Then
-        (await store.ExistsAsync(_profileId, CancellationToken.None)).ShouldBeFalse();
+        (await store.ExistsAsync("connection", _profileId.Value, CancellationToken.None)).ShouldBeFalse();
     }
 
-    private ProtectedEndpointCredentialStore CreateInstance() => new(
+    private ProtectedGlobalSecretStore CreateInstance() => new(
         _fileSystem,
-        new EndpointCredentialPaths("storage"),
+        new GlobalSettingsPaths("storage"),
         new PrefixDataProtector());
 
-    private string GetPath() => new EndpointCredentialPaths("storage").GetPath(_profileId);
+    private string GetPath() => new GlobalSettingsPaths("storage").GetSecretPath("connection", _profileId.Value);
 
     private sealed class PrefixDataProtector : IUserDataProtector
     {
@@ -67,6 +69,10 @@ public class ProtectedEndpointCredentialStoreTests
             string searchPattern,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<string>>([]);
+
+        public Task<IReadOnlyList<string>> ListFilesRecursivelyAsync(string directoryPath, string searchPattern, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<string>>(_files.Keys.Where(path => path.StartsWith(directoryPath, StringComparison.Ordinal)
+                && System.IO.Enumeration.FileSystemName.MatchesSimpleExpression(searchPattern, Path.GetFileName(path))).ToArray());
 
         public Task<string?> ReadTextAsync(string path, CancellationToken cancellationToken) =>
             Task.FromResult(_files.GetValueOrDefault(path));

@@ -1,10 +1,10 @@
-using AI.Client.Domain.Common;
-
 namespace AI.Client.Domain.Projects;
 
-public readonly record struct EndpointProfileId
+using Common;
+
+public readonly record struct ConnectionId
 {
-    public EndpointProfileId(Guid value)
+    public ConnectionId(Guid value)
     {
         if (value == Guid.Empty)
         {

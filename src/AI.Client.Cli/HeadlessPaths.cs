@@ -2,7 +2,7 @@ namespace AI.Client.Cli;
 
 internal sealed class HeadlessPaths
 {
-    public string SessionsDirectory { get; } = Path.Combine(
+    private string SessionsDirectory { get; } = Environment.GetEnvironmentVariable("AI_CLIENT_SESSION_DIRECTORY") ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AI.Client", "test-sessions");
 

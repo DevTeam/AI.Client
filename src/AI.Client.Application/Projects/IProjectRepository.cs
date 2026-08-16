@@ -1,11 +1,11 @@
+namespace AI.Client.Application.Projects;
+
 using AI.Client.Contracts.Projects;
 using AI.Client.Domain.Projects;
 
-namespace AI.Client.Application.Projects;
-
 public interface IProjectRepository
 {
-    Task<Project?> GetAsync(ProjectId id, CancellationToken cancellationToken);
+    Task<StoredProject?> GetAsync(ProjectId id, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<StoredProject>> ListAsync(CancellationToken cancellationToken);
 

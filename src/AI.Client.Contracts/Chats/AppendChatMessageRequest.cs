@@ -6,4 +6,6 @@ public sealed record AppendChatMessageRequest(
     string Role,
     string Content,
     long Revision,
-    bool IsIncomplete = false);
+    bool IsIncomplete = false,
+    Guid? BranchId = null,
+    Guid? ReplaceSourceId = null);

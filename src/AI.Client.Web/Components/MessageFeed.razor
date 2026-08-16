@@ -4,7 +4,7 @@
    ShouldRender below). Without this boundary, every keystroke in the composer (which lives in
    Home and calls StateHasChanged on the whole page) also rebuilt and diffed this list. *@
 @inject IMarkdownRenderer MarkdownRenderer
-@inject IJSRuntime JSRuntime
+@inject IJSRuntime JsRuntime
 @implements IAsyncDisposable
 
 <div class="messages-area">
@@ -159,8 +159,8 @@
         {
             try
             {
-                _historyMarkersModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/historyMarkers.js");
-                _scrollModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
+                _historyMarkersModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/historyMarkers.js");
+                _scrollModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
             }
             catch (JSException)
             {
@@ -301,6 +301,7 @@
         _branchCacheForkPoints = childrenByParent
             .Where(pair => pair.Value.Count > 1)
             .Select(pair => pair.Key)
+            // ReSharper disable once UseCollectionExpression
             .ToHashSet();
     }
 
@@ -379,9 +380,20 @@
         }
         else if (isLast && SelectedRun is { } run)
         {
-            if (run.Status == ChatRunStatus.Failed) classes.Add("history-marker-failed");
-            else if (run.Status is ChatRunStatus.Interrupted or ChatRunStatus.Paused) classes.Add("history-marker-incomplete");
-            else if (run.HasUnreadResponse) classes.Add("history-marker-unread");
+            switch (run.Status)
+            {
+                case ChatRunStatus.Failed:
+                    classes.Add("history-marker-failed");
+                    break;
+                case ChatRunStatus.Interrupted or ChatRunStatus.Paused:
+                    classes.Add("history-marker-incomplete");
+                    break;
+                default:
+                {
+                    if (run.HasUnreadResponse) classes.Add("history-marker-unread");
+                    break;
+                }
+            }
         }
 
         return string.Join(' ', classes);

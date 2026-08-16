@@ -1,16 +1,18 @@
+// ReSharper disable UnusedMember.Local
+namespace AI.Client.Cli;
+
 using Pure.DI;
 using System.Diagnostics;
-
-namespace AI.Client.Cli;
 
 internal sealed partial class Composition
 {
     [Conditional("DI")]
-    private static void SetupDI() =>
+    private static void Setup() =>
         DI.Setup()
             .Hint(Hint.Resolve, "Off")
             .Hint(Hint.ThreadSafe, "Off")
             .Root<IHeadlessApplication>("Root")
             .Arg<string[]>("args")
+            .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
             .Singleton<HeadlessPaths, HeadlessApplication, HeadlessSessionStore, HeadlessChatClient>();
 }

@@ -12,29 +12,29 @@ using System.Diagnostics;
 using Pure.DI;
 using Pure.DI.MS;
 // ReSharper disable InconsistentNaming
+// ReSharper disable UnusedMember.Local
 
 namespace AI.Client.Host;
 
 internal sealed partial class Composition : ServiceProviderFactory<Composition>
 {
     [Conditional("DI")]
-    private static void SetupDI() =>
+    private static void Setup() =>
         DI.Setup()
             .Root<IHostDescriptor>()
             .Root<IProjectRepository>()
             .Root<IProjectService>()
             .Root<IChatService>()
-            .Root<IEndpointCredentialStore>()
             .Root<IChatCompletionClient>()
             .Root<IGlobalSettingsService>()
             .Root<IChatEndpoint>()
             .Root<IChatRunRepository>()
             .Root<IChatRunDispatcher>()
-            .Singleton<HostDescriptor, ProjectStorageLocation, PhysicalTextFileSystem, ProjectStoragePaths, ProjectDocumentSerializer, JsonProjectRepository,
-                Uuid7ProjectIdGenerator, SystemClock, ProjectService, ChatStoragePaths, ChatDocumentSerializer, JsonChatRepository, ChatService, EndpointCredentialPaths, ProtectedDataUserDataProtector, ProtectedEndpointCredentialStore,
-                ChatCompletionSseParser, OpenAiCompatibleChatCompletionClient, ChatEndpoint,
-                GlobalSettingsPaths, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore, GlobalSettingsService,
-                ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher>()
+            .Singleton<HostDescriptor, ProjectStorageLocation, PhysicalTextFileSystem, ProjectStoragePaths, JsonProjectRepository,
+                Uuid7IdGenerator, SystemClock, ProjectService, ChatStoragePaths, JsonChatRepository, ChatService, ChatSynchronization,
+                ProtectedDataUserDataProtector, ChatCompletionSseParser,
+                OpenAiCompatibleChatCompletionClient, ChatEndpoint, GlobalSettingsPaths, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
+                GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher>()
             .Singleton(_ => new HttpClient())
             .Transient((ProjectStorageLocation location) => location.RootDirectory);
 }

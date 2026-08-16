@@ -4,7 +4,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AI.Client.Contracts\AI.Client.Contracts.csproj" />
-    <ProjectReference Include="..\AI.Client.Application\AI.Client.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />

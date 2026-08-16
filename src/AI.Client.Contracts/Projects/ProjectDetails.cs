@@ -10,6 +10,4 @@ public sealed record ProjectDetails(
     IReadOnlyList<DirectoryGrantSettings> DirectoryGrants,
     IReadOnlyList<McpServerSettings> McpServers,
     IReadOnlyList<ToolPolicySettings> ToolPolicies,
-    IReadOnlyList<EndpointProfileSettings> EndpointProfiles,
-    Guid? DefaultEndpointProfileId,
     Guid? ConnectionId = null);

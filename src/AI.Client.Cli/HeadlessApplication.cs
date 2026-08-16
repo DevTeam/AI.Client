@@ -1,22 +1,15 @@
-using AI.Client.Contracts.Chat;
+namespace AI.Client.Cli;
+
+using Contracts.Chats;
+using Contracts.Runs;
 using System.Diagnostics;
 using System.Text.Json;
 
-namespace AI.Client.Cli;
+internal interface IHeadlessApplication { Task<int> RunAsync(); }
 
-internal interface IHeadlessApplication
+internal sealed class HeadlessApplication(string[] args, IHeadlessSessionStore store, IHeadlessChatClient chatClient) : IHeadlessApplication
 {
-    Task<int> RunAsync();
-}
-
-internal sealed class HeadlessApplication(
-    string[] args,
-    IHeadlessSessionStore store,
-    IHeadlessChatClient chatClient)
-    : IHeadlessApplication
-{
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
-
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     public async Task<int> RunAsync()
     {
         try
@@ -27,7 +20,6 @@ internal sealed class HeadlessApplication(
                 ["session", "send", .. var options] => await SendAsync(Parse(options)),
                 ["session", "show", .. var options] => await ShowAsync(Parse(options)),
                 ["session", "delete", .. var options] => await DeleteAsync(Parse(options)),
-                ["agent", ..] => Write(new { status = "not_supported", error = "MCP Agent Runtime is not implemented yet." }, 2),
                 _ => Write(new { status = "invalid_arguments", error = Usage }, 2)
             };
         }
@@ -41,92 +33,76 @@ internal sealed class HeadlessApplication(
     {
         var host = GetHost(options);
         var projectName = Required(options, "project");
-        var projects = await chatClient.GetProjectsAsync(host, CancellationToken.None);
-        var summary = projects.SingleOrDefault(item => string.Equals(item.Name, projectName, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException($"Project '{projectName}' was not found.");
-        var project = await chatClient.GetProjectAsync(host, summary.Id, CancellationToken.None)
-            ?? throw new InvalidOperationException($"Project '{projectName}' was not found.");
-        var endpoint = SelectEndpoint(project, options.GetValueOrDefault("endpoint"));
-        var session = new HeadlessSession(Guid.CreateVersion7(), project.Id, project.Name, endpoint.Id, endpoint.Name,
-            endpoint.BaseUrl, endpoint.Model, DateTimeOffset.UtcNow, [], project.McpServers.Length,
-            project.ToolPolicies.Length, project.DirectoryGrants.Length);
+        var summary = (await chatClient.GetProjectsAsync(host, CancellationToken.None))
+            .SingleOrDefault(project => string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("Project not found.");
+        var project = await chatClient.GetProjectAsync(host, summary.Id, CancellationToken.None);
+        Guid? connectionId = null;
+        if (options.TryGetValue("connection", out var name))
+        {
+            connectionId = (await chatClient.GetSettingsAsync(host, CancellationToken.None)).Connections
+                .SingleOrDefault(connection => connection.Enabled && string.Equals(connection.Name, name, StringComparison.OrdinalIgnoreCase))?.Id
+                ?? throw new InvalidOperationException("Connection not found.");
+        }
+        var chat = await chatClient.CreateChatAsync(host, project.Id, new CreateChatRequest("CLI chat", connectionId), CancellationToken.None);
+        var session = new HeadlessSession(chat.Id, project.Id, host);
         await store.SaveAsync(session, CancellationToken.None);
-        await store.AppendTranscriptAsync(session.Id, new { type = "session_created", at = DateTimeOffset.UtcNow, session }, CancellationToken.None);
-        return Write(new { status = "ready", sessionId = session.Id, session.ProjectName, session.EndpointName,
-            security = new { session.McpServerCount, session.ToolPolicyCount, session.DirectoryGrantCount } });
+        return Write(new { status = "ready", sessionId = session.Id, chatId = chat.Id, project.Name });
     }
 
     private async Task<int> SendAsync(Dictionary<string, string> options)
     {
-        var sessionId = Guid.Parse(Required(options, "session"));
-        var message = Required(options, "message");
-        var session = await store.GetAsync(sessionId, CancellationToken.None)
-            ?? throw new InvalidOperationException($"Session '{sessionId}' was not found.");
-        var host = GetHost(options);
-        var turnId = Guid.CreateVersion7();
-        var startedAt = Stopwatch.GetTimestamp();
-        long firstTokenMs = -1;
-        var chunks = new List<string>();
-        var context = session.Messages.Append(new ChatCompletionMessage("user", message)).ToArray();
-        using var cancellation = new CancellationTokenSource();
-        if (options.TryGetValue("cancel-after-ms", out var timeoutValue))
-        {
-            cancellation.CancelAfter(int.Parse(timeoutValue, System.Globalization.CultureInfo.InvariantCulture));
-        }
-
+        var session = await GetSessionAsync(options);
+        var host = options.ContainsKey("host") ? GetHost(options) : session.Host;
+        var messageId = Guid.CreateVersion7();
+        var started = Stopwatch.GetTimestamp();
+        using var timeout = new CancellationTokenSource();
+        if (options.TryGetValue("cancel-after-ms", out var value)) timeout.CancelAfter(int.Parse(value, System.Globalization.CultureInfo.InvariantCulture));
+        ChatRunSnapshot? last = null;
         try
         {
-            await foreach (var chunk in chatClient.StreamAsync(host,
-                               new ChatCompletionRequest(session.BaseUrl, session.Model, null, message,
-                                   session.EndpointProfileId, context), cancellation.Token))
+            last = await chatClient.SubmitAsync(host, session.ProjectId, session.Id,
+                new SubmitChatMessageRequest(Guid.CreateVersion7(), messageId, Required(options, "message")), timeout.Token);
+            await foreach (var snapshots in chatClient.WatchAsync(host, timeout.Token))
             {
-                if (chunks.Count == 0) firstTokenMs = (long)Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
-                chunks.Add(chunk.Content);
+                last = snapshots.SingleOrDefault(run => run.ChatId == session.Id && run.BranchId == session.Id) ?? last;
+                if (last.Status is ChatRunStatus.Failed or ChatRunStatus.Interrupted or ChatRunStatus.Paused)
+                    return Write(new { status = last.Status.ToString().ToLowerInvariant(), last.Error, last.StreamingContent }, 1);
+                var chat = await chatClient.GetChatAsync(host, session.ProjectId, session.Id, timeout.Token);
+                var reply = chat.Messages.FirstOrDefault(item => item.ParentId == messageId && item.Role == "Assistant");
+                if (reply is null) continue;
+                var result = new { status = "completed", sessionId = session.Id, messageId, finalText = reply.Content,
+                    durationMs = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds };
+                await store.AppendTranscriptAsync(session.Id, result, CancellationToken.None);
+                return Write(result);
             }
+            throw new InvalidOperationException("Run event stream ended before completion.");
         }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
-            var partialText = string.Concat(chunks);
-            var cancelled = new HeadlessTurnResult(sessionId, turnId, "cancelled", partialText, chunks.Count,
-                firstTokenMs, (long)Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds, "cancelled", null);
-            await store.AppendTranscriptAsync(sessionId,
-                new { type = "turn", at = DateTimeOffset.UtcNow, message, result = cancelled }, CancellationToken.None);
-            return Write(cancelled);
+            await chatClient.StopAsync(host, session.ProjectId, session.Id, CancellationToken.None);
+            return Write(new { status = "cancelled", sessionId = session.Id, partialText = last?.StreamingContent });
         }
-
-        var finalText = string.Concat(chunks);
-        var messages = session.Messages
-            .Append(new ChatCompletionMessage("user", message))
-            .Append(new ChatCompletionMessage("assistant", finalText))
-            .ToArray();
-        session = session with { Messages = messages };
-        await store.SaveAsync(session, CancellationToken.None);
-        var result = new HeadlessTurnResult(sessionId, turnId, "completed", finalText, chunks.Count,
-            firstTokenMs, (long)Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds, "done", null);
-        await store.AppendTranscriptAsync(sessionId, new { type = "turn", at = DateTimeOffset.UtcNow, message, result }, CancellationToken.None);
-        return Write(result);
     }
+
+    private async Task<HeadlessSession> GetSessionAsync(Dictionary<string, string> options) =>
+        await store.GetAsync(Guid.Parse(Required(options, "session")), CancellationToken.None)
+            ?? throw new InvalidOperationException("Session not found.");
 
     private async Task<int> ShowAsync(Dictionary<string, string> options)
     {
-        var sessionId = Guid.Parse(Required(options, "session"));
-        var session = await store.GetAsync(sessionId, CancellationToken.None);
-        return session is null ? Write(new { status = "not_found", sessionId }, 1) : Write(new { status = "ready", session });
+        var session = await GetSessionAsync(options);
+        var chat = await chatClient.GetChatAsync(session.Host, session.ProjectId, session.Id, CancellationToken.None);
+        return Write(new { status = "ready", session, chat });
     }
 
     private async Task<int> DeleteAsync(Dictionary<string, string> options)
     {
-        var sessionId = Guid.Parse(Required(options, "session"));
-        await store.DeleteAsync(sessionId, CancellationToken.None);
-        return Write(new { status = "deleted", sessionId });
-    }
-
-    private static EndpointDto SelectEndpoint(ProjectDetailsDto project, string? endpointName)
-    {
-        var endpoint = endpointName is null
-            ? project.EndpointProfiles.SingleOrDefault(item => item.Id == project.DefaultEndpointProfileId)
-            : project.EndpointProfiles.SingleOrDefault(item => string.Equals(item.Name, endpointName, StringComparison.OrdinalIgnoreCase));
-        return endpoint ?? throw new InvalidOperationException("The requested endpoint profile was not found and no default endpoint is configured.");
+        var session = await GetSessionAsync(options);
+        var chat = await chatClient.GetChatAsync(session.Host, session.ProjectId, session.Id, CancellationToken.None);
+        await chatClient.DeleteChatAsync(session.Host, session.ProjectId, session.Id, chat.Revision, CancellationToken.None);
+        await store.DeleteAsync(session.Id, CancellationToken.None);
+        return Write(new { status = "deleted", sessionId = session.Id });
     }
 
     private static Uri GetHost(IReadOnlyDictionary<string, string> options) =>
@@ -155,5 +131,5 @@ internal sealed class HeadlessApplication(
         return exitCode;
     }
 
-    private const string Usage = "session create --project <name> [--endpoint <name>] [--host <url>] | session send --session <id> --message <text> [--host <url>] [--cancel-after-ms <ms>] | session show --session <id> | session delete --session <id>";
+    private const string Usage = "session create --project <name> [--connection <name>] [--host <url>] | session send --session <id> --message <text> [--host <url>] [--cancel-after-ms <ms>] | session show --session <id> | session delete --session <id>";
 }

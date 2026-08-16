@@ -1,16 +1,15 @@
 # AI.Client
 
-Локальный клиент для работы с OpenAI и OpenAI-совместимыми AI endpoints. Интерфейс выполняется в Blazor WebAssembly, а локальный ASP.NET Core Host хранит credentials, вызывает AI API и подключает инструменты по Model Context Protocol (MCP).
+Локальный клиент для работы с OpenAI и OpenAI-совместимыми AI endpoints. Интерфейс выполняется в Blazor WebAssembly, а локальный ASP.NET Core Host хранит credentials и выполняет генерацию ответов.
 
 Ключевые возможности:
 
 - streaming-чат с Markdown;
-- агентский цикл с MCP-инструментами;
+- настройки MCP и политик инструментов (исполнение MCP пока не реализовано);
 - несколько AI endpoints и наборов credentials;
 - проекты с независимыми настройками безопасности;
 - Git-подобное ветвление истории чата;
 - локальное JSON-хранилище на основе неизменяемых узлов;
-- отдельный FileSystem MCP server с `Read`, `Write`, `Edit`, `Delete`, `List` и `Search`;
 - Pure.DI и интерфейсные зависимости без статических application services.
 
 ## Документация
@@ -53,3 +52,7 @@ Shared Rider run configurations are stored in [`.run`](.run). Select one from Ri
 - `AI.Client Host` starts the local application at `http://localhost:52173` in Development mode;
 - `Verify AI.Client` builds the solution and runs the fast unit test suite;
 - `Publish AI.Client` publishes the Host to `artifacts/publish`.
+
+## Формат данных
+
+Обратная совместимость форматов удалена. Используйте новый каталог через AI_CLIENT_DATA_DIRECTORY. Подробнее: [архитектура](docs/02-architecture.md) и [хранение](docs/04-storage.md).

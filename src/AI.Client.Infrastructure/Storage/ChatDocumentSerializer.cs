@@ -2,15 +2,16 @@ using AI.Client.Application.Chats;
 using AI.Client.Domain.Chats;
 using AI.Client.Domain.Projects;
 using System.Text.Json;
+// ReSharper disable UseCollectionExpression
 
 namespace AI.Client.Infrastructure.Storage;
 
-public sealed class ChatDocumentSerializer : IChatDocumentSerializer
+public static class ChatDocumentSerializer
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
-    public string Serialize(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatDocument(
+    public static string Serialize(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatDocument(
         SchemaVersion,
         revision,
         chat.Id.Value,
@@ -18,7 +19,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         chat.Title,
         chat.CreatedAt,
         chat.UpdatedAt,
-        chat.EndpointProfileId?.Value,
+        chat.ConnectionId?.Value,
         chat.Messages.Select(message => new ChatMessageDocument(
             message.Id.Value,
             message.ParentId?.Value,
@@ -26,9 +27,10 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             message.Content,
             message.CreatedAt,
             message.IsIncomplete)).ToArray(),
-        chat.BranchTitles.ToDictionary(item => item.Key.Value, item => item.Value)), Options);
+        chat.Branches.Select(branch => new BranchDocument(branch.Id, branch.HeadMessageId?.Value, branch.Title,
+            branch.ParentBranchId, branch.RootMessageId?.Value)).ToArray()), Options);
 
-    public StoredChat Deserialize(string json)
+    public static StoredChat Deserialize(string json)
     {
         var document = JsonSerializer.Deserialize<ChatDocument>(json, Options)
             ?? throw new JsonException("Chat document is empty.");
@@ -42,7 +44,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             new ProjectId(document.ProjectId),
             document.Title,
             document.CreatedAt,
-            document.EndpointProfileId is { } endpointId ? new EndpointProfileId(endpointId) : null);
+            document.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null);
         foreach (var message in document.Messages.OrderBy(item => item.CreatedAt))
         {
             chat.AddMessage(new ChatMessage(
@@ -53,15 +55,16 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
                 message.CreatedAt,
                 message.IsIncomplete), message.CreatedAt);
         }
-        foreach (var branch in document.BranchTitles ?? [])
-        {
-            chat.RenameBranch(new ChatMessageId(branch.Key), branch.Value, chat.UpdatedAt);
-        }
+        chat.RestoreBranches(document.Branches.Select(branch => new ChatBranch(branch.Id,
+            branch.HeadMessageId is { } head ? new ChatMessageId(head) : null, branch.Title,
+            branch.ParentBranchId, branch.RootMessageId is { } root ? new ChatMessageId(root) : null)));
+        chat.Rename(document.Title, document.UpdatedAt);
 
         return new StoredChat(chat, document.Revision);
     }
 
     private sealed record ChatDocument(
+        // ReSharper disable once MemberHidesStaticFromOuterClass
         int SchemaVersion,
         long Revision,
         Guid Id,
@@ -69,9 +72,11 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         string Title,
         DateTimeOffset CreatedAt,
         DateTimeOffset UpdatedAt,
-        Guid? EndpointProfileId,
+        Guid? ConnectionId,
         ChatMessageDocument[] Messages,
-        Dictionary<Guid, string>? BranchTitles = null);
+        BranchDocument[] Branches);
+
+    private sealed record BranchDocument(Guid Id, Guid? HeadMessageId, string Title, Guid? ParentBranchId, Guid? RootMessageId);
 
     private sealed record ChatMessageDocument(
         Guid Id,

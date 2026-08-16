@@ -1,10 +1,10 @@
-using AI.Client.Domain.Chats;
+namespace AI.Client.Infrastructure.Tests.Storage;
+
+using Domain.Chats;
 using AI.Client.Domain.Projects;
 using AI.Client.Infrastructure.Storage;
 using Shouldly;
 using Xunit;
-
-namespace AI.Client.Infrastructure.Tests.Storage;
 
 public class ChatDocumentSerializerTests
 {
@@ -14,13 +14,12 @@ public class ChatDocumentSerializerTests
         var createdAt = new DateTimeOffset(2026, 8, 13, 10, 0, 0, TimeSpan.Zero);
         var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", createdAt);
         var message = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Question", createdAt);
-        chat.AddMessage(message, createdAt);
+        chat.AddMessage(message, createdAt, message.Id.Value);
         chat.RenameBranch(message.Id, "Alternative", createdAt);
 
-        var serializer = new ChatDocumentSerializer();
-        var restored = serializer.Deserialize(serializer.Serialize(chat, 2));
+        var restored = ChatDocumentSerializer.Deserialize(ChatDocumentSerializer.Serialize(chat, 2));
 
-        restored.Chat.BranchTitles[message.Id].ShouldBe("Alternative");
+        restored.Chat.Branches.Single(branch => branch.Id == message.Id.Value).Title.ShouldBe("Alternative");
     }
 
     [Fact]
@@ -33,10 +32,9 @@ public class ChatDocumentSerializerTests
         var child = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), parent.Id, ChatMessageRole.Assistant, "Answer", createdAt);
         chat.AddMessage(parent, createdAt);
         chat.AddMessage(child, createdAt);
-        var serializer = new ChatDocumentSerializer();
 
         // When
-        var restored = serializer.Deserialize(serializer.Serialize(chat, 3));
+        var restored = ChatDocumentSerializer.Deserialize(ChatDocumentSerializer.Serialize(chat, 3));
 
         // Then
         restored.Revision.ShouldBe(3);
@@ -47,18 +45,17 @@ public class ChatDocumentSerializerTests
     public void ShouldRestoreSelectedEndpointProfile()
     {
         var createdAt = new DateTimeOffset(2026, 8, 12, 12, 0, 0, TimeSpan.Zero);
-        var endpointId = new EndpointProfileId(Guid.Parse("019f0000-0000-7000-8000-000000000020"));
+        var endpointId = new ConnectionId(Guid.Parse("019f0000-0000-7000-8000-000000000020"));
         var chat = new ChatThread(
             new ChatId(Guid.CreateVersion7()),
             new ProjectId(Guid.CreateVersion7()),
             "Chat",
             createdAt,
             endpointId);
-        var serializer = new ChatDocumentSerializer();
 
-        var restored = serializer.Deserialize(serializer.Serialize(chat, 1));
+        var restored = ChatDocumentSerializer.Deserialize(ChatDocumentSerializer.Serialize(chat, 1));
 
-        restored.Chat.EndpointProfileId.ShouldBe(endpointId);
+        restored.Chat.ConnectionId.ShouldBe(endpointId);
     }
 
     [Fact]
@@ -75,9 +72,8 @@ public class ChatDocumentSerializerTests
                 createdAt,
                 true),
             createdAt);
-        var serializer = new ChatDocumentSerializer();
 
-        var restored = serializer.Deserialize(serializer.Serialize(chat, 1));
+        var restored = ChatDocumentSerializer.Deserialize(ChatDocumentSerializer.Serialize(chat, 1));
 
         restored.Chat.Messages.ShouldHaveSingleItem().IsIncomplete.ShouldBeTrue();
     }

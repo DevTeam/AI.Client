@@ -1,3 +1,5 @@
+namespace AI.Client.Infrastructure.Tests.Chat;
+
 using AI.Client.Contracts.Chat;
 using AI.Client.Infrastructure.Chat;
 using Moq;
@@ -6,8 +8,6 @@ using Shouldly;
 using System.Net;
 using System.Text;
 using Xunit;
-
-namespace AI.Client.Infrastructure.Tests.Chat;
 
 public class OpenAiCompatibleChatCompletionClientTests
 {

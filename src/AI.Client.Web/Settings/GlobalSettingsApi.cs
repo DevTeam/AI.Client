@@ -1,7 +1,7 @@
+namespace AI.Client.Web.Settings;
+
 using AI.Client.Contracts.Settings;
 using System.Net.Http.Json;
-
-namespace AI.Client.Web.Settings;
 
 public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsApi
 {

@@ -1,10 +1,10 @@
+namespace AI.Client.Application.Tests.Settings;
+
 using AI.Client.Application.Settings;
 using AI.Client.Contracts.Settings;
 using Moq;
 using Shouldly;
 using Xunit;
-
-namespace AI.Client.Application.Tests.Settings;
 
 public class GlobalSettingsServiceTests
 {

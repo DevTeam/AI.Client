@@ -1,0 +1,201 @@
+@using System.Diagnostics.CodeAnalysis
+@inject IGlobalSettingsApi GlobalSettingsApi
+
+        <section class="global-workspace" aria-label="@Section">
+            @switch (Section)
+            {
+                case "Connections":
+                {
+                    <header class="global-header"><div><h1>Connections</h1><p>OpenAI-compatible endpoints available to every project.</p></div></header>
+                    <div class="global-editor-layout">
+                        <div class="settings-list-column">
+                            <nav class="settings-list">@foreach (var connectionItem in _connections) { <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span>@connectionItem.Name</span><small>@(connectionItem.IsDefault ? "Default" : connectionItem.Enabled ? "Enabled" : "Unavailable")</small></button>@if (connectionItem.Id == _selectedConnectionId) { <button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button> }</div> }</nav>
+                            <button class="icon-action settings-list-add" type="button" title="Add connection" aria-label="Add connection" @onclick="AddConnection"><AppIcon Name="plus" /></button>
+                        </div>
+                        @if (GetSelectedConnection() is { } connection)
+                        {
+                            <div class="global-form"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label></div><label>Name<InputText @bind-Value="connection.Name" /></label><label>Base URL<InputText @bind-Value="connection.BaseUrl" /></label><label>Model<InputText @bind-Value="connection.Model" /></label><label>API key<InputText type="password" @bind-Value="connection.Secret" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></div>
+                        }
+                    </div>
+                    <footer class="global-actions"><button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
+                    break;
+                }
+                case "Security":
+                    <header class="global-header"><div><h1>Security</h1><p>Global confirmation and application policies.</p></div></header><div class="settings-placeholder"><h3>Notifications</h3><p>Show a local browser notification when a background chat finishes or fails while this application is not focused.</p><button type="button" @onclick="EnableNotifications">@(NotificationsEnabled ? "Notifications enabled" : "Enable notifications")</button><p>Directory access is configured independently for each project.</p></div>
+                    break;
+                default:
+                {
+                    <header class="global-header"><div><h1>MCP</h1><p>Global MCP servers available to every project.</p></div></header>
+                    <div class="global-editor-layout">
+                        <div class="settings-list-column">
+                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => _selectedMcpServerId = serverItem.Id"><span>@serverItem.Name</span><small>@serverItem.Transport · @serverItem.Policy</small></button>@if (serverItem.Id == _selectedMcpServerId) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</div> }</nav>
+                            <button class="icon-action settings-list-add" type="button" title="Add MCP server" aria-label="Add MCP server" @onclick="AddGlobalMcpServer"><AppIcon Name="plus" /></button>
+                        </div>
+                        @if (GetSelectedMcpServer() is { } server)
+                        {
+                            <div class="global-form"><label>Name<InputText @bind-Value="server.Name" /></label><label>Transport<select @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option></select></label><label>Policy<select @bind="server.Policy"><option>Allow</option><option>Ask</option><option>Deny</option></select></label><label class="checkbox"><input type="checkbox" @bind="server.Enabled" /> Enabled</label>@if (server.Transport == "StreamableHttp") { <label>URL<InputText @bind-Value="server.Url" /></label><label>Credential<InputText type="password" @bind-Value="server.Secret" placeholder="@(server.HasCredential ? "Saved; enter to replace" : "Optional")" /></label> } else { <label>Command<InputText @bind-Value="server.Command" /></label><label>Arguments<InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label><label>Working directory<InputText @bind-Value="server.WorkingDirectory" /></label><label>Environment variables<InputTextArea @bind-Value="server.EnvironmentText" placeholder="NAME=value" /></label> }</div>
+                        }
+                    </div>
+                    <footer class="global-actions"><button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
+                    break;
+                }
+            }
+        </section>
+@if (_feedback is not null) { <p role="status">@_feedback</p> }
+
+@code {
+    [Parameter] public string Section { get; set; } = "Connections";
+    [Parameter] public bool NotificationsEnabled { get; set; }
+    [Parameter] public EventCallback EnableNotifications { get; set; }
+    [Parameter] public EventCallback Saved { get; set; }
+    private string? _feedback;
+    private readonly List<ConnectionEditor> _connections = [];
+    private readonly List<GlobalMcpServerEditor> _globalMcpServers = [];
+    private Guid? _selectedConnectionId;
+    private Guid? _selectedMcpServerId;
+    protected override Task OnInitializedAsync() => LoadGlobalSettingsAsync();
+    private async Task LoadGlobalSettingsAsync()
+    {
+        var settings = await GlobalSettingsApi.GetAsync(CancellationToken.None);
+        _connections.Clear();
+        _connections.AddRange(settings.Connections.Select(ConnectionEditor.From));
+        _globalMcpServers.Clear();
+        _globalMcpServers.AddRange(settings.McpServers.Select(GlobalMcpServerEditor.From));
+        _selectedConnectionId = _connections.FirstOrDefault()?.Id;
+        _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
+    }
+
+    private void AddConnection()
+    {
+        var connection = new ConnectionEditor();
+        _connections.Add(connection);
+        _selectedConnectionId = connection.Id;
+    }
+
+    private void RemoveConnection()
+    {
+        if (_selectedConnectionId is not { } id) return;
+        _connections.RemoveAll(item => item.Id == id);
+        _selectedConnectionId = _connections.FirstOrDefault()?.Id;
+    }
+
+    private void SelectConnection(Guid id) => _selectedConnectionId = id;
+
+    private ConnectionEditor? GetSelectedConnection() =>
+        _connections.SingleOrDefault(item => item.Id == _selectedConnectionId);
+
+    private void SetDefaultConnection(Guid id, ChangeEventArgs args)
+    {
+        if (args.Value is not true) return;
+        foreach (var connection in _connections) connection.IsDefault = connection.Id == id;
+    }
+
+    private void AddGlobalMcpServer()
+    {
+        var server = new GlobalMcpServerEditor();
+        _globalMcpServers.Add(server);
+        _selectedMcpServerId = server.Id;
+    }
+
+    private void RemoveGlobalMcpServer()
+    {
+        if (_selectedMcpServerId is not { } id) return;
+        _globalMcpServers.RemoveAll(item => item.Id == id);
+        _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
+    }
+
+    private GlobalMcpServerEditor? GetSelectedMcpServer() =>
+        _globalMcpServers.SingleOrDefault(item => item.Id == _selectedMcpServerId);
+
+    private async Task SaveGlobalSettingsAsync()
+    {
+        try
+        {
+            await GlobalSettingsApi.SaveAsync(
+                new SaveGlobalSettingsRequest(
+                    // ReSharper disable once UseCollectionExpression
+                    _connections.Select(item => item.ToSettings()).ToArray(),
+                    [.. _globalMcpServers.Select(item => item.ToSettings())]),
+                CancellationToken.None);
+            foreach (var connection in _connections.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))
+                await GlobalSettingsApi.SetConnectionCredentialAsync(connection.Id, connection.Secret, CancellationToken.None);
+            foreach (var server in _globalMcpServers.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))
+                await GlobalSettingsApi.SetMcpCredentialAsync(server.Id, server.Secret, CancellationToken.None);
+            await LoadGlobalSettingsAsync();
+            _feedback = "Global settings saved.";
+            await Saved.InvokeAsync();
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _feedback = "Global settings were not saved. Check required fields.";
+        }
+    }
+
+    [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]
+    [SuppressMessage("ReSharper", "MemberCanBePrivate.Local")]
+    private sealed class ConnectionEditor
+    {
+        public Guid Id { get; set; } = Guid.CreateVersion7();
+        public string Name { get; set; } = "OpenAI connection";
+        public string BaseUrl { get; set; } = string.Empty;
+        public string Model { get; set; } = string.Empty;
+        public bool Enabled { get; set; } = true;
+        public bool IsDefault { get; set; }
+        public bool HasCredential { get; set; }
+        public string? Secret { get; set; }
+
+        public static ConnectionEditor From(ConnectionSettings item) => new()
+        {
+            Id = item.Id, Name = item.Name, BaseUrl = item.BaseUrl, Model = item.Model,
+            Enabled = item.Enabled, IsDefault = item.IsDefault, HasCredential = item.HasCredential
+        };
+
+        public ConnectionSettings ToSettings() =>
+            new(Id, Name, BaseUrl, Model, Enabled, IsDefault, HasCredential);
+    }
+
+    [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]
+    [SuppressMessage("ReSharper", "MemberCanBePrivate.Local")]
+    private sealed class GlobalMcpServerEditor
+    {
+        public Guid Id { get; set; } = Guid.CreateVersion7();
+        public string Name { get; set; } = "MCP server";
+        public string Transport { get; set; } = "StreamableHttp";
+        public bool Enabled { get; set; } = true;
+        public string Policy { get; set; } = "Ask";
+        public string? Url { get; set; }
+        public string? Command { get; set; }
+        public string ArgumentsText { get; set; } = string.Empty;
+        public string? WorkingDirectory { get; set; }
+        public string EnvironmentText { get; set; } = string.Empty;
+        public bool HasCredential { get; set; }
+        public string? Secret { get; set; }
+
+        public static GlobalMcpServerEditor From(AI.Client.Contracts.Settings.McpServerSettings item) => new()
+        {
+            Id = item.Id, Name = item.Name, Transport = item.Transport, Enabled = item.Enabled,
+            Policy = item.Policy, Url = item.Url, Command = item.Command,
+            ArgumentsText = string.Join(Environment.NewLine, item.Arguments),
+            WorkingDirectory = item.WorkingDirectory,
+            EnvironmentText = string.Join(Environment.NewLine, item.EnvironmentVariables.Select(variable =>
+                variable.IsSecret ? $"secret:{variable.Name}=" : $"{variable.Name}={variable.Value}")),
+            HasCredential = item.HasCredential
+        };
+
+        public AI.Client.Contracts.Settings.McpServerSettings ToSettings() => new(
+            Id, Name, Transport, Enabled, Policy, Url, Command,
+            ArgumentsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            WorkingDirectory,
+            EnvironmentText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(line => line.Split('=', 2))
+                .Where(parts => parts.Length == 2)
+                .Select(parts => new McpEnvironmentVariableSettings(
+                    parts[0].StartsWith("secret:", StringComparison.OrdinalIgnoreCase) ? parts[0][7..] : parts[0],
+                    parts[1],
+                    parts[0].StartsWith("secret:", StringComparison.OrdinalIgnoreCase),
+                    // ReSharper disable once UseCollectionExpression
+                    false)).ToArray(),
+            HasCredential);
+    }
+
+}

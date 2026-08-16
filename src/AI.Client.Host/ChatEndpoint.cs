@@ -1,11 +1,9 @@
-using AI.Client.Application.Chat;
-using AI.Client.Application.Projects;
-using AI.Client.Application.Settings;
-using AI.Client.Contracts.Chat;
-using AI.Client.Domain.Projects;
-using System.Diagnostics;
-
 namespace AI.Client.Host;
+
+using Application.Chat;
+using Application.Settings;
+using Contracts.Chat;
+using System.Diagnostics;
 
 internal interface IChatEndpoint
 {
@@ -16,7 +14,6 @@ internal interface IChatEndpoint
 
 internal sealed class ChatEndpoint(
     IChatCompletionClient client,
-    IEndpointCredentialStore credentialStore,
     IGlobalSecretStore globalSecretStore,
     ILogger<ChatEndpoint> logger) : IChatEndpoint
 {
@@ -118,6 +115,5 @@ internal sealed class ChatEndpoint(
     }
 
     private async Task<string?> GetCredentialAsync(Guid id, CancellationToken cancellationToken) =>
-        await globalSecretStore.GetAsync("connection", id, cancellationToken)
-        ?? await credentialStore.GetAsync(new EndpointProfileId(id), cancellationToken);
+        await globalSecretStore.GetAsync("connection", id, cancellationToken);
 }

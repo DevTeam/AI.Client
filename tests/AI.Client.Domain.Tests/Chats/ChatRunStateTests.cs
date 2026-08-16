@@ -1,8 +1,8 @@
-using AI.Client.Domain.Runs;
+namespace AI.Client.Domain.Tests.Chats;
+
+using Runs;
 using Shouldly;
 using Xunit;
-
-namespace AI.Client.Domain.Tests.Chats;
 
 public class ChatRunStateTests
 {
@@ -19,13 +19,15 @@ public class ChatRunStateTests
     }
 
     [Fact]
-    public void ShouldRestoreGeneratingRunAsInterrupted()
+    public void ShouldRecoverGeneratingRunOnlyOnExplicitRestart()
     {
         var state = ChatRunState.Restore(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), RunStatus.Generating, "Partial", null, false, 4, [], []);
 
+        state.Status.ShouldBe(RunStatus.Generating);
+        state.RecoverAfterRestart();
         state.Status.ShouldBe(RunStatus.Interrupted);
         state.StreamingContent.ShouldBe("Partial");
-        state.Revision.ShouldBe(4);
+        state.Revision.ShouldBe(5);
     }
 
     [Fact]

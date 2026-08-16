@@ -1,6 +1,6 @@
-using AI.Client.Contracts.Settings;
-
 namespace AI.Client.Web.Settings;
+
+using AI.Client.Contracts.Settings;
 
 public interface IGlobalSettingsApi
 {

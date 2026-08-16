@@ -1,10 +1,10 @@
+namespace AI.Client.Infrastructure.Tests.Logging;
+
 using AI.Client.Infrastructure.Logging;
 using Microsoft.Extensions.Logging;
 using Shouldly;
 using System.Text.Json;
 using Xunit;
-
-namespace AI.Client.Infrastructure.Tests.Logging;
 
 public sealed class JsonLineFileLoggerProviderTests
 {

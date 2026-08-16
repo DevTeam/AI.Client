@@ -1,6 +1,6 @@
-using System.Text.Json;
-
 namespace AI.Client.Cli;
+
+using System.Text.Json;
 
 internal interface IHeadlessSessionStore
 {

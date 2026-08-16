@@ -1,13 +1,14 @@
-using Build.Targets;
+// ReSharper disable UnusedMember.Local
+namespace Build;
+
+using Targets;
 using Pure.DI;
 using System.Diagnostics;
-
-namespace Build;
 
 internal sealed partial class Composition
 {
     [Conditional("DI")]
-    private static void SetupDI() =>
+    private static void Setup() =>
         DI.Setup()
             .Hint(Hint.Resolve, "Off")
             .Hint(Hint.ThreadSafe, "Off")

@@ -1,21 +1,20 @@
+namespace AI.Client.Application.Tests.Projects;
+
 using AI.Client.Application.Projects;
 using AI.Client.Application.Settings;
 using AI.Client.Contracts.Projects;
 using AI.Client.Contracts.Settings;
-using AI.Client.Domain.Common;
+using Domain.Common;
 using AI.Client.Domain.Projects;
 using Moq;
 using Shouldly;
 using Xunit;
 
-namespace AI.Client.Application.Tests.Projects;
-
 public class ProjectServiceTests
 {
     private readonly Mock<IProjectRepository> _repository = new(MockBehavior.Strict);
-    private readonly Mock<IProjectIdGenerator> _idGenerator = new(MockBehavior.Strict);
+    private readonly Mock<IIdGenerator> _idGenerator = new(MockBehavior.Strict);
     private readonly Mock<IClock> _clock = new(MockBehavior.Strict);
-    private readonly Mock<IEndpointCredentialStore> _credentialStore = new(MockBehavior.Strict);
     private readonly Mock<IGlobalSettingsRepository> _globalSettingsRepository = new(MockBehavior.Strict);
     private readonly DateTimeOffset _now = new(2026, 8, 12, 10, 0, 0, TimeSpan.Zero);
     private readonly ProjectId _projectId = new(Guid.Parse("019f0000-0000-7000-8000-000000000001"));
@@ -25,7 +24,7 @@ public class ProjectServiceTests
     {
         // Given
         var service = CreateInstance();
-        _idGenerator.Setup(i => i.Create()).Returns(_projectId);
+        _idGenerator.Setup(i => i.Create()).Returns(_projectId.Value);
         _clock.SetupGet(i => i.UtcNow).Returns(_now);
         _repository
             .Setup(i => i.SaveAsync(It.IsAny<Project>(), 0, CancellationToken.None))
@@ -43,7 +42,7 @@ public class ProjectServiceTests
         project.CreatedAt.ShouldBe(_now);
         project.Revision.ShouldBe(1);
         _repository.Verify(i => i.SaveAsync(
-            It.Is<Project>(project => project.Id == _projectId),
+            It.Is<Project>(j => j.Id == _projectId),
             0,
             CancellationToken.None), Times.Once);
     }
@@ -74,7 +73,7 @@ public class ProjectServiceTests
         // Given
         var service = CreateInstance();
         var project = CreateProject("Project");
-        _repository.Setup(i => i.GetAsync(_projectId, CancellationToken.None)).ReturnsAsync(project);
+        _repository.Setup(i => i.GetAsync(_projectId, CancellationToken.None)).ReturnsAsync(new StoredProject(project, 1));
         _clock.SetupGet(i => i.UtcNow).Returns(_now);
         _repository
             .Setup(i => i.SaveAsync(project, 1, CancellationToken.None))
@@ -116,7 +115,7 @@ public class ProjectServiceTests
         var service = CreateInstance();
         var project = CreateProject("Project");
         var serverId = Guid.Parse("019f0000-0000-7000-8000-000000000002");
-        _repository.Setup(i => i.GetAsync(_projectId, CancellationToken.None)).ReturnsAsync(project);
+        _repository.Setup(i => i.GetAsync(_projectId, CancellationToken.None)).ReturnsAsync(new StoredProject(project, 1));
         _clock.SetupGet(i => i.UtcNow).Returns(_now);
         _repository
             .Setup(i => i.SaveAsync(project, 1, CancellationToken.None))
@@ -130,7 +129,7 @@ public class ProjectServiceTests
                 [new DirectoryGrantSettings(
                     Guid.Parse("019f0000-0000-7000-8000-000000000003"),
                     "Source",
-                    "C:\\Project\\src",
+                    @"C:\Project\src",
                     true,
                     ["read", "write"])],
                 [new AI.Client.Contracts.Projects.McpServerSettings(serverId, "Files", "Stdio", true)],
@@ -152,10 +151,11 @@ public class ProjectServiceTests
         // Given
         var service = CreateInstance();
         var project = CreateProject("Project");
-        _repository.Setup(i => i.GetAsync(_projectId, CancellationToken.None)).ReturnsAsync(project);
+        _repository.Setup(i => i.GetAsync(_projectId, CancellationToken.None)).ReturnsAsync(new StoredProject(project, 1));
         _clock.SetupGet(i => i.UtcNow).Returns(_now);
 
         // When
+        // ReSharper disable once ConvertToLocalFunction
         var action = () => service.UpdateSecurityAsync(
             _projectId.Value,
             new UpdateProjectSecurityRequest(
@@ -179,7 +179,6 @@ public class ProjectServiceTests
         _repository.Object,
         _idGenerator.Object,
         _clock.Object,
-        _credentialStore.Object,
         _globalSettingsRepository.Object);
 
     private Project CreateProject(string name) => new(_projectId, name, string.Empty, _now);

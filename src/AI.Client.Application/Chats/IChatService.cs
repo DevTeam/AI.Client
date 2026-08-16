@@ -1,6 +1,6 @@
-using AI.Client.Contracts.Chats;
-
 namespace AI.Client.Application.Chats;
+
+using AI.Client.Contracts.Chats;
 
 public interface IChatService
 {
@@ -11,6 +11,4 @@ public interface IChatService
     Task<ChatDetails?> UpdateEndpointAsync(Guid projectId, Guid chatId, UpdateChatEndpointRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> RenameAsync(Guid projectId, Guid chatId, RenameChatRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> RenameBranchAsync(Guid projectId, Guid chatId, Guid branchId, RenameChatBranchRequest request, CancellationToken cancellationToken);
-    Task<ChatBranchDeleteResult> DeleteBranchAsync(Guid projectId, Guid chatId, Guid branchId, long revision, CancellationToken cancellationToken);
-    Task<ChatDeleteResult> DeleteAsync(Guid projectId, Guid chatId, long revision, CancellationToken cancellationToken);
 }

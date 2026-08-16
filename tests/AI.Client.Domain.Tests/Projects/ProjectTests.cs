@@ -1,9 +1,9 @@
-using AI.Client.Domain.Common;
+namespace AI.Client.Domain.Tests.Projects;
+
+using Common;
 using AI.Client.Domain.Projects;
 using Shouldly;
 using Xunit;
-
-namespace AI.Client.Domain.Tests.Projects;
 
 public sealed class ProjectTests
 {
@@ -16,6 +16,7 @@ public sealed class ProjectTests
     [Fact]
     public void ConstructorThrowsDomainExceptionWhenNameIsEmpty()
     {
+        // ReSharper disable once ConvertToLocalFunction
         var action = () => new Project(_projectId, " ", string.Empty, _createdAt);
 
         var exception = Should.Throw<DomainException>(action);
@@ -40,10 +41,11 @@ public sealed class ProjectTests
     {
         var project = CreateProject();
         var grantId = new DirectoryGrantId(Guid.Parse("019f0000-0000-7000-8000-000000000010"));
-        var first = new DirectoryGrant(grantId, "Source", "C:\\Project\\src", true, ["read"]);
-        var duplicate = new DirectoryGrant(grantId, "Docs", "C:\\Project\\docs", true, ["read"]);
+        var first = new DirectoryGrant(grantId, "Source", @"C:\Project\src", true, ["read"]);
+        var duplicate = new DirectoryGrant(grantId, "Docs", @"C:\Project\docs", true, ["read"]);
         project.AddDirectoryGrant(first, _createdAt);
 
+        // ReSharper disable once ConvertToLocalFunction
         var action = () => project.AddDirectoryGrant(duplicate, _createdAt);
 
         Should.Throw<DomainException>(action);
@@ -58,6 +60,7 @@ public sealed class ProjectTests
             new ToolIdentity(_serverId, "read", "first-schema"),
             ToolPolicyDecision.Ask);
 
+        // ReSharper disable once ConvertToLocalFunction
         var action = () => project.SetToolPolicy(policy, _createdAt);
 
         Should.Throw<DomainException>(action);
@@ -90,38 +93,19 @@ public sealed class ProjectTests
     {
         var project = CreateProject();
 
+        // ReSharper disable once ConvertToLocalFunction
         var action = () => project.UpdateDetails("Name", string.Empty, _createdAt.AddTicks(-1));
 
         Should.Throw<DomainException>(action);
     }
 
     [Fact]
-    public void SetDefaultEndpointProfileRequiresAProjectProfile()
+    public void ShouldReferenceAGlobalConnection()
     {
         var project = CreateProject();
-        var profileId = new EndpointProfileId(Guid.Parse("019f0000-0000-7000-8000-000000000020"));
-
-        var action = () => project.SetDefaultEndpointProfile(profileId, _createdAt);
-
-        Should.Throw<DomainException>(action);
-        project.DefaultEndpointProfileId.ShouldBeNull();
-    }
-
-    [Fact]
-    public void ReplacingProfilesClearsADeletedDefaultProfile()
-    {
-        var project = CreateProject();
-        var profile = new EndpointProfile(
-            new EndpointProfileId(Guid.Parse("019f0000-0000-7000-8000-000000000020")),
-            "Local",
-            "https://llm.example/v1",
-            "model");
-        project.ReplaceEndpointProfiles([profile], _createdAt);
-        project.SetDefaultEndpointProfile(profile.Id, _createdAt);
-
-        project.ReplaceEndpointProfiles([], _createdAt.AddMinutes(1));
-
-        project.DefaultEndpointProfileId.ShouldBeNull();
+        var connectionId = new ConnectionId(Guid.NewGuid());
+        project.SetConnection(connectionId, _createdAt);
+        project.ConnectionId.ShouldBe(connectionId);
     }
 
     private Project CreateProject() =>

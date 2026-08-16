@@ -1,7 +1,7 @@
+namespace Build.Targets;
+
 using System.Diagnostics;
 using System.Text;
-
-namespace Build.Targets;
 
 internal sealed class ProcessRunner(IBuildPaths buildPaths) : IProcessRunner
 {
@@ -30,8 +30,10 @@ internal sealed class ProcessRunner(IBuildPaths buildPaths) : IProcessRunner
             startInfo.ArgumentList.Add(argument);
         }
 
-        using var process = new Process { StartInfo = startInfo };
-        await using var log = new StreamWriter(logPath, false, new UTF8Encoding(false)) { AutoFlush = true };
+        using var process = new Process();
+        process.StartInfo = startInfo;
+        await using var log = new StreamWriter(logPath, false, new UTF8Encoding(false));
+        log.AutoFlush = true;
         process.Start();
 
         var output = CaptureAsync(process.StandardOutput, "stdout");
@@ -45,10 +47,10 @@ internal sealed class ProcessRunner(IBuildPaths buildPaths) : IProcessRunner
             return 0;
         }
 
-        Console.Error.WriteLine($"{operation} failed with exit code {process.ExitCode}. Log: {Path.GetRelativePath(buildPaths.SolutionDirectory, logPath)}");
+        await Console.Error.WriteLineAsync($"{operation} failed with exit code {process.ExitCode}. Log: {Path.GetRelativePath(buildPaths.SolutionDirectory, logPath)}");
         foreach (var line in tail)
         {
-            Console.Error.WriteLine(line);
+            await Console.Error.WriteLineAsync(line);
         }
 
         return process.ExitCode;
@@ -57,6 +59,7 @@ internal sealed class ProcessRunner(IBuildPaths buildPaths) : IProcessRunner
         {
             while (await reader.ReadLineAsync(cancellationToken) is { } line)
             {
+                // ReSharper disable once AccessToDisposedClosure
                 await log.WriteLineAsync($"[{stream}] {line}");
                 lock (tail)
                 {

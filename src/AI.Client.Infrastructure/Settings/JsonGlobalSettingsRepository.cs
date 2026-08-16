@@ -1,34 +1,27 @@
-using AI.Client.Application.Settings;
-using AI.Client.Contracts.Settings;
-using AI.Client.Infrastructure.Storage;
-using System.Text.Json;
-
 namespace AI.Client.Infrastructure.Settings;
 
-public sealed class JsonGlobalSettingsRepository(
-    ITextFileSystem fileSystem,
-    GlobalSettingsPaths paths) : IGlobalSettingsRepository
+using AI.Client.Application.Settings;
+using AI.Client.Contracts.Settings;
+using Storage;
+using System.Text.Json;
+
+public sealed class JsonGlobalSettingsRepository(ITextFileSystem fileSystem, GlobalSettingsPaths paths) : IGlobalSettingsRepository, IDisposable
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
+    private readonly AsyncGate _writes = new();
+    public void Dispose() => _writes.Dispose();
 
     public async Task<GlobalSettings> LoadAsync(CancellationToken cancellationToken)
     {
-        var connectionsJson = await fileSystem.ReadTextAsync(paths.ConnectionsPath, cancellationToken);
-        var mcpJson = await fileSystem.ReadTextAsync(paths.McpServersPath, cancellationToken);
-        return new GlobalSettings(
-            connectionsJson is null ? [] : JsonSerializer.Deserialize<ConnectionSettings[]>(connectionsJson, Options) ?? [],
-            mcpJson is null ? [] : JsonSerializer.Deserialize<McpServerSettings[]>(mcpJson, Options) ?? []);
+        var json = await fileSystem.ReadTextAsync(paths.SettingsPath, cancellationToken);
+        return json is null ? new GlobalSettings([], []) :
+            JsonSerializer.Deserialize<GlobalSettings>(json, Options) ?? throw new JsonException("Settings are empty.");
     }
 
     public async Task SaveAsync(GlobalSettings settings, CancellationToken cancellationToken)
     {
-        await fileSystem.WriteTextAsync(
-            paths.ConnectionsPath,
-            JsonSerializer.Serialize(settings.Connections, Options),
-            cancellationToken);
-        await fileSystem.WriteTextAsync(
-            paths.McpServersPath,
-            JsonSerializer.Serialize(settings.McpServers, Options),
-            cancellationToken);
+        using var lease = await _writes.EnterAsync(cancellationToken);
+        await fileSystem.WriteTextAsync(paths.SettingsPath + ".tmp", JsonSerializer.Serialize(settings, Options), cancellationToken);
+        await fileSystem.MoveAsync(paths.SettingsPath + ".tmp", paths.SettingsPath, true, cancellationToken);
     }
 }

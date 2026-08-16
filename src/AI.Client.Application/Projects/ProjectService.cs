@@ -1,14 +1,14 @@
-using AI.Client.Contracts.Projects;
-using AI.Client.Application.Settings;
-using AI.Client.Domain.Projects;
-
+// ReSharper disable UseCollectionExpression
 namespace AI.Client.Application.Projects;
+
+using Settings;
+using AI.Client.Contracts.Projects;
+using AI.Client.Domain.Projects;
 
 public sealed class ProjectService(
     IProjectRepository repository,
-    IProjectIdGenerator idGenerator,
+    IIdGenerator idGenerator,
     IClock clock,
-    IEndpointCredentialStore credentialStore,
     IGlobalSettingsRepository globalSettingsRepository) : IProjectService
 {
     public async Task<IReadOnlyList<ProjectSummary>> ListAsync(CancellationToken cancellationToken) =>
@@ -20,118 +20,65 @@ public sealed class ProjectService(
     public async Task<ProjectDetails?> GetAsync(Guid id, CancellationToken cancellationToken)
     {
         var projectId = new ProjectId(id);
-        var project = await repository.GetAsync(projectId, cancellationToken);
-        if (project is null)
-        {
-            return null;
-        }
-
-        var stored = (await repository.ListAsync(cancellationToken))
-            .Single(item => item.Project.Id == projectId);
-        return await ToDetailsAsync(stored.Project, stored.Revision, cancellationToken);
+        var stored = await repository.GetAsync(projectId, cancellationToken);
+        return stored is not null ? ToDetails(stored.Project, stored.Revision) : null;
     }
 
     public async Task<ProjectDetails> CreateAsync(CreateProjectRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var project = new Project(idGenerator.Create(), request.Name, request.Description, clock.UtcNow);
+        var project = new Project(new ProjectId(idGenerator.Create()), request.Name, request.Description, clock.UtcNow);
         var defaultConnection = (await globalSettingsRepository.LoadAsync(cancellationToken)).Connections
-            .FirstOrDefault(item => item.IsDefault && item.Enabled);
+            .FirstOrDefault(item => item is { IsDefault: true, Enabled: true });
         project.SetConnection(
-            defaultConnection is null ? null : new EndpointProfileId(defaultConnection.Id),
+            defaultConnection is null ? null : new ConnectionId(defaultConnection.Id),
             clock.UtcNow);
         var result = await repository.SaveAsync(project, 0, cancellationToken);
-        return await ToDetailsAsync(project, result.Revision, cancellationToken);
+        return ToDetails(project, result.Revision);
     }
 
     public async Task<ProjectUpdateResult> UpdateAsync(Guid id, UpdateProjectRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         var projectId = new ProjectId(id);
-        var project = await repository.GetAsync(projectId, cancellationToken);
-        if (project is null)
+        var stored = await repository.GetAsync(projectId, cancellationToken);
+        if (stored is null)
         {
             return ProjectUpdateResult.NotFound();
         }
 
+        var project = stored.Project;
         project.UpdateDetails(request.Name, request.Description, clock.UtcNow);
         project.SetConnection(
-            request.ConnectionId is { } connectionId ? new EndpointProfileId(connectionId) : null,
+            request.ConnectionId is { } connectionId ? new ConnectionId(connectionId) : null,
             clock.UtcNow);
         var result = await repository.SaveAsync(project, request.Revision, cancellationToken);
         return result.IsSaved
-            ? ProjectUpdateResult.Updated(await ToDetailsAsync(project, result.Revision, cancellationToken))
+            ? ProjectUpdateResult.Updated(ToDetails(project, result.Revision))
             : ProjectUpdateResult.Conflict(result.Revision);
     }
 
     public Task<ProjectDeleteResult> DeleteAsync(Guid id, long expectedRevision, CancellationToken cancellationToken) =>
         repository.DeleteAsync(new ProjectId(id), expectedRevision, cancellationToken);
 
-    public async Task<ProjectUpdateResult> UpdateEndpointProfilesAsync(
-        Guid id,
-        UpdateEndpointProfilesRequest request,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var project = await repository.GetAsync(new ProjectId(id), cancellationToken);
-        if (project is null)
-        {
-            return ProjectUpdateResult.NotFound();
-        }
 
-        var removedProfileIds = project.EndpointProfiles
-            .Select(item => item.Id)
-            .Except(request.Profiles.Select(item => new EndpointProfileId(item.Id)))
-            .ToArray();
-        project.ReplaceEndpointProfiles(request.Profiles.Select(item => new EndpointProfile(
-            new EndpointProfileId(item.Id), item.Name, item.BaseUrl, item.Model)), clock.UtcNow);
-        project.SetDefaultEndpointProfile(
-            request.DefaultEndpointProfileId is { } defaultId ? new EndpointProfileId(defaultId) : null,
-            clock.UtcNow);
-        var result = await repository.SaveAsync(project, request.Revision, cancellationToken);
-        if (!result.IsSaved)
-        {
-            return ProjectUpdateResult.Conflict(result.Revision);
-        }
 
-        foreach (var profileId in removedProfileIds)
-        {
-            await credentialStore.SetAsync(profileId, null, cancellationToken);
-        }
 
-        return ProjectUpdateResult.Updated(await ToDetailsAsync(project, result.Revision, cancellationToken));
-    }
 
-    public async Task<bool> SetEndpointCredentialAsync(
-        Guid projectId,
-        Guid endpointProfileId,
-        string? apiKey,
-        CancellationToken cancellationToken)
-    {
-        var project = await repository.GetAsync(new ProjectId(projectId), cancellationToken);
-        var profileId = new EndpointProfileId(endpointProfileId);
-        if (project is null || !project.EndpointProfiles.Any(item => item.Id == profileId))
-        {
-            return false;
-        }
-
-        await credentialStore.SetAsync(profileId, apiKey, cancellationToken);
-        return true;
-    }
-
-    public async Task<ProjectSecurityUpdateResult> UpdateSecurityAsync(
+    public async Task<ProjectUpdateResult> UpdateSecurityAsync(
         Guid id,
         UpdateProjectSecurityRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         var projectId = new ProjectId(id);
-        var project = await repository.GetAsync(projectId, cancellationToken);
-        if (project is null)
+        var stored = await repository.GetAsync(projectId, cancellationToken);
+        if (stored is null)
         {
-            return ProjectSecurityUpdateResult.NotFound();
+            return ProjectUpdateResult.NotFound();
         }
 
+        var project = stored.Project;
         project.ReplaceSecuritySettings(
             request.DirectoryGrants.Select(item => new DirectoryGrant(
                 new DirectoryGrantId(item.Id),
@@ -152,14 +99,14 @@ public sealed class ProjectService(
             clock.UtcNow);
         var result = await repository.SaveAsync(project, request.Revision, cancellationToken);
         return result.IsSaved
-            ? ProjectSecurityUpdateResult.Updated(await ToDetailsAsync(project, result.Revision, cancellationToken))
-            : ProjectSecurityUpdateResult.Conflict(result.Revision);
+            ? ProjectUpdateResult.Updated(ToDetails(project, result.Revision))
+            : ProjectUpdateResult.Conflict(result.Revision);
     }
 
     private static ProjectSummary ToSummary(Project project, long revision) =>
         new(project.Id.Value, project.Name, project.Description, project.UpdatedAt, revision);
 
-    private async Task<ProjectDetails> ToDetailsAsync(Project project, long revision, CancellationToken cancellationToken) =>
+    private static ProjectDetails ToDetails(Project project, long revision) =>
         new(
             project.Id.Value,
             project.Name,
@@ -185,13 +132,6 @@ public sealed class ProjectService(
                 item.Decision.ToString(),
                 item.MaxCallsPerRun,
                 checked((long)item.Timeout.TotalSeconds))).ToArray(),
-            await Task.WhenAll(project.EndpointProfiles.Select(async item => new EndpointProfileSettings(
-                item.Id.Value,
-                item.Name,
-                item.BaseUrl,
-                item.Model,
-                await credentialStore.ExistsAsync(item.Id, cancellationToken)))),
-            project.DefaultEndpointProfileId?.Value,
             project.ConnectionId?.Value);
 
     private static McpTransportKind ParseTransport(string value) =>

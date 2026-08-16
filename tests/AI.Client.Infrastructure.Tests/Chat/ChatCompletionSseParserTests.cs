@@ -1,9 +1,9 @@
+namespace AI.Client.Infrastructure.Tests.Chat;
+
 using AI.Client.Infrastructure.Chat;
 using Shouldly;
 using System.Text;
 using Xunit;
-
-namespace AI.Client.Infrastructure.Tests.Chat;
 
 public class ChatCompletionSseParserTests
 {

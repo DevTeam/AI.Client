@@ -1,8 +1,8 @@
+namespace AI.Client.Web.Projects;
+
 using AI.Client.Contracts.Projects;
 using System.Net;
 using System.Net.Http.Json;
-
-namespace AI.Client.Web.Projects;
 
 public sealed class ProjectApi(HttpClient httpClient) : IProjectApi
 {
@@ -36,15 +36,14 @@ public sealed class ProjectApi(HttpClient httpClient) : IProjectApi
         CancellationToken cancellationToken)
     {
         using var response = await httpClient.PutAsJsonAsync($"api/projects/{id}", request, cancellationToken);
-        if (response.StatusCode == HttpStatusCode.NotFound)
+        // ReSharper disable once SwitchStatementMissingSomeEnumCasesNoDefault
+        switch (response.StatusCode)
         {
-            return ProjectUpdateResult.NotFound();
-        }
-
-        if (response.StatusCode == HttpStatusCode.Conflict)
-        {
-            return await response.Content.ReadFromJsonAsync<ProjectUpdateResult>(cancellationToken)
-                ?? throw new InvalidOperationException("Project conflict response is empty.");
+            case HttpStatusCode.NotFound:
+                return ProjectUpdateResult.NotFound();
+            case HttpStatusCode.Conflict:
+                return await response.Content.ReadFromJsonAsync<ProjectUpdateResult>(cancellationToken)
+                       ?? throw new InvalidOperationException("Project conflict response is empty.");
         }
 
         response.EnsureSuccessStatusCode();
@@ -53,91 +52,48 @@ public sealed class ProjectApi(HttpClient httpClient) : IProjectApi
         return ProjectUpdateResult.Updated(project);
     }
 
-    public async Task<ProjectSecurityUpdateResult> UpdateSecurityAsync(
+    public async Task<ProjectUpdateResult> UpdateSecurityAsync(
         Guid id,
         UpdateProjectSecurityRequest request,
         CancellationToken cancellationToken)
     {
         using var response = await httpClient.PutAsJsonAsync($"api/projects/{id}/security", request, cancellationToken);
-        if (response.StatusCode == HttpStatusCode.NotFound)
+        // ReSharper disable once SwitchStatementMissingSomeEnumCasesNoDefault
+        switch (response.StatusCode)
         {
-            return ProjectSecurityUpdateResult.NotFound();
-        }
-
-        if (response.StatusCode == HttpStatusCode.Conflict)
-        {
-            return await response.Content.ReadFromJsonAsync<ProjectSecurityUpdateResult>(cancellationToken)
-                ?? throw new InvalidOperationException("Project security conflict response is empty.");
+            case HttpStatusCode.NotFound:
+                return ProjectUpdateResult.NotFound();
+            case HttpStatusCode.Conflict:
+                return await response.Content.ReadFromJsonAsync<ProjectUpdateResult>(cancellationToken)
+                       ?? throw new InvalidOperationException("Project security conflict response is empty.");
         }
 
         response.EnsureSuccessStatusCode();
         var project = await response.Content.ReadFromJsonAsync<ProjectDetails>(cancellationToken)
             ?? throw new InvalidOperationException("Project security update response is empty.");
-        return ProjectSecurityUpdateResult.Updated(project);
-    }
-
-    public async Task<ProjectUpdateResult> UpdateEndpointProfilesAsync(
-        Guid id,
-        UpdateEndpointProfilesRequest request,
-        CancellationToken cancellationToken)
-    {
-        using var response = await httpClient.PutAsJsonAsync($"api/projects/{id}/endpoints", request, cancellationToken);
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return ProjectUpdateResult.NotFound();
-        }
-
-        if (response.StatusCode == HttpStatusCode.Conflict)
-        {
-            return await response.Content.ReadFromJsonAsync<ProjectUpdateResult>(cancellationToken)
-                ?? throw new InvalidOperationException("Endpoint profile conflict response is empty.");
-        }
-
-        response.EnsureSuccessStatusCode();
-        var project = await response.Content.ReadFromJsonAsync<ProjectDetails>(cancellationToken)
-            ?? throw new InvalidOperationException("Endpoint profile update response is empty.");
         return ProjectUpdateResult.Updated(project);
     }
 
-    public async Task<bool> SetEndpointCredentialAsync(
-        Guid projectId,
-        Guid profileId,
-        UpdateEndpointCredentialRequest request,
-        CancellationToken cancellationToken)
-    {
-        using var response = await httpClient.PutAsJsonAsync(
-            $"api/projects/{projectId}/endpoints/{profileId}/credential",
-            request,
-            cancellationToken);
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return false;
-        }
 
-        response.EnsureSuccessStatusCode();
-        return true;
-    }
+
+
 
     public async Task<ProjectDeleteResult> DeleteAsync(Guid id, long revision, CancellationToken cancellationToken)
     {
         using var response = await httpClient.DeleteAsync($"api/projects/{id}?revision={revision}", cancellationToken);
-        if (response.StatusCode == HttpStatusCode.NoContent)
+        // ReSharper disable once SwitchStatementHandlesSomeKnownEnumValuesWithDefault
+        switch (response.StatusCode)
         {
-            return ProjectDeleteResult.Deleted(revision);
+            case HttpStatusCode.NoContent:
+                return ProjectDeleteResult.Deleted(revision);
+            case HttpStatusCode.NotFound:
+                return ProjectDeleteResult.NotFound();
+            case HttpStatusCode.Conflict:
+                return await response.Content.ReadFromJsonAsync<ProjectDeleteResult>(cancellationToken)
+                       ?? throw new InvalidOperationException("Project conflict response is empty.");
+            default:
+                response.EnsureSuccessStatusCode();
+                throw new InvalidOperationException("Unexpected project delete response.");
         }
-
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return ProjectDeleteResult.NotFound();
-        }
-
-        if (response.StatusCode == HttpStatusCode.Conflict)
-        {
-            return await response.Content.ReadFromJsonAsync<ProjectDeleteResult>(cancellationToken)
-                ?? throw new InvalidOperationException("Project conflict response is empty.");
-        }
-
-        response.EnsureSuccessStatusCode();
-        throw new InvalidOperationException("Unexpected project delete response.");
     }
 }

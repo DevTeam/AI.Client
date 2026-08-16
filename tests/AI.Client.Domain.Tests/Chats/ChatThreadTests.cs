@@ -1,9 +1,9 @@
+namespace AI.Client.Domain.Tests.Chats;
+
 using AI.Client.Domain.Chats;
 using AI.Client.Domain.Projects;
 using Shouldly;
 using Xunit;
-
-namespace AI.Client.Domain.Tests.Chats;
 
 public class ChatThreadTests
 {
@@ -15,7 +15,7 @@ public class ChatThreadTests
         var branch = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), root.Id, ChatMessageRole.User, "Branch", _now);
         var reply = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), branch.Id, ChatMessageRole.Assistant, "Reply", _now);
         chat.AddMessage(root, _now);
-        chat.AddMessage(branch, _now);
+        chat.AddMessage(branch, _now, branch.Id.Value);
         chat.AddMessage(reply, _now);
         chat.RenameBranch(branch.Id, "Named branch", _now);
 
@@ -23,7 +23,7 @@ public class ChatThreadTests
 
         parentId.ShouldBe(root.Id);
         chat.Messages.ShouldHaveSingleItem().Id.ShouldBe(root.Id);
-        chat.BranchTitles.ShouldBeEmpty();
+        chat.Branches.ShouldHaveSingleItem().HeadMessageId.ShouldBe(root.Id);
     }
 
     [Fact]
@@ -31,11 +31,11 @@ public class ChatThreadTests
     {
         var chat = CreateChat();
         var message = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Question", _now);
-        chat.AddMessage(message, _now);
+        chat.AddMessage(message, _now, message.Id.Value);
 
         chat.RenameBranch(message.Id, "  Alternative  ", _now);
 
-        chat.BranchTitles[message.Id].ShouldBe("Alternative");
+        chat.Branches.Single(branch => branch.Id == message.Id.Value).Title.ShouldBe("Alternative");
     }
 
     private readonly DateTimeOffset _now = new(2026, 8, 12, 12, 0, 0, TimeSpan.Zero);
@@ -67,7 +67,8 @@ public class ChatThreadTests
         var message = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), new ChatMessageId(Guid.CreateVersion7()), ChatMessageRole.User, "Question", _now);
 
         // When
-        var action = () => chat.AddMessage(message, _now);
+        // ReSharper disable once ConvertToLocalFunction
+        var action = () => chat.AddMessage(message, _now, message.Id.Value);
 
         // Then
         Should.Throw<Exception>(action);
@@ -89,6 +90,7 @@ public class ChatThreadTests
     {
         var chat = CreateChat();
 
+        // ReSharper disable once ConvertToLocalFunction
         var action = () => chat.Rename(" ", _now.AddMinutes(1));
 
         Should.Throw<Exception>(action);

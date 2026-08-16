@@ -1,7 +1,7 @@
+namespace AI.Client.Web.Composer;
+
 using AI.Client.Contracts.Chats;
 using AI.Client.Contracts.Runs;
-
-namespace AI.Client.Web.Composer;
 
 /// <summary>
 /// Result of submitting a composer message. The component uses this to know whether to clear the
@@ -19,8 +19,7 @@ public abstract record ComposerSubmitOutcome
         ChatDetails Chat,
         ChatRunSnapshot Snapshot,
         Guid RunBranchId,
-        /// <summary>Leaf id the component should display after submit (e.g. leaf.ParentId for a fork).</summary>
         Guid? UpdatedBranchLeafId,
-        /// <summary>Whether the message was queued without auto-resuming (true for Queue mode, or when the run was already paused).</summary>
+        // ReSharper disable once NotAccessedPositionalProperty.Global
         bool HeldInQueue) : ComposerSubmitOutcome;
 }

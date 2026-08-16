@@ -1,6 +1,6 @@
-using AI.Client.Domain.Runs;
-
 namespace AI.Client.Application.Runs;
+
+using AI.Client.Domain.Runs;
 
 public interface IChatRunRepository
 {

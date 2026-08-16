@@ -1,42 +1,34 @@
+namespace AI.Client.Application.Tests.Runs;
+
 using AI.Client.Application.Runs;
 using AI.Client.Contracts.Chats;
 using Shouldly;
 using Xunit;
 
-namespace AI.Client.Application.Tests.Runs;
-
 public sealed class ChatBranchIdsTests
 {
     [Fact]
-    public void ShouldReturnChatIdAndOnlyCurrentAlternativeBranchRoots()
+    public void ShouldKeepExplicitBranchIdsRegardlessOfSiblingOrder()
     {
         var chatId = Guid.NewGuid();
-        var originalUser = Message(null, "User", 0);
-        var originalAssistant = Message(originalUser.Id, "Assistant", 1);
-        var branchUser = Message(originalAssistant.Id, "User", 2);
-        var siblingBranchUser = Message(originalAssistant.Id, "User", 3);
-        var nestedAssistant = Message(branchUser.Id, "Assistant", 4);
-
-        var result = ChatBranchIds.Get(Chat(chatId, [originalUser, originalAssistant, branchUser, siblingBranchUser, nestedAssistant]));
-
-        result.ShouldBe(new HashSet<Guid> { chatId, siblingBranchUser.Id }, ignoreOrder: true);
+        var branchId = Guid.NewGuid();
+        var chat = new ChatDetails(chatId, Guid.NewGuid(), "Chat", DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, 1, null, [],
+            [new ChatBranchView(chatId, null, "Main"), new ChatBranchView(branchId, null, "Alternative", chatId)]);
+        ChatBranchIds.Get(chat).ShouldBe(new HashSet<Guid> { chatId, branchId }, ignoreOrder: true);
     }
 
     [Fact]
-    public void ShouldDropFormerBranchRootWhenItsSiblingIsRemoved()
+    public void ShouldExcludeSiblingMessagesFromModelContext()
     {
-        var chatId = Guid.NewGuid();
-        var parent = Message(null, "Assistant", 0);
-        var remainingUser = Message(parent.Id, "User", 1);
-
-        var result = ChatBranchIds.Get(Chat(chatId, [parent, remainingUser]));
-
-        result.ShouldBe(new HashSet<Guid> { chatId }, ignoreOrder: true);
+        var root = Guid.NewGuid();
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var chat = new ChatDetails(Guid.NewGuid(), Guid.NewGuid(), "Chat", DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, 1, null,
+            [new ChatMessageView(root, null, "User", "Question", DateTimeOffset.UnixEpoch),
+             new ChatMessageView(first, root, "Assistant", "First", DateTimeOffset.UnixEpoch),
+             new ChatMessageView(second, root, "Assistant", "Second", DateTimeOffset.UnixEpoch)]);
+        ChatContext.Get(chat, second).Select(message => message.Content).ShouldBe(["Question", "Second"]);
     }
-
-    private static ChatDetails Chat(Guid chatId, IReadOnlyList<ChatMessageView> messages) =>
-        new(chatId, Guid.NewGuid(), "Chat", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1, null, messages);
-
-    private static ChatMessageView Message(Guid? parentId, string role, int minute) =>
-        new(Guid.NewGuid(), parentId, role, role, DateTimeOffset.UnixEpoch.AddMinutes(minute), false);
 }

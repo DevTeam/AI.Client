@@ -1,11 +1,11 @@
-using System.Security.Cryptography;
-using System.Runtime.Versioning;
-
 namespace AI.Client.Infrastructure.Credentials;
+
+using System.Runtime.Versioning;
+using System.Security.Cryptography;
 
 public sealed class ProtectedDataUserDataProtector : IUserDataProtector
 {
-    private static readonly byte[] Entropy = "AI.Client.EndpointCredential.v1"u8.ToArray();
+    private static readonly byte[] Entropy = [.. "AI.Client.EndpointCredential.v1"u8];
 
     public byte[] Protect(byte[] data)
     {

@@ -1,37 +1,28 @@
 export function subscribe(dotNetReference) {
     const source = new EventSource("api/runs/events");
-    // FIFO queue, not a single "latest wins" slot: each event already carries a full snapshot of
-    // every run, but Home.razor's OnRunSnapshot depends on seeing the SPECIFIC edge transition
-    // (Generating -> non-Generating) for each queued message to know it's safe to refetch the
-    // chat — dropping an in-between snapshot in favor of the newest one meant a run that cycled
-    // Generating -> Completed -> Generating (processing the next queued item) skipped straight
-    // over the Completed snapshot, so the UI only ever caught up once the whole queue drained.
-    //
-    // Dispatch is also no longer scheduled via requestAnimationFrame — rAF is unreliable in this
-    // app's environment (doesn't fire promptly, or at all, in some conditions/backgrounded tabs),
-    // which compounded the same symptom: even a snapshot that DID make it into `latest` could sit
-    // unprocessed indefinitely waiting for a frame that never came. Dispatching directly off the
-    // event (a plain async call, not requestAnimationFrame) processes each entry as soon as the
-    // previous one finishes.
-    const queue = [];
+    let latest = null;
     let dispatching = false;
+    let disposed = false;
     const dispatch = async () => {
-        if (dispatching) return;
+        if (dispatching || disposed) return;
         dispatching = true;
         try {
-            while (queue.length > 0) {
-                const snapshot = queue.shift();
+            while (latest !== null && !disposed) {
+                const snapshot = latest;
+                latest = null;
                 await dotNetReference.invokeMethodAsync("OnRunSnapshot", snapshot);
             }
+        } catch (error) {
+            if (!disposed) console.error("Run snapshot could not be applied", error);
         } finally {
             dispatching = false;
         }
     };
     source.addEventListener("snapshot", event => {
-        queue.push(event.data);
-        dispatch();
+        latest = event.data;
+        void dispatch();
     });
-    return { dispose: () => source.close() };
+    return { dispose: () => { disposed = true; latest = null; source.close(); } };
 }
 
 export function isFocused() { return document.visibilityState === "visible" && document.hasFocus(); }

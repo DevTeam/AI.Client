@@ -1,7 +1,7 @@
-using System.Text.Json;
-using Microsoft.JSInterop;
-
 namespace AI.Client.Web.State;
+
+using Microsoft.JSInterop;
+using System.Text.Json;
 
 public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStateService
 {
@@ -101,7 +101,7 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
         if (token.IsCancellationRequested) return;
 
         if (string.IsNullOrEmpty(text)) _composerDrafts.Remove(key); else _composerDrafts[key] = text;
-        await jsRuntime.InvokeVoidAsync("localStorage.setItem", ComposerDraftKey, JsonSerializer.Serialize(_composerDrafts));
+        await jsRuntime.InvokeVoidAsync("localStorage.setItem", token, ComposerDraftKey, JsonSerializer.Serialize(_composerDrafts));
     }
 
     public ValueTask DisposeAsync()

@@ -18,6 +18,7 @@ internal sealed class HeadlessApplication(string[] args, IHeadlessSessionStore s
             {
                 ["session", "create", .. var options] => await CreateAsync(Parse(options)),
                 ["session", "send", .. var options] => await SendAsync(Parse(options)),
+                ["session", "approve", .. var options] => await ApproveAsync(Parse(options)),
                 ["session", "show", .. var options] => await ShowAsync(Parse(options)),
                 ["session", "delete", .. var options] => await DeleteAsync(Parse(options)),
                 _ => Write(new { status = "invalid_arguments", error = Usage }, 2)
@@ -69,7 +70,10 @@ internal sealed class HeadlessApplication(string[] args, IHeadlessSessionStore s
                 if (last.Status is ChatRunStatus.Failed or ChatRunStatus.Interrupted or ChatRunStatus.Paused)
                     return Write(new { status = last.Status.ToString().ToLowerInvariant(), last.Error, last.StreamingContent }, 1);
                 var chat = await chatClient.GetChatAsync(host, session.ProjectId, session.Id, timeout.Token);
-                var reply = chat.Messages.FirstOrDefault(item => item.ParentId == messageId && item.Role == "Assistant");
+                if (last.PendingApproval is { } approval)
+                    return Write(new { status = "awaiting_approval", sessionId = session.Id, approval });
+                if (last.Status != ChatRunStatus.Completed) continue;
+                var reply = chat.Messages.SingleOrDefault(item => item.Id == last.HeadMessageId && item.Role == "Assistant" && item.ToolCalls is not { Count: > 0 });
                 if (reply is null) continue;
                 var result = new { status = "completed", sessionId = session.Id, messageId, finalText = reply.Content,
                     durationMs = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds };
@@ -88,6 +92,14 @@ internal sealed class HeadlessApplication(string[] args, IHeadlessSessionStore s
     private async Task<HeadlessSession> GetSessionAsync(Dictionary<string, string> options) =>
         await store.GetAsync(Guid.Parse(Required(options, "session")), CancellationToken.None)
             ?? throw new InvalidOperationException("Session not found.");
+
+    private async Task<int> ApproveAsync(Dictionary<string, string> options)
+    {
+        var session = await GetSessionAsync(options);
+        await chatClient.DecideToolAsync(session.Host, session.ProjectId, session.Id,
+            new ToolApprovalDecision(Guid.Parse(Required(options, "approval")), bool.Parse(Required(options, "allow"))), CancellationToken.None);
+        return Write(new { status = "accepted", sessionId = session.Id });
+    }
 
     private async Task<int> ShowAsync(Dictionary<string, string> options)
     {
@@ -131,5 +143,5 @@ internal sealed class HeadlessApplication(string[] args, IHeadlessSessionStore s
         return exitCode;
     }
 
-    private const string Usage = "session create --project <name> [--connection <name>] [--host <url>] | session send --session <id> --message <text> [--host <url>] [--cancel-after-ms <ms>] | session show --session <id> | session delete --session <id>";
+    private const string Usage = "session create --project <name> [--connection <name>] [--host <url>] | session send --session <id> --message <text> [--host <url>] [--cancel-after-ms <ms>] | session approve --session <id> --approval <id> --allow <true|false> | session show --session <id> | session delete --session <id>";
 }

@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @using System.Diagnostics.CodeAnalysis
 @using System.Text.Json
 @inject IClientMetadata ClientMetadata
@@ -243,6 +243,19 @@
                     <label>Connection<select @bind="_editor.ConnectionId"><option value="">No connection</option>@foreach (var connection in _connections) { <option value="@connection.Id" disabled="@(!connection.Enabled)">@connection.Name@(!connection.Enabled ? " (Unavailable)" : string.Empty)</option> }</select></label>
                 </EditForm>
                 <section class="directory-settings"><div class="section-heading"><div><h3>Allowed directories</h3><p>Access is always recursive.</p></div><button class="icon-action" type="button" title="Add directory" aria-label="Add directory" @onclick="AddDirectoryGrant"><AppIcon Name="plus" /></button></div>@foreach (var directory in _security.DirectoryGrants) { <div class="directory-row"><InputText @bind-Value="directory.CanonicalRoot" placeholder="C:\Projects\App" /><select @bind="directory.Mode"><option>Read only</option><option>Read/write</option></select><button class="icon-action" type="button" title="Remove directory" aria-label="Remove directory" @onclick="() => RemoveDirectoryGrant(directory.Id)">−</button></div> }</section>
+                <section class="tool-settings">
+                    <h3>Default tools</h3>
+                    <button type="button" @onclick="DiscoverDefaultToolsAsync">Discover tools</button>
+                    <p>New tools require approval. Allow also requires the global server policy to be Allow.</p>
+                    @foreach (var policy in _security.ToolPolicies.Where(item => item.ServerId == AI.Client.Contracts.Settings.DefaultMcpServer.Id))
+                    {
+                        <div><strong>@policy.Name</strong>
+                            <select @bind="policy.Decision" aria-label="Tool policy"><option>Ask</option><option>Allow</option><option>Deny</option></select>
+                            <label>Calls per run<input type="number" min="1" max="20" @bind="policy.MaxCallsPerRun" /></label>
+                            <label>Timeout (seconds)<input type="number" min="1" max="120" @bind="policy.TimeoutSeconds" /></label>
+                        </div>
+                    }
+                </section>
                 @if (!string.IsNullOrEmpty(_error)) { <p class="error" role="alert">@_error</p> }
             </div>
             <footer class="settings-modal-actions">
@@ -608,6 +621,23 @@
         {
             _isLoading = false;
         }
+    }
+
+    private async Task DiscoverDefaultToolsAsync()
+    {
+        try
+        {
+            var tools = await GlobalSettingsApi.GetDefaultToolsAsync(CancellationToken.None);
+            foreach (var tool in tools)
+            {
+                if (_security.McpServers.All(server => server.Id != tool.ServerId))
+                    _security.McpServers.Add(new McpServerEditor { Id = tool.ServerId, DisplayName = "Default tools" });
+                var previous = _security.ToolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId && item.Name == tool.Name && item.SchemaHash == tool.SchemaHash);
+                _security.ToolPolicies.RemoveAll(item => item.ServerId == tool.ServerId && item.Name == tool.Name);
+                _security.ToolPolicies.Add(previous ?? new ToolPolicyEditor { ServerId = tool.ServerId, Name = tool.Name, SchemaHash = tool.SchemaHash });
+            }
+        }
+        catch (HttpRequestException) { _error = "Could not connect to the default tools server."; }
     }
 
     private async Task LoadSecurityAsync(Guid id)
@@ -1657,9 +1687,9 @@
 
         public List<DirectoryGrantEditor> DirectoryGrants { get; } = [];
 
-        private List<McpServerEditor> McpServers { get; } = [];
+        public List<McpServerEditor> McpServers { get; } = [];
 
-        private List<ToolPolicyEditor> ToolPolicies { get; } = [];
+        public List<ToolPolicyEditor> ToolPolicies { get; } = [];
 
         public static ProjectSecurityEditor From(ProjectDetails project)
         {

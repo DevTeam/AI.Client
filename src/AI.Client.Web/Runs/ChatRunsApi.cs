@@ -5,6 +5,11 @@ using System.Net.Http.Json;
 
 public sealed class ChatRunsApi(HttpClient httpClient) : IChatRunsApi
 {
+    public async Task DecideToolAsync(Guid projectId, Guid chatId, Guid branchId, ToolApprovalDecision decision, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PostAsJsonAsync($"api/projects/{projectId}/chats/{chatId}/tools/decision?branchId={branchId}", decision, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
     public async Task<ChatRunSnapshot> SubmitAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request, CancellationToken cancellationToken)
     {
         using var response = await httpClient.PostAsJsonAsync($"api/projects/{projectId}/chats/{chatId}/submit", request, cancellationToken);

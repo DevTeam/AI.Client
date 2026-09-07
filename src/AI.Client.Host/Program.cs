@@ -94,6 +94,16 @@ app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/submit",
         dispatcher.SubmitAsync(projectId, chatId, request, cancellationToken));
 
 app.MapGet("/api/runs", (IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.GetSnapshotAsync(cancellationToken));
+app.MapGet("/api/mcp/default/tools", async (AI.Client.Application.Tools.IToolSessionFactory factory, CancellationToken token) =>
+{
+    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+    timeout.CancelAfter(TimeSpan.FromSeconds(15));
+    await using var session = await factory.OpenAsync(timeout.Token);
+    return session.Tools.Select(tool => new McpToolInfo(tool.ServerId, tool.OriginalName, tool.Definition.Description, tool.SchemaHash)).ToArray();
+});
+app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/tools/decision",
+    async (Guid projectId, Guid chatId, Guid branchId, ToolApprovalDecision decision, IChatRunDispatcher dispatcher, CancellationToken token) =>
+        await dispatcher.DecideToolAsync(projectId, chatId, branchId, decision, token) ? Results.Ok() : Results.Conflict());
 
 app.MapGet("/api/runs/events", async (IChatRunDispatcher dispatcher, HttpResponse response, CancellationToken cancellationToken) =>
 {

@@ -6,4 +6,5 @@ public sealed record ChatCompletionRequest(
     string? ApiKey,
     string Message,
     Guid? CredentialProfileId = null,
-    IReadOnlyList<ChatCompletionMessage>? ContextMessages = null);
+    IReadOnlyList<ChatCompletionMessage>? ContextMessages = null,
+    IReadOnlyList<ChatToolDefinition>? Tools = null);

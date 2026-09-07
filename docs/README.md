@@ -37,3 +37,5 @@
 All UI text, source-code comments, identifiers and technical messages introduced by the project are written in English. Project documentation is maintained in Russian unless a document explicitly requires another language.
 
 Текущие решения: [ADR-006](decisions/ADR-006-architecture-simplification.md).
+
+- [Инструменты MCP по умолчанию](16-default-mcp-tools.md) — запуск процессов, разрешения и CLI.

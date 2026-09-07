@@ -10,6 +10,14 @@ using Xunit;
 
 public class ProtectedGlobalSecretStoreTests
 {
+    [Fact]
+    public async Task ShouldClearAbsentSecretInAFreshDataDirectory()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "ai-client-absent-" + Guid.NewGuid().ToString("N"));
+        var store = new ProtectedGlobalSecretStore(new PhysicalTextFileSystem(), new GlobalSettingsPaths(directory), new PrefixDataProtector());
+        await store.SetAsync("mcp-env", Guid.NewGuid(), null, CancellationToken.None);
+        Directory.Exists(directory).ShouldBeFalse();
+    }
     private readonly InMemoryTextFileSystem _fileSystem = new();
     private readonly ConnectionId _profileId = new(Guid.Parse("019f0000-0000-7000-8000-000000000001"));
 

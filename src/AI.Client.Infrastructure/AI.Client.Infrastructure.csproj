@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" />
+    <PackageReference Include="JsonSchema.Net" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>

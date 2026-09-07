@@ -2,6 +2,7 @@
 namespace AI.Client.Application.Runs;
 
 using Chat;
+using Tools;
 using Chats;
 using Projects;
 using Settings;
@@ -15,7 +16,7 @@ using System.Threading.Channels;
 
 public sealed class ChatRunDispatcher(
     IChatRunRepository repository, ChatService chats, IProjectService projects,
-    IGlobalSettingsRepository settings, IChatCompletionClient completionClient,
+    IGlobalSettingsRepository settings, ChatAgent agent,
     IGlobalSecretStore secretStore, IClock clock, ChatSynchronization synchronization) : IChatRunDispatcher, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<RunKey, Runtime> _runtimes = new();
@@ -231,22 +232,31 @@ public sealed class ChatRunDispatcher(
                             ?? throw new InvalidOperationException("Message conflict.");
                     }
                     request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
-                        await secretStore.GetAsync("connection", connection.Id, token), queued.Content, null, ChatContext.Get(chat, queued.Id));
+                        await secretStore.GetAsync("connection", connection.Id, token), queued.Content, null, ChatContext.Get(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id)));
+                    runtime.ToolHead = ResumeHead(chat, runtime.State.BranchId, queued.Id);
                     await SaveAsync(runtime, chat, token);
                 }
 
-                await foreach (var chunk in completionClient.StreamAsync(request, token))
-                {
-                    using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
-                    token.ThrowIfCancellationRequested();
-                    runtime.State.Append(chunk.Content);
-                    // ReSharper disable once InvertIf
-                    if (clock.UtcNow - runtime.LastPublished >= TimeSpan.FromMilliseconds(150))
+                await agent.RunAsync(runtime.State.ProjectId, request,
+                    (message, ct) => PersistToolMessageAsync(runtime, message, ct),
+                    async (content, ct) =>
                     {
-                        runtime.LastPublished = clock.UtcNow;
-                        await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
-                    }
-                }
+                        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, ct);
+                        runtime.State.Append(content);
+                        if (clock.UtcNow - runtime.LastPublished >= TimeSpan.FromMilliseconds(150))
+                        {
+                            runtime.LastPublished = clock.UtcNow;
+                            await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, ct), ct);
+                        }
+                    },
+                    async (name, ct) =>
+                    {
+                        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, ct);
+                        runtime.ActiveTool = name;
+                        runtime.State.Append("");
+                        await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, ct), ct);
+                    },
+                    (tool, arguments, timeout, ct) => ApproveAsync(runtime, tool, arguments, timeout, ct), token);
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
                 {
                     token.ThrowIfCancellationRequested();
@@ -255,7 +265,7 @@ public sealed class ChatRunDispatcher(
                     var replyId = ReplyId(queued.Id);
                     if (chat.Messages.All(message => message.Id != replyId))
                         chat = await chats.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
-                            new AppendChatMessageRequest(replyId, queued.Id, "Assistant", runtime.State.StreamingContent, chat.Revision,
+                            new AppendChatMessageRequest(replyId, runtime.ToolHead ?? queued.Id, "Assistant", runtime.State.StreamingContent, chat.Revision,
                                 BranchId: runtime.State.BranchId), token) ?? throw new InvalidOperationException("Response conflict.");
                     runtime.State.Remove(queued.Id);
                     runtime.State.Complete(true);
@@ -285,9 +295,73 @@ public sealed class ChatRunDispatcher(
             runtime.Cancellation?.Dispose();
             runtime.Cancellation = null;
             runtime.ActiveMessageId = null;
+            runtime.Approval = null;
+            runtime.PendingApproval = null;
+            runtime.ActiveTool = null;
+            runtime.Snapshot = runtime.Snapshot with { PendingApproval = null, ActiveTool = null };
+            Publish();
             runtime.Worker = null;
             StartWorker(runtime);
         }
+    }
+
+    public async Task<bool> DecideToolAsync(Guid projectId, Guid chatId, Guid branchId, ToolApprovalDecision decision, CancellationToken token)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, token);
+        if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)
+            || runtime.PendingApproval?.Id != decision.ApprovalId || runtime.Cancellation?.IsCancellationRequested != false)
+            return false;
+        return runtime.Approval?.TrySetResult(decision.Allow) == true;
+    }
+
+    private async Task<bool> ApproveAsync(Runtime runtime, AgentTool tool, string arguments, long timeout, CancellationToken token)
+    {
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using (await synchronization.EnterAsync(runtime.State.ChatId, token))
+        {
+            runtime.PendingApproval = new ToolApproval(Guid.NewGuid(), tool.OriginalName, arguments, timeout);
+            runtime.Approval = completion;
+            runtime.State.Append("");
+            await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
+        }
+        try { return await completion.Task.WaitAsync(token); }
+        finally
+        {
+            using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
+            runtime.PendingApproval = null;
+            runtime.Approval = null;
+        }
+    }
+
+    private async Task PersistToolMessageAsync(Runtime runtime, ChatCompletionMessage message, CancellationToken token)
+    {
+        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
+        var chat = await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token)
+            ?? throw new InvalidOperationException("Chat not found.");
+        var id = Guid.NewGuid();
+        chat = await chats.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
+            new AppendChatMessageRequest(id, runtime.ToolHead, message.Role, message.Content, chat.Revision,
+                BranchId: runtime.State.BranchId, ToolCalls: message.ToolCalls, ToolCallId: message.ToolCallId), token)
+            ?? throw new InvalidOperationException("Tool history conflict.");
+        runtime.ToolHead = id;
+        if (runtime.State.Status == RunStatus.Generating) runtime.State.Start();
+        await SaveAsync(runtime, chat, token);
+    }
+
+    private static Guid ResumeHead(ChatDetails chat, Guid branchId, Guid userId)
+    {
+        var head = chat.Branches?.SingleOrDefault(branch => branch.Id == branchId)?.HeadMessageId;
+        if (head is null) return userId;
+        var byId = chat.Messages.ToDictionary(message => message.Id);
+        var visited = new HashSet<Guid>();
+        var cursor = head;
+        while (cursor is { } id && visited.Add(id) && byId.TryGetValue(id, out var message))
+        {
+            if (id == userId) return head.Value;
+            if (message.Role == "User") break;
+            cursor = message.ParentId;
+        }
+        return userId;
     }
 
     private static Guid ReplyId(Guid messageId)
@@ -299,7 +373,7 @@ public sealed class ChatRunDispatcher(
     private async Task SaveAsync(Runtime runtime, ChatDetails? chat, CancellationToken token)
     {
         await repository.SaveAsync(runtime.State, token);
-        runtime.Snapshot = Snapshot(runtime.State, chat);
+        runtime.Snapshot = Snapshot(runtime.State, chat) with { PendingApproval = runtime.PendingApproval, ActiveTool = runtime.ActiveTool };
         if (runtime is { ActiveMessageId: { } active, State.Status: RunStatus.Generating })
             runtime.Snapshot = runtime.Snapshot with { Queue = runtime.Snapshot.Queue.Where(item => item.Id != active).ToArray() };
         if (chat is not null)
@@ -448,6 +522,10 @@ public sealed class ChatRunDispatcher(
         public ChatRunState State { get; set; } = state;
         // ReSharper disable once MemberHidesStaticFromOuterClass
         public ChatRunSnapshot Snapshot { get; set; } = ChatRunDispatcher.Snapshot(state, null);
+        public Guid? ToolHead { get; set; }
+        public ToolApproval? PendingApproval { get; set; }
+        public TaskCompletionSource<bool>? Approval { get; set; }
+        public string? ActiveTool { get; set; }
         public Task? Worker { get; set; }
         public CancellationTokenSource? Cancellation { get; set; }
         public Guid? ActiveMessageId { get; set; }

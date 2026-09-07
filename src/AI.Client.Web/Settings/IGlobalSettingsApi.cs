@@ -4,6 +4,7 @@ using AI.Client.Contracts.Settings;
 
 public interface IGlobalSettingsApi
 {
+    Task<IReadOnlyList<McpToolInfo>> GetDefaultToolsAsync(CancellationToken cancellationToken);
     Task<GlobalSettings> GetAsync(CancellationToken cancellationToken);
 
     Task<GlobalSettings> SaveAsync(SaveGlobalSettingsRequest request, CancellationToken cancellationToken);

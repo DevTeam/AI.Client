@@ -1915,3 +1915,7 @@ textarea {
 .shell.legacy-shell {
     display: none;
 }
+
+.tool-approval { padding: 1rem; border: 1px solid currentColor; border-radius: .5rem; }
+.tool-invocation pre, .tool-approval pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
+.tool-approval button { margin-right: .5rem; }

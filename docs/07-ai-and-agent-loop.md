@@ -2,7 +2,10 @@
 
 Статус: Accepted
 
-## Текущий live chat preview
+> Текущее исполнение (2026-09-07): реализован встроенный stdio-сервер с `process_run`, потоковый агентский цикл Chat Completions, подтверждения и история вызовов. См. [инструменты по умолчанию](16-default-mcp-tools.md). Описания остальных серверов, транспортов и Responses API ниже относятся к целевой архитектуре; ранние preview-разделы отражают предыдущие этапы.
+
+
+## Ранний live chat preview (исторический этап)
 
 Для ранней ручной проверки реализован Host-only adapter к OpenAI-compatible `POST {baseUrl}/chat/completions`. Web UI передаёт base URL, model, сообщение и необязательный API key в локальный Host; Host отправляет один non-streaming request с `messages` и `stream: false`.
 

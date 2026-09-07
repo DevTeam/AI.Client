@@ -72,7 +72,9 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             role,
             request.Content,
             now,
-            request.IsIncomplete), now, request.BranchId);
+            request.IsIncomplete,
+            request.ToolCalls?.Select(call => new ChatToolCall(call.Id, call.Name, call.Arguments)).ToArray(),
+            request.ToolCallId), now, request.BranchId);
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
@@ -160,7 +162,9 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
                 item.Role.ToString(),
                 item.Content,
                 item.CreatedAt,
-                item.IsIncomplete))
+                item.IsIncomplete,
+                item.ToolCalls?.Select(call => new Contracts.Chat.ChatToolCall(call.Id, call.Name, call.Arguments)).ToArray(),
+                item.ToolCallId))
             .ToArray(),
         chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title, branch.ParentBranchId, branch.RootMessageId?.Value)).ToArray());
 }

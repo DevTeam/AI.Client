@@ -8,6 +8,35 @@ using Xunit;
 public class ChatCompletionSseParserTests
 {
     [Fact]
+    public async Task ShouldAssembleInterleavedToolArgumentsOnlyOnCompletion()
+    {
+        const string sse = """
+            data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"one","function":{"name":"run","arguments":"{\"x\":"}},{"index":1,"id":"two","function":{"name":"read","arguments":"{}"}}]}}]}
+            data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1}"}}]}}]}
+            data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}
+            """;
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
+        var chunks = new List<Contracts.Chat.ChatCompletionChunk>();
+        await foreach (var chunk in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
+        var calls = chunks.ShouldHaveSingleItem().ToolCalls!;
+        calls[0].Arguments.ShouldBe("{\"x\":1}");
+        calls[1].Id.ShouldBe("two");
+    }
+
+    [Fact]
+    public async Task ShouldNotExecuteTruncatedToolCall()
+    {
+        const string sse = """
+            data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"one","function":{"name":"run","arguments":"{}"}}]}}]}
+            data: {"choices":[{"delta":{},"finish_reason":"length"}]}
+            """;
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
+        await Should.ThrowAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) { }
+        });
+    }
+    [Fact]
     public async Task ShouldReadContentDeltasUntilDone()
     {
         const string sse = """

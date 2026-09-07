@@ -125,6 +125,25 @@ public class OpenAiCompatibleChatCompletionClientTests
         capturedContent.ShouldContain("\"stream\":true");
     }
 
+    [Fact]
+    public async Task ShouldOmitToolsWhenProjectDoesNotExposeAny()
+    {
+        string? capturedContent = null;
+        _handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .Callback<HttpRequestMessage, CancellationToken>((request, _) =>
+                capturedContent = request.Content!.ReadAsStringAsync(CancellationToken.None).GetAwaiter().GetResult())
+            .ReturnsAsync(CreateResponse(HttpStatusCode.OK, "data: [DONE]\n\n"));
+
+        await foreach (var _ in CreateInstance().StreamAsync(
+                           new ChatCompletionRequest("https://llm.example/v1", "test-model", null, "Hi", Tools: []),
+                           CancellationToken.None)) { }
+
+        capturedContent.ShouldNotBeNull();
+        capturedContent.ShouldNotContain("\"tools\"");
+    }
+
     private OpenAiCompatibleChatCompletionClient CreateInstance() =>
         new(new HttpClient(_handler.Object), new ChatCompletionSseParser());
 

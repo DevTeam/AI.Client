@@ -26,7 +26,7 @@ public static class ChatDocumentSerializer
             message.Role,
             message.Content,
             message.CreatedAt,
-            message.IsIncomplete)).ToArray(),
+            message.IsIncomplete, message.ToolCalls, message.ToolCallId)).ToArray(),
         chat.Branches.Select(branch => new BranchDocument(branch.Id, branch.HeadMessageId?.Value, branch.Title,
             branch.ParentBranchId, branch.RootMessageId?.Value)).ToArray()), Options);
 
@@ -53,7 +53,7 @@ public static class ChatDocumentSerializer
                 message.Role,
                 message.Content,
                 message.CreatedAt,
-                message.IsIncomplete), message.CreatedAt);
+                message.IsIncomplete, message.ToolCalls, message.ToolCallId), message.CreatedAt);
         }
         chat.RestoreBranches(document.Branches.Select(branch => new ChatBranch(branch.Id,
             branch.HeadMessageId is { } head ? new ChatMessageId(head) : null, branch.Title,
@@ -84,5 +84,9 @@ public static class ChatDocumentSerializer
         ChatMessageRole Role,
         string Content,
         DateTimeOffset CreatedAt,
-        bool IsIncomplete = false);
+        bool IsIncomplete = false,
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyList<ChatToolCall>? ToolCalls = null,
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        string? ToolCallId = null);
 }

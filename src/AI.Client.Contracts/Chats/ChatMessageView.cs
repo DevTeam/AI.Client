@@ -6,4 +6,6 @@ public sealed record ChatMessageView(
     string Role,
     string Content,
     DateTimeOffset CreatedAt,
-    bool IsIncomplete = false);
+    bool IsIncomplete = false,
+    IReadOnlyList<Chat.ChatToolCall>? ToolCalls = null,
+    string? ToolCallId = null);

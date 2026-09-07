@@ -215,3 +215,11 @@ Status: completed
 - Hardened startup after the mandatory-branch change. Run persistence schema is now version 3; schema 1/2 files, missing or empty branch IDs, incomplete arrays, and malformed JSON are treated as incompatible absent runtime state instead of being published to WebAssembly and crashing project loading. Existing history and settings files are left untouched; only stale run state is ignored.
 - Added run lifecycle cleanup and graph reconciliation. Project and chat deletion remove their persisted and in-memory runs. After branch deletion, message append, replacement, or worker completion, valid runs are recalculated as `ChatId` plus current alternative user-message roots; obsolete files and runtimes are cancelled and removed. This also handles a node that ceases to be a branch root when its sibling is deleted.
 - Cancelling project or chat deletion now closes the entire context menu instead of returning to its initial menu state.
+
+## 2026-09-07 — встроенный MCP process_run
+
+Реализованы stdio-сервер инструментов по умолчанию, schema validation, цикл tool calls в Chat Completions, подтверждения конкретного вызова, повторная проверка политик и сохранение пар вызов–результат. Web показывает вызовы и результаты; CLI поддерживает отдельное решение по approval. Сервер включён в build/publish, зависимости подключены через central package management.
+
+Проверены настоящий MCP-вызов `dotnet --info`, продолжение генерации и восстановление истории после перезапуска Host с локальным тестовым endpoint. Визуальная проверка не выполнена: браузерный инструмент заблокировал локальный URL. Подробнее о границах и проверках: [инструменты по умолчанию](16-default-mcp-tools.md).
+
+Итоговая проверка: `dotnet run --project build -- verify` — 80 тестов, сборка без предупреждений и ошибок. `publish --output artifacts/publish-mcp-final` завершён; сквозной сценарий повторён на опубликованном Host и поставляемом MCP-сервере.

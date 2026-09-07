@@ -2,9 +2,12 @@
 
 Статус: Accepted
 
+> Текущее исполнение (2026-09-07): реализован встроенный stdio-сервер с `process_run`, потоковый агентский цикл Chat Completions, подтверждения и история вызовов. См. [инструменты по умолчанию](16-default-mcp-tools.md). Описания остальных серверов, транспортов и Responses API ниже относятся к целевой архитектуре; ранние preview-разделы отражают предыдущие этапы.
+
+
 ## Текущий статус configuration UI
 
-Project settings уже хранят MCP server binding с именем, transport (`Stdio` или `StreamableHttp`) и флагом enabled. UI позволяет редактировать bindings и связанные per-tool policies, но это только локальная конфигурация: процесс не запускается, HTTP transport не открывается и `tools/list` не вызывается. Эти действия относятся к отдельному этапу MCP connection manager.
+Project settings хранят MCP server bindings и per-tool policies. Для встроенного `Default tools` реализованы stdio, discovery и execution; кнопка `Discover tools` в настройках проекта загружает инструменты и позволяет задать политику. Для сторонних серверов сохраняется только конфигурация: их процессы и HTTP transports пока не открываются.
 
 ## Версия и negotiation
 
@@ -148,4 +151,4 @@ MCP servers являются глобальными и доступны всем
 - command, arguments, working directory и environment variables для stdio;
 - write-only credential для Streamable HTTP.
 
-Подключение, `Test`, `tools/list`, discovered tools и agent tool calls отложены и не показываются в UI до реализации.
+Подключение и вызовы сторонних серверов остаются отложенными. Встроенный `Default tools` доступен автоматически; его запуском управляет Host, а обнаружение инструментов и per-tool policies доступны в настройках проекта.

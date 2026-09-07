@@ -18,9 +18,97 @@ using Shouldly;
 using Xunit;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using AI.Client.Application.Tools;
+using System.Text.Json;
 
 public sealed class ChatExecutionTests
 {
+    [Theory]
+    [InlineData("Allow", 1)]
+    [InlineData("Deny", 0)]
+    public async Task ShouldRespectPoliciesWithoutPrompting(string decision, int expectedCalls)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync(decision);
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.Request.Tools!.Count.ShouldBe(decision == "Deny" ? 0 : 1);
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_default__process_run", "{}")];
+        first.Answer.SetResult("");
+        var second = await fixture.NextCallAsync();
+        fixture.Tools.CallCount.ShouldBe(expectedCalls);
+        second.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task RevokedPolicyWhileWaitingForApprovalMustPreventExecution()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Ask");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_default__process_run", "{}")];
+        first.Answer.SetResult("");
+        var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
+        await fixture.SetPolicyAsync("Deny");
+        await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            new ToolApprovalDecision(pending.PendingApproval!.Id, true), CancellationToken.None);
+        var second = await fixture.NextCallAsync();
+        fixture.Tools.CallCount.ShouldBe(0);
+        second.Answer.SetResult("Denied");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ToolMustWaitForApprovalAndPersistTheExchange(bool allow)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Ask");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_default__process_run", "{}")];
+        first.Answer.SetResult("");
+        var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
+        fixture.Tools.CallCount.ShouldBe(0);
+        var before = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        before!.Messages.Single(message => message.ToolCalls is not null).ToolCalls![0].Id.ShouldBe("call-1");
+        (await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            new ToolApprovalDecision(Guid.NewGuid(), true), CancellationToken.None)).ShouldBeFalse();
+        (await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            new ToolApprovalDecision(pending.PendingApproval!.Id, allow), CancellationToken.None)).ShouldBeTrue();
+        var second = await fixture.NextCallAsync();
+        second.Request.ContextMessages![^1].ToolCallId.ShouldBe("call-1");
+        fixture.Tools.CallCount.ShouldBe(allow ? 1 : 0);
+        second.Answer.SetResult("Final response");
+        var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        await fixture.RestartAsync();
+        var restored = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        restored!.Messages.Single(message => message.Id == completed.HeadMessageId).Content.ShouldBe("Final response");
+        ChatContext.Get(restored, completed.HeadMessageId!.Value).Select(message => message.Role).ShouldBe(["user", "assistant", "tool", "assistant"]);
+        fixture.Tools.CallCount.ShouldBe(allow ? 1 : 0);
+    }
+
+    [Fact]
+    public async Task StoppedApprovalMustNotExecuteOnRestart()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Ask");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_default__process_run", "{}")];
+        first.Answer.SetResult("");
+        await fixture.WaitAsync(run => run.PendingApproval is not null);
+        await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
+        await fixture.RestartAsync();
+        await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
+        var resumed = await fixture.NextCallAsync();
+        fixture.Tools.CallCount.ShouldBe(0);
+        resumed.Request.ContextMessages![^1].Content.ShouldContain("interrupted", Case.Insensitive);
+        resumed.Answer.SetResult("Stopped");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
     [Fact]
     public async Task QueueShouldRemainPausedAndRepeatedSubmitShouldHaveNoSecondEffect()
     {
@@ -34,6 +122,8 @@ public sealed class ChatExecutionTests
         fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
         await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
         var call = await fixture.NextCallAsync();
+        call.Request.Tools.ShouldBeEmpty();
+        fixture.Tools.OpenCount.ShouldBe(0);
         call.Answer.SetResult("Reply");
         var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
         completed.Queue.ShouldBeEmpty();
@@ -141,7 +231,10 @@ public sealed class ChatExecutionTests
         (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None)).ShouldBeEmpty();
     }
 
-    private sealed record Call(ChatCompletionRequest Request, TaskCompletionSource<string> Answer);
+    private sealed record Call(ChatCompletionRequest Request, TaskCompletionSource<string> Answer)
+    {
+        public IReadOnlyList<ChatToolCall>? ToolCalls { get; set; }
+    }
     private sealed class Completion : IChatCompletionClient
     {
         public Channel<Call> Calls { get; } = Channel.CreateUnbounded<Call>();
@@ -150,13 +243,15 @@ public sealed class ChatExecutionTests
         {
             var call = new Call(request, new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously));
             Calls.Writer.TryWrite(call);
-            yield return new ChatCompletionChunk(await call.Answer.Task.WaitAsync(cancellationToken));
+            var content = await call.Answer.Task.WaitAsync(cancellationToken);
+            yield return new ChatCompletionChunk(content, ToolCalls: call.ToolCalls);
         }
     }
     private sealed class Fixture : IAsyncDisposable
     {
         public MemoryFileSystem FileSystem { get; } = new();
         public Completion Completion { get; } = new();
+        public TestTools Tools { get; } = new();
         private readonly ChatSynchronization _synchronization = new();
         private readonly SystemClock _clock = new();
         private readonly Uuid7IdGenerator _ids = new();
@@ -180,7 +275,8 @@ public sealed class ChatExecutionTests
             Chats = new ChatService(_chatRepository, _ids, _clock, _synchronization);
             Dispatcher = NewDispatcher();
         }
-        private ChatRunDispatcher NewDispatcher() => new(_runs, Chats, _projectService, _settings, Completion, _secrets, _clock, _synchronization);
+        private ChatRunDispatcher NewDispatcher() => new(_runs, Chats, _projectService, _settings,
+            new ChatAgent(Completion, Tools, _projectService, _settings), _secrets, _clock, _synchronization);
         public static async Task<Fixture> CreateAsync()
         {
             var fixture = new Fixture();
@@ -191,6 +287,15 @@ public sealed class ChatExecutionTests
             return fixture;
         }
         public Task<ChatRunSnapshot> SubmitAsync(SubmitChatMessageRequest request) => Dispatcher.SubmitAsync(ProjectId, ChatId, request, CancellationToken.None);
+        public async Task SetPolicyAsync(string decision)
+        {
+            var global = await _settings.LoadAsync(CancellationToken.None);
+            await _settings.SaveAsync(global with { McpServers = [DefaultMcpServer.Settings with { Policy = "Allow" }] }, CancellationToken.None);
+            var project = await _projectService.GetAsync(ProjectId, CancellationToken.None);
+            await _projectService.UpdateSecurityAsync(ProjectId, new UpdateProjectSecurityRequest(project!.Revision, [],
+                [new Contracts.Projects.McpServerSettings(DefaultMcpServer.Id, "Default", "Stdio", true)],
+                [new ToolPolicySettings(DefaultMcpServer.Id, "process_run", "schema", decision, 20, 120)]), CancellationToken.None);
+        }
         public async Task<Call> NextCallAsync() => await Completion.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
         public async Task<ChatRunSnapshot> WaitAsync(Func<ChatRunSnapshot, bool> predicate)
         {
@@ -212,5 +317,24 @@ public sealed class ChatExecutionTests
             _projects.Dispose();
             _runs.Dispose();
         }
+    }
+
+    private sealed class TestTools : IToolSessionFactory, IToolSession
+    {
+        public int CallCount { get; private set; }
+        public int OpenCount { get; private set; }
+        public IReadOnlyList<AgentTool> Tools { get; } = [new(new ChatToolDefinition("mcp_default__process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")), DefaultMcpServer.Id, "process_run", "schema")];
+        public Task<IToolSession> OpenAsync(CancellationToken cancellationToken)
+        {
+            OpenCount++;
+            return Task.FromResult<IToolSession>(this);
+        }
+        public string ValidateArguments(AgentTool tool, string arguments) => arguments;
+        public Task<string> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken)
+        {
+            CallCount++;
+            return Task.FromResult("{\"exitCode\":0}");
+        }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

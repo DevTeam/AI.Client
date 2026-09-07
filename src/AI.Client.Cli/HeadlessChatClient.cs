@@ -10,6 +10,7 @@ using System.Text.Json;
 
 internal interface IHeadlessChatClient
 {
+    Task DecideToolAsync(Uri host, Guid projectId, Guid chatId, ToolApprovalDecision decision, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProjectSummary>> GetProjectsAsync(Uri host, CancellationToken cancellationToken);
     Task<ProjectDetails> GetProjectAsync(Uri host, Guid id, CancellationToken cancellationToken);
     Task<GlobalSettings> GetSettingsAsync(Uri host, CancellationToken cancellationToken);
@@ -23,6 +24,11 @@ internal interface IHeadlessChatClient
 
 internal sealed class HeadlessChatClient(HttpClient client) : IHeadlessChatClient
 {
+    public async Task DecideToolAsync(Uri host, Guid projectId, Guid chatId, ToolApprovalDecision decision, CancellationToken cancellationToken)
+    {
+        using var response = await client.PostAsJsonAsync(new Uri(host, $"api/projects/{projectId}/chats/{chatId}/tools/decision?branchId={chatId}"), decision, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
     public async Task<IReadOnlyList<ProjectSummary>> GetProjectsAsync(Uri host, CancellationToken cancellationToken) =>
         await GetAsync<ProjectSummary[]>(host, "api/projects", cancellationToken);
     public Task<ProjectDetails> GetProjectAsync(Uri host, Guid id, CancellationToken cancellationToken) =>

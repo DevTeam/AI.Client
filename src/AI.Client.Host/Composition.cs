@@ -3,6 +3,8 @@ using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Settings;
 using AI.Client.Application.Runs;
+using AI.Client.Application.Tools;
+using AI.Client.Infrastructure.Tools;
 using AI.Client.Infrastructure.Chat;
 using AI.Client.Infrastructure.Credentials;
 using AI.Client.Infrastructure.Projects;
@@ -30,11 +32,12 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatEndpoint>()
             .Root<IChatRunRepository>()
             .Root<IChatRunDispatcher>()
+            .Root<IToolSessionFactory>()
             .Singleton<HostDescriptor, ProjectStorageLocation, PhysicalTextFileSystem, ProjectStoragePaths, JsonProjectRepository,
                 Uuid7IdGenerator, SystemClock, ProjectService, ChatStoragePaths, JsonChatRepository, ChatService, ChatSynchronization,
                 ProtectedDataUserDataProtector, ChatCompletionSseParser,
                 OpenAiCompatibleChatCompletionClient, ChatEndpoint, GlobalSettingsPaths, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
-                GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher>()
+                GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, DefaultToolSessionFactory>()
             .Singleton(_ => new HttpClient())
             .Transient((ProjectStorageLocation location) => location.RootDirectory);
 }

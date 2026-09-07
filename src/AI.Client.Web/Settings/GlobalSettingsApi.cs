@@ -5,6 +5,8 @@ using System.Net.Http.Json;
 
 public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsApi
 {
+    public async Task<IReadOnlyList<McpToolInfo>> GetDefaultToolsAsync(CancellationToken cancellationToken) =>
+        await httpClient.GetFromJsonAsync<McpToolInfo[]>("api/mcp/default/tools", cancellationToken) ?? [];
     public async Task<GlobalSettings> GetAsync(CancellationToken cancellationToken) =>
         await httpClient.GetFromJsonAsync<GlobalSettings>("api/settings", cancellationToken)
         ?? new GlobalSettings([], []);

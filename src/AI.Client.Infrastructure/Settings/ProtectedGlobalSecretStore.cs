@@ -21,7 +21,7 @@ public sealed class ProtectedGlobalSecretStore(
         var path = paths.GetSecretPath(scope, id);
         if (string.IsNullOrWhiteSpace(value))
         {
-            await fileSystem.DeleteAsync(path, cancellationToken);
+            if (await fileSystem.ExistsAsync(path, cancellationToken)) await fileSystem.DeleteAsync(path, cancellationToken);
             return;
         }
 

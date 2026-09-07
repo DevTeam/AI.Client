@@ -110,16 +110,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             HttpMethod.Post,
             new Uri(baseUri.ToString().TrimEnd('/') + "/chat/completions"))
         {
-            Content = JsonContent.Create(new
-            {
-                model = request.Model.Trim(),
-                messages = (request.ContextMessages is { Count: > 0 }
-                    ? request.ContextMessages
-                    : [new ChatCompletionMessage("user", request.Message.Trim())])
-                    .Select(item => new { role = item.Role, content = item.Content })
-                    .ToArray(),
-                stream
-            })
+            Content = JsonContent.Create(CreateBody(request, stream))
         };
         if (!string.IsNullOrWhiteSpace(request.ApiKey))
         {
@@ -128,4 +119,25 @@ public sealed class OpenAiCompatibleChatCompletionClient(
 
         return message;
     }
+    private static Dictionary<string, object?> CreateBody(ChatCompletionRequest request, bool stream)
+    {
+        var messages = (request.ContextMessages is { Count: > 0 } ? request.ContextMessages
+            : [new ChatCompletionMessage("user", request.Message.Trim())]).Select(item =>
+        {
+            var message = new Dictionary<string, object?> { ["role"] = item.Role, ["content"] = item.Content };
+            if (item.ToolCallId is not null) message["tool_call_id"] = item.ToolCallId;
+            if (item.ToolCalls is { Count: > 0 }) message["tool_calls"] = item.ToolCalls.Select(call => new
+            {
+                id = call.Id, type = "function", function = new { name = call.Name, arguments = call.Arguments }
+            }).ToArray();
+            return message;
+        }).ToArray();
+        var body = new Dictionary<string, object?> { ["model"] = request.Model.Trim(), ["messages"] = messages, ["stream"] = stream };
+        if (request.Tools is { Count: > 0 }) body["tools"] = request.Tools.Select(tool => new
+        {
+            type = "function", function = new { name = tool.Name, description = tool.Description, parameters = tool.InputSchema }
+        }).ToArray();
+        return body;
+    }
+
 }

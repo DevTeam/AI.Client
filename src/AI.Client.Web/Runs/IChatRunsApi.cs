@@ -4,6 +4,7 @@ using AI.Client.Contracts.Runs;
 
 public interface IChatRunsApi
 {
+    Task DecideToolAsync(Guid projectId, Guid chatId, Guid branchId, ToolApprovalDecision decision, CancellationToken cancellationToken);
     Task<ChatRunSnapshot> SubmitAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request, CancellationToken cancellationToken);
     Task<IReadOnlyList<ChatRunSnapshot>> GetAsync(CancellationToken cancellationToken);
     Task<ChatRunSnapshot?> StopAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken);

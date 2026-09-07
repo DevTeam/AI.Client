@@ -5,7 +5,7 @@
 Ключевые возможности:
 
 - streaming-чат с Markdown;
-- настройки MCP и политик инструментов (исполнение MCP пока не реализовано);
+- встроенный MCP-инструмент `process_run` с подтверждениями, политиками и историей вызовов;
 - несколько AI endpoints и наборов credentials;
 - проекты с независимыми настройками безопасности;
 - Git-подобное ветвление истории чата;
@@ -23,6 +23,7 @@
 - [Доменная модель](docs/03-domain-model.md)
 - [JSON-хранилище](docs/04-storage.md)
 - [MCP-интеграция](docs/05-mcp-integration.md)
+- [Инструменты по умолчанию и запуск процессов](docs/16-default-mcp-tools.md)
 - [Безопасность](docs/06-security.md)
 - [AI endpoints и agent loop](docs/07-ai-and-agent-loop.md)
 - [План реализации](docs/08-implementation-plan.md)

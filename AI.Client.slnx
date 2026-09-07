@@ -9,8 +9,7 @@
     <Project Path="src/AI.Client.Domain/AI.Client.Domain.csproj" />
     <Project Path="src/AI.Client.Host/AI.Client.Host.csproj" />
     <Project Path="src/AI.Client.Infrastructure/AI.Client.Infrastructure.csproj" />
-    <Project Path="src/AI.Client.Mcp.FileSystem/AI.Client.Mcp.FileSystem.csproj" />
-    <Project Path="src/AI.Client.Mcp.History/AI.Client.Mcp.History.csproj" />
+    <Project Path="src/AI.Client.Mcp.BuiltIn/AI.Client.Mcp.BuiltIn.csproj" />
     <Project Path="src/AI.Client.Web/AI.Client.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">

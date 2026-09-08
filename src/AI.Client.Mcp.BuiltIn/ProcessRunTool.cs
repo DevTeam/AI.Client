@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -11,11 +12,17 @@ public sealed class ProcessRunTool(IProcessRunner processRunner): IToolFactory
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public McpServerTool Create() => McpServerTool.Create(RunAsync);
+    public McpServerTool Create() => McpServerTool.Create(
+        RunAsync,
+        new McpServerToolCreateOptions
+        {
+            Description = $"Run a program and wait for completion. No implicit shell or interactive input. " +
+                          $"The working directory is not a sandbox. Output is limited to 32768 characters per stream. " +
+                          $"Host OS: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})."
+        });
 
     [McpServerTool(Name = "process_run", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = true,
         UseStructuredContent = true, OutputSchemaType = typeof(ProcessResult))]
-    [Description("Run a program and wait for completion. No implicit shell or interactive input. The working directory is not a sandbox. Output is limited to 32768 characters per stream.")]
     private async Task<CallToolResult> RunAsync(
         [Description("Path to the executable to run.")] [MaxLength(4096)] string executable,
         [Description("Command-line arguments passed to the executable.")] [MaxLength(256)] string[]? arguments = null,

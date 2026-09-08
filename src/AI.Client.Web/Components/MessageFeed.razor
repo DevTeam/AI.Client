@@ -80,7 +80,7 @@
         {
             @if (item.Message is { } message)
             {
-                <article id="message-@message.Id" class="workspace-message @message.Role.ToLowerInvariant() @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)">
+                <article @key="message.Id" id="message-@message.Id" class="workspace-message @message.Role.ToLowerInvariant() @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)">
                     @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
                     <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div>
                     <div class="message-actions">
@@ -95,7 +95,7 @@
             {
                 var pairs = BuildToolPairs(group);
                 var anchor = group[^1];
-                <article id="message-@anchor.Id" class="workspace-message tool-group @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)">
+                <article @key="anchor.Id" id="message-@anchor.Id" class="workspace-message tool-group @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)">
                     <details class="tool-group-summary">
                         <summary><AppIcon Name="tool" /><span>Tool calls (@pairs.Count)</span></summary>
                         <div class="tool-group-body">

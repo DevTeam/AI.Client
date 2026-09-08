@@ -4,18 +4,36 @@ using System.Text;
 
 namespace AI.Client.Mcp.BuiltIn;
 
-public static class ProcessRunner
+public sealed class ProcessRunner : IProcessRunner
 {
     private static readonly string[] VariablesNames =
     [
-        "PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "PATHEXT", "DOTNET_ROOT",
-        "PROCESSOR_ARCHITECTURE", "PROCESSOR_ARCHITEW6432", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData", "ALLUSERSPROFILE",
-        "COMSPEC", "HOMEDRIVE", "HOMEPATH"
+        "PATH",
+        "SystemRoot",
+        "WINDIR",
+        "TEMP",
+        "TMP",
+        "HOME",
+        "USERPROFILE",
+        "LOCALAPPDATA",
+        "APPDATA",
+        "PATHEXT",
+        "DOTNET_ROOT",
+        "PROCESSOR_ARCHITECTURE",
+        "PROCESSOR_ARCHITEW6432",
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "ProgramW6432",
+        "ProgramData",
+        "ALLUSERSPROFILE",
+        "COMSPEC",
+        "HOMEDRIVE",
+        "HOMEPATH"
     ];
 
     public const int OutputLimit = 32768;
 
-    public static async Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken)
+    public async Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Executable);
@@ -90,12 +108,22 @@ public static class ProcessRunner
 
         try
         {
-            if (OperatingSystem.IsWindows()) job!.Attach(process);
+            if (OperatingSystem.IsWindows())
+            {
+                job!.Attach(process);
+            }
         }
         catch
         {
-            try { process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { }
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // Ignored
+            }
+
             throw;
         }
         process.StandardInput.Close();
@@ -114,8 +142,15 @@ public static class ProcessRunner
         catch (OperationCanceledException)
         {
             timedOut = !cancellationToken.IsCancellationRequested;
-            try { process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { /* Already exited. */ }
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                 /* Already exited. */
+            }
+
             await process.WaitForExitAsync(CancellationToken.None);
             await Task.WhenAll(output, errors);
             cancellationToken.ThrowIfCancellationRequested();
@@ -147,7 +182,7 @@ public static class ProcessRunner
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-
+            // Ignored
         }
 
         return truncated;

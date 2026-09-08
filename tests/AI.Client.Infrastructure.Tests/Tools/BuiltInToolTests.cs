@@ -13,7 +13,7 @@ public sealed class BuiltInToolTests
     public async Task ShouldKillDescendantsWhenTheirParentExits()
     {
         if (!OperatingSystem.IsWindows()) return;
-        var result = await ProcessRunner.RunAsync(new ProcessRequest("powershell.exe",
+        var result = await new ProcessRunner().RunAsync(new ProcessRequest("powershell.exe",
             ["-NoProfile", "-NonInteractive", "-Command", "$child = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList '-NoProfile -NonInteractive -Command Start-Sleep -Seconds 30'; $child.Id"],
             AppContext.BaseDirectory, 10000), CancellationToken.None);
         result.ExitCode.ShouldBe(0);
@@ -37,7 +37,7 @@ public sealed class BuiltInToolTests
         Environment.SetEnvironmentVariable(variable, "test-value");
         try
         {
-            var result = await ProcessRunner.RunAsync(new ProcessRequest("powershell.exe",
+            var result = await new ProcessRunner().RunAsync(new ProcessRequest("powershell.exe",
                 ["-NoProfile", "-NonInteractive", "-Command", "[Console]::Write([Environment]::GetEnvironmentVariable('AI_CLIENT_PROCESS_TEST_SECRET'))"],
                 AppContext.BaseDirectory), CancellationToken.None);
             result.ExitCode.ShouldBe(0);
@@ -67,7 +67,7 @@ public sealed class BuiltInToolTests
     [Fact]
     public async Task ShouldReportMissingExecutable()
     {
-        var result = await ProcessRunner.RunAsync(new ProcessRequest("nonexistent-ai-client-test-command", [], AppContext.BaseDirectory), CancellationToken.None);
+        var result = await new ProcessRunner().RunAsync(new ProcessRequest("nonexistent-ai-client-test-command", [], AppContext.BaseDirectory), CancellationToken.None);
         result.ExitCode.ShouldBeNull();
         result.Error.ShouldNotBeNullOrWhiteSpace();
     }
@@ -76,7 +76,7 @@ public sealed class BuiltInToolTests
     public async Task ShouldCaptureBothStreamsAndNonZeroExitWithoutDeadlock()
     {
         if (!OperatingSystem.IsWindows()) return;
-        var result = await ProcessRunner.RunAsync(new ProcessRequest("powershell.exe",
+        var result = await new ProcessRunner().RunAsync(new ProcessRequest("powershell.exe",
             ["-NoProfile", "-NonInteractive", "-Command", "[Console]::Out.Write(('x' * 100000)); [Console]::Error.Write(('y' * 100000)); exit 7"], AppContext.BaseDirectory), CancellationToken.None);
         result.ExitCode.ShouldBe(7);
         result.Stdout.Length.ShouldBe(ProcessRunner.OutputLimit);
@@ -89,9 +89,9 @@ public sealed class BuiltInToolTests
     {
         if (!OperatingSystem.IsWindows()) return;
         var request = new ProcessRequest("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 30"], AppContext.BaseDirectory, 300);
-        var result = await ProcessRunner.RunAsync(request, CancellationToken.None);
+        var result = await new ProcessRunner().RunAsync(request, CancellationToken.None);
         result.TimedOut.ShouldBeTrue();
         using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
-        await Should.ThrowAsync<OperationCanceledException>(() => ProcessRunner.RunAsync(request with { TimeoutMs = 120000 }, cancel.Token));
+        await Should.ThrowAsync<OperationCanceledException>(() => new ProcessRunner().RunAsync(request with { TimeoutMs = 120000 }, cancel.Token));
     }
 }

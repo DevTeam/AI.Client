@@ -8,22 +8,28 @@ using Xunit;
 public class ChatThreadTests
 {
     [Fact]
-    public void ShouldDeleteBranchAndAllDescendants()
+    public void ShouldDeleteOnlyRequestedBranchAndReparentChildren()
     {
         var chat = CreateChat();
         var root = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Root", _now);
+        var branchId = Guid.CreateVersion7();
         var branch = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), root.Id, ChatMessageRole.User, "Branch", _now);
-        var reply = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), branch.Id, ChatMessageRole.Assistant, "Reply", _now);
+        var childId = Guid.CreateVersion7();
+        var child = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), branch.Id, ChatMessageRole.User, "Child", _now);
+        var abandoned = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), branch.Id, ChatMessageRole.Assistant, "Abandoned", _now);
         chat.AddMessage(root, _now);
-        chat.AddMessage(branch, _now, branch.Id.Value);
-        chat.AddMessage(reply, _now);
-        chat.RenameBranch(branch.Id, "Named branch", _now);
+        chat.AddMessage(branch, _now, branchId, chat.Id.Value);
+        chat.AddMessage(child, _now, childId, branchId);
+        chat.AddMessage(abandoned, _now, branchId);
 
-        var parentId = chat.DeleteBranch(branch.Id, _now);
+        var parent = chat.DeleteBranch(branchId, _now);
+        chat.PruneUnreachableMessages([]);
 
-        parentId.ShouldBe(root.Id);
-        chat.Messages.ShouldHaveSingleItem().Id.ShouldBe(root.Id);
-        chat.Branches.ShouldHaveSingleItem().HeadMessageId.ShouldBe(root.Id);
+        parent.ParentBranchId.ShouldBe(chat.Id.Value);
+        chat.Branches.Select(item => item.Id).ShouldBe([chat.Id.Value, childId], ignoreOrder: true);
+        chat.Branches.Single(item => item.Id == childId).ParentBranchId.ShouldBe(chat.Id.Value);
+        chat.GetBranch(child.Id).Select(item => item.Content).ShouldBe(["Root", "Branch", "Child"]);
+        chat.Messages.ShouldNotContain(message => message.Id == abandoned.Id);
     }
 
     [Fact]

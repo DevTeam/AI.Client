@@ -8,7 +8,7 @@ namespace AI.Client.Infrastructure.Storage;
 
 public static class ChatDocumentSerializer
 {
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 3;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
     public static string Serialize(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatDocument(
@@ -28,7 +28,7 @@ public static class ChatDocumentSerializer
             message.CreatedAt,
             message.IsIncomplete, message.ToolCalls, message.ToolCallId)).ToArray(),
         chat.Branches.Select(branch => new BranchDocument(branch.Id, branch.HeadMessageId?.Value, branch.Title,
-            branch.ParentBranchId, branch.RootMessageId?.Value)).ToArray()), Options);
+            branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray()), Options);
 
     public static StoredChat Deserialize(string json)
     {
@@ -57,7 +57,7 @@ public static class ChatDocumentSerializer
         }
         chat.RestoreBranches(document.Branches.Select(branch => new ChatBranch(branch.Id,
             branch.HeadMessageId is { } head ? new ChatMessageId(head) : null, branch.Title,
-            branch.ParentBranchId, branch.RootMessageId is { } root ? new ChatMessageId(root) : null)));
+            branch.ParentBranchId, branch.RootMessageId is { } root ? new ChatMessageId(root) : null, branch.Revision)));
         chat.Rename(document.Title, document.UpdatedAt);
 
         return new StoredChat(chat, document.Revision);
@@ -76,7 +76,8 @@ public static class ChatDocumentSerializer
         ChatMessageDocument[] Messages,
         BranchDocument[] Branches);
 
-    private sealed record BranchDocument(Guid Id, Guid? HeadMessageId, string Title, Guid? ParentBranchId, Guid? RootMessageId);
+    private sealed record BranchDocument(Guid Id, Guid? HeadMessageId, string Title, Guid? ParentBranchId,
+        Guid? RootMessageId, long Revision);
 
     private sealed record ChatMessageDocument(
         Guid Id,

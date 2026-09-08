@@ -131,6 +131,12 @@ app.MapDelete("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/{message
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/resume",
     (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.ResumeAsync(projectId, chatId, branchId, cancellationToken, operationId));
 
+app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/skip",
+    (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.SkipFailedAsync(projectId, chatId, branchId, cancellationToken, operationId));
+
+app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/rebase",
+    (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.RebaseAsync(projectId, chatId, branchId, cancellationToken, operationId));
+
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/clear",
     (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.ClearAsync(projectId, chatId, branchId, cancellationToken, operationId));
 

@@ -8,6 +8,7 @@ public sealed record AppendChatMessageRequest(
     long Revision,
     bool IsIncomplete = false,
     Guid? BranchId = null,
+    Guid? ParentBranchId = null,
     Guid? ReplaceSourceId = null,
     IReadOnlyList<Chat.ChatToolCall>? ToolCalls = null,
     string? ToolCallId = null);

@@ -64,9 +64,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         }
 
         var now = clock.UtcNow;
-        if (request.ReplaceSourceId is { } replaceId)
-            stored.Chat.DeleteBranch(new ChatMessageId(replaceId), now);
-        stored.Chat.AddMessage(new ChatMessage(
+        var message = new ChatMessage(
             new ChatMessageId(request.Id ?? idGenerator.Create()),
             request.ParentId is { } parentId ? new ChatMessageId(parentId) : null,
             role,
@@ -74,8 +72,24 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             now,
             request.IsIncomplete,
             request.ToolCalls?.Select(call => new ChatToolCall(call.Id, call.Name, call.Arguments)).ToArray(),
-            request.ToolCallId), now, request.BranchId);
+            request.ToolCallId);
+        if (request.ReplaceSourceId is { } replaceId)
+            stored.Chat.ReplaceInBranch(request.BranchId ?? throw new ArgumentException("A replacement branch is required."),
+                new ChatMessageId(replaceId), message, now);
+        else
+            stored.Chat.AddMessage(message, now, request.BranchId, request.ParentBranchId);
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    internal async Task<ChatDetails?> PruneMessagesCoreAsync(Guid projectId, Guid chatId,
+        IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        if (!stored.Chat.PruneUnreachableMessages(retainedMessageIds.Select(id => new ChatMessageId(id))))
+            return ToDetails(stored.Chat, stored.Revision);
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
 
@@ -134,16 +148,17 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
 
-    public async Task<ChatBranchDeleteResult> DeleteBranchAsync(Guid projectId, Guid chatId, Guid branchId, long revision, CancellationToken cancellationToken)
+    public async Task<ChatBranchDeleteResult> DeleteBranchAsync(Guid projectId, Guid chatId, Guid branchId, long revision,
+        IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken)
     {
         using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
-        if (stored is null) return new ChatBranchDeleteResult(false, 0, null);
-        var root = stored.Chat.Branches.SingleOrDefault(branch => branch.Id == branchId)?.RootMessageId
-            ?? throw new ArgumentException("Only an alternative branch can be deleted.");
-        var parentId = stored.Chat.DeleteBranch(root, clock.UtcNow);
+        if (stored is null) return new ChatBranchDeleteResult(false, 0, null, null);
+        var parent = stored.Chat.DeleteBranch(branchId, clock.UtcNow);
+        stored.Chat.PruneUnreachableMessages(retainedMessageIds.Select(id => new ChatMessageId(id)));
         var result = await repository.SaveAsync(stored.Chat, revision, cancellationToken);
-        return new ChatBranchDeleteResult(result.IsSaved, result.Revision, parentId?.Value);
+        return new ChatBranchDeleteResult(result.IsSaved, result.Revision, parent.ParentBranchId,
+            parent.ParentHeadMessageId?.Value);
     }
 
     private static ChatDetails ToDetails(ChatThread chat, long revision) => new(
@@ -166,5 +181,6 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
                 item.ToolCalls?.Select(call => new Contracts.Chat.ChatToolCall(call.Id, call.Name, call.Arguments)).ToArray(),
                 item.ToolCallId))
             .ToArray(),
-        chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title, branch.ParentBranchId, branch.RootMessageId?.Value)).ToArray());
+        chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
+            branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray());
 }

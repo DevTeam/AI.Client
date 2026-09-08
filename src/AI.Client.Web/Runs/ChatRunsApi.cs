@@ -41,6 +41,8 @@ public sealed class ChatRunsApi(HttpClient httpClient) : IChatRunsApi
         return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<ChatRunSnapshot>(cancellationToken) : null;
     }
     public Task<ChatRunSnapshot?> ResumeAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken) => PostCommandAsync(projectId, chatId, "resume", branchId, operationId, cancellationToken);
+    public Task<ChatRunSnapshot?> SkipFailedAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken) => PostCommandAsync(projectId, chatId, "queue/skip", branchId, operationId, cancellationToken);
+    public Task<ChatRunSnapshot?> RebaseAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken) => PostCommandAsync(projectId, chatId, "queue/rebase", branchId, operationId, cancellationToken);
     public Task<ChatRunSnapshot?> ClearAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken) => PostCommandAsync(projectId, chatId, "queue/clear", branchId, operationId, cancellationToken);
     private async Task<ChatRunSnapshot?> PostCommandAsync(Guid projectId, Guid chatId, string command, Guid branchId, Guid operationId, CancellationToken cancellationToken)
     {

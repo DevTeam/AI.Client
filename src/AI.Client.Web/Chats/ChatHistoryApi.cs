@@ -78,6 +78,7 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
     public async Task<ChatBranchDeleteResult> DeleteBranchAsync(Guid projectId, Guid chatId, Guid branchId, long revision, CancellationToken cancellationToken)
     {
         using var response = await httpClient.DeleteAsync($"api/projects/{projectId}/chats/{chatId}/branches/{branchId}?revision={revision}", cancellationToken);
-        return await response.Content.ReadFromJsonAsync<ChatBranchDeleteResult>(cancellationToken) ?? new ChatBranchDeleteResult(false, 0, null);
+        return await response.Content.ReadFromJsonAsync<ChatBranchDeleteResult>(cancellationToken)
+            ?? new ChatBranchDeleteResult(false, 0, null, null);
     }
 }

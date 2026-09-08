@@ -41,9 +41,11 @@ public class ChatComposerServiceTests
         var projectId = Guid.NewGuid();
         var sourceId = Guid.NewGuid();
         var branchId = Guid.NewGuid();
-        var chat = new ChatDetails(chatId, projectId, "Chat", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 7, null, []);
+        var chat = new ChatDetails(chatId, projectId, "Chat", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 7, null, [],
+            [new ChatBranchView(branchId, sourceId, "Branch", chatId, sourceId, 3)]);
         runs.Setup(api => api.SubmitAsync(projectId, chatId,
-            It.Is<SubmitChatMessageRequest>(request => request.Mode == ChatSubmitMode.Replace && request.ExpectedRevision == 7 && request.ReplaceSourceId == sourceId && request.BranchId == branchId),
+            It.Is<SubmitChatMessageRequest>(request => request.Mode == ChatSubmitMode.Replace
+                && request.ExpectedBranchRevision == 3 && request.ReplaceSourceId == sourceId && request.BranchId == branchId),
             CancellationToken.None)).ThrowsAsync(new HttpRequestException("Unavailable"));
         var result = await new ChatComposerService(history.Object, runs.Object).SubmitAsync(
             new ComposerSubmitRequest(ComposerSubmitMode.Send, projectId, chat, null, null, sourceId, false, null, null, null, "replacement", null, branchId), CancellationToken.None);

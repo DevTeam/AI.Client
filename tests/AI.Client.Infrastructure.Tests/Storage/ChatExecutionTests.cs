@@ -169,6 +169,87 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task ReplacingRootMessageMustPreserveOtherBranches()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var original = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), original, "Original"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Original reply");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var forkId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), forkId, "Fork", ChatSubmitMode.Fork,
+            BranchId: fixture.ChatId, ParentMode: MessageParentMode.Explicit, ParentMessageId: original));
+        (await fixture.NextCallAsync()).Answer.SetResult("Fork reply");
+        await fixture.WaitAsync(run => run.BranchId == forkId && run.Status == ChatRunStatus.Completed);
+
+        var replacement = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), replacement, "Replacement",
+            ChatSubmitMode.Replace, BranchId: fixture.ChatId, ReplaceSourceId: original));
+        var call = await fixture.NextCallAsync();
+        call.Request.ContextMessages!.Select(message => message.Content).ShouldBe(["Replacement"]);
+        call.Answer.SetResult("Replacement reply");
+        await fixture.WaitAsync(run => run.BranchId == fixture.ChatId && run.Status == ChatRunStatus.Completed);
+
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var branches = chat!.Branches!;
+        ChatContext.Get(chat, branches.Single(branch => branch.Id == fixture.ChatId).HeadMessageId!.Value)
+            .Select(message => message.Content).ShouldBe(["Replacement", "Replacement reply"]);
+        ChatContext.Get(chat, branches.Single(branch => branch.Id == forkId).HeadMessageId!.Value)
+            .Select(message => message.Content).ShouldBe(["Original", "Fork", "Fork reply"]);
+    }
+
+    [Fact]
+    public async Task DeletingParentBranchMustKeepAndReparentChildBranch()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var root = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), root, "Root"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Root reply");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var parentId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), parentId, "Parent", ChatSubmitMode.Fork,
+            BranchId: fixture.ChatId, ParentMode: MessageParentMode.Explicit, ParentMessageId: root));
+        (await fixture.NextCallAsync()).Answer.SetResult("Parent reply");
+        await fixture.WaitAsync(run => run.BranchId == parentId && run.Status == ChatRunStatus.Completed);
+
+        var childId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), childId, "Child", ChatSubmitMode.Fork,
+            BranchId: parentId, ParentMode: MessageParentMode.Explicit, ParentMessageId: parentId));
+        (await fixture.NextCallAsync()).Answer.SetResult("Child reply");
+        await fixture.WaitAsync(run => run.BranchId == childId && run.Status == ChatRunStatus.Completed);
+
+        var queuedId = Guid.NewGuid();
+        var queued = await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), queuedId, "Queued child",
+            ChatSubmitMode.Queue, BranchId: childId));
+        queued.Status.ShouldBe(ChatRunStatus.Paused);
+
+        var before = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var result = await fixture.Dispatcher.DeleteBranchAsync(fixture.ProjectId, fixture.ChatId, parentId,
+            before!.Revision, CancellationToken.None);
+
+        result.IsDeleted.ShouldBeTrue();
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var branches = chat!.Branches!;
+        branches.ShouldNotContain(branch => branch.Id == parentId);
+        var child = branches.Single(branch => branch.Id == childId);
+        child.ParentBranchId.ShouldBe(fixture.ChatId);
+        ChatContext.Get(chat, child.HeadMessageId!.Value).Select(message => message.Content)
+            .ShouldBe(["Root", "Parent", "Child", "Child reply"]);
+
+        var childRun = (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None))
+            .Single(run => run.BranchId == childId);
+        childRun.Queue.ShouldHaveSingleItem().Id.ShouldBe(queuedId);
+        await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, childId, CancellationToken.None);
+        var resumed = await fixture.NextCallAsync();
+        resumed.Request.ContextMessages!.Select(message => message.Content)
+            .ShouldBe(["Root", "Parent", "Child", "Child reply", "Queued child"]);
+        resumed.Answer.SetResult("Queued reply");
+        await fixture.WaitAsync(run => run.BranchId == childId && run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task StopAndResumeShouldReuseTheCommittedUserMessage()
     {
         await using var fixture = await Fixture.CreateAsync();

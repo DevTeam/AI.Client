@@ -21,7 +21,8 @@ public class ChatRunStateTests
     [Fact]
     public void ShouldRecoverGeneratingRunOnlyOnExplicitRestart()
     {
-        var state = ChatRunState.Restore(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), RunStatus.Generating, "Partial", null, false, 4, [], []);
+        var state = ChatRunState.Restore(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), RunStatus.Generating,
+            "Partial", null, RunFailureKind.None, false, 4, [], []);
 
         state.Status.ShouldBe(RunStatus.Generating);
         state.RecoverAfterRestart();
@@ -53,6 +54,29 @@ public class ChatRunStateTests
         state.Resume();
         state.Status.ShouldBe(RunStatus.Idle);
         state.Queue.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void ShouldRequireExplicitRecoveryForStructuralFailure()
+    {
+        var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        state.Enqueue(Guid.NewGuid(), new QueuedRunMessage(Guid.NewGuid(), "Message", DateTimeOffset.UtcNow,
+            MessageParentMode.Explicit, Guid.NewGuid(), Guid.NewGuid()));
+        state.Fail("Missing parent", RunFailureKind.ParentMissing);
+
+        state.Resume();
+        state.Status.ShouldBe(RunStatus.Failed);
+        state.CanRetry.ShouldBeFalse();
+
+        state.RebaseFirst(7);
+        state.Status.ShouldBe(RunStatus.Idle);
+        state.Queue[0].ParentMode.ShouldBe(MessageParentMode.BranchHead);
+        state.Queue[0].ReplaceSourceId.ShouldBeNull();
+
+        state.Fail("Still invalid", RunFailureKind.BranchChanged);
+        state.SkipFailed();
+        state.Status.ShouldBe(RunStatus.Idle);
+        state.Queue.ShouldBeEmpty();
     }
 
     [Fact]

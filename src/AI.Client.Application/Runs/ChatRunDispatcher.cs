@@ -67,7 +67,7 @@ public sealed class ChatRunDispatcher(
     {
         var id = Guid.NewGuid();
         var channel = Channel.CreateBounded<IReadOnlyList<ChatRunSnapshot>>(new BoundedChannelOptions(1)
-            { FullMode = BoundedChannelFullMode.DropOldest });
+        { FullMode = BoundedChannelFullMode.DropOldest });
         _subscribers[id] = channel;
         try
         {
@@ -88,10 +88,13 @@ public sealed class ChatRunDispatcher(
         _ = await projects.GetAsync(projectId, cancellationToken) ?? throw new InvalidOperationException("Project not found.");
         var chat = await chats.GetAsync(projectId, chatId, cancellationToken) ?? throw new InvalidOperationException("Chat not found.");
         var branchId = request.Mode == ChatSubmitMode.Fork ? request.MessageId : request.BranchId ?? chat.Id;
+        var sourceBranchId = request.BranchId ?? chat.Id;
+        var sourceBranch = chat.Branches?.SingleOrDefault(branch => branch.Id == sourceBranchId)
+            ?? throw new ArgumentException("Branch does not exist.");
         var runtime = await GetRuntimeAsync(projectId, chatId, branchId, chat, cancellationToken);
         if (runtime.State.Operations.Contains(request.OperationId)) return runtime.Snapshot;
-        if (request.ExpectedRevision is { } revision && revision != chat.Revision)
-            throw new InvalidOperationException("The chat changed. Reload it before submitting.");
+        if (request.ExpectedBranchRevision is { } branchRevision && branchRevision != sourceBranch.Revision)
+            throw new InvalidOperationException("The branch changed. Reload it before submitting.");
         if (request.ParentMessageId is { } parent && chat.Messages.All(message => message.Id != parent))
             throw new ArgumentException("Parent message does not exist.");
         if (request.Mode != ChatSubmitMode.Fork && chat.Branches?.All(branch => branch.Id != branchId) == true
@@ -99,17 +102,35 @@ public sealed class ChatRunDispatcher(
             throw new ArgumentException("Branch does not exist.");
         Guid? replaceId = null;
         var parentId = request.ParentMessageId;
+        var parentMode = request.ParentMode switch
+        {
+            Contracts.Runs.MessageParentMode.Root => Domain.Runs.MessageParentMode.Root,
+            Contracts.Runs.MessageParentMode.Explicit => Domain.Runs.MessageParentMode.Explicit,
+            _ => Domain.Runs.MessageParentMode.BranchHead
+        };
         if (request.Mode == ChatSubmitMode.Replace)
         {
             var source = chat.Messages.SingleOrDefault(message => message.Id == request.ReplaceSourceId)
                 ?? throw new ArgumentException("Replacement message does not exist.");
-            if (_runtimes.Values.Any(item => item.State.ChatId == chatId && item.State.Status == RunStatus.Generating))
-                throw new InvalidOperationException("Stop the chat before replacing a message.");
+            if (!IsAncestor(chat, sourceBranch.HeadMessageId, source.Id))
+                throw new ArgumentException("Replacement message does not belong to the selected branch.");
+            if (runtime.State.Status == RunStatus.Generating)
+                throw new InvalidOperationException("Stop the branch before replacing a message.");
             replaceId = source.Id;
             parentId = source.ParentId;
+            parentMode = parentId is null ? Domain.Runs.MessageParentMode.Root : Domain.Runs.MessageParentMode.Explicit;
+        }
+        else if (request.Mode == ChatSubmitMode.Fork)
+        {
+            parentMode = Domain.Runs.MessageParentMode.Explicit;
+            parentId ??= sourceBranch.HeadMessageId;
+            if (parentId is null || !IsAncestor(chat, sourceBranch.HeadMessageId, parentId.Value))
+                throw new ArgumentException("Fork parent does not belong to the selected branch.");
         }
         var before = Clone(runtime.State);
-        runtime.State.Enqueue(request.OperationId, new QueuedRunMessage(request.MessageId, request.Content.Trim(), clock.UtcNow, parentId, replaceId));
+        runtime.State.Enqueue(request.OperationId, new QueuedRunMessage(request.MessageId, request.Content.Trim(), clock.UtcNow,
+            parentMode, parentId, replaceId, request.Mode == ChatSubmitMode.Fork ? sourceBranchId : null,
+            sourceBranch.Revision));
         if (request.Mode == ChatSubmitMode.Queue || request.HoldInQueue)
         {
             runtime.ResumeRequested = false;
@@ -137,9 +158,26 @@ public sealed class ChatRunDispatcher(
         MutateAsync(projectId, chatId, branchId, runtime => runtime.State.MarkRead(), operationId, cancellationToken);
     public Task<ChatRunSnapshot?> ResumeAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null) =>
         MutateAsync(projectId, chatId, branchId, runtime => { runtime.ResumeRequested = true; runtime.State.Resume(); }, operationId, cancellationToken);
+    public Task<ChatRunSnapshot?> SkipFailedAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null) =>
+        MutateAsync(projectId, chatId, branchId, runtime => runtime.State.SkipFailed(), operationId, cancellationToken);
+    public Task<ChatRunSnapshot?> RebaseAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null) =>
+        MutateAsync(projectId, chatId, branchId, (runtime, chat) =>
+        {
+            if (runtime.State.Queue.Count == 0) return;
+            var queued = runtime.State.Queue[0];
+            var anchorBranchId = queued.ParentBranchId ?? branchId;
+            var anchor = chat.Branches?.SingleOrDefault(item => item.Id == anchorBranchId)
+                ?? throw new InvalidOperationException("The branch required to rebase this message no longer exists.");
+            runtime.State.RebaseFirst(anchor.Revision, anchor.HeadMessageId);
+        }, operationId, cancellationToken);
     public Task<ChatRunSnapshot?> ClearAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null) =>
         MutateAsync(projectId, chatId, branchId, runtime =>
         {
+            if (runtime.ActiveMessageId is null)
+            {
+                runtime.State.Clear();
+                return;
+            }
             foreach (var item in runtime.State.Queue.Where(item => item.Id != runtime.ActiveMessageId).ToArray()) runtime.State.Remove(item.Id);
         }, operationId, cancellationToken);
     public Task<ChatRunSnapshot?> UpdateQueuedAsync(Guid projectId, Guid chatId, Guid branchId, Guid messageId, UpdateQueuedMessageRequest request, CancellationToken cancellationToken) =>
@@ -153,10 +191,18 @@ public sealed class ChatRunDispatcher(
         MutateAsync(projectId, chatId, branchId, runtime =>
         {
             if (runtime.ActiveMessageId == messageId) throw new InvalidOperationException("Message is already running.");
-            runtime.State.Remove(messageId);
+            if (runtime.State.Status == RunStatus.Failed && runtime.State.Queue.Count > 0 && runtime.State.Queue[0].Id == messageId)
+                runtime.State.SkipFailed();
+            else
+                runtime.State.Remove(messageId);
         }, operationId, cancellationToken);
 
-    private async Task<ChatRunSnapshot?> MutateAsync(Guid projectId, Guid chatId, Guid branchId, Action<Runtime> mutate, Guid? operationId, CancellationToken token)
+    private Task<ChatRunSnapshot?> MutateAsync(Guid projectId, Guid chatId, Guid branchId, Action<Runtime> mutate,
+        Guid? operationId, CancellationToken token) =>
+        MutateAsync(projectId, chatId, branchId, (runtime, _) => mutate(runtime), operationId, token);
+
+    private async Task<ChatRunSnapshot?> MutateAsync(Guid projectId, Guid chatId, Guid branchId,
+        Action<Runtime, ChatDetails> mutate, Guid? operationId, CancellationToken token)
     {
         using var lease = await synchronization.EnterAsync(chatId, token);
         if (_maintenance.ContainsKey(chatId) || _deletingProjects.ContainsKey(projectId)) throw new InvalidOperationException("Chat is being changed.");
@@ -165,7 +211,7 @@ public sealed class ChatRunDispatcher(
         var runtime = await GetRuntimeAsync(projectId, chatId, branchId, chat, token);
         if (operationId is { } duplicate && runtime.State.Operations.Contains(duplicate)) return runtime.Snapshot;
         var before = Clone(runtime.State);
-        try { if (operationId is { } id) runtime.State.RememberOperation(id); mutate(runtime); await SaveAsync(runtime, chat, token); }
+        try { if (operationId is { } id) runtime.State.RememberOperation(id); mutate(runtime, chat); await SaveAsync(runtime, chat, token); }
         catch { runtime.State = before; throw; }
         StartWorker(runtime);
         return runtime.Snapshot;
@@ -213,6 +259,8 @@ public sealed class ChatRunDispatcher(
                         runtime.ActiveMessageId = null;
                         runtime.Cancellation.Dispose();
                         runtime.Cancellation = null;
+                        chat = await chats.PruneMessagesCoreAsync(chat.ProjectId, chat.Id,
+                            RetainedMessageIds(chat.Id), token) ?? chat;
                         await SaveAsync(runtime, chat, token);
                         continue;
                     }
@@ -225,12 +273,14 @@ public sealed class ChatRunDispatcher(
                     // Retaining the command until completion makes restart/resume safe: an already committed user message is reused.
                     if (chat.Messages.All(message => message.Id != queued.Id))
                     {
-                        var parent = queued.ParentMessageId ?? chat.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId)?.HeadMessageId;
+                        var parent = ResolveParent(chat, runtime.State.BranchId, queued);
                         chat = await chats.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
                             new AppendChatMessageRequest(queued.Id, parent, "User", queued.Content, chat.Revision,
-                                BranchId: runtime.State.BranchId, ReplaceSourceId: queued.ReplaceSourceId), token)
+                                BranchId: runtime.State.BranchId, ParentBranchId: queued.ParentBranchId,
+                                ReplaceSourceId: queued.ReplaceSourceId), token)
                             ?? throw new InvalidOperationException("Message conflict.");
                     }
+                    runtime.State.MarkUserCommitted(queued.Id);
                     request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
                         await secretStore.GetAsync("connection", connection.Id, token), queued.Content, null, ChatContext.Get(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id)));
                     runtime.ToolHead = ResumeHead(chat, runtime.State.BranchId, queued.Id);
@@ -272,6 +322,8 @@ public sealed class ChatRunDispatcher(
                     runtime.ActiveMessageId = null;
                     runtime.Cancellation.Dispose();
                     runtime.Cancellation = null;
+                    chat = await chats.PruneMessagesCoreAsync(chat.ProjectId, chat.Id,
+                        RetainedMessageIds(chat.Id), token) ?? chat;
                     await SaveAsync(runtime, chat, token);
                 }
             }
@@ -279,12 +331,13 @@ public sealed class ChatRunDispatcher(
         catch (Exception error)
         {
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
-            if (error is OperationCanceledException) runtime.State.Pause(); else runtime.State.Fail(error.Message);
+            if (error is OperationCanceledException) runtime.State.Pause();
+            else runtime.State.Fail(error.Message, FailureKind(error));
             if (error is OperationCanceledException && runtime.ResumeRequested && !_shutdown.IsCancellationRequested) runtime.State.Resume();
             try { await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, CancellationToken.None), CancellationToken.None); }
             catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException)
             {
-                runtime.State.Fail(saveError.Message);
+                runtime.State.Fail(saveError.Message, RunFailureKind.Storage);
                 runtime.Snapshot = Snapshot(runtime.State, null);
                 Publish();
             }
@@ -364,6 +417,73 @@ public sealed class ChatRunDispatcher(
         return userId;
     }
 
+    private static Guid? ResolveParent(ChatDetails chat, Guid branchId, QueuedRunMessage queued)
+    {
+        var branch = chat.Branches?.SingleOrDefault(item => item.Id == branchId);
+        if (queued.ReplaceSourceId is { } sourceId)
+        {
+            if (branch is null) throw new RunDispatchException(RunFailureKind.BranchDeleted, "The target branch was deleted.");
+            if (queued.ExpectedBranchRevision is { } revision && branch.Revision != revision)
+                throw new RunDispatchException(RunFailureKind.BranchChanged, "The branch changed after the replacement was queued.");
+            var source = chat.Messages.SingleOrDefault(message => message.Id == sourceId)
+                ?? throw new RunDispatchException(RunFailureKind.ParentMissing, "The replacement source no longer exists.");
+            if (!IsAncestor(chat, branch.HeadMessageId, sourceId))
+                throw new RunDispatchException(RunFailureKind.BranchChanged, "The replacement source is no longer on the target branch.");
+            return source.ParentId;
+        }
+
+        return queued.ParentMode switch
+        {
+            Domain.Runs.MessageParentMode.Root => null,
+            Domain.Runs.MessageParentMode.BranchHead => ResolveBranchHead(branch),
+            Domain.Runs.MessageParentMode.Explicit => ResolveExplicitParent(chat, queued),
+            _ => throw new RunDispatchException(RunFailureKind.ParentMissing, "The queued parent mode is invalid.")
+        };
+    }
+
+    private static Guid? ResolveBranchHead(ChatBranchView? branch)
+    {
+        if (branch is null) throw new RunDispatchException(RunFailureKind.BranchDeleted, "The target branch was deleted.");
+        return branch.HeadMessageId;
+    }
+
+    private static Guid ResolveExplicitParent(ChatDetails chat, QueuedRunMessage queued)
+    {
+        var parent = queued.ParentMessageId
+            ?? throw new RunDispatchException(RunFailureKind.ParentMissing, "The queued message has no explicit parent.");
+        if (chat.Messages.All(message => message.Id != parent))
+            throw new RunDispatchException(RunFailureKind.ParentMissing, "The queued message parent no longer exists.");
+        if (queued.ParentBranchId is { } parentBranchId)
+        {
+            var parentBranch = chat.Branches?.SingleOrDefault(branch => branch.Id == parentBranchId)
+                ?? throw new RunDispatchException(RunFailureKind.BranchDeleted, "The parent branch was deleted.");
+            if (!IsAncestor(chat, parentBranch.HeadMessageId, parent))
+                throw new RunDispatchException(RunFailureKind.BranchChanged, "The queued parent no longer belongs to its branch.");
+        }
+        return parent;
+    }
+
+    private static bool IsAncestor(ChatDetails chat, Guid? headId, Guid messageId)
+    {
+        var byId = chat.Messages.ToDictionary(message => message.Id);
+        var visited = new HashSet<Guid>();
+        var cursor = headId;
+        while (cursor is { } id && visited.Add(id) && byId.TryGetValue(id, out var message))
+        {
+            if (id == messageId) return true;
+            cursor = message.ParentId;
+        }
+        return false;
+    }
+
+    private static RunFailureKind FailureKind(Exception error) => error switch
+    {
+        RunDispatchException dispatch => dispatch.FailureKind,
+        IOException or UnauthorizedAccessException => RunFailureKind.Storage,
+        HttpRequestException => RunFailureKind.Transient,
+        _ => RunFailureKind.Transient
+    };
+
     private static Guid ReplyId(Guid messageId)
     {
         var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"assistant:{messageId:N}"));
@@ -378,8 +498,12 @@ public sealed class ChatRunDispatcher(
             runtime.Snapshot = runtime.Snapshot with { Queue = runtime.Snapshot.Queue.Where(item => item.Id != active).ToArray() };
         if (chat is not null)
             foreach (var other in _runtimes.Values.Where(item => item.State.ChatId == chat.Id && item != runtime))
-                other.Snapshot = other.Snapshot with { ChatRevision = chat.Revision,
-                    HeadMessageId = chat.Branches?.SingleOrDefault(branch => branch.Id == other.State.BranchId)?.HeadMessageId };
+                other.Snapshot = other.Snapshot with
+                {
+                    ChatRevision = chat.Revision,
+                    HeadMessageId = chat.Branches?.SingleOrDefault(branch => branch.Id == other.State.BranchId)?.HeadMessageId,
+                    BranchRevision = chat.Branches?.SingleOrDefault(branch => branch.Id == other.State.BranchId)?.Revision ?? 0
+                };
         Publish();
     }
 
@@ -412,10 +536,16 @@ public sealed class ChatRunDispatcher(
         try
         {
             var chat = await chats.GetAsync(projectId, chatId, cancellationToken);
-            if (chat is null) return new ChatBranchDeleteResult(false, 0, null);
-            if (chat.Revision != revision) return new ChatBranchDeleteResult(false, chat.Revision, null);
-            await PauseWorkersAsync(projectId, chatId, cancellationToken);
-            var result = await chats.DeleteBranchAsync(projectId, chatId, branchId, revision, cancellationToken);
+            if (chat is null) return new ChatBranchDeleteResult(false, 0, null, null);
+            if (chat.Revision != revision) return new ChatBranchDeleteResult(false, chat.Revision, null, null);
+            await PauseBranchWorkerAsync(projectId, chatId, branchId, cancellationToken);
+            var retainedMessages = _runtimes.Values
+                .Where(item => item.State.ChatId == chatId && item.State.BranchId != branchId)
+                .SelectMany(item => item.State.Queue.SelectMany(message => new Guid?[]
+                    { message.ParentMessageId, message.ReplaceSourceId, message.Stage == QueuedRunStage.UserCommitted ? message.Id : null })
+                    .Append(item.ToolHead))
+                .OfType<Guid>().ToHashSet();
+            var result = await chats.DeleteBranchAsync(projectId, chatId, branchId, revision, retainedMessages, cancellationToken);
             if (!result.IsDeleted)
             {
                 return result;
@@ -468,6 +598,20 @@ public sealed class ChatRunDispatcher(
         }
         await Task.WhenAll(workers).WaitAsync(token);
     }
+
+    private async Task PauseBranchWorkerAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken token)
+    {
+        Task worker;
+        using (await synchronization.EnterAsync(chatId, token))
+        {
+            if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)) return;
+            runtime.ResumeRequested = false;
+            if (runtime.Cancellation is { } cancellation) await cancellation.CancelAsync();
+            if (runtime.Worker is not null) runtime.State.Pause();
+            worker = runtime.Worker ?? Task.CompletedTask;
+        }
+        await worker.WaitAsync(token);
+    }
     public Task DeleteChatAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) => RemoveAsync(projectId, chatId, null, cancellationToken);
     public Task ReconcileChatAsync(Guid projectId, Guid chatId, IReadOnlySet<Guid> branchIds, CancellationToken cancellationToken) => RemoveAsync(projectId, chatId, branchIds, cancellationToken);
 
@@ -510,12 +654,58 @@ public sealed class ChatRunDispatcher(
 
     private static ChatRunSnapshot Snapshot(ChatRunState state, ChatDetails? chat) => new(state.ProjectId, state.ChatId, state.BranchId,
         (ChatRunStatus)state.Status, state.StreamingContent,
-        state.Queue.Select(item => new QueuedChatMessage(item.Id, item.Content, item.CreatedAt, item.ParentMessageId)).ToArray(),
+        state.Queue.Select(item => new QueuedChatMessage(item.Id, item.Content, item.CreatedAt,
+            ParentMode(item.ParentMode), item.ParentMessageId)).ToArray(),
         state.HasUnreadResponse, state.Error, state.Revision, chat?.Revision ?? 0,
-        chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.HeadMessageId);
+        chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.HeadMessageId,
+        FailureCode: FailureCode(state.FailureKind), CanRetry: state.CanRetry,
+        BranchRevision: chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.Revision ?? 0,
+        RecoveryActions: RecoveryActions(state));
+
+    private static RunRecoveryAction[] RecoveryActions(ChatRunState state)
+    {
+        if (state.Status is RunStatus.Paused or RunStatus.Interrupted) return [RunRecoveryAction.Resume];
+        if (state.Status != RunStatus.Failed) return [];
+        var result = new List<RunRecoveryAction>();
+        if (state.CanRetry) result.Add(RunRecoveryAction.Retry);
+        if (state.Queue.Count > 0)
+        {
+            if (state.FailureKind is RunFailureKind.ParentMissing or RunFailureKind.BranchChanged)
+                result.Add(RunRecoveryAction.Rebase);
+            result.Add(RunRecoveryAction.Skip);
+        }
+        return result.ToArray();
+    }
+
+    private static RunFailureCode FailureCode(RunFailureKind kind) => kind switch
+    {
+        RunFailureKind.None => RunFailureCode.None,
+        RunFailureKind.Transient => RunFailureCode.Transient,
+        RunFailureKind.BranchChanged => RunFailureCode.BranchChanged,
+        RunFailureKind.BranchDeleted => RunFailureCode.BranchDeleted,
+        RunFailureKind.ParentMissing => RunFailureCode.ParentMissing,
+        RunFailureKind.Storage => RunFailureCode.Storage,
+        _ => RunFailureCode.Transient
+    };
+
+    private static Contracts.Runs.MessageParentMode ParentMode(Domain.Runs.MessageParentMode mode) => mode switch
+    {
+        Domain.Runs.MessageParentMode.Root => Contracts.Runs.MessageParentMode.Root,
+        Domain.Runs.MessageParentMode.Explicit => Contracts.Runs.MessageParentMode.Explicit,
+        Domain.Runs.MessageParentMode.BranchHead => Contracts.Runs.MessageParentMode.BranchHead,
+        _ => Contracts.Runs.MessageParentMode.BranchHead
+    };
+
+    private HashSet<Guid> RetainedMessageIds(Guid chatId) => _runtimes.Values
+        .Where(item => item.State.ChatId == chatId)
+        .SelectMany(item => item.State.Queue.SelectMany(message => new Guid?[]
+            { message.ParentMessageId, message.ReplaceSourceId, message.Stage == QueuedRunStage.UserCommitted ? message.Id : null })
+            .Append(item.ToolHead))
+        .OfType<Guid>().ToHashSet();
 
     private static ChatRunState Clone(ChatRunState state) => ChatRunState.Restore(state.ProjectId, state.ChatId, state.BranchId,
-        state.Status, state.StreamingContent, state.Error, state.HasUnreadResponse, state.Revision, state.Queue.ToArray(), state.Operations.ToArray());
+        state.Status, state.StreamingContent, state.Error, state.FailureKind, state.HasUnreadResponse, state.Revision,
+        state.Queue.ToArray(), state.Operations.ToArray());
 
     private sealed class Runtime(ChatRunState state)
     {

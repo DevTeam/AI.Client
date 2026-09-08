@@ -1,4 +1,6 @@
 namespace AI.Client.Domain.Runs;
 
-public sealed record QueuedRunMessage(Guid Id, string Content, DateTimeOffset CreatedAt, Guid? ParentMessageId = null,
-    Guid? ReplaceSourceId = null);
+public sealed record QueuedRunMessage(Guid Id, string Content, DateTimeOffset CreatedAt,
+    MessageParentMode ParentMode = MessageParentMode.BranchHead, Guid? ParentMessageId = null,
+    Guid? ReplaceSourceId = null, Guid? ParentBranchId = null, long? ExpectedBranchRevision = null,
+    QueuedRunStage Stage = QueuedRunStage.Prepared);

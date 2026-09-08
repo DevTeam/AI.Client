@@ -10,7 +10,7 @@ public sealed class JsonChatRunRepository(ITextFileSystem fileSystem, ChatRunSto
     public void Dispose() => _writes.Dispose();
 
     private readonly AsyncGate _writes = new();
-    private const int SchemaVersion = 4;
+    private const int SchemaVersion = 5;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
     public async Task<ChatRunState?> GetAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken)
@@ -22,7 +22,9 @@ public sealed class JsonChatRunRepository(ITextFileSystem fileSystem, ChatRunSto
     public async Task SaveAsync(ChatRunState state, CancellationToken cancellationToken)
     {
         using var lease = await _writes.EnterAsync(cancellationToken);
-        var document = new Document(SchemaVersion, state.ProjectId, state.ChatId, state.BranchId, state.Status, state.StreamingContent, state.Error, state.HasUnreadResponse, state.Revision, state.Queue.ToArray(), state.Operations.ToArray());
+        var document = new Document(SchemaVersion, state.ProjectId, state.ChatId, state.BranchId, state.Status,
+            state.StreamingContent, state.Error, state.FailureKind, state.HasUnreadResponse, state.Revision,
+            state.Queue.ToArray(), state.Operations.ToArray());
         var temp = paths.GetTemporaryPath(state.ProjectId, state.ChatId, state.BranchId);
         await fileSystem.WriteTextAsync(temp, JsonSerializer.Serialize(document, Options), cancellationToken);
         await fileSystem.MoveAsync(temp, paths.GetPath(state.ProjectId, state.ChatId, state.BranchId), true, cancellationToken);
@@ -70,7 +72,8 @@ public sealed class JsonChatRunRepository(ITextFileSystem fileSystem, ChatRunSto
         var document = JsonSerializer.Deserialize<Document>(json, Options);
         if (document is not { SchemaVersion: SchemaVersion } || document.ProjectId == Guid.Empty
             || document.ChatId == Guid.Empty || document.BranchId == Guid.Empty || document.Queue is null
-            || document.Operations is null || !Enum.IsDefined(document.Status))
+            || document.Operations is null || !Enum.IsDefined(document.Status) || !Enum.IsDefined(document.FailureKind)
+            || document.Queue.Any(item => !Enum.IsDefined(item.ParentMode) || !Enum.IsDefined(item.Stage)))
             throw new JsonException("Unsupported or invalid run document.");
         return Restore(document);
     }
@@ -82,6 +85,7 @@ public sealed class JsonChatRunRepository(ITextFileSystem fileSystem, ChatRunSto
         document.Status,
         document.StreamingContent,
         document.Error,
+        document.FailureKind,
         document.HasUnreadResponse,
         document.Revision,
         document.Queue ?? Enumerable.Empty<QueuedRunMessage>(),
@@ -96,6 +100,7 @@ public sealed class JsonChatRunRepository(ITextFileSystem fileSystem, ChatRunSto
         RunStatus Status,
         string StreamingContent,
         string? Error,
+        RunFailureKind FailureKind,
         bool HasUnreadResponse,
         long Revision,
         QueuedRunMessage[]? Queue,

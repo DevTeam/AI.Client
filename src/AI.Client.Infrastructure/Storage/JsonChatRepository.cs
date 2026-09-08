@@ -88,6 +88,10 @@ public sealed class JsonChatRepository(
         document["MessageIds"] = ids;
         await fileSystem.WriteTextAsync(temporaryPath, document.ToJsonString(), cancellationToken);
         await fileSystem.MoveAsync(temporaryPath, path, true, cancellationToken);
+        var retained = chat.Messages.Select(message => message.Id.Value).ToHashSet();
+        foreach (var nodePath in await fileSystem.ListFilesAsync(path + ".nodes", "*.json", cancellationToken))
+            if (Guid.TryParse(Path.GetFileNameWithoutExtension(nodePath), out var id) && !retained.Contains(id))
+                await fileSystem.DeleteAsync(nodePath, cancellationToken);
         return ChatSaveResult.Saved(nextRevision);
     }
 

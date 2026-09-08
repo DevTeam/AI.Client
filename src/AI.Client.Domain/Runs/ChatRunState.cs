@@ -20,6 +20,10 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
 
     public string? Error { get; private set; }
 
+    public RunFailureKind FailureKind { get; private set; }
+
+    public bool CanRetry => FailureKind is RunFailureKind.None or RunFailureKind.Transient or RunFailureKind.Storage;
+
     public bool HasUnreadResponse { get; private set; }
 
     public long Revision { get; private set; }
@@ -43,6 +47,7 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         Status = RunStatus.Generating;
         StreamingContent = string.Empty;
         Error = null;
+        FailureKind = RunFailureKind.None;
         Revision++;
     }
 
@@ -58,6 +63,7 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         Status = RunStatus.Completed;
         HasUnreadResponse = unread;
         StreamingContent = string.Empty;
+        FailureKind = RunFailureKind.None;
         Revision++;
     }
 
@@ -89,6 +95,44 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         }
     }
 
+    public void MarkUserCommitted(Guid id)
+    {
+        var index = _queue.FindIndex(item => item.Id == id);
+        if (index >= 0 && _queue[index].Stage != QueuedRunStage.UserCommitted)
+        {
+            _queue[index] = _queue[index] with { Stage = QueuedRunStage.UserCommitted };
+            Revision++;
+        }
+    }
+
+    public void RebaseFirst(long branchRevision, Guid? explicitParentId = null)
+    {
+        if (_queue.Count == 0) return;
+        var parentMode = _queue[0].ParentBranchId is null ? MessageParentMode.BranchHead : MessageParentMode.Explicit;
+        _queue[0] = _queue[0] with
+        {
+            ParentMode = parentMode,
+            ParentMessageId = parentMode == MessageParentMode.Explicit ? explicitParentId : null,
+            ReplaceSourceId = null,
+            ExpectedBranchRevision = branchRevision,
+            Stage = QueuedRunStage.Prepared
+        };
+        Status = RunStatus.Idle;
+        Error = null;
+        FailureKind = RunFailureKind.None;
+        Revision++;
+    }
+
+    public void SkipFailed()
+    {
+        if (Status != RunStatus.Failed || _queue.Count == 0) return;
+        _queue.RemoveAt(0);
+        Status = RunStatus.Idle;
+        Error = null;
+        FailureKind = RunFailureKind.None;
+        Revision++;
+    }
+
     public void Move(Guid id, int position)
     {
         var index = _queue.FindIndex(item => item.Id == id);
@@ -102,10 +146,12 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
 
     public void Resume()
     {
+        if (Status == RunStatus.Failed && !CanRetry) return;
         if (Status is RunStatus.Paused or RunStatus.Interrupted or RunStatus.Failed)
         {
             Status = RunStatus.Idle;
             Error = null;
+            FailureKind = RunFailureKind.None;
             Revision++;
         }
     }
@@ -116,6 +162,8 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         if (Status != RunStatus.Generating)
         {
             Status = RunStatus.Idle;
+            Error = null;
+            FailureKind = RunFailureKind.None;
         }
 
         Revision++;
@@ -132,10 +180,11 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         Revision++;
     }
 
-    public void Fail(string error)
+    public void Fail(string error, RunFailureKind failureKind = RunFailureKind.Transient)
     {
         Status = RunStatus.Failed;
         Error = error;
+        FailureKind = failureKind;
         HasUnreadResponse = true;
         Revision++;
     }
@@ -147,13 +196,15 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
     }
 
     public static ChatRunState Restore(Guid projectId, Guid chatId, Guid branchId, RunStatus status, string streamingContent,
-        string? error, bool hasUnreadResponse, long revision, IEnumerable<QueuedRunMessage> queue, IEnumerable<Guid> operations)
+        string? error, RunFailureKind failureKind, bool hasUnreadResponse, long revision,
+        IEnumerable<QueuedRunMessage> queue, IEnumerable<Guid> operations)
     {
         var state = new ChatRunState(projectId, chatId, branchId)
         {
             Status = status,
             StreamingContent = streamingContent,
             Error = error,
+            FailureKind = failureKind,
             HasUnreadResponse = hasUnreadResponse,
             Revision = revision
         };

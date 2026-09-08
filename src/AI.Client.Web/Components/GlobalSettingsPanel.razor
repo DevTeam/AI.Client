@@ -122,7 +122,6 @@
             foreach (var server in _globalMcpServers.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))
                 await GlobalSettingsApi.SetMcpCredentialAsync(server.Id, server.Secret, CancellationToken.None);
             await LoadGlobalSettingsAsync();
-            _feedback = "Global settings saved.";
             await Saved.InvokeAsync();
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)

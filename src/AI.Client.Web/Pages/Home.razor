@@ -56,7 +56,7 @@
                 }
                 else
                 {
-                    <button class="workspace-nav-item" type="button" @onclick="() => SelectProjectAsync(project)"><span class="status-dot @GetRunStatusClass(GetProjectRun(project.Id))"></span><span class="nav-item-label">▣ @project.Name</span></button>
+                    <button class="workspace-nav-item" type="button" @onclick="() => SelectProjectAsync(project, restoreLastChat: false)"><span class="status-dot @GetRunStatusClass(GetProjectRun(project.Id))"></span><span class="nav-item-label">▣ @project.Name</span></button>
                 }
                 @if (project.Id == _selectedProject?.Id)
                 {
@@ -555,7 +555,7 @@
         }
     }
 
-    private async Task SelectProjectAsync(ProjectSummary project)
+    private async Task SelectProjectAsync(ProjectSummary project, bool restoreLastChat = true)
     {
         _globalSection = null;
         _attachComposer = true;
@@ -574,14 +574,18 @@
         await LoadSecurityAsync(project.Id);
         await WorkspaceStateService.SetLastProjectIdAsync(project.Id);
 
-        var context = WorkspaceStateService.GetProjectContext(project.Id);
+        var context = restoreLastChat ? WorkspaceStateService.GetProjectContext(project.Id) : default;
         if (context.ChatId is { } chatId && _chats.Any(chat => chat.Id == chatId))
         {
             await SelectChatAsync(chatId);
         }
-        else
+        else if (restoreLastChat)
         {
             RestoreComposerDraft();
+        }
+        else
+        {
+            _chat.Message = string.Empty;
         }
     }
 
@@ -1492,12 +1496,24 @@
     private async Task DeleteChatAsync(ChatSummary chat)
     {
         if (_selectedProject is null) return;
+
+        // The sidebar's ChatSummary.Revision can go stale for a chat that isn't the one
+        // currently selected (e.g. it kept generating after the user switched away), so
+        // re-fetch the current revision right before deleting instead of trusting it.
+        var current = await ChatHistoryApi.GetAsync(_selectedProject.Id, chat.Id, CancellationToken.None);
+        if (current is null)
+        {
+            CloseContextMenus();
+            await LoadChatsAsync(_selectedProject.Id);
+            return;
+        }
+
         foreach (var run in RunState.Runs.Values.Where(item => item.ChatId == chat.Id).ToArray())
         {
             if (run.Status == ChatRunStatus.Generating) await ChatRunsApi.StopAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
             await ChatRunsApi.ClearAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
         }
-        var result = await ChatHistoryApi.DeleteAsync(_selectedProject.Id, chat.Id, chat.Revision, CancellationToken.None);
+        var result = await ChatHistoryApi.DeleteAsync(_selectedProject.Id, chat.Id, current.Revision, CancellationToken.None);
         if (!result.IsDeleted)
         {
             _chatError = "The chat changed elsewhere. Reload it before deleting.";

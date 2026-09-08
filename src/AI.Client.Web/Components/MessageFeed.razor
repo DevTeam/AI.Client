@@ -47,43 +47,21 @@
     }
     else
     {
-        @foreach (var message in GetVisibleBranchMessages())
-        {
-            <article id="message-@message.Id" class="workspace-message @message.Role.ToLowerInvariant() @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)">
-                @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
-                @if (message.Role == "Tool")
-                {
-                    <details class="tool-invocation"><summary>Tool result</summary><pre>@FormatToolResult(message.Content)</pre></details>
-                }
-                else
-                {
-                <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div>
-                }
-                @if (message.ToolCalls is { Count: > 0 })
-                {
-                    @foreach (var call in message.ToolCalls)
-                    {
-                        <details class="tool-invocation"><summary>@call.Name</summary><pre>@call.Arguments</pre></details>
-                    }
-                }
-                <div class="message-actions">
-                    <button class="icon-action" type="button" title="Copy Markdown" aria-label="Copy Markdown" @onclick="() => OnCopyMessage.InvokeAsync(message.Content)"><AppIcon Name="copy" /></button>
-                    <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
-                    @if (message.Role == "User") { <button class="icon-action" type="button" title="Edit and branch" aria-label="Edit and branch" @onclick="() => OnEditAndBranch.InvokeAsync(message)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="@(IsBranchGenerating() ? "Can't replace while a response is being generated on this branch" : "Edit and replace branch")" aria-label="Edit and replace branch" disabled="@IsBranchGenerating()" @onclick="() => OnEditAndReplaceBranch.InvokeAsync(message)"><AppIcon Name="edit-replace" /></button> }
-                </div>
-                @if (GetBranchOptions(message).Count > 1 || ForkSourceId == message.Id)
+        RenderFragment<ChatMessageView> renderBranchPicker = pickerMessage =>
+        @<text>
+                @if (GetBranchOptions(pickerMessage).Count > 1 || ForkSourceId == pickerMessage.Id)
                 {
                     <div class="message-branch-indicator" @onkeydown="args => OnBranchPickerKeyDown.InvokeAsync(args)">
                         <span class="branch-connector" aria-hidden="true"></span>
-                        @if (ForkSourceId == message.Id)
+                        @if (ForkSourceId == pickerMessage.Id)
                         {
                             <span class="branch-pending" title="The branch will be created after you send its first message"><AppIcon Name="git-branch" /><span>New branch</span></span>
                         }
                         else
                         {
-                            var options = GetBranchOptions(message);
-                            <button class="branch-picker-trigger" type="button" title="Choose branch" aria-label="Choose branch" aria-expanded="@(MessageBranchMenuId == message.Id ? "true" : "false")" @onclick="() => OnToggleBranchMenu.InvokeAsync(message.Id)"><AppIcon Name="git-branch" /><span>Branch @GetActiveBranchPosition(options) of @options.Count</span></button>
-                            @if (MessageBranchMenuId == message.Id)
+                            var options = GetBranchOptions(pickerMessage);
+                            <button class="branch-picker-trigger" type="button" title="Choose branch" aria-label="Choose branch" aria-expanded="@(MessageBranchMenuId == pickerMessage.Id ? "true" : "false")" @onclick="() => OnToggleBranchMenu.InvokeAsync(pickerMessage.Id)"><AppIcon Name="git-branch" /><span>Branch @GetActiveBranchPosition(options) of @options.Count</span></button>
+                            @if (MessageBranchMenuId == pickerMessage.Id)
                             {
                                 <span class="branch-picker-menu" role="menu">
                                     @foreach (var option in options)
@@ -97,7 +75,61 @@
                         }
                     </div>
                 }
-            </article>
+            </text>;
+        @foreach (var item in BuildFeedItems(GetVisibleBranchMessages()))
+        {
+            @if (item.Message is { } message)
+            {
+                <article id="message-@message.Id" class="workspace-message @message.Role.ToLowerInvariant() @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)">
+                    @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
+                    <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div>
+                    <div class="message-actions">
+                        <button class="icon-action" type="button" title="Copy Markdown" aria-label="Copy Markdown" @onclick="() => OnCopyMessage.InvokeAsync(message.Content)"><AppIcon Name="copy" /></button>
+                        <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
+                        @if (message.Role == "User") { <button class="icon-action" type="button" title="Edit and branch" aria-label="Edit and branch" @onclick="() => OnEditAndBranch.InvokeAsync(message)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="@(IsBranchGenerating() ? "Can't replace while a response is being generated on this branch" : "Edit and replace branch")" aria-label="Edit and replace branch" disabled="@IsBranchGenerating()" @onclick="() => OnEditAndReplaceBranch.InvokeAsync(message)"><AppIcon Name="edit-replace" /></button> }
+                    </div>
+                    @renderBranchPicker(message)
+                </article>
+            }
+            else if (item.ToolGroup is { } group)
+            {
+                var pairs = BuildToolPairs(group);
+                var anchor = group[^1];
+                <article id="message-@anchor.Id" class="workspace-message tool-group @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)">
+                    <details class="tool-group-summary">
+                        <summary><AppIcon Name="tool" /><span>Tool calls (@pairs.Count)</span></summary>
+                        <div class="tool-group-body">
+                            @foreach (var pair in pairs)
+                            {
+                                <details class="tool-pair">
+                                    <summary class="tool-pair-header">
+                                        <span class="tool-pair-status @(pair.Result is null ? "running" : "done")" aria-hidden="true"></span>
+                                        <span class="tool-pair-name">@pair.Call.Name</span>
+                                    </summary>
+                                    @{ var formattedArguments = FormatArguments(pair.Call.Arguments); }
+                                    @if (!string.IsNullOrEmpty(formattedArguments))
+                                    {
+                                        <pre class="tool-pair-args">@formattedArguments</pre>
+                                    }
+                                    @if (pair.Result is { } result)
+                                    {
+                                        <pre class="tool-pair-result">@FormatToolResult(result.Content)</pre>
+                                    }
+                                    else
+                                    {
+                                        <p class="tool-pair-running">Running…</p>
+                                    }
+                                </details>
+                            }
+                        </div>
+                    </details>
+                    <div class="message-actions">
+                        <button class="icon-action" type="button" title="Copy" aria-label="Copy" @onclick="() => OnCopyMessage.InvokeAsync(BuildToolGroupSummaryText(pairs))"><AppIcon Name="copy" /></button>
+                        <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(anchor) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(anchor)" @onclick="() => OnForkFromMessage.InvokeAsync(anchor)"><AppIcon Name="fork" /></button>
+                    </div>
+                    @renderBranchPicker(anchor)
+                </article>
+            }
         }
         @if (SelectedRun is { PendingApproval: { } approval } approvalRun)
         {
@@ -138,6 +170,84 @@
         catch (Exception error) when (error is System.Text.Json.JsonException or InvalidOperationException or KeyNotFoundException) { }
         return content;
     }
+
+    // Renders a tool call's JSON arguments as "param: value" lines instead of raw JSON, so the
+    // common case (a flat object of scalar args) reads like a short form rather than a payload.
+    private static string FormatArguments(string arguments)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(arguments);
+            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return arguments;
+            var properties = document.RootElement.EnumerateObject().ToList();
+            if (properties.Count == 0) return string.Empty;
+            return string.Join("\n", properties.Select(property => $"{property.Name}: {FormatArgumentValue(property.Value)}"));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return arguments;
+        }
+    }
+
+    private static string FormatArgumentValue(System.Text.Json.JsonElement value) => value.ValueKind switch
+    {
+        System.Text.Json.JsonValueKind.String => value.GetString() ?? string.Empty,
+        System.Text.Json.JsonValueKind.Null => "null",
+        _ => value.GetRawText(),
+    };
+
+    // A feed item is either a normal user/assistant message, or a collapsed run of consecutive
+    // "tool activity" messages (an assistant message that only issues tool calls, plus the tool
+    // result messages that follow it) — grouping these keeps a multi-call turn from rendering as
+    // a wall of near-empty message bubbles.
+    private readonly record struct FeedItem(ChatMessageView? Message, List<ChatMessageView>? ToolGroup);
+    private readonly record struct ToolPair(ChatToolCall Call, ChatMessageView? Result);
+
+    private static bool IsToolActivity(ChatMessageView message) =>
+        message.Role == "Tool" || (message.Role == "Assistant" && message.ToolCalls is { Count: > 0 });
+
+    private static List<FeedItem> BuildFeedItems(IReadOnlyList<ChatMessageView> chain)
+    {
+        var items = new List<FeedItem>();
+        List<ChatMessageView>? currentGroup = null;
+        foreach (var message in chain)
+        {
+            if (IsToolActivity(message))
+            {
+                currentGroup ??= [];
+                currentGroup.Add(message);
+                continue;
+            }
+            if (currentGroup is not null) { items.Add(new FeedItem(null, currentGroup)); currentGroup = null; }
+            items.Add(new FeedItem(message, null));
+        }
+        if (currentGroup is not null) items.Add(new FeedItem(null, currentGroup));
+        return items;
+    }
+
+    // Pairs each call in the group with its result message (matched by ToolCallId) so a call
+    // still awaiting its result — the run is mid-flight — renders as "Running…" instead of nothing.
+    private static List<ToolPair> BuildToolPairs(List<ChatMessageView> group)
+    {
+        var resultsByCallId = group
+            .Where(item => item.Role == "Tool" && item.ToolCallId is not null)
+            .ToDictionary(item => item.ToolCallId!, item => item);
+        var pairs = new List<ToolPair>();
+        foreach (var message in group)
+        {
+            if (message.ToolCalls is not { Count: > 0 }) continue;
+            foreach (var call in message.ToolCalls)
+            {
+                resultsByCallId.TryGetValue(call.Id, out var result);
+                pairs.Add(new ToolPair(call, result));
+            }
+        }
+        return pairs;
+    }
+
+    private string BuildToolGroupSummaryText(List<ToolPair> pairs) => string.Join("\n\n", pairs.Select(pair =>
+        $"{pair.Call.Name}({pair.Call.Arguments})" + (pair.Result is { } result ? $"\n=> {FormatToolResult(result.Content)}" : string.Empty)));
+
     private Guid? _decidingApproval;
     private string? _approvalError;
     private async Task DecideToolAsync(ChatRunSnapshot run, Guid approvalId, bool allow)

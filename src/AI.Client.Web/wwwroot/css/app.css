@@ -1919,3 +1919,94 @@ textarea {
 .tool-approval { padding: 1rem; border: 1px solid currentColor; border-radius: .5rem; }
 .tool-invocation pre, .tool-approval pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
 .tool-approval button { margin-right: .5rem; }
+
+/* One collapsed, low-emphasis line per run of consecutive tool-call/tool-result messages, so a
+   multi-call turn doesn't render as a stack of near-empty message bubbles or compete visually
+   with the actual conversation. */
+.workspace-message.tool-group {
+    padding: 0;
+}
+
+.tool-group-summary > summary {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.1rem 0;
+    color: #737373;
+    font-size: 0.74rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.tool-group-summary > summary::-webkit-details-marker {
+    display: none;
+}
+
+.tool-group-summary > summary .app-icon {
+    width: 0.8rem;
+    height: 0.8rem;
+    opacity: 0.8;
+}
+
+.tool-group-body {
+    display: flex;
+    flex-direction: column;
+    margin-top: 0.15rem;
+    padding-left: 0.2rem;
+}
+
+.tool-pair > summary.tool-pair-header {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0;
+    color: #8a8a8a;
+    font-size: 0.74rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.tool-pair > summary.tool-pair-header::-webkit-details-marker {
+    display: none;
+}
+
+.tool-pair-status {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: #5cb85c;
+    flex-shrink: 0;
+}
+
+.tool-pair-status.running {
+    background: #d9a441;
+    animation: streaming-pulse 1s ease-in-out infinite alternate;
+}
+
+.tool-pair-name {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.76rem;
+}
+
+.tool-pair-running {
+    color: #737373;
+    font-size: 0.74rem;
+    margin: 0.1rem 0 0.1rem 1rem;
+}
+
+/* Arguments/result shown directly under the call's own <details> — no extra collapsible level. */
+.tool-pair-args, .tool-pair-result {
+    margin: 0.1rem 0 0.1rem 1rem;
+    padding: 0.3rem 0.5rem;
+    border-left: 2px solid #333;
+    color: #9c9c9c;
+    font-size: 0.74rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 24rem;
+    overflow: auto;
+}
+
+.tool-pair-result {
+    color: #b0b0b0;
+}

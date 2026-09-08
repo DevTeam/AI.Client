@@ -33,12 +33,12 @@
                 }
             </nav>
         }
-        <div class="sidebar-heading">
+        <div class="sidebar-heading projects-heading">
             <button type="button" class="sidebar-heading-toggle" aria-expanded="@(_isProjectsSectionExpanded ? "true" : "false")" aria-controls="projects-nav" @onclick="ToggleProjectsSection">
                 <AppIcon Name="chevron-right" />
                 <span>Projects</span>
             </button>
-            <button type="button" title="New project" aria-label="New project" @onclick="CreateProjectAsync">＋</button>
+            <button class="icon-action sidebar-heading-action" type="button" title="New project" aria-label="New project" @onclick="BeginProjectCreation"><AppIcon Name="plus" /></button>
         </div>
         @if (_isProjectsSectionExpanded)
         {
@@ -46,6 +46,12 @@
         @if (_isLoading)
         {
             <p>Loading...</p>
+        }
+        @if (_isCreatingProject)
+        {
+            <div class="project-nav-row project-nav-row-new">
+                <input class="sidebar-inline-editor" @ref="_editingInput" value="@_newProjectName" @oninput="e => _newProjectName = e.Value?.ToString() ?? string.Empty" @onkeydown="HandleNewProjectKeyDownAsync" @onblur="SaveNewProjectAsync" placeholder="Project name" aria-label="Project name" />
+            </div>
         }
         @foreach (var project in _projects)
         {
@@ -56,7 +62,7 @@
                 }
                 else
                 {
-                    <button class="workspace-nav-item" type="button" @onclick="() => SelectProjectAsync(project, restoreLastChat: false)"><span class="status-dot @GetRunStatusClass(GetProjectRun(project.Id))"></span><span class="nav-item-label">▣ @project.Name</span></button>
+                    <button class="workspace-nav-item" type="button" @onclick="() => SelectProjectAsync(project, restoreLastChat: false)"><span class="status-dot @GetRunStatusClass(GetProjectRun(project.Id))"></span><span class="nav-item-label">@project.Name</span></button>
                 }
                 @if (project.Id == _selectedProject?.Id)
                 {
@@ -67,6 +73,61 @@
             </div>
             @if (project.Id == _selectedProject?.Id)
             {
+                <div class="directory-nav-group">
+                    @if (_security.DirectoryGrants.Count == 0)
+                    {
+                        <button class="workspace-nav-item directory-empty-action" type="button" @onclick="BeginDirectoryCreation">
+                            <AppIcon Name="folder-plus" />
+                            <span class="nav-item-label">Add directory</span>
+                        </button>
+                    }
+                    else
+                    {
+                        <div class="directory-nav-row directory-nav-row-header">
+                            <span class="directory-row-main">
+                                <button class="icon-action directory-toggle" type="button" aria-expanded="@_directoriesExpanded" aria-label="Toggle directories" @onclick="ToggleDirectoriesExpanded"><AppIcon Name="@(_directoriesExpanded ? "chevron-down" : "chevron-right")" /></button>
+                                <AppIcon Name="folder" />
+                                <span class="nav-item-label directory-label">Directories</span>
+                                <span class="directory-count">@_security.DirectoryGrants.Count</span>
+                            </span>
+                            <button class="icon-action directory-row-action directory-add-button" type="button" title="Add directory" aria-label="Add directory" @onclick="BeginDirectoryCreation"><AppIcon Name="plus" /></button>
+                        </div>
+                        @if (_directoriesExpanded)
+                        {
+                            @foreach (var directory in _security.DirectoryGrants)
+                            {
+                                <div class="directory-nav-row directory-nav-row-child">
+                                    @if (_editingDirectoryId == directory.Id)
+                                    {
+                                        <input class="sidebar-inline-editor directory-path-editor" @ref="_editingInput" value="@_editingDirectoryPath" @oninput="e => _editingDirectoryPath = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveDirectoryPathAsync(directory))" @onblur="() => SaveDirectoryPathAsync(directory)" aria-label="Directory path" />
+                                    }
+                                    else
+                                    {
+                                        <span class="directory-row-main">
+                                            <span class="nav-item-label directory-name" title="@directory.CanonicalRoot">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
+                                        </span>
+                                    }
+                                    <button class="directory-lock-indicator @(directory.Mode == "Read/write" ? "directory-lock-rw" : "directory-lock-ro")" type="button" title="@(directory.Mode == "Read/write" ? "Read/write — click to make read only" : "Read only — click to allow write")" aria-label="Toggle directory access mode" @onclick="() => ToggleDirectoryModeAsync(directory)"><AppIcon Name="@(directory.Mode == "Read/write" ? "unlock" : "lock")" /></button>
+                                    <button class="icon-action directory-row-action directory-edit-button" type="button" title="Edit directory path" aria-label="Edit directory path" @onclick="() => BeginDirectoryPathEdit(directory)"><AppIcon Name="edit" /></button>
+                                    <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == directory.Id ? "menu-open" : string.Empty)" type="button" title="Directory menu" aria-label="Directory menu" @onclick="() => ToggleDirectoryMenu(directory.Id)"><AppIcon Name="more" /></button>
+                                    @if (_directoryMenuId == directory.Id)
+                                    {
+                                        <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                                            @if (_isConfirmingDirectoryDelete)
+                                            {
+                                                <div class="project-menu-confirm"><span>Remove this directory?</span><button class="danger compact-action" type="button" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelDirectoryDelete">Cancel</button></div>
+                                            }
+                                            else
+                                            {
+                                                <button class="menu-danger" type="button" role="menuitem" @onclick="ConfirmDirectoryDelete"><AppIcon Name="trash" />Remove directory</button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                    }
+                </div>
                 <nav class="workspace-chat-list" aria-label="Chats in @project.Name" @onkeydown="OnChatListKeyDown">
                     @foreach (var chat in _chats)
                     {
@@ -77,7 +138,7 @@
                             }
                             else
                             {
-                                <button class="workspace-nav-item chat-link" type="button" @onclick="() => SelectChatAsync(chat.Id)"><span class="status-dot @GetRunStatusClass(GetRun(chat.Id, chat.Id))"></span><span class="nav-item-label">@chat.Title</span></button>
+                                <button class="workspace-nav-item chat-link" type="button" @onclick="() => SelectChatAsync(chat.Id)"><AppIcon Name="message-circle" Class="@GetRunStatusClass(GetRun(chat.Id, chat.Id))" /><span class="nav-item-label">@chat.Title</span></button>
                             }
                             <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat)"><AppIcon Name="edit" /></button>
                             <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenu(chat.Id)"><AppIcon Name="more" /></button>
@@ -107,7 +168,7 @@
                                     }
                                     else
                                     {
-                                        <button class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)"><span class="status-dot @GetRunStatusClass(GetBranchRun(chat.Id, branch))"></span><AppIcon Name="git-branch" /><span class="nav-item-label">@branch.Title</span></button>
+                                        <button class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)"><AppIcon Name="git-branch" Class="@GetRunStatusClass(GetBranchRun(chat.Id, branch))" /><span class="nav-item-label">@branch.Title</span></button>
                                     }
                                     <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename branch" @onclick="() => BeginBranchRename(branch)"><AppIcon Name="edit" /></button>
                                     <button class="icon-action chat-row-action chat-menu-button @(_branchMenuId == branch.RootId ? "menu-open" : string.Empty)" type="button" title="Branch menu" aria-label="Branch menu" @onclick="() => ToggleBranchMenu(branch.RootId)"><AppIcon Name="more" /></button>
@@ -237,6 +298,11 @@
         <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
     }
 
+    @if (_directoryMenuId is not null)
+    {
+        <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
+    }
+
     @if (_isProjectSettingsOpen && _selectedProject is not null)
     {
         <div class="modal-backdrop" @onclick="CancelCurrentSettingsAsync">
@@ -249,7 +315,6 @@
                     <label>Description<InputTextArea @bind-Value="_editor.Description" /></label>
                     <label>Connection<select @bind="_editor.ConnectionId"><option value="">No connection</option>@foreach (var connection in _connections) { <option value="@connection.Id" disabled="@(!connection.Enabled)">@connection.Name@(!connection.Enabled ? " (Unavailable)" : string.Empty)</option> }</select></label>
                 </EditForm>
-                <section class="directory-settings"><div class="section-heading"><div><h3>Allowed directories</h3><p>Access is always recursive.</p></div><button class="icon-action" type="button" title="Add directory" aria-label="Add directory" @onclick="AddDirectoryGrant"><AppIcon Name="plus" /></button></div>@foreach (var directory in _security.DirectoryGrants) { <div class="directory-row"><InputText @bind-Value="directory.CanonicalRoot" placeholder="C:\Projects\App" /><select @bind="directory.Mode"><option>Read only</option><option>Read/write</option></select><button class="icon-action" type="button" title="Remove directory" aria-label="Remove directory" @onclick="() => RemoveDirectoryGrant(directory.Id)">−</button></div> }</section>
                 <section class="tool-settings">
                     <h3>Default tools</h3>
                     <button type="button" @onclick="DiscoverDefaultToolsAsync">Discover tools</button>
@@ -295,6 +360,8 @@
     private Guid? _messageBranchMenuId;
     private bool _isEndpointMenuOpen;
     private Guid? _editingProjectId;
+    private bool _isCreatingProject;
+    private string _newProjectName = string.Empty;
     private Guid? _editingChatId;
     private Guid? _editingBranchId;
     private string _editingTitle = string.Empty;
@@ -313,6 +380,12 @@
     private readonly List<ConnectionSettings> _connections = [];
     private ProjectEditor _editor = new();
     private ProjectSecurityEditor _security = new();
+    private bool _directoriesExpanded = true;
+    private Guid? _editingDirectoryId;
+    private Guid? _creatingDirectoryId;
+    private string _editingDirectoryPath = string.Empty;
+    private Guid? _directoryMenuId;
+    private bool _isConfirmingDirectoryDelete;
     private string? _error;
     private readonly List<ChatSummary> _chats = [];
     private ChatDetails? _selectedChat;
@@ -328,7 +401,6 @@
     private string? _pendingScrollRestoreKey;
     private ToastMessage? _toast;
     private CancellationTokenSource? _toastCancellation;
-    private const string SettingsTab = "General";
     private Guid? _defaultConnectionId;
     private ElementReference _composer;
     private MessageFeed? _messageFeed;
@@ -540,18 +612,53 @@
         StateHasChanged();
     }
 
-    private async Task CreateProjectAsync()
+    private void BeginProjectCreation()
     {
+        CancelInlineEdit();
+        _isProjectsSectionExpanded = true;
+        _isCreatingProject = true;
+        _newProjectName = string.Empty;
+        _focusEditingInputPending = true;
+        CloseContextMenus();
+    }
+
+    private async Task SaveNewProjectAsync()
+    {
+        if (!_isCreatingProject || _isCompletingInlineEdit) return;
+        var name = _newProjectName.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            CancelInlineEdit();
+            return;
+        }
+
+        _isCompletingInlineEdit = true;
         try
         {
-            var project = await ProjectApi.CreateAsync(new CreateProjectRequest("Untitled project", string.Empty), CancellationToken.None);
-            _isProjectsSectionExpanded = true;
+            var project = await ProjectApi.CreateAsync(new CreateProjectRequest(name, string.Empty), CancellationToken.None);
             await LoadProjectsAsync(project.Id);
             ShowToast("Project created.", "success");
         }
         catch (HttpRequestException)
         {
             _error = "The local gateway is unavailable.";
+        }
+        finally
+        {
+            _isCompletingInlineEdit = false;
+            CancelInlineEdit();
+        }
+    }
+
+    private async Task HandleNewProjectKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            CancelInlineEdit();
+        }
+        else if (args.Key == "Enter")
+        {
+            await SaveNewProjectAsync();
         }
     }
 
@@ -566,6 +673,8 @@
         _chatMenuId = null;
         _branchMenuId = null;
         _isConfirmingChatDelete = false;
+        _directoryMenuId = null;
+        _isConfirmingDirectoryDelete = false;
         _selectedChat = null;
         _selectedBranchId = null;
         _branchLeafId = null;
@@ -873,9 +982,86 @@
                 ? ComposerSendButton.SendMode.Queue
                 : ComposerSendButton.SendMode.Send;
 
-    private void AddDirectoryGrant() => _security.DirectoryGrants.Add(new DirectoryGrantEditor());
+    private void ToggleDirectoriesExpanded() => _directoriesExpanded = !_directoriesExpanded;
 
-    private void RemoveDirectoryGrant(Guid id) => _security.DirectoryGrants.RemoveAll(item => item.Id == id);
+    private void BeginDirectoryCreation()
+    {
+        CancelInlineEdit();
+        var directory = new DirectoryGrantEditor
+        {
+            DisplayName = "Directory",
+            ToolNames = "read"
+        };
+        _security.DirectoryGrants.Add(directory);
+        _creatingDirectoryId = directory.Id;
+        _editingDirectoryId = directory.Id;
+        _editingDirectoryPath = string.Empty;
+        _directoriesExpanded = true;
+        _focusEditingInputPending = true;
+        CloseContextMenus();
+    }
+
+    private void BeginDirectoryPathEdit(DirectoryGrantEditor grant)
+    {
+        CancelInlineEdit();
+        _editingDirectoryId = grant.Id;
+        _editingDirectoryPath = grant.CanonicalRoot;
+        _focusEditingInputPending = true;
+        CloseContextMenus();
+    }
+
+    private static string GetDirectoryDisplayNameSuggestion(string path)
+    {
+        var trimmed = path.TrimEnd('\\', '/');
+        var separatorIndex = trimmed.LastIndexOfAny(['\\', '/']);
+        return separatorIndex >= 0 ? trimmed[(separatorIndex + 1)..] : trimmed;
+    }
+
+    private void ToggleDirectoryMenu(Guid directoryId)
+    {
+        _directoryMenuId = _directoryMenuId == directoryId ? null : directoryId;
+        _isConfirmingDirectoryDelete = false;
+        _isProjectMenuOpen = false;
+        _isConfirmingProjectDelete = false;
+        _chatMenuId = null;
+        _isConfirmingChatDelete = false;
+        _branchMenuId = null;
+        _confirmingBranchDeleteId = null;
+    }
+
+    private void ConfirmDirectoryDelete() => _isConfirmingDirectoryDelete = true;
+
+    private void CancelDirectoryDelete() => CloseContextMenus();
+
+    private async Task ToggleDirectoryModeAsync(DirectoryGrantEditor directory)
+    {
+        directory.Mode = directory.Mode == "Read/write" ? "Read only" : "Read/write";
+        await PersistDirectoryGrantsAsync();
+    }
+
+    private async Task RemoveDirectoryGrantAsync(Guid id)
+    {
+        _security.DirectoryGrants.RemoveAll(item => item.Id == id);
+        CloseContextMenus();
+        await PersistDirectoryGrantsAsync();
+    }
+
+    private async Task<bool> PersistDirectoryGrantsAsync()
+    {
+        if (_selectedProject is null) return false;
+
+        var result = await ProjectApi.UpdateSecurityAsync(_selectedProject.Id, _security.ToRequest(), CancellationToken.None);
+        if (result.Status != ProjectUpdateStatus.Updated || result.Project is null)
+        {
+            await LoadSecurityAsync(_selectedProject.Id);
+            ShowToast("Directory changes were not saved. Reload the project and try again.", "error");
+            return false;
+        }
+
+        _security = ProjectSecurityEditor.From(result.Project);
+        _editor.Revision = result.Project.Revision;
+        return true;
+    }
 
     private async Task CreateChatAsync()
     {
@@ -1157,6 +1343,8 @@
         _isConfirmingChatDelete = false;
         _branchMenuId = null;
         _confirmingBranchDeleteId = null;
+        _directoryMenuId = null;
+        _isConfirmingDirectoryDelete = false;
     }
 
     private void ToggleChatMenu(Guid chatId)
@@ -1167,6 +1355,8 @@
         _isConfirmingProjectDelete = false;
         _branchMenuId = null;
         _confirmingBranchDeleteId = null;
+        _directoryMenuId = null;
+        _isConfirmingDirectoryDelete = false;
     }
 
     private void ToggleBranchMenu(Guid branchId)
@@ -1175,6 +1365,8 @@
         _confirmingBranchDeleteId = null;
         _chatMenuId = null;
         _isProjectMenuOpen = false;
+        _directoryMenuId = null;
+        _isConfirmingDirectoryDelete = false;
     }
 
     private void BeginProjectRename()
@@ -1219,10 +1411,48 @@
 
     private void CancelInlineEdit()
     {
+        if (_creatingDirectoryId is { } directoryId)
+        {
+            _security.DirectoryGrants.RemoveAll(item => item.Id == directoryId);
+        }
+
         _editingProjectId = null;
         _editingChatId = null;
         _editingBranchId = null;
+        _editingDirectoryId = null;
+        _creatingDirectoryId = null;
+        _isCreatingProject = false;
         _editingTitle = string.Empty;
+        _editingDirectoryPath = string.Empty;
+        _newProjectName = string.Empty;
+    }
+
+    private async Task SaveDirectoryPathAsync(DirectoryGrantEditor directory)
+    {
+        if (_editingDirectoryId != directory.Id || _isCompletingInlineEdit) return;
+        var path = _editingDirectoryPath.Trim();
+        var isCreating = _creatingDirectoryId == directory.Id;
+        if (string.IsNullOrEmpty(path) || (!isCreating && string.Equals(path, directory.CanonicalRoot, StringComparison.Ordinal)))
+        {
+            CancelInlineEdit();
+            return;
+        }
+
+        _isCompletingInlineEdit = true;
+        try
+        {
+            directory.CanonicalRoot = path;
+            directory.DisplayName = GetDirectoryDisplayNameSuggestion(path);
+            if (await PersistDirectoryGrantsAsync())
+            {
+                _creatingDirectoryId = null;
+            }
+        }
+        finally
+        {
+            _isCompletingInlineEdit = false;
+            CancelInlineEdit();
+        }
     }
 
     private async Task SaveProjectTitleAsync(ProjectSummary project)
@@ -1349,6 +1579,8 @@
         _isConfirmingChatDelete = false;
         _branchMenuId = null;
         _confirmingBranchDeleteId = null;
+        _directoryMenuId = null;
+        _isConfirmingDirectoryDelete = false;
     }
 
     private void OnChatContextMenu(Guid chatId)
@@ -1357,6 +1589,8 @@
         _isConfirmingChatDelete = false;
         _isProjectMenuOpen = false;
         _isConfirmingProjectDelete = false;
+        _directoryMenuId = null;
+        _isConfirmingDirectoryDelete = false;
     }
 
     private async Task OnBackdropContextMenu(MouseEventArgs e)
@@ -1483,6 +1717,8 @@
         _isConfirmingChatDelete = false;
         _branchMenuId = null;
         _confirmingBranchDeleteId = null;
+        _directoryMenuId = null;
+        _isConfirmingDirectoryDelete = false;
     }
 
     private void ConfirmChatDelete() => _isConfirmingChatDelete = true;
@@ -1554,7 +1790,7 @@
 
     private void CancelProjectDelete() => CloseContextMenus();
 
-    private void CancelGeneralChanges()
+    private async Task CancelCurrentSettingsAsync()
     {
         if (_selectedProject is not null)
         {
@@ -1563,36 +1799,14 @@
             {
                 ConnectionId = connectionId
             };
-        }
-
-        CloseProjectSettings();
-    }
-
-    private async Task CancelSecurityChangesAsync()
-    {
-        if (_selectedProject is not null)
-        {
             await LoadSecurityAsync(_selectedProject.Id);
         }
 
         await CloseProjectSettingsAsync();
     }
 
-    private Task CancelCurrentSettingsAsync() => SettingsTab switch
-    {
-        "General" => CancelGeneralSettingsAsync(),
-        "Security" => CancelSecurityChangesAsync(),
-        _ => CloseProjectSettingsAsync()
-    };
-
     private Task HandleProjectSettingsKeyDownAsync(KeyboardEventArgs args) =>
         args.Key == "Escape" ? CancelCurrentSettingsAsync() : Task.CompletedTask;
-
-    private Task CancelGeneralSettingsAsync()
-    {
-        CancelGeneralChanges();
-        return Task.CompletedTask;
-    }
 
     private Task CloseProjectSettingsAsync()
     {

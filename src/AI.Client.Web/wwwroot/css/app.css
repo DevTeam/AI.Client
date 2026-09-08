@@ -137,6 +137,26 @@ body {
     transform: rotate(90deg);
 }
 
+.sidebar-heading.projects-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 1.6rem 1.6rem 1.6rem;
+    column-gap: 0.12rem;
+}
+
+.projects-heading > .sidebar-heading-toggle {
+    grid-column: 1;
+    justify-self: start;
+}
+
+.projects-heading > .sidebar-heading-action {
+    grid-column: 2;
+    display: grid;
+    width: 1.6rem;
+    height: 1.6rem;
+    padding: 0;
+    place-items: center;
+}
+
 .workspace-nav-item {
     display: flex;
     align-items: center;
@@ -335,8 +355,8 @@ body {
 
 .workspace-chat-list {
     display: grid;
-    gap: 0.05rem;
-    margin: 0.1rem 0 0.5rem 0.85rem;
+    gap: var(--sidebar-row-gap, 0.05rem);
+    margin: var(--sidebar-group-gap, 0.1rem) 0 0.35rem var(--sidebar-row-indent, 0.65rem);
 }
 
 .global-nav {
@@ -585,6 +605,149 @@ body {
     opacity: 1;
 }
 
+.directory-nav-group {
+    display: grid;
+    gap: var(--sidebar-row-gap, 0.05rem);
+    margin: var(--sidebar-group-gap, 0.1rem) 0 0 var(--sidebar-row-indent, 0.65rem);
+}
+
+.directory-nav-row {
+    position: relative;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 1.6rem 1.6rem 1.6rem;
+    align-items: center;
+    column-gap: 0.12rem;
+    font-size: 0.9rem;
+    border-radius: 0.45rem;
+}
+
+.directory-nav-row:hover {
+    background: #2b2b2b;
+}
+
+.directory-empty-action {
+    min-height: 1.85rem;
+    border-radius: 0.45rem;
+    color: #929292;
+}
+
+.directory-empty-action:hover:not(:disabled),
+.directory-empty-action:focus-visible {
+    background: #2b2b2b;
+    color: #dedede;
+}
+
+.directory-empty-action .app-icon {
+    color: #a8a8a8;
+}
+
+.directory-nav-row-child {
+    margin-left: var(--sidebar-row-indent, 0.65rem);
+    width: calc(100% - var(--sidebar-row-indent, 0.65rem));
+}
+
+/* The label-ish content (toggle/folder/name/count) shares grid column 1 as a plain flex
+   row, so the trailing action buttons keep the same fixed columns as project/chat rows. */
+.directory-row-main {
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    min-height: 1.85rem;
+    box-sizing: border-box;
+    padding: 0.3rem 0.55rem;
+    overflow: hidden;
+}
+
+.directory-label {
+    flex: none;
+    color: #a8a8a8;
+}
+
+.directory-name {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.directory-count {
+    flex: none;
+    color: #858585;
+    font-size: 0.75rem;
+}
+
+.directory-row-main > .directory-toggle {
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+}
+
+.directory-toggle .app-icon {
+    width: 0.75rem;
+    height: 0.75rem;
+    transition: transform 120ms ease;
+}
+
+.directory-toggle[aria-expanded="true"] .app-icon {
+    transform: rotate(90deg);
+}
+
+/* Higher specificity than the generic .icon-action size, which is declared later in this file. */
+.directory-nav-row > .directory-row-action {
+    flex: 0 0 auto;
+    width: 1.6rem;
+    height: 1.6rem;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    opacity: 0;
+    transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.directory-nav-row:hover > .directory-row-action,
+.directory-nav-row:focus-within > .directory-row-action,
+.directory-menu-button.menu-open {
+    opacity: 1;
+}
+
+/* Mirrors the add(+)/edit/menu column layout shared by project and chat rows, so the
+   action buttons line up in the same vertical columns across all three row types. */
+.directory-nav-row > .directory-add-button { grid-column: 2; }
+.directory-nav-row > .directory-edit-button { grid-column: 3; }
+.directory-nav-row > .directory-menu-button { grid-column: 4; }
+
+.directory-lock-indicator {
+    grid-column: 2;
+    display: inline-grid;
+    width: 1.6rem;
+    height: 1.6rem;
+    padding: 0;
+    place-items: center;
+    border-color: transparent;
+    background: transparent;
+    color: #858585;
+    transition: color 120ms ease, background-color 120ms ease;
+}
+
+.directory-lock-indicator .app-icon {
+    width: 1rem;
+    height: 1rem;
+}
+
+.directory-lock-indicator.directory-lock-rw {
+    color: var(--accent-color);
+}
+
+.directory-lock-indicator:hover:not(:disabled),
+.directory-lock-indicator:focus-visible {
+    background: #3a3a3a;
+    color: #f0f0f0;
+}
+
 .context-menu-backdrop {
     position: fixed;
     z-index: 29;
@@ -614,6 +777,20 @@ body {
 .chat-link {
     color: #b9b9b9;
 }
+
+.chat-link > .app-icon {
+    color: #6b6b6b;
+    transition: color 120ms ease, opacity 120ms ease;
+}
+
+.chat-link > .app-icon.run-status-generating {
+    color: #54c27c;
+    animation: run-status-icon-blink 1.1s steps(1, end) infinite;
+}
+
+.chat-link > .app-icon.run-status-unread { color: #4f91dc; }
+.chat-link > .app-icon.run-status-failed { color: #d96363; }
+.chat-link > .app-icon.run-status-interrupted { color: #858585; }
 
 .workspace-conversation {
     display: grid;
@@ -658,6 +835,7 @@ body {
 }
 
 .app-icon {
+    flex: 0 0 auto;
     width: 1rem;
     height: 1rem;
 }
@@ -1207,6 +1385,11 @@ body {
     50%, 100% { opacity: 0.25; }
 }
 
+@keyframes run-status-icon-blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0.35; }
+}
+
 .workspace-composer {
     grid-row: 5;
     grid-column: 1;
@@ -1229,6 +1412,11 @@ body {
 
 .branch-nav-row > .branch-link,
 .branch-nav-row > .sidebar-inline-editor { margin-left: .75rem; width: calc(100% - .75rem); }
+
+.branch-nav-row > .branch-link {
+    padding: 0.3rem 0.55rem;
+    font-size: 0.9rem;
+}
 
 .chat-queue { grid-row: 3; grid-column: 1; width: min(48rem, calc(100% - 3rem)); margin: 0 auto .4rem; }
 .queue-header { display: flex; align-items: center; justify-content: space-between; gap: .45rem; }

@@ -86,7 +86,7 @@
                                 <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
                                     @if (_isConfirmingChatDelete)
                                     {
-                                        <div class="project-menu-confirm"><span>Are you sure?</span><button class="danger compact-action" type="button" @onclick="() => DeleteChatAsync(chat)">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelChatDelete">Cancel</button></div>
+                                        <div class="project-menu-confirm"><span>Delete this chat and all its branches?</span><button class="danger compact-action" type="button" @onclick="() => DeleteChatAsync(chat)">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelChatDelete">Cancel</button></div>
                                     }
                                     else
                                     {
@@ -114,7 +114,14 @@
                                     @if (_branchMenuId == branch.RootId)
                                     {
                                         <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
-                                            <button class="menu-danger" type="button" role="menuitem" @onclick="() => DeleteBranchAsync(branch)"><AppIcon Name="trash" />Delete branch</button>
+                                            @if (_confirmingBranchDeleteId == branch.RootId)
+                                            {
+                                                <div class="project-menu-confirm"><span>Delete this branch?</span><button class="danger compact-action" type="button" @onclick="() => DeleteBranchAsync(branch)">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelBranchDelete">Cancel</button></div>
+                                            }
+                                            else
+                                            {
+                                                <button class="menu-danger" type="button" role="menuitem" @onclick="() => ConfirmBranchDelete(branch.RootId)"><AppIcon Name="trash" />Delete branch</button>
+                                            }
                                         </div>
                                     }
                                 </div>
@@ -284,6 +291,7 @@
     private bool _isConfirmingProjectDelete;
     private Guid? _chatMenuId;
     private Guid? _branchMenuId;
+    private Guid? _confirmingBranchDeleteId;
     private Guid? _messageBranchMenuId;
     private bool _isEndpointMenuOpen;
     private Guid? _editingProjectId;
@@ -1111,6 +1119,8 @@
         _isConfirmingProjectDelete = false;
         _chatMenuId = null;
         _isConfirmingChatDelete = false;
+        _branchMenuId = null;
+        _confirmingBranchDeleteId = null;
     }
 
     private void ToggleChatMenu(Guid chatId)
@@ -1119,11 +1129,14 @@
         _isConfirmingChatDelete = false;
         _isProjectMenuOpen = false;
         _isConfirmingProjectDelete = false;
+        _branchMenuId = null;
+        _confirmingBranchDeleteId = null;
     }
 
     private void ToggleBranchMenu(Guid branchId)
     {
         _branchMenuId = _branchMenuId == branchId ? null : branchId;
+        _confirmingBranchDeleteId = null;
         _chatMenuId = null;
         _isProjectMenuOpen = false;
     }
@@ -1227,6 +1240,7 @@
         _branchLeafId = result.ParentHeadMessageId
             ?? _selectedChat?.Branches?.SingleOrDefault(item => item.Id == _selectedBranchId)?.HeadMessageId;
         _branchMenuId = null;
+        _confirmingBranchDeleteId = null;
         await LoadChatsAsync(_selectedProject.Id);
     }
 
@@ -1297,6 +1311,8 @@
         _isConfirmingProjectDelete = false;
         _chatMenuId = null;
         _isConfirmingChatDelete = false;
+        _branchMenuId = null;
+        _confirmingBranchDeleteId = null;
     }
 
     private void OnChatContextMenu(Guid chatId)
@@ -1429,11 +1445,17 @@
         _isConfirmingProjectDelete = false;
         _chatMenuId = null;
         _isConfirmingChatDelete = false;
+        _branchMenuId = null;
+        _confirmingBranchDeleteId = null;
     }
 
     private void ConfirmChatDelete() => _isConfirmingChatDelete = true;
 
     private void CancelChatDelete() => CloseContextMenus();
+
+    private void ConfirmBranchDelete(Guid branchId) => _confirmingBranchDeleteId = branchId;
+
+    private void CancelBranchDelete() => CloseContextMenus();
 
     private async Task DeleteChatAsync(ChatSummary chat)
     {

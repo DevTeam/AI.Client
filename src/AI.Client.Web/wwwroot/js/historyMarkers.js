@@ -112,15 +112,24 @@ export function attach(strip, scroller, scrollKey) {
         return active;
     };
 
-    const hideTip = () => tip.classList.remove("visible");
+    // Tracks which marker's content is currently painted into the tip DOM, so showTip() only
+    // rebuilds it (innerHTML included) when the nearest marker actually changes — not on every
+    // mousemove tick. showTip used to run unconditionally on every tick via render(); that was
+    // already wasteful with textContent, and would be a real cost with innerHTML (the browser
+    // re-parses the rendered-markdown HTML on every call).
+    let lastTipMarker = null;
+    const hideTip = () => { tip.classList.remove("visible"); lastTipMarker = null; };
 
     // An optional meta line (time, short date, branch badge), then the question + a blank-line
-    // gap + the final answer, each clamped to 5 lines by CSS (-webkit-line-clamp). Built as real
-    // DOM nodes (not textContent) so the answer can carry its own colour and the fork badge its
-    // own icon.
+    // gap + the final answer, each clamped to 5 lines by CSS (-webkit-line-clamp). The
+    // question/answer are already-sanitized markdown HTML (see IMarkdownRenderer / MessageFeed's
+    // RenderMarkdownCached, reused as-is here — same HTML the message body itself renders) set via
+    // innerHTML; the meta line stays textContent since it's plain text built here, not markdown.
     const showTip = marker => {
-        const question = marker.dataset.question;
+        if (marker === lastTipMarker) { tip.classList.add("visible"); return; }
+        const question = marker.dataset.questionHtml;
         if (!question) { hideTip(); return; }
+        lastTipMarker = marker;
 
         tip.replaceChildren();
 
@@ -148,14 +157,14 @@ export function attach(strip, scroller, scrollKey) {
 
         const questionEl = document.createElement("div");
         questionEl.className = "history-marker-tip-question";
-        questionEl.textContent = question;
+        questionEl.innerHTML = question;
         tip.appendChild(questionEl);
 
-        const answer = marker.dataset.answer;
+        const answer = marker.dataset.answerHtml;
         if (answer) {
             const answerEl = document.createElement("div");
             answerEl.className = "history-marker-tip-answer";
-            answerEl.textContent = answer;
+            answerEl.innerHTML = answer;
             tip.appendChild(answerEl);
         }
 

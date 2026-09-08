@@ -5,7 +5,8 @@
       "name": "ai-client-host",
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "src/AI.Client.Host"],
-      "port": 52173
+      "port": 52173,
+      "autoPort": true
     }
   ]
 }

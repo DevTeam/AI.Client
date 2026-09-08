@@ -22,14 +22,14 @@
             var isLast = index == historyEntries.Count - 1 && SelectedRun is not { Status: ChatRunStatus.Generating };
             <button class="history-marker @GetHistoryMarkerClass(entry, isLast)" type="button" tabindex="-1"
                     data-target="message-@entry.Question.Id"
-                    data-question="@entry.Question.Content"
-                    data-answer="@(entry.Answer?.Content ?? string.Empty)"
+                    data-question-html="@RenderMarkdownCached(entry.Question.Id, entry.Question.Content)"
+                    data-answer-html="@(entry.Answer is { } answer ? RenderMarkdownCached(answer.Id, answer.Content) : string.Empty)"
                     data-fork="@(entry.HasFork ? "true" : string.Empty)"
                     data-created="@entry.Question.CreatedAt.ToString("o")"></button>
         }
         @if (SelectedRun is { Status: ChatRunStatus.Generating })
         {
-            <button class="history-marker history-marker-assistant history-marker-generating" type="button" tabindex="-1" data-target="message-streaming" data-question="Generating..." data-answer="" data-fork=""></button>
+            <button class="history-marker history-marker-assistant history-marker-generating" type="button" tabindex="-1" data-target="message-streaming" data-question-html="Generating&hellip;" data-answer-html="" data-fork=""></button>
         }
     </nav>
     <div class="history-marker-tip" role="tooltip" aria-hidden="true"></div>

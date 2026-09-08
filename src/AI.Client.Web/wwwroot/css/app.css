@@ -939,7 +939,10 @@ body {
 }
 
 /* Question and answer are each clamped to 5 lines rather than truncated to a fixed character
-   count — the tooltip is now big enough to show real paragraphs, not a one-line preview. */
+   count — the tooltip is now big enough to show real paragraphs, not a one-line preview. Content
+   is rendered (sanitized) markdown HTML, not plain text, so no white-space: pre-wrap here — real
+   <p>/<br> tags carry the line breaks now, and preserving literal source whitespace on top of
+   that would just add stray gaps between them. */
 .history-marker-tip-question,
 .history-marker-tip-answer {
     display: -webkit-box;
@@ -949,8 +952,17 @@ body {
     -webkit-box-orient: vertical;
     box-orient: vertical;
     overflow: hidden;
-    white-space: pre-wrap;
     word-break: break-word;
+}
+
+.history-marker-tip-question > :first-child,
+.history-marker-tip-answer > :first-child {
+    margin-top: 0;
+}
+
+.history-marker-tip-question > :last-child,
+.history-marker-tip-answer > :last-child {
+    margin-bottom: 0;
 }
 
 .history-marker-tip-answer {

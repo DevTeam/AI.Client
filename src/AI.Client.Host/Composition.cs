@@ -38,6 +38,6 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 ProtectedDataUserDataProtector, ChatCompletionSseParser,
                 OpenAiCompatibleChatCompletionClient, ChatEndpoint, GlobalSettingsPaths, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
                 GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, DefaultToolSessionFactory>()
-            .Singleton(_ => new HttpClient())
+            .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
             .Transient((ProjectStorageLocation location) => location.RootDirectory);
 }

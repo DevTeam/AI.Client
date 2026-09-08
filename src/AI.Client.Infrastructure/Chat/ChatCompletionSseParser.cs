@@ -8,7 +8,14 @@ using System.Text;
 
 public sealed class ChatCompletionSseParser : IChatCompletionSseParser
 {
+    // Once the model has started streaming, a gap this long between chunks means the connection
+    // has stalled. Waiting for the very first chunk is a different situation — the endpoint may
+    // legitimately spend a while "thinking" (a large tool-result context, a slow provider, a
+    // reasoning model) before sending anything at all, so that wait gets a much longer allowance
+    // below rather than reusing this one; conflating the two used to fail a merely-slow-to-start
+    // response with a bare "The operation has timed out." after only 10 seconds.
     private static readonly TimeSpan StreamIdleTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan FirstTokenTimeout = TimeSpan.FromSeconds(120);
 
     public async IAsyncEnumerable<ChatCompletionChunk> ParseAsync(
         Stream stream,
@@ -25,7 +32,7 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
             {
                 var readTimeout = hasContent
                     ? StreamIdleTimeout - contentIdleTimer.Elapsed
-                    : StreamIdleTimeout;
+                    : FirstTokenTimeout;
                 if (hasContent && readTimeout <= TimeSpan.Zero)
                 {
                     if (calls.Count > 0) throw new InvalidOperationException("Tool call stream timed out before completion.");
@@ -35,8 +42,9 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
                 line = await reader.ReadLineAsync(cancellationToken).AsTask()
                     .WaitAsync(readTimeout, cancellationToken);
             }
-            catch (TimeoutException) when (hasContent)
+            catch (TimeoutException)
             {
+                if (!hasContent) throw new TimeoutException($"The model did not send a response within {FirstTokenTimeout.TotalSeconds:0} seconds.");
                 if (calls.Count > 0) throw new InvalidOperationException("Tool call stream timed out before completion.");
                 yield break;
             }

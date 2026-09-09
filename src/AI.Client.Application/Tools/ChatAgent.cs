@@ -1,21 +1,23 @@
 namespace AI.Client.Application.Tools;
 
 using Chat;
+using Chats;
 using Projects;
 using Settings;
 using Contracts.Chat;
+using Contracts.Runs;
 using Contracts.Settings;
 using System.Text;
 using System.Text.Json;
 
 public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFactory sessions,
-    IProjectService projects, IGlobalSettingsRepository settings)
+    IProjectService projects, IChatService chats, IGlobalSettingsRepository settings)
 {
-    public async Task RunAsync(Guid projectId, ChatCompletionRequest request,
+    public async Task RunAsync(Guid projectId, Guid chatId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
         Func<string, CancellationToken, Task> text,
         Func<string?, CancellationToken, Task> activity,
-        Func<AgentTool, string, long, CancellationToken, Task<bool>> approve,
+        Func<AgentTool, string, long, CancellationToken, Task<ToolApprovalAction>> approve,
         CancellationToken cancellationToken)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -37,7 +39,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
             var available = new List<ChatToolDefinition>();
             if (session is not null)
                 foreach (var tool in session.Tools)
-                    if ((await PolicyAsync(projectId, tool, token)).Decision != "Deny") available.Add(tool.Definition);
+                    if ((await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") available.Add(tool.Definition);
             var calls = new List<ChatToolCall>();
             var content = new StringBuilder();
             await foreach (var chunk in completion.StreamAsync(request with { ContextMessages = context, Tools = available }, token))
@@ -66,7 +68,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                     var tool = session?.Tools.SingleOrDefault(item => item.Definition.Name == call.Name)
                         ?? throw new ArgumentException("Unknown tool.");
                     var arguments = session!.ValidateArguments(tool, call.Arguments);
-                    var policy = await PolicyAsync(projectId, tool, token);
+                    var policy = await PolicyAsync(projectId, chatId, tool, token);
                     if (tool.OriginalName == "process_run")
                     {
                         var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
@@ -77,13 +79,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                     counts[call.Name] = count;
                     if (policy.Decision == "Deny") result = Error("Tool denied by current policy.");
                     else if (count > policy.MaxCalls) result = Error("Tool call limit reached.");
-                    else if (policy.Decision == "Ask" && !await approve(tool, arguments, policy.TimeoutSeconds, token))
+                    else if (policy.Decision == "Ask" && await approve(tool, arguments, policy.TimeoutSeconds, token) == ToolApprovalAction.Deny)
                         result = Error("The user denied this invocation. Do not retry it.");
                     else
                     {
                         await activity(call.Name, token);
-                        var current = await PolicyAsync(projectId, tool, token);
-                        if (current != policy) result = Error("Policy changed before execution. Submit a new invocation.");
+                        var current = await PolicyAsync(projectId, chatId, tool, token);
+                        if (current.Decision == "Deny") result = Error("Policy changed before execution. Submit a new invocation.");
                         else
                         {
                             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -119,7 +121,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
         throw new InvalidOperationException("Agent iteration limit reached.");
     }
 
-    private async Task<EffectivePolicy> PolicyAsync(Guid projectId, AgentTool tool, CancellationToken token)
+    private async Task<EffectivePolicy> PolicyAsync(Guid projectId, Guid chatId, AgentTool tool, CancellationToken token)
     {
         var global = await settings.LoadAsync(token);
         var server = global.McpServers.SingleOrDefault(item => item.Id == tool.ServerId);
@@ -127,15 +129,18 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
         var binding = project.McpServers.SingleOrDefault(item => item.Id == tool.ServerId);
         var projectPolicy = project.ToolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId
             && item.Name == tool.OriginalName && item.SchemaHash == tool.SchemaHash);
+        var chat = await chats.GetAsync(projectId, chatId, token) ?? throw new InvalidOperationException("Chat not found.");
+        var chatPolicy = chat.ToolPolicies?.SingleOrDefault(item => item.ServerId == tool.ServerId
+            && item.Name == tool.OriginalName && item.SchemaHash == tool.SchemaHash);
         var globalPolicy = global.ToolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId
             && item.Name == tool.OriginalName && item.SchemaHash == tool.SchemaHash);
-        var policyDecision = projectPolicy?.Decision ?? globalPolicy?.Decision ?? "Ask";
+        var policyDecision = chatPolicy?.Decision ?? projectPolicy?.Decision ?? globalPolicy?.Decision ?? "Ask";
         var decision = server is not { Enabled: true } || server.Policy == "Deny" || binding is { Enabled: false } || policyDecision == "Deny"
-            ? "Deny" : server.Policy == "Allow" && policyDecision == "Allow" ? "Allow" : "Ask";
+            ? "Deny" : policyDecision == "Allow" ? "Allow" : "Ask";
         return new EffectivePolicy(
             decision,
-            Math.Clamp(projectPolicy?.MaxCallsPerRun ?? globalPolicy?.MaxCallsPerRun ?? 20, 1, 20),
-            Math.Clamp(projectPolicy?.TimeoutSeconds ?? globalPolicy?.TimeoutSeconds ?? 120, 1, 120));
+            Math.Clamp(chatPolicy?.MaxCallsPerRun ?? projectPolicy?.MaxCallsPerRun ?? globalPolicy?.MaxCallsPerRun ?? 20, 1, 20),
+            Math.Clamp(chatPolicy?.TimeoutSeconds ?? projectPolicy?.TimeoutSeconds ?? globalPolicy?.TimeoutSeconds ?? 120, 1, 120));
     }
 
     private static string Error(string message) => JsonSerializer.Serialize(new { isError = true, error = message });

@@ -9,4 +9,5 @@ public sealed record ChatDetails(
     long Revision,
     Guid? ConnectionId,
     IReadOnlyList<ChatMessageView> Messages,
-    IReadOnlyList<ChatBranchView>? Branches = null);
+    IReadOnlyList<ChatBranchView>? Branches = null,
+    IReadOnlyList<AI.Client.Contracts.Projects.ToolPolicySettings>? ToolPolicies = null);

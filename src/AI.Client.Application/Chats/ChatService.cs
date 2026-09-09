@@ -3,6 +3,7 @@ namespace AI.Client.Application.Chats;
 
 using Projects;
 using AI.Client.Contracts.Chats;
+using AI.Client.Contracts.Projects;
 using AI.Client.Domain.Chats;
 using AI.Client.Domain.Projects;
 
@@ -148,6 +149,28 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
 
+    public async Task<ChatDetails?> SetToolPolicyAsync(Guid projectId, Guid chatId,
+        ToolPolicySettings policy, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        stored.Chat.SetToolPolicy(ToPolicy(policy), clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    public async Task<ChatDetails?> RemoveToolPolicyAsync(Guid projectId, Guid chatId,
+        Guid serverId, string name, string schemaHash, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        stored.Chat.RemoveToolPolicy(new ToolIdentity(new McpServerId(serverId), name, schemaHash), clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
     public async Task<ChatBranchDeleteResult> DeleteBranchAsync(Guid projectId, Guid chatId, Guid branchId, long revision,
         IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken)
     {
@@ -182,5 +205,15 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
                 item.ToolCallId))
             .ToArray(),
         chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
-            branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray());
+            branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
+        chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
+            policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
+            checked((long)policy.Timeout.TotalSeconds))).ToArray());
+
+    private static ToolPolicy ToPolicy(ToolPolicySettings policy) => new(
+        new ToolIdentity(new McpServerId(policy.ServerId), policy.Name, policy.SchemaHash),
+        Enum.TryParse<ToolPolicyDecision>(policy.Decision, true, out var decision)
+            ? decision : throw new ArgumentException($"Unsupported tool policy '{policy.Decision}'."),
+        policy.MaxCallsPerRun,
+        TimeSpan.FromSeconds(policy.TimeoutSeconds));
 }

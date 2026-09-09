@@ -10,13 +10,14 @@ using Contracts.Chat;
 using Contracts.Chats;
 using Contracts.Runs;
 using Contracts.Projects;
+using Contracts.Settings;
 using Domain.Runs;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 
 public sealed class ChatRunDispatcher(
     IChatRunRepository repository, ChatService chats, IProjectService projects,
-    IGlobalSettingsRepository settings, ChatAgent agent,
+    IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, ChatAgent agent,
     IGlobalSecretStore secretStore, IClock clock, ChatSynchronization synchronization) : IChatRunDispatcher, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<RunKey, Runtime> _runtimes = new();
@@ -287,7 +288,7 @@ public sealed class ChatRunDispatcher(
                     await SaveAsync(runtime, chat, token);
                 }
 
-                await agent.RunAsync(runtime.State.ProjectId, request,
+                await agent.RunAsync(runtime.State.ProjectId, runtime.State.ChatId, request,
                     (message, ct) => PersistToolMessageAsync(runtime, message, ct),
                     async (content, ct) =>
                     {
@@ -360,19 +361,50 @@ public sealed class ChatRunDispatcher(
 
     public async Task<bool> DecideToolAsync(Guid projectId, Guid chatId, Guid branchId, ToolApprovalDecision decision, CancellationToken token)
     {
+        Runtime runtime;
+        ToolApproval approval;
+        using (await synchronization.EnterAsync(chatId, token))
+        {
+            if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out runtime!)
+                || runtime.PendingApproval?.Id != decision.ApprovalId
+                || runtime.Cancellation?.IsCancellationRequested != false)
+                return false;
+            approval = runtime.PendingApproval;
+        }
+
+        var policy = new ToolPolicySettings(approval.ServerId, approval.Name, approval.SchemaHash,
+            "Allow", 20, approval.TimeoutSeconds);
+        switch (decision.Action)
+        {
+            case ToolApprovalAction.Allow:
+            case ToolApprovalAction.Deny:
+                break;
+            case ToolApprovalAction.AllowForChat:
+                if (await chats.SetToolPolicyAsync(projectId, chatId, policy, token) is null) return false;
+                break;
+            case ToolApprovalAction.AllowForProject:
+                if (await projects.SetToolPolicyAsync(projectId, policy, token) is null) return false;
+                break;
+            case ToolApprovalAction.AllowGlobally:
+                await globalSettings.SetToolPolicyAsync(new McpToolPolicySettings(approval.ServerId,
+                    approval.Name, approval.SchemaHash, "Allow", 20, approval.TimeoutSeconds), token);
+                break;
+            default:
+                return false;
+        }
+
         using var lease = await synchronization.EnterAsync(chatId, token);
-        if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)
-            || runtime.PendingApproval?.Id != decision.ApprovalId || runtime.Cancellation?.IsCancellationRequested != false)
-            return false;
-        return runtime.Approval?.TrySetResult(decision.Allow) == true;
+        if (runtime.PendingApproval?.Id != decision.ApprovalId) return false;
+        return runtime.Approval?.TrySetResult(decision.Action) == true;
     }
 
-    private async Task<bool> ApproveAsync(Runtime runtime, AgentTool tool, string arguments, long timeout, CancellationToken token)
+    private async Task<ToolApprovalAction> ApproveAsync(Runtime runtime, AgentTool tool, string arguments, long timeout, CancellationToken token)
     {
-        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = new TaskCompletionSource<ToolApprovalAction>(TaskCreationOptions.RunContinuationsAsynchronously);
         using (await synchronization.EnterAsync(runtime.State.ChatId, token))
         {
-            runtime.PendingApproval = new ToolApproval(Guid.NewGuid(), tool.OriginalName, arguments, timeout);
+            runtime.PendingApproval = new ToolApproval(Guid.NewGuid(), tool.ServerId, tool.OriginalName,
+                tool.SchemaHash, arguments, timeout);
             runtime.Approval = completion;
             runtime.State.Append("");
             await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
@@ -714,7 +746,7 @@ public sealed class ChatRunDispatcher(
         public ChatRunSnapshot Snapshot { get; set; } = ChatRunDispatcher.Snapshot(state, null);
         public Guid? ToolHead { get; set; }
         public ToolApproval? PendingApproval { get; set; }
-        public TaskCompletionSource<bool>? Approval { get; set; }
+        public TaskCompletionSource<ToolApprovalAction>? Approval { get; set; }
         public string? ActiveTool { get; set; }
         public Task? Worker { get; set; }
         public CancellationTokenSource? Cancellation { get; set; }

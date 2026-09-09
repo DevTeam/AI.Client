@@ -120,6 +120,13 @@ public sealed class Project
         UpdatedAt = updatedAt;
     }
 
+    public void RemoveToolPolicy(ToolIdentity tool, DateTimeOffset updatedAt)
+    {
+        EnsureTimestampDoesNotMoveBackwards(updatedAt);
+        _toolPolicies.Remove(tool);
+        UpdatedAt = updatedAt;
+    }
+
     public void ReplaceSecuritySettings(
         IEnumerable<DirectoryGrant> directoryGrants,
         IEnumerable<McpServerBinding> mcpServers,

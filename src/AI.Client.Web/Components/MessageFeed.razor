@@ -137,8 +137,25 @@
                 <strong>Allow @approval.Name?</strong>
                 <pre>@approval.Arguments</pre>
                 <p>Timeout: @approval.TimeoutSeconds seconds. The process runs with your account's permissions; the working directory is not a sandbox.</p>
-                <button type="button" disabled="@(_decidingApproval == approval.Id)" @onclick="() => DecideToolAsync(approvalRun, approval.Id, true)">Allow once</button>
-                <button type="button" disabled="@(_decidingApproval == approval.Id)" @onclick="() => DecideToolAsync(approvalRun, approval.Id, false)">Deny</button>
+                <div class="tool-approval-actions">
+                    <button class="secondary-action" type="button" disabled="@(_decidingApproval == approval.Id)" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.Deny)">Deny</button>
+                    <button type="button" disabled="@(_decidingApproval == approval.Id)" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.Allow)">Allow</button>
+                    <details class="tool-approval-more">
+                        <summary class="icon-action" aria-label="More allow options"><AppIcon Name="chevron-down" /></summary>
+                        <div class="tool-approval-menu">
+                            <button type="button" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.AllowForChat)"><strong>Allow for this chat</strong><span>Remember in @SelectedChat?.Title</span></button>
+                            <button type="button" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.AllowForProject)"><strong>Allow for this project</strong><span>Use in every chat in this project</span></button>
+                            @if (_confirmGlobalApprovalId == approval.Id)
+                            {
+                                <div class="tool-approval-global-confirm"><span>Allow <code>@approval.Name</code> in every project?</span><div><button class="secondary-action" type="button" @onclick="CancelGlobalApproval">Cancel</button><button type="button" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.AllowGlobally)">Always allow</button></div></div>
+                            }
+                            else
+                            {
+                                <button type="button" @onclick="() => BeginGlobalApproval(approval.Id)"><strong>Always allow this tool</strong><span>Apply to every project</span></button>
+                            }
+                        </div>
+                    </details>
+                </div>
                 @if (_approvalError is not null) { <p role="alert">@_approvalError</p> }
             </section>
         }
@@ -249,13 +266,26 @@
         $"{pair.Call.Name}({pair.Call.Arguments})" + (pair.Result is { } result ? $"\n=> {FormatToolResult(result.Content)}" : string.Empty)));
 
     private Guid? _decidingApproval;
+    private Guid? _confirmGlobalApprovalId;
     private string? _approvalError;
-    private async Task DecideToolAsync(ChatRunSnapshot run, Guid approvalId, bool allow)
+    private void BeginGlobalApproval(Guid approvalId)
+    {
+        _confirmGlobalApprovalId = approvalId;
+        _renderedSelectedRun = null;
+    }
+
+    private void CancelGlobalApproval()
+    {
+        _confirmGlobalApprovalId = null;
+        _renderedSelectedRun = null;
+    }
+    private async Task DecideToolAsync(ChatRunSnapshot run, Guid approvalId, ToolApprovalAction action)
     {
         _decidingApproval = approvalId;
         _renderedSelectedRun = null;
         _approvalError = null;
-        try { await RunsApi.DecideToolAsync(run.ProjectId, run.ChatId, run.BranchId, new ToolApprovalDecision(approvalId, allow), CancellationToken.None); }
+        _confirmGlobalApprovalId = null;
+        try { await RunsApi.DecideToolAsync(run.ProjectId, run.ChatId, run.BranchId, new ToolApprovalDecision(approvalId, action), CancellationToken.None); }
         catch (HttpRequestException) { _approvalError = "This approval is no longer available. Refresh the chat."; }
         finally { _decidingApproval = null; }
         _renderedSelectedRun = null;

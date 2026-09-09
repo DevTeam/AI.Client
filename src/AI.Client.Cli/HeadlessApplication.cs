@@ -96,8 +96,11 @@ internal sealed class HeadlessApplication(string[] args, IHeadlessSessionStore s
     private async Task<int> ApproveAsync(Dictionary<string, string> options)
     {
         var session = await GetSessionAsync(options);
+        var action = options.TryGetValue("action", out var requestedAction)
+            ? Enum.Parse<ToolApprovalAction>(requestedAction, true)
+            : bool.Parse(Required(options, "allow")) ? ToolApprovalAction.Allow : ToolApprovalAction.Deny;
         await chatClient.DecideToolAsync(session.Host, session.ProjectId, session.Id,
-            new ToolApprovalDecision(Guid.Parse(Required(options, "approval")), bool.Parse(Required(options, "allow"))), CancellationToken.None);
+            new ToolApprovalDecision(Guid.Parse(Required(options, "approval")), action), CancellationToken.None);
         return Write(new { status = "accepted", sessionId = session.Id });
     }
 
@@ -143,5 +146,5 @@ internal sealed class HeadlessApplication(string[] args, IHeadlessSessionStore s
         return exitCode;
     }
 
-    private const string Usage = "session create --project <name> [--connection <name>] [--host <url>] | session send --session <id> --message <text> [--host <url>] [--cancel-after-ms <ms>] | session approve --session <id> --approval <id> --allow <true|false> | session show --session <id> | session delete --session <id>";
+    private const string Usage = "session create --project <name> [--connection <name>] [--host <url>] | session send --session <id> --message <text> [--host <url>] [--cancel-after-ms <ms>] | session approve --session <id> --approval <id> (--action <Allow|AllowForChat|AllowForProject|AllowGlobally|Deny> | --allow <true|false>) | session show --session <id> | session delete --session <id>";
 }

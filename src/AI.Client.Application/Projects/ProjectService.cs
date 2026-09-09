@@ -103,6 +103,34 @@ public sealed class ProjectService(
             : ProjectUpdateResult.Conflict(result.Revision);
     }
 
+    public async Task<ProjectDetails?> SetToolPolicyAsync(Guid id, ToolPolicySettings policy, CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(id), cancellationToken);
+        if (stored is null) return null;
+        if (stored.Project.McpServers.All(server => server.Id.Value != policy.ServerId))
+        {
+            var server = (await globalSettingsRepository.LoadAsync(cancellationToken)).McpServers
+                .SingleOrDefault(item => item.Id == policy.ServerId) ?? throw new ArgumentException("MCP server not found.");
+            stored.Project.AddMcpServer(new McpServerBinding(new McpServerId(server.Id), server.Name,
+                ParseTransport(server.Transport), server.Enabled), clock.UtcNow);
+        }
+        stored.Project.SetToolPolicy(new ToolPolicy(new ToolIdentity(new McpServerId(policy.ServerId), policy.Name,
+            policy.SchemaHash), ParseDecision(policy.Decision), policy.MaxCallsPerRun,
+            TimeSpan.FromSeconds(policy.TimeoutSeconds)), clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Project, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Project, result.Revision) : null;
+    }
+
+    public async Task<ProjectDetails?> RemoveToolPolicyAsync(Guid id, Guid serverId, string name,
+        string schemaHash, CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(id), cancellationToken);
+        if (stored is null) return null;
+        stored.Project.RemoveToolPolicy(new ToolIdentity(new McpServerId(serverId), name, schemaHash), clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Project, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Project, result.Revision) : null;
+    }
+
     private static ProjectSummary ToSummary(Project project, long revision) =>
         new(project.Id.Value, project.Name, project.Description, project.UpdatedAt, revision);
 

@@ -23,6 +23,32 @@ using System.Text.Json;
 
 public sealed class ChatExecutionTests
 {
+    [Theory]
+    [InlineData(ToolApprovalAction.AllowForChat)]
+    [InlineData(ToolApprovalAction.AllowForProject)]
+    [InlineData(ToolApprovalAction.AllowGlobally)]
+    public async Task ScopedApprovalShouldPersistAtTheSelectedLevel(ToolApprovalAction action)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_default__process_run", "{}")];
+        first.Answer.SetResult("");
+        var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
+        (await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            new ToolApprovalDecision(pending.PendingApproval!.Id, action), CancellationToken.None)).ShouldBeTrue();
+        var second = await fixture.NextCallAsync();
+        second.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var project = await fixture.GetProjectAsync();
+        var global = await fixture.GetGlobalAsync();
+        (chat!.ToolPolicies?.Count ?? 0).ShouldBe(action == ToolApprovalAction.AllowForChat ? 1 : 0);
+        project!.ToolPolicies.Count.ShouldBe(action == ToolApprovalAction.AllowForProject ? 1 : 0);
+        global.ToolPolicies.Count.ShouldBe(action == ToolApprovalAction.AllowGlobally ? 1 : 0);
+    }
+
     [Fact]
     public async Task GlobalToolPolicyShouldApplyWithoutProjectSettings()
     {
@@ -69,7 +95,7 @@ public sealed class ChatExecutionTests
         var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
         await fixture.SetPolicyAsync("Deny");
         await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
-            new ToolApprovalDecision(pending.PendingApproval!.Id, true), CancellationToken.None);
+            new ToolApprovalDecision(pending.PendingApproval!.Id, ToolApprovalAction.Allow), CancellationToken.None);
         var second = await fixture.NextCallAsync();
         fixture.Tools.CallCount.ShouldBe(0);
         second.Answer.SetResult("Denied");
@@ -91,9 +117,9 @@ public sealed class ChatExecutionTests
         var before = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         before!.Messages.Single(message => message.ToolCalls is not null).ToolCalls![0].Id.ShouldBe("call-1");
         (await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
-            new ToolApprovalDecision(Guid.NewGuid(), true), CancellationToken.None)).ShouldBeFalse();
+            new ToolApprovalDecision(Guid.NewGuid(), ToolApprovalAction.Allow), CancellationToken.None)).ShouldBeFalse();
         (await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
-            new ToolApprovalDecision(pending.PendingApproval!.Id, allow), CancellationToken.None)).ShouldBeTrue();
+            new ToolApprovalDecision(pending.PendingApproval!.Id, allow ? ToolApprovalAction.Allow : ToolApprovalAction.Deny), CancellationToken.None)).ShouldBeTrue();
         var second = await fixture.NextCallAsync();
         second.Request.ContextMessages![^1].ToolCallId.ShouldBe("call-1");
         fixture.Tools.CallCount.ShouldBe(allow ? 1 : 0);
@@ -373,7 +399,8 @@ public sealed class ChatExecutionTests
             Dispatcher = NewDispatcher();
         }
         private ChatRunDispatcher NewDispatcher() => new(_runs, Chats, _projectService, _settings,
-            new ChatAgent(Completion, Tools, _projectService, _settings), _secrets, _clock, _synchronization);
+            new GlobalSettingsService(_settings, _secrets),
+            new ChatAgent(Completion, Tools, _projectService, Chats, _settings), _secrets, _clock, _synchronization);
         public static async Task<Fixture> CreateAsync()
         {
             var fixture = new Fixture();
@@ -384,6 +411,8 @@ public sealed class ChatExecutionTests
             return fixture;
         }
         public Task<ChatRunSnapshot> SubmitAsync(SubmitChatMessageRequest request) => Dispatcher.SubmitAsync(ProjectId, ChatId, request, CancellationToken.None);
+        public Task<ProjectDetails?> GetProjectAsync() => _projectService.GetAsync(ProjectId, CancellationToken.None);
+        public Task<GlobalSettings> GetGlobalAsync() => _settings.LoadAsync(CancellationToken.None);
         public async Task SetGlobalPolicyAsync(string decision)
         {
             var global = await _settings.LoadAsync(CancellationToken.None);

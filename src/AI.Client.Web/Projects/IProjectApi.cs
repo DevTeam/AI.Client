@@ -20,4 +20,6 @@ public interface IProjectApi
 
 
     Task<ProjectDeleteResult> DeleteAsync(Guid id, long revision, CancellationToken cancellationToken);
+    Task<ProjectDetails?> SetToolPolicyAsync(Guid id, ToolPolicySettings policy, CancellationToken cancellationToken);
+    Task<ProjectDetails?> RemoveToolPolicyAsync(Guid id, Guid serverId, string name, string schemaHash, CancellationToken cancellationToken);
 }

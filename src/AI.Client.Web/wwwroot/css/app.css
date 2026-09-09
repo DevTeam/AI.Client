@@ -2274,7 +2274,48 @@ textarea {
 
 .tool-approval { padding: 1rem; border: 1px solid currentColor; border-radius: .5rem; }
 .tool-invocation pre, .tool-approval pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
-.tool-approval button { margin-right: .5rem; }
+.tool-approval-actions { position: relative; display: flex; justify-content: flex-end; gap: .45rem; align-items: center; }
+.tool-approval-actions > button { margin: 0; }
+.tool-approval-more { position: relative; }
+.tool-approval-more > summary { display: grid; width: 2.35rem; height: 2.35rem; padding: 0; place-items: center; list-style: none; }
+.tool-approval-more > summary::-webkit-details-marker { display: none; }
+.tool-approval-menu { position: absolute; z-index: 20; right: 0; bottom: calc(100% + .4rem); display: grid; width: 17rem; padding: .3rem; border: 1px solid #3b3b3b; border-radius: .65rem; background: #252525; box-shadow: 0 .7rem 1.8rem rgb(0 0 0 / 40%); }
+.tool-approval-menu button { display: grid; gap: .15rem; margin: 0; padding: .55rem .65rem; border-color: transparent; background: transparent; text-align: left; }
+.tool-approval-menu button:hover { background: #303030; }
+.tool-approval-menu button span { color: #929292; font-size: .75rem; }
+.tool-approval-global-confirm { display: grid; gap: .55rem; padding: .65rem; border-top: 1px solid #3b3b3b; font-size: .8rem; }
+.tool-approval-global-confirm > div { display: flex; justify-content: flex-end; gap: .4rem; }
+.tool-approval-global-confirm > div button { display: block; width: auto; padding: .4rem .55rem; }
+
+.permissions-drawer-backdrop { position: fixed; z-index: 44; inset: 0; background: rgb(0 0 0 / 12%); }
+.permissions-drawer { position: fixed; z-index: 45; top: 0; right: 0; bottom: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(26rem, 100vw); border-left: 1px solid #383838; background: #1d1d1d; box-shadow: -1rem 0 2.5rem rgb(0 0 0 / 38%); }
+.permissions-drawer > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; padding: 1.2rem 1.2rem .9rem; border-bottom: 1px solid #383838; }
+.permissions-drawer h2, .permissions-drawer h3, .permissions-drawer p { margin: 0; }
+.permissions-drawer h2 { font-size: 1.05rem; }
+.permissions-drawer > header p, .permissions-intro, .permission-item p, .permissions-drawer > footer { color: #929292; font-size: .78rem; }
+.permissions-tabs { display: flex; gap: .2rem; padding: .7rem 1.2rem; border-bottom: 1px solid #383838; }
+.permissions-tabs button { padding: .35rem .55rem; border-color: transparent; background: transparent; color: #929292; }
+.permissions-tabs button.selected { background: #2b2b2b; color: #ededed; }
+.permissions-tabs button span, .menu-count { margin-left: auto; color: #858585; font-size: .72rem; }
+.permissions-content { min-height: 0; padding: 1rem 1.2rem; overflow-y: auto; }
+.permissions-intro { margin-bottom: 1.1rem !important; line-height: 1.45; }
+.permissions-group { display: grid; gap: .45rem; margin-bottom: 1.1rem; }
+.permissions-group h3 { display: flex; gap: .4rem; align-items: center; font-size: .85rem; }
+.permissions-group h3 .app-icon { width: .95rem; height: .95rem; color: #929292; }
+.permission-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .7rem; align-items: center; padding: .7rem; border: 1px solid #383838; border-radius: .6rem; background: #242424; }
+.permission-item-title { display: flex; gap: .5rem; align-items: center; }
+.permission-decision { color: var(--accent-color); font-size: .75rem; }
+.permission-item p { margin-top: .25rem; }
+.permissions-empty { display: grid; justify-items: center; gap: .35rem; padding: 2.5rem 1rem; color: #929292; text-align: center; }
+.permissions-empty .app-icon { width: 1.4rem; height: 1.4rem; }
+.permissions-drawer > footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem 1.2rem; border-top: 1px solid #383838; }
+.permissions-reset-all { color: #ffabab; }
+.project-menu .menu-count, .chat-menu .menu-count { margin-left: auto; }
+
+@media (width <= 44rem) {
+    .permissions-drawer { width: 100vw; }
+    .permissions-drawer-backdrop { background: transparent; }
+}
 
 /* One collapsed, low-emphasis line per run of consecutive tool-call/tool-result messages, so a
    multi-call turn doesn't render as a stack of near-empty message bubbles or compete visually

@@ -95,6 +95,25 @@ public sealed class GlobalSettingsService(
         return true;
     }
 
+    public async Task<GlobalSettings> SetToolPolicyAsync(McpToolPolicySettings policy, CancellationToken cancellationToken)
+    {
+        policy = Normalize(policy);
+        var settings = await repository.LoadAsync(cancellationToken);
+        var policies = settings.ToolPolicies.Where(item => item.ServerId != policy.ServerId
+            || item.Name != policy.Name).Append(policy).ToArray();
+        await repository.SaveAsync(settings with { ToolPolicies = policies }, cancellationToken);
+        return await GetAsync(cancellationToken);
+    }
+
+    public async Task<GlobalSettings> RemoveToolPolicyAsync(Guid serverId, string name, string schemaHash,
+        CancellationToken cancellationToken)
+    {
+        var settings = await repository.LoadAsync(cancellationToken);
+        await repository.SaveAsync(settings with { ToolPolicies = settings.ToolPolicies.Where(item =>
+            item.ServerId != serverId || item.Name != name || item.SchemaHash != schemaHash).ToArray() }, cancellationToken);
+        return await GetAsync(cancellationToken);
+    }
+
     private static ConnectionSettings Normalize(ConnectionSettings item)
     {
         if (string.IsNullOrWhiteSpace(item.Name) || !Uri.TryCreate(item.BaseUrl, UriKind.Absolute, out var uri)

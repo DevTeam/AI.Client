@@ -7,6 +7,7 @@ public sealed class ChatThread
 {
     private readonly Dictionary<ChatMessageId, ChatMessage> _messages = [];
     private readonly Dictionary<Guid, ChatBranch> _branches = [];
+    private readonly Dictionary<ToolIdentity, ToolPolicy> _toolPolicies = [];
 
     public ChatThread(
         ChatId id,
@@ -37,6 +38,25 @@ public sealed class ChatThread
     public IReadOnlyCollection<ChatMessage> Messages => _messages.Values;
     public ConnectionId? ConnectionId { get; private set; }
     public IReadOnlyCollection<ChatBranch> Branches => _branches.Values;
+    public IReadOnlyCollection<ToolPolicy> ToolPolicies => _toolPolicies.Values;
+
+    public void SetToolPolicy(ToolPolicy policy, DateTimeOffset updatedAt)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        EnsureTimestampDoesNotMoveBackwards(updatedAt);
+        foreach (var stale in _toolPolicies.Keys.Where(item => item.ServerId == policy.Tool.ServerId
+                     && item.Name == policy.Tool.Name && item.SchemaHash != policy.Tool.SchemaHash).ToArray())
+            _toolPolicies.Remove(stale);
+        _toolPolicies[policy.Tool] = policy;
+        UpdatedAt = updatedAt;
+    }
+
+    public void RemoveToolPolicy(ToolIdentity tool, DateTimeOffset updatedAt)
+    {
+        EnsureTimestampDoesNotMoveBackwards(updatedAt);
+        _toolPolicies.Remove(tool);
+        UpdatedAt = updatedAt;
+    }
 
     public void RestoreBranches(IEnumerable<ChatBranch> branches)
     {

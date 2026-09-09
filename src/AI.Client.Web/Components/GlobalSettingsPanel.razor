@@ -52,7 +52,7 @@
                                                 <label>Timeout, sec<input type="number" min="1" max="120" @bind="policy.TimeoutSeconds" /></label>
                                             </div>
                                         }
-                                        <p class="mcp-policy-note">The server policy is the upper limit: a tool can run without confirmation only when both server and tool are set to Allow.</p>
+                                        <p class="mcp-policy-note">Deny disables the server. Otherwise a tool-specific Allow can run without confirmation; unknown tools ask by default.</p>
                                     </section>
                                 }
                                 else if (server.Transport == "StreamableHttp")

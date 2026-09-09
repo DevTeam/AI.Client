@@ -96,4 +96,20 @@ public sealed class ProjectApi(HttpClient httpClient) : IProjectApi
                 throw new InvalidOperationException("Unexpected project delete response.");
         }
     }
+
+    public async Task<ProjectDetails?> SetToolPolicyAsync(Guid id, ToolPolicySettings policy, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PutAsJsonAsync($"api/projects/{id}/tool-policies", policy, cancellationToken);
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<ProjectDetails>(cancellationToken);
+    }
+
+    public async Task<ProjectDetails?> RemoveToolPolicyAsync(Guid id, Guid serverId, string name,
+        string schemaHash, CancellationToken cancellationToken)
+    {
+        var url = $"api/projects/{id}/tool-policies/{serverId}?name={Uri.EscapeDataString(name)}&schemaHash={Uri.EscapeDataString(schemaHash)}";
+        using var response = await httpClient.DeleteAsync(url, cancellationToken);
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<ProjectDetails>(cancellationToken);
+    }
 }

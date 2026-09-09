@@ -81,4 +81,21 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
         return await response.Content.ReadFromJsonAsync<ChatBranchDeleteResult>(cancellationToken)
             ?? new ChatBranchDeleteResult(false, 0, null, null);
     }
+
+    public async Task<ChatDetails?> SetToolPolicyAsync(Guid projectId, Guid chatId,
+        AI.Client.Contracts.Projects.ToolPolicySettings policy, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PutAsJsonAsync($"api/projects/{projectId}/chats/{chatId}/tool-policies", policy, cancellationToken);
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<ChatDetails>(cancellationToken);
+    }
+
+    public async Task<ChatDetails?> RemoveToolPolicyAsync(Guid projectId, Guid chatId, Guid serverId,
+        string name, string schemaHash, CancellationToken cancellationToken)
+    {
+        var url = $"api/projects/{projectId}/chats/{chatId}/tool-policies/{serverId}?name={Uri.EscapeDataString(name)}&schemaHash={Uri.EscapeDataString(schemaHash)}";
+        using var response = await httpClient.DeleteAsync(url, cancellationToken);
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<ChatDetails>(cancellationToken);
+    }
 }

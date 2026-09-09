@@ -128,6 +128,14 @@
                             @if (_chatMenuId == chat.Id)
                             {
                                 <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                                    <button type="button" role="menuitem" @onclick="() => OpenChatPermissions(chat)">
+                                        <AppIcon Name="tool" />
+                                        <span>Tool permissions</span>
+                                        @if (GetChatPermissionCount(chat.Id) > 0)
+                                        {
+                                            <span class="menu-count">@GetChatPermissionCount(chat.Id)</span>
+                                        }
+                                    </button>
                                     @if (_isConfirmingChatDelete)
                                     {
                                         <div class="project-menu-confirm"><span>Delete this chat and all its branches?</span><button class="danger compact-action" type="button" @onclick="() => DeleteChatAsync(chat)">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelChatDelete">Cancel</button></div>
@@ -270,6 +278,14 @@
         <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
         <div class="project-menu" role="menu" @onclick:stopPropagation="true">
             <button type="button" role="menuitem" @onclick="OpenProjectSettings"><AppIcon Name="sliders" />Project settings</button>
+            <button type="button" role="menuitem" @onclick="OpenProjectPermissions">
+                <AppIcon Name="tool" />
+                <span>Tool permissions</span>
+                @if (_security.ToolPolicies.Count > 0)
+                {
+                    <span class="menu-count">@_security.ToolPolicies.Count</span>
+                }
+            </button>
             @if (_isConfirmingProjectDelete)
             {
                 <div class="project-menu-confirm"><span>Are you sure?</span><button class="danger compact-action" type="button" @onclick="DeleteProjectAsync">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelProjectDelete">Cancel</button></div>
@@ -314,6 +330,13 @@
     }
 </main>
 
+@if (_permissionsScope is not null && _selectedProject is not null)
+{
+    <ToolPermissionsDrawer Scope="@_permissionsScope" ProjectId="@_selectedProject.Id" ChatId="@_permissionsChatId"
+        Title="@(_permissionsScope == "Chat" ? _permissionsChatTitle ?? "Chat" : _selectedProject.Name)"
+        Close="ClosePermissions" Changed="RefreshAfterPermissionChangeAsync" />
+}
+
 <div class="toast-region" aria-live="polite" aria-atomic="true">
     @if (_toast is not null)
     {
@@ -329,6 +352,9 @@
     private bool _isProjectMenuOpen;
     private bool _isProjectSettingsOpen;
     private bool _isConfirmingProjectDelete;
+    private string? _permissionsScope;
+    private Guid? _permissionsChatId;
+    private string? _permissionsChatTitle;
     private Guid? _chatMenuId;
     private Guid? _branchMenuId;
     private Guid? _confirmingBranchDeleteId;
@@ -1854,6 +1880,41 @@
             };
         }
         _isProjectSettingsOpen = true;
+    }
+
+    private void OpenProjectPermissions()
+    {
+        CloseContextMenus();
+        _permissionsScope = "Project";
+        _permissionsChatId = null;
+        _permissionsChatTitle = null;
+    }
+
+    private void OpenChatPermissions(ChatSummary chat)
+    {
+        CloseContextMenus();
+        _permissionsScope = "Chat";
+        _permissionsChatId = chat.Id;
+        _permissionsChatTitle = chat.Title;
+    }
+
+    private void ClosePermissions()
+    {
+        _permissionsScope = null;
+        _permissionsChatId = null;
+        _permissionsChatTitle = null;
+    }
+
+    private int GetChatPermissionCount(Guid chatId) => _selectedChat?.Id == chatId
+        ? _selectedChat.ToolPolicies?.Count ?? 0 : 0;
+
+    private async Task RefreshAfterPermissionChangeAsync()
+    {
+        if (_selectedProject is null) return;
+        await LoadSecurityAsync(_selectedProject.Id);
+        if (_permissionsChatId is { } chatId && _selectedChat?.Id == chatId)
+            _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, chatId, CancellationToken.None);
+        ShowToast("Tool permission reset.", "success");
     }
 
     private void CloseProjectSettings() => _isProjectSettingsOpen = false;

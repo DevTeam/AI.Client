@@ -25,6 +25,15 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
     public Task SetMcpCredentialAsync(Guid id, string? value, CancellationToken cancellationToken) =>
         SetSecretAsync($"api/settings/mcp/{id}/credential", value, cancellationToken);
 
+    public async Task<GlobalSettings> RemoveToolPolicyAsync(Guid serverId, string name, string schemaHash, CancellationToken cancellationToken)
+    {
+        var url = $"api/settings/mcp/{serverId}/tool-policies?name={Uri.EscapeDataString(name)}&schemaHash={Uri.EscapeDataString(schemaHash)}";
+        using var response = await httpClient.DeleteAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<GlobalSettings>(cancellationToken)
+            ?? throw new InvalidOperationException("Global settings response is empty.");
+    }
+
     private async Task SetSecretAsync(string url, string? value, CancellationToken cancellationToken)
     {
         using var response = await httpClient.PutAsJsonAsync(url, new UpdateSecretRequest(value), cancellationToken);

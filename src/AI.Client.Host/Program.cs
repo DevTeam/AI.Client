@@ -166,6 +166,10 @@ app.MapPut(
         await service.SetMcpCredentialAsync(id, request.Value, cancellationToken)
             ? Results.NoContent() : Results.NotFound());
 
+app.MapDelete("/api/settings/mcp/{serverId:guid}/tool-policies",
+    (Guid serverId, string name, string schemaHash, IGlobalSettingsService service, CancellationToken token) =>
+        service.RemoveToolPolicyAsync(serverId, name, schemaHash, token));
+
 app.MapPost(
     "/api/chat/completions/stream",
     (ChatCompletionRequest request, IChatEndpoint endpoint, HttpResponse response, CancellationToken cancellationToken) =>
@@ -207,6 +211,14 @@ app.MapPut(
         var chat = await service.UpdateEndpointAsync(projectId, chatId, request, cancellationToken);
         return chat is null ? Results.NotFound() : Results.Ok(chat);
     });
+
+app.MapPut("/api/projects/{projectId:guid}/chats/{chatId:guid}/tool-policies",
+    async (Guid projectId, Guid chatId, ToolPolicySettings policy, IChatService service, CancellationToken token) =>
+        await service.SetToolPolicyAsync(projectId, chatId, policy, token) is { } chat ? Results.Ok(chat) : Results.NotFound());
+
+app.MapDelete("/api/projects/{projectId:guid}/chats/{chatId:guid}/tool-policies/{serverId:guid}",
+    async (Guid projectId, Guid chatId, Guid serverId, string name, string schemaHash, IChatService service, CancellationToken token) =>
+        await service.RemoveToolPolicyAsync(projectId, chatId, serverId, name, schemaHash, token) is { } chat ? Results.Ok(chat) : Results.NotFound());
 
 app.MapPut(
     "/api/projects/{projectId:guid}/chats/{chatId:guid}/title",
@@ -288,6 +300,14 @@ app.MapPut(
             _ => Results.NotFound()
         };
     });
+
+app.MapPut("/api/projects/{id:guid}/tool-policies",
+    async (Guid id, ToolPolicySettings policy, IProjectService service, CancellationToken token) =>
+        await service.SetToolPolicyAsync(id, policy, token) is { } project ? Results.Ok(project) : Results.NotFound());
+
+app.MapDelete("/api/projects/{id:guid}/tool-policies/{serverId:guid}",
+    async (Guid id, Guid serverId, string name, string schemaHash, IProjectService service, CancellationToken token) =>
+        await service.RemoveToolPolicyAsync(id, serverId, name, schemaHash, token) is { } project ? Results.Ok(project) : Results.NotFound());
 
 app.MapDelete(
     "/api/projects/{id:guid}",

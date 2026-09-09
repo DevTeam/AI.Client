@@ -12,4 +12,5 @@ public interface IGlobalSettingsApi
     Task SetConnectionCredentialAsync(Guid id, string? value, CancellationToken cancellationToken);
 
     Task SetMcpCredentialAsync(Guid id, string? value, CancellationToken cancellationToken);
+    Task<GlobalSettings> RemoveToolPolicyAsync(Guid serverId, string name, string schemaHash, CancellationToken cancellationToken);
 }

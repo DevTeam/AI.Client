@@ -1,0 +1,161 @@
+@inject IProjectApi ProjectApi
+@inject IChatHistoryApi ChatHistoryApi
+@inject IGlobalSettingsApi GlobalSettingsApi
+
+<div class="permissions-drawer-backdrop" @onclick="() => Close.InvokeAsync()"></div>
+<aside class="permissions-drawer" aria-label="Tool permissions" @onclick:stopPropagation="true">
+    <header>
+        <div><h2>Tool permissions</h2><p>@Scope · @Title</p></div>
+        <button class="icon-action" type="button" title="Close" aria-label="Close permissions" @onclick="() => Close.InvokeAsync()"><AppIcon Name="x" /></button>
+    </header>
+    <nav class="permissions-tabs" aria-label="Permission view">
+        <button class="@(!_showAll ? "selected" : string.Empty)" type="button" @onclick="() => _showAll = false">Overrides <span>@Overrides.Count</span></button>
+        <button class="@(_showAll ? "selected" : string.Empty)" type="button" @onclick="() => _showAll = true">All effective</button>
+    </nav>
+    <div class="permissions-content">
+        <p class="permissions-intro">@Description</p>
+        @if (_loading)
+        {
+            <p class="empty-hint">Loading permissions…</p>
+        }
+        else if (VisiblePolicies.Count == 0)
+        {
+            <div class="permissions-empty"><AppIcon Name="tool" /><strong>No overrides</strong><p>Tools use inherited MCP defaults.</p></div>
+        }
+        else
+        {
+            @foreach (var group in VisiblePolicies.GroupBy(item => item.ServerName))
+            {
+                <section class="permissions-group">
+                    <h3><AppIcon Name="mcp" />@group.Key</h3>
+                    @foreach (var policy in group)
+                    {
+                        <div class="permission-item">
+                            <div>
+                                <div class="permission-item-title"><code>@policy.Name</code><span class="permission-decision">@policy.Decision</span></div>
+                                <p>
+                                    <span>@policy.Source</span>
+                                    @if (policy.Fallback is not null)
+                                    {
+                                        <span> · fallback: @policy.Fallback</span>
+                                    }
+                                </p>
+                            </div>
+                            @if (policy.CanReset)
+                            {
+                                <button class="icon-action" type="button" title="@ResetLabel" aria-label="@ResetLabel for @policy.Name" disabled="@_saving" @onclick="() => ResetAsync(policy)"><AppIcon Name="reset" /></button>
+                            }
+                        </div>
+                    }
+                </section>
+            }
+        }
+        @if (_error is not null) { <p class="error" role="alert">@_error</p> }
+    </div>
+    <footer>
+        <span>@FooterText</span>
+        @if (Overrides.Count > 0)
+        {
+            <button class="secondary-action permissions-reset-all" type="button" disabled="@_saving" @onclick="ResetAllAsync">Reset all</button>
+        }
+    </footer>
+</aside>
+
+@code {
+    [Parameter, EditorRequired] public string Scope { get; set; } = "Project";
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+    [Parameter] public Guid? ChatId { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public EventCallback Close { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private GlobalSettings? _global;
+    private ProjectDetails? _project;
+    private ChatDetails? _chat;
+    private bool _showAll;
+    private bool _loading;
+    private bool _saving;
+    private string? _error;
+    private string? _loadedKey;
+
+    private string Description => Scope == "Chat"
+        ? "Permissions saved for this chat. Resetting one restores the project or global default."
+        : "Permissions saved for this project. Resetting one restores the global MCP default.";
+    private string ResetLabel => Scope == "Chat" ? "Reset to inherited default" : "Reset to global default";
+    private string FooterText => $"{Overrides.Count} {Scope.ToLowerInvariant()} override{(Overrides.Count == 1 ? string.Empty : "s")}";
+    private IReadOnlyList<ViewPolicy> Overrides => BuildOverrides();
+    private IReadOnlyList<ViewPolicy> VisiblePolicies => _showAll ? BuildEffective() : Overrides;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Scope}:{ProjectId}:{ChatId}";
+        if (_loadedKey == key) return;
+        _loadedKey = key;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _global = await GlobalSettingsApi.GetAsync(CancellationToken.None);
+            _project = await ProjectApi.GetAsync(ProjectId, CancellationToken.None);
+            _chat = ChatId is { } chatId
+                ? await ChatHistoryApi.GetAsync(ProjectId, chatId, CancellationToken.None) : null;
+        }
+        catch (HttpRequestException) { _error = "Permissions could not be loaded."; }
+        finally { _loading = false; }
+    }
+
+    private IReadOnlyList<ViewPolicy> BuildOverrides()
+    {
+        if (Scope == "Chat")
+            return (_chat?.ToolPolicies ?? []).Select(item => View(item, "Chat", true, ProjectFallback(item))).ToArray();
+        return (_project?.ToolPolicies ?? []).Select(item => View(item, "Project", true, GlobalFallback(item))).ToArray();
+    }
+
+    private IReadOnlyList<ViewPolicy> BuildEffective()
+    {
+        var policies = new Dictionary<(Guid, string, string), ViewPolicy>();
+        foreach (var item in _global?.ToolPolicies ?? []) policies[(item.ServerId, item.Name, item.SchemaHash)] =
+            new ViewPolicy(item.ServerId, item.Name, item.SchemaHash, item.Decision, ServerName(item.ServerId), "Global", false, null);
+        foreach (var item in _project?.ToolPolicies ?? []) policies[(item.ServerId, item.Name, item.SchemaHash)] = View(item, "Project", Scope == "Project", GlobalFallback(item));
+        if (Scope == "Chat") foreach (var item in _chat?.ToolPolicies ?? []) policies[(item.ServerId, item.Name, item.SchemaHash)] = View(item, "Chat", true, ProjectFallback(item));
+        return policies.Values.OrderBy(item => item.ServerName).ThenBy(item => item.Name).ToArray();
+    }
+
+    private ViewPolicy View(ToolPolicySettings item, string source, bool canReset, string? fallback) =>
+        new(item.ServerId, item.Name, item.SchemaHash, item.Decision, ServerName(item.ServerId), source, canReset, fallback);
+    private string ServerName(Guid id) => _global?.McpServers.SingleOrDefault(item => item.Id == id)?.Name ?? "MCP server";
+    private string? GlobalFallback(ToolPolicySettings item) => _global?.ToolPolicies.SingleOrDefault(policy => Same(policy, item))?.Decision ?? "Ask";
+    private string? ProjectFallback(ToolPolicySettings item) => _project?.ToolPolicies.SingleOrDefault(policy => Same(policy, item))?.Decision ?? GlobalFallback(item);
+    private static bool Same(McpToolPolicySettings left, ToolPolicySettings right) => left.ServerId == right.ServerId && left.Name == right.Name && left.SchemaHash == right.SchemaHash;
+    private static bool Same(ToolPolicySettings left, ToolPolicySettings right) => left.ServerId == right.ServerId && left.Name == right.Name && left.SchemaHash == right.SchemaHash;
+
+    private async Task ResetAsync(ViewPolicy policy)
+    {
+        _saving = true;
+        _error = null;
+        try
+        {
+            if (Scope == "Chat" && ChatId is { } chatId)
+                _chat = await ChatHistoryApi.RemoveToolPolicyAsync(ProjectId, chatId, policy.ServerId, policy.Name, policy.SchemaHash, CancellationToken.None);
+            else
+                _project = await ProjectApi.RemoveToolPolicyAsync(ProjectId, policy.ServerId, policy.Name, policy.SchemaHash, CancellationToken.None);
+            if ((Scope == "Chat" && _chat is null) || (Scope == "Project" && _project is null)) _error = "Permission could not be reset.";
+            else await Changed.InvokeAsync();
+        }
+        catch (HttpRequestException) { _error = "Permission could not be reset."; }
+        finally { _saving = false; }
+    }
+
+    private async Task ResetAllAsync()
+    {
+        foreach (var policy in Overrides.ToArray()) await ResetAsync(policy);
+    }
+
+    private sealed record ViewPolicy(Guid ServerId, string Name, string SchemaHash, string Decision,
+        string ServerName, string Source, bool CanReset, string? Fallback);
+}

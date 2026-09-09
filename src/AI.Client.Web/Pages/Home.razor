@@ -18,10 +18,7 @@
 <main class="workspace-shell @(_isSidebarCollapsed ? "left-collapsed" : string.Empty)" @ref="_workspace">
     <button class="icon-action sidebar-toggle" type="button" title="@(_isSidebarCollapsed ? "Show sidebar" : "Hide sidebar")" aria-label="@(_isSidebarCollapsed ? "Show sidebar" : "Hide sidebar")" aria-expanded="@(_isSidebarCollapsed ? "false" : "true")" @onclick="ToggleLeftPanelAsync"><AppIcon Name="@(_isSidebarCollapsed ? "chevron-right" : "chevron-left")" /></button>
     <aside class="workspace-sidebar">
-        <nav class="global-nav root-nav" aria-label="Application settings">
-            <button class="workspace-nav-item @(_globalSection == "Connections" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Connections")'><AppIcon Name="connection" /><span>Connections</span><span class="directory-count">@_connections.Count(item => item.Enabled)</span></button>
-            <button class="workspace-nav-item @(_globalSection == "MCP" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("MCP")'><AppIcon Name="mcp" /><span>MCP</span><span class="directory-count">@_enabledMcpServerCount</span></button>
-        </nav>
+        <div class="sidebar-projects">
         <div class="sidebar-heading projects-heading">
             <button type="button" class="sidebar-heading-toggle" aria-expanded="@(_isProjectsSectionExpanded ? "true" : "false")" aria-controls="projects-nav" @onclick="ToggleProjectsSection">
                 <AppIcon Name="chevron-right" />
@@ -44,21 +41,18 @@
         }
         @foreach (var project in _projects)
         {
-            <div class="project-nav-row @(_globalSection is null && project.Id == _selectedProject?.Id ? "selected" : string.Empty) @(_draggedProjectId == project.Id ? "dragging" : string.Empty)" title="@GetProjectRunTitle(project.Id)" draggable="true" @ondragstart="() => OnProjectDragStart(project.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnProjectDrop(project)" @oncontextmenu="() => OnProjectContextMenu(project)" @oncontextmenu:preventDefault="true">
+            <div @key="project.Id" class="project-nav-row @(_globalSection is null && project.Id == _selectedProject?.Id ? "selected" : string.Empty) @(_draggedProjectId == project.Id ? "dragging" : string.Empty)" title="@GetProjectRunTitle(project.Id)" draggable="true" @ondragstart="() => OnProjectDragStart(project.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnProjectDrop(project)" @oncontextmenu="() => OnProjectContextMenu(project)" @oncontextmenu:preventDefault="true">
                 @if (_editingProjectId == project.Id)
                 {
                     <input class="sidebar-inline-editor" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveProjectTitleAsync(project))" @onblur="() => SaveProjectTitleAsync(project)" aria-label="Project name" />
                 }
                 else
                 {
-                    <button class="workspace-nav-item" type="button" @onclick="() => SelectProjectAsync(project, restoreLastChat: false)"><span class="status-dot @GetRunStatusClass(GetProjectRun(project.Id))"></span><span class="nav-item-label">@project.Name</span></button>
+                    <button class="workspace-nav-item" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => SelectProjectAsync(project, restoreLastChat: false)"><span class="status-dot @GetRunStatusClass(GetProjectRun(project.Id))"></span><span class="nav-item-label">@project.Name</span></button>
                 }
-                @if (project.Id == _selectedProject?.Id)
-                {
-                    <button class="icon-action project-action-button project-new-chat-button" type="button" title="New chat" aria-label="New chat" @onclick="CreateChatAsync"><AppIcon Name="plus" /></button>
-                    <button class="icon-action project-action-button project-rename-button" type="button" title="Rename" aria-label="Rename project" @onclick="BeginProjectRename"><AppIcon Name="edit" /></button>
-                    <button class="icon-action project-action-button project-menu-button" type="button" title="Project settings" aria-label="Project settings" @onclick="ToggleProjectMenu"><AppIcon Name="more" /></button>
-                }
+                <button class="icon-action project-action-button project-new-chat-button" type="button" title="New chat" aria-label="New chat" @onclick="() => CreateChatForProjectAsync(project)"><AppIcon Name="plus" /></button>
+                <button class="icon-action project-action-button project-rename-button" type="button" title="Rename" aria-label="Rename project" @onclick="() => BeginProjectRenameAsync(project)"><AppIcon Name="edit" /></button>
+                <button class="icon-action project-action-button project-menu-button @(_isProjectMenuOpen && project.Id == _selectedProject?.Id ? "menu-open" : string.Empty)" type="button" title="Project settings" aria-label="Project settings" @onclick="() => ToggleProjectMenuAsync(project)"><AppIcon Name="more" /></button>
             </div>
             @if (project.Id == _selectedProject?.Id)
             {
@@ -120,14 +114,14 @@
                 <nav class="workspace-chat-list" aria-label="Chats in @project.Name" @onkeydown="OnChatListKeyDown">
                     @foreach (var chat in _chats)
                     {
-                        <div class="chat-nav-row @(_globalSection is null && chat.Id == _selectedChat?.Id && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty)" title="@GetRunTitle(GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
+                        <div @key="chat.Id" class="chat-nav-row @(_globalSection is null && chat.Id == _selectedChat?.Id && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty)" title="@GetRunTitle(GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
                             @if (_editingChatId == chat.Id)
                             {
                                 <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveChatTitleAsync(chat))" @onblur="() => SaveChatTitleAsync(chat)" aria-label="Chat name" />
                             }
                             else
                             {
-                                <button class="workspace-nav-item chat-link" type="button" @onclick="() => SelectChatAsync(chat.Id)"><AppIcon Name="message-circle" Class="@GetRunStatusClass(GetRun(chat.Id, chat.Id))" /><span class="nav-item-label">@chat.Title</span></button>
+                                <button class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><AppIcon Name="message-circle" Class="@GetRunStatusClass(GetRun(chat.Id, chat.Id))" /><span class="nav-item-label">@chat.Title</span></button>
                             }
                             <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat)"><AppIcon Name="edit" /></button>
                             <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenu(chat.Id)"><AppIcon Name="more" /></button>
@@ -184,6 +178,12 @@
         }
         </div>
         }
+        <span class="visually-hidden" role="status" aria-live="polite">@_sidebarAnnouncement</span>
+        </div>
+        <nav class="global-nav root-nav sidebar-global-nav" aria-label="Application settings">
+            <button class="workspace-nav-item @(_globalSection == "Connections" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Connections")'><AppIcon Name="connection" /><span>Connections</span><span class="directory-count">@_connections.Count(item => item.Enabled)</span></button>
+            <button class="workspace-nav-item @(_globalSection == "MCP" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("MCP")'><AppIcon Name="mcp" /><span>MCP</span><span class="directory-count">@_enabledMcpServerCount</span></button>
+        </nav>
     </aside>
 
     <div class="workspace-resizer" data-side="left" role="separator" aria-label="Resize project sidebar"></div>
@@ -347,6 +347,7 @@
     private bool _isConfirmingChatDelete;
     private Guid? _draggedProjectId;
     private Guid? _draggedChatId;
+    private string _sidebarAnnouncement = string.Empty;
     private bool _isProjectsSectionExpanded = true;
     private bool _isSidebarCollapsed;
     private const string SidebarCollapsedKey = "ai-client.sidebar-collapsed.v1";
@@ -1049,6 +1050,16 @@
         if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("focus");
     }
 
+    private async Task CreateChatForProjectAsync(ProjectSummary project)
+    {
+        if (_selectedProject?.Id != project.Id)
+        {
+            await SelectProjectAsync(project, restoreLastChat: false);
+        }
+
+        await CreateChatAsync();
+    }
+
     private async Task SelectChatAsync(Guid chatId)
     {
         _globalSection = null;
@@ -1365,14 +1376,28 @@
         _isConfirmingDirectoryDelete = false;
     }
 
-    private void BeginProjectRename()
+    private async Task BeginProjectRenameAsync(ProjectSummary project)
     {
-        if (_selectedProject is null) return;
+        if (_selectedProject?.Id != project.Id)
+        {
+            await SelectProjectAsync(project, restoreLastChat: false);
+        }
+
         CancelInlineEdit();
-        _editingProjectId = _selectedProject.Id;
-        _editingTitle = _selectedProject.Name;
+        _editingProjectId = project.Id;
+        _editingTitle = project.Name;
         _focusEditingInputPending = true;
         CloseContextMenus();
+    }
+
+    private async Task ToggleProjectMenuAsync(ProjectSummary project)
+    {
+        if (_selectedProject?.Id != project.Id)
+        {
+            await SelectProjectAsync(project, restoreLastChat: false);
+        }
+
+        ToggleProjectMenu();
     }
 
     private void BeginChatRename(ChatSummary chat)
@@ -1597,6 +1622,11 @@
 
     private async Task OnChatListKeyDown(KeyboardEventArgs e)
     {
+        if (e.AltKey)
+        {
+            return;
+        }
+
         if (e.Key is "ArrowDown" or "ArrowUp" or "Home" or "End")
         {
             await WorkspaceLayoutService.FocusAdjacentItemAsync(".workspace-chat-list", ".chat-link", e.Key);
@@ -1608,6 +1638,20 @@
     }
 
     private void OnProjectDragStart(Guid projectId) => _draggedProjectId = projectId;
+
+    private async Task HandleProjectItemKeyDownAsync(KeyboardEventArgs args, ProjectSummary project)
+    {
+        if (!args.AltKey || args.Key is not ("ArrowUp" or "ArrowDown"))
+        {
+            return;
+        }
+
+        var direction = args.Key == "ArrowUp" ? -1 : 1;
+        if (await MoveItemAsync(_projects, project.Id, direction, ProjectOrderKey, item => item.Id))
+        {
+            _sidebarAnnouncement = $"Moved project {project.Name} {GetMoveDirection(direction)}.";
+        }
+    }
 
     private async Task OnProjectDrop(ProjectSummary targetProject)
     {
@@ -1632,6 +1676,38 @@
     }
 
     private void OnChatDragStart(Guid chatId) => _draggedChatId = chatId;
+
+    private async Task HandleChatItemKeyDownAsync(KeyboardEventArgs args, ChatSummary chat)
+    {
+        if (!args.AltKey || args.Key is not ("ArrowUp" or "ArrowDown") || _selectedProject is null)
+        {
+            return;
+        }
+
+        var direction = args.Key == "ArrowUp" ? -1 : 1;
+        if (await MoveItemAsync(_chats, chat.Id, direction, ChatOrderKey(_selectedProject.Id), item => item.Id))
+        {
+            _sidebarAnnouncement = $"Moved chat {chat.Title} {GetMoveDirection(direction)}.";
+        }
+    }
+
+    private async Task<bool> MoveItemAsync<T>(List<T> items, Guid id, int direction, string orderKey, Func<T, Guid> idSelector)
+    {
+        var currentIndex = items.FindIndex(item => idSelector(item) == id);
+        var targetIndex = currentIndex + direction;
+        if (currentIndex < 0 || targetIndex < 0 || targetIndex >= items.Count)
+        {
+            return false;
+        }
+
+        var item = items[currentIndex];
+        items.RemoveAt(currentIndex);
+        items.Insert(targetIndex, item);
+        await SaveOrderAsync(orderKey, items.Select(idSelector));
+        return true;
+    }
+
+    private static string GetMoveDirection(int direction) => direction < 0 ? "up" : "down";
 
     private async Task OnChatDrop(ChatSummary targetChat)
     {

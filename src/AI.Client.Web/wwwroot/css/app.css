@@ -86,14 +86,34 @@ body {
 
 .workspace-sidebar {
     position: relative;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
     min-height: 0;
-    overflow-y: auto;
-    padding: 0.45rem 1rem 1rem;
+    overflow: hidden;
+    padding: 0;
     background: #111;
 }
 
 .workspace-sidebar {
     border-right: 1px solid #292929;
+}
+
+.sidebar-projects {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.45rem 1rem 1rem;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .sidebar-heading {
@@ -217,6 +237,15 @@ body {
     border-color: transparent;
     background: transparent;
     color: #dedede;
+    opacity: 0;
+    transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.project-nav-row:hover > .project-action-button,
+.project-nav-row:focus-within > .project-action-button,
+.project-action-button:focus-visible,
+.project-menu-button.menu-open {
+    opacity: 1;
 }
 
 /* Shared chrome for every dropdown-style menu in the app (project/chat/branch/endpoint) —
@@ -369,6 +398,13 @@ body {
     margin-top: 0.5rem;
 }
 
+.sidebar-global-nav {
+    margin: 0;
+    padding: 0.65rem 1rem 0.75rem;
+    border-top: 1px solid #292929;
+    background: #111;
+}
+
 .root-nav .workspace-nav-item {
     gap: 0.55rem;
 }
@@ -501,7 +537,6 @@ body {
     justify-content: flex-end;
     gap: 0.5rem;
     padding-top: 1rem;
-    border-top: 1px solid #333;
 }
 
 .global-feedback {
@@ -817,7 +852,13 @@ body {
 
 .directory-nav-row:hover > .directory-row-action,
 .directory-nav-row:focus-within > .directory-row-action,
+.directory-row-action:focus-visible,
 .directory-menu-button.menu-open {
+    opacity: 1;
+}
+
+/* Section-level add actions remain discoverable; only row-context actions are progressive. */
+.directory-nav-row-header > .directory-add-button {
     opacity: 1;
 }
 
@@ -853,6 +894,14 @@ body {
 .directory-lock-indicator:focus-visible {
     background: #3a3a3a;
     color: #f0f0f0;
+}
+
+@media (hover: none), (pointer: coarse) {
+    .project-nav-row.selected > .project-action-button,
+    .chat-nav-row.selected > .chat-row-action,
+    .directory-nav-row-child > .directory-row-action {
+        opacity: 1;
+    }
 }
 
 .context-menu-backdrop {

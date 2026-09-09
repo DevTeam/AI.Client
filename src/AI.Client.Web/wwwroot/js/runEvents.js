@@ -24,7 +24,6 @@ export function subscribe(dotNetReference) {
     });
     return { dispose: () => { disposed = true; latest = null; source.close(); } };
 }
-
 export function isFocused() { return document.visibilityState === "visible" && document.hasFocus(); }
 
 export function watchFocus(dotNetReference) {
@@ -71,6 +70,8 @@ export function watchQueueDrag(dotNetReference) {
     return { dispose: () => { document.removeEventListener("pointerdown", down); document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); document.removeEventListener("pointercancel", clear); } };
 }
 
-export async function enableNotifications() { const permission = await Notification.requestPermission(); localStorage.setItem("ai-client.notifications", permission); return permission; }
-export function notificationsEnabled() { return localStorage.getItem("ai-client.notifications") === "granted" && Notification.permission === "granted"; }
-export function notify(title, body) { if (notificationsEnabled() && !isFocused()) new Notification(title, { body }); }
+// Compatibility for clients that were already open while the notifications UI was removed.
+// These exports intentionally do nothing and can be deleted after old tabs can no longer exist.
+export async function enableNotifications() { return "denied"; }
+export function notificationsEnabled() { return false; }
+export function notify() {}

@@ -9,7 +9,7 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
         await httpClient.GetFromJsonAsync<McpToolInfo[]>("api/mcp/default/tools", cancellationToken) ?? [];
     public async Task<GlobalSettings> GetAsync(CancellationToken cancellationToken) =>
         await httpClient.GetFromJsonAsync<GlobalSettings>("api/settings", cancellationToken)
-        ?? new GlobalSettings([], []);
+        ?? new GlobalSettings([], [], []);
 
     public async Task<GlobalSettings> SaveAsync(SaveGlobalSettingsRequest request, CancellationToken cancellationToken)
     {

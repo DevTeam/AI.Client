@@ -23,6 +23,22 @@ using System.Text.Json;
 
 public sealed class ChatExecutionTests
 {
+    [Fact]
+    public async Task GlobalToolPolicyShouldApplyWithoutProjectSettings()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetGlobalPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.Request.Tools!.Count.ShouldBe(1);
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_default__process_run", "{}")];
+        first.Answer.SetResult("");
+        var second = await fixture.NextCallAsync();
+        fixture.Tools.CallCount.ShouldBe(1);
+        second.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
     [Theory]
     [InlineData("Allow", 1)]
     [InlineData("Deny", 0)]
@@ -122,8 +138,8 @@ public sealed class ChatExecutionTests
         fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
         await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
         var call = await fixture.NextCallAsync();
-        call.Request.Tools.ShouldBeEmpty();
-        fixture.Tools.OpenCount.ShouldBe(0);
+        call.Request.Tools.ShouldHaveSingleItem();
+        fixture.Tools.OpenCount.ShouldBe(1);
         call.Answer.SetResult("Reply");
         var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
         completed.Queue.ShouldBeEmpty();
@@ -361,13 +377,23 @@ public sealed class ChatExecutionTests
         public static async Task<Fixture> CreateAsync()
         {
             var fixture = new Fixture();
-            await fixture._settings.SaveAsync(new GlobalSettings([new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.test/v1", "model", true, true, false)], []), CancellationToken.None);
+            await fixture._settings.SaveAsync(new GlobalSettings([new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.test/v1", "model", true, true, false)], [], []), CancellationToken.None);
             fixture.ProjectId = (await fixture._projectService.CreateAsync(new CreateProjectRequest("Test", ""), CancellationToken.None)).Id;
             fixture.ChatId = (await fixture.Chats.CreateAsync(fixture.ProjectId, new CreateChatRequest("Chat"), CancellationToken.None)).Id;
             await fixture.Dispatcher.WarmUpAsync(CancellationToken.None);
             return fixture;
         }
         public Task<ChatRunSnapshot> SubmitAsync(SubmitChatMessageRequest request) => Dispatcher.SubmitAsync(ProjectId, ChatId, request, CancellationToken.None);
+        public async Task SetGlobalPolicyAsync(string decision)
+        {
+            var global = await _settings.LoadAsync(CancellationToken.None);
+            await _settings.SaveAsync(global with
+            {
+                McpServers = [DefaultMcpServer.Settings with { Policy = "Allow" }],
+                ToolPolicies = [new McpToolPolicySettings(DefaultMcpServer.Id, "process_run", "schema", decision, 20, 120)]
+            }, CancellationToken.None);
+        }
+
         public async Task SetPolicyAsync(string decision)
         {
             var global = await _settings.LoadAsync(CancellationToken.None);

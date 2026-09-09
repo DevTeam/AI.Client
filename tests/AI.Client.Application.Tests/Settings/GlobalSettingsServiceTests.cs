@@ -31,6 +31,7 @@ public class GlobalSettingsServiceTests
                     new ConnectionSettings(firstId, "Disabled", "https://one/v1", "one", false, false, false),
                     new ConnectionSettings(secondId, "Enabled", "https://two/v1", "two", true, false, false)
                 ],
+                [],
                 []),
             CancellationToken.None);
 
@@ -45,6 +46,7 @@ public class GlobalSettingsServiceTests
                 new ConnectionSettings(Guid.CreateVersion7(), "Company", "https://one/v1", "one", true, true, false),
                 new ConnectionSettings(Guid.CreateVersion7(), "company", "https://two/v1", "two", true, false, false)
             ],
+            [],
             []);
 
         var action = () => CreateInstance().SaveAsync(request, CancellationToken.None);

@@ -14,15 +14,12 @@
                         </div>
                         @if (GetSelectedConnection() is { } connection)
                         {
-                            <div class="global-form"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label></div><label>Name<InputText @bind-Value="connection.Name" /></label><label>Base URL<InputText @bind-Value="connection.BaseUrl" /></label><label>Model<InputText @bind-Value="connection.Model" /></label><label>API key<InputText type="password" @bind-Value="connection.Secret" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></div>
+                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<InputText autocomplete="url" @bind-Value="connection.BaseUrl" /></label><label>Model<InputText autocomplete="off" @bind-Value="connection.Model" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></form>
                         }
                     </div>
-                    <footer class="global-actions"><button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
+                    <footer class="global-actions">@if (_feedback is not null) { <span class="global-feedback" role="status">@_feedback</span> }<button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
                     break;
                 }
-                case "Security":
-                    <header class="global-header"><div><h1>Security</h1><p>Global confirmation and application policies.</p></div></header><div class="settings-placeholder"><h3>Notifications</h3><p>Show a local browser notification when a background chat finishes or fails while this application is not focused.</p><button type="button" @onclick="EnableNotifications">@(NotificationsEnabled ? "Notifications enabled" : "Enable notifications")</button><p>Directory access is configured independently for each project.</p></div>
-                    break;
                 default:
                 {
                     <header class="global-header"><div><h1>MCP</h1><p>Global MCP servers available to every project.</p></div></header>
@@ -33,24 +30,54 @@
                         </div>
                         @if (GetSelectedMcpServer() is { } server)
                         {
-                            <div class="global-form"><label>Name<InputText @bind-Value="server.Name" readonly="@(server.Id == AI.Client.Contracts.Settings.DefaultMcpServer.Id)" /></label><label>Transport<select disabled="@(server.Id == AI.Client.Contracts.Settings.DefaultMcpServer.Id)" @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option></select></label><label>Policy<select @bind="server.Policy"><option>Allow</option><option>Ask</option><option>Deny</option></select></label><label class="checkbox"><input type="checkbox" @bind="server.Enabled" /> Enabled</label>@if (server.Id == AI.Client.Contracts.Settings.DefaultMcpServer.Id) { <p>Built-in process_run: run a program, capture output and exit code. Commands require approval by default. Directory grants do not sandbox processes.</p> } else if (server.Transport == "StreamableHttp") { <label>URL<InputText @bind-Value="server.Url" /></label><label>Credential<InputText type="password" @bind-Value="server.Secret" placeholder="@(server.HasCredential ? "Saved; enter to replace" : "Optional")" /></label> } else { <label>Command<InputText @bind-Value="server.Command" /></label><label>Arguments<InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label><label>Working directory<InputText @bind-Value="server.WorkingDirectory" /></label><label>Environment variables<InputTextArea @bind-Value="server.EnvironmentText" placeholder="NAME=value" /></label> }</div>
+                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true">
+                                <div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="server.Enabled" /> Enabled</label></div>
+                                <label>Name<InputText autocomplete="off" @bind-Value="server.Name" readonly="@(server.Id == AI.Client.Contracts.Settings.DefaultMcpServer.Id)" /></label>
+                                <label>Transport<select disabled="@(server.Id == AI.Client.Contracts.Settings.DefaultMcpServer.Id)" @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option></select></label>
+                                <label>Server policy<select @bind="server.Policy"><option>Allow</option><option>Ask</option><option>Deny</option></select></label>
+                                @if (server.Id == AI.Client.Contracts.Settings.DefaultMcpServer.Id)
+                                {
+                                    <section class="mcp-tool-policies">
+                                        <div class="section-heading"><div><h3>Tool defaults</h3><p>Used by every project unless that project has an override.</p></div><button class="secondary-action" type="button" @onclick="DiscoverDefaultToolsAsync">Discover tools</button></div>
+                                        @if (_toolPolicies.All(item => item.ServerId != server.Id))
+                                        {
+                                            <p class="empty-hint">No tools discovered. Unknown tools will ask for approval.</p>
+                                        }
+                                        @foreach (var policy in _toolPolicies.Where(item => item.ServerId == server.Id))
+                                        {
+                                            <div class="mcp-tool-policy-row">
+                                                <div class="mcp-tool-name"><span>Tool</span><strong title="@policy.SchemaHash">@policy.Name</strong></div>
+                                                <label>Policy<select @bind="policy.Decision" aria-label="Policy for @policy.Name"><option>Ask</option><option>Allow</option><option>Deny</option></select></label>
+                                                <label>Calls/run<input type="number" min="1" max="20" @bind="policy.MaxCallsPerRun" /></label>
+                                                <label>Timeout, sec<input type="number" min="1" max="120" @bind="policy.TimeoutSeconds" /></label>
+                                            </div>
+                                        }
+                                        <p class="mcp-policy-note">The server policy is the upper limit: a tool can run without confirmation only when both server and tool are set to Allow.</p>
+                                    </section>
+                                }
+                                else if (server.Transport == "StreamableHttp")
+                                {
+                                    <label>URL<InputText autocomplete="url" @bind-Value="server.Url" /></label><label>Credential<InputText type="password" autocomplete="new-password" @bind-Value="server.Secret" placeholder="@(server.HasCredential ? "Saved; enter to replace" : "Optional")" /></label>
+                                }
+                                else
+                                {
+                                    <label>Command<InputText @bind-Value="server.Command" /></label><label>Arguments<InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label><label>Working directory<InputText @bind-Value="server.WorkingDirectory" /></label><label>Environment variables<InputTextArea @bind-Value="server.EnvironmentText" placeholder="NAME=value" /></label>
+                                }
+                            </form>
                         }
                     </div>
-                    <footer class="global-actions"><button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
+                    <footer class="global-actions">@if (_feedback is not null) { <span class="global-feedback" role="status">@_feedback</span> }<button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
                     break;
                 }
             }
         </section>
-@if (_feedback is not null) { <p role="status">@_feedback</p> }
-
 @code {
     [Parameter] public string Section { get; set; } = "Connections";
-    [Parameter] public bool NotificationsEnabled { get; set; }
-    [Parameter] public EventCallback EnableNotifications { get; set; }
     [Parameter] public EventCallback Saved { get; set; }
     private string? _feedback;
     private readonly List<ConnectionEditor> _connections = [];
     private readonly List<GlobalMcpServerEditor> _globalMcpServers = [];
+    private readonly List<McpToolPolicyEditor> _toolPolicies = [];
     private Guid? _selectedConnectionId;
     private Guid? _selectedMcpServerId;
     protected override Task OnInitializedAsync() => LoadGlobalSettingsAsync();
@@ -61,6 +88,8 @@
         _connections.AddRange(settings.Connections.Select(ConnectionEditor.From));
         _globalMcpServers.Clear();
         _globalMcpServers.AddRange(settings.McpServers.Select(GlobalMcpServerEditor.From));
+        _toolPolicies.Clear();
+        _toolPolicies.AddRange(settings.ToolPolicies.Select(McpToolPolicyEditor.From));
         _selectedConnectionId = _connections.FirstOrDefault()?.Id;
         _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
     }
@@ -101,11 +130,32 @@
     {
         if (_selectedMcpServerId is not { } id) return;
         _globalMcpServers.RemoveAll(item => item.Id == id);
+        _toolPolicies.RemoveAll(item => item.ServerId == id);
         _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
     }
 
     private GlobalMcpServerEditor? GetSelectedMcpServer() =>
         _globalMcpServers.SingleOrDefault(item => item.Id == _selectedMcpServerId);
+
+    private async Task DiscoverDefaultToolsAsync()
+    {
+        try
+        {
+            var tools = await GlobalSettingsApi.GetDefaultToolsAsync(CancellationToken.None);
+            foreach (var tool in tools)
+            {
+                var previous = _toolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId
+                    && item.Name == tool.Name && item.SchemaHash == tool.SchemaHash);
+                _toolPolicies.RemoveAll(item => item.ServerId == tool.ServerId && item.Name == tool.Name);
+                _toolPolicies.Add(previous ?? McpToolPolicyEditor.From(tool));
+            }
+            _feedback = tools.Count == 0 ? "No tools were found." : $"Discovered {tools.Count} tool(s).";
+        }
+        catch (HttpRequestException)
+        {
+            _feedback = "Could not connect to the default tools server.";
+        }
+    }
 
     private async Task SaveGlobalSettingsAsync()
     {
@@ -115,7 +165,8 @@
                 new SaveGlobalSettingsRequest(
                     // ReSharper disable once UseCollectionExpression
                     _connections.Select(item => item.ToSettings()).ToArray(),
-                    [.. _globalMcpServers.Select(item => item.ToSettings())]),
+                    [.. _globalMcpServers.Select(item => item.ToSettings())],
+                    [.. _toolPolicies.Select(item => item.ToSettings())]),
                 CancellationToken.None);
             foreach (var connection in _connections.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))
                 await GlobalSettingsApi.SetConnectionCredentialAsync(connection.Id, connection.Secret, CancellationToken.None);
@@ -195,6 +246,32 @@
                     // ReSharper disable once UseCollectionExpression
                     false)).ToArray(),
             HasCredential);
+    }
+
+    [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]
+    [SuppressMessage("ReSharper", "MemberCanBePrivate.Local")]
+    private sealed class McpToolPolicyEditor
+    {
+        public Guid ServerId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string SchemaHash { get; set; } = string.Empty;
+        public string Decision { get; set; } = "Ask";
+        public int MaxCallsPerRun { get; set; } = 20;
+        public long TimeoutSeconds { get; set; } = 120;
+
+        public static McpToolPolicyEditor From(McpToolInfo item) => new()
+        {
+            ServerId = item.ServerId, Name = item.Name, SchemaHash = item.SchemaHash
+        };
+
+        public static McpToolPolicyEditor From(McpToolPolicySettings item) => new()
+        {
+            ServerId = item.ServerId, Name = item.Name, SchemaHash = item.SchemaHash,
+            Decision = item.Decision, MaxCallsPerRun = item.MaxCallsPerRun, TimeoutSeconds = item.TimeoutSeconds
+        };
+
+        public McpToolPolicySettings ToSettings() =>
+            new(ServerId, Name, SchemaHash, Decision, MaxCallsPerRun, TimeoutSeconds);
     }
 
 }

@@ -23,8 +23,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
         var token = deadline.Token;
         var global = await settings.LoadAsync(token);
         var project = await projects.GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
+        var projectBinding = project.McpServers.SingleOrDefault(server => server.Id == DefaultMcpServer.Id);
         var enabled = global.McpServers.SingleOrDefault(server => server.Id == DefaultMcpServer.Id) is { Enabled: true, Policy: not "Deny" }
-            && project.McpServers.SingleOrDefault(server => server.Id == DefaultMcpServer.Id) is { Enabled: true };
+            && projectBinding is not { Enabled: false };
         await using var session = enabled ? await sessions.OpenAsync(token) : null;
         var context = request.ContextMessages?.ToList() ?? [new ChatCompletionMessage("user", request.Message)];
         var runStart = context.FindLastIndex(message => message.Role == "user");
@@ -124,11 +125,17 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
         var server = global.McpServers.SingleOrDefault(item => item.Id == tool.ServerId);
         var project = await projects.GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
         var binding = project.McpServers.SingleOrDefault(item => item.Id == tool.ServerId);
-        var policy = project.ToolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId
+        var projectPolicy = project.ToolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId
             && item.Name == tool.OriginalName && item.SchemaHash == tool.SchemaHash);
-        var decision = server is not { Enabled: true } || server.Policy == "Deny" || binding is not { Enabled: true } || policy?.Decision == "Deny"
-            ? "Deny" : server.Policy == "Allow" && policy?.Decision == "Allow" ? "Allow" : "Ask";
-        return new EffectivePolicy(decision, Math.Clamp(policy?.MaxCallsPerRun ?? 20, 1, 20), Math.Clamp(policy?.TimeoutSeconds ?? 120, 1, 120));
+        var globalPolicy = global.ToolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId
+            && item.Name == tool.OriginalName && item.SchemaHash == tool.SchemaHash);
+        var policyDecision = projectPolicy?.Decision ?? globalPolicy?.Decision ?? "Ask";
+        var decision = server is not { Enabled: true } || server.Policy == "Deny" || binding is { Enabled: false } || policyDecision == "Deny"
+            ? "Deny" : server.Policy == "Allow" && policyDecision == "Allow" ? "Allow" : "Ask";
+        return new EffectivePolicy(
+            decision,
+            Math.Clamp(projectPolicy?.MaxCallsPerRun ?? globalPolicy?.MaxCallsPerRun ?? 20, 1, 20),
+            Math.Clamp(projectPolicy?.TimeoutSeconds ?? globalPolicy?.TimeoutSeconds ?? 120, 1, 120));
     }
 
     private static string Error(string message) => JsonSerializer.Serialize(new { isError = true, error = message });

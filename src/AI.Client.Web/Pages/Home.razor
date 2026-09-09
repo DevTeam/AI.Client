@@ -18,21 +18,10 @@
 <main class="workspace-shell @(_isSidebarCollapsed ? "left-collapsed" : string.Empty)" @ref="_workspace">
     <button class="icon-action sidebar-toggle" type="button" title="@(_isSidebarCollapsed ? "Show sidebar" : "Hide sidebar")" aria-label="@(_isSidebarCollapsed ? "Show sidebar" : "Hide sidebar")" aria-expanded="@(_isSidebarCollapsed ? "false" : "true")" @onclick="ToggleLeftPanelAsync"><AppIcon Name="@(_isSidebarCollapsed ? "chevron-right" : "chevron-left")" /></button>
     <aside class="workspace-sidebar">
-        <div class="sidebar-heading">
-            <button type="button" class="sidebar-heading-toggle" aria-expanded="@(_isSettingsSectionExpanded ? "true" : "false")" aria-controls="global-settings-nav" @onclick="ToggleSettingsSection">
-                <AppIcon Name="chevron-right" />
-                <span>Settings</span>
-            </button>
-        </div>
-        @if (_isSettingsSectionExpanded)
-        {
-            <nav id="global-settings-nav" class="global-nav" aria-label="Global settings">
-                @foreach (var section in new[] { "Connections", "Security", "MCP" })
-                {
-                    <button class="workspace-nav-item @(_globalSection == section ? "selected" : string.Empty)" type="button" @onclick="() => OpenGlobalSection(section)">@section</button>
-                }
-            </nav>
-        }
+        <nav class="global-nav root-nav" aria-label="Application settings">
+            <button class="workspace-nav-item @(_globalSection == "Connections" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Connections")'><AppIcon Name="connection" /><span>Connections</span><span class="directory-count">@_connections.Count(item => item.Enabled)</span></button>
+            <button class="workspace-nav-item @(_globalSection == "MCP" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("MCP")'><AppIcon Name="mcp" /><span>MCP</span><span class="directory-count">@_enabledMcpServerCount</span></button>
+        </nav>
         <div class="sidebar-heading projects-heading">
             <button type="button" class="sidebar-heading-toggle" aria-expanded="@(_isProjectsSectionExpanded ? "true" : "false")" aria-controls="projects-nav" @onclick="ToggleProjectsSection">
                 <AppIcon Name="chevron-right" />
@@ -201,8 +190,7 @@
 
     @if (_globalSection is not null)
     {
-        <GlobalSettingsPanel Section="@_globalSection" NotificationsEnabled="_notificationsEnabled"
-            EnableNotifications="EnableNotificationsAsync" Saved="LoadGlobalSettingsAsync" />
+        <GlobalSettingsPanel Section="@_globalSection" Saved="LoadGlobalSettingsAsync" />
     }
     else
     {
@@ -315,19 +303,6 @@
                     <label>Description<InputTextArea @bind-Value="_editor.Description" /></label>
                     <label>Connection<select @bind="_editor.ConnectionId"><option value="">No connection</option>@foreach (var connection in _connections) { <option value="@connection.Id" disabled="@(!connection.Enabled)">@connection.Name@(!connection.Enabled ? " (Unavailable)" : string.Empty)</option> }</select></label>
                 </EditForm>
-                <section class="tool-settings">
-                    <h3>Default tools</h3>
-                    <button type="button" @onclick="DiscoverDefaultToolsAsync">Discover tools</button>
-                    <p>New tools require approval. Allow also requires the global server policy to be Allow.</p>
-                    @foreach (var policy in _security.ToolPolicies.Where(item => item.ServerId == AI.Client.Contracts.Settings.DefaultMcpServer.Id))
-                    {
-                        <div><strong>@policy.Name</strong>
-                            <select @bind="policy.Decision" aria-label="Tool policy"><option>Ask</option><option>Allow</option><option>Deny</option></select>
-                            <label>Calls per run<input type="number" min="1" max="20" @bind="policy.MaxCallsPerRun" /></label>
-                            <label>Timeout (seconds)<input type="number" min="1" max="120" @bind="policy.TimeoutSeconds" /></label>
-                        </div>
-                    }
-                </section>
                 @if (!string.IsNullOrEmpty(_error)) { <p class="error" role="alert">@_error</p> }
             </div>
             <footer class="settings-modal-actions">
@@ -372,15 +347,15 @@
     private bool _isConfirmingChatDelete;
     private Guid? _draggedProjectId;
     private Guid? _draggedChatId;
-    private bool _isSettingsSectionExpanded;
     private bool _isProjectsSectionExpanded = true;
     private bool _isSidebarCollapsed;
     private const string SidebarCollapsedKey = "ai-client.sidebar-collapsed.v1";
     private string? _globalSection;
     private readonly List<ConnectionSettings> _connections = [];
+    private int _enabledMcpServerCount;
     private ProjectEditor _editor = new();
     private ProjectSecurityEditor _security = new();
-    private bool _directoriesExpanded = true;
+    private bool _directoriesExpanded;
     private Guid? _editingDirectoryId;
     private Guid? _creatingDirectoryId;
     private string _editingDirectoryPath = string.Empty;
@@ -416,7 +391,6 @@
     private Guid? _editingQueueId;
     private string _editingQueueText = string.Empty;
     private bool _applicationFocused = true;
-    private bool _notificationsEnabled;
     private IJSObjectReference? _runEventsModule;
     private IJSObjectReference? _runEventsSubscription;
     private IJSObjectReference? _focusSubscription;
@@ -424,6 +398,7 @@
     private bool _composerCtrlDown;
     private bool _composerAltDown;
     private readonly CancellationTokenSource _generatingTickerCancellation = new();
+    private readonly SemaphoreSlim _projectMutationGate = new(1, 1);
 
     protected override async Task OnInitializedAsync()
     {
@@ -481,7 +456,6 @@
                 _focusSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchFocus", _dotNetReference);
                 _queueDragSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchQueueDrag", _dotNetReference);
                 _applicationFocused = await _runEventsModule.InvokeAsync<bool>("isFocused");
-                _notificationsEnabled = await _runEventsModule.InvokeAsync<bool>("notificationsEnabled");
             }
             catch (JSException)
             {
@@ -493,17 +467,15 @@
 
         if (_globalSection is null && _attachComposer && _composerModule is not null && _dotNetReference is not null)
         {
-            if (_composerHandle is not null)
-            {
-                await _composerHandle.InvokeVoidAsync("dispose");
-                await _composerHandle.DisposeAsync();
-            }
+            await DisposeComposerHandleAsync();
 
             try
             {
-                _composerHandle = await _composerModule.InvokeAsync<IJSObjectReference>("attach", _composer, _dotNetReference);
+                var handle = await _composerModule.InvokeAsync<IJSObjectReference>("attach", _composer, _dotNetReference);
+                if (_globalSection is null) _composerHandle = handle;
+                else await DisposeJsReferenceAsync(handle, invokeDispose: true);
             }
-            catch (JSException)
+            catch (Exception error) when (error is JSException or ObjectDisposedException)
             {
                 _composerModule = null;
                 _composerHandle = null;
@@ -528,7 +500,15 @@
         if (_composerNeedsResize && _composerHandle is not null)
         {
             _composerNeedsResize = false;
-            await _composerHandle.InvokeVoidAsync("resize");
+            var handle = _composerHandle;
+            try
+            {
+                await handle.InvokeVoidAsync("resize");
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException)
+            {
+                if (ReferenceEquals(_composerHandle, handle)) _composerHandle = null;
+            }
         }
 
         if (_focusEditingInputPending && _inlineEditorModule is not null)
@@ -565,7 +545,6 @@
 
         foreach (var snapshot in snapshots)
         {
-            RunState.Runs.TryGetValue(new RunKey(snapshot.ChatId, snapshot.BranchId), out var previous);
             StoreRun(snapshot);
             if (snapshot.ChatId == _selectedChat?.Id)
             {
@@ -582,12 +561,6 @@
                 if ((isSelectedRun || isPendingBranchRun) && _applicationFocused && snapshot.HasUnreadResponse) await MarkSelectedChatReadAsync();
             }
 
-            // ReSharper disable once InvertIf
-            if (!_applicationFocused && previous?.Status == ChatRunStatus.Generating && snapshot.Status is ChatRunStatus.Completed or ChatRunStatus.Failed)
-            {
-                var chat = _chats.FirstOrDefault(item => item.Id == snapshot.ChatId);
-                if (_runEventsModule is not null) await _runEventsModule.InvokeVoidAsync("notify", _selectedProject?.Name ?? "AI.Client", $"{chat?.Title ?? "Chat"}: {snapshot.Status}");
-            }
         }
         await InvokeAsync(StateHasChanged);
     }
@@ -606,7 +579,6 @@
     [JSInvokable]
     public void OnEnterPhoneMode()
     {
-        _isSettingsSectionExpanded = false;
         _isProjectsSectionExpanded = false;
         _isSidebarCollapsed = false;
         StateHasChanged();
@@ -729,7 +701,22 @@
             return;
         }
 
-        var result = await ProjectApi.DeleteAsync(_selectedProject.Id, _editor.Revision, CancellationToken.None);
+        await _projectMutationGate.WaitAsync(CancellationToken.None);
+        ProjectDeleteResult result;
+        try
+        {
+            var current = await ProjectApi.GetAsync(_selectedProject.Id, CancellationToken.None);
+            if (current is null)
+            {
+                _error = "This project no longer exists.";
+                return;
+            }
+            result = await ProjectApi.DeleteAsync(_selectedProject.Id, current.Revision, CancellationToken.None);
+        }
+        finally
+        {
+            _projectMutationGate.Release();
+        }
         if (result.IsDeleted)
         {
             await LoadProjectsAsync();
@@ -774,23 +761,6 @@
         {
             _isLoading = false;
         }
-    }
-
-    private async Task DiscoverDefaultToolsAsync()
-    {
-        try
-        {
-            var tools = await GlobalSettingsApi.GetDefaultToolsAsync(CancellationToken.None);
-            foreach (var tool in tools)
-            {
-                if (_security.McpServers.All(server => server.Id != tool.ServerId))
-                    _security.McpServers.Add(new McpServerEditor { Id = tool.ServerId, DisplayName = "Default tools" });
-                var previous = _security.ToolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId && item.Name == tool.Name && item.SchemaHash == tool.SchemaHash);
-                _security.ToolPolicies.RemoveAll(item => item.ServerId == tool.ServerId && item.Name == tool.Name);
-                _security.ToolPolicies.Add(previous ?? new ToolPolicyEditor { ServerId = tool.ServerId, Name = tool.Name, SchemaHash = tool.SchemaHash });
-            }
-        }
-        catch (HttpRequestException) { _error = "Could not connect to the default tools server."; }
     }
 
     private async Task LoadSecurityAsync(Guid id)
@@ -1154,9 +1124,37 @@
 
     private async Task MarkSelectedChatReadAsync()
     {
-        if (_selectedProject is null || _selectedChat is null || GetSelectedRun()?.HasUnreadResponse != true) return;
-        var snapshot = await ChatRunsApi.MarkReadAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None);
-        if (snapshot is not null) StoreRun(snapshot);
+        if (_isConfirmingProjectDelete || _selectedProject is null || _selectedChat is null || GetSelectedRun()?.HasUnreadResponse != true) return;
+        if (!await _projectMutationGate.WaitAsync(0, CancellationToken.None)) return;
+        try
+        {
+            if (_isConfirmingProjectDelete || _selectedProject is null || _selectedChat is null || GetSelectedRun()?.HasUnreadResponse != true) return;
+            var snapshot = await ChatRunsApi.MarkReadAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None);
+            if (snapshot is not null) StoreRun(snapshot);
+        }
+        finally
+        {
+            _projectMutationGate.Release();
+        }
+    }
+
+    private async Task DisposeComposerHandleAsync()
+    {
+        var handle = _composerHandle;
+        _composerHandle = null;
+        if (handle is not null) await DisposeJsReferenceAsync(handle, invokeDispose: true);
+    }
+
+    private static async Task DisposeJsReferenceAsync(IJSObjectReference reference, bool invokeDispose = false)
+    {
+        try
+        {
+            if (invokeDispose) await reference.InvokeVoidAsync("dispose");
+            await reference.DisposeAsync();
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+        }
     }
 
     private void BeginQueueEdit(QueuedChatMessage item) { _editingQueueId = item.Id; _editingQueueText = item.Content; }
@@ -1205,8 +1203,6 @@
     private async Task SkipFailedQueueAsync() { if (_selectedProject is null || _selectedChat is null) return; var snapshot = await ChatRunsApi.SkipFailedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None); if (snapshot is not null) StoreRun(snapshot); }
     private async Task RebaseQueueAsync() { if (_selectedProject is null || _selectedChat is null) return; var snapshot = await ChatRunsApi.RebaseAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None); if (snapshot is not null) StoreRun(snapshot); }
     private async Task ClearQueueAsync() { if (_selectedProject is null || _selectedChat is null) return; var snapshot = await ChatRunsApi.ClearAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None); if (snapshot is not null) StoreRun(snapshot); }
-    private async Task EnableNotificationsAsync() { if (_runEventsModule is null) return; _notificationsEnabled = await _runEventsModule.InvokeAsync<string>("enableNotifications") == "granted"; }
-
     private async Task LoadChatsAsync(Guid projectId)
     {
         var chats = await ChatHistoryApi.ListAsync(projectId, CancellationToken.None);
@@ -1848,8 +1844,6 @@
             ? "No connection"
             : _connections.SingleOrDefault(item => item.Id == _chat.CredentialProfileId)?.Name ?? "Select connection";
 
-    private void ToggleSettingsSection() => _isSettingsSectionExpanded = !_isSettingsSectionExpanded;
-
     private void ToggleProjectsSection() => _isProjectsSectionExpanded = !_isProjectsSectionExpanded;
 
     private async Task ToggleLeftPanelAsync()
@@ -1908,6 +1902,9 @@
     private void OpenGlobalSection(string section)
     {
         CloseContextMenus();
+        _messageFeed = null;
+        _scrollMessagesToBottom = false;
+        _pendingScrollRestoreKey = null;
         _globalSection = section;
         _attachComposer = true;
     }
@@ -1917,6 +1914,7 @@
         var settings = await GlobalSettingsApi.GetAsync(CancellationToken.None);
         _connections.Clear();
         _connections.AddRange(settings.Connections);
+        _enabledMcpServerCount = settings.McpServers.Count(item => item.Enabled);
     }
 
     private ConnectionSettings? GetDefaultConnection() =>
@@ -1934,17 +1932,6 @@
     private async Task SaveProjectSettingsAsync()
     {
         if (_selectedProject is null) return;
-        var securityResult = await ProjectApi.UpdateSecurityAsync(
-            _selectedProject.Id,
-            _security.ToRequest(),
-            CancellationToken.None);
-        if (securityResult.Status != ProjectUpdateStatus.Updated || securityResult.Project is null)
-        {
-            _error = "Project directories were not saved. Reload the project and try again.";
-            return;
-        }
-
-        _editor.Revision = securityResult.Project.Revision;
         await SaveProjectAsync();
     }
 
@@ -2107,11 +2094,7 @@
             _toastCancellation.Dispose();
         }
 
-        if (_composerHandle is not null)
-        {
-            await _composerHandle.InvokeVoidAsync("dispose");
-            await _composerHandle.DisposeAsync();
-        }
+        await DisposeComposerHandleAsync();
 
         if (_composerModule is not null)
         {

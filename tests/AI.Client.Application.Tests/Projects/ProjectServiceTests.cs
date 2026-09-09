@@ -30,7 +30,7 @@ public class ProjectServiceTests
             .Setup(i => i.SaveAsync(It.IsAny<Project>(), 0, CancellationToken.None))
             .ReturnsAsync(ProjectSaveResult.Saved(1));
         _globalSettingsRepository.Setup(i => i.LoadAsync(CancellationToken.None))
-            .ReturnsAsync(new GlobalSettings([], []));
+            .ReturnsAsync(new GlobalSettings([], [], []));
 
         // When
         var project = await service.CreateAsync(new CreateProjectRequest(" Project ", " Description "), CancellationToken.None);

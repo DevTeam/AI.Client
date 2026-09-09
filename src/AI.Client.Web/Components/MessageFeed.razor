@@ -288,6 +288,7 @@
     private IJSObjectReference? _historyMarkersHandle;
     private IJSObjectReference? _scrollModule;
     private int _historyMarkerCount = -1;
+    private bool _disposed;
 
     // Everything above is set by Home on every one of its renders (i.e. on every composer
     // keystroke), since Blazor always calls SetParametersAsync on a child regardless of whether
@@ -322,6 +323,8 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_disposed) return;
+
         if (firstRender)
         {
             try
@@ -329,7 +332,7 @@
                 _historyMarkersModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/historyMarkers.js");
                 _scrollModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
             }
-            catch (JSException)
+            catch (Exception error) when (error is JSException or ObjectDisposedException)
             {
                 _historyMarkersModule = null;
             }
@@ -340,9 +343,15 @@
 
     public async Task ScrollToBottomAsync()
     {
-        if (_scrollModule is not null)
+        var module = _scrollModule;
+        if (_disposed || module is null) return;
+        try
         {
-            await _scrollModule.InvokeVoidAsync("scrollToBottom", _messagesContainer);
+            await module.InvokeVoidAsync("scrollToBottom", _messagesContainer);
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+            // The parent can request a scroll while this feed is being replaced by a settings view.
         }
     }
 
@@ -352,17 +361,19 @@
     // scroll-to-bottom this replaced.
     public async Task RestoreScrollPositionAsync(string key)
     {
-        if (_historyMarkersModule is null)
+        var module = _historyMarkersModule;
+        if (_disposed) return;
+        if (module is null)
         {
             await ScrollToBottomAsync();
             return;
         }
         try
         {
-            var restored = await _historyMarkersModule.InvokeAsync<bool>("restoreScrollPosition", _messagesContainer, key);
+            var restored = await module.InvokeAsync<bool>("restoreScrollPosition", _messagesContainer, key);
             if (!restored) await ScrollToBottomAsync();
         }
-        catch (JSException)
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
         {
             await ScrollToBottomAsync();
         }
@@ -376,7 +387,7 @@
     // markers changes: the marker elements themselves are re-created by Blazor on every such change.
     private async Task SyncHistoryMarkersAsync()
     {
-        if (_historyMarkersModule is null) return;
+        if (_disposed || _historyMarkersModule is null) return;
 
         if (SelectedChat is null)
         {
@@ -394,7 +405,7 @@
         {
             _historyMarkersHandle = await _historyMarkersModule.InvokeAsync<IJSObjectReference>("attach", _historyMarkers, _messagesContainer, GetScrollKey());
         }
-        catch (JSException)
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
         {
             _historyMarkersHandle = null;
         }
@@ -408,7 +419,7 @@
             await _historyMarkersHandle.InvokeVoidAsync("dispose");
             await _historyMarkersHandle.DisposeAsync();
         }
-        catch (JSException)
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
         {
         }
         _historyMarkersHandle = null;
@@ -653,8 +664,20 @@
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed) return;
+        _disposed = true;
         await DisposeHistoryMarkersAsync();
-        if (_historyMarkersModule is not null) await _historyMarkersModule.DisposeAsync();
-        if (_scrollModule is not null) await _scrollModule.DisposeAsync();
+        var historyMarkersModule = _historyMarkersModule;
+        var scrollModule = _scrollModule;
+        _historyMarkersModule = null;
+        _scrollModule = null;
+        try
+        {
+            if (historyMarkersModule is not null) await historyMarkersModule.DisposeAsync();
+            if (scrollModule is not null) await scrollModule.DisposeAsync();
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+        }
     }
 }

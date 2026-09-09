@@ -26,7 +26,8 @@ public sealed class GlobalSettingsService(
                         ? variable with { Value = null, HasSecret = secretVariables.ContainsKey(variable.Name) }
                         : variable).ToArray()
                 };
-            })));
+            })),
+            settings.ToolPolicies);
     }
 
     public async Task<GlobalSettings> SaveAsync(
@@ -74,7 +75,8 @@ public sealed class GlobalSettingsService(
             });
         }
 
-        var settings = new GlobalSettings(connections, mcpServers);
+        var toolPolicies = request.ToolPolicies.Select(Normalize).ToArray();
+        var settings = new GlobalSettings(connections, mcpServers, toolPolicies);
         await repository.SaveAsync(settings, cancellationToken);
         return await GetAsync(cancellationToken);
     }
@@ -114,6 +116,20 @@ public sealed class GlobalSettingsService(
         }
 
         return item with { Name = item.Name.Trim() };
+    }
+
+    private static McpToolPolicySettings Normalize(McpToolPolicySettings item)
+    {
+        if (string.IsNullOrWhiteSpace(item.Name)
+            || string.IsNullOrWhiteSpace(item.SchemaHash)
+            || item.Decision is not ("Allow" or "Ask" or "Deny")
+            || item.MaxCallsPerRun is < 1 or > 20
+            || item.TimeoutSeconds is < 1 or > 120)
+        {
+            throw new ArgumentException("Tool name, schema, policy, call limit, and timeout are invalid.");
+        }
+
+        return item with { Name = item.Name.Trim(), SchemaHash = item.SchemaHash.Trim() };
     }
 
     private async Task<Dictionary<string, string>> LoadEnvironmentSecretsAsync(Guid id, CancellationToken cancellationToken)

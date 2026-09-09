@@ -14,8 +14,9 @@ public sealed class JsonGlobalSettingsRepository(ITextFileSystem fileSystem, Glo
     public async Task<GlobalSettings> LoadAsync(CancellationToken cancellationToken)
     {
         var json = await fileSystem.ReadTextAsync(paths.SettingsPath, cancellationToken);
-        var settings = json is null ? new GlobalSettings([], []) :
+        var settings = json is null ? new GlobalSettings([], [], []) :
             JsonSerializer.Deserialize<GlobalSettings>(json, Options) ?? throw new JsonException("Settings are empty.");
+        settings = settings with { ToolPolicies = settings.ToolPolicies ?? [] };
         return settings.McpServers.Any(server => server.Id == DefaultMcpServer.Id) ? settings
             : settings with { McpServers = [DefaultMcpServer.Settings, .. settings.McpServers] };
     }

@@ -12,13 +12,20 @@ using System.Text.Json.Nodes;
 
 public sealed class DefaultToolSessionFactory : IToolSessionFactory
 {
-    public async Task<IToolSession> OpenAsync(CancellationToken cancellationToken)
+    /// <summary>Name of the environment variable through which the built-in server receives its directory grants.</summary>
+    public const string DirectoryGrantsVariable = "AI_CLIENT_DIRECTORY_GRANTS";
+
+    public async Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(directoryGrants);
         var executable = Path.Combine(AppContext.BaseDirectory, "mcp", "AI.Client.Mcp.BuiltIn" + (OperatingSystem.IsWindows() ? ".exe" : ""));
         var environment = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
         foreach (var name in new[] { "SystemRoot", "WINDIR", "TEMP", "TMP", "LOCALAPPDATA", "APPDATA", "PATHEXT", "DOTNET_ROOT",
                      "PROCESSOR_ARCHITECTURE", "PROCESSOR_ARCHITEW6432", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData", "ALLUSERSPROFILE", "COMSPEC", "HOMEDRIVE", "HOMEPATH" })
             if (Environment.GetEnvironmentVariable(name) is { } value) environment[name] = value;
+        // File system tools stay closed unless the project granted a directory, so an empty set is passed through as such.
+        environment[DirectoryGrantsVariable] = JsonSerializer.Serialize(
+            directoryGrants.Select(grant => new { root = grant.Root, recursive = grant.Recursive, capabilities = grant.Capabilities }));
         var transport = new StdioClientTransport(new StdioClientTransportOptions
         {
             Name = "Default tools", Command = executable,
@@ -36,6 +43,7 @@ public sealed class DefaultToolSessionFactory : IToolSessionFactory
 
     private sealed class Session : IToolSession
     {
+        private static readonly string[] PathProperties = ["workingDirectory", "path", "paths", "source", "destination"];
         private readonly McpClient _client;
         private readonly Dictionary<string, ModelContextProtocol.Protocol.Tool> _descriptors;
         public Session(McpClient client, ModelContextProtocol.Protocol.Tool[] descriptors)
@@ -61,13 +69,24 @@ public sealed class DefaultToolSessionFactory : IToolSessionFactory
             if (!JsonSchema.Build(_descriptors[tool.OriginalName].InputSchema).Evaluate(input).IsValid)
                 throw new ArgumentException("Tool arguments do not match the input schema.", nameof(arguments));
             var canonical = JsonNode.Parse(arguments)!.AsObject();
-            if (tool.OriginalName == "process_run" && canonical["workingDirectory"] is { } workingDirectory)
+            // Canonicalize before approval so the user and the server judge the same path.
+            foreach (var property in PathProperties)
             {
-                var path = workingDirectory.GetValue<string>();
-                if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("Working directory must be an absolute path.", nameof(arguments));
-                canonical["workingDirectory"] = Path.GetFullPath(path);
+                if (canonical[property] is not { } node) continue;
+                if (node is JsonArray array)
+                {
+                    for (var index = 0; index < array.Count; index++) array[index] = Absolute(array[index]?.GetValue<string>());
+                }
+                else canonical[property] = Absolute(node.GetValue<string>());
             }
             return canonical.ToJsonString();
+        }
+
+        private static string Absolute(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path))
+                throw new ArgumentException($"Path must be absolute: {path}", nameof(path));
+            return Path.GetFullPath(path);
         }
 
         public async Task<string> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken)

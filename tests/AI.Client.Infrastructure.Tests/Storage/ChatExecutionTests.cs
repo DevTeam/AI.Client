@@ -460,9 +460,11 @@ public sealed class ChatExecutionTests
         public int CallCount { get; private set; }
         public int OpenCount { get; private set; }
         public IReadOnlyList<AgentTool> Tools { get; } = [new(new ChatToolDefinition("mcp_default__process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")), DefaultMcpServer.Id, "process_run", "schema")];
-        public Task<IToolSession> OpenAsync(CancellationToken cancellationToken)
+        public IReadOnlyList<ToolDirectoryGrant> Grants { get; private set; } = [];
+        public Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, CancellationToken cancellationToken)
         {
             OpenCount++;
+            Grants = directoryGrants;
             return Task.FromResult<IToolSession>(this);
         }
         public string ValidateArguments(AgentTool tool, string arguments) => arguments;

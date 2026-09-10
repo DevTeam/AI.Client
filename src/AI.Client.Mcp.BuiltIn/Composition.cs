@@ -5,8 +5,11 @@ using ModelContextProtocol.Server;
 
 namespace AI.Client.Mcp.BuiltIn;
 
+using Files;
+using Grants;
 using Pure.DI;
 using System.Diagnostics;
+using Web;
 
 internal sealed partial class Composition
 {
@@ -17,7 +20,11 @@ internal sealed partial class Composition
             .Hint(Hint.ThreadSafe, "Off")
             .Root<McpServer>(nameof(Server))
             .Singleton<ProcessRunner>()
-            .Transient<ProcessRunTool>(Tag.Unique)
+            .Singleton<EnvironmentGrantSource>()
+            .Singleton<PathGuard>()
+            .Singleton<WebFetcher>()
+            .Transient<ProcessRunTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ListDirectoryTool, DirectoryTreeTool,
+                SearchFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool>(Tag.Unique)
             .Transient((IEnumerable<IToolFactory> toolFactories) =>
             {
                 var tools = new McpServerPrimitiveCollection<McpServerTool>();

@@ -87,6 +87,8 @@ Server-side проверки:
 - лимит размера и количества результатов;
 - запрет широких roots без отдельного подтверждения.
 
+Реализовано во встроенном сервере: `ToolNames` трактуются как capability (`read`, `write`, `edit`, `delete`) и передаются серверу при открытии сессии; `PathGuard` выполняет канонизацию, разрешение reparse point по всей цепочке, containment с учётом `Recursive` и проверку capability. Отсутствие grants означает отказ всех FileSystem tools. `IncludePatterns`/`ExcludePatterns`, отдельный инструмент удаления и запрет широких roots пока не реализованы. Подробности и лимиты: [инструменты по умолчанию](16-default-mcp-tools.md).
+
 ## Approval dialog
 
 Показывает:

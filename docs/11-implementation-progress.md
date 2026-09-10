@@ -223,3 +223,11 @@ Status: completed
 Проверены настоящий MCP-вызов `dotnet --info`, продолжение генерации и восстановление истории после перезапуска Host с локальным тестовым endpoint. Визуальная проверка не выполнена: браузерный инструмент заблокировал локальный URL. Подробнее о границах и проверках: [инструменты по умолчанию](16-default-mcp-tools.md).
 
 Итоговая проверка: `dotnet run --project build -- verify` — 80 тестов, сборка без предупреждений и ошибок. `publish --output artifacts/publish-mcp-final` завершён; сквозной сценарий повторён на опубликованном Host и поставляемом MCP-сервере.
+
+## 2026-09-10 — FileSystem tools и fetch во встроенном MCP
+
+Состав встроенного сервера доведён до 13 инструментов: к `process_run` добавлены `fetch` и одиннадцать FileSystem tools (`list_allowed_directories`, `read_text_file`, `read_multiple_files`, `list_directory`, `directory_tree`, `search_files`, `get_file_info`, `write_file`, `edit_file`, `create_directory`, `move_file`). Набор выбран по референсным серверам `modelcontextprotocol/servers`: `git` не дублируется, поскольку покрывается `process_run`; `memory`, `sequentialthinking` и `time` оставлены за границей встроенного набора.
+
+Directory grants проекта впервые получили исполняемый смысл. `IToolSessionFactory.OpenAsync` принимает grants, `DefaultToolSessionFactory` передаёт их серверу через `AI_CLIENT_DIRECTORY_GRANTS`, а `PathGuard` на стороне сервера проверяет абсолютность пути, снимает `..`, разрешает reparse point по всей цепочке существующих компонентов, сверяет containment и требуемую capability. Отсутствие grants означает отказ, а не полный доступ. Host канонизирует path-аргументы до подтверждения, поэтому пользователь и сервер оценивают один и тот же путь.
+
+Проверка: 93 теста в четырёх тестовых проектах, компиляция solution без предупреждений. Полный `verify` с копированием выходных файлов Host не выполнялся — запущенный экземпляр `AI.Client.Host` удерживал свои сборки.

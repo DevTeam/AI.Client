@@ -28,7 +28,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
         var projectBinding = project.McpServers.SingleOrDefault(server => server.Id == DefaultMcpServer.Id);
         var enabled = global.McpServers.SingleOrDefault(server => server.Id == DefaultMcpServer.Id) is { Enabled: true, Policy: not "Deny" }
             && projectBinding is not { Enabled: false };
-        await using var session = enabled ? await sessions.OpenAsync(token) : null;
+        var grants = project.DirectoryGrants
+            .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
+        await using var session = enabled ? await sessions.OpenAsync(grants, token) : null;
         var context = request.ContextMessages?.ToList() ?? [new ChatCompletionMessage("user", request.Message)];
         var runStart = context.FindLastIndex(message => message.Role == "user");
         var counts = context.Skip(Math.Max(0, runStart)).SelectMany(message => message.ToolCalls ?? [])

@@ -30,7 +30,10 @@ public static class ChatDocumentSerializer
         chat.Branches.Select(branch => new BranchDocument(branch.Id, branch.HeadMessageId?.Value, branch.Title,
             branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
         chat.ToolPolicies.Select(policy => new ToolPolicyDocument(policy.Tool.ServerId.Value, policy.Tool.Name,
-            policy.Tool.SchemaHash, policy.Decision, policy.MaxCallsPerRun, policy.Timeout)).ToArray()), Options);
+            policy.Tool.SchemaHash, policy.Decision, policy.MaxCallsPerRun, policy.Timeout)).ToArray(),
+        chat.IsPinned,
+        chat.PinnedAt,
+        chat.LastActivityAt), Options);
 
     public static StoredChat Deserialize(string json)
     {
@@ -64,6 +67,7 @@ public static class ChatDocumentSerializer
             chat.SetToolPolicy(new ToolPolicy(new ToolIdentity(new McpServerId(policy.ServerId), policy.Name,
                 policy.SchemaHash), policy.Decision, policy.MaxCallsPerRun, policy.Timeout), document.UpdatedAt);
         chat.Rename(document.Title, document.UpdatedAt);
+        chat.RestorePinState(document.IsPinned, document.PinnedAt);
 
         return new StoredChat(chat, document.Revision);
     }
@@ -80,7 +84,10 @@ public static class ChatDocumentSerializer
         Guid? ConnectionId,
         ChatMessageDocument[] Messages,
         BranchDocument[] Branches,
-        ToolPolicyDocument[]? ToolPolicies = null);
+        ToolPolicyDocument[]? ToolPolicies = null,
+        bool IsPinned = false,
+        DateTimeOffset? PinnedAt = null,
+        DateTimeOffset LastActivityAt = default);
 
     private sealed record ToolPolicyDocument(Guid ServerId, string Name, string SchemaHash,
         ToolPolicyDecision Decision, int MaxCallsPerRun, TimeSpan Timeout);

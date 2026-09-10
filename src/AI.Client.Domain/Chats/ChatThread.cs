@@ -26,6 +26,7 @@ public sealed class ChatThread
         Title = title.Trim();
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
+        LastActivityAt = createdAt;
         ConnectionId = connectionId;
         _branches[id.Value] = new ChatBranch(id.Value, null, title.Trim());
     }
@@ -35,6 +36,9 @@ public sealed class ChatThread
     public string Title { get; private set; }
     public DateTimeOffset CreatedAt { get; }
     public DateTimeOffset UpdatedAt { get; private set; }
+    public DateTimeOffset LastActivityAt { get; private set; }
+    public bool IsPinned { get; private set; }
+    public DateTimeOffset? PinnedAt { get; private set; }
     public IReadOnlyCollection<ChatMessage> Messages => _messages.Values;
     public ConnectionId? ConnectionId { get; private set; }
     public IReadOnlyCollection<ChatBranch> Branches => _branches.Values;
@@ -112,6 +116,29 @@ public sealed class ChatThread
         UpdatedAt = updatedAt;
     }
 
+    public void Pin(DateTimeOffset pinnedAt)
+    {
+        EnsureTimestampDoesNotMoveBackwards(pinnedAt);
+        IsPinned = true;
+        PinnedAt = pinnedAt;
+        UpdatedAt = pinnedAt;
+    }
+
+    public void Unpin(DateTimeOffset updatedAt)
+    {
+        EnsureTimestampDoesNotMoveBackwards(updatedAt);
+        IsPinned = false;
+        PinnedAt = null;
+        UpdatedAt = updatedAt;
+    }
+
+    /// <summary>Restores persisted pin state during deserialization, bypassing timestamp and revision bookkeeping.</summary>
+    public void RestorePinState(bool isPinned, DateTimeOffset? pinnedAt)
+    {
+        IsPinned = isPinned;
+        PinnedAt = isPinned ? pinnedAt : null;
+    }
+
     public void AddMessage(ChatMessage message, DateTimeOffset updatedAt, Guid? branchId = null, Guid? parentBranchId = null)
     {
         ArgumentNullException.ThrowIfNull(message);
@@ -149,6 +176,7 @@ public sealed class ChatThread
         }
         _branches[branch.Id] = branch with { HeadMessageId = message.Id, Revision = checked(branch.Revision + 1) };
         UpdatedAt = updatedAt;
+        LastActivityAt = updatedAt;
     }
 
     public void ReplaceInBranch(Guid branchId, ChatMessageId sourceId, ChatMessage replacement, DateTimeOffset updatedAt)
@@ -162,6 +190,7 @@ public sealed class ChatThread
         if (!_messages.TryAdd(replacement.Id, replacement)) throw new DomainException($"Chat message '{replacement.Id}' already exists.");
         _branches[branchId] = branch with { HeadMessageId = replacement.Id, Revision = checked(branch.Revision + 1) };
         UpdatedAt = updatedAt;
+        LastActivityAt = updatedAt;
     }
 
     public IReadOnlyList<ChatMessage> GetBranch(ChatMessageId? leafId)

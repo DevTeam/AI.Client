@@ -54,6 +54,20 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
         return await response.Content.ReadFromJsonAsync<ChatDetails>(cancellationToken);
     }
 
+    public async Task<ChatSummary?> PinAsync(
+        Guid projectId,
+        Guid chatId,
+        PinChatRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PutAsJsonAsync(
+            $"api/projects/{projectId}/chats/{chatId}/pin",
+            request,
+            cancellationToken);
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<ChatSummary>(cancellationToken);
+    }
+
     public async Task<ChatDeleteResult> DeleteAsync(
         Guid projectId,
         Guid chatId,

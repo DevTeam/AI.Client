@@ -11,13 +11,17 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
 {
     public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken) =>
         (await repository.ListAsync(new ProjectId(projectId), cancellationToken))
-        .OrderByDescending(item => item.Chat.UpdatedAt)
+        .OrderByDescending(item => item.Chat.IsPinned)
+        .ThenByDescending(item => item.Chat.LastActivityAt)
         .Select(item => new ChatSummary(
             item.Chat.Id.Value,
             item.Chat.ProjectId.Value,
             item.Chat.Title,
             item.Chat.UpdatedAt,
-            item.Revision))
+            item.Revision,
+            item.Chat.LastActivityAt,
+            item.Chat.IsPinned,
+            item.Chat.PinnedAt))
         .ToArray();
 
     public async Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
@@ -113,6 +117,34 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    public async Task<ChatSummary?> PinAsync(
+        Guid projectId,
+        Guid chatId,
+        PinChatRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        ArgumentNullException.ThrowIfNull(request);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+
+        var now = clock.UtcNow;
+        if (request.IsPinned) stored.Chat.Pin(now);
+        else stored.Chat.Unpin(now);
+
+        var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
+        if (!result.IsSaved) return null;
+        return new ChatSummary(
+            stored.Chat.Id.Value,
+            stored.Chat.ProjectId.Value,
+            stored.Chat.Title,
+            stored.Chat.UpdatedAt,
+            result.Revision,
+            stored.Chat.LastActivityAt,
+            stored.Chat.IsPinned,
+            stored.Chat.PinnedAt);
     }
 
     public async Task<ChatDetails?> RenameAsync(

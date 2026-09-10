@@ -18,6 +18,9 @@ public sealed class WorkspaceLayoutService(IJSRuntime jsRuntime) : IWorkspaceLay
     public Task ForwardContextMenuAsync(double clientX, double clientY, string backdropSelector) =>
         _module is null ? Task.CompletedTask : _module.InvokeVoidAsync("forwardContextMenu", clientX, clientY, backdropSelector).AsTask();
 
+    public Task BlurActiveElementAsync() =>
+        _module is null ? Task.CompletedTask : _module.InvokeVoidAsync("blurActiveElement").AsTask();
+
     public Task FocusAdjacentItemAsync(string containerSelector, string itemSelector, string key) =>
         _module is null ? Task.CompletedTask : _module.InvokeVoidAsync("focusAdjacentItem", containerSelector, itemSelector, key).AsTask();
 

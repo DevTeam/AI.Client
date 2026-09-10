@@ -679,7 +679,8 @@ body {
     min-width: 0;
 }
 
-.chat-nav-row > .chat-row-action:not(.chat-menu-button) { grid-column: 3; }
+.chat-nav-row > .chat-pin-button { grid-column: 2; }
+.chat-nav-row > .chat-row-action:not(.chat-menu-button):not(.chat-pin-button) { grid-column: 3; }
 .chat-nav-row > .chat-menu-button { grid-column: 4; }
 
 .sidebar-inline-editor {
@@ -745,6 +746,27 @@ body {
 .chat-row-action:focus-visible,
 .chat-menu-button.menu-open {
     opacity: 1;
+}
+
+/* Unpinned: revealed like the other row actions — hover/focus only, nothing more.
+   Pinned: a persistent state indicator, like the directory read/write lock — always visible and
+   colored by state. */
+.chat-nav-row > .chat-pin-button {
+    color: #858585;
+}
+
+.chat-pin-button:hover:not(:disabled),
+.chat-pin-button:focus-visible {
+    color: #eee;
+}
+
+.chat-pin-button.pinned {
+    opacity: 1;
+    color: var(--accent-color);
+}
+
+.chat-pin-button.pinned .app-icon path {
+    fill: currentColor;
 }
 
 .directory-nav-group {

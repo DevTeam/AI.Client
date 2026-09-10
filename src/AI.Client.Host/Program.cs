@@ -229,6 +229,14 @@ app.MapPut(
     });
 
 app.MapPut(
+    "/api/projects/{projectId:guid}/chats/{chatId:guid}/pin",
+    async (Guid projectId, Guid chatId, PinChatRequest request, IChatService service, CancellationToken cancellationToken) =>
+    {
+        var chat = await service.PinAsync(projectId, chatId, request, cancellationToken);
+        return chat is null ? Results.Conflict() : Results.Ok(chat);
+    });
+
+app.MapPut(
     "/api/projects/{projectId:guid}/chats/{chatId:guid}/branches/{branchId:guid}/title",
     async (Guid projectId, Guid chatId, Guid branchId, RenameChatBranchRequest request, IChatService service, CancellationToken cancellationToken) =>
     {

@@ -56,7 +56,7 @@ public sealed class DefaultToolSessionFactory : IToolSessionFactory
                 if (tool.OutputSchema is { } outputSchema) _ = JsonSchema.Build(outputSchema);
                 var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
                     tool.InputSchema.GetRawText() + tool.OutputSchema?.GetRawText())));
-                return new AgentTool(new ChatToolDefinition("mcp_default__" + tool.Name, tool.Description ?? tool.Name, tool.InputSchema),
+                return new AgentTool(new ChatToolDefinition("mcp_built_in__" + tool.Name, tool.Description ?? tool.Name, tool.InputSchema),
                     DefaultMcpServer.Id, tool.Name, hash);
             }).ToArray();
         }

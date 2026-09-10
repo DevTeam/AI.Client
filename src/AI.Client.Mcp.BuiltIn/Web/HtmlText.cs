@@ -1,4 +1,4 @@
-﻿namespace AI.Client.Mcp.BuiltIn.Web;
+namespace AI.Client.Mcp.BuiltIn.Web;
 
 using System.Net;
 using System.Text.RegularExpressions;
@@ -7,9 +7,9 @@ using System.Text.RegularExpressions;
 /// Lightweight HTML to Markdown extraction. This is a tag-level transformation, not a DOM implementation:
 /// it drops non-content elements, keeps headings, links, lists and code, and then strips the remaining markup.
 /// </summary>
-public static partial class HtmlText
+public sealed partial class HtmlText : IHtmlText
 {
-    public static string ToMarkdown(string html)
+    public string ToMarkdown(string html)
     {
         var text = Noise().Replace(html, " ");
         if (MainRegion().Match(text) is { Success: true } main)

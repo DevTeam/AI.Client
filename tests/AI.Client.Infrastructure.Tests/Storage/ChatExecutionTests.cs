@@ -32,7 +32,7 @@ public sealed class ChatExecutionTests
         await using var fixture = await Fixture.CreateAsync();
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_default__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
         (await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
@@ -57,7 +57,7 @@ public sealed class ChatExecutionTests
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
         first.Request.Tools!.Count.ShouldBe(1);
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_default__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         var second = await fixture.NextCallAsync();
         fixture.Tools.CallCount.ShouldBe(1);
@@ -75,7 +75,7 @@ public sealed class ChatExecutionTests
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
         first.Request.Tools!.Count.ShouldBe(decision == "Deny" ? 0 : 1);
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_default__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         var second = await fixture.NextCallAsync();
         fixture.Tools.CallCount.ShouldBe(expectedCalls);
@@ -90,7 +90,7 @@ public sealed class ChatExecutionTests
         await fixture.SetPolicyAsync("Ask");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_default__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
         await fixture.SetPolicyAsync("Deny");
@@ -110,7 +110,7 @@ public sealed class ChatExecutionTests
         await fixture.SetPolicyAsync("Ask");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_default__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
         fixture.Tools.CallCount.ShouldBe(0);
@@ -139,7 +139,7 @@ public sealed class ChatExecutionTests
         await fixture.SetPolicyAsync("Ask");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_default__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         await fixture.WaitAsync(run => run.PendingApproval is not null);
         await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
@@ -459,7 +459,7 @@ public sealed class ChatExecutionTests
     {
         public int CallCount { get; private set; }
         public int OpenCount { get; private set; }
-        public IReadOnlyList<AgentTool> Tools { get; } = [new(new ChatToolDefinition("mcp_default__process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")), DefaultMcpServer.Id, "process_run", "schema")];
+        public IReadOnlyList<AgentTool> Tools { get; } = [new(new ChatToolDefinition("mcp_built_in__process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")), DefaultMcpServer.Id, "process_run", "schema")];
         public IReadOnlyList<ToolDirectoryGrant> Grants { get; private set; } = [];
         public Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, CancellationToken cancellationToken)
         {

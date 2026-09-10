@@ -1,5 +1,6 @@
 ﻿using AI.Client.Mcp.BuiltIn;
 using AI.Client.Mcp.BuiltIn.Grants;
+using AI.Client.Mcp.BuiltIn.Process;
 using AI.Client.Mcp.BuiltIn.Web;
 
 namespace AI.Client.Infrastructure.Tests.Tools;
@@ -155,7 +156,7 @@ public sealed class BuiltInToolTests
     [Fact]
     public void ShouldExtractMarkdownFromHtml()
     {
-        var markdown = HtmlText.ToMarkdown(
+        var markdown = new HtmlText().ToMarkdown(
             "<html><head><title>t</title><style>body{}</style></head><body><nav>skip</nav>"
             + "<main><h1>Title</h1><p>Hello &amp; welcome</p><ul><li>one</li><li><a href=\"https://example.com\">two</a></li></ul>"
             + "<script>alert(1)</script></main></body></html>");

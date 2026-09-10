@@ -1,4 +1,4 @@
-namespace AI.Client.Mcp.BuiltIn;
+namespace AI.Client.Mcp.BuiltIn.Process;
 
 public interface IProcessRunner
 {

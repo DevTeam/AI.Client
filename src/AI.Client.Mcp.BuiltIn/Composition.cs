@@ -1,14 +1,13 @@
 // ReSharper disable UnusedMember.Local
-
-using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
-
 namespace AI.Client.Mcp.BuiltIn;
 
+using System.Diagnostics;
 using Files;
 using Grants;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using Process;
 using Pure.DI;
-using System.Diagnostics;
 using Web;
 
 internal sealed partial class Composition
@@ -19,13 +18,11 @@ internal sealed partial class Composition
             .Hint(Hint.Resolve, "Off")
             .Hint(Hint.ThreadSafe, "Off")
             .Root<McpServer>(nameof(Server))
-            .Singleton<ProcessRunner>()
-            .Singleton<EnvironmentGrantSource>()
-            .Singleton<PathGuard>()
-            .Singleton<WebFetcher>()
+            // Tools
             .Transient<ProcessRunTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool>(Tag.Unique)
-            .Transient((IEnumerable<IToolFactory> toolFactories) =>
+            .Singleton<ProcessRunner, EnvironmentGrantSource, PathGuard, WebFetcher, HtmlText>()
+            .Singleton((IEnumerable<IToolFactory> toolFactories) =>
             {
                 var tools = new McpServerPrimitiveCollection<McpServerTool>();
                 foreach (var toolFactory in toolFactories)

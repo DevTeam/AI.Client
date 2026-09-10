@@ -6,7 +6,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class FetchTool(IWebFetcher fetcher) : IToolFactory
+public sealed class FetchTool(IWebFetcher fetcher, IHtmlText htmlText) : IToolFactory
 {
     private const int MaxLengthLimit = 1000000;
 
@@ -49,7 +49,7 @@ public sealed class FetchTool(IWebFetcher fetcher) : IToolFactory
 
         var html = response.ContentType.Contains("html", StringComparison.OrdinalIgnoreCase)
                    || response.ContentType.Contains("xml", StringComparison.OrdinalIgnoreCase);
-        var text = raw || !html ? response.Body : HtmlText.ToMarkdown(response.Body);
+        var text = raw || !html ? response.Body : htmlText.ToMarkdown(response.Body);
         var from = Math.Min(startIndex, text.Length);
         var window = text.AsSpan(from);
         var truncated = response.BodyTruncated || window.Length > maxLength;

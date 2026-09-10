@@ -2,7 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 
-namespace AI.Client.Mcp.BuiltIn;
+namespace AI.Client.Mcp.BuiltIn.Process;
 
 public sealed class ProcessRunner : IProcessRunner
 {
@@ -90,7 +90,7 @@ public sealed class ProcessRunner : IProcessRunner
             }
         }
 
-        using var process = new Process();
+        using var process = new System.Diagnostics.Process();
         process.StartInfo = start;
 
         using var job = OperatingSystem.IsWindows() ? new WindowsProcessJob() : null;

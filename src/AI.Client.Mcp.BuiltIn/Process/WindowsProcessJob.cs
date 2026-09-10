@@ -1,10 +1,9 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Microsoft.Win32.SafeHandles;
 
-namespace AI.Client.Mcp.BuiltIn;
+namespace AI.Client.Mcp.BuiltIn.Process;
 
 // Closing the job also kills descendants whose original parent already exited.
 // The OS closes this handle if the MCP server crashes or loses its Host.
@@ -32,7 +31,7 @@ internal sealed partial class WindowsProcessJob : IDisposable
         throw new Win32Exception(error);
     }
 
-    public void Attach(Process process)
+    public void Attach(System.Diagnostics.Process process)
     {
         if (!AssignProcessToJobObject(_handle, process.SafeHandle)) throw new Win32Exception(Marshal.GetLastPInvokeError());
     }

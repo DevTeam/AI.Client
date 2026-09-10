@@ -1,17 +1,14 @@
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
-namespace AI.Client.Mcp.BuiltIn;
+namespace AI.Client.Mcp.BuiltIn.Process;
 
 [McpServerToolType]
-public sealed class ProcessRunTool(IProcessRunner processRunner): IToolFactory
+public sealed class ProcessRunTool(IProcessRunner processRunner) : IToolFactory
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-
     public McpServerTool Create() => McpServerTool.Create(
         RunAsync,
         new McpServerToolCreateOptions
@@ -40,12 +37,8 @@ public sealed class ProcessRunTool(IProcessRunner processRunner): IToolFactory
             result = new ProcessResult(null, "", "", 0, false, false, error.Message);
         }
 
-        var structured = JsonSerializer.SerializeToElement(result, Json);
-        return new CallToolResult
-        {
-            StructuredContent = structured,
-            Content = [new TextContentBlock { Text = structured.GetRawText() }],
-            IsError = result.Error is not null || result.TimedOut || result.ExitCode != 0
-        };
+        return ToolReply.Of(
+            result,
+            isError: result.Error is not null || result.TimedOut || result.ExitCode != 0);
     }
 }

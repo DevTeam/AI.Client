@@ -142,8 +142,8 @@ public sealed class GlobalSettingsService(
         if (string.IsNullOrWhiteSpace(item.Name)
             || string.IsNullOrWhiteSpace(item.SchemaHash)
             || item.Decision is not ("Allow" or "Ask" or "Deny")
-            || item.MaxCallsPerRun is < 1 or > 20
-            || item.TimeoutSeconds is < 1 or > 120)
+            || item.MaxCallsPerRun is < 1 or > int.MaxValue
+            || item.TimeoutSeconds is < 1 or > 600)
         {
             throw new ArgumentException("Tool name, schema, policy, call limit, and timeout are invalid.");
         }

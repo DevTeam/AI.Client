@@ -25,7 +25,7 @@
                     <header class="global-header"><div><h1>MCP</h1><p>Global MCP servers available to every project.</p></div></header>
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
-                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => _selectedMcpServerId = serverItem.Id"><span>@serverItem.Name</span><small>@serverItem.Transport · @serverItem.Policy</small></button>@if (serverItem.Id == _selectedMcpServerId && serverItem.Id != AI.Client.Contracts.Settings.DefaultMcpServer.Id) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</div> }</nav>
+                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => _selectedMcpServerId = serverItem.Id"><span>@serverItem.Name</span><small>@serverItem.Transport В· @serverItem.Policy</small></button>@if (serverItem.Id == _selectedMcpServerId && serverItem.Id != AI.Client.Contracts.Settings.DefaultMcpServer.Id) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</div> }</nav>
                             <button class="icon-action settings-list-add" type="button" title="Add MCP server" aria-label="Add MCP server" @onclick="AddGlobalMcpServer"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedMcpServer() is { } server)
@@ -48,8 +48,8 @@
                                             <div class="mcp-tool-policy-row">
                                                 <div class="mcp-tool-name"><span>Tool</span><strong title="@policy.SchemaHash">@policy.Name</strong></div>
                                                 <label>Policy<select @bind="policy.Decision" aria-label="Policy for @policy.Name"><option>Ask</option><option>Allow</option><option>Deny</option></select></label>
-                                                <label>Calls/run<input type="number" min="1" max="20" @bind="policy.MaxCallsPerRun" /></label>
-                                                <label>Timeout, sec<input type="number" min="1" max="120" @bind="policy.TimeoutSeconds" /></label>
+                                                <label>Calls/run<input type="number" min="1" max="2147483647" @bind="policy.MaxCallsPerRun" /></label>
+                                                <label>Timeout, sec<input type="number" min="1" max="600" @bind="policy.TimeoutSeconds" /></label>
                                             </div>
                                         }
                                         <p class="mcp-policy-note">Deny disables the server. Otherwise a tool-specific Allow can run without confirmation; unknown tools ask by default.</p>
@@ -256,7 +256,7 @@
         public string Name { get; set; } = string.Empty;
         public string SchemaHash { get; set; } = string.Empty;
         public string Decision { get; set; } = "Ask";
-        public int MaxCallsPerRun { get; set; } = 20;
+        public int MaxCallsPerRun { get; set; } = 65535;
         public long TimeoutSeconds { get; set; } = 120;
 
         public static McpToolPolicyEditor From(McpToolInfo item) => new()

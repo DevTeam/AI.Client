@@ -21,7 +21,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
         CancellationToken cancellationToken)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromMinutes(10));
+        deadline.CancelAfter(TimeSpan.FromMinutes(60));
         var token = deadline.Token;
         var global = await settings.LoadAsync(token);
         var project = await projects.GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
@@ -34,7 +34,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
         var counts = context.Skip(Math.Max(0, runStart)).SelectMany(message => message.ToolCalls ?? [])
             .GroupBy(call => call.Name, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
         var seenIds = context.SelectMany(message => message.ToolCalls ?? []).Select(call => call.Id).ToHashSet(StringComparer.Ordinal);
-        for (var iteration = 0; iteration < 20; iteration++)
+        while (true)
         {
             var available = new List<ChatToolDefinition>();
             if (session is not null)
@@ -54,7 +54,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                 if (content.Length == 0) throw new InvalidOperationException("The model returned an empty response.");
                 return;
             }
-            if (calls.Count > 20 || calls.Any(call => !seenIds.Add(call.Id)))
+            if (calls.Any(call => !seenIds.Add(call.Id)))
                 throw new InvalidOperationException("Duplicate tool call IDs or excessive calls.");
             var assistant = new ChatCompletionMessage("assistant", content.ToString(), calls.ToArray());
             await persist(assistant, token); // Durable intent before any side effect.
@@ -118,9 +118,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                 await activity(null, token);
             }
         }
-        throw new InvalidOperationException("Agent iteration limit reached.");
     }
-
     private async Task<EffectivePolicy> PolicyAsync(Guid projectId, Guid chatId, AgentTool tool, CancellationToken token)
     {
         var global = await settings.LoadAsync(token);
@@ -139,10 +137,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
             ? "Deny" : policyDecision == "Allow" ? "Allow" : "Ask";
         return new EffectivePolicy(
             decision,
-            Math.Clamp(chatPolicy?.MaxCallsPerRun ?? projectPolicy?.MaxCallsPerRun ?? globalPolicy?.MaxCallsPerRun ?? 20, 1, 20),
-            Math.Clamp(chatPolicy?.TimeoutSeconds ?? projectPolicy?.TimeoutSeconds ?? globalPolicy?.TimeoutSeconds ?? 120, 1, 120));
+            Math.Clamp(chatPolicy?.MaxCallsPerRun ?? projectPolicy?.MaxCallsPerRun ?? globalPolicy?.MaxCallsPerRun ?? 65535, 1, int.MaxValue),
+            Math.Clamp(chatPolicy?.TimeoutSeconds ?? projectPolicy?.TimeoutSeconds ?? globalPolicy?.TimeoutSeconds ?? 120, 1, 600));
     }
-
     private static string Error(string message) => JsonSerializer.Serialize(new { isError = true, error = message });
     private sealed record EffectivePolicy(string Decision, int MaxCalls, long TimeoutSeconds);
 }

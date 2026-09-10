@@ -7,7 +7,7 @@ public sealed record ToolPolicy
     public ToolPolicy(
         ToolIdentity tool,
         ToolPolicyDecision decision,
-        int maxCallsPerRun = 20,
+        int maxCallsPerRun = 65535,
         TimeSpan? timeout = null)
     {
         ArgumentNullException.ThrowIfNull(tool);

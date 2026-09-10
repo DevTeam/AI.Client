@@ -1137,7 +1137,8 @@
     private ChatRunSnapshot? GetBranchRun(Guid chatId, BranchTreeItem branch) => GetRun(chatId, branch.RootId);
     private ChatRunSnapshot? GetSelectedRun() => _selectedChat is not null ? GetRun(_selectedChat.Id, GetSelectedRunBranchId()) : null;
     private void StoreRun(ChatRunSnapshot run) => RunState.Store(run);
-    private static bool IsVisibleRun(ChatRunSnapshot run) => run.Status == ChatRunStatus.Generating || run.HasUnreadResponse;
+    private static bool IsVisibleRun(ChatRunSnapshot run) =>
+        RunStatusPresentation.NeedsAttention(run) || run.Status == ChatRunStatus.Generating || run.HasUnreadResponse;
     private BranchTreeItem? GetSelectedBranchItem() =>
         GetBranchTreeItems().FirstOrDefault(branch => branch.RootId == _selectedBranchId);
 
@@ -1148,7 +1149,7 @@
     private Guid GetSelectedRunBranchId() => _selectedChat is null ? Guid.Empty : _selectedBranchId ?? _selectedChat.Id;
     private ChatRunSnapshot? GetProjectRun(Guid projectId) => GetProjectRuns(projectId)
         .Where(IsVisibleRun)
-        .OrderBy(item => item.Status == ChatRunStatus.Failed ? 0 : item.Status == ChatRunStatus.Generating ? 1 : item.HasUnreadResponse ? 2 : 3)
+        .OrderBy(item => RunStatusPresentation.NeedsAttention(item) ? 0 : item.Status == ChatRunStatus.Failed ? 1 : item.Status == ChatRunStatus.Generating ? 2 : item.HasUnreadResponse ? 3 : 4)
         .FirstOrDefault();
     private string GetProjectRunTooltip(Guid projectId) { var runs = GetProjectRuns(projectId).ToArray(); return $"{runs.Count(item => item.Status == ChatRunStatus.Generating)} generating · {runs.Count(item => item.HasUnreadResponse)} unread · {runs.Count(item => item.Status == ChatRunStatus.Failed)} failed"; }
     private IEnumerable<ChatRunSnapshot> GetProjectRuns(Guid projectId)

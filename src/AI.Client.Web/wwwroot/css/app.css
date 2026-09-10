@@ -945,6 +945,7 @@ body {
 }
 
 .chat-link > .app-icon.run-status-unread { color: #4f91dc; }
+.chat-link > .app-icon.run-status-attention { color: #d9a441; }
 .chat-link > .app-icon.run-status-failed { color: #d96363; }
 .chat-link > .app-icon.run-status-interrupted { color: #858585; }
 
@@ -1528,6 +1529,8 @@ body {
 }
 
 .status-dot.run-status-unread { border-color: #4f91dc; background: #4f91dc; }
+
+.status-dot.run-status-attention { border-color: #d9a441; background: #d9a441; }
 
 .status-dot.run-status-failed { border-color: #d96363; background: #d96363; }
 

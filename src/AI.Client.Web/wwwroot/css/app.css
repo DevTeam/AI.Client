@@ -1568,8 +1568,13 @@ body {
     transition: opacity 120ms ease;
 }
 
+/* Keyboard focus, not focus of any kind. `:focus-within` also matches the focus a mouse click
+   leaves behind on the button it just pressed, so after copying a message the chip stayed up
+   until focus happened to move somewhere else — reading as a popup that refuses to close.
+   `:has(:focus-visible)` matches only focus the browser judges worth showing, which is what a
+   Tab arrival is and what a click is not. */
 .workspace-message:hover .message-actions,
-.workspace-message:focus-within .message-actions {
+.workspace-message:has(:focus-visible) .message-actions {
     opacity: 1;
     pointer-events: auto;
 }

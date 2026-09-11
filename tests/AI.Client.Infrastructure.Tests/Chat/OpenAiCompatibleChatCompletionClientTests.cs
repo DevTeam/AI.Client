@@ -126,6 +126,58 @@ public class OpenAiCompatibleChatCompletionClientTests
     }
 
     [Fact]
+    public async Task ShouldIncludeResponseBodyInErrorMessage()
+    {
+        _handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(CreateResponse(
+                HttpStatusCode.BadRequest,
+                """{"error":{"message":"This model's maximum context length is 32768 tokens."}}"""));
+
+        var error = await Should.ThrowAsync<HttpRequestException>(() => CreateInstance().CompleteAsync(
+            new ChatCompletionRequest("https://llm.example/v1", "test-model", null, "Hi"),
+            CancellationToken.None));
+
+        error.Message.ShouldContain("400");
+        error.Message.ShouldContain("maximum context length is 32768 tokens");
+    }
+
+    [Fact]
+    public async Task ShouldTruncateAnOverlongErrorBody()
+    {
+        _handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(CreateResponse(HttpStatusCode.BadRequest, new string('x', 5000)));
+
+        var error = await Should.ThrowAsync<HttpRequestException>(() => CreateInstance().CompleteAsync(
+            new ChatCompletionRequest("https://llm.example/v1", "test-model", null, "Hi"),
+            CancellationToken.None));
+
+        error.Message.Length.ShouldBeLessThan(2100);
+        error.Message.ShouldEndWith("…");
+    }
+
+    [Fact]
+    public async Task ShouldIncludeResponseBodyInStreamingErrorMessage()
+    {
+        _handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(CreateResponse(HttpStatusCode.BadRequest, """{"error":{"message":"invalid tool_calls"}}"""));
+
+        var error = await Should.ThrowAsync<HttpRequestException>(async () =>
+        {
+            await foreach (var _ in CreateInstance().StreamAsync(
+                new ChatCompletionRequest("https://llm.example/v1", "test-model", null, "Hi"),
+                CancellationToken.None)) { }
+        });
+
+        error.Message.ShouldContain("invalid tool_calls");
+    }
+
+    [Fact]
     public async Task ShouldOmitToolsWhenProjectDoesNotExposeAny()
     {
         string? capturedContent = null;

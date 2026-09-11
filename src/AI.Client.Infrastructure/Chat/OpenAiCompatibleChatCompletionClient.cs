@@ -10,6 +10,13 @@ public sealed class OpenAiCompatibleChatCompletionClient(
     HttpClient httpClient,
     IChatCompletionSseParser sseParser) : IChatCompletionClient
 {
+    // Providers routinely put the actual reason (e.g. "context length exceeded", a validation
+    // complaint about a malformed tool_calls entry) in the response body, not the status line —
+    // a bare "400 (Bad Request)" is not enough to diagnose or even reproduce the failure after
+    // the fact. Bounded so a large HTML error page from a misconfigured proxy doesn't get fully
+    // quoted into logs and chat history.
+    private const int ErrorBodyPreviewCharacters = 2000;
+
     public async Task<ChatCompletionResponse> CompleteAsync(
         ChatCompletionRequest request,
         CancellationToken cancellationToken)
@@ -52,8 +59,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new HttpRequestException(
-                $"The AI endpoint returned {(int)response.StatusCode} ({response.ReasonPhrase}).");
+            throw new HttpRequestException(FormatErrorMessage(response, body));
         }
 
         using var document = JsonDocument.Parse(body);
@@ -81,8 +87,8 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new HttpRequestException(
-                $"The AI endpoint returned {(int)response.StatusCode} ({response.ReasonPhrase}).");
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new HttpRequestException(FormatErrorMessage(response, errorBody));
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -119,6 +125,22 @@ public sealed class OpenAiCompatibleChatCompletionClient(
 
         return message;
     }
+    // Trims to one line so a multi-line HTML/JSON error body doesn't blow up log formatting, and
+    // truncates it rather than the whole thing so this message stays safe to surface in the UI
+    // and to persist in chat/run history.
+    private static string FormatErrorMessage(HttpResponseMessage response, string body)
+    {
+        var prefix = $"The AI endpoint returned {(int)response.StatusCode} ({response.ReasonPhrase}).";
+        var trimmed = body.Trim();
+        if (trimmed.Length == 0) return prefix;
+
+        var oneLine = trimmed.ReplaceLineEndings(" ");
+        var preview = oneLine.Length > ErrorBodyPreviewCharacters
+            ? oneLine[..ErrorBodyPreviewCharacters] + "…"
+            : oneLine;
+        return $"{prefix} {preview}";
+    }
+
     private static Dictionary<string, object?> CreateBody(ChatCompletionRequest request, bool stream)
     {
         var messages = (request.ContextMessages is { Count: > 0 } ? request.ContextMessages

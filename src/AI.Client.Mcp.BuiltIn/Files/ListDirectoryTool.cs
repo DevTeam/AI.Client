@@ -9,12 +9,19 @@ using ModelContextProtocol.Server;
 [McpServerToolType]
 public sealed class ListDirectoryTool(IPathGuard guard) : IToolFactory
 {
+    // Approximate JSON overhead per entry beyond its own name — quotes/keys/commas for
+    // `{"name":"...","kind":"file","size":123,"modifiedAt":"..."}`, inflated to account for the
+    // result being serialized a second time when it's stored as the tool's chat message (see
+    // ResultBudget).
+    private const int EntryOverheadCharacters = 96;
+
     public McpServerTool Create() => McpServerTool.Create(
         ListAsync,
         new McpServerToolCreateOptions
         {
             Description = "List the immediate entries of a directory with their kind, size and modification time. "
-                          + $"At most {FileLimits.DirectoryEntries} entries are returned. "
+                          + $"At most {FileLimits.DirectoryEntries} entries are returned, and the result is also capped by total size; "
+                          + "either cap sets `truncated: true`. "
                           + "The path must be absolute and covered by a directory grant with 'read' access."
         });
 
@@ -42,11 +49,12 @@ public sealed class ListDirectoryTool(IPathGuard guard) : IToolFactory
         try
         {
             var entries = new List<DirectoryEntryInfo>();
+            var budget = new ResultBudget(FileLimits.DirectoryCharacters);
             var truncated = false;
             foreach (var info in new DirectoryInfo(resolved).EnumerateFileSystemInfos())
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (entries.Count == FileLimits.DirectoryEntries)
+                if (entries.Count == FileLimits.DirectoryEntries || !budget.TryReserve(info.Name.Length + EntryOverheadCharacters))
                 {
                     truncated = true;
                     break;

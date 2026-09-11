@@ -170,6 +170,86 @@ public sealed class BuiltInToolTests
     }
 
     [Fact]
+    public async Task ShouldSkipDefaultExcludedDirectoriesUnlessDisabled()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-tree-excludes").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "src"));
+            File.WriteAllText(Path.Combine(root, "src", "keep.txt"), "keep");
+            Directory.CreateDirectory(Path.Combine(root, ".git"));
+            File.WriteAllText(Path.Combine(root, ".git", "HEAD"), "ref: refs/heads/master");
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+                [new ToolDirectoryGrant(root, true, ["read"])], timeout.Token);
+            var token = timeout.Token;
+
+            var defaultTree = await Structured(session, "directory_tree", new { path = root }, token);
+            var defaultTreePaths = defaultTree.GetProperty("entries").EnumerateArray()
+                .Select(entry => entry.GetProperty("path").GetString()).ToArray();
+            defaultTreePaths.ShouldNotContain(entry => entry!.Contains(".git", StringComparison.Ordinal));
+            defaultTreePaths.ShouldContain(Path.Combine("src", "keep.txt"));
+
+            var fullTree = await Structured(session, "directory_tree", new { path = root, excludeDefaults = false }, token);
+            fullTree.GetProperty("entries").EnumerateArray()
+                .Select(entry => entry.GetProperty("path").GetString())
+                .ShouldContain(entry => entry!.Contains(".git", StringComparison.Ordinal));
+
+            var defaultSearch = await Structured(session, "search_files", new { path = root, pattern = "*" }, token);
+            defaultSearch.GetProperty("matches").EnumerateArray().Select(item => item.GetString())
+                .ShouldNotContain(match => match!.Contains(".git", StringComparison.Ordinal));
+
+            var fullSearch = await Structured(session, "search_files", new { path = root, pattern = "*", excludeDefaults = false }, token);
+            fullSearch.GetProperty("matches").EnumerateArray().Select(item => item.GetString())
+                .ShouldContain(match => match!.Contains(".git", StringComparison.Ordinal));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    // Reproduces the incident this guards against: a single directory_tree call whose entry
+    // count was well within its (much higher) count cap still produced ~1.4MB of doubly
+    // serialized JSON, large enough that the model's endpoint rejected the next turn outright.
+    // Names are padded to a fixed, generous length so the truncation point is dominated by the
+    // name itself rather than by how long the OS's temp path happens to be on the machine running
+    // the test, and stays well under the pre-existing per-tool entry-count caps (20000 / 5000 /
+    // 1000) — proving these are new, size-based truncations, not the old count-based ones.
+    [Fact]
+    public async Task ShouldTruncateResultsOnTotalSizeBelowTheEntryCountCaps()
+    {
+        const int fileCount = 1500;
+        var root = Directory.CreateTempSubdirectory("ai-client-tree-budget").FullName;
+        try
+        {
+            for (var index = 0; index < fileCount; index++)
+            {
+                var name = index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture).PadRight(116, 'x') + ".txt";
+                File.WriteAllBytes(Path.Combine(root, name), []);
+            }
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+                [new ToolDirectoryGrant(root, true, ["read"])], timeout.Token);
+            var token = timeout.Token;
+
+            var tree = await Structured(session, "directory_tree", new { path = root }, token);
+            tree.GetProperty("truncated").GetBoolean().ShouldBeTrue();
+            tree.GetProperty("entries").GetArrayLength().ShouldBeInRange(1, fileCount - 1);
+
+            var list = await Structured(session, "list_directory", new { path = root }, token);
+            list.GetProperty("truncated").GetBoolean().ShouldBeTrue();
+            list.GetProperty("entries").GetArrayLength().ShouldBeInRange(1, fileCount - 1);
+
+            var search = await Structured(session, "search_files", new { path = root, pattern = "*.txt" }, token);
+            search.GetProperty("truncated").GetBoolean().ShouldBeTrue();
+            // Below the tool's own 1000-match count cap: without the size cap, this fixture would
+            // have hit exactly that count cap instead.
+            search.GetProperty("matches").GetArrayLength().ShouldBeInRange(1, 999);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task ShouldReadWriteAndEditWithinGrantOverStdio()
     {
         var root = Directory.CreateTempSubdirectory("ai-client-files").FullName;

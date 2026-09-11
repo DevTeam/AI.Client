@@ -2603,3 +2603,99 @@ textarea {
     margin-left: 1.35rem;
 }
 
+
+/* Net file changes for the current run, above the composer. */
+.workspace-changes {
+    max-width: 48rem;
+    margin: 0 auto 0.5rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid #333;
+    border-radius: 0.6rem;
+    background: #1d1d1d;
+    font-size: 0.76rem;
+}
+
+.workspace-changes-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.workspace-changes-title {
+    color: #c8c8c8;
+}
+
+.workspace-changes-count,
+.workspace-change-approximate,
+.workspace-change-binary {
+    color: #7a7a7a;
+}
+
+.workspace-changes-totals,
+.workspace-change-counts {
+    display: flex;
+    gap: 0.45rem;
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+}
+
+/* The sign is always present, so colour is reinforcement rather than the only signal. */
+.workspace-added { color: #5dc97c; }
+.workspace-removed { color: #e0665f; }
+
+.workspace-changes-note {
+    margin: 0.3rem 0 0;
+    color: #c9a227;
+}
+
+.workspace-changes-list {
+    margin: 0.35rem 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.workspace-change > summary {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.12rem 0;
+    cursor: pointer;
+    list-style: none;
+}
+
+.workspace-change > summary::-webkit-details-marker {
+    display: none;
+}
+
+.workspace-change[disabled] > summary {
+    cursor: default;
+}
+
+.workspace-change-kind {
+    flex: 0 0 auto;
+    width: 0.9rem;
+    color: #7a7a7a;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.workspace-change-path {
+    min-width: 0;
+    overflow: hidden;
+    color: #b4b4b4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workspace-change-diff {
+    max-height: 22rem;
+    margin: 0.2rem 0 0.4rem 1.35rem;
+    overflow: auto;
+    color: #9a9a9a;
+    font-size: 0.72rem;
+    white-space: pre;
+}
+
+@media (max-width: 640px) {
+    .workspace-changes { font-size: 0.72rem; }
+    .workspace-change > summary { flex-wrap: wrap; }
+}

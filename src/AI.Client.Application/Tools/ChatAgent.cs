@@ -8,13 +8,15 @@ using Contracts.Chat;
 using Contracts.Tools;
 using Contracts.Runs;
 using Contracts.Settings;
+using Workspace;
 using System.Text;
 using System.Text.Json;
 
 public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFactory sessions,
-    IProjectService projects, IChatService chats, IGlobalSettingsRepository settings)
+    IProjectService projects, IChatService chats, IGlobalSettingsRepository settings,
+    IWorkspaceChangeTracker workspace)
 {
-    public async Task RunAsync(Guid projectId, Guid chatId, ChatCompletionRequest request,
+    public async Task RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
         Func<string, CancellationToken, Task> text,
         Func<ToolActivity?, CancellationToken, Task> activity,
@@ -32,6 +34,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
         var grants = project.DirectoryGrants
             .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
         await using var session = enabled ? await sessions.OpenAsync(grants, token) : null;
+        var runKey = new WorkspaceRunKey(projectId, chatId, branchId);
+        await workspace.BeginRunAsync(runKey, grants, token);
         var context = request.ContextMessages?.ToList() ?? [new ChatCompletionMessage("user", request.Message)];
         var runStart = context.FindLastIndex(message => message.Role == "user");
         var counts = context.Skip(Math.Max(0, runStart)).SelectMany(message => message.ToolCalls ?? [])
@@ -101,7 +105,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                             var progress = new Progress<ToolProgress>(update => _ = activity(
                                 activeCall with { Progress = update.Progress, Total = update.Total, Message = update.Message },
                                 CancellationToken.None));
+                            // The baseline has to exist before the call, not after: once a write
+                            // lands there is nothing left to compare against.
+                            await workspace.RecordIntentAsync(runKey, tool.Descriptor, arguments, token);
                             result = await session.CallAsync(tool, arguments, progress, timeout.Token);
+                            await workspace.RecordEffectAsync(runKey, tool.Descriptor, arguments, result, token);
                         }
                     }
                 }

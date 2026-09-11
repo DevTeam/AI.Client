@@ -11,6 +11,8 @@ using Contracts.Chats;
 using Contracts.Runs;
 using Contracts.Projects;
 using Contracts.Settings;
+using Contracts.Workspace;
+using Workspace;
 using Domain.Runs;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
@@ -18,7 +20,8 @@ using System.Threading.Channels;
 public sealed class ChatRunDispatcher(
     IChatRunRepository repository, ChatService chats, IProjectService projects,
     IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, ChatAgent agent,
-    IGlobalSecretStore secretStore, IClock clock, ChatSynchronization synchronization) : IChatRunDispatcher, IAsyncDisposable
+    IGlobalSecretStore secretStore, IClock clock, ChatSynchronization synchronization,
+    IWorkspaceChangeTracker workspace) : IChatRunDispatcher, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<RunKey, Runtime> _runtimes = new();
     private readonly ConcurrentDictionary<Guid, Channel<IReadOnlyList<ChatRunSnapshot>>> _subscribers = new();
@@ -288,7 +291,7 @@ public sealed class ChatRunDispatcher(
                     await SaveAsync(runtime, chat, token);
                 }
 
-                await agent.RunAsync(runtime.State.ProjectId, runtime.State.ChatId, request,
+                await agent.RunAsync(runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId, request,
                     (message, ct) => PersistToolMessageAsync(runtime, message, ct),
                     async (content, ct) =>
                     {
@@ -340,6 +343,10 @@ public sealed class ChatRunDispatcher(
         finally
         {
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
+            // Take the final measurement before the tracker lets go of its baselines: after this
+            // the summary is a fixed record of what the run did, not a live comparison.
+            runtime.WorkspaceChanges = await workspace.SnapshotAsync(WorkspaceKey(runtime), CancellationToken.None);
+            await workspace.CompleteRunAsync(WorkspaceKey(runtime), CancellationToken.None);
             runtime.Cancellation?.Dispose();
             runtime.Cancellation = null;
             runtime.ActiveMessageId = null;
@@ -423,6 +430,8 @@ public sealed class ChatRunDispatcher(
         if (activity is null)
         {
             runtime.ActiveTools.Clear();
+            // A call just finished, so this is the moment the workspace may have moved.
+            runtime.WorkspaceChanges = await workspace.SnapshotAsync(WorkspaceKey(runtime), token);
             runtime.State.Append("");
             await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
             return;
@@ -448,6 +457,9 @@ public sealed class ChatRunDispatcher(
     }
 
     private static readonly TimeSpan ProgressPublishInterval = TimeSpan.FromMilliseconds(150);
+
+    private static WorkspaceRunKey WorkspaceKey(Runtime runtime) =>
+        new(runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId);
 
     private async Task PersistToolMessageAsync(Runtime runtime, ChatCompletionMessage message, CancellationToken token)
     {
@@ -556,7 +568,7 @@ public sealed class ChatRunDispatcher(
     private async Task SaveAsync(Runtime runtime, ChatDetails? chat, CancellationToken token)
     {
         await repository.SaveAsync(runtime.State, token);
-        runtime.Snapshot = Snapshot(runtime.State, chat) with { PendingApproval = runtime.PendingApproval, ActiveTools = runtime.ActiveTools.Values.ToArray() };
+        runtime.Snapshot = Snapshot(runtime.State, chat) with { PendingApproval = runtime.PendingApproval, ActiveTools = runtime.ActiveTools.Values.ToArray(), WorkspaceChanges = runtime.WorkspaceChanges };
         if (runtime is { ActiveMessageId: { } active, State.Status: RunStatus.Generating })
             runtime.Snapshot = runtime.Snapshot with { Queue = runtime.Snapshot.Queue.Where(item => item.Id != active).ToArray() };
         if (chat is not null)
@@ -783,6 +795,14 @@ public sealed class ChatRunDispatcher(
 
         /// <summary>When the last progress-only update was published, for throttling.</summary>
         public DateTimeOffset LastProgressPublished { get; set; }
+
+        /// <summary>
+        /// The run's net file changes. Held on the runtime rather than recomputed per publish, and
+        /// deliberately kept after the tracker releases its baselines so the summary survives the
+        /// end of the run. It is in-memory only: a restart forgets it, which is honest — the
+        /// baselines it was measured against are gone too.
+        /// </summary>
+        public WorkspaceChangeSet? WorkspaceChanges { get; set; }
         public Task? Worker { get; set; }
         public CancellationTokenSource? Cancellation { get; set; }
         public Guid? ActiveMessageId { get; set; }

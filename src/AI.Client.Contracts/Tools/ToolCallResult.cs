@@ -1,4 +1,4 @@
-namespace AI.Client.Application.Tools;
+namespace AI.Client.Contracts.Tools;
 
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 /// <see cref="StructuredContent"/> drive presentation, <see cref="Meta"/> is host/UI metadata, and
 /// <see cref="ModelContent"/> is the only part that goes back into the model's context.
 /// </summary>
-public sealed record AgentToolResult(
+public sealed record ToolCallResult(
     IReadOnlyList<ToolContent> Content,
     JsonElement? StructuredContent,
     JsonElement? Meta,
@@ -46,11 +46,11 @@ public sealed record AgentToolResult(
     }
 
     /// <summary>A host-side failure that never reached the server, or a refusal by policy.</summary>
-    public static AgentToolResult FromError(string message)
+    public static ToolCallResult FromError(string message)
     {
         var content = new[] { ToolContent.OfText(message) };
         var payload = new JsonObject { ["isError"] = true, ["error"] = message };
-        return new AgentToolResult(content, null, null, true, payload.ToJsonString(ModelFacingJson));
+        return new ToolCallResult(content, null, null, true, payload.ToJsonString(ModelFacingJson));
     }
 }
 

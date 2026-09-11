@@ -5,6 +5,7 @@ using Chats;
 using Projects;
 using Settings;
 using Contracts.Chat;
+using Contracts.Tools;
 using Contracts.Runs;
 using Contracts.Settings;
 using System.Text;
@@ -63,7 +64,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
             context.Add(assistant);
             foreach (var call in calls)
             {
-                AgentToolResult result;
+                ToolCallResult result;
                 try
                 {
                     token.ThrowIfCancellationRequested();
@@ -143,9 +144,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
     }
     // The history keeps the whole result, host metadata included; the model is sent a projection
     // without it, so a third-party server cannot smuggle anything into context through _meta.
-    private static ChatCompletionMessage ToolMessage(string callId, AgentToolResult result) =>
+    private static ChatCompletionMessage ToolMessage(string callId, ToolCallResult result) =>
         new("tool", ToolResultCodec.Write(result), ToolCallId: callId, ModelContent: result.ModelContent);
 
-    private static AgentToolResult Error(string message) => AgentToolResult.FromError(message);
+    private static ToolCallResult Error(string message) => ToolCallResult.FromError(message);
     private sealed record EffectivePolicy(string Decision, int MaxCalls, long TimeoutSeconds);
 }

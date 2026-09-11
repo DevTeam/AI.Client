@@ -107,38 +107,11 @@
             }
             else if (item.ToolGroup is { } group)
             {
-                var pairs = ChatFeed.BuildToolPairs(group);
                 var anchor = group[^1];
                 <article @key="anchor.Id" id="message-@anchor.Id" class="workspace-message tool-group @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)">
-                    <details class="tool-group-summary">
-                        <summary><AppIcon Name="tool" /><span>Tool calls (@pairs.Count)</span></summary>
-                        <div class="tool-group-body">
-                            @foreach (var pair in pairs)
-                            {
-                                <details class="tool-pair">
-                                    <summary class="tool-pair-header">
-                                        <span class="tool-pair-status @(pair.Result is null ? "running" : "done")" aria-hidden="true"></span>
-                                        <span class="tool-pair-name">@pair.Call.Name</span>
-                                    </summary>
-                                    @{ var formattedArguments = FormatArguments(pair.Call.Arguments); }
-                                    @if (!string.IsNullOrEmpty(formattedArguments))
-                                    {
-                                        <pre class="tool-pair-args">@formattedArguments</pre>
-                                    }
-                                    @if (pair.Result is { } result)
-                                    {
-                                        <pre class="tool-pair-result">@FormatToolResult(result.Content)</pre>
-                                    }
-                                    else
-                                    {
-                                        <p class="tool-pair-running">Running…</p>
-                                    }
-                                </details>
-                            }
-                        </div>
-                    </details>
+                    <ToolActivityGroup Group="group" IsLive="@(IsBranchGenerating() && anchor.Id == BranchLeafId)" />
                     <div class="message-actions">
-                        <button class="icon-action" type="button" title="Copy" aria-label="Copy" @onclick="() => OnCopyMessage.InvokeAsync(BuildToolGroupSummaryText(pairs))"><AppIcon Name="copy" /></button>
+                        <button class="icon-action" type="button" title="Copy" aria-label="Copy" @onclick="() => OnCopyMessage.InvokeAsync(BuildToolGroupSummaryText(group))"><AppIcon Name="copy" /></button>
                         <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(anchor) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(anchor)" @onclick="() => OnForkFromMessage.InvokeAsync(anchor)"><AppIcon Name="fork" /></button>
                     </div>
                     @renderBranchPicker(anchor)
@@ -186,49 +159,12 @@
 </div>
 
 @code {
-    private static string FormatToolResult(string content)
-    {
-        try
-        {
-            using var document = System.Text.Json.JsonDocument.Parse(content);
-            var root = document.RootElement;
-            if (root.TryGetProperty("structuredContent", out var result) && result.TryGetProperty("stdout", out var stdout))
-                return $"Exit code: {result.GetProperty("exitCode")} · Duration: {result.GetProperty("durationMs")} ms\n"
-                    + $"Timed out: {result.GetProperty("timedOut")} · Output truncated: {result.GetProperty("truncated")}\n"
-                    + $"{result.GetProperty("error")}\n\nstdout:\n{stdout.GetString()}\n\nstderr:\n{result.GetProperty("stderr").GetString()}";
-            if (root.TryGetProperty("error", out var error)) return error.GetString() ?? content;
-        }
-        catch (Exception error) when (error is System.Text.Json.JsonException or InvalidOperationException or KeyNotFoundException) { }
-        return content;
-    }
-
-    // Renders a tool call's JSON arguments as "param: value" lines instead of raw JSON, so the
-    // common case (a flat object of scalar args) reads like a short form rather than a payload.
-    private static string FormatArguments(string arguments)
-    {
-        try
-        {
-            using var document = System.Text.Json.JsonDocument.Parse(arguments);
-            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return arguments;
-            var properties = document.RootElement.EnumerateObject().ToList();
-            if (properties.Count == 0) return string.Empty;
-            return string.Join("\n", properties.Select(property => $"{property.Name}: {FormatArgumentValue(property.Value)}"));
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            return arguments;
-        }
-    }
-
-    private static string FormatArgumentValue(System.Text.Json.JsonElement value) => value.ValueKind switch
-    {
-        System.Text.Json.JsonValueKind.String => value.GetString() ?? string.Empty,
-        System.Text.Json.JsonValueKind.Null => "null",
-        _ => value.GetRawText(),
-    };
-
-    private string BuildToolGroupSummaryText(List<ChatFeed.ToolPair> pairs) => string.Join("\n\n", pairs.Select(pair =>
-        $"{pair.Call.Name}({pair.Call.Arguments})" + (pair.Result is { } result ? $"\n=> {FormatToolResult(result.Content)}" : string.Empty)));
+    // Copy yields the raw calls and results, not the rendered summaries: someone copying tool
+    // activity wants the payload to paste into a bug report, not the UI's wording of it.
+    private static string BuildToolGroupSummaryText(IReadOnlyList<ChatMessageView> group) =>
+        string.Join("\n\n", ChatFeed.BuildInvocations(group).Select(invocation =>
+            $"{invocation.Call.Name}({invocation.Call.Arguments})"
+            + (invocation.Result is { } result ? $"\n=> {result.Content}" : string.Empty)));
 
     private Guid? _decidingApproval;
     private Guid? _confirmGlobalApprovalId;

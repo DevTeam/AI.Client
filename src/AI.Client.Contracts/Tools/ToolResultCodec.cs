@@ -1,4 +1,4 @@
-namespace AI.Client.Application.Tools;
+namespace AI.Client.Contracts.Tools;
 
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -26,7 +26,7 @@ public static class ToolResultCodec
     };
 
     /// <summary>Serializes the full result, metadata included, for durable history.</summary>
-    public static string Write(AgentToolResult result)
+    public static string Write(ToolCallResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
         var payload = new JsonObject { ["isError"] = result.IsError };
@@ -39,11 +39,11 @@ public static class ToolResultCodec
     }
 
     /// <summary>
-    /// Recovers a typed result from stored content. The returned <see cref="AgentToolResult.ModelContent"/>
+    /// Recovers a typed result from stored content. The returned <see cref="ToolCallResult.ModelContent"/>
     /// is reprojected rather than read back: a rehydrated result is for display, and re-deriving it
     /// keeps the "metadata never reaches the model" rule true even for history written by an older build.
     /// </summary>
-    public static AgentToolResult Read(string? storedContent)
+    public static ToolCallResult Read(string? storedContent)
     {
         if (string.IsNullOrWhiteSpace(storedContent)) return Fallback(string.Empty);
         JsonElement root;
@@ -77,14 +77,14 @@ public static class ToolResultCodec
         if (blocks.Count == 0 && root.TryGetProperty("error", out var message) && message.ValueKind == JsonValueKind.String)
             blocks.Add(ToolContent.OfText(message.GetString() ?? string.Empty));
 
-        return new AgentToolResult(blocks, structured, meta, isError,
-            AgentToolResult.ProjectForModel(blocks, structured, isError));
+        return new ToolCallResult(blocks, structured, meta, isError,
+            ToolCallResult.ProjectForModel(blocks, structured, isError));
     }
 
-    private static AgentToolResult Fallback(string text)
+    private static ToolCallResult Fallback(string text)
     {
         var blocks = new[] { ToolContent.OfText(text) };
-        return new AgentToolResult(blocks, null, null, false, AgentToolResult.ProjectForModel(blocks, null, false));
+        return new ToolCallResult(blocks, null, null, false, ToolCallResult.ProjectForModel(blocks, null, false));
     }
 
     private static JsonObject WriteBlock(ToolContent block)

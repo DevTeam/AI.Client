@@ -140,12 +140,33 @@ public sealed class ChatFeedTests
         var preamble = Assistant("Читаю файлы.", "call-1", "call-2");
         var onlyResult = ToolResult("call-2", "second");
 
-        var pairs = ChatFeed.BuildToolPairs([preamble, onlyResult]);
+        var invocations = ChatFeed.BuildInvocations([preamble, onlyResult]);
 
-        pairs.Count.ShouldBe(2);
-        pairs[0].Call.Id.ShouldBe("call-1");
-        pairs[0].Result.ShouldBeNull();
-        pairs[1].Call.Id.ShouldBe("call-2");
-        pairs[1].Result.ShouldBe(onlyResult);
+        invocations.Count.ShouldBe(2);
+        invocations[0].Call.Id.ShouldBe("call-1");
+        invocations[0].Result.ShouldBeNull();
+        invocations[0].Duration.ShouldBeNull();
+        invocations[1].Call.Id.ShouldBe("call-2");
+        invocations[1].Result.ShouldBe(onlyResult);
+    }
+
+    [Fact]
+    public void ShouldTimeEachCallFromWhenThePreviousOneLanded()
+    {
+        // Calls in a batch run in order and each result is persisted as it lands, so the gap
+        // between landings is the call's own elapsed time — not the whole batch's.
+        var batch = Assistant("Читаю файлы.", "call-1", "call-2");
+        var first = ToolResult("call-1");
+        var second = ToolResult("call-2");
+
+        var invocations = ChatFeed.BuildInvocations([batch, first, second]);
+
+        invocations[0].StartedAt.ShouldBe(batch.CreatedAt);
+        invocations[0].CompletedAt.ShouldBe(first.CreatedAt);
+        invocations[1].StartedAt.ShouldBe(first.CreatedAt);
+        invocations[1].CompletedAt.ShouldBe(second.CreatedAt);
+        // The helper advances its clock a second per message, so neither row inherits the other's.
+        invocations[0].Duration.ShouldBe(TimeSpan.FromSeconds(1));
+        invocations[1].Duration.ShouldBe(TimeSpan.FromSeconds(1));
     }
 }

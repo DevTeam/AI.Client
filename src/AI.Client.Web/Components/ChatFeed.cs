@@ -21,7 +21,21 @@ public static class ChatFeed
         IReadOnlyList<ChatMessageView>? ToolGroup,
         bool IsPreamble = false);
 
-    public readonly record struct ToolPair(ChatToolCall Call, ChatMessageView? Result);
+    /// <summary>
+    /// One call paired with its result, plus the window it actually occupied. The agent runs a
+    /// group's calls in order and persists each result as it lands, so a call's elapsed time is
+    /// the gap between the previous landing and its own — an observed number, not an estimate.
+    /// </summary>
+    public readonly record struct ToolInvocation(
+        ChatToolCall Call,
+        ChatMessageView? Result,
+        DateTimeOffset StartedAt,
+        DateTimeOffset? CompletedAt)
+    {
+        public TimeSpan? Duration => CompletedAt is { } completed && completed > StartedAt
+            ? completed - StartedAt
+            : null;
+    }
 
     public static bool IsToolActivity(ChatMessageView message) =>
         message.Role == "Tool" || (message.Role == "Assistant" && message.ToolCalls is { Count: > 0 });
@@ -82,23 +96,29 @@ public static class ChatFeed
 
     /// <summary>
     /// Pairs each call in the group with its result message (matched by ToolCallId) so a call
-    /// still awaiting its result — the run is mid-flight — renders as "Running…" instead of nothing.
+    /// still awaiting its result — the run is mid-flight — renders as running instead of nothing,
+    /// and timestamps each one from the messages themselves.
     /// </summary>
-    public static List<ToolPair> BuildToolPairs(IReadOnlyList<ChatMessageView> group)
+    public static List<ToolInvocation> BuildInvocations(IReadOnlyList<ChatMessageView> group)
     {
+        ArgumentNullException.ThrowIfNull(group);
         var resultsByCallId = group
             .Where(item => item.Role == "Tool" && item.ToolCallId is not null)
             .ToDictionary(item => item.ToolCallId!, item => item);
-        var pairs = new List<ToolPair>();
+        var invocations = new List<ToolInvocation>();
         foreach (var message in group)
         {
             if (message.ToolCalls is not { Count: > 0 }) continue;
+            // The assistant message is durable intent recorded before any side effect, so the
+            // first call of a batch starts there; each later one starts where the previous ended.
+            var cursor = message.CreatedAt;
             foreach (var call in message.ToolCalls)
             {
                 resultsByCallId.TryGetValue(call.Id, out var result);
-                pairs.Add(new ToolPair(call, result));
+                invocations.Add(new ToolInvocation(call, result, cursor, result?.CreatedAt));
+                if (result is not null) cursor = result.CreatedAt;
             }
         }
-        return pairs;
+        return invocations;
     }
 }

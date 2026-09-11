@@ -2443,93 +2443,156 @@ textarea {
     .permissions-drawer-backdrop { background: transparent; }
 }
 
-/* One collapsed, low-emphasis line per run of consecutive tool-call/tool-result messages, so a
-   multi-call turn doesn't render as a stack of near-empty message bubbles or compete visually
-   with the actual conversation. */
+/* Tool activity: one quiet line per invocation, so a multi-call turn reads as a few status rows
+   rather than competing with the conversation around it. Raw arguments and bulk output live
+   inside the collapsed body and are not built into the DOM until a row is opened. */
 .workspace-message.tool-group {
     padding: 0;
 }
 
-.tool-group-summary > summary {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.1rem 0;
-    color: #737373;
-    font-size: 0.74rem;
-    cursor: pointer;
-    list-style: none;
-}
-
-.tool-group-summary > summary::-webkit-details-marker {
-    display: none;
-}
-
-.tool-group-summary > summary .app-icon {
-    width: 0.8rem;
-    height: 0.8rem;
-    opacity: 0.8;
-}
-
-.tool-group-body {
+.tool-activity {
     display: flex;
     flex-direction: column;
-    margin-top: 0.15rem;
-    padding-left: 0.2rem;
+    gap: 0.1rem;
 }
 
-.tool-pair > summary.tool-pair-header {
+.tool-row {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.15rem 0;
+    gap: 0.45rem;
+    min-height: 1.55rem;
+    padding: 0.1rem 0;
     color: #8a8a8a;
-    font-size: 0.74rem;
+    font-size: 0.76rem;
     cursor: pointer;
     list-style: none;
 }
 
-.tool-pair > summary.tool-pair-header::-webkit-details-marker {
+.tool-row::-webkit-details-marker {
     display: none;
 }
 
-.tool-pair-status {
-    width: 0.4rem;
-    height: 0.4rem;
-    border-radius: 50%;
-    background: #5cb85c;
-    flex-shrink: 0;
+.tool-row:hover {
+    color: #b4b4b4;
 }
 
-.tool-pair-status.running {
-    background: #d9a441;
-    animation: streaming-pulse 1s ease-in-out infinite alternate;
+.tool-row-glyph {
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 0.9rem;
+    height: 0.9rem;
 }
 
-.tool-pair-name {
-    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-    font-size: 0.76rem;
+.tool-row-glyph .app-icon {
+    width: 0.85rem;
+    height: 0.85rem;
 }
 
-.tool-pair-running {
-    color: #737373;
-    font-size: 0.74rem;
-    margin: 0.1rem 0 0.1rem 1rem;
+.tool-row-failed > .tool-row .tool-row-glyph {
+    color: #e0665f;
 }
 
-/* Arguments/result shown directly under the call's own <details> — no extra collapsible level. */
-.tool-pair-args, .tool-pair-result {
-    margin: 0.1rem 0 0.1rem 1rem;
-    padding: 0.3rem 0.5rem;
-    border-left: 2px solid #333;
-    color: #9c9c9c;
-    font-size: 0.74rem;
+.tool-row-title {
+    color: #c8c8c8;
+    white-space: nowrap;
+}
+
+/* The detail is the elastic part of the row: it gives up width first so the status, the title and
+   the duration always stay on one line. Adapters shorten long values themselves, keeping the
+   informative end — CSS only handles the overflow that remains. */
+.tool-row-detail {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tool-row-safety {
+    flex: 0 0 auto;
+    padding: 0 0.3rem;
+    border: 1px solid #6b4a46;
+    border-radius: 0.5rem;
+    color: #d98b84;
+    font-size: 0.66rem;
+}
+
+.tool-row-meta {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.4rem;
+    margin-left: auto;
+    padding-left: 0.4rem;
+    white-space: nowrap;
+}
+
+.tool-row-elapsed {
+    color: #6f6f6f;
+}
+
+.tool-row-spinner {
+    animation: tool-row-spin 0.9s linear infinite;
+}
+
+@keyframes tool-row-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tool-row-spinner { animation: none; }
+}
+
+.tool-row-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin: 0.2rem 0 0.45rem 1.35rem;
+    padding-left: 0.6rem;
+    border-left: 1px solid #3a3a3a;
+}
+
+.tool-row-facts {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.1rem 0.6rem;
+    margin: 0;
+    font-size: 0.72rem;
+}
+
+.tool-row-facts dt {
+    color: #7a7a7a;
+}
+
+.tool-row-facts dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: #b4b4b4;
+}
+
+.tool-row-args,
+.tool-row-output {
+    max-height: 22rem;
+    margin: 0;
+    overflow: auto;
+    color: #9a9a9a;
+    font-size: 0.72rem;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    max-height: 24rem;
-    overflow: auto;
 }
 
-.tool-pair-result {
+.tool-row-output {
     color: #b0b0b0;
 }
+
+.tool-row-running {
+    margin: 0;
+    color: #7a7a7a;
+    font-size: 0.72rem;
+}
+
+/* A batch folds into one line first; opening it reveals the same rows, indented. */
+.tool-activity-batch > .tool-activity-rows {
+    margin-left: 1.35rem;
+}
+

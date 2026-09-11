@@ -76,6 +76,10 @@ body {
 }
 
 .sidebar-projects {
+    /* One column for whatever marks a row — an icon, a status dot — so the labels beside them all
+       start at the same x. A dot is less than half an icon's width, and without a shared slot the
+       text next to it simply started wherever the mark happened to end. */
+    --nav-mark: 1rem;
     min-height: 0;
     overflow-y: auto;
     padding: 0.45rem 1rem 1rem;
@@ -99,6 +103,12 @@ body {
     font-size: 0.8rem;
 }
 
+/* The dot keeps its size and is centred in the shared mark slot, rather than being stretched to
+   fill it — a status dot that big would read as a badge. */
+.project-nav-row > .workspace-nav-item > .status-dot {
+    margin-inline: calc((var(--nav-mark) - 0.35rem - 2px) / 2);
+}
+
 /* Reads as an action, not as a project: muted until pointed at, so the list below it stays the
    thing the eye lands on first. */
 .new-project-action {
@@ -113,8 +123,8 @@ body {
 }
 
 .new-project-action .app-icon {
-    width: 0.95rem;
-    height: 0.95rem;
+    width: var(--nav-mark);
+    height: var(--nav-mark);
     flex: none;
 }
 

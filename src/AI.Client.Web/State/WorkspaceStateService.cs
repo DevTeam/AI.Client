@@ -23,6 +23,14 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
     private Dictionary<Guid, ProjectContextEntry> _projectContexts = [];
     private Dictionary<string, string> _composerDrafts = [];
     private bool _initialized;
+    // Tracks the last key/text that was queued but not yet persisted. Used by
+    // FlushPendingComposerDraftAsync to know whether a write is actually owed. The text is
+    // already reflected in _composerDrafts — we update that eagerly in QueueComposerDraftSave
+    // so a draft for one key isn't silently dropped when a save for a different key cancels
+    // the shared debouncer (see issue: typing in project A then switching to B then typing in
+    // B within 500ms used to lose A's text entirely because the dictionary was only mutated
+    // inside the now-cancelled SaveDraftAfterDelayAsync).
+    private string? _pendingDraftKey;
     private CancellationTokenSource? _draftSaveCts;
 
     public Guid? LastProjectId { get; private set; }
@@ -81,14 +89,24 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
         if (draftKey.Length == 0) return;
         if (_composerDrafts.GetValueOrDefault(draftKey, string.Empty) == text) return;
 
+        // Reflect the new value in the in-memory dictionary immediately, before scheduling the
+        // debounce. The shared _draftSaveCts gets cancelled when the next keystroke arrives —
+        // if the dictionary were only mutated inside SaveDraftAfterDelayAsync (as it used to
+        // be), cancelling the in-flight write would also discard the previous key's text:
+        // typing in project A, switching to B, then typing in B within 500ms would lose A's
+        // draft entirely, because the cancelled A-task never got to set _composerDrafts["new:{A.Id}"].
+        // Updating eagerly means the eventual write covers both keys regardless of who wins.
+        if (string.IsNullOrEmpty(text)) _composerDrafts.Remove(draftKey); else _composerDrafts[draftKey] = text;
+        _pendingDraftKey = draftKey;
+
         _draftSaveCts?.Cancel();
         _draftSaveCts?.Dispose();
         var cts = new CancellationTokenSource();
         _draftSaveCts = cts;
-        _ = SaveDraftAfterDelayAsync(draftKey, text, cts.Token);
+        _ = SaveDraftAfterDelayAsync(cts.Token);
     }
 
-    private async Task SaveDraftAfterDelayAsync(string key, string text, CancellationToken token)
+    private async Task SaveDraftAfterDelayAsync(CancellationToken token)
     {
         try
         {
@@ -100,8 +118,25 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
         }
         if (token.IsCancellationRequested) return;
 
-        if (string.IsNullOrEmpty(text)) _composerDrafts.Remove(key); else _composerDrafts[key] = text;
         await jsRuntime.InvokeVoidAsync("localStorage.setItem", token, ComposerDraftKey, JsonSerializer.Serialize(_composerDrafts));
+        if (!token.IsCancellationRequested) _pendingDraftKey = null;
+    }
+
+    public async Task FlushPendingComposerDraftAsync()
+    {
+        if (_pendingDraftKey is null) return;
+        _draftSaveCts?.Cancel();
+        _draftSaveCts?.Dispose();
+        _draftSaveCts = null;
+        // The dictionary is already up to date (QueueComposerDraftSave updates it eagerly);
+        // the only thing left to do is push it to localStorage so the next page load — or a
+        // tab close inside the 500ms debounce window — still sees the draft. Without this,
+        // navigating from project A to B within the debounce window would only persist the
+        // draft if the user typed something in B (cancelling A's timer) to trigger another
+        // save; if the user just clicked around, the timer would still fire eventually, but
+        // a quick tab close would race it.
+        await jsRuntime.InvokeVoidAsync("localStorage.setItem", ComposerDraftKey, JsonSerializer.Serialize(_composerDrafts));
+        _pendingDraftKey = null;
     }
 
     public ValueTask DisposeAsync()

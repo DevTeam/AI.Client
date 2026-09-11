@@ -636,6 +636,13 @@
     {
         _globalSection = null;
         _attachComposer = true;
+        // Flush any unsent composer text for the project we're leaving BEFORE we reset
+        // _selectedProject/_selectedChat. Without this, a draft typed up to 500ms ago can be
+        // cancelled by the very next keystroke in the new project (the debouncer is shared),
+        // which used to silently drop the previous project's draft. The flush forces it into
+        // localStorage synchronously so the next time the user comes back to this project,
+        // RestoreComposerDraft below actually has something to find.
+        await WorkspaceStateService.FlushPendingComposerDraftAsync();
         _selectedProject = project;
         _isProjectMenuOpen = false;
         _isProjectSettingsOpen = false;
@@ -658,13 +665,15 @@
         {
             await SelectChatAsync(chatId);
         }
-        else if (restoreLastChat)
-        {
-            RestoreComposerDraft();
-        }
         else
         {
-            _chat.Message = string.Empty;
+            // Restore the "new chat" draft for this project regardless of restoreLastChat.
+            // restoreLastChat only governs whether to auto-reopen a chat (which carries its
+            // own draft, restored via SelectChatAsync above); the new-chat draft is per-
+            // project and was previously only restored on initial app load, so clicking the
+            // project in the sidebar — which passes restoreLastChat: false — would always
+            // show an empty composer even when the user had unsent text waiting.
+            RestoreComposerDraft();
         }
     }
 
@@ -1043,6 +1052,13 @@
         {
             await SelectChatProfileAsync(new ChangeEventArgs { Value = endpointId.ToString() });
         }
+        // Drop any previously-typed "new chat" draft for this project. The user just clicked
+        // "+", they want a fresh composer — if we only cleared _chat.Message here, the draft
+        // would still be in localStorage and reappear the next time they navigate away and
+        // back (RestoreComposerDraft in SelectProjectAsync would find it again). The flush
+        // makes the deletion land in localStorage before that navigation can happen.
+        WorkspaceStateService.QueueComposerDraftSave($"new:{_selectedProject.Id}", string.Empty);
+        await WorkspaceStateService.FlushPendingComposerDraftAsync();
         _chat.Message = string.Empty;
         if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("focus");
     }

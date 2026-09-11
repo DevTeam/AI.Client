@@ -459,7 +459,10 @@ public sealed class ChatExecutionTests
     {
         public int CallCount { get; private set; }
         public int OpenCount { get; private set; }
-        public IReadOnlyList<AgentTool> Tools { get; } = [new(new ChatToolDefinition("mcp_built_in__process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")), DefaultMcpServer.Id, "process_run", "schema")];
+        public IReadOnlyList<AgentTool> Tools { get; } = [new(
+            new ChatToolDefinition("mcp_built_in__process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_built_in__process_run", "process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
+            DefaultMcpServer.Id, "process_run", "schema")];
         public IReadOnlyList<ToolDirectoryGrant> Grants { get; private set; } = [];
         public Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, CancellationToken cancellationToken)
         {
@@ -468,10 +471,10 @@ public sealed class ChatExecutionTests
             return Task.FromResult<IToolSession>(this);
         }
         public string ValidateArguments(AgentTool tool, string arguments) => arguments;
-        public Task<string> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken)
+        public Task<AgentToolResult> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken)
         {
             CallCount++;
-            return Task.FromResult("{\"exitCode\":0}");
+            return Task.FromResult(ToolResultCodec.Read("{\"structuredContent\":{\"exitCode\":0}}"));
         }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

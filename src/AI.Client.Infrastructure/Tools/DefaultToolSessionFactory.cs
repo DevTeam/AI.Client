@@ -7,7 +7,6 @@ using Json.Schema;
 using ModelContextProtocol.Client;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -15,16 +14,6 @@ public sealed class DefaultToolSessionFactory : IToolSessionFactory
 {
     /// <summary>Name of the environment variable through which the built-in server receives its directory grants.</summary>
     public const string DirectoryGrantsVariable = "AI_CLIENT_DIRECTORY_GRANTS";
-
-    // This is the tool result string a model actually reads back on every following turn — not
-    // markup rendered into a browser — so the default encoder's blanket escaping of non-ASCII
-    // text (`\uXXXX` per character) is pure waste here, and it compounds with ToolReply's own use
-    // of the same relaxed encoder one layer in: a tool result already free of that escaping would
-    // otherwise get it reintroduced right back by this second, outer serialization pass.
-    private static readonly JsonSerializerOptions ModelFacingJson = new()
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
 
     public async Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, CancellationToken cancellationToken)
     {
@@ -67,7 +56,24 @@ public sealed class DefaultToolSessionFactory : IToolSessionFactory
                 if (tool.OutputSchema is { } outputSchema) _ = JsonSchema.Build(outputSchema);
                 var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
                     tool.InputSchema.GetRawText() + tool.OutputSchema?.GetRawText())));
-                return new AgentTool(new ChatToolDefinition("mcp_built_in__" + tool.Name, tool.Description ?? tool.Name, tool.InputSchema),
+                var name = "mcp_built_in__" + tool.Name;
+                // The provider sees only what a function definition may contain; title, icons,
+                // annotations, output schema and _meta stay on this side for the Host and the UI.
+                return new AgentTool(
+                    new ChatToolDefinition(name, tool.Description ?? tool.Name, tool.InputSchema),
+                    new ToolDescriptor(
+                        name,
+                        tool.Name,
+                        tool.Title,
+                        tool.Description,
+                        tool.InputSchema,
+                        tool.OutputSchema,
+                        tool.Annotations is { } annotations
+                            ? new Application.Tools.ToolAnnotations(annotations.Title, annotations.ReadOnlyHint,
+                                annotations.DestructiveHint, annotations.IdempotentHint, annotations.OpenWorldHint)
+                            : null,
+                        tool.Icons?.Select(icon => new ToolIcon(icon.Source, icon.MimeType, icon.Sizes?.ToArray() ?? [])).ToArray() ?? [],
+                        ToElement(tool.Meta)),
                     DefaultMcpServer.Id, tool.Name, hash);
             }).ToArray();
         }
@@ -100,15 +106,42 @@ public sealed class DefaultToolSessionFactory : IToolSessionFactory
             return Path.GetFullPath(path);
         }
 
-        public async Task<string> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken)
+        public async Task<AgentToolResult> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken)
         {
             var values = JsonSerializer.Deserialize<Dictionary<string, object?>>(ValidateArguments(tool, arguments))!;
             var result = await _client.CallToolAsync(tool.OriginalName, values, cancellationToken: cancellationToken);
             if (_descriptors[tool.OriginalName].OutputSchema is { } outputSchema
                 && (result.StructuredContent is not { } content || !JsonSchema.Build(outputSchema).Evaluate(content).IsValid))
                 throw new InvalidOperationException("Tool result does not match the output schema.");
-            return JsonSerializer.Serialize(result, ModelFacingJson);
+            var blocks = (result.Content ?? []).Select(Describe).ToArray();
+            return new AgentToolResult(blocks, result.StructuredContent, ToElement(result.Meta), result.IsError ?? false,
+                AgentToolResult.ProjectForModel(blocks, result.StructuredContent, result.IsError ?? false));
         }
+
+        // The protocol exposes _meta as a mutable JsonObject; the Application contracts take an
+        // immutable JsonElement, so it is snapshotted here rather than shared across the boundary.
+        private static JsonElement? ToElement(JsonObject? meta) =>
+            meta is null ? null : JsonSerializer.SerializeToElement(meta);
+
+        // Flattens a protocol content block to the parts presentation needs. An unrecognised block
+        // type still arrives as ToolContentKind.Unknown rather than being dropped, so a server that
+        // speaks a newer revision of the spec degrades instead of rendering as nothing.
+        private static ToolContent Describe(ModelContextProtocol.Protocol.ContentBlock block) => block switch
+        {
+            ModelContextProtocol.Protocol.TextContentBlock text =>
+                new ToolContent(ToolContentKind.Text, text.Text, null, null, null),
+            ModelContextProtocol.Protocol.ImageContentBlock image =>
+                new ToolContent(ToolContentKind.Image, null, image.MimeType, null, null),
+            ModelContextProtocol.Protocol.AudioContentBlock audio =>
+                new ToolContent(ToolContentKind.Audio, null, audio.MimeType, null, null),
+            ModelContextProtocol.Protocol.ResourceLinkBlock link =>
+                new ToolContent(ToolContentKind.ResourceLink, null, link.MimeType, link.Uri, link.Name),
+            ModelContextProtocol.Protocol.EmbeddedResourceBlock embedded =>
+                new ToolContent(ToolContentKind.Resource,
+                    (embedded.Resource as ModelContextProtocol.Protocol.TextResourceContents)?.Text,
+                    embedded.Resource?.MimeType, embedded.Resource?.Uri, null),
+            _ => new ToolContent(ToolContentKindExtensions.FromWireType(block.Type), null, null, null, null),
+        };
         public ValueTask DisposeAsync() => _client.DisposeAsync();
     }
 }

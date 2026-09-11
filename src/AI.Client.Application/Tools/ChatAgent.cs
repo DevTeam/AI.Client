@@ -8,7 +8,6 @@ using Contracts.Chat;
 using Contracts.Runs;
 using Contracts.Settings;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 
 public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFactory sessions,
@@ -42,7 +41,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
             var available = new List<ChatToolDefinition>();
             if (session is not null)
                 foreach (var tool in session.Tools)
-                    if ((await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") available.Add(tool.Definition);
+                    if ((await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") available.Add(tool.ModelDefinition);
             var calls = new List<ChatToolCall>();
             var content = new StringBuilder();
             await foreach (var chunk in completion.StreamAsync(request with { ContextMessages = context, Tools = available }, token))
@@ -64,11 +63,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
             context.Add(assistant);
             foreach (var call in calls)
             {
-                string result;
+                AgentToolResult result;
                 try
                 {
                     token.ThrowIfCancellationRequested();
-                    var tool = session?.Tools.SingleOrDefault(item => item.Definition.Name == call.Name)
+                    var tool = session?.Tools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name)
                         ?? throw new ArgumentException("Unknown tool.");
                     var arguments = session!.ValidateArguments(tool, call.Arguments);
                     var policy = await PolicyAsync(projectId, chatId, tool, token);
@@ -101,8 +100,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                 catch (OperationCanceledException)
                 {
                     result = Error("Invocation interrupted or timed out. Its effects may have occurred. Do not automatically repeat it.");
-                    var interrupted = new ChatCompletionMessage("tool", result, ToolCallId: call.Id);
-                    await persist(interrupted, CancellationToken.None);
+                    await persist(ToolMessage(call.Id, result), CancellationToken.None);
                     throw;
                 }
                 catch (Exception error) when (error is ArgumentException or JsonException)
@@ -112,10 +110,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                 catch (Exception)
                 {
                     // A transport failure can happen after a side effect. Record uncertainty and stop.
-                    await persist(new ChatCompletionMessage("tool", Error("Tool transport failed; outcome unknown. Do not automatically repeat it."), ToolCallId: call.Id), CancellationToken.None);
+                    await persist(ToolMessage(call.Id, Error("Tool transport failed; outcome unknown. Do not automatically repeat it.")), CancellationToken.None);
                     throw;
                 }
-                var message = new ChatCompletionMessage("tool", result, ToolCallId: call.Id);
+                var message = ToolMessage(call.Id, result);
                 await persist(message, token);
                 context.Add(message);
                 await activity(null, token);
@@ -143,10 +141,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
             Math.Clamp(chatPolicy?.MaxCallsPerRun ?? projectPolicy?.MaxCallsPerRun ?? globalPolicy?.MaxCallsPerRun ?? 65535, 1, int.MaxValue),
             Math.Clamp(chatPolicy?.TimeoutSeconds ?? projectPolicy?.TimeoutSeconds ?? globalPolicy?.TimeoutSeconds ?? 120, 1, 600));
     }
-    // A denial/failure message can quote a path or argument the model itself supplied, which may
-    // contain non-ASCII text — same reasoning as ToolReply/DefaultToolSessionFactory for not
-    // paying the default encoder's `\uXXXX` escaping on text the model, not a browser, reads back.
-    private static readonly JsonSerializerOptions ErrorJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
-    private static string Error(string message) => JsonSerializer.Serialize(new { isError = true, error = message }, ErrorJson);
+    // The history keeps the whole result, host metadata included; the model is sent a projection
+    // without it, so a third-party server cannot smuggle anything into context through _meta.
+    private static ChatCompletionMessage ToolMessage(string callId, AgentToolResult result) =>
+        new("tool", ToolResultCodec.Write(result), ToolCallId: callId, ModelContent: result.ModelContent);
+
+    private static AgentToolResult Error(string message) => AgentToolResult.FromError(message);
     private sealed record EffectivePolicy(string Decision, int MaxCalls, long TimeoutSeconds);
 }

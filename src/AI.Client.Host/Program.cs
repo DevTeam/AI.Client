@@ -99,7 +99,7 @@ app.MapGet("/api/mcp/default/tools", async (AI.Client.Application.Tools.IToolSes
     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
     timeout.CancelAfter(TimeSpan.FromSeconds(15));
     await using var session = await factory.OpenAsync([], timeout.Token);
-    return session.Tools.Select(tool => new McpToolInfo(tool.ServerId, tool.OriginalName, tool.Definition.Description, tool.SchemaHash)).ToArray();
+    return session.Tools.Select(tool => new McpToolInfo(tool.ServerId, tool.OriginalName, tool.ModelDefinition.Description, tool.SchemaHash)).ToArray();
 });
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/tools/decision",
     async (Guid projectId, Guid chatId, Guid branchId, ToolApprovalDecision decision, IChatRunDispatcher dispatcher, CancellationToken token) =>

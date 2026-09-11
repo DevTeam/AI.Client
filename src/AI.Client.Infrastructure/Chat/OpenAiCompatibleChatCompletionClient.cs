@@ -46,7 +46,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             messages = (request.ContextMessages is { Count: > 0 }
                     ? request.ContextMessages
                     : [new ChatCompletionMessage("user", request.Message.Trim())])
-                .Select(item => new { role = item.Role, content = item.Content })
+                .Select(item => new { role = item.Role, content = item.ForModel })
                 .ToArray(),
             stream = false
         });
@@ -146,7 +146,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         var messages = (request.ContextMessages is { Count: > 0 } ? request.ContextMessages
             : [new ChatCompletionMessage("user", request.Message.Trim())]).Select(item =>
         {
-            var message = new Dictionary<string, object?> { ["role"] = item.Role, ["content"] = item.Content };
+            var message = new Dictionary<string, object?> { ["role"] = item.Role, ["content"] = item.ForModel };
             if (item.ToolCallId is not null) message["tool_call_id"] = item.ToolCallId;
             if (item.ToolCalls is { Count: > 0 }) message["tool_calls"] = item.ToolCalls.Select(call => new
             {

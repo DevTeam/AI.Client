@@ -19,6 +19,7 @@ using Xunit;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using AI.Client.Application.Tools;
+using AI.Client.Contracts.Tools;
 using System.Text.Json;
 
 public sealed class ChatExecutionTests
@@ -471,7 +472,7 @@ public sealed class ChatExecutionTests
             return Task.FromResult<IToolSession>(this);
         }
         public string ValidateArguments(AgentTool tool, string arguments) => arguments;
-        public Task<AgentToolResult> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken)
+        public Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken)
         {
             CallCount++;
             return Task.FromResult(ToolResultCodec.Read("{\"structuredContent\":{\"exitCode\":0}}"));

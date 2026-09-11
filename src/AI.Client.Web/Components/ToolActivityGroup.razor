@@ -1,0 +1,192 @@
+@* One run of tool activity, rendered as calm compact rows rather than a wall of JSON.
+
+   Every label here is derived deterministically from the call name, its arguments and its actual
+   result (see ToolPresentations) — never from a second model call, and never counted from
+   anything the Host did not observe. Raw arguments and bulk output stay out of the DOM until a
+   row is expanded, so a 10MB stdout costs nothing to scroll past. *@
+@using AI.Client.Contracts.Tools
+
+<div class="tool-activity">
+    @{
+        var invocations = ChatFeed.BuildInvocations(Group);
+        var failed = invocations.Count(item => item.Result is not null && Describe(item).Severity == ToolResultSeverity.Error);
+        var unfinished = invocations.Count(item => item.Result is null);
+        var pending = IsLive ? unfinished : 0;
+        // A handful of rows read fine inline; a long batch folds into one line first, so a
+        // 18-call turn doesn't bury the conversation around it.
+        var folded = invocations.Count > InlineRowLimit && failed == 0;
+    }
+    @if (folded)
+    {
+        <details class="tool-activity-batch">
+            <summary class="tool-row">
+                <span class="tool-row-glyph" aria-hidden="true">
+                    @if (pending > 0) { <AppIcon Name="spinner" Class="tool-row-spinner" /> } else { <AppIcon Name="check" /> }
+                </span>
+                <span class="tool-row-title">@(pending > 0 ? "Running tools" : "Tools finished")</span>
+                <span class="tool-row-detail">@invocations.Count tool calls@(pending == 0 && unfinished > 0 ? $" · {unfinished} without a result" : string.Empty)</span>
+                <span class="tool-row-meta">@FormatDuration(TotalDuration(invocations))</span>
+            </summary>
+            <div class="tool-activity-rows">
+                @foreach (var invocation in invocations) { @RenderRow(invocation) }
+            </div>
+        </details>
+    }
+    else
+    {
+        @foreach (var invocation in invocations) { @RenderRow(invocation) }
+    }
+</div>
+
+@code {
+    /// <summary>Above this many calls a group folds into a single summary line.</summary>
+    private const int InlineRowLimit = 3;
+
+    [Parameter] [EditorRequired] public IReadOnlyList<ChatMessageView> Group { get; set; } = [];
+
+    /// <summary>
+    /// Whether this group belongs to a run that is still going. A call with no result is only
+    /// "running" while that is true; in settled history the same shape means the run ended before
+    /// the result was recorded, and showing it as a spinner forever would be a lie.
+    /// </summary>
+    [Parameter] public bool IsLive { get; set; }
+
+    private RenderFragment RenderRow(ChatFeed.ToolInvocation invocation) => @<text>
+        @{
+            var call = ToolPresentations.Default.DescribeCall(invocation.Call.Name, invocation.Call.Arguments);
+            var running = invocation.Result is null && IsLive;
+            var abandoned = invocation.Result is null && !IsLive;
+            var result = invocation.Result is null ? null : Describe(invocation);
+            var severity = abandoned
+                ? ToolResultSeverity.Warning
+                : result?.Severity ?? ToolResultSeverity.Ok;
+            // Success collapses; a failure stays open, because that is the state the user has to
+            // act on.
+            var open = severity == ToolResultSeverity.Error;
+        }
+        <details class="tool-row-item @SeverityClass(severity)" open="@open">
+            <summary class="tool-row">
+                <span class="tool-row-glyph" aria-hidden="true">
+                    @if (running) { <AppIcon Name="spinner" Class="tool-row-spinner" /> }
+                    else if (severity == ToolResultSeverity.Error) { <AppIcon Name="error" /> }
+                    else if (abandoned) { <AppIcon Name="interrupted" /> }
+                    else { <AppIcon Name="check" /> }
+                </span>
+                <span class="tool-row-title">@call.Title</span>
+                @if (call.Detail is { Length: > 0 } detail)
+                {
+                    <span class="tool-row-detail" title="@detail">@detail</span>
+                }
+                @if (SafetyLabel(call.Safety) is { } safety)
+                {
+                    <span class="tool-row-safety">@safety</span>
+                }
+                <span class="tool-row-meta">
+                    @if (result is not null) { @result.Summary }
+                    else if (abandoned) { <span>No result recorded</span> }
+                    @if (FormatDuration(invocation.Duration) is { } elapsed) { <span class="tool-row-elapsed">@elapsed</span> }
+                </span>
+            </summary>
+            <div class="tool-row-body">
+                @if (result is { Facts.Count: > 0 })
+                {
+                    <dl class="tool-row-facts">
+                        @foreach (var fact in result.Facts)
+                        {
+                            <dt>@fact.Label</dt>
+                            <dd>@fact.Value</dd>
+                        }
+                    </dl>
+                }
+                @if (FormatArguments(invocation.Call.Arguments) is { Length: > 0 } arguments)
+                {
+                    <pre class="tool-row-args">@arguments</pre>
+                }
+                @if (result?.Body is { Length: > 0 } body)
+                {
+                    <pre class="tool-row-output @(result.BodyFormat == ToolBodyFormat.Diff ? "tool-row-diff" : string.Empty)">@body</pre>
+                }
+                else if (running)
+                {
+                    <p class="tool-row-running">Waiting for the result…</p>
+                }
+                else if (abandoned)
+                {
+                    <p class="tool-row-running">The run ended before this call reported back. Its effects may still have happened.</p>
+                }
+            </div>
+        </details>
+    </text>;
+
+    // Parsing a result and describing it is not free — a single process_run can carry megabytes of
+    // stdout — and Blazor re-renders this subtree whenever the run snapshot changes. Results are
+    // immutable once written, so the message id is a sound cache key.
+    private readonly Dictionary<Guid, ToolResultPresentation> _described = [];
+
+    private ToolResultPresentation Describe(ChatFeed.ToolInvocation invocation)
+    {
+        if (invocation.Result is not { } message) return EmptyResult;
+        if (_described.TryGetValue(message.Id, out var cached)) return cached;
+        var described = ToolPresentations.Default.DescribeResult(
+            invocation.Call.Name, invocation.Call.Arguments, ToolResultCodec.Read(message.Content));
+        _described[message.Id] = described;
+        return described;
+    }
+
+    private static readonly ToolResultPresentation EmptyResult = new("", ToolResultSeverity.Ok, [], null);
+
+    /// <summary>Sums only what was actually observed; an unfinished call contributes nothing.</summary>
+    private static TimeSpan? TotalDuration(IReadOnlyList<ChatFeed.ToolInvocation> invocations)
+    {
+        var total = TimeSpan.Zero;
+        var any = false;
+        foreach (var invocation in invocations)
+        {
+            if (invocation.Duration is not { } duration) continue;
+            total += duration;
+            any = true;
+        }
+        return any ? total : null;
+    }
+
+    private static string? FormatDuration(TimeSpan? duration) => duration switch
+    {
+        null => null,
+        { TotalSeconds: < 1 } value => $"{value.TotalMilliseconds:F0} ms",
+        { TotalSeconds: < 60 } value => $"{value.TotalSeconds:F1} s",
+        { } value => $"{(int)value.TotalMinutes}m {value.Seconds}s",
+    };
+
+    // Only the two states worth a badge. "Mutating" is the unremarkable default for anything that
+    // writes, and Unknown means the server said nothing — neither earns visual weight.
+    private static string? SafetyLabel(ToolSafety safety) => safety switch
+    {
+        ToolSafety.Destructive => "destructive",
+        _ => null,
+    };
+
+    private static string SeverityClass(ToolResultSeverity severity) => severity switch
+    {
+        ToolResultSeverity.Error => "tool-row-failed",
+        ToolResultSeverity.Warning => "tool-row-warned",
+        _ => string.Empty,
+    };
+
+    // Renders a call's JSON arguments as "param: value" lines instead of raw JSON, so the common
+    // case (a flat object of scalar args) reads like a short form rather than a payload.
+    private static string FormatArguments(string arguments)
+    {
+        if (ToolPresentations.ParseArguments(arguments) is not { } input) return arguments;
+        if (input.ValueKind != System.Text.Json.JsonValueKind.Object) return arguments;
+        var properties = input.EnumerateObject().ToList();
+        if (properties.Count == 0) return string.Empty;
+        return string.Join("\n", properties.Select(property => $"{property.Name}: {FormatArgumentValue(property.Value)}"));
+    }
+
+    private static string FormatArgumentValue(System.Text.Json.JsonElement value) => value.ValueKind switch
+    {
+        System.Text.Json.JsonValueKind.String => value.GetString() ?? string.Empty,
+        System.Text.Json.JsonValueKind.Null => "null",
+        _ => value.GetRawText(),
+    };
+}

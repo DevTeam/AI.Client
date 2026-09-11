@@ -6,6 +6,7 @@ using AI.Client.Mcp.BuiltIn.Web;
 namespace AI.Client.Infrastructure.Tests.Tools;
 
 using AI.Client.Application.Tools;
+using AI.Client.Contracts.Tools;
 using AI.Client.Infrastructure.Tools;
 using Shouldly;
 using System.Text.Json;

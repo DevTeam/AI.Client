@@ -1,6 +1,7 @@
 namespace AI.Client.Application.Tools;
 
 using Contracts.Chat;
+using Contracts.Tools;
 
 /// <summary>
 /// A tool as the Host sees it: the function definition the provider is allowed to see, and the
@@ -21,7 +22,7 @@ public interface IToolSession : IAsyncDisposable
 {
     IReadOnlyList<AgentTool> Tools { get; }
     string ValidateArguments(AgentTool tool, string arguments);
-    Task<AgentToolResult> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken);
+    Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken);
 }
 
 public interface IToolSessionFactory

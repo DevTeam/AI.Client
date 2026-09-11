@@ -2,6 +2,7 @@ namespace AI.Client.Infrastructure.Tools;
 
 using Application.Tools;
 using Contracts.Chat;
+using Contracts.Tools;
 using Contracts.Settings;
 using Json.Schema;
 using ModelContextProtocol.Client;
@@ -106,7 +107,7 @@ public sealed class DefaultToolSessionFactory : IToolSessionFactory
             return Path.GetFullPath(path);
         }
 
-        public async Task<AgentToolResult> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken)
+        public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken)
         {
             var values = JsonSerializer.Deserialize<Dictionary<string, object?>>(ValidateArguments(tool, arguments))!;
             var result = await _client.CallToolAsync(tool.OriginalName, values, cancellationToken: cancellationToken);
@@ -114,8 +115,8 @@ public sealed class DefaultToolSessionFactory : IToolSessionFactory
                 && (result.StructuredContent is not { } content || !JsonSchema.Build(outputSchema).Evaluate(content).IsValid))
                 throw new InvalidOperationException("Tool result does not match the output schema.");
             var blocks = (result.Content ?? []).Select(Describe).ToArray();
-            return new AgentToolResult(blocks, result.StructuredContent, ToElement(result.Meta), result.IsError ?? false,
-                AgentToolResult.ProjectForModel(blocks, result.StructuredContent, result.IsError ?? false));
+            return new ToolCallResult(blocks, result.StructuredContent, ToElement(result.Meta), result.IsError ?? false,
+                ToolCallResult.ProjectForModel(blocks, result.StructuredContent, result.IsError ?? false));
         }
 
         // The protocol exposes _meta as a mutable JsonObject; the Application contracts take an

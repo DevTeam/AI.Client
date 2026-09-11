@@ -1,13 +1,22 @@
-@* The run's net file changes, as one list above the composer rather than repeated inside every
-   tool row. The numbers are measured by the Host against content captured before the run first
-   touched each path, so repeated edits to one file collapse into a single net difference and
-   anything the user changed beforehand is never counted here. *@
+@* The run's net file changes, as one card at the end of the turn rather than repeated inside
+   every tool row. The numbers are measured by the Host against content captured before the run
+   first touched each path, so repeated edits to one file collapse into a single net difference
+   and anything the user changed beforehand is never counted here. *@
 @using AI.Client.Contracts.Workspace
 
 @if (Changes is { IsEmpty: false } changes)
 {
     <section class="workspace-changes" aria-label="Files changed by this run">
+        @if (!changes.IsComplete)
+        {
+            @* Above the count, not below it: the caveat qualifies the number, and a reader who
+               only takes in the header has to have met it already. *@
+            <p class="workspace-changes-note">
+                A command or an external tool ran during this turn, so this list may be incomplete.
+            </p>
+        }
         <header class="workspace-changes-header">
+            <span class="workspace-changes-icon" aria-hidden="true"><AppIcon Name="diff" /></span>
             <span class="workspace-changes-title">Files changed</span>
             <span class="workspace-changes-count">@changes.Files.Count</span>
             @* The sign carries the meaning, not the colour: red/green alone fails for anyone who
@@ -17,12 +26,6 @@
                 <span class="workspace-removed">−@changes.Deletions</span>
             </span>
         </header>
-        @if (!changes.IsComplete)
-        {
-            <p class="workspace-changes-note">
-                A command or an external tool ran during this turn, so this list may be incomplete.
-            </p>
-        }
         <ul class="workspace-changes-list">
             @foreach (var file in changes.Files)
             {

@@ -48,29 +48,6 @@ body {
     background: #171717;
 }
 
-.workspace-shell.left-collapsed {
-    --sidebar-track: 2.8rem;
-    --left-divider: 0;
-}
-
-.workspace-shell.left-collapsed .workspace-sidebar {
-    overflow: hidden;
-    padding: 0.45rem;
-}
-
-.workspace-shell.left-collapsed .workspace-sidebar > *,
-.workspace-shell.left-collapsed .workspace-resizer[data-side="left"] {
-    visibility: hidden;
-    pointer-events: none;
-}
-
-.sidebar-toggle {
-    position: absolute;
-    z-index: 6;
-    top: 0.45rem;
-    left: calc(var(--sidebar-track) - 2.5rem);
-}
-
 .workspace-resizer {
     z-index: 5;
     width: 4px;
@@ -977,27 +954,6 @@ body {
     grid-template-rows: auto minmax(0, 1fr) auto auto auto;
     min-width: 0;
     min-height: 0;
-}
-
-.conversation-context-header {
-    grid-row: 1;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.6rem max(2rem, calc((100% - 48rem) / 2)) 0.6rem;
-    color: #858585;
-    font-size: 0.8rem;
-    border-bottom: 1px solid #292929;
-}
-
-.conversation-context-header .app-icon {
-    width: 0.7rem;
-    height: 0.7rem;
-    flex: none;
-}
-
-.conversation-context-project {
-    color: #b9b9b9;
 }
 
 .compact-action {
@@ -2491,10 +2447,6 @@ textarea {
         padding: 1rem;
     }
 
-    .sidebar-toggle {
-        display: none;
-    }
-
     .history-markers {
         display: none;
     }
@@ -2716,26 +2668,65 @@ textarea {
     margin-left: 1.35rem;
 }
 
+/* The group's summary line must be allowed to wrap when there is a failure, otherwise the
+   "1 failed" badge and the "… · 1.6 s" meta are forced to sit on the same row as the title and
+   crowd each other when the title is long or the row is narrow. Giving the trailing status
+   pieces their own line keeps the failure count and the duration readable instead of glued
+   together horizontally. Without a failure the meta can stay on the title row. */
+.tool-activity-batch.tool-row-failed > summary.tool-row {
+    flex-wrap: wrap;
+    row-gap: 0.15rem;
+}
 
-/* Net file changes for the current run, above the composer. */
+.tool-activity-batch.tool-row-failed > summary.tool-row .tool-row-failure-count,
+.tool-activity-batch.tool-row-failed > summary.tool-row .tool-row-meta {
+    flex-basis: 100%;
+    margin-left: 0;
+    padding-left: 1.35rem;
+}
+
+
+/* Net file changes for the run, as a card closing the turn. Structured like a small commit
+   summary: a header naming the count and the totals, then one row per file with its own counts
+   on the right. */
 .workspace-changes {
     max-width: 48rem;
-    margin: 0 auto 0.5rem;
-    padding: 0.45rem 0.7rem;
+    margin: 0 auto 0.75rem;
     border: 1px solid #333;
-    border-radius: 0.6rem;
-    background: #1d1d1d;
-    font-size: 0.76rem;
+    border-radius: 0.7rem;
+    background: #1b1b1b;
+    font-size: 0.78rem;
+    overflow: hidden;
 }
 
 .workspace-changes-header {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.5rem;
+    padding: 0.5rem 0.7rem;
+    border-bottom: 1px solid #2c2c2c;
+}
+
+.workspace-changes-icon {
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border: 1px solid #3a3a3a;
+    border-radius: 0.45rem;
+    background: #242424;
+    color: #b4b4b4;
+}
+
+.workspace-changes-icon .app-icon {
+    width: 0.9rem;
+    height: 0.9rem;
 }
 
 .workspace-changes-title {
-    color: #c8c8c8;
+    color: #e0e0e0;
+    font-weight: 600;
 }
 
 .workspace-changes-count,
@@ -2749,6 +2740,7 @@ textarea {
     display: flex;
     gap: 0.45rem;
     margin-left: auto;
+    padding-left: 0.5rem;
     font-variant-numeric: tabular-nums;
 }
 
@@ -2756,28 +2748,36 @@ textarea {
 .workspace-added { color: #5dc97c; }
 .workspace-removed { color: #e0665f; }
 
+/* Above the header, because it qualifies the count the header states. */
 .workspace-changes-note {
-    margin: 0.3rem 0 0;
+    margin: 0;
+    padding: 0.4rem 0.7rem;
+    border-bottom: 1px solid #2c2c2c;
+    background: #221f16;
     color: #c9a227;
 }
 
 .workspace-changes-list {
-    margin: 0.35rem 0 0;
-    padding: 0;
+    margin: 0;
+    padding: 0.25rem 0;
     list-style: none;
 }
 
 .workspace-change > summary {
     display: flex;
     align-items: center;
-    gap: 0.45rem;
-    padding: 0.12rem 0;
+    gap: 0.5rem;
+    padding: 0.2rem 0.7rem;
     cursor: pointer;
     list-style: none;
 }
 
 .workspace-change > summary::-webkit-details-marker {
     display: none;
+}
+
+.workspace-change > summary:hover {
+    background: #232323;
 }
 
 .workspace-change[disabled] > summary {
@@ -2801,7 +2801,7 @@ textarea {
 
 .workspace-change-diff {
     max-height: 22rem;
-    margin: 0.2rem 0 0.4rem 1.35rem;
+    margin: 0 0 0.4rem 2.1rem;
     overflow: auto;
     color: #9a9a9a;
     font-size: 0.72rem;

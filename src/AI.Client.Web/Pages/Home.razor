@@ -15,8 +15,7 @@
 
 <PageTitle>@ClientMetadata.ProductName</PageTitle>
 
-<main class="workspace-shell @(_isSidebarCollapsed ? "left-collapsed" : string.Empty)" @ref="_workspace">
-    <button class="icon-action sidebar-toggle" type="button" title="@(_isSidebarCollapsed ? "Show sidebar" : "Hide sidebar")" aria-label="@(_isSidebarCollapsed ? "Show sidebar" : "Hide sidebar")" aria-expanded="@(_isSidebarCollapsed ? "false" : "true")" @onclick="ToggleLeftPanelAsync"><AppIcon Name="@(_isSidebarCollapsed ? "chevron-right" : "chevron-left")" /></button>
+<main class="workspace-shell" @ref="_workspace">
     <aside class="workspace-sidebar">
         <div class="sidebar-projects">
         <div class="sidebar-heading projects-heading">
@@ -208,17 +207,6 @@
     else
     {
     <section class="workspace-conversation" aria-label="Chat">
-        @if ((_isSidebarCollapsed || !_isProjectsSectionExpanded) && _selectedProject is not null)
-        {
-            <header class="conversation-context-header">
-                <span class="conversation-context-project">@_selectedProject.Name</span>
-                @if (GetContextBranchTitle() is { } contextBranchTitle)
-                {
-                    <AppIcon Name="chevron-right" />
-                    <span class="conversation-context-branch">@contextBranchTitle</span>
-                }
-            </header>
-        }
         <MessageFeed @ref="_messageFeed"
             HasSelectedProject="@(_selectedProject is not null)"
             SelectedChat="@_selectedChat"
@@ -238,9 +226,6 @@
         {
             <section class="chat-queue"><div class="queue-header"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @selectedRun.Queue.Count</span><AppIcon Name="chevron-right" /></button>@if (selectedRun.Status is ChatRunStatus.Paused or ChatRunStatus.Interrupted or ChatRunStatus.Failed) { <div class="queue-actions">@if (selectedRun.RecoveryActions?.Contains(RunRecoveryAction.Retry) == true || selectedRun.RecoveryActions?.Contains(RunRecoveryAction.Resume) == true) { <button type="button" class="queue-action-button queue-action-resume" title="Resume queue" aria-label="Resume queue" @onclick="ResumeQueueAsync"><AppIcon Name="play" /></button> }@if (selectedRun.RecoveryActions?.Contains(RunRecoveryAction.Rebase) == true) { <button type="button" class="queue-action-button" title="Continue failed message from the current branch head" aria-label="Rebase failed message" @onclick="RebaseQueueAsync"><AppIcon Name="fork" /></button> }@if (selectedRun.RecoveryActions?.Contains(RunRecoveryAction.Skip) == true) { <button type="button" class="queue-action-button destructive-action" title="Skip failed message" aria-label="Skip failed message" @onclick="SkipFailedQueueAsync"><AppIcon Name="trash" /></button> }<button type="button" class="queue-action-button queue-action-clear" title="Clear queue" aria-label="Clear queue" @onclick="ClearQueueAsync"><AppIcon Name="x" /></button></div> }</div>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in selectedRun.Queue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span title="@item.Content">@GetSingleLine(item.Content)</span><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }</section>
         }
-        @* Sits above the composer, once per run, rather than inside each tool row: the aggregate
-           is a property of the whole turn. *@
-        <WorkspaceChanges Changes="GetSelectedRun()?.WorkspaceChanges" />
         <div class="composer-status" role="status">
             @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <span>Generating@(GetGeneratingElapsed() is { } elapsed ? $"... {FormatElapsed(elapsed)}" : "...")</span> }
             else if (GetSelectedRun() is { Status: ChatRunStatus.Paused } pausedRun) { <span>@($"Stopped · queue paused{GetHeldRunEnterHint(pausedRun)}")</span> }
@@ -383,8 +368,6 @@
     private Guid? _draggedChatId;
     private string _sidebarAnnouncement = string.Empty;
     private bool _isProjectsSectionExpanded = true;
-    private bool _isSidebarCollapsed;
-    private const string SidebarCollapsedKey = "ai-client.sidebar-collapsed.v1";
     private string? _globalSection;
     private readonly List<ConnectionSettings> _connections = [];
     private int _enabledMcpServerCount;
@@ -480,7 +463,6 @@
         {
             _dotNetReference = DotNetObjectReference.Create(this);
             await WorkspaceLayoutService.AttachAsync(_workspace);
-            await LoadSidebarCollapsedAsync();
             await WorkspaceLayoutService.WatchPhoneModeAsync(_dotNetReference, PhoneModeBreakpointPx);
             try
             {
@@ -615,7 +597,6 @@
     public void OnEnterPhoneMode()
     {
         _isProjectsSectionExpanded = false;
-        _isSidebarCollapsed = false;
         StateHasChanged();
     }
 
@@ -1152,8 +1133,6 @@
 
     private Guid? GetSelectedBranchId() => GetSelectedBranchItem()?.RootId;
 
-    private string? GetContextBranchTitle() =>
-        _selectedChat is null ? null : GetSelectedBranchItem()?.Title ?? _selectedChat.Title;
     private Guid GetSelectedRunBranchId() => _selectedChat is null ? Guid.Empty : _selectedBranchId ?? _selectedChat.Id;
     private ChatRunSnapshot? GetProjectRun(Guid projectId) => GetProjectRuns(projectId)
         .Where(IsVisibleRun)
@@ -2024,18 +2003,6 @@
             : _connections.SingleOrDefault(item => item.Id == _chat.CredentialProfileId)?.Name ?? "Select connection";
 
     private void ToggleProjectsSection() => _isProjectsSectionExpanded = !_isProjectsSectionExpanded;
-
-    private async Task ToggleLeftPanelAsync()
-    {
-        _isSidebarCollapsed = !_isSidebarCollapsed;
-        await JsRuntime.InvokeVoidAsync("localStorage.setItem", SidebarCollapsedKey, _isSidebarCollapsed ? "true" : "false");
-    }
-
-    private async Task LoadSidebarCollapsedAsync()
-    {
-        var stored = await JsRuntime.InvokeAsync<string?>("localStorage.getItem", SidebarCollapsedKey);
-        _isSidebarCollapsed = stored == "true";
-    }
 
     private void OnComposerInput(ChangeEventArgs args)
     {

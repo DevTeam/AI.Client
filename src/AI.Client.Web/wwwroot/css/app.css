@@ -1326,6 +1326,88 @@ body {
     color: #9a9a9a;
 }
 
+/* The tip is filled with the same rendered markdown the transcript shows, so every global style
+   applies to it — including the marketing hero's h1/h2 sizing, which turned a single heading into
+   a banner that swallowed the whole preview. `.markdown-content` resets that, but the tip is not
+   inside it.
+
+   These rules reset it again and go further: a preview is not a document. Structure only has to
+   stay recognizable within five clamped lines, so headings drop to body size and keep nothing but
+   their weight, and every vertical margin is tighter than the transcript's. */
+.history-marker-tip-question :is(h1, h2, h3, h4, h5, h6) {
+    margin: 0.35em 0 0.1em;
+    font-size: 1em;
+    line-height: 1.25;
+    font-weight: 600;
+}
+
+.history-marker-tip-answer :is(h1, h2, h3, h4, h5, h6) {
+    margin: 0.35em 0 0.1em;
+    font-size: 1em;
+    line-height: 1.25;
+    font-weight: 600;
+    color: #c4c4c4;
+}
+
+.history-marker-tip-question p,
+.history-marker-tip-answer p {
+    margin: 0.25em 0;
+    font-size: inherit;
+}
+
+.history-marker-tip-question :is(ul, ol),
+.history-marker-tip-answer :is(ul, ol) {
+    margin: 0.25em 0;
+    padding-left: 1.1em;
+}
+
+.history-marker-tip-question li,
+.history-marker-tip-answer li {
+    margin: 0.05em 0;
+}
+
+.history-marker-tip-question blockquote,
+.history-marker-tip-answer blockquote {
+    margin: 0.25em 0;
+    padding-left: 0.5em;
+    border-left: 2px solid #3a3a3a;
+}
+
+/* Code keeps its monospace identity but not its box: a scrollable pre inside a tooltip nobody can
+   scroll is just wasted height, so it clips with the rest of the clamped preview. */
+.history-marker-tip-question :is(pre, code),
+.history-marker-tip-answer :is(pre, code) {
+    font-size: 0.92em;
+}
+
+.history-marker-tip-question pre,
+.history-marker-tip-answer pre {
+    margin: 0.25em 0;
+    padding: 0.2em 0.35em;
+    overflow: hidden;
+    white-space: pre-wrap;
+}
+
+.history-marker-tip-question hr,
+.history-marker-tip-answer hr {
+    margin: 0.35em 0;
+}
+
+/* A full-size image or table would set the tip's height on its own, past anything line-clamp can
+   restrain. */
+.history-marker-tip-question :is(img, table),
+.history-marker-tip-answer :is(img, table) {
+    max-width: 100%;
+    max-height: 3rem;
+}
+
+.history-marker-tip-question table,
+.history-marker-tip-answer table {
+    display: block;
+    overflow: hidden;
+    font-size: 0.92em;
+}
+
 /* Time, short date (only when the message isn't from today), and the branch badge, in that
    order, on one line above the question. */
 .history-marker-tip-meta {

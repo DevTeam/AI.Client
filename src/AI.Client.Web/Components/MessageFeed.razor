@@ -79,21 +79,7 @@
             </text>;
         @foreach (var item in ChatFeed.BuildFeedItems(GetVisibleBranchMessages()))
         {
-            @if (item is { IsPreamble: true, Message: { } preamble })
-            {
-                @* The assistant's own explanation of what it is about to call. It gets no branch
-                   picker and no fork action: those belong to the tool group this preamble opens,
-                   whose anchor can be this very message while its results are still pending —
-                   hence the separate DOM id, which also keeps scroll restore unambiguous. *@
-                <article @key="@($"preamble-{preamble.Id}")" id="preamble-@preamble.Id" class="workspace-message assistant preamble">
-                    @if (preamble.IsIncomplete) { <span class="message-status">Incomplete</span> }
-                    <div class="markdown-content">@((MarkupString)RenderMarkdownCached(preamble.Id, preamble.Content))</div>
-                    <div class="message-actions">
-                        <button class="icon-action" type="button" title="Copy Markdown" aria-label="Copy Markdown" @onclick="() => OnCopyMessage.InvokeAsync(preamble.Content)"><AppIcon Name="copy" /></button>
-                    </div>
-                </article>
-            }
-            else if (item.Message is { } message)
+            @if (item.Message is { } message)
             {
                 <article @key="message.Id" id="message-@message.Id" class="workspace-message @message.Role.ToLowerInvariant() @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)">
                     @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
@@ -109,7 +95,17 @@
             else if (item.ToolGroup is { } group)
             {
                 var anchor = group[^1];
+                var preamble = ChatFeed.PreambleOf(group);
+                @* One block per cycle: the assistant's explanation, then the tools it announced.
+                   They were two articles with a boundary between them, which read as unrelated
+                   cards; together they read as intent followed by actions. The preamble needs no
+                   id of its own here — the block already has the anchor's. *@
                 <article @key="anchor.Id" id="message-@anchor.Id" class="workspace-message tool-group @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)">
+                    @if (preamble is not null)
+                    {
+                        @if (preamble.IsIncomplete) { <span class="message-status">Incomplete</span> }
+                        <div class="markdown-content preamble-content">@((MarkupString)RenderMarkdownCached(preamble.Id, preamble.Content))</div>
+                    }
                     <ToolActivityGroup Group="group" IsLive="@(IsBranchGenerating() && anchor.Id == BranchLeafId)" />
                     <div class="message-actions">
                         <button class="icon-action" type="button" title="Copy" aria-label="Copy" @onclick="() => OnCopyMessage.InvokeAsync(BuildToolGroupSummaryText(group))"><AppIcon Name="copy" /></button>
@@ -187,11 +183,17 @@
     }
 
     // Copy yields the raw calls and results, not the rendered summaries: someone copying tool
-    // activity wants the payload to paste into a bug report, not the UI's wording of it.
-    private static string BuildToolGroupSummaryText(IReadOnlyList<ChatMessageView> group) =>
-        string.Join("\n\n", ChatFeed.BuildInvocations(group).Select(invocation =>
+    // activity wants the payload to paste into a bug report, not the UI's wording of it. The
+    // preamble leads, because the block is one thing on screen and should be one thing on the
+    // clipboard.
+    private static string BuildToolGroupSummaryText(IReadOnlyList<ChatMessageView> group)
+    {
+        var parts = ChatFeed.BuildInvocations(group).Select(invocation =>
             $"{invocation.Call.Name}({invocation.Call.Arguments})"
-            + (invocation.Result is { } result ? $"\n=> {result.Content}" : string.Empty)));
+            + (invocation.Result is { } result ? $"\n=> {result.Content}" : string.Empty));
+        if (ChatFeed.PreambleOf(group) is { } preamble) parts = parts.Prepend(preamble.Content);
+        return string.Join("\n\n", parts);
+    }
 
     private Guid? _decidingApproval;
     private Guid? _confirmGlobalApprovalId;

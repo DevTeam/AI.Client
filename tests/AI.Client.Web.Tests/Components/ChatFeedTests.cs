@@ -38,12 +38,12 @@ public sealed class ChatFeedTests
 
         var items = ChatFeed.BuildFeedItems([question, preamble, result]);
 
-        items.Count.ShouldBe(3);
+        // The explanation and the calls it announced are one block: the group carries both, and
+        // the markup renders the text above the tool rows.
+        items.Count.ShouldBe(2);
         items[0].Message.ShouldBe(question);
-        items[0].IsPreamble.ShouldBeFalse();
-        items[1].IsPreamble.ShouldBeTrue();
-        items[1].Message.ShouldBe(preamble);
-        items[2].ToolGroup.ShouldBe(new[] { preamble, result });
+        items[1].ToolGroup.ShouldBe(new[] { preamble, result });
+        ChatFeed.PreambleOf(items[1].ToolGroup!).ShouldBe(preamble);
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public sealed class ChatFeedTests
         var items = ChatFeed.BuildFeedItems([silent, ToolResult("call-1")]);
 
         items.Count.ShouldBe(1);
-        items[0].ToolGroup.ShouldNotBeNull();
+        ChatFeed.PreambleOf(items[0].ToolGroup!).ShouldBeNull();
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public sealed class ChatFeedTests
         var items = ChatFeed.BuildFeedItems([blank, ToolResult("call-1")]);
 
         items.Count.ShouldBe(1);
-        items[0].ToolGroup.ShouldNotBeNull();
+        ChatFeed.PreambleOf(items[0].ToolGroup!).ShouldBeNull();
     }
 
     [Fact]
@@ -80,16 +80,15 @@ public sealed class ChatFeedTests
 
         var items = ChatFeed.BuildFeedItems([question, first, firstResult, second, secondResult, answer]);
 
-        items.Select(item => item switch
-        {
-            { ToolGroup: not null } => "tools",
-            { IsPreamble: true } => "preamble",
-            _ => "message",
-        }).ShouldBe(["message", "preamble", "tools", "preamble", "tools", "message"]);
+        items.Select(item => item.ToolGroup is null ? "message" : "cycle")
+            .ShouldBe(["message", "cycle", "cycle", "message"]);
 
-        // The second cycle's group must not swallow the first cycle's results, and vice versa.
-        items[2].ToolGroup.ShouldBe(new[] { first, firstResult });
-        items[4].ToolGroup.ShouldBe(new[] { second, secondResult });
+        // A preamble opens its own cycle, so the second group must not swallow the first cycle's
+        // results, and vice versa.
+        items[1].ToolGroup.ShouldBe(new[] { first, firstResult });
+        items[2].ToolGroup.ShouldBe(new[] { second, secondResult });
+        ChatFeed.PreambleOf(items[1].ToolGroup!).ShouldBe(first);
+        ChatFeed.PreambleOf(items[2].ToolGroup!).ShouldBe(second);
     }
 
     [Fact]
@@ -100,24 +99,22 @@ public sealed class ChatFeedTests
         var items = ChatFeed.BuildFeedItems([answer]);
 
         items.ShouldHaveSingleItem();
-        items[0].IsPreamble.ShouldBeFalse();
         items[0].Message.ShouldBe(answer);
         items[0].ToolGroup.ShouldBeNull();
     }
 
     [Fact]
-    public void ShouldShowPreambleAndOpenGroupWhileResultIsPending()
+    public void ShouldShowPreambleAndItsGroupWhileTheResultIsPending()
     {
-        // Mid-run: the call was issued, nothing has come back yet. The group's anchor (its last
-        // message) is the preamble itself, which is why the markup gives the two items distinct
-        // DOM ids rather than rendering the same id twice.
+        // Mid-run: the call was issued, nothing has come back yet. One block still, so the
+        // explanation is on screen before its result exists.
         var preamble = Assistant("Читаю файл.", "call-1");
 
         var items = ChatFeed.BuildFeedItems([preamble]);
 
-        items.Count.ShouldBe(2);
-        items[0].IsPreamble.ShouldBeTrue();
-        items[1].ToolGroup.ShouldBe(new[] { preamble });
+        items.ShouldHaveSingleItem();
+        items[0].ToolGroup.ShouldBe(new[] { preamble });
+        ChatFeed.PreambleOf(items[0].ToolGroup!).ShouldBe(preamble);
     }
 
     [Fact]
@@ -132,6 +129,7 @@ public sealed class ChatFeedTests
 
         items.ShouldHaveSingleItem();
         items[0].ToolGroup!.Count.ShouldBe(4);
+        ChatFeed.PreambleOf(items[0].ToolGroup!).ShouldBeNull();
     }
 
     [Fact]

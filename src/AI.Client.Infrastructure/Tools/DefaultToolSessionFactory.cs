@@ -7,6 +7,7 @@ using Json.Schema;
 using ModelContextProtocol.Client;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -14,6 +15,16 @@ public sealed class DefaultToolSessionFactory : IToolSessionFactory
 {
     /// <summary>Name of the environment variable through which the built-in server receives its directory grants.</summary>
     public const string DirectoryGrantsVariable = "AI_CLIENT_DIRECTORY_GRANTS";
+
+    // This is the tool result string a model actually reads back on every following turn — not
+    // markup rendered into a browser — so the default encoder's blanket escaping of non-ASCII
+    // text (`\uXXXX` per character) is pure waste here, and it compounds with ToolReply's own use
+    // of the same relaxed encoder one layer in: a tool result already free of that escaping would
+    // otherwise get it reintroduced right back by this second, outer serialization pass.
+    private static readonly JsonSerializerOptions ModelFacingJson = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
 
     public async Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, CancellationToken cancellationToken)
     {
@@ -96,7 +107,7 @@ public sealed class DefaultToolSessionFactory : IToolSessionFactory
             if (_descriptors[tool.OriginalName].OutputSchema is { } outputSchema
                 && (result.StructuredContent is not { } content || !JsonSchema.Build(outputSchema).Evaluate(content).IsValid))
                 throw new InvalidOperationException("Tool result does not match the output schema.");
-            return JsonSerializer.Serialize(result);
+            return JsonSerializer.Serialize(result, ModelFacingJson);
         }
         public ValueTask DisposeAsync() => _client.DisposeAsync();
     }

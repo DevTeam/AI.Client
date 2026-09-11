@@ -8,6 +8,7 @@ using Contracts.Chat;
 using Contracts.Runs;
 using Contracts.Settings;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFactory sessions,
@@ -142,6 +143,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
             Math.Clamp(chatPolicy?.MaxCallsPerRun ?? projectPolicy?.MaxCallsPerRun ?? globalPolicy?.MaxCallsPerRun ?? 65535, 1, int.MaxValue),
             Math.Clamp(chatPolicy?.TimeoutSeconds ?? projectPolicy?.TimeoutSeconds ?? globalPolicy?.TimeoutSeconds ?? 120, 1, 600));
     }
-    private static string Error(string message) => JsonSerializer.Serialize(new { isError = true, error = message });
+    // A denial/failure message can quote a path or argument the model itself supplied, which may
+    // contain non-ASCII text — same reasoning as ToolReply/DefaultToolSessionFactory for not
+    // paying the default encoder's `\uXXXX` escaping on text the model, not a browser, reads back.
+    private static readonly JsonSerializerOptions ErrorJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    private static string Error(string message) => JsonSerializer.Serialize(new { isError = true, error = message }, ErrorJson);
     private sealed record EffectivePolicy(string Decision, int MaxCalls, long TimeoutSeconds);
 }

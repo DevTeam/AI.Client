@@ -249,6 +249,43 @@ public sealed class BuiltInToolTests
         finally { Directory.Delete(root, true); }
     }
 
+    // Regression for a real incident: a tool result containing Cyrillic (or any non-ASCII) text
+    // was escaped to `\uXXXX` once when the built-in server built it, then escaped a second time
+    // ("\\uXXXX", 7 characters per source character) when the Host serialized the whole result
+    // into the string that becomes this tool call's persisted chat message — the same string
+    // replayed as context on every later turn. A few genuinely large Russian-language docs pushed
+    // one chat over a model's context limit purely on this escaping overhead.
+    [Fact]
+    public async Task ShouldNotEscapeNonAsciiTextInToolResults()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-non-ascii").FullName;
+        try
+        {
+            // Long enough that fixed JSON scaffolding (field names, the echoed path, and the
+            // result being wrapped twice — as content text and again as structuredContent) is
+            // negligible next to the source text, so the assertion below is actually measuring
+            // the escaping fix rather than per-call overhead.
+            var text = string.Concat(Enumerable.Repeat("Привет, мир! Это тестовый файл с кириллицей.\n", 100));
+            var file = Path.Combine(root, "sample.txt");
+            await File.WriteAllTextAsync(file, text, TestContext.Current.CancellationToken);
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+                [new ToolDirectoryGrant(root, true, ["read"])], timeout.Token);
+            var tool = session.Tools.Single(item => item.OriginalName == "read_text_file");
+            var result = await session.CallAsync(tool, JsonSerializer.Serialize(new { path = file }), timeout.Token);
+
+            result.ShouldContain("Привет, мир!");
+            result.ShouldNotContain("\\u04");
+            // The result still embeds the file's content twice (once as content text, once as
+            // structuredContent — a separate, larger fix), so this isn't 1:1 with the source; but
+            // before this fix, \uXXXX-per-character escaping (applied twice) alone made it well
+            // over 12x the source text's length. This bound only needs to rule that out.
+            result.Length.ShouldBeLessThan(text.Length * 4);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Fact]
     public async Task ShouldReadWriteAndEditWithinGrantOverStdio()
     {

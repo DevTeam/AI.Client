@@ -1,5 +1,6 @@
 namespace AI.Client.Mcp.BuiltIn;
 
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
 
@@ -9,7 +10,16 @@ using ModelContextProtocol.Protocol;
 /// </summary>
 internal static class ToolReply
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    // This text is read by a model, not embedded into HTML/JS — the default encoder's escaping
+    // of every non-ASCII character (`\uXXXX`, 6 characters per character) is wasted cost here,
+    // and a heavy one for anything but plain ASCII: a Cyrillic (or any other non-Latin) source
+    // file read back through a tool inflates by roughly 6x on this pass alone, before the whole
+    // CallToolResult is serialized a second time into the stored chat message (see
+    // DefaultToolSessionFactory), which escapes it again on top of that.
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
 
     public static CallToolResult Of<T>(T value, bool isError = false)
     {

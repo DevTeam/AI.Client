@@ -2809,25 +2809,23 @@ textarea {
     list-style: none;
 }
 
-.workspace-change > summary {
+.workspace-change-summary {
     display: flex;
+    width: 100%;
     align-items: center;
     gap: 0.5rem;
     padding: 0.2rem 0.7rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
-    list-style: none;
 }
 
-.workspace-change > summary::-webkit-details-marker {
-    display: none;
-}
-
-.workspace-change > summary:hover {
+.workspace-change-summary:hover {
     background: #232323;
-}
-
-.workspace-change[disabled] > summary {
-    cursor: default;
 }
 
 .workspace-change-kind {
@@ -2845,13 +2843,90 @@ textarea {
     white-space: nowrap;
 }
 
+.workspace-change-body {
+    padding: 0 0 0.45rem;
+}
+
+/* One scroll box for the whole diff: lines do not wrap, so a long line moves the viewport rather
+   than reflowing the file around it. */
 .workspace-change-diff {
-    max-height: 22rem;
-    margin: 0 0 0.4rem 2.1rem;
+    max-height: 24rem;
     overflow: auto;
-    color: #9a9a9a;
+    border-top: 1px solid #262626;
+    border-bottom: 1px solid #262626;
+    background: #161616;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.72rem;
+    line-height: 1.5;
+}
+
+.diff-line {
+    display: flex;
+    align-items: baseline;
     white-space: pre;
+}
+
+/* Tinted the whole width, not just behind the text, so the shape of a change is visible while
+   skimming — but faintly, because the sign column is what actually states the direction. */
+.diff-line-added { background: rgb(93 201 124 / 10%); }
+.diff-line-removed { background: rgb(224 102 95 / 10%); }
+
+/* The numbers stay put while a long line scrolls past them; without this the only thing telling
+   you where you are would slide off the left edge. */
+.diff-gutter {
+    position: sticky;
+    left: 0;
+    flex: 0 0 2.8rem;
+    padding-right: 0.4rem;
+    background: inherit;
+    color: #5f5f5f;
+    text-align: right;
+    user-select: none;
+}
+
+.diff-gutter + .diff-gutter {
+    left: 2.8rem;
+    border-right: 1px solid #262626;
+}
+
+.diff-sign {
+    position: sticky;
+    left: 5.6rem;
+    flex: 0 0 1.1rem;
+    padding-left: 0.35rem;
+    background: inherit;
+    user-select: none;
+}
+
+.diff-line-added .diff-sign { color: #5dc97c; }
+.diff-line-removed .diff-sign { color: #e0665f; }
+
+.diff-text {
+    padding-right: 0.7rem;
+    color: #b8b8b8;
+}
+
+.diff-line-context .diff-text { color: #8f8f8f; }
+.diff-line-added .diff-text { color: #cfe9d6; }
+.diff-line-removed .diff-text { color: #efc9c6; }
+
+/* Where in the file the lines below it sit — a caption between hunks, not a line of the file. */
+.diff-hunk {
+    padding: 0.15rem 0.7rem;
+    background: #1d1d1d;
+    color: #6f6f6f;
+    white-space: pre;
+}
+
+.diff-note {
+    padding: 0.2rem 0.7rem;
+    color: #8a7a4a;
+}
+
+.workspace-change-unavailable {
+    margin: 0;
+    padding: 0.1rem 0.7rem 0.2rem 2.1rem;
+    color: #8a8a8a;
 }
 
 @media (max-width: 640px) {

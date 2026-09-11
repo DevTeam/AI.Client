@@ -29,26 +29,50 @@
         <ul class="workspace-changes-list">
             @foreach (var file in changes.Files)
             {
+                var expanded = _expanded.Contains(file.Path);
+                var bodyId = $"diff-{file.Path.GetHashCode(StringComparison.Ordinal):x8}";
                 <li @key="file.Path">
-                    <details class="workspace-change" disabled="@(file.Diff is null)">
-                        <summary>
-                            <span class="workspace-change-kind" title="@KindTitle(file.Kind)">@KindGlyph(file.Kind)</span>
-                            <span class="workspace-change-path" title="@file.Path">@Display(file)</span>
-                            @if (file.Confidence == FileChangeConfidence.Approximate)
-                            {
-                                <span class="workspace-change-approximate" title="Exact line counts were not available for this file">approx.</span>
-                            }
-                            <span class="workspace-change-counts">
-                                @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
-                                @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
-                                @if (file.IsBinary) { <span class="workspace-change-binary">binary</span> }
-                            </span>
-                        </summary>
-                        @if (file.Diff is { Length: > 0 } diff)
+                    @* Expansion is tracked here rather than left to <details>, which keeps its
+                       contents in the DOM whether open or shut. A diff can run to thousands of
+                       lines, and several closed files would each be paying for one. *@
+                    <button class="workspace-change-summary" type="button" aria-expanded="@expanded" aria-controls="@bodyId"
+                            @onclick="() => Toggle(file.Path)">
+                        <span class="workspace-change-kind" title="@KindTitle(file.Kind)">@KindGlyph(file.Kind)</span>
+                        <span class="workspace-change-path" title="@file.Path">@Display(file)</span>
+                        @if (file.Confidence == FileChangeConfidence.Approximate)
                         {
-                            <pre class="workspace-change-diff">@diff</pre>
+                            <span class="workspace-change-approximate" title="Exact line counts were not available for this file">approx.</span>
                         }
-                    </details>
+                        <span class="workspace-change-counts">
+                            @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
+                            @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
+                            @if (file.IsBinary) { <span class="workspace-change-binary">binary</span> }
+                        </span>
+                    </button>
+                    @if (expanded)
+                    {
+                        <div class="workspace-change-body" id="@bodyId">
+                            @if (UnifiedDiff.Parse(file.Diff) is { Count: > 0 } lines)
+                            {
+                                <div class="workspace-change-diff">
+                                    @foreach (var line in lines.Take(MaxRenderedLines))
+                                    {
+                                        @RenderDiffLine(line)
+                                    }
+                                    @if (lines.Count > MaxRenderedLines)
+                                    {
+                                        <div class="diff-note">… @(lines.Count - MaxRenderedLines) more lines not shown</div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                @* A file with no diff is not an empty diff. Saying which of the
+                                   reasons applies is the whole value of opening the row. *@
+                                <p class="workspace-change-unavailable">@UnavailableReason(file)</p>
+                            }
+                        </div>
+                    }
                 </li>
             }
         </ul>
@@ -56,7 +80,68 @@
 }
 
 @code {
+    /// <summary>
+    /// Past this many lines the rest is summarised instead of built. The diff itself is already
+    /// capped upstream; this caps what reaches the DOM.
+    /// </summary>
+    private const int MaxRenderedLines = 400;
+
     [Parameter] public WorkspaceChangeSet? Changes { get; set; }
+
+    private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
+
+    private void Toggle(string path)
+    {
+        if (!_expanded.Add(path)) _expanded.Remove(path);
+    }
+
+    private RenderFragment RenderDiffLine(DiffLine line) => @<text>
+        @if (line.Kind == DiffLineKind.Hunk)
+        {
+            <div class="diff-hunk">@line.Text</div>
+        }
+        else if (line.Kind == DiffLineKind.Note)
+        {
+            <div class="diff-note">@line.Text</div>
+        }
+        else
+        {
+            <div class="diff-line @KindClass(line.Kind)">
+                @* Two gutters: where the line was, and where it is. An added line has no former
+                   number and a removed one has no current number, and leaving those blank is
+                   what makes the two columns readable as a before and an after. *@
+                <span class="diff-gutter" aria-hidden="true">@line.OldLine</span>
+                <span class="diff-gutter" aria-hidden="true">@line.NewLine</span>
+                @* Not aria-hidden: for anyone reading by ear this sign is the only thing that
+                   says whether the line arrived or left. *@
+                <span class="diff-sign">@Sign(line.Kind)</span>
+                <span class="diff-text">@line.Text</span>
+            </div>
+        }
+    </text>;
+
+    private static string KindClass(DiffLineKind kind) => kind switch
+    {
+        DiffLineKind.Added => "diff-line-added",
+        DiffLineKind.Removed => "diff-line-removed",
+        _ => "diff-line-context",
+    };
+
+    private static string Sign(DiffLineKind kind) => kind switch
+    {
+        DiffLineKind.Added => "+",
+        DiffLineKind.Removed => "−",
+        _ => " ",
+    };
+
+    private static string UnavailableReason(FileChange file) => file switch
+    {
+        { IsBinary: true } => "Binary file — there are no lines to compare.",
+        { Kind: FileChangeKind.Deleted } => "The file was deleted; its former contents are not kept.",
+        { Confidence: FileChangeConfidence.Approximate } =>
+            "This file changed during the turn, but the Host did not observe the change itself, so it has nothing to show line by line.",
+        _ => "No differences were recorded for this file.",
+    };
 
     private static string Display(FileChange file) =>
         file is { Kind: FileChangeKind.Renamed, PreviousPath: { } previous }

@@ -1403,6 +1403,23 @@ body {
     opacity: 0.95;
 }
 
+/* An assistant note written before a batch of tool calls. It stays in the transcript — it is the
+   only place the model explains what it is doing — but reads a step quieter than the final
+   answer, so the answer still wins the page. */
+.workspace-message.preamble {
+    margin-bottom: 0.25rem;
+    color: #b4b4b4;
+}
+
+.workspace-message.preamble .markdown-content {
+    font-size: 0.92rem;
+}
+
+/* Consecutive paragraphs of a short progress note shouldn't open up as much vertical space as a
+   full answer does. */
+.workspace-message.preamble .markdown-content > :first-child { margin-top: 0; }
+.workspace-message.preamble .markdown-content > :last-child { margin-bottom: 0; }
+
 .workspace-message.streaming .message-role::after {
     content: "";
     display: inline-block;

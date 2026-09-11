@@ -76,9 +76,23 @@
                     </div>
                 }
             </text>;
-        @foreach (var item in BuildFeedItems(GetVisibleBranchMessages()))
+        @foreach (var item in ChatFeed.BuildFeedItems(GetVisibleBranchMessages()))
         {
-            @if (item.Message is { } message)
+            @if (item is { IsPreamble: true, Message: { } preamble })
+            {
+                @* The assistant's own explanation of what it is about to call. It gets no branch
+                   picker and no fork action: those belong to the tool group this preamble opens,
+                   whose anchor can be this very message while its results are still pending —
+                   hence the separate DOM id, which also keeps scroll restore unambiguous. *@
+                <article @key="@($"preamble-{preamble.Id}")" id="preamble-@preamble.Id" class="workspace-message assistant preamble">
+                    @if (preamble.IsIncomplete) { <span class="message-status">Incomplete</span> }
+                    <div class="markdown-content">@((MarkupString)RenderMarkdownCached(preamble.Id, preamble.Content))</div>
+                    <div class="message-actions">
+                        <button class="icon-action" type="button" title="Copy Markdown" aria-label="Copy Markdown" @onclick="() => OnCopyMessage.InvokeAsync(preamble.Content)"><AppIcon Name="copy" /></button>
+                    </div>
+                </article>
+            }
+            else if (item.Message is { } message)
             {
                 <article @key="message.Id" id="message-@message.Id" class="workspace-message @message.Role.ToLowerInvariant() @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)">
                     @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
@@ -93,7 +107,7 @@
             }
             else if (item.ToolGroup is { } group)
             {
-                var pairs = BuildToolPairs(group);
+                var pairs = ChatFeed.BuildToolPairs(group);
                 var anchor = group[^1];
                 <article @key="anchor.Id" id="message-@anchor.Id" class="workspace-message tool-group @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)">
                     <details class="tool-group-summary">
@@ -213,56 +227,7 @@
         _ => value.GetRawText(),
     };
 
-    // A feed item is either a normal user/assistant message, or a collapsed run of consecutive
-    // "tool activity" messages (an assistant message that only issues tool calls, plus the tool
-    // result messages that follow it) — grouping these keeps a multi-call turn from rendering as
-    // a wall of near-empty message bubbles.
-    private readonly record struct FeedItem(ChatMessageView? Message, List<ChatMessageView>? ToolGroup);
-    private readonly record struct ToolPair(ChatToolCall Call, ChatMessageView? Result);
-
-    private static bool IsToolActivity(ChatMessageView message) =>
-        message.Role == "Tool" || (message.Role == "Assistant" && message.ToolCalls is { Count: > 0 });
-
-    private static List<FeedItem> BuildFeedItems(IReadOnlyList<ChatMessageView> chain)
-    {
-        var items = new List<FeedItem>();
-        List<ChatMessageView>? currentGroup = null;
-        foreach (var message in chain)
-        {
-            if (IsToolActivity(message))
-            {
-                currentGroup ??= [];
-                currentGroup.Add(message);
-                continue;
-            }
-            if (currentGroup is not null) { items.Add(new FeedItem(null, currentGroup)); currentGroup = null; }
-            items.Add(new FeedItem(message, null));
-        }
-        if (currentGroup is not null) items.Add(new FeedItem(null, currentGroup));
-        return items;
-    }
-
-    // Pairs each call in the group with its result message (matched by ToolCallId) so a call
-    // still awaiting its result — the run is mid-flight — renders as "Running…" instead of nothing.
-    private static List<ToolPair> BuildToolPairs(List<ChatMessageView> group)
-    {
-        var resultsByCallId = group
-            .Where(item => item.Role == "Tool" && item.ToolCallId is not null)
-            .ToDictionary(item => item.ToolCallId!, item => item);
-        var pairs = new List<ToolPair>();
-        foreach (var message in group)
-        {
-            if (message.ToolCalls is not { Count: > 0 }) continue;
-            foreach (var call in message.ToolCalls)
-            {
-                resultsByCallId.TryGetValue(call.Id, out var result);
-                pairs.Add(new ToolPair(call, result));
-            }
-        }
-        return pairs;
-    }
-
-    private string BuildToolGroupSummaryText(List<ToolPair> pairs) => string.Join("\n\n", pairs.Select(pair =>
+    private string BuildToolGroupSummaryText(List<ChatFeed.ToolPair> pairs) => string.Join("\n\n", pairs.Select(pair =>
         $"{pair.Call.Name}({pair.Call.Arguments})" + (pair.Result is { } result ? $"\n=> {FormatToolResult(result.Content)}" : string.Empty)));
 
     private Guid? _decidingApproval;

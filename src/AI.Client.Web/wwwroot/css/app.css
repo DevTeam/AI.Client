@@ -2782,6 +2782,18 @@ textarea {
 .workspace-added { color: #5dc97c; }
 .workspace-removed { color: #e0665f; }
 
+/* Two columns meeting on a fixed axis: additions end where deletions begin, on the same vertical
+   line in every row. Without the reserved width each pair simply packed together, so "+10 −1"
+   and "+21 −12" put their numbers in different places and the column read as ragged. Tabular
+   figures (set on the container) are what make equal character counts equal widths. */
+.workspace-added,
+.workspace-removed {
+    min-width: 2.2rem;
+}
+
+.workspace-added { text-align: right; }
+.workspace-removed { text-align: left; }
+
 /* Above the header, because it qualifies the count the header states. */
 .workspace-changes-note {
     margin: 0;

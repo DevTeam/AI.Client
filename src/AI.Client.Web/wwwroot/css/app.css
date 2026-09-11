@@ -1504,8 +1504,12 @@ body {
 
 /* Floated over the message's own corner rather than laid out under it. In flow these buttons
    reserved ~30px beneath every single message — more than half the height of a collapsed tool
-   row — and that space was invisible at all times except on hover. The chip's own background
-   keeps them readable over whatever they cover. */
+   row — and that space was invisible at all times except on hover.
+
+   What they cover fades into the page rather than being hidden behind a panel: a gradient that
+   runs from transparent to the feed's own background, so the text dissolves under the buttons
+   the way the sidebar's row actions already work. A box with its own border read as something
+   dropped on top of the message. */
 .message-actions {
     position: absolute;
     right: 0;
@@ -1514,14 +1518,19 @@ body {
     display: flex;
     gap: 0.1rem;
     align-items: center;
-    padding: 0.1rem;
-    border-radius: 0.5rem;
-    background: #1f1f1f;
-    box-shadow: 0 0 0 1px #343434;
+    padding-left: 2rem;
+    background: linear-gradient(to right, rgb(23 23 23 / 0%), rgb(23 23 23) 1.8rem);
     opacity: 0;
     /* Not clickable while invisible, so an unhovered message's corner still selects its text. */
     pointer-events: none;
-    transition: opacity 120ms ease;
+    transition: opacity 140ms ease;
+}
+
+/* The question bubble is its own surface, so the fade has to land on that colour instead. */
+.workspace-message.user .message-actions {
+    right: 0.1rem;
+    bottom: 0.1rem;
+    background: linear-gradient(to right, rgb(41 41 41 / 0%), rgb(41 41 41) 1.8rem);
 }
 
 /* Keyboard focus, not focus of any kind. `:focus-within` also matches the focus a mouse click
@@ -2512,6 +2521,8 @@ textarea {
 
 .tool-row {
     display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
     align-items: center;
     gap: 0.45rem;
     min-height: 1.3rem;
@@ -2587,6 +2598,7 @@ textarea {
     display: flex;
     flex: 0 0 auto;
     gap: 0.4rem;
+    align-items: center;
     margin-left: auto;
     padding-left: 0.4rem;
     white-space: nowrap;
@@ -2666,23 +2678,6 @@ textarea {
 /* Every group is one collapsed line; opening it reveals its rows, indented. */
 .tool-activity-batch > .tool-activity-rows {
     margin-left: 1.35rem;
-}
-
-/* The group's summary line must be allowed to wrap when there is a failure, otherwise the
-   "1 failed" badge and the "… · 1.6 s" meta are forced to sit on the same row as the title and
-   crowd each other when the title is long or the row is narrow. Giving the trailing status
-   pieces their own line keeps the failure count and the duration readable instead of glued
-   together horizontally. Without a failure the meta can stay on the title row. */
-.tool-activity-batch.tool-row-failed > summary.tool-row {
-    flex-wrap: wrap;
-    row-gap: 0.15rem;
-}
-
-.tool-activity-batch.tool-row-failed > summary.tool-row .tool-row-failure-count,
-.tool-activity-batch.tool-row-failed > summary.tool-row .tool-row-meta {
-    flex-basis: 100%;
-    margin-left: 0;
-    padding-left: 1.35rem;
 }
 
 

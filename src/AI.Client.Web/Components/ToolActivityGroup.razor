@@ -26,13 +26,14 @@
             </span>
             <span class="tool-row-title">@(pending > 0 ? "Running tools" : "Tools finished")</span>
             <span class="tool-row-detail">@invocations.Count @(invocations.Count == 1 ? "tool call" : "tool calls")@(pending == 0 && unfinished > 0 ? $" · {unfinished} without a result" : string.Empty)</span>
-            @if (failed > 0)
-            {
-                @* The count, not just a colour: a collapsed group has to say how much went wrong
-                   before anyone decides whether to open it. *@
-                <span class="tool-row-failure-count">@failed failed</span>
-            }
-            <span class="tool-row-meta">@FormatDuration(TotalDuration(invocations))</span>
+            @* The failure count travels with the duration as one trailing group, pinned to the
+               right edge. Kept apart they could be laid out separately, which is how a failed
+               group ended up stacked over three lines. The count, not just a colour: a collapsed
+               group has to say how much went wrong before anyone decides whether to open it. *@
+            <span class="tool-row-meta">
+                @if (failed > 0) { <span class="tool-row-failure-count">@failed failed</span> }
+                @FormatDuration(TotalDuration(invocations))
+            </span>
         </summary>
         <div class="tool-activity-rows">
             @foreach (var invocation in invocations) { @RenderRow(invocation) }

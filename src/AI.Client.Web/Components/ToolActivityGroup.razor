@@ -12,36 +12,35 @@
         var failed = invocations.Count(item => item.Result is not null && Describe(item).Severity == ToolResultSeverity.Error);
         var unfinished = invocations.Count(item => item.Result is null);
         var pending = IsLive ? unfinished : 0;
-        // A handful of rows read fine inline; a long batch folds into one line first, so a
-        // 18-call turn doesn't bury the conversation around it.
-        var folded = invocations.Count > InlineRowLimit && failed == 0;
     }
-    @if (folded)
-    {
-        <details class="tool-activity-batch">
-            <summary class="tool-row">
-                <span class="tool-row-glyph" aria-hidden="true">
-                    @if (pending > 0) { <AppIcon Name="spinner" Class="tool-row-spinner" /> } else { <AppIcon Name="check" /> }
-                </span>
-                <span class="tool-row-title">@(pending > 0 ? "Running tools" : "Tools finished")</span>
-                <span class="tool-row-detail">@invocations.Count tool calls@(pending == 0 && unfinished > 0 ? $" · {unfinished} without a result" : string.Empty)</span>
-                <span class="tool-row-meta">@FormatDuration(TotalDuration(invocations))</span>
-            </summary>
-            <div class="tool-activity-rows">
-                @foreach (var invocation in invocations) { @RenderRow(invocation) }
-            </div>
-        </details>
-    }
-    else
-    {
-        @foreach (var invocation in invocations) { @RenderRow(invocation) }
-    }
+    @* Always one summary line, always collapsed — including for a single call. Folding used to
+       depend on how many calls there were and whether any failed, which made the transcript's
+       shape unpredictable: one failure expanded seven unrelated successes alongside it. The
+       structure is now fixed and the outcome shows in the summary instead. *@
+    <details class="tool-activity-batch @(failed > 0 ? "tool-row-failed" : string.Empty)">
+        <summary class="tool-row">
+            <span class="tool-row-glyph" aria-hidden="true">
+                @if (pending > 0) { <AppIcon Name="spinner" Class="tool-row-spinner" /> }
+                else if (failed > 0) { <AppIcon Name="error" /> }
+                else { <AppIcon Name="check" /> }
+            </span>
+            <span class="tool-row-title">@(pending > 0 ? "Running tools" : "Tools finished")</span>
+            <span class="tool-row-detail">@invocations.Count @(invocations.Count == 1 ? "tool call" : "tool calls")@(pending == 0 && unfinished > 0 ? $" · {unfinished} without a result" : string.Empty)</span>
+            @if (failed > 0)
+            {
+                @* The count, not just a colour: a collapsed group has to say how much went wrong
+                   before anyone decides whether to open it. *@
+                <span class="tool-row-failure-count">@failed failed</span>
+            }
+            <span class="tool-row-meta">@FormatDuration(TotalDuration(invocations))</span>
+        </summary>
+        <div class="tool-activity-rows">
+            @foreach (var invocation in invocations) { @RenderRow(invocation) }
+        </div>
+    </details>
 </div>
 
 @code {
-    /// <summary>Above this many calls a group folds into a single summary line.</summary>
-    private const int InlineRowLimit = 3;
-
     [Parameter] [EditorRequired] public IReadOnlyList<ChatMessageView> Group { get; set; } = [];
 
     /// <summary>

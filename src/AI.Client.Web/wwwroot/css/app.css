@@ -257,15 +257,11 @@ body {
     pointer-events: none;
 }
 
-/* Two indicators are shown at all times rather than on hover — a pinned chat's pin and a
-   directory's access mode — so those rows, and only those, keep a button's width clear of the
-   name instead of letting it run underneath. */
-.chat-nav-row:has(> .chat-pin-button.pinned) > .workspace-nav-item {
-    padding-right: 2rem;
-}
-
+/* A directory's access mode is still shown at all times, and it sits in the first of the three
+   action slots rather than the last — so clearing it means clearing all three (3 x 1.6rem plus
+   the gaps), not one button's width. Reserving less is what let an indicator land on the text. */
 .directory-nav-row > .directory-row-main {
-    padding-right: 2rem;
+    padding-right: 5.2rem;
 }
 
 /* Shared chrome for every dropdown-style menu in the app (project/chat/branch/endpoint) —
@@ -770,9 +766,9 @@ body {
     opacity: 1;
 }
 
-/* Unpinned: revealed like the other row actions — hover/focus only, nothing more.
-   Pinned: a persistent state indicator, like the directory read/write lock — always visible and
-   colored by state. */
+/* Revealed like every other row action, pinned or not. Whether a chat is pinned is said by its
+   leading icon and by its position — the list already sorts pinned chats to the top — so this
+   button no longer has to be a permanent indicator as well as a control. */
 .chat-nav-row > .chat-pin-button {
     color: #858585;
 }
@@ -783,7 +779,6 @@ body {
 }
 
 .chat-pin-button.pinned {
-    opacity: 1;
     color: var(--accent-color);
 }
 

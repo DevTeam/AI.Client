@@ -10,6 +10,7 @@ using AI.Client.Infrastructure.Credentials;
 using AI.Client.Infrastructure.Projects;
 using AI.Client.Infrastructure.Storage;
 using AI.Client.Infrastructure.Settings;
+using AI.Client.Infrastructure.Workspace;
 using System.Diagnostics;
 using Pure.DI;
 using Pure.DI.MS;
@@ -37,7 +38,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 Uuid7IdGenerator, SystemClock, ProjectService, ChatStoragePaths, JsonChatRepository, ChatService, ChatSynchronization,
                 ProtectedDataUserDataProtector, ChatCompletionSseParser,
                 OpenAiCompatibleChatCompletionClient, ChatEndpoint, GlobalSettingsPaths, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
-                GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, DefaultToolSessionFactory>()
+                GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, DefaultToolSessionFactory, WorkspaceChangeTracker>()
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
             .Transient((ProjectStorageLocation location) => location.RootDirectory);
 }

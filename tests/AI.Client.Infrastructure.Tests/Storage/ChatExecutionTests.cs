@@ -20,6 +20,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using AI.Client.Application.Tools;
 using AI.Client.Contracts.Tools;
+using AI.Client.Infrastructure.Workspace;
 using System.Text.Json;
 
 public sealed class ChatExecutionTests
@@ -399,9 +400,10 @@ public sealed class ChatExecutionTests
             Chats = new ChatService(_chatRepository, _ids, _clock, _synchronization);
             Dispatcher = NewDispatcher();
         }
+        public WorkspaceChangeTracker Workspace { get; } = new();
         private ChatRunDispatcher NewDispatcher() => new(_runs, Chats, _projectService, _settings,
             new GlobalSettingsService(_settings, _secrets),
-            new ChatAgent(Completion, Tools, _projectService, Chats, _settings), _secrets, _clock, _synchronization);
+            new ChatAgent(Completion, Tools, _projectService, Chats, _settings, Workspace), _secrets, _clock, _synchronization, Workspace);
         public static async Task<Fixture> CreateAsync()
         {
             var fixture = new Fixture();

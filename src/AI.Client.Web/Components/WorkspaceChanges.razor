@@ -1,0 +1,88 @@
+@* The run's net file changes, as one list above the composer rather than repeated inside every
+   tool row. The numbers are measured by the Host against content captured before the run first
+   touched each path, so repeated edits to one file collapse into a single net difference and
+   anything the user changed beforehand is never counted here. *@
+@using AI.Client.Contracts.Workspace
+
+@if (Changes is { IsEmpty: false } changes)
+{
+    <section class="workspace-changes" aria-label="Files changed by this run">
+        <header class="workspace-changes-header">
+            <span class="workspace-changes-title">Files changed</span>
+            <span class="workspace-changes-count">@changes.Files.Count</span>
+            @* The sign carries the meaning, not the colour: red/green alone fails for anyone who
+               cannot tell them apart, and in a diff the direction is the whole point. *@
+            <span class="workspace-changes-totals">
+                <span class="workspace-added">+@changes.Additions</span>
+                <span class="workspace-removed">−@changes.Deletions</span>
+            </span>
+        </header>
+        @if (!changes.IsComplete)
+        {
+            <p class="workspace-changes-note">
+                A command or an external tool ran during this turn, so this list may be incomplete.
+            </p>
+        }
+        <ul class="workspace-changes-list">
+            @foreach (var file in changes.Files)
+            {
+                <li @key="file.Path">
+                    <details class="workspace-change" disabled="@(file.Diff is null)">
+                        <summary>
+                            <span class="workspace-change-kind" title="@KindTitle(file.Kind)">@KindGlyph(file.Kind)</span>
+                            <span class="workspace-change-path" title="@file.Path">@Display(file)</span>
+                            @if (file.Confidence == FileChangeConfidence.Approximate)
+                            {
+                                <span class="workspace-change-approximate" title="Exact line counts were not available for this file">approx.</span>
+                            }
+                            <span class="workspace-change-counts">
+                                @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
+                                @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
+                                @if (file.IsBinary) { <span class="workspace-change-binary">binary</span> }
+                            </span>
+                        </summary>
+                        @if (file.Diff is { Length: > 0 } diff)
+                        {
+                            <pre class="workspace-change-diff">@diff</pre>
+                        }
+                    </details>
+                </li>
+            }
+        </ul>
+    </section>
+}
+
+@code {
+    [Parameter] public WorkspaceChangeSet? Changes { get; set; }
+
+    private static string Display(FileChange file) =>
+        file is { Kind: FileChangeKind.Renamed, PreviousPath: { } previous }
+            ? $"{Name(previous)} → {Name(file.Path)}"
+            : Name(file.Path);
+
+    /// <summary>
+    /// The last two segments. A run usually touches files under one root, so the shared prefix is
+    /// the least informative part of every row; the full path stays in the tooltip.
+    /// </summary>
+    private static string Name(string path)
+    {
+        var segments = path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+        return segments.Length <= 2 ? path : string.Join('/', segments[^2..]);
+    }
+
+    private static string KindGlyph(FileChangeKind kind) => kind switch
+    {
+        FileChangeKind.Added => "A",
+        FileChangeKind.Deleted => "D",
+        FileChangeKind.Renamed => "R",
+        _ => "M",
+    };
+
+    private static string KindTitle(FileChangeKind kind) => kind switch
+    {
+        FileChangeKind.Added => "Added",
+        FileChangeKind.Deleted => "Deleted",
+        FileChangeKind.Renamed => "Renamed",
+        _ => "Modified",
+    };
+}

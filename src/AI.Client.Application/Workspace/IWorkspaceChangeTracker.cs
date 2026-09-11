@@ -1,0 +1,48 @@
+namespace AI.Client.Application.Workspace;
+
+using Contracts.Tools;
+using Contracts.Workspace;
+using Tools;
+
+/// <summary>
+/// Accumulates what a run changed on disk. The aggregate belongs to the run, not to a card in the
+/// transcript and not to the model: the model is never asked what it changed, because its answer
+/// would be a claim rather than an observation.
+/// </summary>
+/// <remarks>
+/// Implementations capture a baseline copy of a path the first time the run is about to modify it,
+/// then compare that baseline against the file as it stands. Two consequences follow, and both are
+/// intended: edits to the same file collapse into one net difference, and whatever the user
+/// changed before the run started is inside the baseline, so it is never attributed to the agent.
+///
+/// Nothing here writes to the workspace, and nothing touches a version control index.
+/// </remarks>
+public interface IWorkspaceChangeTracker
+{
+    /// <summary>
+    /// Starts tracking for a run, discarding anything held for a previous one on the same branch.
+    /// <paramref name="grants"/> bounds every path this tracker will read: a path a tool reports
+    /// but no grant covers is refused, since a server's word is not authorization.
+    /// </summary>
+    Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Called before a call that may modify the workspace, so a baseline exists to compare against.
+    /// </summary>
+    Task RecordIntentAsync(WorkspaceRunKey run, ToolDescriptor tool, string arguments, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Called after a call returns, with what it reported. A tool whose effects the Host cannot
+    /// observe marks the run's change set incomplete rather than being quietly ignored.
+    /// </summary>
+    Task RecordEffectAsync(WorkspaceRunKey run, ToolDescriptor tool, string arguments, ToolCallResult result, CancellationToken cancellationToken);
+
+    /// <summary>The net change set as it stands, safe to call mid-run.</summary>
+    Task<WorkspaceChangeSet> SnapshotAsync(WorkspaceRunKey run, CancellationToken cancellationToken);
+
+    /// <summary>Releases the baselines held for a run.</summary>
+    Task CompleteRunAsync(WorkspaceRunKey run, CancellationToken cancellationToken);
+}
+
+/// <summary>Identifies the run whose changes are being accumulated.</summary>
+public readonly record struct WorkspaceRunKey(Guid ProjectId, Guid ChatId, Guid BranchId);

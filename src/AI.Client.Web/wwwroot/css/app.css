@@ -93,65 +93,29 @@ body {
     border: 0;
 }
 
-.sidebar-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-}
-
 .empty-hint,
 .workspace-composer span {
     color: #858585;
     font-size: 0.8rem;
 }
 
-.sidebar-heading {
-    margin: 0.5rem 0 0.25rem;
+/* Reads as an action, not as a project: muted until pointed at, so the list below it stays the
+   thing the eye lands on first. */
+.new-project-action {
+    border-radius: 0.5rem;
     color: #858585;
-    font-size: 0.8rem;
 }
 
-.sidebar-heading button {
-    padding: 0.15rem 0.45rem;
-    background: transparent;
-    border-color: transparent;
+.new-project-action:hover,
+.new-project-action:focus-visible {
+    background: #2b2b2b;
+    color: #dedede;
 }
 
-.sidebar-heading-toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-
-.sidebar-heading-toggle .app-icon {
-    width: 0.85rem;
-    height: 0.85rem;
-    transition: transform 120ms ease;
-}
-
-.sidebar-heading-toggle[aria-expanded="true"] .app-icon {
-    transform: rotate(90deg);
-}
-
-.sidebar-heading.projects-heading {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 1.6rem 1.6rem 1.6rem;
-    column-gap: 0.12rem;
-}
-
-.projects-heading > .sidebar-heading-toggle {
-    grid-column: 1;
-    justify-self: start;
-}
-
-.projects-heading > .sidebar-heading-action {
-    grid-column: 2;
-    display: grid;
-    width: 1.6rem;
-    height: 1.6rem;
-    padding: 0;
-    place-items: center;
+.new-project-action .app-icon {
+    width: 0.95rem;
+    height: 0.95rem;
+    flex: none;
 }
 
 .workspace-nav-item {

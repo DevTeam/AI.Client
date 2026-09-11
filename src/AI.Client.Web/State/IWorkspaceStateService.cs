@@ -30,4 +30,12 @@ public interface IWorkspaceStateService : IAsyncDisposable
     /// already matches what's saved — typing back to an unchanged value costs nothing.
     /// </summary>
     void QueueComposerDraftSave(string draftKey, string text);
+
+    /// <summary>
+    /// Cancels any pending debounced save and writes the drafts dictionary to localStorage
+    /// immediately. Call before navigating away from the current draft key (e.g. switching
+    /// projects) so an unsent message doesn't get cancelled by the next project typing into
+    /// the same single-debouncer and silently dropped.
+    /// </summary>
+    Task FlushPendingComposerDraftAsync();
 }

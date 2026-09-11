@@ -11,15 +11,11 @@ namespace AI.Client.Web.Components;
 public static class ChatFeed
 {
     /// <summary>
-    /// Exactly one of <paramref name="Message"/> / <paramref name="ToolGroup"/> is set. A message
-    /// item with <paramref name="IsPreamble"/> is an assistant message that explained itself
-    /// before issuing tool calls: its text belongs in the transcript, its calls belong to the
-    /// tool group that follows it.
+    /// Exactly one of <paramref name="Message"/> / <paramref name="ToolGroup"/> is set.
     /// </summary>
     public readonly record struct FeedItem(
         ChatMessageView? Message,
-        IReadOnlyList<ChatMessageView>? ToolGroup,
-        bool IsPreamble = false);
+        IReadOnlyList<ChatMessageView>? ToolGroup);
 
     /// <summary>
     /// One call paired with its result, plus the window it actually occupied. The agent runs a
@@ -53,9 +49,10 @@ public static class ChatFeed
 
     /// <summary>
     /// Collapses each run of consecutive tool-call/tool-result messages into one group, so a
-    /// multi-call turn doesn't render as a stack of near-empty bubbles — but lifts every preamble
-    /// back out in front of the group it opens, giving
-    /// <c>preamble → tools → preamble → tools → final answer</c>.
+    /// multi-call turn doesn't render as a stack of near-empty bubbles. A preamble starts a new
+    /// group rather than joining the previous one, which gives
+    /// <c>preamble + its tools → preamble + its tools → final answer</c>: each cycle is one block
+    /// reading intent first, actions under it.
     /// </summary>
     public static List<FeedItem> BuildFeedItems(IReadOnlyList<ChatMessageView> chain)
     {
@@ -78,13 +75,9 @@ public static class ChatFeed
                 continue;
             }
 
-            // A preamble starts a new call cycle, so the preceding cycle's group is closed before
-            // it: without this flush the text would surface after the tools it announced.
-            if (IsPreamble(message))
-            {
-                FlushGroup();
-                items.Add(new FeedItem(message, null, IsPreamble: true));
-            }
+            // Without this flush a preamble would be swallowed by the previous cycle's group and
+            // surface after the tools it announced, instead of opening its own.
+            if (IsPreamble(message)) FlushGroup();
 
             currentGroup ??= [];
             currentGroup.Add(message);
@@ -92,6 +85,16 @@ public static class ChatFeed
 
         FlushGroup();
         return items;
+    }
+
+    /// <summary>
+    /// The assistant's explanation that opened this group, if it wrote one. Always the group's
+    /// first message: a preamble is what starts a group (see <see cref="BuildFeedItems"/>).
+    /// </summary>
+    public static ChatMessageView? PreambleOf(IReadOnlyList<ChatMessageView> group)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+        return group.Count > 0 && IsPreamble(group[0]) ? group[0] : null;
     }
 
     /// <summary>

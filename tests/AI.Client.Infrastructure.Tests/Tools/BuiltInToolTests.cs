@@ -63,9 +63,10 @@ public sealed class BuiltInToolTests
         tool.SchemaHash.Length.ShouldBe(64);
         var arguments = JsonSerializer.Serialize(new { executable = "dotnet", arguments = (string[])["--info"], workingDirectory = AppContext.BaseDirectory });
         var result = await session.CallAsync(tool, arguments, timeout.Token);
-        using var json = JsonDocument.Parse(result);
-        json.RootElement.GetProperty("structuredContent").GetProperty("exitCode").GetInt32().ShouldBe(0);
-        json.RootElement.GetProperty("structuredContent").GetProperty("stdout").GetString().ShouldNotBeNullOrWhiteSpace();
+        result.IsError.ShouldBeFalse();
+        result.StructuredContent.ShouldNotBeNull();
+        result.StructuredContent!.Value.GetProperty("exitCode").GetInt32().ShouldBe(0);
+        result.StructuredContent!.Value.GetProperty("stdout").GetString().ShouldNotBeNullOrWhiteSpace();
         var canonical = session.ValidateArguments(tool, "{\"executable\":\"dotnet\"}");
         using var canonicalJson = JsonDocument.Parse(canonical);
         canonicalJson.RootElement.GetProperty("executable").GetString().ShouldBe("dotnet");
@@ -275,13 +276,13 @@ public sealed class BuiltInToolTests
             var tool = session.Tools.Single(item => item.OriginalName == "read_text_file");
             var result = await session.CallAsync(tool, JsonSerializer.Serialize(new { path = file }), timeout.Token);
 
-            result.ShouldContain("Привет, мир!");
-            result.ShouldNotContain("\\u04");
+            result.ModelContent.ShouldContain("Привет, мир!");
+            result.ModelContent.ShouldNotContain("\\u04");
             // The result still embeds the file's content twice (once as content text, once as
             // structuredContent — a separate, larger fix), so this isn't 1:1 with the source; but
             // before this fix, \uXXXX-per-character escaping (applied twice) alone made it well
             // over 12x the source text's length. This bound only needs to rule that out.
-            result.Length.ShouldBeLessThan(text.Length * 4);
+            result.ModelContent.Length.ShouldBeLessThan(text.Length * 4);
         }
         finally { Directory.Delete(root, true); }
     }
@@ -355,7 +356,7 @@ public sealed class BuiltInToolTests
     {
         var tool = session.Tools.Single(item => item.OriginalName == name);
         var result = await session.CallAsync(tool, JsonSerializer.Serialize(arguments), token);
-        return JsonDocument.Parse(result).RootElement.GetProperty("structuredContent").Clone();
+        return result.StructuredContent ?? throw new InvalidOperationException($"Tool '{name}' returned no structured content.");
     }
 
     private sealed class Grants(params DirectoryGrantSpec[] grants) : IGrantSource

@@ -17,7 +17,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
     public async Task RunAsync(Guid projectId, Guid chatId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
         Func<string, CancellationToken, Task> text,
-        Func<string?, CancellationToken, Task> activity,
+        Func<ToolActivity?, CancellationToken, Task> activity,
         Func<AgentTool, string, long, CancellationToken, Task<ToolApprovalAction>> approve,
         CancellationToken cancellationToken)
     {
@@ -86,7 +86,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                         result = Error("The user denied this invocation. Do not retry it.");
                     else
                     {
-                        await activity(call.Name, token);
+                        var activeCall = new ToolActivity(call.Id, call.Name, arguments);
+                        await activity(activeCall, token);
                         var current = await PolicyAsync(projectId, chatId, tool, token);
                         if (current.Decision == "Deny") result = Error("Policy changed before execution. Submit a new invocation.");
                         else
@@ -94,7 +95,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                             // Leave a short transport margin for process_run to report its own timeout.
                             timeout.CancelAfter(TimeSpan.FromSeconds(policy.TimeoutSeconds + 2));
-                            result = await session.CallAsync(tool, arguments, timeout.Token);
+                            // Progress arrives on the transport's own thread while the call is in
+                            // flight, so it is forwarded fire-and-forget: a slow subscriber must
+                            // not be able to stall the tool it is reporting on.
+                            var progress = new Progress<ToolProgress>(update => _ = activity(
+                                activeCall with { Progress = update.Progress, Total = update.Total, Message = update.Message },
+                                CancellationToken.None));
+                            result = await session.CallAsync(tool, arguments, progress, timeout.Token);
                         }
                     }
                 }

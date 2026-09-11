@@ -300,13 +300,7 @@ public sealed class ChatRunDispatcher(
                             await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, ct), ct);
                         }
                     },
-                    async (name, ct) =>
-                    {
-                        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, ct);
-                        runtime.ActiveTool = name;
-                        runtime.State.Append("");
-                        await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, ct), ct);
-                    },
+                    (activity, ct) => ReportToolActivityAsync(runtime, activity, ct),
                     (tool, arguments, timeout, ct) => ApproveAsync(runtime, tool, arguments, timeout, ct), token);
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
                 {
@@ -351,8 +345,8 @@ public sealed class ChatRunDispatcher(
             runtime.ActiveMessageId = null;
             runtime.Approval = null;
             runtime.PendingApproval = null;
-            runtime.ActiveTool = null;
-            runtime.Snapshot = runtime.Snapshot with { PendingApproval = null, ActiveTool = null };
+            runtime.ActiveTools.Clear();
+            runtime.Snapshot = runtime.Snapshot with { PendingApproval = null, ActiveTools = [] };
             Publish();
             runtime.Worker = null;
             StartWorker(runtime);
@@ -417,6 +411,43 @@ public sealed class ChatRunDispatcher(
             runtime.Approval = null;
         }
     }
+
+    /// <summary>
+    /// Records a call starting, progressing, or ending. Only the start and the end touch storage:
+    /// a progress report changes nothing durable, so it updates the snapshot and publishes, and is
+    /// throttled the same way streamed text is — a chatty server must not turn into disk traffic.
+    /// </summary>
+    private async Task ReportToolActivityAsync(Runtime runtime, ToolActivity? activity, CancellationToken token)
+    {
+        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
+        if (activity is null)
+        {
+            runtime.ActiveTools.Clear();
+            runtime.State.Append("");
+            await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
+            return;
+        }
+
+        var started = runtime.ActiveTools.TryGetValue(activity.CallId, out var existing);
+        var invocation = new ActiveToolInvocation(activity.CallId, activity.Name, activity.Arguments,
+            started ? existing!.StartedAt : clock.UtcNow, activity.Progress, activity.Total, activity.Message);
+        runtime.ActiveTools[activity.CallId] = invocation;
+
+        if (!started)
+        {
+            runtime.LastProgressPublished = clock.UtcNow;
+            runtime.State.Append("");
+            await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
+            return;
+        }
+
+        if (clock.UtcNow - runtime.LastProgressPublished < ProgressPublishInterval) return;
+        runtime.LastProgressPublished = clock.UtcNow;
+        runtime.Snapshot = runtime.Snapshot with { ActiveTools = runtime.ActiveTools.Values.ToArray() };
+        Publish();
+    }
+
+    private static readonly TimeSpan ProgressPublishInterval = TimeSpan.FromMilliseconds(150);
 
     private async Task PersistToolMessageAsync(Runtime runtime, ChatCompletionMessage message, CancellationToken token)
     {
@@ -525,7 +556,7 @@ public sealed class ChatRunDispatcher(
     private async Task SaveAsync(Runtime runtime, ChatDetails? chat, CancellationToken token)
     {
         await repository.SaveAsync(runtime.State, token);
-        runtime.Snapshot = Snapshot(runtime.State, chat) with { PendingApproval = runtime.PendingApproval, ActiveTool = runtime.ActiveTool };
+        runtime.Snapshot = Snapshot(runtime.State, chat) with { PendingApproval = runtime.PendingApproval, ActiveTools = runtime.ActiveTools.Values.ToArray() };
         if (runtime is { ActiveMessageId: { } active, State.Status: RunStatus.Generating })
             runtime.Snapshot = runtime.Snapshot with { Queue = runtime.Snapshot.Queue.Where(item => item.Id != active).ToArray() };
         if (chat is not null)
@@ -747,7 +778,11 @@ public sealed class ChatRunDispatcher(
         public Guid? ToolHead { get; set; }
         public ToolApproval? PendingApproval { get; set; }
         public TaskCompletionSource<ToolApprovalAction>? Approval { get; set; }
-        public string? ActiveTool { get; set; }
+        /// <summary>Live tool calls, keyed by call id. A list, so parallel calls need no contract change.</summary>
+        public Dictionary<string, ActiveToolInvocation> ActiveTools { get; } = [];
+
+        /// <summary>When the last progress-only update was published, for throttling.</summary>
+        public DateTimeOffset LastProgressPublished { get; set; }
         public Task? Worker { get; set; }
         public CancellationTokenSource? Cancellation { get; set; }
         public Guid? ActiveMessageId { get; set; }

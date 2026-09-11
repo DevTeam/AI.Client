@@ -2591,6 +2591,13 @@ textarea {
     font-size: 0.72rem;
 }
 
+/* The live region sits below the transcript while a run is in flight; its rows use the same
+   shape as the settled ones so a call does not visibly change form when it lands. */
+.tool-activity-live {
+    max-width: 48rem;
+    margin: 0 auto 0.7rem;
+}
+
 /* A batch folds into one line first; opening it reveals the same rows, indented. */
 .tool-activity-batch > .tool-activity-rows {
     margin-left: 1.35rem;

@@ -10,8 +10,16 @@ public sealed class ToolPresentations(IReadOnlyList<IToolPresentationAdapter> ad
 {
     private static readonly GenericToolPresentationAdapter Generic = new();
 
-    /// <summary>The adapters used when nothing more specific is registered.</summary>
-    public static ToolPresentations Default { get; } = new([]);
+    /// <summary>
+    /// The Host's own tools, described from their declared output schemas, with the generic
+    /// adapter behind them for everything else.
+    /// </summary>
+    public static ToolPresentations Default { get; } = new(
+    [
+        new FileToolPresentationAdapter(),
+        new ProcessToolPresentationAdapter(),
+        new WebToolPresentationAdapter(),
+    ]);
 
     private IToolPresentationAdapter Select(ToolRef tool)
     {

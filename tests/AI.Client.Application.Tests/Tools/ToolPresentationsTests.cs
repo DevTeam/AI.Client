@@ -9,7 +9,8 @@ public class ToolPresentationsTests
     private static ToolCallResult Result(string json) => ToolResultCodec.Read(json);
 
     [Theory]
-    [InlineData("mcp_built_in__read_text_file", "Read text file")]
+    [InlineData("mcp_built_in__something_new", "Something new")]
+    // Same tool name, but another server: the built-in adapters must not claim it.
     [InlineData("mcp_default__process_run", "Process run")]
     [InlineData("weather-lookup", "Weather lookup")]
     [InlineData("", "Tool")]

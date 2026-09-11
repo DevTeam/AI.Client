@@ -7,6 +7,7 @@
 @inject IJSRuntime JsRuntime
 @inject AI.Client.Web.Runs.IChatRunsApi RunsApi
 @implements IAsyncDisposable
+@using AI.Client.Contracts.Tools
 
 <div class="messages-area">
 @if (SelectedChat is not null)
@@ -146,9 +147,23 @@
                 @if (_approvalError is not null) { <p role="alert">@_approvalError</p> }
             </section>
         }
-        @if (SelectedRun?.ActiveTool is { } activeTool)
+        @if (SelectedRun?.ActiveTools is { Count: > 0 } activeTools)
         {
-            <p role="status">Running @activeTool…</p>
+            @* aria-live is on the live region only: settled history must never be re-announced,
+               and the same call is described by the same adapters that will describe it in the
+               transcript a moment later, so the wording does not change when it lands. *@
+            <div class="tool-activity tool-activity-live" role="status" aria-live="polite">
+                @foreach (var active in activeTools)
+                {
+                    var call = ToolPresentations.Default.DescribeCall(active.Name, active.Arguments);
+                    <div class="tool-row" @key="active.CallId">
+                        <span class="tool-row-glyph" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
+                        <span class="tool-row-title">@call.Title</span>
+                        @if (call.Detail is { Length: > 0 } detail) { <span class="tool-row-detail" title="@detail">@detail</span> }
+                        <span class="tool-row-meta">@(FormatProgress(active) ?? "Running…")</span>
+                    </div>
+                }
+            </div>
         }
         @if (SelectedRun is { Status: ChatRunStatus.Generating } activeRun && !string.IsNullOrEmpty(activeRun.StreamingContent))
         {
@@ -159,6 +174,18 @@
 </div>
 
 @code {
+    // Progress is whatever the server chose to report, verbatim: a fraction when it gave a total,
+    // a bare count when it did not, and nothing at all when it said nothing — never an invented
+    // percentage.
+    private static string? FormatProgress(ActiveToolInvocation active)
+    {
+        if (active.Message is { Length: > 0 } message) return message;
+        if (active.Progress is not { } progress) return null;
+        return active.Total is { } total and > 0
+            ? $"{progress / total:P0}"
+            : progress.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     // Copy yields the raw calls and results, not the rendered summaries: someone copying tool
     // activity wants the payload to paste into a bug report, not the UI's wording of it.
     private static string BuildToolGroupSummaryText(IReadOnlyList<ChatMessageView> group) =>

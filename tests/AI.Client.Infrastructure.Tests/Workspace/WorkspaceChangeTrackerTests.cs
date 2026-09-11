@@ -21,6 +21,16 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
 
     private static ToolCallResult Ok() => ToolResultCodec.Read("""{"isError":false}""");
 
+    /// <summary>A third-party tool that opted into reporting its own file effects.</summary>
+    private static ToolDescriptor OptedIn() => new("mcp_other__apply", "apply", null, null,
+        JsonDocument.Parse("{}").RootElement.Clone(),
+        JsonDocument.Parse(JsonSerializer.Serialize(new { id = WorkspaceChangeTracker.FileChangeSetSchemaId })
+            .Replace("\"id\"", "\"$id\"", StringComparison.Ordinal)).RootElement.Clone(),
+        null, [], null);
+
+    private static ToolCallResult Reported(params object[] files) =>
+        ToolResultCodec.Read(JsonSerializer.Serialize(new { structuredContent = new { files } }));
+
     private async Task<WorkspaceChangeTracker> StartAsync(params string[] roots)
     {
         var tracker = new WorkspaceChangeTracker();
@@ -208,5 +218,53 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
         change.IsBinary.ShouldBeTrue();
         change.Additions.ShouldBeNull();
         change.Confidence.ShouldBe(FileChangeConfidence.Approximate);
+    }
+
+    [Fact]
+    public async Task ShouldAcceptAFileChangeSetFromAServerThatOptedIn()
+    {
+        var file = Path("reported.txt");
+        await File.WriteAllTextAsync(file, "x", TestContext.Current.CancellationToken);
+        var tracker = await StartAsync();
+
+        await tracker.RecordEffectAsync(_run, OptedIn(), "{}",
+            Reported(new { path = file, kind = "modified", additions = 3, deletions = 1 }),
+            TestContext.Current.CancellationToken);
+
+        var change = (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).Files.ShouldHaveSingleItem();
+        change.Additions.ShouldBe(3);
+        change.Deletions.ShouldBe(1);
+        // The server counted these lines, not the Host.
+        change.Confidence.ShouldBe(FileChangeConfidence.Approximate);
+    }
+
+    [Fact]
+    public async Task ShouldRejectAReportedPathOutsideTheRunsGrants()
+    {
+        var outside = Directory.CreateTempSubdirectory("aiclient-reported-outside");
+        try
+        {
+            var tracker = await StartAsync();
+            var escape = System.IO.Path.Combine(outside.FullName, "elsewhere.txt");
+
+            await tracker.RecordEffectAsync(_run, OptedIn(), "{}",
+                Reported(new { path = escape, kind = "modified" }), TestContext.Current.CancellationToken);
+
+            // Opting in decides what the Host looks at, never what it accepts.
+            (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).IsEmpty.ShouldBeTrue();
+        }
+        finally { outside.Delete(true); }
+    }
+
+    [Fact]
+    public async Task ShouldStayIncompleteWhenAnOptedInServerReportsNothingUsable()
+    {
+        var tracker = await StartAsync();
+
+        await tracker.RecordEffectAsync(_run, OptedIn(), "{}",
+            ToolResultCodec.Read("""{"structuredContent":{"files":"not an array"}}"""),
+            TestContext.Current.CancellationToken);
+
+        (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).IsComplete.ShouldBeFalse();
     }
 }

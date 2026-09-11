@@ -193,7 +193,8 @@ body {
 }
 
 .project-nav-row .workspace-nav-item {
-    grid-column: 1;
+    grid-column: 1 / -1;
+    grid-row: 1;
     min-width: 0;
 }
 
@@ -223,6 +224,84 @@ body {
 .project-action-button:focus-visible,
 .project-menu-button.menu-open {
     opacity: 1;
+}
+
+/* Sidebar rows give the name the whole row and let the actions arrive on top of its right end.
+   Three reserved button columns cost about five rem of every row to buttons that are invisible
+   most of the time, so names were clipped long before they had to be. The name now spans every
+   column; the buttons keep their own tracks and paint above it, over a gradient that dissolves
+   the text beneath them. Nothing reflows when they appear — only opacity changes. */
+.project-nav-row::after,
+.chat-nav-row::after,
+.directory-nav-row::after {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    inset: 0 0 0 auto;
+    width: 7.5rem;
+    border-radius: inherit;
+    background: linear-gradient(to right, rgb(43 43 43 / 0%), #2b2b2b 2.5rem);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 140ms ease;
+}
+
+/* The same states that reveal the buttons, so the fade never shows without them or vice versa. */
+.project-nav-row:hover::after,
+.project-nav-row:focus-within::after,
+.project-nav-row:has(.menu-open)::after,
+.chat-nav-row:hover::after,
+.chat-nav-row:focus-within::after,
+.chat-nav-row:has(.menu-open)::after,
+.directory-nav-row:hover::after,
+.directory-nav-row:focus-within::after,
+.directory-nav-row:has(.menu-open)::after {
+    opacity: 1;
+}
+
+/* The gradient ends in the row's hovered background, so every state that shows it has to paint
+   that background — otherwise the fade reads as a grey patch floating on the sidebar. */
+.project-nav-row:hover,
+.project-nav-row:focus-within,
+.chat-nav-row:focus-within,
+.directory-nav-row:focus-within {
+    background: #2b2b2b;
+}
+
+.project-nav-row > .project-action-button,
+.chat-nav-row > .chat-row-action,
+.directory-nav-row > .directory-row-action,
+.directory-nav-row > .directory-add-button,
+.directory-nav-row > .directory-lock-indicator {
+    position: relative;
+    z-index: 2;
+    grid-row: 1;
+}
+
+/* Renaming focuses an input inside the row, which would otherwise count as focus-within and drop
+   the fade over the text being typed. */
+.project-nav-row:has(> .sidebar-inline-editor)::after,
+.chat-nav-row:has(> .sidebar-inline-editor)::after,
+.directory-nav-row:has(> .sidebar-inline-editor)::after {
+    opacity: 0;
+}
+
+.project-nav-row:has(> .sidebar-inline-editor) > .project-action-button,
+.chat-nav-row:has(> .sidebar-inline-editor) > .chat-row-action,
+.directory-nav-row:has(> .sidebar-inline-editor) > .directory-row-action {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Two indicators are shown at all times rather than on hover — a pinned chat's pin and a
+   directory's access mode — so those rows, and only those, keep a button's width clear of the
+   name instead of letting it run underneath. */
+.chat-nav-row:has(> .chat-pin-button.pinned) > .workspace-nav-item {
+    padding-right: 2rem;
+}
+
+.directory-nav-row > .directory-row-main {
+    padding-right: 2rem;
 }
 
 /* Shared chrome for every dropdown-style menu in the app (project/chat/branch/endpoint) —
@@ -652,7 +731,8 @@ body {
 }
 
 .chat-nav-row .workspace-nav-item {
-    grid-column: 1;
+    grid-column: 1 / -1;
+    grid-row: 1;
     min-width: 0;
 }
 
@@ -661,7 +741,8 @@ body {
 .chat-nav-row > .chat-menu-button { grid-column: 4; }
 
 .sidebar-inline-editor {
-    grid-column: 1;
+    grid-column: 1 / -1;
+    grid-row: 1;
     min-width: 0;
     height: 1.75rem;
     padding: 0.2rem 0.45rem;
@@ -791,7 +872,8 @@ body {
 /* The label-ish content (toggle/folder/name/count) shares grid column 1 as a plain flex
    row, so the trailing action buttons keep the same fixed columns as project/chat rows. */
 .directory-row-main {
-    grid-column: 1;
+    grid-column: 1 / -1;
+    grid-row: 1;
     display: flex;
     align-items: center;
     gap: 0.4rem;

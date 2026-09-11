@@ -18,16 +18,11 @@
 <main class="workspace-shell" @ref="_workspace">
     <aside class="workspace-sidebar">
         <div class="sidebar-projects">
-        <div class="sidebar-heading projects-heading">
-            <button type="button" class="sidebar-heading-toggle" aria-expanded="@(_isProjectsSectionExpanded ? "true" : "false")" aria-controls="projects-nav" @onclick="ToggleProjectsSection">
-                <AppIcon Name="chevron-right" />
-                <span>Projects</span>
-            </button>
-            <button class="icon-action sidebar-heading-action" type="button" title="New project" aria-label="New project" @onclick="BeginProjectCreation"><AppIcon Name="plus" /></button>
-        </div>
-        @if (_isProjectsSectionExpanded)
-        {
+        @* The projects list is the sidebar's top level now, so it has no heading of its own and
+           nothing to collapse it into. Creating a project is an action row at the head of the
+           list — the position the button already occupied, minus the section chrome around it. *@
         <div id="projects-nav">
+        <button class="workspace-nav-item new-project-action" type="button" @onclick="BeginProjectCreation"><AppIcon Name="plus" /><span class="nav-item-label">New project</span></button>
         @if (_isLoading)
         {
             <p>Loading...</p>
@@ -189,7 +184,6 @@
             }
         }
         </div>
-        }
         <span class="visually-hidden" role="status" aria-live="polite">@_sidebarAnnouncement</span>
         </div>
         <nav class="global-nav root-nav sidebar-global-nav" aria-label="Application settings">
@@ -367,7 +361,6 @@
     private Guid? _draggedProjectId;
     private Guid? _draggedChatId;
     private string _sidebarAnnouncement = string.Empty;
-    private bool _isProjectsSectionExpanded = true;
     private string? _globalSection;
     private readonly List<ConnectionSettings> _connections = [];
     private int _enabledMcpServerCount;
@@ -463,7 +456,6 @@
         {
             _dotNetReference = DotNetObjectReference.Create(this);
             await WorkspaceLayoutService.AttachAsync(_workspace);
-            await WorkspaceLayoutService.WatchPhoneModeAsync(_dotNetReference, PhoneModeBreakpointPx);
             try
             {
                 _composerModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
@@ -591,19 +583,9 @@
 
     private static Task HandleComposerKeyDown(KeyboardEventArgs args) => Task.CompletedTask;
 
-    private const int PhoneModeBreakpointPx = 720;
-
-    [JSInvokable]
-    public void OnEnterPhoneMode()
-    {
-        _isProjectsSectionExpanded = false;
-        StateHasChanged();
-    }
-
     private void BeginProjectCreation()
     {
         CancelInlineEdit();
-        _isProjectsSectionExpanded = true;
         _isCreatingProject = true;
         _newProjectName = string.Empty;
         _focusEditingInputPending = true;
@@ -2001,8 +1983,6 @@
         _connections.Count == 0
             ? "No connection"
             : _connections.SingleOrDefault(item => item.Id == _chat.CredentialProfileId)?.Name ?? "Select connection";
-
-    private void ToggleProjectsSection() => _isProjectsSectionExpanded = !_isProjectsSectionExpanded;
 
     private void OnComposerInput(ChangeEventArgs args)
     {

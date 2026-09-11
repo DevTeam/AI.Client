@@ -32,22 +32,6 @@ export function focusAdjacentItem(containerSelector, itemSelector, key) {
     items[nextIndex].focus();
 }
 
-export function watchPhoneMode(dotNetRef, breakpointPx) {
-    const query = window.matchMedia(`(max-width: ${breakpointPx}px)`);
-    const handler = event => {
-        if (event.matches) {
-            dotNetRef.invokeMethodAsync("OnEnterPhoneMode");
-        }
-    };
-    query.addEventListener("change", handler);
-    if (query.matches) {
-        dotNetRef.invokeMethodAsync("OnEnterPhoneMode");
-    }
-    return {
-        dispose: () => query.removeEventListener("change", handler)
-    };
-}
-
 export function attach(workspace) {
     let stored = {};
     try {

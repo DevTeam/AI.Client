@@ -1459,8 +1459,11 @@ body {
 .workspace-message {
     position: relative;
     max-width: 48rem;
-    margin: 0 auto 0.7rem;
-    padding: 0.15rem 0;
+    /* The only vertical gap in the feed. Every other spacing here is zero on purpose: an article
+       that adds its own padding turns one margin into several different-looking gaps, which is
+       what made the rhythm look accidental. */
+    margin: 0 auto 0.75rem;
+    padding: 0;
 }
 
 .workspace-message.user {
@@ -1473,12 +1476,14 @@ body {
 }
 
 .workspace-message.branch-leaf {
+    padding-bottom: 0.3rem;
     border-bottom: 1px solid #3a77b7;
 }
 
 .workspace-message.fork-source {
     border-radius: 0.6rem;
-    box-shadow: 0 0 0 1px #5a89c7;
+    outline: 1px solid #5a89c7;
+    outline-offset: 0.3rem;
 }
 
 .workspace-message.streaming {
@@ -1489,7 +1494,7 @@ body {
    it announces. It stays in the transcript — it is the only place the model explains what it is
    doing — but reads a step quieter than the final answer, so the answer still wins the page. */
 .preamble-content {
-    margin-bottom: 0.3rem;
+    margin-bottom: 0;
     color: #b4b4b4;
     font-size: 0.92rem;
 }
@@ -2542,10 +2547,6 @@ textarea {
 /* Tool activity: one quiet line per invocation, so a multi-call turn reads as a few status rows
    rather than competing with the conversation around it. Raw arguments and bulk output live
    inside the collapsed body and are not built into the DOM until a row is opened. */
-.workspace-message.tool-group {
-    padding: 0;
-}
-
 .tool-activity {
     display: flex;
     flex-direction: column;

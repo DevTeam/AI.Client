@@ -55,7 +55,7 @@ public sealed class RunStateService
                 return;
             }
 
-            var isLlmGenerating = run.PendingApproval is null && run.ActiveTool is null;
+            var isLlmGenerating = run.PendingApproval is null && run.ActiveTools is not { Count: > 0 };
             var now = DateTimeOffset.UtcNow;
             if (isLlmGenerating)
             {

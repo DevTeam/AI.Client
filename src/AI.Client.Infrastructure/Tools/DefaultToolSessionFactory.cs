@@ -107,10 +107,18 @@ public sealed class DefaultToolSessionFactory : IToolSessionFactory
             return Path.GetFullPath(path);
         }
 
-        public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken)
+        public async Task<ToolCallResult> CallAsync(
+            AgentTool tool,
+            string arguments,
+            IProgress<ToolProgress>? progress,
+            CancellationToken cancellationToken)
         {
             var values = JsonSerializer.Deserialize<Dictionary<string, object?>>(ValidateArguments(tool, arguments))!;
-            var result = await _client.CallToolAsync(tool.OriginalName, values, cancellationToken: cancellationToken);
+            // Passing a progress sink is what makes the client attach a progress token to the
+            // request; without one the server is told not to report, so this stays null when
+            // nobody is listening.
+            var sink = progress is null ? null : new ProgressRelay(progress);
+            var result = await _client.CallToolAsync(tool.OriginalName, values, sink, cancellationToken: cancellationToken);
             if (_descriptors[tool.OriginalName].OutputSchema is { } outputSchema
                 && (result.StructuredContent is not { } content || !JsonSchema.Build(outputSchema).Evaluate(content).IsValid))
                 throw new InvalidOperationException("Tool result does not match the output schema.");
@@ -143,6 +151,14 @@ public sealed class DefaultToolSessionFactory : IToolSessionFactory
                     embedded.Resource?.MimeType, embedded.Resource?.Uri, null),
             _ => new ToolContent(ToolContentKindExtensions.FromWireType(block.Type), null, null, null, null),
         };
+        /// <summary>Adapts the protocol's progress notifications to the Host's own shape.</summary>
+        private sealed class ProgressRelay(IProgress<ToolProgress> target)
+            : IProgress<ModelContextProtocol.ProgressNotificationValue>
+        {
+            public void Report(ModelContextProtocol.ProgressNotificationValue value) =>
+                target.Report(new ToolProgress(value.Progress, value.Total, value.Message));
+        }
+
         public ValueTask DisposeAsync() => _client.DisposeAsync();
     }
 }

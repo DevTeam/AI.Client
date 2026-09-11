@@ -63,7 +63,7 @@ public sealed class BuiltInToolTests
         var tool = session.Tools.Single(item => item.OriginalName == "process_run");
         tool.SchemaHash.Length.ShouldBe(64);
         var arguments = JsonSerializer.Serialize(new { executable = "dotnet", arguments = (string[])["--info"], workingDirectory = AppContext.BaseDirectory });
-        var result = await session.CallAsync(tool, arguments, timeout.Token);
+        var result = await session.CallAsync(tool, arguments, null, timeout.Token);
         result.IsError.ShouldBeFalse();
         result.StructuredContent.ShouldNotBeNull();
         result.StructuredContent!.Value.GetProperty("exitCode").GetInt32().ShouldBe(0);
@@ -275,7 +275,7 @@ public sealed class BuiltInToolTests
             await using var session = await new DefaultToolSessionFactory().OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read"])], timeout.Token);
             var tool = session.Tools.Single(item => item.OriginalName == "read_text_file");
-            var result = await session.CallAsync(tool, JsonSerializer.Serialize(new { path = file }), timeout.Token);
+            var result = await session.CallAsync(tool, JsonSerializer.Serialize(new { path = file }), null, timeout.Token);
 
             result.ModelContent.ShouldContain("Привет, мир!");
             result.ModelContent.ShouldNotContain("\\u04");
@@ -356,7 +356,7 @@ public sealed class BuiltInToolTests
     private static async Task<JsonElement> Structured(IToolSession session, string name, object arguments, CancellationToken token)
     {
         var tool = session.Tools.Single(item => item.OriginalName == name);
-        var result = await session.CallAsync(tool, JsonSerializer.Serialize(arguments), token);
+        var result = await session.CallAsync(tool, JsonSerializer.Serialize(arguments), null, token);
         return result.StructuredContent ?? throw new InvalidOperationException($"Tool '{name}' returned no structured content.");
     }
 

@@ -472,7 +472,7 @@ public sealed class ChatExecutionTests
             return Task.FromResult<IToolSession>(this);
         }
         public string ValidateArguments(AgentTool tool, string arguments) => arguments;
-        public Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, CancellationToken cancellationToken)
+        public Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
         {
             CallCount++;
             return Task.FromResult(ToolResultCodec.Read("{\"structuredContent\":{\"exitCode\":0}}"));

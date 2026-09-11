@@ -165,6 +165,9 @@
         {
             <article id="message-streaming" class="workspace-message assistant streaming"><div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(activeRun.StreamingContent))</div></article>
         }
+        @* Last in the transcript, so it lands with the final answer: the aggregate describes the
+           whole turn, and reading it before the answer would be reading the receipt first. *@
+        <WorkspaceChanges Changes="@SelectedRun?.WorkspaceChanges" />
     }
 </div>
 </div>

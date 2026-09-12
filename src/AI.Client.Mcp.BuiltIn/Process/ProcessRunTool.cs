@@ -17,14 +17,14 @@ public sealed class ProcessRunTool(IProcessRunner processRunner) : IToolFactory
                           $"The working directory is not a sandbox. Output is limited to {ProcessRunner.OutputLimit} characters per stream. " +
                           $"Host OS: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture}). " +
                           $"Arguments are passed as a JSON array of strings; each element becomes one argv entry, with no shell parsing, " +
-                          $"glob expansion, or environment-variable substitution. The process's standard input is closed before launch. " +
+                          $"glob expansion, or environment-variable substitution. The process's standard input is closed immediately after launch. " +
                           $"On timeout, cancellation, or hard error the process tree is killed."
         });
 
     [McpServerTool(Name = "process_run", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = true,
         UseStructuredContent = true, OutputSchemaType = typeof(ProcessResult))]
     private async Task<CallToolResult> RunAsync(
-        [Description("Path to the executable to run. Absolute, or relative to `workingDirectory`, or looked up on PATH when `workingDirectory` is omitted.")] [MaxLength(4096)] string executable,
+        [Description("Path to the executable to run. A name with no directory separator is always resolved through PATH, even when `workingDirectory` is given — pass `./name` or an absolute path to run a file inside `workingDirectory`. A relative path containing a separator is resolved against `workingDirectory`; an absolute path is used as is.")] [MaxLength(4096)] string executable,
         [Description("Command-line arguments passed to the executable. Each element becomes one argv entry, with no shell parsing, glob expansion, or environment-variable substitution. Empty array or null means no extra arguments.")] [MaxLength(256)] string[]? arguments = null,
         [Description("Working directory for the process. Not a sandbox — the process can read and write anything the host user can. Empty means inherit the server's working directory.")] [MaxLength(4096)] string? workingDirectory = null,
         [Description("Timeout in milliseconds before the process tree is killed. Must be in [1, 120000].")] [Range(1, 120000)] int timeoutMs = 120000,

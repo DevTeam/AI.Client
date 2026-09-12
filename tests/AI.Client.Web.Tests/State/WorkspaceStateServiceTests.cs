@@ -145,4 +145,30 @@ public class WorkspaceStateServiceTests
         // Nothing changed in storage — the service didn't perform any setItem call.
         js.Entries.Count.ShouldBe(writesBefore);
     }
+
+    [Fact]
+    public async Task ShouldPersistAPendingDraftWhenTheServiceIsDisposed()
+    {
+        // Teardown inside the debounce window is the case the draft store exists to survive:
+        // the user typed the last words of a message and the workspace went away before the
+        // 500ms timer fired. Disposal used to cancel the timer and lose them.
+        var (service, js) = CreateService();
+        service.QueueComposerDraftSave("new:a", "half-written message");
+
+        await service.DisposeAsync();
+
+        js.Entries.ShouldContainKey(DraftsStorageKey);
+        JsonSerializer.Deserialize<Dictionary<string, string>>(js.Entries[DraftsStorageKey])!
+            .ShouldContainKeyAndValue("new:a", "half-written message");
+    }
+
+    [Fact]
+    public async Task ShouldNotWriteOnDisposalWhenNothingIsPending()
+    {
+        var (service, js) = CreateService();
+
+        await service.DisposeAsync();
+
+        js.Calls.ShouldNotContain(call => call.Identifier == "localStorage.setItem");
+    }
 }

@@ -118,7 +118,18 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
         }
         if (token.IsCancellationRequested) return;
 
-        await jsRuntime.InvokeVoidAsync("localStorage.setItem", token, ComposerDraftKey, JsonSerializer.Serialize(_composerDrafts));
+        try
+        {
+            await jsRuntime.InvokeVoidAsync("localStorage.setItem", token, ComposerDraftKey, JsonSerializer.Serialize(_composerDrafts));
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer keystroke or a flush cancelled this write mid-interop and owns the draft
+            // now. Nothing is lost — `_pendingDraftKey` stays set, so whoever cancelled still
+            // owes the write — but the exception would otherwise escape a task nobody awaits.
+            return;
+        }
+
         if (!token.IsCancellationRequested) _pendingDraftKey = null;
     }
 
@@ -139,10 +150,24 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
         _pendingDraftKey = null;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        // Cancelling alone would throw away a draft the debounce had not written yet — the last
+        // few hundred milliseconds of typing before the workspace is torn down, which is the
+        // very case this class exists to survive. Flush first, then cancel.
+        try
+        {
+            await FlushPendingComposerDraftAsync();
+        }
+        catch (Exception error) when (error is JSException or JSDisconnectedException or ObjectDisposedException
+                                          or OperationCanceledException or InvalidOperationException)
+        {
+            // The page is going away; there is no longer anywhere to write to, and failing to
+            // save a draft must not fail disposal.
+        }
+
         _draftSaveCts?.Cancel();
         _draftSaveCts?.Dispose();
-        return ValueTask.CompletedTask;
+        _draftSaveCts = null;
     }
 }

@@ -17,7 +17,7 @@ internal sealed partial class Composition
         DI.Setup()
             .Hint(Hint.Resolve, "Off")
             .Hint(Hint.ThreadSafe, "Off")
-            .Root<McpServer>(nameof(Server))
+            .Root<Program>(nameof(Root))
             // Tools
             .Transient<ProcessRunTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool>(Tag.Unique)

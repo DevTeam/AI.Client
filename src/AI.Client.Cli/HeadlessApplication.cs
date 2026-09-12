@@ -7,7 +7,10 @@ using System.Text.Json;
 
 internal interface IHeadlessApplication { Task<int> RunAsync(); }
 
-internal sealed class HeadlessApplication(string[] args, IHeadlessSessionStore store, IHeadlessChatClient chatClient) : IHeadlessApplication
+internal sealed class HeadlessApplication(
+    string[] args,
+    IHeadlessSessionStore store,
+    IHeadlessChatClient chatClient) : IHeadlessApplication
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     public async Task<int> RunAsync()

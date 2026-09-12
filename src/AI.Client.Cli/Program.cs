@@ -1,3 +1,9 @@
 using AI.Client.Cli;
 
-return await new Composition(args).Root.RunAsync();
+var composition = new Composition(args);
+return await composition.Root.RunAsync();
+
+internal partial class Program(IHeadlessApplication app)
+{
+    private async Task<int> RunAsync() => await app.RunAsync();
+}

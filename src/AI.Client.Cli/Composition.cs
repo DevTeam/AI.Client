@@ -11,7 +11,7 @@ internal sealed partial class Composition
         DI.Setup()
             .Hint(Hint.Resolve, "Off")
             .Hint(Hint.ThreadSafe, "Off")
-            .Root<IHeadlessApplication>("Root")
+            .Root<Program>("Root")
             .Arg<string[]>("args")
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
             .Singleton<HeadlessPaths, HeadlessApplication, HeadlessSessionStore, HeadlessChatClient>();

@@ -647,6 +647,7 @@
     {
         _globalSection = null;
         _attachComposer = true;
+        await SaveCurrentScrollPositionAsync();
         // Flush any unsent composer text for the project we're leaving BEFORE we reset
         // _selectedProject/_selectedChat. Without this, a draft typed up to 500ms ago can be
         // cancelled by the very next keystroke in the new project (the debouncer is shared),
@@ -1097,6 +1098,7 @@
         _globalSection = null;
         _attachComposer = true;
         CloseContextMenus();
+        await SaveCurrentScrollPositionAsync();
         if (_selectedProject is not null)
         {
             if (_selectedChat is { } currentChat) CacheChatDetails(currentChat);
@@ -1443,6 +1445,7 @@
 
     private async Task SelectMessageBranch(Guid siblingId)
     {
+        await SaveCurrentScrollPositionAsync();
         SwitchBranch(siblingId);
         _messageBranchMenuId = null;
         RestoreComposerDraft();
@@ -1688,6 +1691,8 @@
     private async Task SelectBranchTreeItemAsync(BranchTreeItem branch)
     {
         if (_selectedProject is null || _selectedChat is null) return;
+
+        await SaveCurrentScrollPositionAsync();
 
         var refreshedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, _selectedChat.Id, CancellationToken.None);
         if (refreshedChat is not null)
@@ -2117,6 +2122,15 @@
     private void RestoreComposerDraft() => _chat.Message = WorkspaceStateService.GetComposerDraft(GetComposerDraftKey());
 
     private string? GetScrollPositionKey() => _selectedChat is null ? null : $"{_selectedChat.Id}:{_branchLeafId}";
+
+    private async Task SaveCurrentScrollPositionAsync()
+    {
+        var key = GetScrollPositionKey();
+        if (key is not null && _messageFeed is not null)
+        {
+            await _messageFeed.SaveScrollPositionAsync(key);
+        }
+    }
 
     private void ShowToast(string message, string kind)
     {

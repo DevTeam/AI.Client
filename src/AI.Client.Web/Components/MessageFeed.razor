@@ -277,6 +277,7 @@
     private IJSObjectReference? _historyMarkersHandle;
     private IJSObjectReference? _scrollModule;
     private int _historyMarkerCount = -1;
+    private string? _historyMarkerScrollKey;
     private bool _disposed;
 
     // Everything above is set by Home on every one of its renders (i.e. on every composer
@@ -374,6 +375,20 @@
         }
     }
 
+    public async Task SaveScrollPositionAsync(string key)
+    {
+        var module = _historyMarkersModule;
+        if (_disposed || module is null) return;
+        try
+        {
+            await module.InvokeVoidAsync("saveScrollPosition", _messagesContainer, key);
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+            // The feed can disappear while navigation is completing.
+        }
+    }
+
     // Identifies the (chat, branch) pair whose scroll position historyMarkers.js should persist
     // while attached — null while no chat is open (nothing to track).
     private string? GetScrollKey() => SelectedChat is null ? null : $"{SelectedChat.Id}:{BranchLeafId}";
@@ -388,17 +403,22 @@
         {
             await DisposeHistoryMarkersAsync();
             _historyMarkerCount = -1;
+            _historyMarkerScrollKey = null;
             return;
         }
 
         var count = GetVisibleBranchMessages().Count;
-        if (_historyMarkersHandle is not null && count == _historyMarkerCount) return;
+        var scrollKey = GetScrollKey();
+        if (_historyMarkersHandle is not null
+            && count == _historyMarkerCount
+            && scrollKey == _historyMarkerScrollKey) return;
 
         _historyMarkerCount = count;
         await DisposeHistoryMarkersAsync();
+        _historyMarkerScrollKey = scrollKey;
         try
         {
-            _historyMarkersHandle = await _historyMarkersModule.InvokeAsync<IJSObjectReference>("attach", _historyMarkers, _messagesContainer, GetScrollKey());
+            _historyMarkersHandle = await _historyMarkersModule.InvokeAsync<IJSObjectReference>("attach", _historyMarkers, _messagesContainer, scrollKey);
         }
         catch (Exception error) when (error is JSException or ObjectDisposedException)
         {

@@ -46,22 +46,76 @@ const HoverScrollIntervalMs = 16;
 
 const GitBranchIconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="6" cy="19" r="2"/><path d="M6 7v10M8 15h3a7 7 0 0 0 7-6"/></svg>';
 
-// "Which message was on screen" is remembered per (chat, branch) key, not per scroll offset in
-// px — heights can shift between sessions (font loading, markdown re-render), but a message id
-// is stable, and scrollIntoView puts it back in the same relative spot regardless.
-const ScrollPositionKeyPrefix = "ai-client.scroll.v1:";
+// Exact feed position per (chat, branch). Bottom is stored semantically so a transcript that
+// grows between visits still opens at its end; every other position uses the real scrollTop.
+const ScrollPositionKeyPrefix = "ai-client.scroll.v2:";
 const ScrollPersistDebounceMs = 400;
+const scrollPositions = new Map();
+const restoringScrollKeys = new Set();
 
-// Restores the message a (chat, branch) was last scrolled to, if any was ever recorded — called
-// by MessageFeed.razor before deciding whether to fall back to scrolling to the bottom instead.
-export function restoreScrollPosition(scroller, key) {
+const captureScrollPosition = scroller =>
+    scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - ScrollEdgeSlackPx
+        ? { bottom: true }
+        : { scrollTop: scroller.scrollTop };
+
+const persistCapturedScrollPosition = (key, saved) => {
+    scrollPositions.set(key, saved);
+    localStorage.setItem(ScrollPositionKeyPrefix + key, JSON.stringify(saved));
+};
+
+const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
+
+const restoreAfterLayoutSettles = async (scroller, key, saved) => {
+    const startedAt = performance.now();
+    let lastHeight = -1;
+    let lastHeightChangeAt = startedAt;
+    restoringScrollKeys.add(key);
+    try {
+        // Blazor has completed its render when this function is called, but the browser can still
+        // be laying out the large markdown transcript. Re-apply the target until its scrollHeight
+        // has been stable long enough; otherwise scrollTop is clamped to the shorter interim feed.
+        while (performance.now() - startedAt < 1500) {
+            await nextFrame();
+            const height = scroller.scrollHeight;
+            if (height !== lastHeight) {
+                lastHeight = height;
+                lastHeightChangeAt = performance.now();
+            }
+            scroller.scrollTop = saved.bottom === true ? height : saved.scrollTop;
+            const elapsed = performance.now() - startedAt;
+            if (elapsed >= 300 && performance.now() - lastHeightChangeAt >= 100) break;
+        }
+        scrollPositions.set(key, saved);
+    } finally {
+        restoringScrollKeys.delete(key);
+    }
+};
+
+export async function restoreScrollPosition(scroller, key) {
     if (!key) return false;
-    const savedId = localStorage.getItem(ScrollPositionKeyPrefix + key);
-    if (!savedId) return false;
-    const target = document.getElementById(savedId);
-    if (!target) return false;
-    target.scrollIntoView({ block: "start" });
+    let saved = scrollPositions.get(key);
+    if (!saved) {
+        const savedValue = localStorage.getItem(ScrollPositionKeyPrefix + key);
+        if (!savedValue) return false;
+        try {
+            saved = JSON.parse(savedValue);
+        } catch {
+            return false;
+        }
+        scrollPositions.set(key, saved);
+    }
+    if (saved?.bottom === true) {
+        await restoreAfterLayoutSettles(scroller, key, saved);
+        return true;
+    }
+    if (!Number.isFinite(saved?.scrollTop)) return false;
+    await restoreAfterLayoutSettles(scroller, key, saved);
     return true;
+}
+
+export function saveScrollPosition(scroller, key) {
+    if (!key) return;
+    persistCapturedScrollPosition(key, captureScrollPosition(scroller));
 }
 
 // "14:32" for today, "14:32 05.03" for any other day — the date is dropped when it wouldn't add
@@ -211,24 +265,19 @@ export function attach(strip, scroller, scrollKey) {
         hintDown.classList.toggle("visible", canScrollDown);
     };
 
-    // Debounced (400ms after scrolling settles), not written on every scroll event — this is a
-    // localStorage write, and unlike everything else in this module it deliberately does NOT run
-    // synchronously on every scroll tick. Scans every message (not just the user-question
-    // markers, which no longer cover assistant replies) for whichever one sits at the same
-    // "quarter down the viewport" anchor the fisheye itself uses, so re-opening the chat lands on
-    // the same message the marker-based logic would have picked as "active".
+    // Keep the latest position for page reloads without writing localStorage on every scroll
+    // tick. Chat/branch navigation separately saves synchronously before replacing the DOM.
     const persistScrollPosition = () => {
-        if (!scrollKey) return;
+        if (!scrollKey || restoringScrollKeys.has(scrollKey)) return;
+        const saved = captureScrollPosition(scroller);
+        scrollPositions.set(scrollKey, saved);
         clearTimeout(scrollPersistTimer);
         scrollPersistTimer = setTimeout(() => {
-            const articles = [...scroller.querySelectorAll(".workspace-message[id]")];
-            if (articles.length === 0) return;
-            const anchor = scroller.scrollTop + scroller.clientHeight * 0.25;
-            let current = articles[0];
-            for (const article of articles) {
-                if (article.offsetTop <= anchor) current = article; else break;
+            // A synchronous navigation save may have superseded this event while the timeout
+            // was pending. Only flush the exact snapshot that is still current for this key.
+            if (scrollPositions.get(scrollKey) === saved) {
+                localStorage.setItem(ScrollPositionKeyPrefix + scrollKey, JSON.stringify(saved));
             }
-            localStorage.setItem(ScrollPositionKeyPrefix + scrollKey, current.id);
         }, ScrollPersistDebounceMs);
     };
 
@@ -361,6 +410,7 @@ export function attach(strip, scroller, scrollKey) {
         refresh: () => { measuredHeight = -1; render(); },
         dispose: () => {
             stopHoverScroll();
+            // Navigation already saved synchronously. Never let an older delayed write replace it.
             clearTimeout(scrollPersistTimer);
             scroller.removeEventListener("scroll", onScroll);
             strip.removeEventListener("click", onClick);

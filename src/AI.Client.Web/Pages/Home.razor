@@ -808,6 +808,10 @@
         _isSubmittingMessage = true;
         _chatError = null;
         ComposerSubmitOutcome.Accepted? pendingUiUpdate = null;
+        // Keep the key that owns the submitted text. A first message changes the current
+        // key from "new:{projectId}" to the newly-created chat (and a branch submission can
+        // advance its leaf) before ApplyAcceptedRunState clears the composer.
+        var submittedDraftKey = GetComposerDraftKey();
         try
         {
             // _branchLeafId already points at the replace target's parent by the time we get
@@ -854,7 +858,7 @@
                     // by the `_isSubmittingMessage` check above instead of being queued. None of
                     // that work affects what the next submission's GetSelectedRun() sees, so it
                     // runs after the guard drops.
-                    ApplyAcceptedRunState(accepted);
+                    ApplyAcceptedRunState(accepted, submittedDraftKey);
                     pendingUiUpdate = accepted;
                     break;
             }
@@ -875,7 +879,7 @@
         }
     }
 
-    private void ApplyAcceptedRunState(ComposerSubmitOutcome.Accepted accepted)
+    private void ApplyAcceptedRunState(ComposerSubmitOutcome.Accepted accepted, string submittedDraftKey)
     {
         // Accepted outcome is always safe to project onto component state: the service has
         // already persisted the chat, message and run. We just sync local UI state. Kept
@@ -897,6 +901,10 @@
         _forkSourceId = null;
         _replaceSourceId = null;
         _chat.Message = string.Empty;
+        // Clear the draft under its pre-submit key. GetComposerDraftKey() now points at the
+        // accepted chat/branch, so using it here would leave the submitted new-chat text
+        // stored under the project and restore it when the user returns to a fresh chat.
+        WorkspaceStateService.QueueComposerDraftSave(submittedDraftKey, string.Empty);
     }
 
     private async Task FinishAcceptedUiUpdatesAsync(ComposerSubmitOutcome.Accepted accepted)

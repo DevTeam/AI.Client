@@ -1,0 +1,36 @@
+@ChildContent
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public Guid? ChatId { get; set; }
+    [Parameter] public long ChatRevision { get; set; }
+    [Parameter] public Guid? BranchLeafId { get; set; }
+    [Parameter] public Guid? ForkSourceId { get; set; }
+    [Parameter] public Guid? BranchMenuId { get; set; }
+    [Parameter] public int RunPresentationVersion { get; set; }
+
+    private Guid? _renderedChatId;
+    private long _renderedChatRevision = -1;
+    private Guid? _renderedBranchLeafId;
+    private Guid? _renderedForkSourceId;
+    private Guid? _renderedBranchMenuId;
+    private int _renderedRunPresentationVersion;
+
+    protected override bool ShouldRender()
+    {
+        var changed = _renderedChatId != ChatId
+            || _renderedChatRevision != ChatRevision
+            || _renderedBranchLeafId != BranchLeafId
+            || _renderedForkSourceId != ForkSourceId
+            || _renderedBranchMenuId != BranchMenuId
+            || _renderedRunPresentationVersion != RunPresentationVersion;
+
+        _renderedChatId = ChatId;
+        _renderedChatRevision = ChatRevision;
+        _renderedBranchLeafId = BranchLeafId;
+        _renderedForkSourceId = ForkSourceId;
+        _renderedBranchMenuId = BranchMenuId;
+        _renderedRunPresentationVersion = RunPresentationVersion;
+        return changed;
+    }
+}

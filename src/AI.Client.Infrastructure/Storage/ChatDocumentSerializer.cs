@@ -8,7 +8,7 @@ namespace AI.Client.Infrastructure.Storage;
 
 public static class ChatDocumentSerializer
 {
-    private const int SchemaVersion = 4;
+    private const int SchemaVersion = 5;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
     public static string Serialize(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatDocument(
@@ -35,11 +35,22 @@ public static class ChatDocumentSerializer
         chat.PinnedAt,
         chat.LastActivityAt), Options);
 
+    public static string SerializeSummary(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatSummaryDocument(
+        SchemaVersion,
+        revision,
+        chat.Id.Value,
+        chat.ProjectId.Value,
+        chat.Title,
+        chat.UpdatedAt,
+        chat.IsPinned,
+        chat.PinnedAt,
+        chat.LastActivityAt), Options);
+
     public static StoredChat Deserialize(string json)
     {
         var document = JsonSerializer.Deserialize<ChatDocument>(json, Options)
             ?? throw new JsonException("Chat document is empty.");
-        if (document.SchemaVersion is not (3 or SchemaVersion) || document.Revision < 0)
+        if (document.SchemaVersion != SchemaVersion || document.Revision < 0)
         {
             throw new JsonException("Chat document schema or revision is invalid.");
         }
@@ -72,6 +83,26 @@ public static class ChatDocumentSerializer
         return new StoredChat(chat, document.Revision);
     }
 
+    public static StoredChatSummary DeserializeSummary(string json)
+    {
+        var document = JsonSerializer.Deserialize<ChatSummaryDocument>(json, Options)
+            ?? throw new JsonException("Chat document is empty.");
+        if (document.SchemaVersion != SchemaVersion || document.Revision < 0)
+        {
+            throw new JsonException("Chat document schema or revision is invalid.");
+        }
+
+        return new StoredChatSummary(
+            new ChatId(document.Id),
+            new ProjectId(document.ProjectId),
+            document.Title,
+            document.UpdatedAt,
+            document.Revision,
+            document.LastActivityAt == default ? document.UpdatedAt : document.LastActivityAt,
+            document.IsPinned,
+            document.PinnedAt);
+    }
+
     private sealed record ChatDocument(
         // ReSharper disable once MemberHidesStaticFromOuterClass
         int SchemaVersion,
@@ -85,6 +116,20 @@ public static class ChatDocumentSerializer
         ChatMessageDocument[] Messages,
         BranchDocument[] Branches,
         ToolPolicyDocument[]? ToolPolicies = null,
+        bool IsPinned = false,
+        DateTimeOffset? PinnedAt = null,
+        DateTimeOffset LastActivityAt = default);
+
+    // Deliberately contains only sidebar fields. System.Text.Json skips MessageIds without
+    // materialising message nodes, so listing chats stays proportional to the small manifests
+    // rather than the complete transcript history.
+    private sealed record ChatSummaryDocument(
+        int SchemaVersion,
+        long Revision,
+        Guid Id,
+        Guid ProjectId,
+        string Title,
+        DateTimeOffset UpdatedAt,
         bool IsPinned = false,
         DateTimeOffset? PinnedAt = null,
         DateTimeOffset LastActivityAt = default);

@@ -1458,6 +1458,12 @@ body {
 .workspace-message {
     position: relative;
     max-width: 48rem;
+    /* Browser-native virtualization is a better fit than Blazor Virtualize here: transcript
+       items have highly variable heights, while stable DOM ids are required by history markers
+       and scroll restoration. Chromium can skip layout/paint for distant message contents and
+       reuse the real measured height after an item has entered the viewport. */
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 12rem;
     /* The only vertical gap in the feed. Every other spacing here is zero on purpose: an article
        that adds its own padding turns one margin into several different-looking gaps, which is
        what made the rhythm look accidental. */

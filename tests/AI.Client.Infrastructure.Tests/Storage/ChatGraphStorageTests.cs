@@ -9,7 +9,7 @@ using Xunit;
 public sealed class ChatGraphStorageTests
 {
     [Fact]
-    public async Task ShouldCommitMessageNodesBeforeMovingTheManifest()
+    public async Task ShouldCommitChatDocumentAtomically()
     {
         var fs = new MemoryFileSystem();
         var paths = new ChatStoragePaths("data");
@@ -26,7 +26,7 @@ public sealed class ChatGraphStorageTests
         await repository.SaveAsync(chat, 1, CancellationToken.None);
         var restored = await repository.GetAsync(chat.ProjectId, chat.Id, CancellationToken.None);
         restored!.Chat.Messages.ShouldHaveSingleItem().Content.ShouldBe("Question");
-        fs.Files[paths.GetChatPath(chat.Id, chat.ProjectId)].ShouldNotContain("Question");
+        fs.Files[paths.GetChatPath(chat.Id, chat.ProjectId)].ShouldContain("Question");
     }
 
     [Fact]

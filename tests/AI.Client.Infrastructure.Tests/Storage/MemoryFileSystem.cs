@@ -8,6 +8,7 @@ using System.IO.Enumeration;
 internal sealed class MemoryFileSystem : ITextFileSystem
 {
     public ConcurrentDictionary<string, string> Files { get; } = new(StringComparer.Ordinal);
+    public ConcurrentQueue<string> ReadPaths { get; } = new();
     public string? FailWriteSuffix { get; set; }
     public Task<bool> ExistsAsync(string path, CancellationToken cancellationToken) => Task.FromResult(Files.ContainsKey(path));
     public Task<IReadOnlyList<string>> ListFilesAsync(string directoryPath, string searchPattern, CancellationToken cancellationToken) =>
@@ -16,7 +17,11 @@ internal sealed class MemoryFileSystem : ITextFileSystem
     public Task<IReadOnlyList<string>> ListFilesRecursivelyAsync(string directoryPath, string searchPattern, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<string>>(Files.Keys.Where(path => path.StartsWith(directoryPath + Path.DirectorySeparatorChar, StringComparison.Ordinal)
             && FileSystemName.MatchesSimpleExpression(searchPattern, Path.GetFileName(path))).ToArray());
-    public Task<string?> ReadTextAsync(string path, CancellationToken cancellationToken) => Task.FromResult(Files.GetValueOrDefault(path));
+    public Task<string?> ReadTextAsync(string path, CancellationToken cancellationToken)
+    {
+        ReadPaths.Enqueue(path);
+        return Task.FromResult(Files.GetValueOrDefault(path));
+    }
     public async Task WriteTextAsync(string path, string content, CancellationToken cancellationToken)
     {
         await Task.Yield();

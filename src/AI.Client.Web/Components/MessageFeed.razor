@@ -13,6 +13,12 @@
 @if (SelectedChat is not null)
 {
     <nav class="history-markers" aria-hidden="true" @ref="_historyMarkers">
+        <TranscriptRenderBoundary ChatId="@SelectedChat.Id"
+                                  ChatRevision="@SelectedChat.Revision"
+                                  BranchLeafId="@BranchLeafId"
+                                  ForkSourceId="@ForkSourceId"
+                                  BranchMenuId="@MessageBranchMenuId"
+                                  RunPresentationVersion="@TranscriptRunPresentationVersion">
         @{
             var forkPoints = GetForkPointIds();
             var historyEntries = BuildHistoryEntries(GetVisibleBranchMessages(), forkPoints);
@@ -23,15 +29,16 @@
             var isLast = index == historyEntries.Count - 1 && SelectedRun is not { Status: ChatRunStatus.Generating };
             <button class="history-marker @GetHistoryMarkerClass(entry, isLast)" type="button" tabindex="-1"
                     data-target="message-@entry.Question.Id"
-                    data-question-html="@RenderMarkdownCached(entry.Question.Id, entry.Question.Content)"
-                    data-answer-html="@(entry.Answer is { } answer ? RenderMarkdownCached(answer.Id, answer.Content) : string.Empty)"
+                    data-question-target="message-@entry.Question.Id"
+                    data-answer-target="@(entry.Answer is { } answer ? $"message-{answer.Id}" : string.Empty)"
                     data-fork="@(entry.HasFork ? "true" : string.Empty)"
                     data-created="@entry.Question.CreatedAt.ToString("o")"></button>
         }
         @if (SelectedRun is { Status: ChatRunStatus.Generating })
         {
-            <button class="history-marker history-marker-assistant history-marker-generating" type="button" tabindex="-1" data-target="message-streaming" data-question-html="Generating&hellip;" data-answer-html="" data-fork=""></button>
+            <button class="history-marker history-marker-assistant history-marker-generating" type="button" tabindex="-1" data-target="message-streaming" data-question-text="Generating…" data-fork=""></button>
         }
+        </TranscriptRenderBoundary>
     </nav>
     <div class="history-marker-tip" role="tooltip" aria-hidden="true"></div>
     <div class="history-scroll-hint history-scroll-hint-up" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 14 5-5 5 5" /></svg></div>
@@ -77,6 +84,12 @@
                     </div>
                 }
             </text>;
+        <TranscriptRenderBoundary ChatId="@SelectedChat.Id"
+                                  ChatRevision="@SelectedChat.Revision"
+                                  BranchLeafId="@BranchLeafId"
+                                  ForkSourceId="@ForkSourceId"
+                                  BranchMenuId="@MessageBranchMenuId"
+                                  RunPresentationVersion="@TranscriptRunPresentationVersion">
         @foreach (var item in ChatFeed.BuildFeedItems(GetVisibleBranchMessages()))
         {
             @if (item.Message is { } message)
@@ -115,6 +128,7 @@
                 </article>
             }
         }
+        </TranscriptRenderBoundary>
         @if (SelectedRun is { PendingApproval: { } approval } approvalRun)
         {
             <section class="tool-approval" role="region" aria-label="Tool approval">
@@ -229,6 +243,7 @@
     [Parameter] public Guid? ForkSourceId { get; set; }
     [Parameter] public Guid? MessageBranchMenuId { get; set; }
     [Parameter] public ChatRunSnapshot? SelectedRun { get; set; }
+    [Parameter] public int TranscriptRunPresentationVersion { get; set; }
     /// <summary>
     /// Looks up the run governing an arbitrary message's branch — given ANY message id (not
     /// necessarily a fork root), resolves to whichever run actually covers it (its own run if
@@ -263,6 +278,7 @@
     private Guid? _renderedForkSourceId;
     private Guid? _renderedMessageBranchMenuId;
     private ChatRunSnapshot? _renderedSelectedRun;
+    private int _renderedTranscriptRunPresentationVersion;
     private bool _renderedHasSelectedProject;
 
     protected override bool ShouldRender()
@@ -272,6 +288,7 @@
             || _renderedForkSourceId != ForkSourceId
             || _renderedMessageBranchMenuId != MessageBranchMenuId
             || !ReferenceEquals(_renderedSelectedRun, SelectedRun)
+            || _renderedTranscriptRunPresentationVersion != TranscriptRunPresentationVersion
             || _renderedHasSelectedProject != HasSelectedProject;
 
         _renderedSelectedChat = SelectedChat;
@@ -279,6 +296,7 @@
         _renderedForkSourceId = ForkSourceId;
         _renderedMessageBranchMenuId = MessageBranchMenuId;
         _renderedSelectedRun = SelectedRun;
+        _renderedTranscriptRunPresentationVersion = TranscriptRunPresentationVersion;
         _renderedHasSelectedProject = HasSelectedProject;
 
         return changed;
@@ -394,6 +412,7 @@
     private object? _branchCacheChat;
     private Guid? _branchCacheBranchLeafId;
     private IReadOnlyList<ChatMessageView> _branchCacheMessages = [];
+    private HashSet<Guid> _branchCacheMessageIds = [];
     private Dictionary<Guid, List<ChatMessageView>> _branchCacheChildrenByParent = [];
     private HashSet<Guid> _branchCacheForkPoints = [];
 
@@ -404,21 +423,21 @@
             return;
         }
 
-        // _markdownCache is keyed by message id and never shrinks on its own — switching chats
-        // never revisits an old message's id, so without this it would hold every message ever
-        // viewed for the lifetime of the component (this component is never recreated; Home keeps
-        // a single instance across chat switches). Pruning to the newly selected chat's own
-        // messages whenever the CHAT reference changes (not just the branch leaf, so switching
-        // branches within the same chat keeps its cache) bounds the cache to
-        // one chat's worth of messages.
+        // Keep the previous chat's rendered markdown warm as well as the current chat's. Chat
+        // switching commonly alternates between two transcripts, and reparsing/sanitizing every
+        // large message made that path needlessly expensive. The two-chat LRU keeps that common
+        // path fast without retaining every transcript opened during the app's lifetime.
         if (!ReferenceEquals(_branchCacheChat, SelectedChat))
         {
-            PruneMessageCaches();
+            ActivateMarkdownCache();
         }
 
         _branchCacheChat = SelectedChat;
         _branchCacheBranchLeafId = BranchLeafId;
         _branchCacheMessages = ComputeVisibleBranchMessages();
+        _branchCacheMessageIds = BranchLeafId is null
+            ? []
+            : _branchCacheMessages.Select(message => message.Id).ToHashSet();
 
         var childrenByParent = new Dictionary<Guid, List<ChatMessageView>>();
         if (SelectedChat is not null)
@@ -551,18 +570,23 @@
     // SelectedRun tracks — so "is this branch generating" is a single check, not per-message.
     private bool IsBranchGenerating() => SelectedRun?.Status == ChatRunStatus.Generating;
 
-    private readonly Dictionary<Guid, (string Content, string Html)> _markdownCache = [];
+    private const int RetainedMarkdownChatCount = 2;
+    private readonly Dictionary<Guid, (Guid ChatId, string Content, string Html)> _markdownCache = [];
+    private readonly LinkedList<Guid> _markdownChatLru = [];
 
     // Markdig + HtmlSanitizer are not cheap; caching by message id means a re-render only
     // re-parses messages whose content actually changed (in practice, just the one being edited).
     private string RenderMarkdownCached(Guid messageId, string content)
     {
-        if (_markdownCache.TryGetValue(messageId, out var cached) && cached.Content == content)
+        var chatId = SelectedChat?.Id ?? Guid.Empty;
+        if (_markdownCache.TryGetValue(messageId, out var cached)
+            && cached.ChatId == chatId
+            && cached.Content == content)
         {
             return cached.Html;
         }
         var html = MarkdownRenderer.Render(content);
-        _markdownCache[messageId] = (content, html);
+        _markdownCache[messageId] = (chatId, content, html);
         return html;
     }
 
@@ -572,22 +596,47 @@
         return text[..Math.Min(text.Length, 36)] + (text.Length > 36 ? "…" : string.Empty);
     }
 
-    private void PruneMessageCaches()
+    private void ActivateMarkdownCache()
     {
-        var liveIds = SelectedChat?.Messages.Select(message => message.Id).ToHashSet() ?? [];
-        foreach (var key in _markdownCache.Keys.Where(id => !liveIds.Contains(id)).ToList())
+        if (SelectedChat is not { } chat) return;
+
+        var existing = _markdownChatLru.Find(chat.Id);
+        if (existing is not null) _markdownChatLru.Remove(existing);
+        _markdownChatLru.AddFirst(chat.Id);
+
+        // A refreshed revision may have removed messages. Do not retain rendered content which
+        // is no longer part of the chat even while the chat itself remains in the LRU.
+        var liveIds = chat.Messages.Select(message => message.Id).ToHashSet();
+        foreach (var key in _markdownCache
+                     .Where(pair => pair.Value.ChatId == chat.Id && !liveIds.Contains(pair.Key))
+                     .Select(pair => pair.Key)
+                     .ToList())
         {
             _markdownCache.Remove(key);
+        }
+
+        while (_markdownChatLru.Count > RetainedMarkdownChatCount)
+        {
+            var expiredChatId = _markdownChatLru.Last!.Value;
+            _markdownChatLru.RemoveLast();
+            foreach (var key in _markdownCache
+                         .Where(pair => pair.Value.ChatId == expiredChatId)
+                         .Select(pair => pair.Key)
+                         .ToList())
+            {
+                _markdownCache.Remove(key);
+            }
         }
     }
 
     private string GetBranchOptionTitle(ChatMessageView sibling)
     {
-        var siblings = SelectedChat?.Messages
-            .Where(message => message.ParentId == sibling.ParentId)
-            .OrderBy(message => message.CreatedAt)
-            .ToArray() ?? [];
-        if (siblings.Length > 0 && siblings[0].Id == sibling.Id)
+        EnsureBranchCache();
+        var siblings = sibling.ParentId is { } parentId
+            && _branchCacheChildrenByParent.TryGetValue(parentId, out var options)
+                ? options
+                : [];
+        if (siblings.Count > 0 && siblings[0].Id == sibling.Id)
         {
             return sibling.Role == "Assistant" ? "Original response" : "Original message";
         }
@@ -607,22 +656,17 @@
 
     private bool IsMessageInActiveBranch(Guid messageId)
     {
-        if (SelectedChat is null || BranchLeafId is not { } leafId) return false;
-        var byId = SelectedChat.Messages.ToDictionary(message => message.Id);
-        var current = leafId;
-        while (byId.TryGetValue(current, out var message))
-        {
-            if (current == messageId) return true;
-            if (message.ParentId is not { } parentId) break;
-            current = parentId;
-        }
-        return false;
+        EnsureBranchCache();
+        return _branchCacheMessageIds.Contains(messageId);
     }
 
     private int GetActiveBranchPosition(IReadOnlyList<ChatMessageView> options)
     {
-        var index = options.ToList().FindIndex(option => IsMessageInActiveBranch(option.Id));
-        return index < 0 ? 1 : index + 1;
+        for (var index = 0; index < options.Count; index++)
+        {
+            if (IsMessageInActiveBranch(options[index].Id)) return index + 1;
+        }
+        return 1;
     }
 
     public async ValueTask DisposeAsync()

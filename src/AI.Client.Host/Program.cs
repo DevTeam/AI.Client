@@ -109,12 +109,55 @@ app.MapGet("/api/runs/events", async (IChatRunDispatcher dispatcher, HttpRespons
 {
     response.ContentType = "text/event-stream";
     response.Headers.CacheControl = "no-cache";
+    Dictionary<ChatRunKey, ChatRunSnapshot>? previous = null;
     await foreach (var snapshot in dispatcher.SubscribeAsync(cancellationToken))
     {
-        await response.WriteAsync($"event: snapshot\ndata: {JsonSerializer.Serialize(snapshot)}\n\n", cancellationToken);
+        var current = snapshot.ToDictionary(run => new ChatRunKey(run.ChatId, run.BranchId));
+        ChatRunSnapshotUpdate update;
+        if (previous is null)
+        {
+            update = new ChatRunSnapshotUpdate(true, snapshot, [], []);
+        }
+        else
+        {
+            var changed = new List<ChatRunSnapshot>();
+            var appends = new List<ChatRunStreamingAppend>();
+            foreach (var (key, run) in current)
+            {
+                if (!previous.TryGetValue(key, out var old)) changed.Add(run);
+                else if (ReferenceEquals(old, run)) continue;
+                else if (IsStreamingAppend(old, run))
+                    appends.Add(new ChatRunStreamingAppend(run.ChatId, run.BranchId, run.Revision,
+                        run.StreamingContent[old.StreamingContent.Length..]));
+                else changed.Add(run);
+            }
+            update = new ChatRunSnapshotUpdate(false, changed,
+                previous.Keys.Where(key => !current.ContainsKey(key)).ToArray(), appends);
+        }
+        previous = current;
+        if (!update.IsFull && update.Runs.Count == 0 && update.Removed.Count == 0 && update.StreamingAppends.Count == 0) continue;
+        await response.WriteAsync($"event: snapshot\ndata: {JsonSerializer.Serialize(update)}\n\n", cancellationToken);
         await response.Body.FlushAsync(cancellationToken);
     }
 });
+
+static bool IsStreamingAppend(ChatRunSnapshot old, ChatRunSnapshot current) =>
+    current.Revision >= old.Revision
+    && current.Status == old.Status
+    && current.StreamingContent.Length > old.StreamingContent.Length
+    && current.StreamingContent.StartsWith(old.StreamingContent, StringComparison.Ordinal)
+    && current.Queue.SequenceEqual(old.Queue)
+    && current.HasUnreadResponse == old.HasUnreadResponse
+    && current.Error == old.Error
+    && current.ChatRevision == old.ChatRevision
+    && current.HeadMessageId == old.HeadMessageId
+    && Equals(current.PendingApproval, old.PendingApproval)
+    && (current.ActiveTools ?? []).SequenceEqual(old.ActiveTools ?? [])
+    && current.FailureCode == old.FailureCode
+    && current.CanRetry == old.CanRetry
+    && current.BranchRevision == old.BranchRevision
+    && (current.RecoveryActions ?? []).SequenceEqual(old.RecoveryActions ?? [])
+    && Equals(current.WorkspaceChanges, old.WorkspaceChanges);
 
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/stop",
     (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.StopAsync(projectId, chatId, branchId, cancellationToken, operationId));

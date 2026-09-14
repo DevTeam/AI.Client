@@ -22,11 +22,23 @@ public static class RunStatusPresentation
         _ => false
     };
 
+    /// <summary>
+    /// Whether the attention state should still be surfaced. A pending tool approval always is —
+    /// the run is live-blocked right now and can't proceed until it's resolved. A dormant
+    /// attention state (paused, interrupted, or failed-with-recovery) only is until the chat has
+    /// been visited: the run's own `Status` stays Paused/Interrupted/Failed until the user
+    /// actually resumes/retries it, but the sidebar/badge stop nagging once seen — same rule as
+    /// an unread completion.
+    /// </summary>
+    public static bool HasVisibleAttention(ChatRunSnapshot run) =>
+        run.PendingApproval is not null || (NeedsAttention(run) && run.HasUnreadResponse);
+
     public static string GetStatusTooltip(ChatRunSnapshot run) =>
         GetAttentionTooltip(run) ?? GetNonAttentionStatusTooltip(run);
 
     private static string? GetAttentionTooltip(ChatRunSnapshot run) => run switch
     {
+        _ when !HasVisibleAttention(run) => null,
         { PendingApproval: not null } => "Waiting for tool approval",
         { Status: ChatRunStatus.Paused } => "Queue paused - action required",
         { Status: ChatRunStatus.Interrupted } => "Run interrupted - action required",
@@ -40,7 +52,7 @@ public static class RunStatusPresentation
         // fell through to the `_` arm below and was incorrectly classified as unread instead
         // of "no status at all".
         null => string.Empty,
-        _ when NeedsAttention(run) => "run-status-attention",
+        _ when HasVisibleAttention(run) => "run-status-attention",
         { Status: ChatRunStatus.Generating } => "run-status-generating",
         { HasUnreadResponse: false } => string.Empty,
         { Status: ChatRunStatus.Failed } => "run-status-failed",

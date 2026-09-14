@@ -75,8 +75,8 @@
                                     @foreach (var option in options)
                                     {
                                         var selected = IsMessageInActiveBranch(option.Id);
-                                        var optionRun = GetOptionRun(option);
-                                        <button class="@(selected ? "selected" : string.Empty)" type="button" role="menuitem" title="@(optionRun is null ? GetBranchOptionTitle(option) : $"{GetBranchOptionTitle(option)} · {RunStatusPresentation.GetStatusTooltip(optionRun)}")" @onclick="() => OnSelectBranch.InvokeAsync(option.Id)">@if (selected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }<span class="status-dot @GetOptionStatusClass(option)"></span><span class="branch-option-label">@GetBranchOptionTitle(option)</span></button>
+                                        var optionStatusTooltip = GetOptionStatusTooltip(option);
+                                        <button class="@(selected ? "selected" : string.Empty)" type="button" role="menuitem" title="@(optionStatusTooltip is null ? GetBranchOptionTitle(option) : $"{GetBranchOptionTitle(option)} · {optionStatusTooltip}")" @onclick="() => OnSelectBranch.InvokeAsync(option.Id)">@if (selected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }<span class="status-dot @GetOptionStatusClass(option)"></span><span class="branch-option-label">@GetBranchOptionTitle(option)</span></button>
                                     }
                                 </span>
                             }
@@ -663,7 +663,25 @@
     private ChatRunSnapshot? GetOptionRun(ChatMessageView option) =>
         IsMessageInActiveBranch(option.Id) ? SelectedRun : GetRunForBranch?.Invoke(option.Id);
 
-    private string GetOptionStatusClass(ChatMessageView option) => RunStatusPresentation.GetStatusClass(GetOptionRun(option));
+    // The active option's own content is the transcript rendered right below this picker, so its
+    // status is already visible there — showing it again here too would be the same redundant
+    // echo the sidebar avoids. Generating is kept even for the active option since it's live
+    // progress rather than a state the user has already seen.
+    private string GetOptionStatusClass(ChatMessageView option)
+    {
+        var run = GetOptionRun(option);
+        return IsMessageInActiveBranch(option.Id) && run?.Status != ChatRunStatus.Generating
+            ? string.Empty
+            : RunStatusPresentation.GetStatusClass(run);
+    }
+
+    private string? GetOptionStatusTooltip(ChatMessageView option)
+    {
+        var run = GetOptionRun(option);
+        if (run is null) return null;
+        if (IsMessageInActiveBranch(option.Id) && run.Status != ChatRunStatus.Generating) return null;
+        return RunStatusPresentation.GetStatusTooltip(run);
+    }
 
     private bool IsMessageInActiveBranch(Guid messageId)
     {

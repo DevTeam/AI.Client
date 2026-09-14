@@ -1447,6 +1447,10 @@
     {
         await SaveCurrentScrollPositionAsync();
         SwitchBranch(siblingId);
+        if (_selectedChat is not null)
+        {
+            _selectedBranchId = BranchLeafHelpers.RunBranchIdFor(_branchLeafId, _selectedChat);
+        }
         _messageBranchMenuId = null;
         RestoreComposerDraft();
         _pendingScrollRestoreKey = GetScrollPositionKey();

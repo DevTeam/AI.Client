@@ -80,6 +80,10 @@ body {
        start at the same x. A dot is less than half an icon's width, and without a shared slot the
        text next to it simply started wherever the mark happened to end. */
     --nav-mark: 1rem;
+    /* Indent for rows nested under a selected project (chat list, directory group, child
+       directory rows). Defined here once so the indent stays consistent across all three and can
+       be tuned in a single place. */
+    --sidebar-row-indent: 1.1rem;
     min-height: 0;
     overflow-y: auto;
     padding: 0.45rem 1rem 1rem;

@@ -50,61 +50,6 @@
             </div>
             @if (project.Id == _selectedProject?.Id)
             {
-                <div class="directory-nav-group">
-                    @if (_security.DirectoryGrants.Count == 0)
-                    {
-                        <button class="workspace-nav-item directory-empty-action" type="button" @onclick="BeginDirectoryCreation">
-                            <AppIcon Name="folder-plus" />
-                            <span class="nav-item-label">Add directory</span>
-                        </button>
-                    }
-                    else
-                    {
-                        <div class="directory-nav-row directory-nav-row-header">
-                            <span class="directory-row-main">
-                                <button class="icon-action directory-toggle" type="button" aria-expanded="@_directoriesExpanded" aria-label="Toggle directories" @onclick="ToggleDirectoriesExpanded"><AppIcon Name="@(_directoriesExpanded ? "chevron-down" : "chevron-right")" /></button>
-                                <AppIcon Name="folder" />
-                                <span class="nav-item-label directory-label">Directories</span>
-                                <span class="directory-count">@_security.DirectoryGrants.Count</span>
-                            </span>
-                            <button class="icon-action directory-row-action directory-add-button" type="button" title="Add directory" aria-label="Add directory" @onclick="BeginDirectoryCreation"><AppIcon Name="plus" /></button>
-                        </div>
-                        @if (_directoriesExpanded)
-                        {
-                            @foreach (var directory in _security.DirectoryGrants)
-                            {
-                                <div class="directory-nav-row directory-nav-row-child">
-                                    @if (_editingDirectoryId == directory.Id)
-                                    {
-                                        <input class="sidebar-inline-editor directory-path-editor" @ref="_editingInput" value="@_editingDirectoryPath" @oninput="e => _editingDirectoryPath = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveDirectoryPathAsync(directory))" @onblur="() => SaveDirectoryPathAsync(directory)" aria-label="Directory path" />
-                                    }
-                                    else
-                                    {
-                                        <span class="directory-row-main">
-                                            <span class="nav-item-label directory-name" title="@directory.CanonicalRoot">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
-                                        </span>
-                                    }
-                                    <button class="directory-lock-indicator @(directory.Mode == "Read/write" ? "directory-lock-rw" : "directory-lock-ro")" type="button" title="@(directory.Mode == "Read/write" ? "Read/write — click to make read only" : "Read only — click to allow write")" aria-label="Toggle directory access mode" @onclick="() => ToggleDirectoryModeAsync(directory)"><AppIcon Name="@(directory.Mode == "Read/write" ? "unlock" : "lock")" /></button>
-                                    <button class="icon-action directory-row-action directory-edit-button" type="button" title="Edit directory path" aria-label="Edit directory path" @onclick="() => BeginDirectoryPathEdit(directory)"><AppIcon Name="edit" /></button>
-                                    <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == directory.Id ? "menu-open" : string.Empty)" type="button" title="Directory menu" aria-label="Directory menu" @onclick="() => ToggleDirectoryMenu(directory.Id)"><AppIcon Name="more" /></button>
-                                    @if (_directoryMenuId == directory.Id)
-                                    {
-                                        <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
-                                            @if (_isConfirmingDirectoryDelete)
-                                            {
-                                                <div class="project-menu-confirm"><span>Remove this directory?</span><button class="danger compact-action" type="button" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelDirectoryDelete">Cancel</button></div>
-                                            }
-                                            else
-                                            {
-                                                <button class="menu-danger" type="button" role="menuitem" @onclick="ConfirmDirectoryDelete"><AppIcon Name="trash" />Remove directory</button>
-                                            }
-                                        </div>
-                                    }
-                                </div>
-                            }
-                        }
-                    }
-                </div>
                 <nav class="workspace-chat-list" aria-label="Chats in @project.Name" @onkeydown="OnChatListKeyDown">
                     @foreach (var chat in GetOrderedChats())
                     {
@@ -181,6 +126,61 @@
                     }
                     @if (_chats.Count == 0) { <span class="empty-hint">No chats yet</span> }
                 </nav>
+                <div class="directory-nav-group">
+                    @if (_security.DirectoryGrants.Count == 0)
+                    {
+                        <button class="workspace-nav-item directory-empty-action" type="button" @onclick="BeginDirectoryCreation">
+                            <AppIcon Name="folder-plus" />
+                            <span class="nav-item-label">Add directory</span>
+                        </button>
+                    }
+                    else
+                    {
+                        <div class="directory-nav-row directory-nav-row-header">
+                            <span class="directory-row-main">
+                                <button class="icon-action directory-toggle" type="button" aria-expanded="@_directoriesExpanded" aria-label="Toggle directories" @onclick="ToggleDirectoriesExpanded"><AppIcon Name="@(_directoriesExpanded ? "chevron-down" : "chevron-right")" /></button>
+                                <AppIcon Name="folder" />
+                                <span class="nav-item-label directory-label">Directories</span>
+                                <span class="directory-count">@_security.DirectoryGrants.Count</span>
+                            </span>
+                            <button class="icon-action directory-row-action directory-add-button" type="button" title="Add directory" aria-label="Add directory" @onclick="BeginDirectoryCreation"><AppIcon Name="plus" /></button>
+                        </div>
+                        @if (_directoriesExpanded)
+                        {
+                            @foreach (var directory in _security.DirectoryGrants)
+                            {
+                                <div class="directory-nav-row directory-nav-row-child">
+                                    @if (_editingDirectoryId == directory.Id)
+                                    {
+                                        <input class="sidebar-inline-editor directory-path-editor" @ref="_editingInput" value="@_editingDirectoryPath" @oninput="e => _editingDirectoryPath = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveDirectoryPathAsync(directory))" @onblur="() => SaveDirectoryPathAsync(directory)" aria-label="Directory path" />
+                                    }
+                                    else
+                                    {
+                                        <span class="directory-row-main">
+                                            <span class="nav-item-label directory-name" title="@directory.CanonicalRoot">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
+                                        </span>
+                                    }
+                                    <button class="directory-lock-indicator @(directory.Mode == "Read/write" ? "directory-lock-rw" : "directory-lock-ro")" type="button" title="@(directory.Mode == "Read/write" ? "Read/write — click to make read only" : "Read only — click to allow write")" aria-label="Toggle directory access mode" @onclick="() => ToggleDirectoryModeAsync(directory)"><AppIcon Name="@(directory.Mode == "Read/write" ? "unlock" : "lock")" /></button>
+                                    <button class="icon-action directory-row-action directory-edit-button" type="button" title="Edit directory path" aria-label="Edit directory path" @onclick="() => BeginDirectoryPathEdit(directory)"><AppIcon Name="edit" /></button>
+                                    <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == directory.Id ? "menu-open" : string.Empty)" type="button" title="Directory menu" aria-label="Directory menu" @onclick="() => ToggleDirectoryMenu(directory.Id)"><AppIcon Name="more" /></button>
+                                    @if (_directoryMenuId == directory.Id)
+                                    {
+                                        <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                                            @if (_isConfirmingDirectoryDelete)
+                                            {
+                                                <div class="project-menu-confirm"><span>Remove this directory?</span><button class="danger compact-action" type="button" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelDirectoryDelete">Cancel</button></div>
+                                            }
+                                            else
+                                            {
+                                                <button class="menu-danger" type="button" role="menuitem" @onclick="ConfirmDirectoryDelete"><AppIcon Name="trash" />Remove directory</button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                    }
+                </div>
             }
         }
         </div>

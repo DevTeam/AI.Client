@@ -175,9 +175,16 @@
                 }
             </div>
         }
-        @if (SelectedRun is { Status: ChatRunStatus.Generating } activeRun && !string.IsNullOrEmpty(activeRun.StreamingContent))
+        @* StreamingContent survives Pause()/Fail() untouched (only Complete() clears it) — the
+           only in-progress answer this turn produced isn't committed as a real chat message
+           until the run finishes normally, so it has to keep rendering from here after a stop
+           or an error or it just vanishes from the transcript. *@
+        @if (SelectedRun is { } activeRun && !string.IsNullOrEmpty(activeRun.StreamingContent))
         {
-            <article id="message-streaming" class="workspace-message assistant streaming"><div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(activeRun.StreamingContent))</div></article>
+            <article id="message-streaming" class="workspace-message assistant @(activeRun.Status == ChatRunStatus.Generating ? "streaming" : string.Empty)">
+                @if (activeRun.Status != ChatRunStatus.Generating) { <span class="message-status">Incomplete</span> }
+                <div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(activeRun.StreamingContent))</div>
+            </article>
         }
         @* Last in the transcript, so it lands with the final answer: the aggregate describes the
            whole turn, and reading it before the answer would be reading the receipt first. *@

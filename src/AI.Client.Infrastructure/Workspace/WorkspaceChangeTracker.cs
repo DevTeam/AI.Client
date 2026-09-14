@@ -10,12 +10,6 @@ using Contracts.Workspace;
 /// <summary>
 /// Observes the built-in mutating tools and turns them into a net, per-run list of changed files.
 /// </summary>
-/// <remarks>
-/// Only the Host's own file tools report effects precisely enough to be trusted here. Anything else
-/// that could write — an external process, a third-party server — marks the run incomplete instead
-/// of being guessed at, because claiming a complete list that is not complete is worse than
-/// admitting the gap.
-/// </remarks>
 public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
 {
     /// <summary>Built-in tools whose arguments name a path they are about to modify.</summary>
@@ -27,34 +21,15 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
         ["move_file"] = ["source", "destination"],
     };
 
-    /// <summary>
-    /// Built-in tools that can change the workspace in ways this tracker cannot follow. A command
-    /// can write anywhere it has permission to.
-    /// </summary>
-    private static readonly HashSet<string> OpaqueTools = new(StringComparer.Ordinal) { "process_run" };
-
     /// <summary>Past this size a file is compared by existence only; reading it twice is not worth it.</summary>
     private const long MaxTrackedBytes = 8 * 1024 * 1024;
-
-    /// <summary>
-    /// Output schema id a third-party server can declare to report what it changed. Opting in buys
-    /// its files a place in the list; it does not buy trust — every path is still checked against
-    /// the run's grants, and the counts it reports are marked approximate because the Host did not
-    /// measure them.
-    /// </summary>
-    public const string FileChangeSetSchemaId = "file-change-set/v1";
 
     private readonly ConcurrentDictionary<WorkspaceRunKey, RunState> _runs = new();
 
     public Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(grants);
-        var state = new RunState(grants.Select(grant => grant.Root).ToArray());
-        // Whatever the working tree already had uncommitted belongs to the user. Recording it now
-        // is what lets a file an external command wrote later be told apart from one that was
-        // already dirty when the run began.
-        state.CapturePreExistingDirtyPaths();
-        _runs[run] = state;
+        _runs[run] = new RunState(grants.Select(grant => grant.Root).ToArray());
         return Task.CompletedTask;
     }
 
@@ -67,36 +42,10 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
     }
 
     public Task RecordEffectAsync(
-        WorkspaceRunKey run, ToolDescriptor tool, string arguments, ToolCallResult result, CancellationToken cancellationToken)
+        WorkspaceRunKey run, ToolDescriptor tool, string arguments, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(tool);
-        ArgumentNullException.ThrowIfNull(result);
         if (!_runs.TryGetValue(run, out var state)) return Task.CompletedTask;
-
-        var reference = ToolRef.Parse(tool.Name);
-        if (reference.IsBuiltIn && OpaqueTools.Contains(reference.Name))
-        {
-            state.MarkIncomplete();
-            return Task.CompletedTask;
-        }
-
-        if (!reference.IsBuiltIn)
-        {
-            // A server that opted in tells the Host which files it touched. Its word decides what
-            // to look at, never what to believe: the paths are validated and the file is then
-            // measured, or marked approximate when only the server's counts are available.
-            if (DeclaresFileChangeSet(tool))
-            {
-                var reported = state.RecordReportedEffects(result.StructuredContent);
-                if (!reported) state.MarkIncomplete();
-                return Task.CompletedTask;
-            }
-
-            // Otherwise a tool not declared read-only could have written something the Host never
-            // saw. Annotations are hints, so this is a floor, not a verdict.
-            if (tool.Annotations is not { ReadOnlyHint: true }) state.MarkIncomplete();
-            return Task.CompletedTask;
-        }
 
         // A failed call may still have written something, so the paths stay tracked either way;
         // the comparison below simply finds no difference when nothing happened.
@@ -112,12 +61,6 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
         _runs.TryRemove(run, out _);
         return Task.CompletedTask;
     }
-
-    private static bool DeclaresFileChangeSet(ToolDescriptor tool) =>
-        tool.OutputSchema is { ValueKind: JsonValueKind.Object } schema
-        && schema.TryGetProperty("$id", out var id)
-        && id.ValueKind == JsonValueKind.String
-        && (id.GetString()?.EndsWith(FileChangeSetSchemaId, StringComparison.Ordinal) ?? false);
 
     private static IEnumerable<string> PathsFor(ToolDescriptor tool, string arguments)
     {
@@ -135,77 +78,6 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
     {
         private readonly Lock _gate = new();
         private readonly Dictionary<string, Baseline> _baselines = new(StringComparer.OrdinalIgnoreCase);
-        private bool _complete = true;
-
-        private readonly HashSet<string> _preExistingDirty = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, FileChange> _reported = new(StringComparer.OrdinalIgnoreCase);
-        private bool _reconcileWithGit;
-
-        public void MarkIncomplete()
-        {
-            lock (_gate)
-            {
-                _complete = false;
-                // Something wrote outside the Host's view; Git may be able to name what.
-                _reconcileWithGit = true;
-            }
-        }
-
-        public void CapturePreExistingDirtyPaths()
-        {
-            foreach (var root in grantRoots)
-            {
-                if (GitWorkingTree.DirtyPaths(root) is not { } dirty) continue;
-                lock (_gate)
-                    foreach (var path in dirty)
-                        _preExistingDirty.Add(path);
-            }
-        }
-
-        /// <summary>
-        /// Accepts a <c>file-change-set/v1</c> report from a server that opted in. Returns false
-        /// when nothing usable came back, which leaves the run marked incomplete.
-        /// </summary>
-        public bool RecordReportedEffects(JsonElement? structuredContent)
-        {
-            if (structuredContent is not { ValueKind: JsonValueKind.Object } content
-                || !content.TryGetProperty("files", out var reported)
-                || reported.ValueKind != JsonValueKind.Array)
-                return false;
-
-            var accepted = false;
-            foreach (var entry in reported.EnumerateArray())
-            {
-                if (entry.ValueKind != JsonValueKind.Object) continue;
-                if (!entry.TryGetProperty("path", out var pathValue) || pathValue.ValueKind != JsonValueKind.String) continue;
-                if (Canonical(pathValue.GetString() ?? string.Empty) is not { } path) continue;
-
-                var kind = entry.TryGetProperty("kind", out var kindValue) && kindValue.ValueKind == JsonValueKind.String
-                    ? kindValue.GetString() switch
-                    {
-                        "added" => FileChangeKind.Added,
-                        "deleted" => FileChangeKind.Deleted,
-                        "renamed" => FileChangeKind.Renamed,
-                        _ => FileChangeKind.Modified,
-                    }
-                    : FileChangeKind.Modified;
-
-                lock (_gate)
-                    // Approximate without exception: the server counted these lines, not the Host.
-                    _reported[path] = new FileChange(path, kind,
-                        Int(entry, "additions"), Int(entry, "deletions"),
-                        PreviousPath: null, Diff: null, IsBinary: false,
-                        Confidence: FileChangeConfidence.Approximate);
-                accepted = true;
-            }
-            return accepted;
-        }
-
-        private static int? Int(JsonElement element, string property) =>
-            element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number
-            && value.TryGetInt32(out var number) && number >= 0
-                ? number
-                : null;
 
         /// <summary>
         /// Remembers a path's content the first time the run is about to touch it. Later calls are
@@ -226,17 +98,9 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
         public WorkspaceChangeSet Snapshot()
         {
             List<KeyValuePair<string, Baseline>> tracked;
-            List<FileChange> reported;
-            HashSet<string> preExisting;
-            bool complete;
-            bool reconcile;
             lock (_gate)
             {
                 tracked = [.. _baselines];
-                reported = [.. _reported.Values];
-                preExisting = [.. _preExistingDirty];
-                complete = _complete;
-                reconcile = _reconcileWithGit;
             }
 
             var byPath = new Dictionary<string, FileChange>(StringComparer.OrdinalIgnoreCase);
@@ -247,41 +111,10 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
                 byPath[path] = change;
             }
 
-            // A measured comparison always wins over a server's report of the same file.
-            foreach (var change in reported) byPath.TryAdd(change.Path, change);
-
-            if (reconcile)
-                foreach (var change in ReconcileWithGit(preExisting, byPath.Keys))
-                    byPath.TryAdd(change.Path, change);
-
             var files = byPath.Values.ToList();
             files.Sort((left, right) => string.Compare(left.Path, right.Path, StringComparison.OrdinalIgnoreCase));
             return new WorkspaceChangeSet(files, files.Sum(file => file.Additions ?? 0),
-                files.Sum(file => file.Deletions ?? 0), complete);
-        }
-
-        /// <summary>
-        /// Names files that became dirty during the run but never went past the Host — the writes
-        /// of an external command. Anything already dirty when the run began is the user's and is
-        /// excluded. Counts are not claimed: Git measures against HEAD, which would fold in
-        /// whatever the user had changed beforehand, so these rows carry the path only.
-        /// </summary>
-        private IEnumerable<FileChange> ReconcileWithGit(HashSet<string> preExisting, IReadOnlyCollection<string> known)
-        {
-            var seen = new HashSet<string>(known, StringComparer.OrdinalIgnoreCase);
-            foreach (var root in grantRoots)
-            {
-                if (GitWorkingTree.DirtyPaths(root) is not { } dirty) continue;
-                foreach (var path in dirty)
-                {
-                    if (preExisting.Contains(path) || !seen.Add(path)) continue;
-                    if (Canonical(path) is not { } canonical) continue;
-                    yield return new FileChange(canonical,
-                        File.Exists(canonical) ? FileChangeKind.Modified : FileChangeKind.Deleted,
-                        null, null, PreviousPath: null, Diff: null, IsBinary: false,
-                        Confidence: FileChangeConfidence.Approximate);
-                }
-            }
+                files.Sum(file => file.Deletions ?? 0));
         }
 
         private static FileChange? Describe(string path, Baseline before, Baseline after)

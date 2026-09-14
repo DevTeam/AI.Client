@@ -7,14 +7,6 @@
 @if (Changes is { IsEmpty: false } changes)
 {
     <section class="workspace-changes" aria-label="Files changed by this run">
-        @if (!changes.IsComplete)
-        {
-            @* Above the count, not below it: the caveat qualifies the number, and a reader who
-               only takes in the header has to have met it already. *@
-            <p class="workspace-changes-note">
-                A command or an external tool ran during this turn, so this list may be incomplete.
-            </p>
-        }
         <header class="workspace-changes-header">
             <span class="workspace-changes-icon" aria-hidden="true"><AppIcon Name="diff" /></span>
             <span class="workspace-changes-title">Files changed</span>

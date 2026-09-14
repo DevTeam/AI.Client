@@ -109,7 +109,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                             // lands there is nothing left to compare against.
                             await workspace.RecordIntentAsync(runKey, tool.Descriptor, arguments, token);
                             result = await session.CallAsync(tool, arguments, progress, timeout.Token);
-                            await workspace.RecordEffectAsync(runKey, tool.Descriptor, arguments, result, token);
+                            await workspace.RecordEffectAsync(runKey, tool.Descriptor, arguments, token);
                         }
                     }
                 }

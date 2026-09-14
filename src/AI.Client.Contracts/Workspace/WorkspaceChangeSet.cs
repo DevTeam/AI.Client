@@ -4,18 +4,12 @@ namespace AI.Client.Contracts.Workspace;
 /// What a run changed on disk, as a net result rather than a log of edits: a file touched five
 /// times appears once, with the difference between how it started and how it stands now.
 /// </summary>
-/// <param name="IsComplete">
-/// False when something ran that the Host could not fully observe — an external process, or a
-/// third-party tool that may write files without reporting what it wrote. The counts below are
-/// then a floor, not a total, and the UI must say so rather than implying the list is exhaustive.
-/// </param>
 public sealed record WorkspaceChangeSet(
     IReadOnlyList<FileChange> Files,
     int Additions,
-    int Deletions,
-    bool IsComplete)
+    int Deletions)
 {
-    public static WorkspaceChangeSet Empty { get; } = new([], 0, 0, true);
+    public static WorkspaceChangeSet Empty { get; } = new([], 0, 0);
 
     public bool IsEmpty => Files.Count == 0;
 }

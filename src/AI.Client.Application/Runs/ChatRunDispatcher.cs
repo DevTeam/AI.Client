@@ -32,10 +32,16 @@ public sealed class ChatRunDispatcher(
 
     public async Task WarmUpAsync(CancellationToken cancellationToken)
     {
+        var loadedChats = new Dictionary<(Guid ProjectId, Guid ChatId), ChatDetails?>();
         foreach (var state in await repository.ListAsync(cancellationToken))
         {
             using var lease = await synchronization.EnterAsync(state.ChatId, cancellationToken);
-            var chat = await chats.GetAsync(state.ProjectId, state.ChatId, cancellationToken);
+            var key = (state.ProjectId, state.ChatId);
+            if (!loadedChats.TryGetValue(key, out var chat))
+            {
+                chat = await chats.GetAsync(state.ProjectId, state.ChatId, cancellationToken);
+                loadedChats[key] = chat;
+            }
             if (chat is null) continue;
             state.RecoverAfterRestart();
             await repository.SaveAsync(state, cancellationToken);
@@ -300,7 +306,10 @@ public sealed class ChatRunDispatcher(
                         if (clock.UtcNow - runtime.LastPublished >= TimeSpan.FromMilliseconds(150))
                         {
                             runtime.LastPublished = clock.UtcNow;
-                            await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, ct), ct);
+                            // Streaming changes only the run state. Re-reading every immutable
+                            // message node merely to preserve chat metadata made large chats hit
+                            // storage several times per second.
+                            await SaveAsync(runtime, null, ct);
                         }
                     },
                     (activity, ct) => ReportToolActivityAsync(runtime, activity, ct),
@@ -568,7 +577,18 @@ public sealed class ChatRunDispatcher(
     private async Task SaveAsync(Runtime runtime, ChatDetails? chat, CancellationToken token)
     {
         await repository.SaveAsync(runtime.State, token);
-        runtime.Snapshot = Snapshot(runtime.State, chat) with { PendingApproval = runtime.PendingApproval, ActiveTools = runtime.ActiveTools.Values.ToArray(), WorkspaceChanges = runtime.WorkspaceChanges };
+        var previous = runtime.Snapshot;
+        runtime.Snapshot = Snapshot(runtime.State, chat) with
+        {
+            ChatRevision = chat?.Revision ?? previous.ChatRevision,
+            HeadMessageId = chat?.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId)?.HeadMessageId
+                ?? previous.HeadMessageId,
+            BranchRevision = chat?.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId)?.Revision
+                ?? previous.BranchRevision,
+            PendingApproval = runtime.PendingApproval,
+            ActiveTools = runtime.ActiveTools.Values.ToArray(),
+            WorkspaceChanges = runtime.WorkspaceChanges
+        };
         if (runtime is { ActiveMessageId: { } active, State.Status: RunStatus.Generating })
             runtime.Snapshot = runtime.Snapshot with { Queue = runtime.Snapshot.Queue.Where(item => item.Id != active).ToArray() };
         if (chat is not null)

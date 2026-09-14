@@ -122,12 +122,16 @@ export function attach(strip, scroller, scrollKey) {
 
     // An optional meta line (time, short date, branch badge), then the question + a blank-line
     // gap + the final answer, each clamped to 5 lines by CSS (-webkit-line-clamp). The
-    // question/answer are already-sanitized markdown HTML (see IMarkdownRenderer / MessageFeed's
-    // RenderMarkdownCached, reused as-is here — same HTML the message body itself renders) set via
-    // innerHTML; the meta line stays textContent since it's plain text built here, not markdown.
+    // Read the already-sanitized HTML from the visible message DOM only when a tip is shown.
+    // Storing the same potentially-large HTML in every marker's data attributes doubled the
+    // transcript payload Blazor had to build and the browser had to retain on every chat switch.
+    // The meta line stays textContent since it's plain text built here, not markdown.
+    const messageHtml = targetId => targetId
+        ? document.getElementById(targetId)?.querySelector(".markdown-content")?.innerHTML ?? ""
+        : "";
     const showTip = marker => {
         if (marker === lastTipMarker) { tip.classList.add("visible"); return; }
-        const question = marker.dataset.questionHtml;
+        const question = marker.dataset.questionText || messageHtml(marker.dataset.questionTarget);
         if (!question) { hideTip(); return; }
         lastTipMarker = marker;
 
@@ -160,7 +164,7 @@ export function attach(strip, scroller, scrollKey) {
         questionEl.innerHTML = question;
         tip.appendChild(questionEl);
 
-        const answer = marker.dataset.answerHtml;
+        const answer = messageHtml(marker.dataset.answerTarget);
         if (answer) {
             const answerEl = document.createElement("div");
             answerEl.className = "history-marker-tip-answer";

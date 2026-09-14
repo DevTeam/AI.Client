@@ -208,6 +208,7 @@
             ForkSourceId="@_forkSourceId"
             MessageBranchMenuId="@_messageBranchMenuId"
             SelectedRun="@GetSelectedRun()"
+            TranscriptRunPresentationVersion="@GetTranscriptRunPresentationVersion()"
             GetRunForBranch="@(messageId => _selectedChat is null ? null : GetRun(_selectedChat.Id, BranchLeafHelpers.RunBranchIdFor(messageId, _selectedChat)))"
             OnCopyMessage="CopyMessageAsync"
             OnForkFromMessage="ForkFromMessageAsync"
@@ -375,6 +376,9 @@
     private string? _error;
     private readonly List<ChatSummary> _chats = [];
     private ChatDetails? _selectedChat;
+    private const int RetainedChatDetailsCount = 2;
+    private readonly Dictionary<Guid, ChatDetails> _chatDetailsCache = [];
+    private readonly LinkedList<Guid> _chatDetailsLru = [];
     private Guid? _branchLeafId;
     private Guid? _selectedBranchId;
     private Guid? _forkSourceId;
@@ -548,11 +552,17 @@
     [JSInvokable]
     public async Task OnRunSnapshot(string json)
     {
-        var snapshots = JsonSerializer.Deserialize<IReadOnlyList<ChatRunSnapshot>>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? [];
+        var update = JsonSerializer.Deserialize<ChatRunSnapshotUpdate>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        if (update is null) return;
+        var snapshots = update.Runs;
 
-        RunState.RemoveMissing(snapshots);
+        if (update.IsFull) RunState.RemoveMissing(snapshots);
+        else RunState.Remove(update.Removed);
+        RunState.AppendStreaming(update.StreamingAppends);
 
-        foreach (var snapshot in snapshots)
+        var updatedSnapshots = snapshots.Concat(update.StreamingAppends.Select(append =>
+            RunState.Runs.GetValueOrDefault(new RunKey(append.ChatId, append.BranchId))).OfType<ChatRunSnapshot>());
+        foreach (var snapshot in updatedSnapshots)
         {
             StoreRun(snapshot);
             if (snapshot.ChatId == _selectedChat?.Id)
@@ -563,7 +573,7 @@
                 if (snapshot.ChatRevision > _selectedChat.Revision && _selectedProject is not null)
                 {
                     _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, snapshot.ChatId, CancellationToken.None);
-                    await LoadChatsAsync(_selectedProject.Id);
+                    await LoadChatsAsync(_selectedProject.Id, refreshSelected: false);
                 }
                 if ((isSelectedRun || isPendingBranchRun) && _selectedChat?.Branches?.SingleOrDefault(branch => branch.Id == snapshot.BranchId)?.HeadMessageId is { } head)
                     _branchLeafId = head;
@@ -1080,6 +1090,7 @@
         CloseContextMenus();
         if (_selectedProject is not null)
         {
+            if (_selectedChat is { } currentChat) CacheChatDetails(currentChat);
             // Clicking the chat's own sidebar entry while a DIFFERENT one of its branches is
             // already open is the only explicit way back to the main branch (there's no separate
             // "main branch" row next to the fork rows) — it must always land there. Restoring the
@@ -1090,7 +1101,7 @@
             // this method serves — arriving at this chat from somewhere else (a different chat, a
             // fresh page load) — which is exactly what "already viewing this chat" rules out.
             var wasAlreadyOnThisChat = _selectedChat?.Id == chatId;
-            _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, chatId, CancellationToken.None);
+            _selectedChat = await GetChatForSelectionAsync(_selectedProject.Id, chatId);
             _branchLeafId = GetOriginalBranchLeaf(_selectedChat);
 
             // Prefer the branch this chat was last left on, within this project, if it's still
@@ -1120,9 +1131,54 @@
         }
     }
 
+    private async Task<ChatDetails?> GetChatForSelectionAsync(Guid projectId, Guid chatId)
+    {
+        var knownRevision = _chats.FirstOrDefault(chat => chat.Id == chatId)?.Revision;
+        if (_chatDetailsCache.TryGetValue(chatId, out var cached)
+            && cached.ProjectId == projectId
+            && (knownRevision is null || cached.Revision >= knownRevision))
+        {
+            CacheChatDetails(cached);
+            return cached;
+        }
+
+        var loaded = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);
+        if (loaded is not null) CacheChatDetails(loaded);
+        return loaded;
+    }
+
+    private void CacheChatDetails(ChatDetails chat)
+    {
+        _chatDetailsCache[chat.Id] = chat;
+        var existing = _chatDetailsLru.Find(chat.Id);
+        if (existing is not null) _chatDetailsLru.Remove(existing);
+        _chatDetailsLru.AddFirst(chat.Id);
+
+        while (_chatDetailsLru.Count > RetainedChatDetailsCount)
+        {
+            var expiredChatId = _chatDetailsLru.Last!.Value;
+            _chatDetailsLru.RemoveLast();
+            _chatDetailsCache.Remove(expiredChatId);
+        }
+    }
+
     private ChatRunSnapshot? GetRun(Guid chatId, Guid branchId) => RunState.Runs.GetValueOrDefault(new RunKey(chatId, branchId));
     private ChatRunSnapshot? GetBranchRun(Guid chatId, BranchTreeItem branch) => GetRun(chatId, branch.RootId);
     private ChatRunSnapshot? GetSelectedRun() => _selectedChat is not null ? GetRun(_selectedChat.Id, GetSelectedRunBranchId()) : null;
+    private int GetTranscriptRunPresentationVersion()
+    {
+        if (_selectedChat is null) return 0;
+        var hash = new HashCode();
+        foreach (var run in RunState.Runs.Values.Where(run => run.ChatId == _selectedChat.Id).OrderBy(run => run.BranchId))
+        {
+            hash.Add(run.BranchId);
+            hash.Add(run.Status);
+            hash.Add(run.HasUnreadResponse);
+            hash.Add(run.PendingApproval?.Id);
+            hash.Add(run.Error);
+        }
+        return hash.ToHashCode();
+    }
     private void StoreRun(ChatRunSnapshot run) => RunState.Store(run);
     private static bool IsVisibleRun(ChatRunSnapshot run) =>
         RunStatusPresentation.NeedsAttention(run) || run.Status == ChatRunStatus.Generating || run.HasUnreadResponse;
@@ -1226,14 +1282,14 @@
     private async Task SkipFailedQueueAsync() { if (_selectedProject is null || _selectedChat is null) return; var snapshot = await ChatRunsApi.SkipFailedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None); if (snapshot is not null) StoreRun(snapshot); }
     private async Task RebaseQueueAsync() { if (_selectedProject is null || _selectedChat is null) return; var snapshot = await ChatRunsApi.RebaseAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None); if (snapshot is not null) StoreRun(snapshot); }
     private async Task ClearQueueAsync() { if (_selectedProject is null || _selectedChat is null) return; var snapshot = await ChatRunsApi.ClearAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None); if (snapshot is not null) StoreRun(snapshot); }
-    private async Task LoadChatsAsync(Guid projectId)
+    private async Task LoadChatsAsync(Guid projectId, bool refreshSelected = true)
     {
         var chats = await ChatHistoryApi.ListAsync(projectId, CancellationToken.None);
         if (_selectedProject?.Id != projectId) return;
         _chats.Clear();
         _chats.AddRange(chats);
 
-        if (_selectedChat is { } selected)
+        if (refreshSelected && _selectedChat is { } selected)
         {
             var refreshed = await ChatHistoryApi.GetAsync(projectId, selected.Id, CancellationToken.None);
             if (_selectedChat?.Id == selected.Id && refreshed is not null && refreshed.Revision >= _selectedChat.Revision)

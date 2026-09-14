@@ -20,6 +20,30 @@ public sealed class RunStateService
         }
     }
 
+    public void Remove(IReadOnlyList<ChatRunKey> keys)
+    {
+        foreach (var item in keys)
+        {
+            var key = new RunKey(item.ChatId, item.BranchId);
+            _runs.Remove(key);
+            _llmGenerating.Remove(key);
+        }
+    }
+
+    public void AppendStreaming(IReadOnlyList<ChatRunStreamingAppend> appends)
+    {
+        foreach (var append in appends)
+        {
+            var key = new RunKey(append.ChatId, append.BranchId);
+            if (!_runs.TryGetValue(key, out var current) || append.Revision <= current.Revision) continue;
+            Store(current with
+            {
+                StreamingContent = current.StreamingContent + append.Content,
+                Revision = append.Revision
+            });
+        }
+    }
+
     public void Store(ChatRunSnapshot run)
     {
         var key = new RunKey(run.ChatId, run.BranchId);

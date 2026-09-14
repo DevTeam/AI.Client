@@ -10,18 +10,18 @@ using AI.Client.Domain.Projects;
 public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, ChatSynchronization synchronization) : IChatService
 {
     public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken) =>
-        (await repository.ListAsync(new ProjectId(projectId), cancellationToken))
-        .OrderByDescending(item => item.Chat.IsPinned)
-        .ThenByDescending(item => item.Chat.LastActivityAt)
+        (await repository.ListSummariesAsync(new ProjectId(projectId), cancellationToken))
+        .OrderByDescending(item => item.IsPinned)
+        .ThenByDescending(item => item.LastActivityAt)
         .Select(item => new ChatSummary(
-            item.Chat.Id.Value,
-            item.Chat.ProjectId.Value,
-            item.Chat.Title,
-            item.Chat.UpdatedAt,
+            item.Id.Value,
+            item.ProjectId.Value,
+            item.Title,
+            item.UpdatedAt,
             item.Revision,
-            item.Chat.LastActivityAt,
-            item.Chat.IsPinned,
-            item.Chat.PinnedAt))
+            item.LastActivityAt,
+            item.IsPinned,
+            item.PinnedAt))
         .ToArray();
 
     public async Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)

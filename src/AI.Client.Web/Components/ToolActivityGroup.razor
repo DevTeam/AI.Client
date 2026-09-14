@@ -17,8 +17,8 @@
        depend on how many calls there were and whether any failed, which made the transcript's
        shape unpredictable: one failure expanded seven unrelated successes alongside it. The
        structure is now fixed and the outcome shows in the summary instead. *@
-    <details class="tool-activity-batch @(failed > 0 ? "tool-row-failed" : string.Empty)">
-        <summary class="tool-row">
+    <details class="tool-activity-batch @(failed > 0 ? "tool-row-failed" : string.Empty)" open="@_batchExpanded">
+        <summary class="tool-row" @onclick="ToggleBatch" @onclick:preventDefault="true">
             <span class="tool-row-glyph" aria-hidden="true">
                 @if (pending > 0) { <AppIcon Name="spinner" Class="tool-row-spinner" /> }
                 else if (failed > 0) { <AppIcon Name="error" /> }
@@ -35,9 +35,12 @@
                 @FormatDuration(TotalDuration(invocations))
             </span>
         </summary>
-        <div class="tool-activity-rows">
-            @foreach (var invocation in invocations) { @RenderRow(invocation) }
-        </div>
+        @if (_batchExpanded)
+        {
+            <div class="tool-activity-rows">
+                @foreach (var invocation in invocations) { @RenderRow(invocation) }
+            </div>
+        }
     </details>
 </div>
 
@@ -51,6 +54,9 @@
     /// </summary>
     [Parameter] public bool IsLive { get; set; }
 
+    private bool _batchExpanded;
+    private void ToggleBatch() => _batchExpanded = !_batchExpanded;
+
     private RenderFragment RenderRow(ChatFeed.ToolInvocation invocation) => @<text>
         @{
             var call = ToolPresentations.Default.DescribeCall(invocation.Call.Name, invocation.Call.Arguments);
@@ -60,12 +66,12 @@
             var severity = abandoned
                 ? ToolResultSeverity.Warning
                 : result?.Severity ?? ToolResultSeverity.Ok;
-            // Success collapses; a failure stays open, because that is the state the user has to
-            // act on.
-            var open = severity == ToolResultSeverity.Error;
+            // Success collapses; a failure starts open because that is the state the user has to
+            // act on. Either state can still be changed explicitly by the user.
+            var open = IsOpen(invocation.Call.Id, severity);
         }
         <details class="tool-row-item @SeverityClass(severity)" open="@open">
-            <summary class="tool-row">
+            <summary class="tool-row" @onclick="() => Toggle(invocation.Call.Id, open)" @onclick:preventDefault="true">
                 <span class="tool-row-glyph" aria-hidden="true">
                     @if (running) { <AppIcon Name="spinner" Class="tool-row-spinner" /> }
                     else if (severity == ToolResultSeverity.Error) { <AppIcon Name="error" /> }
@@ -87,6 +93,8 @@
                     @if (FormatDuration(invocation.Duration) is { } elapsed) { <span class="tool-row-elapsed">@elapsed</span> }
                 </span>
             </summary>
+            @if (open)
+            {
             <div class="tool-row-body">
                 @if (result is { Facts.Count: > 0 })
                 {
@@ -115,8 +123,29 @@
                     <p class="tool-row-running">The run ended before this call reported back. Its effects may still have happened.</p>
                 }
             </div>
+            }
         </details>
     </text>;
+
+    private readonly HashSet<string> _expanded = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _collapsed = new(StringComparer.Ordinal);
+
+    private bool IsOpen(string id, ToolResultSeverity severity) =>
+        _expanded.Contains(id) || severity == ToolResultSeverity.Error && !_collapsed.Contains(id);
+
+    private void Toggle(string id, bool open)
+    {
+        if (open)
+        {
+            _expanded.Remove(id);
+            _collapsed.Add(id);
+        }
+        else
+        {
+            _collapsed.Remove(id);
+            _expanded.Add(id);
+        }
+    }
 
     // Parsing a result and describing it is not free — a single process_run can carry megabytes of
     // stdout — and Blazor re-renders this subtree whenever the run snapshot changes. Results are

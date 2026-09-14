@@ -9,6 +9,21 @@ using Xunit;
 public class ChatDocumentSerializerTests
 {
     [Fact]
+    public void ShouldReadSummaryWithoutMaterializingMessages()
+    {
+        var createdAt = new DateTimeOffset(2026, 8, 13, 10, 0, 0, TimeSpan.Zero);
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", createdAt);
+        chat.AddMessage(new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Question", createdAt), createdAt);
+
+        var summary = ChatDocumentSerializer.DeserializeSummary(ChatDocumentSerializer.Serialize(chat, 7));
+
+        summary.Id.ShouldBe(chat.Id);
+        summary.ProjectId.ShouldBe(chat.ProjectId);
+        summary.Revision.ShouldBe(7);
+        summary.Title.ShouldBe("Chat");
+    }
+
+    [Fact]
     public void ShouldRestoreBranchTitles()
     {
         var createdAt = new DateTimeOffset(2026, 8, 13, 10, 0, 0, TimeSpan.Zero);

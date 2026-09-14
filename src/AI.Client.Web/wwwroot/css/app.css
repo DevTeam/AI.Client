@@ -1778,6 +1778,8 @@ body {
 .queue-item > input { padding: .3rem; }
 .queue-item .icon-action { width: 1.4rem; height: 1.4rem; }
 .queue-item .icon-action .app-icon { width: .85rem; height: .85rem; }
+.queue-item-active { padding-left: 1.6rem; }
+.queue-active-badge { flex: 0 0 auto !important; color: #777; font-size: .8rem; }
 .queue-actions { justify-content: flex-end; gap: .35rem; flex: 0 0 auto; }
 .queue-action-button {
     display: inline-grid;

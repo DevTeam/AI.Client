@@ -1585,6 +1585,12 @@ body {
     background: linear-gradient(to right, rgb(41 41 41 / 0%), rgb(41 41 41) 1.8rem);
 }
 
+/* Keep the branch control as its own row. The actions are anchored to the article, so without
+   this offset they cover the branch trigger as soon as the message is hovered. */
+.workspace-message:has(.message-branch-indicator) .message-actions {
+    bottom: 1.9rem;
+}
+
 /* Keyboard focus, not focus of any kind. `:focus-within` also matches the focus a mouse click
    leaves behind on the button it just pressed, so after copying a message the chip stayed up
    until focus happened to move somewhere else — reading as a popup that refuses to close.

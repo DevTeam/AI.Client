@@ -129,34 +129,6 @@
             }
         }
         </TranscriptRenderBoundary>
-        @if (SelectedRun is { PendingApproval: { } approval } approvalRun)
-        {
-            <section class="tool-approval" role="region" aria-label="Tool approval">
-                <strong>Allow @approval.Name?</strong>
-                <pre>@approval.Arguments</pre>
-                <p>Timeout: @approval.TimeoutSeconds seconds. The process runs with your account's permissions; the working directory is not a sandbox.</p>
-                <div class="tool-approval-actions">
-                    <button class="secondary-action" type="button" disabled="@(_decidingApproval == approval.Id)" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.Deny)">Deny</button>
-                    <button type="button" disabled="@(_decidingApproval == approval.Id)" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.Allow)">Allow</button>
-                    <details class="tool-approval-more">
-                        <summary class="icon-action" aria-label="More allow options"><AppIcon Name="chevron-down" /></summary>
-                        <div class="tool-approval-menu">
-                            <button type="button" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.AllowForChat)"><strong>Allow for this chat</strong><span>Remember in @SelectedChat?.Title</span></button>
-                            <button type="button" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.AllowForProject)"><strong>Allow for this project</strong><span>Use in every chat in this project</span></button>
-                            @if (_confirmGlobalApprovalId == approval.Id)
-                            {
-                                <div class="tool-approval-global-confirm"><span>Allow <code>@approval.Name</code> in every project?</span><div><button class="secondary-action" type="button" @onclick="CancelGlobalApproval">Cancel</button><button type="button" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.AllowGlobally)">Always allow</button></div></div>
-                            }
-                            else
-                            {
-                                <button type="button" @onclick="() => BeginGlobalApproval(approval.Id)"><strong>Always allow this tool</strong><span>Apply to every project</span></button>
-                            }
-                        </div>
-                    </details>
-                </div>
-                @if (_approvalError is not null) { <p role="alert">@_approvalError</p> }
-            </section>
-        }
         @if (SelectedRun?.ActiveTools is { Count: > 0 } activeTools)
         {
             @* aria-live is on the live region only: settled history must never be re-announced,
@@ -186,9 +158,40 @@
                 <div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(activeRun.StreamingContent))</div>
             </article>
         }
-        @* Last in the transcript, so it lands with the final answer: the aggregate describes the
-           whole turn, and reading it before the answer would be reading the receipt first. *@
+        @* Lands with the final answer: the aggregate describes the whole turn, and reading it
+           before the answer would be reading the receipt first. *@
         <WorkspaceChanges Changes="@SelectedRun?.WorkspaceChanges" />
+        @* Last in the transcript, after the workspace-changes summary: an approval is the user's
+           next action, so it has to be the thing they end up looking at, not something they have
+           to scroll past the receipt to reach. *@
+        @if (SelectedRun is { PendingApproval: { } approval } approvalRun)
+        {
+            <section class="tool-approval" role="region" aria-label="Tool approval">
+                <strong>Allow @approval.Name?</strong>
+                <pre>@approval.Arguments</pre>
+                <p>Timeout: @approval.TimeoutSeconds seconds. The process runs with your account's permissions; the working directory is not a sandbox.</p>
+                <div class="tool-approval-actions">
+                    <button class="secondary-action" type="button" disabled="@(_decidingApproval == approval.Id)" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.Deny)">Deny</button>
+                    <button type="button" disabled="@(_decidingApproval == approval.Id)" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.Allow)">Allow</button>
+                    <details class="tool-approval-more">
+                        <summary class="icon-action" aria-label="More allow options"><AppIcon Name="chevron-down" /></summary>
+                        <div class="tool-approval-menu">
+                            <button type="button" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.AllowForChat)"><strong>Allow for this chat</strong><span>Remember in @SelectedChat?.Title</span></button>
+                            <button type="button" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.AllowForProject)"><strong>Allow for this project</strong><span>Use in every chat in this project</span></button>
+                            @if (_confirmGlobalApprovalId == approval.Id)
+                            {
+                                <div class="tool-approval-global-confirm"><span>Allow <code>@approval.Name</code> in every project?</span><div><button class="secondary-action" type="button" @onclick="CancelGlobalApproval">Cancel</button><button type="button" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.AllowGlobally)">Always allow</button></div></div>
+                            }
+                            else
+                            {
+                                <button type="button" @onclick="() => BeginGlobalApproval(approval.Id)"><strong>Always allow this tool</strong><span>Apply to every project</span></button>
+                            }
+                        </div>
+                    </details>
+                </div>
+                @if (_approvalError is not null) { <p role="alert">@_approvalError</p> }
+            </section>
+        }
     }
 </div>
 </div>

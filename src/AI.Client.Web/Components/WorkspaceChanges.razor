@@ -6,68 +6,81 @@
 
 @if (Changes is { IsEmpty: false } changes)
 {
-    <section class="workspace-changes" aria-label="Files changed by this run">
-        <header class="workspace-changes-header">
-            <span class="workspace-changes-icon" aria-hidden="true"><AppIcon Name="diff" /></span>
-            <span class="workspace-changes-title">Files changed</span>
-            <span class="workspace-changes-count">@changes.Files.Count</span>
-            @* The sign carries the meaning, not the colour: red/green alone fails for anyone who
-               cannot tell them apart, and in a diff the direction is the whole point. *@
-            <span class="workspace-changes-totals">
-                <span class="workspace-added">+@changes.Additions</span>
-                <span class="workspace-removed">−@changes.Deletions</span>
-            </span>
-        </header>
-        <ul class="workspace-changes-list">
-            @foreach (var file in changes.Files)
-            {
-                var expanded = _expanded.Contains(file.Path);
-                var bodyId = $"diff-{file.Path.GetHashCode(StringComparison.Ordinal):x8}";
-                <li @key="file.Path">
-                    @* Expansion is tracked here rather than left to <details>, which keeps its
-                       contents in the DOM whether open or shut. A diff can run to thousands of
-                       lines, and several closed files would each be paying for one. *@
-                    <button class="workspace-change-summary" type="button" aria-expanded="@expanded" aria-controls="@bodyId"
-                            @onclick="() => Toggle(file.Path)">
-                        <span class="workspace-change-kind" title="@KindTitle(file.Kind)">@KindGlyph(file.Kind)</span>
-                        <span class="workspace-change-path" title="@file.Path">@Display(file)</span>
-                        @if (file.Confidence == FileChangeConfidence.Approximate)
+    <section class="workspace-changes @(_showDetails ? "is-expanded" : "is-collapsed")" aria-label="Files changed by this run">
+        @if (!_showDetails)
+        {
+            <button class="workspace-changes-compact" type="button" aria-expanded="false" @onclick="ToggleDetails">
+                <span>@changes.Files.Count @(changes.Files.Count == 1 ? "file" : "files") changed</span>
+                <span class="workspace-changes-compact-totals">
+                    <span class="workspace-added">+@changes.Additions</span>
+                    <span class="workspace-removed">−@changes.Deletions</span>
+                </span>
+            </button>
+        }
+        else
+        {
+            <button class="workspace-changes-header" type="button" aria-expanded="true" title="Collapse file changes" @onclick="ToggleDetails">
+                <span class="workspace-changes-icon" aria-hidden="true"><AppIcon Name="diff" /></span>
+                <span class="workspace-changes-title">Files changed</span>
+                <span class="workspace-changes-count">@changes.Files.Count</span>
+                @* The sign carries the meaning, not the colour: red/green alone fails for anyone who
+                   cannot tell them apart, and in a diff the direction is the whole point. *@
+                <span class="workspace-changes-totals">
+                    <span class="workspace-added">+@changes.Additions</span>
+                    <span class="workspace-removed">−@changes.Deletions</span>
+                </span>
+            </button>
+            <ul class="workspace-changes-list">
+                @foreach (var file in changes.Files)
+                {
+                    var expanded = _expanded.Contains(file.Path);
+                    var bodyId = $"diff-{file.Path.GetHashCode(StringComparison.Ordinal):x8}";
+                    <li @key="file.Path">
+                        @* Expansion is tracked here rather than left to <details>, which keeps its
+                           contents in the DOM whether open or shut. A diff can run to thousands of
+                           lines, and several closed files would each be paying for one. *@
+                        <button class="workspace-change-summary" type="button" aria-expanded="@expanded" aria-controls="@bodyId"
+                                @onclick="() => Toggle(file.Path)">
+                            <span class="workspace-change-kind" title="@KindTitle(file.Kind)">@KindGlyph(file.Kind)</span>
+                            <span class="workspace-change-path" title="@file.Path">@Display(file)</span>
+                            @if (file.Confidence == FileChangeConfidence.Approximate)
+                            {
+                                <span class="workspace-change-approximate" title="Exact line counts were not available for this file">approx.</span>
+                            }
+                            <span class="workspace-change-counts">
+                                @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
+                                @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
+                                @if (file.IsBinary) { <span class="workspace-change-binary">binary</span> }
+                            </span>
+                        </button>
+                        @if (expanded)
                         {
-                            <span class="workspace-change-approximate" title="Exact line counts were not available for this file">approx.</span>
+                            <div class="workspace-change-body" id="@bodyId">
+                                @if (UnifiedDiff.Parse(file.Diff) is { Count: > 0 } lines)
+                                {
+                                    <div class="workspace-change-diff">
+                                        @foreach (var line in lines.Take(MaxRenderedLines))
+                                        {
+                                            @RenderDiffLine(line)
+                                        }
+                                        @if (lines.Count > MaxRenderedLines)
+                                        {
+                                            <div class="diff-note">… @(lines.Count - MaxRenderedLines) more lines not shown</div>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    @* A file with no diff is not an empty diff. Saying which of the
+                                       reasons applies is the whole value of opening the row. *@
+                                    <p class="workspace-change-unavailable">@UnavailableReason(file)</p>
+                                }
+                            </div>
                         }
-                        <span class="workspace-change-counts">
-                            @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
-                            @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
-                            @if (file.IsBinary) { <span class="workspace-change-binary">binary</span> }
-                        </span>
-                    </button>
-                    @if (expanded)
-                    {
-                        <div class="workspace-change-body" id="@bodyId">
-                            @if (UnifiedDiff.Parse(file.Diff) is { Count: > 0 } lines)
-                            {
-                                <div class="workspace-change-diff">
-                                    @foreach (var line in lines.Take(MaxRenderedLines))
-                                    {
-                                        @RenderDiffLine(line)
-                                    }
-                                    @if (lines.Count > MaxRenderedLines)
-                                    {
-                                        <div class="diff-note">… @(lines.Count - MaxRenderedLines) more lines not shown</div>
-                                    }
-                                </div>
-                            }
-                            else
-                            {
-                                @* A file with no diff is not an empty diff. Saying which of the
-                                   reasons applies is the whole value of opening the row. *@
-                                <p class="workspace-change-unavailable">@UnavailableReason(file)</p>
-                            }
-                        </div>
-                    }
-                </li>
-            }
-        </ul>
+                    </li>
+                }
+            </ul>
+        }
     </section>
 }
 
@@ -81,6 +94,9 @@
     [Parameter] public WorkspaceChangeSet? Changes { get; set; }
 
     private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
+    private bool _showDetails;
+
+    private void ToggleDetails() => _showDetails = !_showDetails;
 
     private void Toggle(string path)
     {

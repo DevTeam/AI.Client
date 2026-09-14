@@ -1591,6 +1591,15 @@ body {
     bottom: 1.9rem;
 }
 
+/* An open picker is deliberately drawn outside the message. `overflow-x: hidden` makes the
+   other axis scrollable, while content visibility adds paint containment; together they turn
+   the menu into the tiny nested scroller shown inside a user bubble. Relax both only while the
+   dropdown exists, keeping long-content containment and virtualization for the normal feed. */
+.workspace-message:has(.branch-picker-menu) {
+    overflow: visible;
+    content-visibility: visible;
+}
+
 /* Keyboard focus, not focus of any kind. `:focus-within` also matches the focus a mouse click
    leaves behind on the button it just pressed, so after copying a message the chip stayed up
    until focus happened to move somewhere else — reading as a popup that refuses to close.

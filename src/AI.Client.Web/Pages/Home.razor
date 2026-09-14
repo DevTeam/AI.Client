@@ -203,6 +203,7 @@
     <section class="workspace-conversation" aria-label="Chat">
         <MessageFeed @ref="_messageFeed"
             HasSelectedProject="@(_selectedProject is not null)"
+            SelectedProjectName="@_selectedProject?.Name"
             SelectedChat="@_selectedChat"
             BranchLeafId="@_branchLeafId"
             ForkSourceId="@_forkSourceId"

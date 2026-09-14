@@ -42,7 +42,7 @@
                 }
                 else
                 {
-                    <button class="workspace-nav-item" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => SelectProjectAsync(project, restoreLastChat: false)"><span class="status-dot @GetRunStatusClass(GetProjectRun(project.Id))"></span><span class="nav-item-label">@project.Name</span></button>
+                    <button class="workspace-nav-item" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => SelectProjectAsync(project, restoreLastChat: false)"><span class="status-dot @GetProjectStatusClass(project.Id)"></span><span class="nav-item-label">@project.Name</span></button>
                 }
                 <button class="icon-action project-action-button project-new-chat-button" type="button" title="New chat" aria-label="New chat" @onclick="() => CreateChatForProjectAsync(project)"><AppIcon Name="plus" /></button>
                 <button class="icon-action project-action-button project-rename-button" type="button" title="Rename" aria-label="Rename project" @onclick="() => BeginProjectRenameAsync(project)"><AppIcon Name="edit" /></button>
@@ -108,14 +108,14 @@
                 <nav class="workspace-chat-list" aria-label="Chats in @project.Name" @onkeydown="OnChatListKeyDown">
                     @foreach (var chat in GetOrderedChats())
                     {
-                        <div @key="chat.Id" class="chat-nav-row @(_globalSection is null && chat.Id == _selectedChat?.Id && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty)" title="@GetRunTitle(GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
+                        <div @key="chat.Id" class="chat-nav-row @(_globalSection is null && chat.Id == _selectedChat?.Id && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty)" title="@GetRunTitle(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
                             @if (_editingChatId == chat.Id)
                             {
                                 <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveChatTitleAsync(chat))" @onblur="() => SaveChatTitleAsync(chat)" aria-label="Chat name" />
                             }
                             else
                             {
-                                <button class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><AppIcon Name="@(chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(GetRun(chat.Id, chat.Id))" /><span class="nav-item-label">@chat.Title</span></button>
+                                <button class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><AppIcon Name="@(chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" /><span class="nav-item-label">@chat.Title</span></button>
                             }
                             <button class="icon-action chat-row-action chat-pin-button @(chat.IsPinned ? "pinned" : string.Empty)" type="button" title="@(chat.IsPinned ? "Unpin chat" : "Pin chat")" aria-label="@(chat.IsPinned ? "Unpin chat" : "Pin chat")" @onclick="() => ToggleChatPinAsync(chat)"><AppIcon Name="pin" /></button>
                             <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat)"><AppIcon Name="edit" /></button>
@@ -150,7 +150,7 @@
                         {
                             @foreach (var branch in GetBranchTreeItems())
                             {
-                                <div class="chat-nav-row branch-nav-row @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" title="@GetRunTitle(GetBranchRun(chat.Id, branch))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
+                                <div class="chat-nav-row branch-nav-row @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" title="@GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
                                     <span class="branch-tree-line" aria-hidden="true"></span>
                                     @if (_editingBranchId == branch.RootId)
                                     {
@@ -158,7 +158,7 @@
                                     }
                                     else
                                     {
-                                        <button class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)"><AppIcon Name="git-branch" Class="@GetRunStatusClass(GetBranchRun(chat.Id, branch))" /><span class="nav-item-label">@branch.Title</span></button>
+                                        <button class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)"><AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /><span class="nav-item-label">@branch.Title</span></button>
                                     }
                                     <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename branch" @onclick="() => BeginBranchRename(branch)"><AppIcon Name="edit" /></button>
                                     <button class="icon-action chat-row-action chat-menu-button @(_branchMenuId == branch.RootId ? "menu-open" : string.Empty)" type="button" title="Branch menu" aria-label="Branch menu" @onclick="() => ToggleBranchMenu(branch.RootId)"><AppIcon Name="more" /></button>
@@ -1197,17 +1197,45 @@
     private Guid? GetSelectedBranchId() => GetSelectedBranchItem()?.RootId;
 
     private Guid GetSelectedRunBranchId() => _selectedChat is null ? Guid.Empty : _selectedBranchId ?? _selectedChat.Id;
+    // Priority for picking the ONE run a collapsed project row represents when several of its
+    // chats disagree: an outright failure always wins, then anything else needing user action,
+    // then an unread completion, then an in-progress run — matching how urgently each state
+    // deserves the user's attention rather than e.g. insertion order.
+    private static int GetProjectRunPriority(ChatRunSnapshot run) => run switch
+    {
+        { Status: ChatRunStatus.Failed } => 0,
+        _ when RunStatusPresentation.NeedsAttention(run) => 1,
+        { HasUnreadResponse: true } => 2,
+        { Status: ChatRunStatus.Generating } => 3,
+        _ => 4
+    };
     private ChatRunSnapshot? GetProjectRun(Guid projectId) => GetProjectRuns(projectId)
         .Where(IsVisibleRun)
-        .OrderBy(item => RunStatusPresentation.NeedsAttention(item) ? 0 : item.Status == ChatRunStatus.Failed ? 1 : item.Status == ChatRunStatus.Generating ? 2 : item.HasUnreadResponse ? 3 : 4)
+        .OrderBy(GetProjectRunPriority)
         .FirstOrDefault();
     private string GetProjectRunTooltip(Guid projectId) { var runs = GetProjectRuns(projectId).ToArray(); return $"{runs.Count(item => item.Status == ChatRunStatus.Generating)} generating · {runs.Count(item => item.HasUnreadResponse)} unread · {runs.Count(item => item.Status == ChatRunStatus.Failed)} failed"; }
     private IEnumerable<ChatRunSnapshot> GetProjectRuns(Guid projectId)
     {
         return RunState.Runs.Values.Where(run => run.ProjectId == projectId);
     }
-    private string? GetProjectRunTitle(Guid projectId) => GetProjectRun(projectId) is null ? null : GetProjectRunTooltip(projectId);
-    private static string? GetRunTitle(ChatRunSnapshot? run) => run is null || !IsVisibleRun(run) ? null : RunStatusPresentation.GetStatusTooltip(run);
+    // The open project's own status is already visible per-chat below it, so the project row
+    // itself shows nothing — repeating it there would be the same redundant echo we just
+    // removed from the currently open chat/branch row.
+    private string? GetProjectRunTitle(Guid projectId) =>
+        _selectedProject?.Id == projectId || GetProjectRun(projectId) is null ? null : GetProjectRunTooltip(projectId);
+    private string GetProjectStatusClass(Guid projectId) =>
+        _selectedProject?.Id == projectId ? string.Empty : GetRunStatusClass(GetProjectRun(projectId));
+    // A completed/unread/attention status for what's currently open in the transcript needs no
+    // separate sidebar signal — the message feed already shows it. Generating is the exception:
+    // it stays visible even for the open chat/branch, since it is live progress rather than a
+    // state the user has already seen.
+    private bool IsCurrentRun(Guid chatId, Guid branchId) => _selectedChat?.Id == chatId && GetSelectedRunBranchId() == branchId;
+    private bool ShouldHideCurrentRunStatus(Guid chatId, Guid branchId, ChatRunSnapshot? run) =>
+        IsCurrentRun(chatId, branchId) && run?.Status != ChatRunStatus.Generating;
+    private string? GetRunTitle(Guid chatId, Guid branchId, ChatRunSnapshot? run) =>
+        ShouldHideCurrentRunStatus(chatId, branchId, run) || run is null || !IsVisibleRun(run) ? null : RunStatusPresentation.GetStatusTooltip(run);
+    private string GetRunStatusClass(Guid chatId, Guid branchId, ChatRunSnapshot? run) =>
+        ShouldHideCurrentRunStatus(chatId, branchId, run) ? string.Empty : GetRunStatusClass(run);
     private static string GetRunStatusClass(ChatRunSnapshot? run) => RunStatusPresentation.GetStatusClass(run);
 
     private async Task MarkSelectedChatReadAsync()

@@ -19,18 +19,6 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
     private static ToolDescriptor BuiltIn(string name) => ToolDescriptor.Basic(
         ToolRef.BuiltInPrefix + name, name, name, JsonDocument.Parse("{}").RootElement.Clone());
 
-    private static ToolCallResult Ok() => ToolResultCodec.Read("""{"isError":false}""");
-
-    /// <summary>A third-party tool that opted into reporting its own file effects.</summary>
-    private static ToolDescriptor OptedIn() => new("mcp_other__apply", "apply", null, null,
-        JsonDocument.Parse("{}").RootElement.Clone(),
-        JsonDocument.Parse(JsonSerializer.Serialize(new { id = WorkspaceChangeTracker.FileChangeSetSchemaId })
-            .Replace("\"id\"", "\"$id\"", StringComparison.Ordinal)).RootElement.Clone(),
-        null, [], null);
-
-    private static ToolCallResult Reported(params object[] files) =>
-        ToolResultCodec.Read(JsonSerializer.Serialize(new { structuredContent = new { files } }));
-
     private async Task<WorkspaceChangeTracker> StartAsync(params string[] roots)
     {
         var tracker = new WorkspaceChangeTracker();
@@ -46,7 +34,7 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
         var arguments = JsonSerializer.Serialize(new { path });
         await tracker.RecordIntentAsync(_run, descriptor, arguments, TestContext.Current.CancellationToken);
         await change();
-        await tracker.RecordEffectAsync(_run, descriptor, arguments, Ok(), TestContext.Current.CancellationToken);
+        await tracker.RecordEffectAsync(_run, descriptor, arguments, TestContext.Current.CancellationToken);
     }
 
     private string Path(string name) => System.IO.Path.Combine(_root, name);
@@ -66,7 +54,6 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
         change.Additions.ShouldBe(1);
         change.Deletions.ShouldBe(1);
         changes.Additions.ShouldBe(1);
-        changes.IsComplete.ShouldBeTrue();
     }
 
     [Fact]
@@ -132,7 +119,7 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
         var arguments = JsonSerializer.Serialize(new { source, destination });
         await tracker.RecordIntentAsync(_run, descriptor, arguments, TestContext.Current.CancellationToken);
         File.Move(source, destination);
-        await tracker.RecordEffectAsync(_run, descriptor, arguments, Ok(), TestContext.Current.CancellationToken);
+        await tracker.RecordEffectAsync(_run, descriptor, arguments, TestContext.Current.CancellationToken);
 
         var changes = await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken);
         changes.Files.Count.ShouldBe(2);
@@ -153,27 +140,16 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
     }
 
     [Fact]
-    public async Task ShouldMarkTheSetIncompleteAfterACommandRan()
+    public async Task ShouldIgnoreFilesChangedOutsideBuiltInFileTools()
     {
-        // A command can write anywhere it has permission to; claiming a complete list afterwards
-        // would be a stronger statement than the Host can support.
+        var file = Path("command-output.txt");
         var tracker = await StartAsync();
 
-        await tracker.RecordEffectAsync(_run, BuiltIn("process_run"), "{}", Ok(), TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(file, "created by a command", TestContext.Current.CancellationToken);
+        await tracker.RecordEffectAsync(
+            _run, BuiltIn("process_run"), "{}", TestContext.Current.CancellationToken);
 
-        (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).IsComplete.ShouldBeFalse();
-    }
-
-    [Fact]
-    public async Task ShouldMarkTheSetIncompleteAfterAThirdPartyToolThatIsNotDeclaredReadOnly()
-    {
-        var tracker = await StartAsync();
-        var thirdParty = ToolDescriptor.Basic("mcp_other__do_things", "do_things", null,
-            JsonDocument.Parse("{}").RootElement.Clone());
-
-        await tracker.RecordEffectAsync(_run, thirdParty, "{}", Ok(), TestContext.Current.CancellationToken);
-
-        (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).IsComplete.ShouldBeFalse();
+        (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).IsEmpty.ShouldBeTrue();
     }
 
     [Fact]
@@ -220,51 +196,4 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
         change.Confidence.ShouldBe(FileChangeConfidence.Approximate);
     }
 
-    [Fact]
-    public async Task ShouldAcceptAFileChangeSetFromAServerThatOptedIn()
-    {
-        var file = Path("reported.txt");
-        await File.WriteAllTextAsync(file, "x", TestContext.Current.CancellationToken);
-        var tracker = await StartAsync();
-
-        await tracker.RecordEffectAsync(_run, OptedIn(), "{}",
-            Reported(new { path = file, kind = "modified", additions = 3, deletions = 1 }),
-            TestContext.Current.CancellationToken);
-
-        var change = (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).Files.ShouldHaveSingleItem();
-        change.Additions.ShouldBe(3);
-        change.Deletions.ShouldBe(1);
-        // The server counted these lines, not the Host.
-        change.Confidence.ShouldBe(FileChangeConfidence.Approximate);
-    }
-
-    [Fact]
-    public async Task ShouldRejectAReportedPathOutsideTheRunsGrants()
-    {
-        var outside = Directory.CreateTempSubdirectory("aiclient-reported-outside");
-        try
-        {
-            var tracker = await StartAsync();
-            var escape = System.IO.Path.Combine(outside.FullName, "elsewhere.txt");
-
-            await tracker.RecordEffectAsync(_run, OptedIn(), "{}",
-                Reported(new { path = escape, kind = "modified" }), TestContext.Current.CancellationToken);
-
-            // Opting in decides what the Host looks at, never what it accepts.
-            (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).IsEmpty.ShouldBeTrue();
-        }
-        finally { outside.Delete(true); }
-    }
-
-    [Fact]
-    public async Task ShouldStayIncompleteWhenAnOptedInServerReportsNothingUsable()
-    {
-        var tracker = await StartAsync();
-
-        await tracker.RecordEffectAsync(_run, OptedIn(), "{}",
-            ToolResultCodec.Read("""{"structuredContent":{"files":"not an array"}}"""),
-            TestContext.Current.CancellationToken);
-
-        (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).IsComplete.ShouldBeFalse();
-    }
 }

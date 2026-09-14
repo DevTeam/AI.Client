@@ -2809,15 +2809,6 @@ textarea {
 .workspace-added { text-align: right; }
 .workspace-removed { text-align: left; }
 
-/* Above the header, because it qualifies the count the header states. */
-.workspace-changes-note {
-    margin: 0;
-    padding: 0.4rem 0.7rem;
-    border-bottom: 1px solid #2c2c2c;
-    background: #221f16;
-    color: #c9a227;
-}
-
 .workspace-changes-list {
     margin: 0;
     padding: 0.25rem 0;

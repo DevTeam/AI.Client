@@ -21,8 +21,7 @@ public interface IWorkspaceChangeTracker
 {
     /// <summary>
     /// Starts tracking for a run, discarding anything held for a previous one on the same branch.
-    /// <paramref name="grants"/> bounds every path this tracker will read: a path a tool reports
-    /// but no grant covers is refused, since a server's word is not authorization.
+    /// <paramref name="grants"/> bounds every path this tracker will read.
     /// </summary>
     Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, CancellationToken cancellationToken);
 
@@ -32,10 +31,10 @@ public interface IWorkspaceChangeTracker
     Task RecordIntentAsync(WorkspaceRunKey run, ToolDescriptor tool, string arguments, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Called after a call returns, with what it reported. A tool whose effects the Host cannot
-    /// observe marks the run's change set incomplete rather than being quietly ignored.
+    /// Called after a call returns. The tracked paths remain available even when the call failed,
+    /// because a failed call may still have changed a file.
     /// </summary>
-    Task RecordEffectAsync(WorkspaceRunKey run, ToolDescriptor tool, string arguments, ToolCallResult result, CancellationToken cancellationToken);
+    Task RecordEffectAsync(WorkspaceRunKey run, ToolDescriptor tool, string arguments, CancellationToken cancellationToken);
 
     /// <summary>The net change set as it stands, safe to call mid-run.</summary>
     Task<WorkspaceChangeSet> SnapshotAsync(WorkspaceRunKey run, CancellationToken cancellationToken);

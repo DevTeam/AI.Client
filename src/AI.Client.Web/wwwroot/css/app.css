@@ -2748,12 +2748,60 @@ textarea {
     overflow: hidden;
 }
 
+.workspace-changes.is-collapsed {
+    width: fit-content;
+    max-width: 100%;
+    border-radius: 1.4rem;
+    background: #242424;
+    font-size: 0.92rem;
+}
+
+.workspace-changes-compact {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.65rem 0.9rem;
+    border: 0;
+    background: transparent;
+    color: #e0e0e0;
+    font: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.workspace-changes-compact:hover {
+    background: #2b2b2b;
+}
+
+.workspace-changes-compact-totals {
+    display: flex;
+    gap: 0.35rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.workspace-changes-compact .workspace-added,
+.workspace-changes-compact .workspace-removed {
+    min-width: 0;
+}
+
 .workspace-changes-header {
     display: flex;
+    width: 100%;
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0.7rem;
+    border: 0;
     border-bottom: 1px solid #2c2c2c;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.workspace-changes-header:hover {
+    background: #202020;
 }
 
 .workspace-changes-icon {

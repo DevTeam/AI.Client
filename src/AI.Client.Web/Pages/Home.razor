@@ -1190,7 +1190,7 @@
     }
     private void StoreRun(ChatRunSnapshot run) => RunState.Store(run);
     private static bool IsVisibleRun(ChatRunSnapshot run) =>
-        RunStatusPresentation.NeedsAttention(run) || run.Status == ChatRunStatus.Generating || run.HasUnreadResponse;
+        RunStatusPresentation.HasVisibleAttention(run) || run.Status == ChatRunStatus.Generating || run.HasUnreadResponse;
     private BranchTreeItem? GetSelectedBranchItem() =>
         GetBranchTreeItems().FirstOrDefault(branch => branch.RootId == _selectedBranchId);
 
@@ -1204,7 +1204,7 @@
     private static int GetProjectRunPriority(ChatRunSnapshot run) => run switch
     {
         { Status: ChatRunStatus.Failed } => 0,
-        _ when RunStatusPresentation.NeedsAttention(run) => 1,
+        _ when RunStatusPresentation.HasVisibleAttention(run) => 1,
         { HasUnreadResponse: true } => 2,
         { Status: ChatRunStatus.Generating } => 3,
         _ => 4
@@ -1238,14 +1238,25 @@
         ShouldHideCurrentRunStatus(chatId, branchId, run) ? string.Empty : GetRunStatusClass(run);
     private static string GetRunStatusClass(ChatRunSnapshot? run) => RunStatusPresentation.GetStatusClass(run);
 
-    private async Task MarkSelectedChatReadAsync()
+    // Captures the currently selected chat/branch synchronously (before any await), then hands
+    // off to MarkChatReadAsync. This must NOT read _selectedChat/_selectedBranchId again after
+    // an await: a fast second chat switch reassigns those fields while this call's own
+    // MarkReadAsync request is still in flight, and re-reading them post-await would mark the
+    // NEW selection read instead of the one this call was actually invoked for — leaving the
+    // chat the user already left showing an unread indicator that never gets cleared.
+    private Task MarkSelectedChatReadAsync() =>
+        _selectedProject is null || _selectedChat is null
+            ? Task.CompletedTask
+            : MarkChatReadAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId());
+
+    private async Task MarkChatReadAsync(Guid projectId, Guid chatId, Guid branchId)
     {
-        if (_isConfirmingProjectDelete || _selectedProject is null || _selectedChat is null || GetSelectedRun()?.HasUnreadResponse != true) return;
+        if (_isConfirmingProjectDelete || GetRun(chatId, branchId)?.HasUnreadResponse != true) return;
         if (!await _projectMutationGate.WaitAsync(0, CancellationToken.None)) return;
         try
         {
-            if (_isConfirmingProjectDelete || _selectedProject is null || _selectedChat is null || GetSelectedRun()?.HasUnreadResponse != true) return;
-            var snapshot = await ChatRunsApi.MarkReadAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None);
+            if (_isConfirmingProjectDelete || GetRun(chatId, branchId)?.HasUnreadResponse != true) return;
+            var snapshot = await ChatRunsApi.MarkReadAsync(projectId, chatId, branchId, Guid.CreateVersion7(), CancellationToken.None);
             if (snapshot is not null) StoreRun(snapshot);
         }
         finally

@@ -253,3 +253,10 @@
 - Project, chat, and branch names support the same inline rename flow: Rename from the row menu, Enter or blur to save, Escape to cancel.
 - Deleting a branch removes that branch and every descendant. If it was open, selection moves to the nearest surviving parent.
 - User messages have a compact `Edit and replace branch` action. It loads the message into the composer; sending atomically removes that message and its descendants, then writes the edited message from the same parent. Cancel leaves history unchanged.
+
+## Calmer sidebar run-status indicators (2026-09-14)
+
+- The `run-status-generating` colour is a static bright white — no looping opacity animation, on the icon or the `status-dot`, and no longer green (green is reserved elsewhere, e.g. the queue resume action). The prior "breathing" animation (a softer replacement for an earlier hard on/off blink) still read as distracting while working continuously in the chat, so the fix is to stop animating this state at all rather than tune the curve again.
+- A project row shows no status dot while that project is the currently selected one — its chats are listed right below it, so the aggregate dot would just repeat what's already visible per-chat.
+- A chat row (or branch row) that is currently open in the transcript hides completed/unread/attention statuses — the message feed already shows those. Generating is the one exception and stays visible even for the open chat/branch, since it's live progress rather than a state the user has already seen and dismissed.
+- When a collapsed project needs to represent several chats with different statuses, the one shown is picked by urgency: Failed > needs attention (pending approval / paused / interrupted) > unread completion > generating. An outright failure always wins even over a merely-paused run, since it is the state most likely to need the user to act. See `GetProjectRunPriority` in [Home.razor](../src/AI.Client.Web/Pages/Home.razor).

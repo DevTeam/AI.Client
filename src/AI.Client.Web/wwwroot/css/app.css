@@ -982,8 +982,7 @@ body {
 }
 
 .chat-link > .app-icon.run-status-generating {
-    color: #54c27c;
-    animation: run-status-icon-breathe 1.8s ease-in-out infinite;
+    color: #ffffff;
 }
 
 .chat-link > .app-icon.run-status-unread { color: #4f91dc; }
@@ -1697,9 +1696,8 @@ body {
 }
 
 .status-dot.run-status-generating {
-    border-color: #54c27c;
-    background: #54c27c;
-    animation: run-status-dot-breathe 1.8s ease-in-out infinite;
+    border-color: #ffffff;
+    background: #ffffff;
 }
 
 .status-dot.run-status-unread { border-color: #4f91dc; background: #4f91dc; }
@@ -1711,23 +1709,6 @@ body {
 .status-dot.run-status-interrupted {
     border-color: #858585;
     background: repeating-linear-gradient(45deg, #858585 0 2px, transparent 2px 4px);
-}
-
-/* "Breathing" rather than a hard on/off blink: ease-in-out with a smaller opacity range reads
-   as "still working" instead of "attention required". The narrower range matters because a tiny
-   status dot has no spare contrast — a 0.55 floor against a dark background barely registers,
-   which made the indicator look frozen. 0.3 / 0.4 still avoids the alarming "on/off" feel of the
-   old steps(1, end) blink while staying clearly readable on a small dot or icon. Drop the
-   animation entirely when the user has asked the OS to reduce motion — the green colour alone
-   is enough to mark the active run. */
-@keyframes run-status-dot-breathe {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: 0.3; }
-}
-
-@keyframes run-status-icon-breathe {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: 0.45; }
 }
 
 .workspace-composer {
@@ -2672,8 +2653,6 @@ textarea {
 
 @media (prefers-reduced-motion: reduce) {
     .tool-row-spinner { animation: none; }
-    .chat-link > .app-icon.run-status-generating,
-    .status-dot.run-status-generating { animation: none; }
 }
 
 .tool-row-body {

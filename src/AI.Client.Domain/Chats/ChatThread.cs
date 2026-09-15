@@ -197,7 +197,19 @@ public sealed class ChatThread
             throw new DomainException("Replacement message does not belong to the selected branch.");
         EnsureTimestampDoesNotMoveBackwards(updatedAt);
         if (!_messages.TryAdd(replacement.Id, replacement)) throw new DomainException($"Chat message '{replacement.Id}' already exists.");
-        _branches[branchId] = branch with { HeadMessageId = replacement.Id, Revision = checked(branch.Revision + 1) };
+        // A replacement is a sibling of the message it replaces, not its descendant, so replacing the
+        // message the fork starts at moves the fork point: the old root ends up on an abandoned line and
+        // is no longer an ancestor of the new head. RestoreBranches enforces exactly that relation, so
+        // leaving the root behind writes a chat that throws on the next load. Only re-root when the old
+        // root actually fell off the branch — replacing a later message keeps the fork point intact.
+        var rootMessageId = branch.RootMessageId is { } currentRoot
+            && !GetBranch(replacement.Id).Any(message => message.Id == currentRoot)
+                ? replacement.Id
+                : branch.RootMessageId;
+        _branches[branchId] = branch with
+        {
+            HeadMessageId = replacement.Id, RootMessageId = rootMessageId, Revision = checked(branch.Revision + 1)
+        };
         UpdatedAt = updatedAt;
         LastActivityAt = updatedAt;
     }

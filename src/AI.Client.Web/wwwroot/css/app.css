@@ -4,6 +4,12 @@
     background: #0c1017;
     color: #edf2f7;
     --accent-color: #7eb4ed;
+    /* Lifetime of the transient accent line under a just-arrived assistant message.
+       Home.razor's BranchLeafLineLifetime must stay >= the sum of these three, or the
+       class is dropped mid-animation and the line vanishes with a jump. */
+    --branch-leaf-draw: 0.6s;
+    --branch-leaf-hold: 5s;
+    --branch-leaf-fade: 0.8s;
 }
 
 .app-loading { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 1rem; background: #111; color: #eee; }
@@ -1536,11 +1542,13 @@ body {
     padding-bottom: 0.3rem;
 }
 
-/* Drawn left-to-right and then faded out, on the instant the leaf becomes a new
-   assistant message. --accent-color keeps it consistent with the unread history
+/* Drawn left-to-right, held, then faded out in place, on the instant the leaf becomes
+   a new assistant message. --accent-color keeps it consistent with the unread history
    marker and the scroll-hint's "scrolling" state; a pseudo-element (not a border)
    keeps the animation on transform/opacity, off the layout path, so it never
-   causes a reflow. */
+   causes a reflow. Draw and fade are two animations rather than one set of keyframes:
+   a single timeline has to scale the line back to zero to end, which reads as the line
+   rewinding itself instead of dissolving where it was drawn. */
 .workspace-message.branch-leaf-arrived::after {
     content: "";
     position: absolute;
@@ -1551,36 +1559,31 @@ body {
     border-radius: 999px;
     background: var(--accent-color);
     transform-origin: left center;
-    animation: branch-leaf-draw 2s cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards;
+    animation:
+        branch-leaf-draw var(--branch-leaf-draw) cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards,
+        branch-leaf-fade var(--branch-leaf-fade) ease-out calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
     pointer-events: none;
 }
 
 @keyframes branch-leaf-draw {
-    0% {
-        transform: scaleX(0);
-        opacity: 1;
-        visibility: visible;
-    }
-    55% {
-        transform: scaleX(1);
-        opacity: 1;
-        visibility: visible;
-    }
-    100% {
-        transform: scaleX(0);
-        opacity: 0;
-        visibility: hidden;
-    }
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
 }
 
-/* Reduced-motion users still get the marker, just without movement: half-opacity
-   line sits there to show "this is the end of the branch" without animating. */
+@keyframes branch-leaf-fade {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+/* Reduced-motion users get the same marker without the movement: it appears at full width
+   instead of being drawn, then still fades on the same schedule. The setting is about motion,
+   not about things changing, so dropping only the transform keeps the line from sitting there
+   as a permanent rule on the transcript. */
 @media (prefers-reduced-motion: reduce) {
     .workspace-message.branch-leaf-arrived::after {
-        animation: none;
         transform: scaleX(1);
-        opacity: 0.5;
-        visibility: visible;
+        animation: branch-leaf-fade var(--branch-leaf-fade) ease-out
+            calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
     }
 }
 

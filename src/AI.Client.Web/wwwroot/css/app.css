@@ -1165,8 +1165,10 @@ body {
        The actual factor is written by historyMarkers.js as an inline transform.
        Origin is centred, not left-anchored: the hover fisheye can reach ~1.6x, and centring
        the growth keeps half of that bulge away from the message text instead of pushing the
-       full amount rightward into the gutter. */
-    transform: scaleX(0.4);
+       full amount rightward into the gutter.
+       Resting scale is 1, matching what the JS writes while the cursor is off the strip, so
+       there's no visible jump on first paint before the fisheye module has hooked up. */
+    transform: scaleX(1);
     transform-origin: center center;
     transition: transform 120ms ease, color 120ms ease;
 }
@@ -1504,11 +1506,11 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    height: 2px;
+    height: 1px;
     border-radius: 999px;
     background: var(--accent-color);
     transform-origin: left center;
-    animation: branch-leaf-draw 2.4s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+    animation: branch-leaf-draw 2s cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards;
     pointer-events: none;
 }
 
@@ -1516,14 +1518,17 @@ body {
     0% {
         transform: scaleX(0);
         opacity: 1;
+        visibility: visible;
     }
     55% {
         transform: scaleX(1);
         opacity: 1;
+        visibility: visible;
     }
     100% {
-        transform: scaleX(1);
+        transform: scaleX(0);
         opacity: 0;
+        visibility: hidden;
     }
 }
 
@@ -1534,6 +1539,7 @@ body {
         animation: none;
         transform: scaleX(1);
         opacity: 0.5;
+        visibility: visible;
     }
 }
 

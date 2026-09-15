@@ -80,6 +80,46 @@ public class ChatRunStateTests
     }
 
     [Fact]
+    public void ShouldDropUnrecoverableFailureFromQueue()
+    {
+        var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var next = new QueuedRunMessage(Guid.NewGuid(), "Next", DateTimeOffset.UtcNow);
+        state.Enqueue(Guid.NewGuid(), new QueuedRunMessage(Guid.NewGuid(), "Message", DateTimeOffset.UtcNow,
+            MessageParentMode.Explicit, Guid.NewGuid(), Guid.NewGuid()));
+        state.Enqueue(Guid.NewGuid(), next);
+
+        state.FailUnrecoverable("Missing parent", RunFailureKind.ParentMissing);
+
+        // The head is gone rather than stuck: it could never run again and offered no recovery,
+        // so the message queued behind it is now the head and can proceed.
+        state.Status.ShouldBe(RunStatus.Idle);
+        state.Queue.ShouldHaveSingleItem().ShouldBe(next);
+        state.Error.ShouldBeNull();
+        state.FailureKind.ShouldBe(RunFailureKind.None);
+        state.HasUnreadResponse.ShouldBeFalse();
+        state.CanRetry.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ShouldKeepRetryableFailureInQueue()
+    {
+        var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var message = new QueuedRunMessage(Guid.NewGuid(), "Message", DateTimeOffset.UtcNow);
+        state.Enqueue(Guid.NewGuid(), message);
+
+        state.FailUnrecoverable("Endpoint failed", RunFailureKind.Transient);
+
+        // A retryable failure keeps its entry: Retry/Resume rebuilds the request from it and
+        // reuses the already committed user message, so dropping it would lose the command.
+        state.Status.ShouldBe(RunStatus.Failed);
+        state.Queue.ShouldHaveSingleItem().ShouldBe(message);
+        state.Error.ShouldBe("Endpoint failed");
+        state.FailureKind.ShouldBe(RunFailureKind.Transient);
+        state.HasUnreadResponse.ShouldBeTrue();
+        state.CanRetry.ShouldBeTrue();
+    }
+
+    [Fact]
     public void ShouldNotRemoveNextQueuedMessageWhenCurrentRunCompletes()
     {
         var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());

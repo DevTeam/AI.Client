@@ -302,10 +302,16 @@ export function attach(strip, scroller, scrollKey) {
 
         if (hoverY === null) {
             const active = scrollActiveIndex(list);
+            // Use the same hover-fisheye algorithm as the live-hover branch, just centred on the
+            // scroll-active marker instead of the cursor. That keeps the strip's visual
+            // vocabulary identical whether the cursor is on it or not — only the centre moves.
+            const centers = list.map(marker => marker.offsetTop + marker.offsetHeight / 2);
+            const focusY = centers[active];
             for (let index = 0; index < list.length; index++) {
-                const nearness = Math.max(0, 1 - Math.abs(index - active) / ScrollReach);
-                let scale = ScrollMinScale + (ScrollMaxScale - ScrollMinScale) * nearness;
-                if (isEndpoint(index, list.length)) scale = Math.max(scale, ScrollEndpointFloor);
+                const falloff = Math.max(0, 1 - Math.abs(centers[index] - focusY) / HoverReachPx);
+                const eased = falloff * falloff;
+                let scale = HoverMinScale + (HoverMaxScale - HoverMinScale) * eased;
+                if (isEndpoint(index, list.length)) scale = Math.max(scale, HoverEndpointFloor);
                 list[index].style.transform = `scaleX(${scale.toFixed(3)})`;
                 list[index].classList.toggle("active", index === active);
             }

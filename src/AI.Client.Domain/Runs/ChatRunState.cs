@@ -133,6 +133,26 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         Revision++;
     }
 
+    // A failure the run cannot be retried from and that offers no recovery action leaves its entry
+    // with nowhere to go: StartWorker and ProcessAsync both refuse a Failed run, so the message
+    // would sit at the head of the queue until it was skipped by hand. Dropping it keeps the queue
+    // honest, and lets whatever was queued behind it start normally.
+    //
+    // A retryable failure keeps its entry instead, because Retry/Resume needs it: the command is
+    // what the next attempt is rebuilt from, and an already committed user message is reused from
+    // it (see QueuedRunStage), so the history is not duplicated.
+    //
+    // The dropped entry takes its error text with it (SkipFailed clears Error), and unread is
+    // cleared too: nothing was produced, so flagging it as an unread response would be a false
+    // signal. What the user is left with is the answered-less user message in the transcript.
+    public void FailUnrecoverable(string error, RunFailureKind failureKind)
+    {
+        Fail(error, failureKind);
+        if (CanRetry) return;
+        SkipFailed();
+        MarkRead();
+    }
+
     public void Move(Guid id, int position)
     {
         var index = _queue.FindIndex(item => item.Id == id);

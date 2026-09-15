@@ -22,6 +22,30 @@ public sealed record DirectoryTreeResult(string Path, TreeEntry[] Entries, bool 
 
 public sealed record SearchFilesResult(string Path, string[] Matches, bool Truncated, string? Error);
 
+/// <summary>
+/// One matching line. <paramref name="Line"/> and <paramref name="Column"/> are 1-based, and
+/// <paramref name="Before"/><paramref name="After"/> carry context lines only when the caller asked
+/// for them; at the start or end of a file they are shorter rather than padded.
+/// </summary>
+public sealed record TextMatch(int Line, int Column, string Text, string[] Before, string[] After);
+
+/// <summary>
+/// The matches found in one file. <paramref name="MatchCount"/> counts every matching line even
+/// when <paramref name="Matches"/> was cut short by a budget, and stays the full count when the
+/// caller asked for <c>countOnly</c>.
+/// </summary>
+public sealed record TextFileMatches(string Path, int MatchCount, TextMatch[] Matches, bool Truncated);
+
+public sealed record GrepFilesResult(
+    string Path,
+    string Query,
+    TextFileMatches[] Files,
+    int FilesScanned,
+    int FilesSkipped,
+    int TotalMatches,
+    bool Truncated,
+    string? Error);
+
 public sealed record FileInfoResult(
     string Path,
     string Kind,

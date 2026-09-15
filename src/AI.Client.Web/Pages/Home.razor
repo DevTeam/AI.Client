@@ -206,6 +206,7 @@
             SelectedProjectName="@_selectedProject?.Name"
             SelectedChat="@_selectedChat"
             BranchLeafId="@_branchLeafId"
+            JustArrivedLeafId="@_justArrivedLeafId"
             ForkSourceId="@_forkSourceId"
             MessageBranchMenuId="@_messageBranchMenuId"
             SelectedRun="@GetSelectedRun()"
@@ -381,6 +382,12 @@
     private readonly Dictionary<Guid, ChatDetails> _chatDetailsCache = [];
     private readonly LinkedList<Guid> _chatDetailsLru = [];
     private Guid? _branchLeafId;
+    // Set only for the single OnRunSnapshot transition that produced a new leaf (Generating → Completed/Paused),
+    // then cleared ~2.5s later so the accent-line animation fires once and only once per arrival.
+    private Guid? _justArrivedLeafId;
+    // Per-branch memory of whether the last seen run was Generating — used to detect the transition that
+    // produced the new leaf. Cleared on chat/project switch.
+    private readonly Dictionary<Guid, bool> _wasGeneratingByBranch = [];
     private Guid? _selectedBranchId;
     private Guid? _forkSourceId;
     private Guid? _replaceSourceId;
@@ -581,8 +588,46 @@
                 if ((isSelectedRun || isPendingBranchRun) && _applicationFocused && snapshot.HasUnreadResponse) await MarkSelectedChatReadAsync();
             }
 
+            // Mark the just-arrived leaf for the transient accent line. We only animate when a run
+            // crosses from Generating into a non-generating state AND the chat revision actually
+            // bumped (so a stale push without a new message doesn't re-trigger), and only on the
+            // currently selected chat so we don't draw lines on a chat the user isn't looking at.
+            _wasGeneratingByBranch.TryGetValue(snapshot.BranchId, out var wasGenerating);
+            var isGenerating = snapshot.Status == ChatRunStatus.Generating;
+            if (wasGenerating && !isGenerating
+                && snapshot.ChatId == _selectedChat?.Id
+                && snapshot.ChatRevision > 0
+                && _selectedChat is { } chatForArrival
+                && chatForArrival.Revision > 0)
+            {
+                var arrivedHead = _selectedChat?.Branches?.SingleOrDefault(branch => branch.Id == snapshot.BranchId)?.HeadMessageId;
+                if (arrivedHead is { } headId && headId == _branchLeafId) _justArrivedLeafId = headId;
+            }
+            _wasGeneratingByBranch[snapshot.BranchId] = isGenerating;
         }
         await InvokeAsync(StateHasChanged);
+        // Schedule the marker to clear once the animation has played out. Slightly longer than
+        // the CSS duration so the keyframes always finish before the class disappears; subsequent
+        // renders then take the fast path through ShouldRender.
+        if (_justArrivedLeafId is not null)
+        {
+            var arrived = _justArrivedLeafId;
+            _ = ClearJustArrivedLeafIdAsync(arrived!.Value);
+        }
+    }
+
+    private async Task ClearJustArrivedLeafIdAsync(Guid arrived)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(2600));
+        }
+        catch (TaskCanceledException) { return; }
+        if (_justArrivedLeafId == arrived)
+        {
+            _justArrivedLeafId = null;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     [JSInvokable]
@@ -667,6 +712,8 @@
         _selectedChat = null;
         _selectedBranchId = null;
         _branchLeafId = null;
+        _justArrivedLeafId = null;
+        _wasGeneratingByBranch.Clear();
         _editor = new ProjectEditor(project.Name, project.Description, project.Revision);
         _error = null;
         await LoadSecurityAsync(project.Id);
@@ -1068,6 +1115,8 @@
         _selectedChat = null;
         _selectedBranchId = null;
         _branchLeafId = null;
+        _justArrivedLeafId = null;
+        _wasGeneratingByBranch.Clear();
         if (_defaultConnectionId is { } endpointId)
         {
             await SelectChatProfileAsync(new ChangeEventArgs { Value = endpointId.ToString() });
@@ -1992,6 +2041,8 @@
             _selectedChat = null;
         _selectedBranchId = null;
             _branchLeafId = null;
+            _justArrivedLeafId = null;
+            _wasGeneratingByBranch.Clear();
             _chat.Message = string.Empty;
             _composerNeedsResize = true;
         }

@@ -1212,7 +1212,7 @@ body {
 
 /* Doubled class so state beats .active and :hover — a failed message must not read as
    "just the current one" simply because the user scrolled to it. */
-.history-marker.history-marker-generating { color: #4caf50; }
+.history-marker.history-marker-generating { color: #ffffff; }
 .history-marker.history-marker-unread { color: var(--accent-color); }
 .history-marker.history-marker-incomplete { color: #d8a657; }
 .history-marker.history-marker-failed { color: #e05a5a; }
@@ -1483,9 +1483,58 @@ body {
     background: #292929;
 }
 
+/* === Branch leaf transient effects === */
+
+/* The leaf marker is structural, not visual: it identifies the bottom of the
+   active branch (used by JS, history markers, layout). The line itself is drawn
+   separately by .branch-leaf-arrived at the moment an assistant response lands,
+   so static visits to a chat don't trigger an animation. */
 .workspace-message.branch-leaf {
     padding-bottom: 0.3rem;
-    border-bottom: 1px solid #3a77b7;
+}
+
+/* Drawn left-to-right and then faded out, on the instant the leaf becomes a new
+   assistant message. --accent-color keeps it consistent with the unread history
+   marker and the scroll-hint's "scrolling" state; a pseudo-element (not a border)
+   keeps the animation on transform/opacity, off the layout path, so it never
+   causes a reflow. */
+.workspace-message.branch-leaf-arrived::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--accent-color);
+    transform-origin: left center;
+    animation: branch-leaf-draw 2.4s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+    pointer-events: none;
+}
+
+@keyframes branch-leaf-draw {
+    0% {
+        transform: scaleX(0);
+        opacity: 1;
+    }
+    55% {
+        transform: scaleX(1);
+        opacity: 1;
+    }
+    100% {
+        transform: scaleX(1);
+        opacity: 0;
+    }
+}
+
+/* Reduced-motion users still get the marker, just without movement: half-opacity
+   line sits there to show "this is the end of the branch" without animating. */
+@media (prefers-reduced-motion: reduce) {
+    .workspace-message.branch-leaf-arrived::after {
+        animation: none;
+        transform: scaleX(1);
+        opacity: 0.5;
+    }
 }
 
 .workspace-message.fork-source {

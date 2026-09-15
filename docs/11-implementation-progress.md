@@ -133,6 +133,7 @@
 | 2026-08-12 | Реальная проверка Qwen3-Coder-480B подтвердила end-to-end Stop: Host получил 135 chunks и записал `ChatStreamCancelled` через 2898 ms. В headless CLI найдено буферизующее поведение `PostAsJsonAsync`; streaming переведён на `SendAsync(..., ResponseHeadersRead)`, чтобы transcript видел chunks и partial response до отмены. |
 | 2026-08-12 | По серверному логу UI-зависания установлено: Host штатно завершил 26 chunks за 850 ms, значит Web застревал после SSE при сохранении истории. Cleanup `_isSending`, cancellation source и streaming buffer вынесен во вложенный `finally`; ошибка append/reload истории больше не оставляет `Generating...` и Stop, а показывается отдельным сообщением. |
 | 2026-08-12 | Повторная трассировка подтвердила полный успешный цикл Host + history (30 chunks, POST/GET 200), но UI не перерисовывался до завершения последнего JS focus interop. После сброса `_isSending` теперь немедленно вызывается `StateHasChanged`; восстановление focus выполняется вторично и `JSException` не влияет на completion state. |
+| 2026-09-15 | Живой прогон «проверь все соединения подзадачами» показал, что таймаут политики отмерял длительность вызова: веер из восьми подзадач гибнул на 120-й секунде вместе со всей начатой работой, а занятые им слоты не давали повторить попытку. Таймаут переведён на отсчёт молчания — уведомление о прогрессе продлевает терпение, как и разрешает MCP, — с общим потолком в 30 минут на вызов. |
 # 2026-08-13: branch tree and inline rename
 
 - Accepted sidebar design variant 2: root chats with nested branch conversations.

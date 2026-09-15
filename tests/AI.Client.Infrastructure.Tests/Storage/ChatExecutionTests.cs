@@ -256,7 +256,30 @@ public sealed class ChatExecutionTests
         var answered = await fixture.WaitForToolAnswersAsync(2);
         answered.ShouldBe(["call-1", "call-2"], ignoreOrder: true);
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
-        chat!.Messages.Single(message => message.ToolCallId == "call-1").Content.ShouldContain("did not answer within");
+        chat!.Messages.Single(message => message.ToolCallId == "call-1").Content.ShouldContain("went silent for");
+    }
+
+    [Fact]
+    public async Task AToolThatKeepsReportingMustNotBeKilledForOutLastingOneCallsPatience()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        // A second of silence is all this policy allows — and the call takes three times that.
+        await fixture.SetPolicyAsync("Allow", timeoutSeconds: 1);
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Delegate some work"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        fixture.Tools.ReportNextCallFor = TimeSpan.FromSeconds(3);
+        first.Answer.SetResult("");
+
+        var second = await fixture.NextCallAsync();
+        second.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        // The timeout measures silence, not duration. A fan-out of subtasks reports what each of
+        // them is doing throughout, and killing it at the per-call timeout threw that work away.
+        await fixture.WaitForToolAnswersAsync(1);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Single(message => message.ToolCallId == "call-1").Content.ShouldNotContain("went silent");
     }
 
     [Fact]
@@ -727,6 +750,9 @@ public sealed class ChatExecutionTests
         /// <summary>Set to make the next call hang until its own policy timeout cancels it.</summary>
         public bool HangNextCall { get; set; }
 
+        /// <summary>Set to make the next call work — and say so — for this long before answering.</summary>
+        public TimeSpan ReportNextCallFor { get; set; }
+
         public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
         {
             CallCount++;
@@ -734,6 +760,17 @@ public sealed class ChatExecutionTests
             {
                 HangNextCall = false;
                 await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+
+            if (ReportNextCallFor > TimeSpan.Zero)
+            {
+                var until = Environment.TickCount64 + (long)ReportNextCallFor.TotalMilliseconds;
+                ReportNextCallFor = TimeSpan.Zero;
+                while (Environment.TickCount64 < until)
+                {
+                    await Task.Delay(100, cancellationToken);
+                    progress?.Report(new ToolProgress(1, 4, "still working"));
+                }
             }
 
             return ToolResultCodec.Read("{\"structuredContent\":{\"exitCode\":0}}");

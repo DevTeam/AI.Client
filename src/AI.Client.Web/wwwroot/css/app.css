@@ -2823,11 +2823,82 @@ textarea {
 }
 
 .workspace-changes.is-collapsed {
+    position: relative;
     width: fit-content;
     max-width: 100%;
     border-radius: 1.4rem;
     background: #242424;
     font-size: 0.92rem;
+    overflow: visible;
+}
+
+.workspace-changes-preview {
+    position: absolute;
+    z-index: 20;
+    bottom: calc(100% + 0.35rem);
+    left: 50%;
+    width: max-content;
+    min-width: min(20rem, calc(100vw - 2rem));
+    max-width: min(30rem, calc(100vw - 2rem));
+    padding: 0.55rem 0.7rem;
+    border: 1px solid #3a3a3a;
+    border-radius: 0.85rem;
+    background: #292929;
+    box-shadow: 0 0.55rem 1.6rem rgb(0 0 0 / 35%);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: auto;
+    transform: translate(-50%, 0.2rem);
+    transition: opacity 100ms ease, transform 100ms ease, visibility 100ms ease;
+}
+
+.workspace-changes-preview::after {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: 0;
+    height: 0.36rem;
+    content: "";
+}
+
+.workspace-changes.is-collapsed:hover .workspace-changes-preview,
+.workspace-changes.is-collapsed:focus-within .workspace-changes-preview {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
+}
+
+.workspace-changes-preview ul {
+    max-height: min(18rem, 50vh);
+    margin: 0;
+    padding: 0;
+    overflow: auto;
+    list-style: none;
+}
+
+.workspace-changes-preview li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.8rem;
+    min-height: 1.35rem;
+    padding: 0.08rem 0;
+    line-height: 1.15;
+}
+
+.workspace-changes-preview-path {
+    min-width: 0;
+    overflow: hidden;
+    color: #ececec;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workspace-changes-preview-counts {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.45rem;
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
 }
 
 .workspace-changes-compact {
@@ -2836,6 +2907,7 @@ textarea {
     gap: 0.35rem;
     padding: 0.65rem 0.9rem;
     border: 0;
+    border-radius: inherit;
     background: transparent;
     color: #e0e0e0;
     font: inherit;

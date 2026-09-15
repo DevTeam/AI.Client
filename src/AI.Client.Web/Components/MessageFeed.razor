@@ -175,6 +175,11 @@
         {
             <section class="tool-approval" role="region" aria-label="Tool approval">
                 <strong>Allow @approval.Name?</strong>
+                @if (approval.BatchSize > 1)
+                {
+                    @* Each call is confirmed on its own, so say up front how many follow. *@
+                    <p class="tool-approval-batch">Call @approval.CallIndex of @approval.BatchSize the model asked for; each is confirmed separately.</p>
+                }
                 <pre>@approval.Arguments</pre>
                 <p>Timeout: @approval.TimeoutSeconds seconds. The process runs with your account's permissions; the working directory is not a sandbox.</p>
                 <div class="tool-approval-actions">

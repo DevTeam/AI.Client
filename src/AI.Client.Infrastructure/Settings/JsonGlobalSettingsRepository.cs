@@ -17,8 +17,12 @@ public sealed class JsonGlobalSettingsRepository(ITextFileSystem fileSystem, Glo
         var settings = json is null ? new GlobalSettings([], [], []) :
             JsonSerializer.Deserialize<GlobalSettings>(json, Options) ?? throw new JsonException("Settings are empty.");
         settings = settings with { ToolPolicies = settings.ToolPolicies ?? [] };
-        return settings.McpServers.Any(server => server.Id == DefaultMcpServer.Id) ? settings
-            : settings with { McpServers = [DefaultMcpServer.Settings, .. settings.McpServers] };
+        // The Host's own servers are always present in the settings the rest of the application
+        // reads, whether or not the stored document has caught up with them yet.
+        var servers = settings.McpServers;
+        if (servers.All(server => server.Id != DefaultMcpServer.Id)) servers = [DefaultMcpServer.Settings, .. servers];
+        if (servers.All(server => server.Id != AppMcpServer.Id)) servers = [.. servers, AppMcpServer.Settings];
+        return ReferenceEquals(servers, settings.McpServers) ? settings : settings with { McpServers = servers };
     }
 
     public async Task SaveAsync(GlobalSettings settings, CancellationToken cancellationToken)

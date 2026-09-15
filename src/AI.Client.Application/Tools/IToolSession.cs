@@ -36,6 +36,13 @@ public sealed record ToolActivity(
 /// <summary>A project directory grant handed to the tool server, which rejects file system paths outside of these roots.</summary>
 public sealed record ToolDirectoryGrant(string Root, bool Recursive, IReadOnlyList<string> Capabilities);
 
+/// <summary>
+/// Where one call sits in the batch the model asked for, counting from one. Carried into approval
+/// so a user deciding on the first of several is told there are more, rather than discovering it
+/// one prompt at a time.
+/// </summary>
+public sealed record ToolCallPosition(int Index, int BatchSize);
+
 public interface IToolSession : IAsyncDisposable
 {
     IReadOnlyList<AgentTool> Tools { get; }
@@ -49,5 +56,24 @@ public interface IToolSession : IAsyncDisposable
 
 public interface IToolSessionFactory
 {
+    /// <summary>
+    /// Connects to the MCP servers named in <paramref name="servers"/> and presents their tools as
+    /// one set. Enablement is decided by the caller from settings, because a server that is off
+    /// must not be started at all — not started and then filtered out.
+    /// </summary>
+    Task<IToolSession> OpenAsync(
+        IReadOnlyList<ToolDirectoryGrant> directoryGrants,
+        IReadOnlySet<Guid> servers,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// One MCP server the Host knows how to reach. Directory grants are passed to every connection;
+/// a server that has no use for them ignores them.
+/// </summary>
+public interface IMcpServerConnection
+{
+    Guid ServerId { get; }
+
     Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, CancellationToken cancellationToken);
 }

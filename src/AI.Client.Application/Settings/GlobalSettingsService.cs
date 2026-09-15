@@ -128,7 +128,7 @@ public sealed class GlobalSettingsService(
     private static McpServerSettings Normalize(McpServerSettings item)
     {
         if (string.IsNullOrWhiteSpace(item.Name)
-            || item.Transport is not ("StreamableHttp" or "Stdio")
+            || item.Transport is not ("StreamableHttp" or "Stdio" or AppMcpServer.Transport)
             || item.Policy is not ("Allow" or "Ask" or "Deny"))
         {
             throw new ArgumentException("MCP name, transport, and policy are required.");

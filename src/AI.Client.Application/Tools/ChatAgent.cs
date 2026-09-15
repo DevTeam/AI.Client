@@ -14,14 +14,14 @@ using System.Text;
 using System.Text.Json;
 
 public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFactory sessions,
-    IProjectService projects, IChatService chats, IGlobalSettingsRepository settings,
+    IProjectService projects, IGlobalSettingsRepository settings, ToolPolicyResolver policies,
     IWorkspaceChangeTracker workspace)
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
         Func<string, CancellationToken, Task> text,
         Func<ToolActivity?, CancellationToken, Task> activity,
-        Func<AgentTool, string, long, CancellationToken, Task<ToolApprovalAction>> approve,
+        Func<AgentTool, string, long, ToolCallPosition, CancellationToken, Task<ToolApprovalAction>> approve,
         CancellationToken cancellationToken)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -29,12 +29,16 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
         var token = deadline.Token;
         var global = await settings.LoadAsync(token);
         var project = await projects.GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
-        var projectBinding = project.McpServers.SingleOrDefault(server => server.Id == DefaultMcpServer.Id);
-        var enabled = global.McpServers.SingleOrDefault(server => server.Id == DefaultMcpServer.Id) is { Enabled: true, Policy: not "Deny" }
-            && projectBinding is not { Enabled: false };
+        // Every server is gated the same way: enabled and not denied globally, and not switched off
+        // for this project. A server that fails the test is never started, so nothing it could
+        // offer reaches the model or costs a process.
+        bool Enabled(Guid serverId) =>
+            global.McpServers.SingleOrDefault(server => server.Id == serverId) is { Enabled: true, Policy: not "Deny" }
+            && project.McpServers.SingleOrDefault(server => server.Id == serverId) is not { Enabled: false };
+        var servers = new[] { DefaultMcpServer.Id, AppMcpServer.Id }.Where(Enabled).ToHashSet();
         var grants = project.DirectoryGrants
             .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
-        await using var session = enabled ? await sessions.OpenAsync(grants, token) : null;
+        await using var session = servers.Count > 0 ? await sessions.OpenAsync(grants, servers, token) : null;
         var runKey = new WorkspaceRunKey(projectId, chatId, branchId);
         await workspace.BeginRunAsync(runKey, grants, token);
         var context = request.ContextMessages?.ToList() ?? [new ChatCompletionMessage("user", request.Message)];
@@ -42,6 +46,19 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
         var counts = context.Skip(Math.Max(0, runStart)).SelectMany(message => message.ToolCalls ?? [])
             .GroupBy(call => call.Name, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
         var seenIds = context.SelectMany(message => message.ToolCalls ?? []).Select(call => call.Id).ToHashSet(StringComparer.Ordinal);
+
+        // A model message carrying tool calls is only valid once every one of them has an answer.
+        // When a batch is abandoned part-way — cancelled, or broken by a transport failure — the
+        // call that failed and every call after it still have to be answered, or the stored history
+        // becomes one the endpoint will reject and the run can never be resumed from.
+        async Task AbandonAsync(IReadOnlyList<ChatToolCall> batch, int from, string reason)
+        {
+            for (var remaining = from; remaining < batch.Count; remaining++)
+                await persist(ToolMessage(batch[remaining].Id,
+                    Error(remaining == from ? reason : "Not executed: an earlier call in the same batch did not finish.")),
+                    CancellationToken.None);
+        }
+
         while (true)
         {
             var available = new List<ChatToolDefinition>();
@@ -69,8 +86,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
             var assistant = new ChatCompletionMessage("assistant", content.ToString(), calls.ToArray());
             await persist(assistant, token); // Durable intent before any side effect.
             context.Add(assistant);
-            foreach (var call in calls)
+            for (var index = 0; index < calls.Count; index++)
             {
+                var call = calls[index];
                 ToolCallResult result;
                 try
                 {
@@ -89,7 +107,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                     counts[call.Name] = count;
                     if (policy.Decision == "Deny") result = Error("Tool denied by current policy.");
                     else if (count > policy.MaxCalls) result = Error("Tool call limit reached.");
-                    else if (policy.Decision == "Ask" && await approve(tool, arguments, policy.TimeoutSeconds, token) == ToolApprovalAction.Deny)
+                    else if (policy.Decision == "Ask"
+                             && await approve(tool, arguments, policy.TimeoutSeconds,
+                                 new ToolCallPosition(index + 1, calls.Count), token) == ToolApprovalAction.Deny)
                         result = Error("The user denied this invocation. Do not retry it.");
                     else
                     {
@@ -118,8 +138,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                 }
                 catch (OperationCanceledException)
                 {
-                    result = Error("Invocation interrupted or timed out. Its effects may have occurred. Do not automatically repeat it.");
-                    await persist(ToolMessage(call.Id, result), CancellationToken.None);
+                    await AbandonAsync(calls, index,
+                        "Invocation interrupted or timed out. Its effects may have occurred. Do not automatically repeat it.");
                     throw;
                 }
                 catch (Exception error) when (error is ArgumentException or JsonException)
@@ -129,7 +149,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                 catch (Exception)
                 {
                     // A transport failure can happen after a side effect. Record uncertainty and stop.
-                    await persist(ToolMessage(call.Id, Error("Tool transport failed; outcome unknown. Do not automatically repeat it.")), CancellationToken.None);
+                    await AbandonAsync(calls, index, "Tool transport failed; outcome unknown. Do not automatically repeat it.");
                     throw;
                 }
                 var message = ToolMessage(call.Id, result);
@@ -139,32 +159,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
             }
         }
     }
-    private async Task<EffectivePolicy> PolicyAsync(Guid projectId, Guid chatId, AgentTool tool, CancellationToken token)
-    {
-        var global = await settings.LoadAsync(token);
-        var server = global.McpServers.SingleOrDefault(item => item.Id == tool.ServerId);
-        var project = await projects.GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
-        var binding = project.McpServers.SingleOrDefault(item => item.Id == tool.ServerId);
-        var projectPolicy = project.ToolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId
-            && item.Name == tool.OriginalName && item.SchemaHash == tool.SchemaHash);
-        var chat = await chats.GetAsync(projectId, chatId, token) ?? throw new InvalidOperationException("Chat not found.");
-        var chatPolicy = chat.ToolPolicies?.SingleOrDefault(item => item.ServerId == tool.ServerId
-            && item.Name == tool.OriginalName && item.SchemaHash == tool.SchemaHash);
-        var globalPolicy = global.ToolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId
-            && item.Name == tool.OriginalName && item.SchemaHash == tool.SchemaHash);
-        var policyDecision = chatPolicy?.Decision ?? projectPolicy?.Decision ?? globalPolicy?.Decision ?? "Ask";
-        var decision = server is not { Enabled: true } || server.Policy == "Deny" || binding is { Enabled: false } || policyDecision == "Deny"
-            ? "Deny" : policyDecision == "Allow" ? "Allow" : "Ask";
-        return new EffectivePolicy(
-            decision,
-            Math.Clamp(chatPolicy?.MaxCallsPerRun ?? projectPolicy?.MaxCallsPerRun ?? globalPolicy?.MaxCallsPerRun ?? 65535, 1, int.MaxValue),
-            Math.Clamp(chatPolicy?.TimeoutSeconds ?? projectPolicy?.TimeoutSeconds ?? globalPolicy?.TimeoutSeconds ?? 120, 1, 600));
-    }
+    private Task<EffectiveToolPolicy> PolicyAsync(Guid projectId, Guid chatId, AgentTool tool, CancellationToken token) =>
+        policies.ResolveAsync(projectId, chatId, tool.ServerId, tool.OriginalName, tool.SchemaHash, token);
+
     // The history keeps the whole result, host metadata included; the model is sent a projection
     // without it, so a third-party server cannot smuggle anything into context through _meta.
     private static ChatCompletionMessage ToolMessage(string callId, ToolCallResult result) =>
         new("tool", ToolResultCodec.Write(result), ToolCallId: callId, ModelContent: result.ModelContent);
 
     private static ToolCallResult Error(string message) => ToolCallResult.FromError(message);
-    private sealed record EffectivePolicy(string Decision, int MaxCalls, long TimeoutSeconds);
 }

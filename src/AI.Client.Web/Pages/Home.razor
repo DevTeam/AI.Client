@@ -564,6 +564,43 @@
         return InvokeAsync(StateHasChanged);
     }
 
+    // The Host signals that application data changed without saying what, because a tool can touch
+    // anything the user can. So this re-reads what is currently on screen — the project list, the
+    // selected project's chats, the open chat — and leaves the selection alone unless the thing
+    // that was selected is gone.
+    [JSInvokable]
+    public async Task OnApplicationDataChanged()
+    {
+        try
+        {
+            var projects = await ProjectApi.ListAsync(CancellationToken.None);
+            _projects.Clear();
+            _projects.AddRange(projects);
+            await ApplyProjectOrderAsync();
+            if (_selectedProject is { } selected)
+            {
+                if (_projects.SingleOrDefault(item => item.Id == selected.Id) is not { } refreshed)
+                {
+                    // The open project was deleted; fall back to whatever is left.
+                    await LoadProjectsAsync();
+                    return;
+                }
+
+                _selectedProject = refreshed;
+                await LoadChatsAsync(selected.Id);
+                if (_selectedChat is { } chat && _chats.All(item => item.Id != chat.Id)) _selectedChat = null;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            // A reload that cannot reach the Host is not worth reporting: the run event stream is
+            // about to report the same outage far more visibly.
+            return;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
     [JSInvokable]
     public async Task OnRunSnapshot(string json)
     {

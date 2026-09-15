@@ -1,10 +1,12 @@
 using AI.Client.Application.Chat;
 using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
+using AI.Client.Application.Notifications;
 using AI.Client.Application.Settings;
 using AI.Client.Application.Runs;
 using AI.Client.Application.Tools;
 using AI.Client.Infrastructure.Tools;
+using AI.Client.Mcp.App;
 using AI.Client.Infrastructure.Chat;
 using AI.Client.Infrastructure.Credentials;
 using AI.Client.Infrastructure.Projects;
@@ -34,11 +36,19 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatRunRepository>()
             .Root<IChatRunDispatcher>()
             .Root<IToolSessionFactory>()
+            // A root as well as a singleton: minimal APIs only treat a type as a service when the
+            // provider says it can resolve it, and otherwise infer it as a request body.
+            .Root<IAppDataChangeSignal>()
             .Singleton<HostDescriptor, ProjectStorageLocation, PhysicalTextFileSystem, ProjectStoragePaths, JsonProjectRepository,
                 Uuid7IdGenerator, SystemClock, ProjectService, ChatStoragePaths, JsonChatRepository, ChatService, ChatSynchronization,
                 ProtectedDataUserDataProtector, ChatCompletionSseParser,
                 OpenAiCompatibleChatCompletionClient, ChatEndpoint, GlobalSettingsPaths, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
-                GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, DefaultToolSessionFactory, WorkspaceChangeTracker>()
+                GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, WorkspaceChangeTracker,
+                AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory>()
+            // Both groups are consumed as sets, so each registration is tagged to stay distinct
+            // instead of the last one silently winning its contract.
+            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool>(Tag.Unique)
+            .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
             .Transient((ProjectStorageLocation location) => location.RootDirectory);
 }

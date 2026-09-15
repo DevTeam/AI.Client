@@ -17,6 +17,8 @@
 11. [Ход реализации](11-implementation-progress.md)
 12. [UX decisions](12-ux-decisions.md)
 13. [Composer rules](15-composer-rules.md)
+14. [Инструменты по умолчанию](16-default-mcp-tools.md)
+15. [Инструменты управления приложением](17-app-tools.md)
 
 ## Принятые решения
 
@@ -25,6 +27,8 @@
 - [ADR-003: Права отдельно для каждого MCP-инструмента](decisions/ADR-003-per-tool-permissions.md)
 - [ADR-004: Responses API как основной OpenAI-протокол](decisions/ADR-004-openai-responses-api.md)
 - [ADR-005: Быстрые модульные тесты на xUnit](decisions/ADR-005-unit-testing.md)
+- [ADR-006: Упрощение архитектуры](decisions/ADR-006-architecture-simplification.md)
+- [ADR-007: Инструменты управления приложением во внутрипроцессном MCP-сервере](decisions/ADR-007-in-process-app-tools.md)
 
 ## Статусы документов
 

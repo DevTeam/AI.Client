@@ -22,7 +22,29 @@ export function subscribe(dotNetReference) {
         latest = event.data;
         void dispatch();
     });
-    return { dispose: () => { disposed = true; latest = null; source.close(); } };
+    // The Host says only that something changed, never what. One pending reload is enough however
+    // many signals arrive while it runs, so they collapse into a flag rather than a queue.
+    let reloadPending = false;
+    let reloading = false;
+    const reload = async () => {
+        if (reloading || disposed) return;
+        reloading = true;
+        try {
+            while (reloadPending && !disposed) {
+                reloadPending = false;
+                await dotNetReference.invokeMethodAsync("OnApplicationDataChanged");
+            }
+        } catch (error) {
+            if (!disposed) console.error("Application data could not be reloaded", error);
+        } finally {
+            reloading = false;
+        }
+    };
+    source.addEventListener("data-changed", () => {
+        reloadPending = true;
+        void reload();
+    });
+    return { dispose: () => { disposed = true; latest = null; reloadPending = false; source.close(); } };
 }
 export function isFocused() { return document.visibilityState === "visible" && document.hasFocus(); }
 

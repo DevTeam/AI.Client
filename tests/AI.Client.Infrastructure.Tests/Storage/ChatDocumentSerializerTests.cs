@@ -4,6 +4,7 @@ using Domain.Chats;
 using AI.Client.Domain.Projects;
 using AI.Client.Infrastructure.Storage;
 using Shouldly;
+using System.Text.Json.Nodes;
 using Xunit;
 
 public class ChatDocumentSerializerTests
@@ -130,5 +131,69 @@ public class ChatDocumentSerializerTests
         var restored = ChatDocumentSerializer.Deserialize(ChatDocumentSerializer.Serialize(chat, 1));
 
         restored.Chat.Messages.ShouldHaveSingleItem().IsIncomplete.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ShouldRoundTripBranchCountThroughTheSummary()
+    {
+        var createdAt = new DateTimeOffset(2026, 8, 13, 10, 0, 0, TimeSpan.Zero);
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", createdAt);
+        var root = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Question", createdAt);
+        chat.AddMessage(root, createdAt);
+        // Two alternative branches off the root, each with its own head message. A fork is stored
+        // under the id of its own first new message and hangs off the main branch, which is
+        // identified by the chat id.
+        var firstHead = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), root.Id, ChatMessageRole.Assistant, "First", createdAt);
+        var secondHead = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), root.Id, ChatMessageRole.Assistant, "Second", createdAt);
+        chat.AddMessage(firstHead, createdAt, firstHead.Id.Value, chat.Id.Value);
+        chat.AddMessage(secondHead, createdAt, secondHead.Id.Value, chat.Id.Value);
+
+        var summary = ChatDocumentSerializer.DeserializeSummary(ChatDocumentSerializer.SerializeSummary(chat, 4));
+
+        summary.BranchCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public void ShouldNotCountTheMainBranchOrABranchWithoutAHead()
+    {
+        var createdAt = new DateTimeOffset(2026, 8, 13, 10, 0, 0, TimeSpan.Zero);
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", createdAt);
+        var root = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Question", createdAt);
+        chat.AddMessage(root, createdAt);
+
+        // A chat with messages but no forks still has its own main branch, which is not an
+        // alternative and must never be advertised as one.
+        chat.BranchCount.ShouldBe(0);
+
+        // A branch whose head is not set yet (an empty fork) has no row in the branch tree, so
+        // counting it would advertise a branch the chat list cannot open.
+        chat.RestoreBranches(
+        [
+            new ChatBranch(chat.Id.Value, root.Id, "Chat"),
+            new ChatBranch(Guid.CreateVersion7(), null, "Empty fork", chat.Id.Value)
+        ]);
+
+        chat.BranchCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public void ShouldReadSummaryWrittenBeforeBranchCountExisted()
+    {
+        var createdAt = new DateTimeOffset(2026, 8, 13, 10, 0, 0, TimeSpan.Zero);
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", createdAt);
+
+        // A pre-existing summary file has no BranchCount property at all; it must deserialize to
+        // zero rather than throw, so an older data directory keeps listing its chats. The property
+        // is removed through the JSON DOM rather than by string replacement, which would depend on
+        // the writer's indentation and line endings.
+        var document = JsonNode.Parse(ChatDocumentSerializer.SerializeSummary(chat, 1))!.AsObject();
+        document.ShouldContainKey("BranchCount");
+        document.Remove("BranchCount");
+        var withoutCount = document.ToJsonString();
+
+        var summary = ChatDocumentSerializer.DeserializeSummary(withoutCount);
+
+        summary.BranchCount.ShouldBe(0);
+        summary.Title.ShouldBe("Chat");
     }
 }

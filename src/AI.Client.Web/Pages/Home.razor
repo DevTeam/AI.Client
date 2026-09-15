@@ -60,7 +60,7 @@
                             }
                             else
                             {
-                                <button class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><AppIcon Name="@(chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" /><span class="nav-item-label">@chat.Title</span></button>
+                                <button class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><AppIcon Name="@(chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" /><span class="nav-item-label">@chat.Title</span>@if (chat.BranchCount > 0) { <span class="chat-branch-marker" title="@GetBranchCountTitle(chat.BranchCount)"><AppIcon Name="git-branch" /></span><span class="visually-hidden">, @GetBranchCountTitle(chat.BranchCount)</span> }</button>
                             }
                             <button class="icon-action chat-row-action chat-pin-button @(chat.IsPinned ? "pinned" : string.Empty)" type="button" title="@(chat.IsPinned ? "Unpin chat" : "Pin chat")" aria-label="@(chat.IsPinned ? "Unpin chat" : "Pin chat")" @onclick="() => ToggleChatPinAsync(chat)"><AppIcon Name="pin" /></button>
                             <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat)"><AppIcon Name="edit" /></button>
@@ -1852,6 +1852,12 @@
     private void OnChatDragStart(Guid chatId) => _draggedChatId = chatId;
 
     private IEnumerable<ChatSummary> GetOrderedChats() => _chats.OrderByDescending(chat => chat.IsPinned);
+
+    // The same git-branch glyph the history-marker tooltip already uses for this fact, and the
+    // count form of its "Has branches" wording, so "this chat has alternatives" reads the same
+    // in both places. Pluralised explicitly: "1 branches" in a tooltip looks like a bug.
+    private static string GetBranchCountTitle(int branchCount) =>
+        branchCount == 1 ? "1 branch" : $"{branchCount} branches";
 
     private async Task HandleChatItemKeyDownAsync(KeyboardEventArgs args, ChatSummary chat)
     {

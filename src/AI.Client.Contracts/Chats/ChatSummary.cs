@@ -10,4 +10,6 @@ public sealed record ChatSummary(
     long Revision,
     DateTimeOffset LastActivityAt,
     bool IsPinned = false,
-    DateTimeOffset? PinnedAt = null);
+    DateTimeOffset? PinnedAt = null,
+    // Alternative branches only: the main branch is the chat itself and is never counted.
+    int BranchCount = 0);

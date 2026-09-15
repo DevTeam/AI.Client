@@ -11,6 +11,7 @@ using Contracts.Chats;
 using Contracts.Runs;
 using Contracts.Projects;
 using Contracts.Settings;
+using Contracts.Workspace;
 using Workspace;
 using Domain.Runs;
 using System.Collections.Concurrent;
@@ -260,6 +261,7 @@ public sealed class ChatRunDispatcher(
                     runtime.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
                     token = runtime.Cancellation.Token;
                     runtime.State.Start();
+                    runtime.WorkspaceChanges = null;
                     var chat = await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token) ?? throw new InvalidOperationException("Chat not found.");
                     if (chat.Messages.Any(message => message.Id == ReplyId(queued.Id)))
                     {
@@ -327,6 +329,9 @@ public sealed class ChatRunDispatcher(
                             ?? throw new InvalidOperationException("Response conflict.");
                     runtime.State.Remove(queued.Id);
                     runtime.State.Complete(true);
+                    // The persisted reply now owns the final copy; keeping the live copy would
+                    // duplicate it if the branch is later paused with another queued message.
+                    runtime.WorkspaceChanges = null;
                     runtime.ActiveMessageId = null;
                     runtime.Cancellation.Dispose();
                     runtime.Cancellation = null;
@@ -359,6 +364,8 @@ public sealed class ChatRunDispatcher(
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
             // Successful turns complete their tracker when ChatAgent returns the change set for
             // the final message. This also releases a failed turn's baselines.
+            if (runtime.State.Status != RunStatus.Completed)
+                runtime.WorkspaceChanges = await workspace.SnapshotAsync(WorkspaceKey(runtime), CancellationToken.None);
             await workspace.CompleteRunAsync(WorkspaceKey(runtime), CancellationToken.None);
             runtime.Cancellation?.Dispose();
             runtime.Cancellation = null;
@@ -366,7 +373,12 @@ public sealed class ChatRunDispatcher(
             runtime.Approval = null;
             runtime.PendingApproval = null;
             runtime.ActiveTools.Clear();
-            runtime.Snapshot = runtime.Snapshot with { PendingApproval = null, ActiveTools = [] };
+            runtime.Snapshot = runtime.Snapshot with
+            {
+                PendingApproval = null,
+                ActiveTools = [],
+                WorkspaceChanges = runtime.State.Status == RunStatus.Completed ? null : runtime.WorkspaceChanges
+            };
             Publish();
             runtime.Worker = null;
             StartWorker(runtime);
@@ -443,6 +455,8 @@ public sealed class ChatRunDispatcher(
         if (activity is null)
         {
             runtime.ActiveTools.Clear();
+            // The file tool has returned, so its effects can be shown while the model continues.
+            runtime.WorkspaceChanges = await workspace.SnapshotAsync(WorkspaceKey(runtime), token);
             runtime.State.Append("");
             await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
             return;
@@ -588,7 +602,8 @@ public sealed class ChatRunDispatcher(
             BranchRevision = chat?.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId)?.Revision
                 ?? previous.BranchRevision,
             PendingApproval = runtime.PendingApproval,
-            ActiveTools = runtime.ActiveTools.Values.ToArray()
+            ActiveTools = runtime.ActiveTools.Values.ToArray(),
+            WorkspaceChanges = runtime.WorkspaceChanges
         };
         if (runtime is { ActiveMessageId: { } active, State.Status: RunStatus.Generating })
             runtime.Snapshot = runtime.Snapshot with { Queue = runtime.Snapshot.Queue.Where(item => item.Id != active).ToArray() };
@@ -817,6 +832,8 @@ public sealed class ChatRunDispatcher(
         /// <summary>When the last progress-only update was published, for throttling.</summary>
         public DateTimeOffset LastProgressPublished { get; set; }
 
+        /// <summary>The current turn's live change set; the final copy is stored on its reply.</summary>
+        public WorkspaceChangeSet? WorkspaceChanges { get; set; }
         public Task? Worker { get; set; }
         public CancellationTokenSource? Cancellation { get; set; }
         public Guid? ActiveMessageId { get; set; }

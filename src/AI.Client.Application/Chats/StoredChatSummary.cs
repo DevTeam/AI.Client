@@ -11,4 +11,5 @@ public sealed record StoredChatSummary(
     long Revision,
     DateTimeOffset LastActivityAt,
     bool IsPinned,
-    DateTimeOffset? PinnedAt);
+    DateTimeOffset? PinnedAt,
+    int BranchCount = 0);

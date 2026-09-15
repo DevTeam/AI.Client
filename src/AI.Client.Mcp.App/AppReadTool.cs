@@ -5,6 +5,7 @@ using AI.Client.Application.Projects;
 using AI.Client.Application.Runs;
 using AI.Client.Application.Settings;
 using AI.Client.Contracts.Chats;
+using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -31,6 +32,12 @@ public enum AppResource
 
     /// <summary>Global settings: connections, MCP servers and tool policies. Never any secret.</summary>
     Settings,
+
+    /// <summary>
+    /// Messages matching 'query' across every chat, or within whatever 'projectId', 'chatId' and
+    /// 'branchId' narrow it to. Returns a snippet around each match, not the whole message.
+    /// </summary>
+    Search,
 }
 
 [McpServerToolType]
@@ -38,6 +45,7 @@ public sealed class AppReadTool(
     IProjectService projects,
     IChatService chats,
     IGlobalSettingsService settings,
+    IChatSearchService search,
     Func<IChatRunDispatcher> runs) : IAppTool
 {
     public McpServerTool Create() => McpServerTool.Create(
@@ -47,10 +55,11 @@ public sealed class AppReadTool(
             SerializerOptions = ToolReply.Json,
             Description = "Read this application's own data: projects, chats, messages, runs and global settings. "
                           + "'Project', 'Chat' and 'Messages' need the ids named in their description; the others ignore them. "
-                          + "Results are paged: pass the returned 'nextCursor' back to continue, and expect 'truncated' when a page "
-                          + "ended on its character budget rather than on 'limit'. API keys are never returned — a connection only "
-                          + "reports whether it has one. Call this before any change, because every mutating tool here needs the "
-                          + "current revision of what it is changing."
+                          + "'Search' finds text in messages across every chat at once and needs 'query'; use it instead of reading "
+                          + "chats one by one. Results are paged: pass the returned 'nextCursor' back to continue, and expect "
+                          + "'truncated' when a page ended on a limit rather than on 'limit' items. API keys are never returned — a "
+                          + "connection only reports whether it has one. Call this before any change, because every mutating tool "
+                          + "here needs the current revision of what it is changing."
         });
 
     [McpServerTool(Name = "app_read", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
@@ -62,16 +71,44 @@ public sealed class AppReadTool(
         Guid? branchId = null,
         string? cursor = null,
         int limit = Paging.DefaultLimit,
+        string? query = null,
+        bool isRegex = false,
+        bool ignoreCase = true,
+        string[]? roles = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
+            if (resource == AppResource.Search)
+                return ToolReply.Of(await SearchAsync(projectId, chatId, branchId, cursor, limit, query, isRegex, ignoreCase,
+                    roles, cancellationToken));
             return ToolReply.Of(await PageAsync(resource, projectId, chatId, branchId, cursor, limit, cancellationToken));
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
             return ToolReply.Of(new AppReadResult(resource.ToString(), [], null, false, 0, 0, error.Message), true);
         }
+    }
+
+    /// <summary>
+    /// Search answers in the same page shape as every other resource, so one tool keeps one result
+    /// contract. Its own limits — matches, characters, messages examined — live with the search.
+    /// </summary>
+    private async Task<AppReadResult> SearchAsync(
+        Guid? projectId, Guid? chatId, Guid? branchId, string? cursor, int limit, string? query,
+        bool isRegex, bool ignoreCase, string[]? roles, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            throw new ArgumentException("'query' is required to search.", nameof(query));
+        var found = await search.SearchAsync(new ChatSearchRequest(query, projectId, chatId, branchId,
+            isRegex, ignoreCase, roles, null, null, limit, cursor), cancellationToken);
+        if (found.Error is { } error) throw new ArgumentException(error, nameof(query));
+        var items = found.Matches
+            .Select(match => JsonSerializer.SerializeToElement(match, ToolReply.Json))
+            .ToArray();
+        // 'total' is how many matches this page holds, not how many exist: counting the rest would
+        // mean scanning everything, which is the cost the limits exist to avoid.
+        return new AppReadResult("Search", items, found.NextCursor, found.Truncated, items.Length, items.Length, null);
     }
 
     private async Task<AppReadResult> PageAsync(

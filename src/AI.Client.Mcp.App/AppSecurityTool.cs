@@ -170,7 +170,8 @@ public sealed class AppSecurityTool(
                 connection.Id, connection.Name, connection.BaseUrl, connection.Model, connection.Enabled, connection.IsDefault,
                 // Credentials live in their own store and are never part of this document; the
                 // flag is recomputed from what is actually held.
-                stored.Connections.Any(item => item.Id == connection.Id && item.HasCredential))).ToArray(),
+                stored.Connections.Any(item => item.Id == connection.Id && item.HasCredential),
+                connection.ForSubtasks, connection.Capability, connection.Cost, connection.GoodFor)).ToArray(),
             value.McpServers.Select(server => new AI.Client.Contracts.Settings.McpServerSettings(
                 server.Id, server.Name, server.Transport, server.Enabled, server.Policy, server.Url, server.Command,
                 server.Arguments, server.WorkingDirectory,

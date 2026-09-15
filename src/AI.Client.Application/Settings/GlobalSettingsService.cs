@@ -46,7 +46,13 @@ public sealed class GlobalSettingsService(
             throw new ArgumentException("Only one connection can be the default.", nameof(request));
         }
 
-        connections = connections.Select(item => item.Enabled ? item : item with { IsDefault = false }).ToArray();
+        if (connections.Count(item => item.ForSubtasks) > 1)
+        {
+            throw new ArgumentException("Only one connection can be the one subtasks use.", nameof(request));
+        }
+
+        connections = connections
+            .Select(item => item.Enabled ? item : item with { IsDefault = false, ForSubtasks = false }).ToArray();
 
         if (connections.Length > 0 && connections.All(item => !item.IsDefault) && connections.Any(item => item.Enabled))
         {
@@ -122,8 +128,20 @@ public sealed class GlobalSettingsService(
             throw new ArgumentException("Connection name, absolute HTTP base URL, and model are required.");
         }
 
-        return item with { Name = item.Name.Trim(), BaseUrl = item.BaseUrl.TrimEnd('/'), Model = item.Model.Trim() };
+        return item with
+        {
+            Name = item.Name.Trim(),
+            BaseUrl = item.BaseUrl.TrimEnd('/'),
+            Model = item.Model.Trim(),
+            // A rating is one of five words or nothing at all. Anything outside that is not a
+            // judgement anyone made, and a stored zero would read as "the weakest there is".
+            Capability = Rating(item.Capability),
+            Cost = Rating(item.Cost),
+            GoodFor = string.IsNullOrWhiteSpace(item.GoodFor) ? null : item.GoodFor.Trim()
+        };
     }
+
+    private static int? Rating(int? value) => value is >= 1 and <= 5 ? value : null;
 
     private static McpServerSettings Normalize(McpServerSettings item)
     {

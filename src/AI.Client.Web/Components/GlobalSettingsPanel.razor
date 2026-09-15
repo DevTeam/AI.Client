@@ -9,12 +9,12 @@
                     <header class="global-header"><div><h1>Connections</h1><p>OpenAI-compatible endpoints available to every project.</p></div></header>
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
-                            <nav class="settings-list">@foreach (var connectionItem in _connections) { <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span>@connectionItem.Name</span><small>@(connectionItem.IsDefault ? "Default" : connectionItem.Enabled ? "Enabled" : "Unavailable")</small></button>@if (connectionItem.Id == _selectedConnectionId) { <button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button> }</div> }</nav>
+                            <nav class="settings-list">@foreach (var connectionItem in _connections) { <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span>@connectionItem.Name</span><small>@ConnectionStatus(connectionItem)</small></button>@if (connectionItem.Id == _selectedConnectionId) { <button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button> }</div> }</nav>
                             <button class="icon-action settings-list-add" type="button" title="Add connection" aria-label="Add connection" @onclick="AddConnection"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedConnection() is { } connection)
                         {
-                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<InputText autocomplete="url" @bind-Value="connection.BaseUrl" /></label><label>Model<InputText autocomplete="off" @bind-Value="connection.Model" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></form>
+                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label><label class="checkbox"><input type="checkbox" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" /> For subtasks</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<InputText autocomplete="url" @bind-Value="connection.BaseUrl" /></label><label>Model<InputText autocomplete="off" @bind-Value="connection.Model" /></label><div class="connection-ratings"><label>Capability<input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><small>@RatingLabel(connection.Capability, Capabilities)</small></label><label>Cost<input type="range" min="0" max="5" step="1" @bind="connection.Cost" @bind:event="oninput" /><small>@RatingLabel(connection.Cost, Costs)</small></label></div><label>Good for<InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="What the ratings cannot say: vision, long context, local" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></form>
                         }
                     </div>
                     <footer class="global-actions">@if (_feedback is not null) { <span class="global-feedback" role="status">@_feedback</span> }<button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
@@ -113,11 +113,41 @@
     private ConnectionEditor? GetSelectedConnection() =>
         _connections.SingleOrDefault(item => item.Id == _selectedConnectionId);
 
+    /// <summary>
+    /// What the list says about a connection under its name. Both marks can sit on the same one, so
+    /// the line is composed rather than chosen; an unavailable connection wears neither.
+    /// </summary>
+    private static string ConnectionStatus(ConnectionEditor connection)
+    {
+        if (!connection.Enabled) return "Unavailable";
+        var marks = new List<string>(2);
+        if (connection.IsDefault) marks.Add("Default");
+        if (connection.ForSubtasks) marks.Add("Subtasks");
+        return marks.Count == 0 ? "Enabled" : string.Join(" · ", marks);
+    }
+
     private void SetDefaultConnection(Guid id, ChangeEventArgs args)
     {
         if (args.Value is not true) return;
         foreach (var connection in _connections) connection.IsDefault = connection.Id == id;
     }
+
+    /// <summary>
+    /// Unlike the default, which the application always needs one of, subtasks are content to
+    /// inherit the calling chat's connection — so unticking this leaves none marked, and does.
+    /// </summary>
+    private void SetSubtaskConnection(Guid id, ChangeEventArgs args)
+    {
+        var wanted = args.Value is true;
+        foreach (var connection in _connections) connection.ForSubtasks = wanted && connection.Id == id;
+    }
+
+    private static readonly string[] Capabilities = ["weak", "modest", "solid", "strong", "frontier"];
+
+    private static readonly string[] Costs = ["free", "cheap", "moderate", "pricey", "premium"];
+
+    private static string RatingLabel(int value, string[] words) =>
+        value is >= 1 && value <= words.Length ? words[value - 1] : "not rated";
 
     private void AddGlobalMcpServer()
     {
@@ -199,17 +229,26 @@
         public string Model { get; set; } = string.Empty;
         public bool Enabled { get; set; } = true;
         public bool IsDefault { get; set; }
+        public bool ForSubtasks { get; set; }
+        public int Capability { get; set; }
+        public int Cost { get; set; }
+        public string GoodFor { get; set; } = string.Empty;
         public bool HasCredential { get; set; }
         public string? Secret { get; set; }
 
         public static ConnectionEditor From(ConnectionSettings item) => new()
         {
             Id = item.Id, Name = item.Name, BaseUrl = item.BaseUrl, Model = item.Model,
-            Enabled = item.Enabled, IsDefault = item.IsDefault, HasCredential = item.HasCredential
+            Enabled = item.Enabled, IsDefault = item.IsDefault, HasCredential = item.HasCredential,
+            ForSubtasks = item.ForSubtasks, Capability = item.Capability ?? 0, Cost = item.Cost ?? 0,
+            GoodFor = item.GoodFor ?? string.Empty
         };
 
         public ConnectionSettings ToSettings() =>
-            new(Id, Name, BaseUrl, Model, Enabled, IsDefault, HasCredential);
+            // Zero is how a range input says "nobody has rated this"; it travels as absence.
+            new(Id, Name, BaseUrl, Model, Enabled, IsDefault, HasCredential, ForSubtasks,
+                Capability == 0 ? null : Capability, Cost == 0 ? null : Cost,
+                string.IsNullOrWhiteSpace(GoodFor) ? null : GoodFor);
     }
 
     [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]

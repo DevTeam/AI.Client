@@ -3228,3 +3228,25 @@ textarea {
 .search-result-where { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-result-snippet { opacity: .85; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .search-result-meta { opacity: .6; font-size: .8125em; }
+
+/* Two coarse judgements sit side by side so they read as one comparison rather than two
+   unrelated fields, and each keeps its word under the track: the number alone says nothing. */
+.connection-ratings {
+    display: flex;
+    gap: 1.25rem;
+}
+
+.connection-ratings > label {
+    flex: 1;
+    min-width: 0;
+}
+
+.connection-ratings input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent-color);
+}
+
+.connection-ratings small {
+    color: #919191;
+    font-size: 0.85rem;
+}

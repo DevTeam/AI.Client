@@ -2,6 +2,7 @@ namespace AI.Client.Mcp.App;
 
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Protocol;
 
@@ -41,5 +42,18 @@ internal static class ToolReply
             Content = [new TextContentBlock { Text = structured.GetRawText() }],
             IsError = isError
         };
+    }
+
+    /// <summary>
+    /// A result with a second half addressed to the Host and the UI rather than to the model.
+    /// <c>_meta</c> is excluded from the model-facing projection by contract, which is what lets a
+    /// tool hand back something large for a person to read without spending the model's context on
+    /// it.
+    /// </summary>
+    public static CallToolResult Of<T, TMeta>(T value, TMeta meta, bool isError = false)
+    {
+        var result = Of(value, isError);
+        result.Meta = JsonSerializer.SerializeToNode(meta, Json)?.AsObject();
+        return result;
     }
 }

@@ -38,7 +38,7 @@ public sealed class AppToolTests
 
         // The server decides its own listing order, so the set is what matters, not the sequence.
         session.Tools.Select(tool => tool.OriginalName).Order(StringComparer.Ordinal).ShouldBe(
-            ["app_chats", "app_projects", "app_read", "app_runs", "app_security"]);
+            ["app_chats", "app_projects", "app_read", "app_runs", "app_security", "spawn_subtask"]);
         session.Tools.ShouldAllBe(tool => tool.ServerId == AppMcpServer.Id);
         session.Tools.ShouldAllBe(tool => tool.ModelDefinition.Name.StartsWith("mcp_app__", StringComparison.Ordinal));
         // A schema hash is what ties a saved policy to the tool it was granted for.
@@ -298,7 +298,7 @@ public sealed class AppToolTests
             IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker();
             var policies = new ToolPolicyResolver(Projects, Chats, _settings);
             var dispatcher = new ChatRunDispatcher(runRepository, Chats, Projects, _settings, settingsService,
-                new ChatAgent(Mock.Of<AI.Client.Application.Chat.IChatCompletionClient>(), Mock.Of<IToolSessionFactory>(),
+                new ChatAgent(Mock.Of<AI.Client.Application.Chat.IChatCompletionClient>(), Mock.Of<IToolSessionFactory>,
                     Projects, _settings, policies, workspace),
                 _secrets, _clock, _synchronization, workspace, policies);
             var writes = new AppWrites(new AppOperationLog(), _signal);
@@ -309,6 +309,7 @@ public sealed class AppToolTests
                 new AppRunsTool(() => dispatcher, writes),
                 new AppProjectsTool(Projects, Chats, () => dispatcher, writes),
                 new AppSecurityTool(Projects, Chats, settingsService, writes),
+                new AppSubtaskTool(() => throw new InvalidOperationException("not used"), Projects, Chats, _settings, _secrets),
             ];
             IMcpServerConnection connection = new AppToolSessionFactory(new AppMcpServerHost(tools));
             _sessions = new CompositeToolSessionFactory([connection]);

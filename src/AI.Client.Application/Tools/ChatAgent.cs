@@ -13,7 +13,14 @@ using Workspace;
 using System.Text;
 using System.Text.Json;
 
-public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFactory sessions,
+/// <remarks>
+/// The tool session factory arrives as a factory rather than an instance. A session is opened per
+/// run, never at construction, and the graph is circular — a tool can start a nested run, so the
+/// tools depend on this agent and this agent depends on the tools. Asking for the instance here
+/// closed that loop at construction time and yielded an agent holding a null factory, which failed
+/// only when a run started rather than when the container was built.
+/// </remarks>
+public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessionFactory> sessions,
     IProjectService projects, IGlobalSettingsRepository settings, ToolPolicyResolver policies,
     IWorkspaceChangeTracker workspace)
 {
@@ -38,7 +45,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
         var servers = new[] { DefaultMcpServer.Id, AppMcpServer.Id }.Where(Enabled).ToHashSet();
         var grants = project.DirectoryGrants
             .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
-        await using var session = servers.Count > 0 ? await sessions.OpenAsync(grants, servers, token) : null;
+        await using var session = servers.Count > 0 ? await sessions().OpenAsync(grants, servers, token) : null;
         var runKey = new WorkspaceRunKey(projectId, chatId, branchId);
         await workspace.BeginRunAsync(runKey, grants, token);
         var context = request.ContextMessages?.ToList() ?? [new ChatCompletionMessage("user", request.Message)];
@@ -110,7 +117,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                     else if (policy.Decision == "Ask"
                              && await approve(tool, arguments, policy.TimeoutSeconds,
                                  new ToolCallPosition(index + 1, calls.Count), token) == ToolApprovalAction.Deny)
-                        result = Error("The user denied this invocation. Do not retry it.");
+                        // Worded for both callers: a person declining at the card, and a background run that
+                        // has nobody to ask and refuses anything needing confirmation.
+                        result = Error("This invocation was not approved. Do not retry it.");
                     else
                     {
                         var activeCall = new ToolActivity(call.Id, call.Name, arguments);
@@ -131,7 +140,21 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
                             // The baseline has to exist before the call, not after: once a write
                             // lands there is nothing left to compare against.
                             await workspace.RecordIntentAsync(runKey, tool.Descriptor, arguments, token);
-                            result = await session.CallAsync(tool, arguments, progress, timeout.Token);
+                            try
+                            {
+                                result = await session.CallAsync(tool, arguments, progress, timeout.Token);
+                            }
+                            // A call that outlived its own policy timeout has failed; the turn has
+                            // not. Letting that reach the outer handler abandoned every call after
+                            // it and ended the run, so one slow server took the whole batch with
+                            // it. The run's own cancellation still does exactly that, which is the
+                            // difference this guard draws.
+                            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                            {
+                                result = Error($"The tool did not answer within {policy.TimeoutSeconds} seconds. "
+                                    + "Its effects may have occurred. Do not automatically repeat it.");
+                            }
+
                             await workspace.RecordEffectAsync(runKey, tool.Descriptor, arguments, token);
                         }
                     }

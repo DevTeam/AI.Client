@@ -48,7 +48,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory>()
             // Both groups are consumed as sets, so each registration is tagged to stay distinct
             // instead of the last one silently winning its contract.
-            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool>(Tag.Unique)
+            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool>(Tag.Unique)
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
             .Transient((ProjectStorageLocation location) => location.RootDirectory);

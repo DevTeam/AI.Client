@@ -94,7 +94,7 @@
         {
             @if (item.Message is { } message)
             {
-                <article @key="message.Id" id="message-@message.Id" class="workspace-message @message.Role.ToLowerInvariant() @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)">
+                <article @key="message.Id" id="message-@message.Id" class="workspace-message @message.Role.ToLowerInvariant() @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)">
                     @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
                     <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div>
                     <div class="message-actions">
@@ -118,7 +118,7 @@
                    They were two articles with a boundary between them, which read as unrelated
                    cards; together they read as intent followed by actions. The preamble needs no
                    id of its own here — the block already has the anchor's. *@
-                <article @key="anchor.Id" id="message-@anchor.Id" class="workspace-message tool-group @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)">
+                <article @key="anchor.Id" id="message-@anchor.Id" class="workspace-message tool-group @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)">
                     @if (preamble is not null)
                     {
                         @if (preamble.IsIncomplete) { <span class="message-status">Incomplete</span> }
@@ -253,6 +253,13 @@
     [Parameter] public string? SelectedProjectName { get; set; }
     [Parameter] public ChatDetails? SelectedChat { get; set; }
     [Parameter] public Guid? BranchLeafId { get; set; }
+    /// <summary>
+    /// When set to the same id as <see cref="BranchLeafId"/>, marks the leaf message as
+    /// "just arrived" — i.e. an assistant response has just landed on it. Drives the
+    /// transient draw-and-fade accent line. Set by the parent only for the single
+    /// snapshot transition that produced the new leaf, then cleared.
+    /// </summary>
+    [Parameter] public Guid? JustArrivedLeafId { get; set; }
     [Parameter] public Guid? ForkSourceId { get; set; }
     [Parameter] public Guid? MessageBranchMenuId { get; set; }
     [Parameter] public ChatRunSnapshot? SelectedRun { get; set; }
@@ -289,6 +296,7 @@
     // render tree (the whole message list) just as often as before the split.
     private ChatDetails? _renderedSelectedChat;
     private Guid? _renderedBranchLeafId;
+    private Guid? _renderedJustArrivedLeafId;
     private Guid? _renderedForkSourceId;
     private Guid? _renderedMessageBranchMenuId;
     private ChatRunSnapshot? _renderedSelectedRun;
@@ -300,6 +308,7 @@
     {
         var changed = !ReferenceEquals(_renderedSelectedChat, SelectedChat)
             || _renderedBranchLeafId != BranchLeafId
+            || _renderedJustArrivedLeafId != JustArrivedLeafId
             || _renderedForkSourceId != ForkSourceId
             || _renderedMessageBranchMenuId != MessageBranchMenuId
             || !ReferenceEquals(_renderedSelectedRun, SelectedRun)
@@ -309,6 +318,7 @@
 
         _renderedSelectedChat = SelectedChat;
         _renderedBranchLeafId = BranchLeafId;
+        _renderedJustArrivedLeafId = JustArrivedLeafId;
         _renderedForkSourceId = ForkSourceId;
         _renderedMessageBranchMenuId = MessageBranchMenuId;
         _renderedSelectedRun = SelectedRun;

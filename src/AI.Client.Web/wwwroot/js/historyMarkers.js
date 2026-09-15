@@ -4,7 +4,7 @@
 // shrank around it, which barely read as a bulge at all.
 const ScrollReach = 4;
 const ScrollMinScale = 0.4;
-const ScrollMaxScale = 1.25;
+const ScrollMaxScale = 1.45;
 
 // Hover-driven fisheye: continuous, by pixel distance from the cursor. The peak exceeds 1 (the
 // marker's resting width) because transform-origin is centred, splitting the extra growth evenly
@@ -13,11 +13,11 @@ const ScrollMaxScale = 1.25;
 // left, so the growth toward the text side (right) is effectively unconstrained — verified at the
 // narrowest supported width (just above the 720px phone-mode cutoff) with hundreds of px to
 // spare. The real ceiling is on the OTHER side: growth toward the sidebar (left) is bounded by the
-// strip's own 0.5rem inset from its container. 1.55 leaves a comfortable margin there too (the
-// container-edge ceiling is closer to ~1.7). See docs/12-ux-decisions.md for the worked-out margin.
+// strip's own 0.5rem inset from its container, and 1.7 sits right at that ceiling — no further
+// margin to give. See docs/12-ux-decisions.md for the worked-out margin.
 const HoverReachPx = 70;
 const HoverMinScale = 0.15;
-const HoverMaxScale = 1.55;
+const HoverMaxScale = 1.7;
 
 // The very first and last markers read as "start of history" / "current position" boundaries,
 // so they're always at least twice as long as a normal resting marker — a floor, not a

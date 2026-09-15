@@ -340,7 +340,11 @@ public sealed class ChatRunDispatcher(
         {
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
             if (error is OperationCanceledException) runtime.State.Pause();
-            else runtime.State.Fail(error.Message, FailureKind(error));
+            // Unlike a retryable failure, a structural one (missing parent, changed or deleted
+            // branch) can never run again and leaves nothing for the user to resume, retry or
+            // rebase, so its entry is dropped instead of blocking the queue. Any message queued
+            // behind it then starts normally from the finally block below.
+            else runtime.State.FailUnrecoverable(error.Message, FailureKind(error));
             if (error is OperationCanceledException && runtime.ResumeRequested && !_shutdown.IsCancellationRequested) runtime.State.Resume();
             try { await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, CancellationToken.None), CancellationToken.None); }
             catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException)

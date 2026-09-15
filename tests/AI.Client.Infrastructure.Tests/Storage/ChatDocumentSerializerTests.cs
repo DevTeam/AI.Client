@@ -151,6 +151,7 @@ public class ChatDocumentSerializerTests
         var summary = ChatDocumentSerializer.DeserializeSummary(ChatDocumentSerializer.SerializeSummary(chat, 4));
 
         summary.BranchCount.ShouldBe(2);
+        summary.HasStoredBranchCount.ShouldBeTrue();
     }
 
     [Fact]
@@ -194,6 +195,7 @@ public class ChatDocumentSerializerTests
         var summary = ChatDocumentSerializer.DeserializeSummary(withoutCount);
 
         summary.BranchCount.ShouldBe(0);
+        summary.HasStoredBranchCount.ShouldBeFalse();
         summary.Title.ShouldBe("Chat");
     }
 }

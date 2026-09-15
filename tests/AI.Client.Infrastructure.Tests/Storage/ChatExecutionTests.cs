@@ -234,6 +234,35 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task ClearShouldRemoveActiveMessageWhileStoppedWorkerIsUnwinding()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var cancellationObserved = fixture.Completion.DelayCancellation();
+        try
+        {
+            await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"));
+            await fixture.NextCallAsync();
+
+            var stopped = await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+                CancellationToken.None);
+            stopped!.Status.ShouldBe(ChatRunStatus.Paused);
+            await cancellationObserved.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+            var cleared = await fixture.Dispatcher.ClearAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+                CancellationToken.None);
+            cleared!.Status.ShouldBe(ChatRunStatus.Idle);
+            cleared.Queue.ShouldBeEmpty();
+        }
+        finally
+        {
+            fixture.Completion.ReleaseCancellation();
+        }
+
+        var settled = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Idle && run.Queue.Count == 0);
+        settled.Queue.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ForkShouldUseOnlyItsAncestorsAndKeepTheMainHead()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -420,15 +449,36 @@ public sealed class ChatExecutionTests
     }
     private sealed class Completion : IChatCompletionClient
     {
+        private TaskCompletionSource<bool>? _cancellationObserved;
+        private TaskCompletionSource<bool>? _cancellationRelease;
         public Channel<Call> Calls { get; } = Channel.CreateUnbounded<Call>();
         public Task<ChatCompletionResponse> CompleteAsync(ChatCompletionRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
         public async IAsyncEnumerable<ChatCompletionChunk> StreamAsync(ChatCompletionRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             var call = new Call(request, new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously));
             Calls.Writer.TryWrite(call);
-            var content = await call.Answer.Task.WaitAsync(cancellationToken);
+            string content;
+            try
+            {
+                content = await call.Answer.Task.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (_cancellationRelease is { } release)
+            {
+                _cancellationObserved!.TrySetResult(true);
+                await release.Task;
+                throw;
+            }
             yield return new ChatCompletionChunk(content, ToolCalls: call.ToolCalls);
         }
+
+        public Task<bool> DelayCancellation()
+        {
+            _cancellationObserved = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _cancellationRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            return _cancellationObserved.Task;
+        }
+
+        public void ReleaseCancellation() => _cancellationRelease?.TrySetResult(true);
     }
     private sealed class Fixture : IAsyncDisposable
     {

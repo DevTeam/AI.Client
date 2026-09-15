@@ -183,7 +183,10 @@ public sealed class ChatRunDispatcher(
     public Task<ChatRunSnapshot?> ClearAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null) =>
         MutateAsync(projectId, chatId, branchId, runtime =>
         {
-            if (runtime.ActiveMessageId is null)
+            // While a running request is being cancelled, Stop has already changed the state to
+            // Paused but the worker can still retain ActiveMessageId until its finally block runs.
+            // At that point the message is paused queue work again and Clear must remove it too.
+            if (runtime.ActiveMessageId is null || runtime.State.Status != RunStatus.Generating)
             {
                 runtime.State.Clear();
                 return;
@@ -344,7 +347,12 @@ public sealed class ChatRunDispatcher(
         catch (Exception error)
         {
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
-            if (error is OperationCanceledException) runtime.State.Pause();
+            // Clear can empty the queue while a cancelled worker is still unwinding. Keep the
+            // Idle state established by Clear instead of changing the empty queue back to Paused.
+            if (error is OperationCanceledException)
+            {
+                if (runtime.State.Queue.Count > 0) runtime.State.Pause();
+            }
             // Unlike a retryable failure, a structural one (missing parent, changed or deleted
             // branch) can never run again and leaves nothing for the user to resume, retry or
             // rebase, so its entry is dropped instead of blocking the queue. Any message queued

@@ -58,7 +58,10 @@ public sealed class AppSecurityTool(
                           + "connection credentials. 'SetProjectSecurity' and 'SaveGlobalSettings' replace the whole state they cover, so "
                           + "read it with 'app_read' first and send it back with your change applied — anything you leave out is removed. "
                           + "Secrets are write-only: a key can be stored and never read back, and passing null clears it. 'operationId' "
-                          + "must be a fresh UUID per distinct change."
+                          + "must be a fresh UUID per distinct change. You may grant a directory to your own project with "
+                          + "'SetProjectSecurity' rather than asking the user to do it in the settings — but a grant reaches the file "
+                          + "system tools only when their session next opens, so it takes effect from the following run and not from this "
+                          + "one. Say that you have added it and what it will allow, instead of reporting that you have no access."
         });
 
     [McpServerTool(Name = "app_security", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false,

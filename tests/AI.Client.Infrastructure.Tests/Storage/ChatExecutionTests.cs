@@ -19,12 +19,42 @@ using Xunit;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using AI.Client.Application.Tools;
+using AI.Client.Application.Workspace;
 using AI.Client.Contracts.Tools;
+using AI.Client.Contracts.Workspace;
 using AI.Client.Infrastructure.Workspace;
 using System.Text.Json;
 
 public sealed class ChatExecutionTests
 {
+    [Fact]
+    public async Task CompletedRepliesShouldKeepTheirOwnWorkspaceChangesAfterRestart()
+    {
+        var workspace = new TestWorkspaceChangeTracker();
+        await using var fixture = await Fixture.CreateAsync(workspace);
+        workspace.Enqueue(new WorkspaceChangeSet(
+            [new FileChange("first.cs", FileChangeKind.Modified, 2, 1, Diff: "first diff")], 2, 1));
+        workspace.Enqueue(new WorkspaceChangeSet(
+            [new FileChange("second.cs", FileChangeKind.Added, 3, 0, Diff: "second diff")], 3, 0));
+
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "First"));
+        (await fixture.NextCallAsync()).Answer.SetResult("First reply");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Second"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Second reply");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        await fixture.RestartAsync();
+
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var replies = chat!.Messages.Where(message => message.Role == "Assistant").ToArray();
+        replies.Length.ShouldBe(2);
+        replies[0].WorkspaceChanges!.Files.ShouldHaveSingleItem().Path.ShouldBe("first.cs");
+        replies[0].WorkspaceChanges!.Additions.ShouldBe(2);
+        replies[1].WorkspaceChanges!.Files.ShouldHaveSingleItem().Path.ShouldBe("second.cs");
+        replies[1].WorkspaceChanges!.Additions.ShouldBe(3);
+    }
+
     [Theory]
     [InlineData(ToolApprovalAction.AllowForChat)]
     [InlineData(ToolApprovalAction.AllowForProject)]
@@ -390,7 +420,7 @@ public sealed class ChatExecutionTests
         public ChatRunDispatcher Dispatcher { get; private set; }
         public Guid ProjectId { get; private set; }
         public Guid ChatId { get; private set; }
-        private Fixture()
+        private Fixture(IWorkspaceChangeTracker? workspace = null)
         {
             _chatRepository = new JsonChatRepository(FileSystem, new ChatStoragePaths("data"));
             _projects = new JsonProjectRepository(FileSystem, new ProjectStoragePaths("data"));
@@ -398,15 +428,16 @@ public sealed class ChatExecutionTests
             _settings = new JsonGlobalSettingsRepository(FileSystem, new GlobalSettingsPaths("data"));
             _projectService = new ProjectService(_projects, _ids, _clock, _settings);
             Chats = new ChatService(_chatRepository, _ids, _clock, _synchronization);
+            Workspace = workspace ?? new WorkspaceChangeTracker();
             Dispatcher = NewDispatcher();
         }
-        public WorkspaceChangeTracker Workspace { get; } = new();
+        public IWorkspaceChangeTracker Workspace { get; }
         private ChatRunDispatcher NewDispatcher() => new(_runs, Chats, _projectService, _settings,
             new GlobalSettingsService(_settings, _secrets),
             new ChatAgent(Completion, Tools, _projectService, Chats, _settings, Workspace), _secrets, _clock, _synchronization, Workspace);
-        public static async Task<Fixture> CreateAsync()
+        public static async Task<Fixture> CreateAsync(IWorkspaceChangeTracker? workspace = null)
         {
-            var fixture = new Fixture();
+            var fixture = new Fixture(workspace);
             await fixture._settings.SaveAsync(new GlobalSettings([new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.test/v1", "model", true, true, false)], [], []), CancellationToken.None);
             fixture.ProjectId = (await fixture._projectService.CreateAsync(new CreateProjectRequest("Test", ""), CancellationToken.None)).Id;
             fixture.ChatId = (await fixture.Chats.CreateAsync(fixture.ProjectId, new CreateChatRequest("Chat"), CancellationToken.None)).Id;
@@ -456,6 +487,31 @@ public sealed class ChatExecutionTests
             _projects.Dispose();
             _runs.Dispose();
         }
+    }
+
+    private sealed class TestWorkspaceChangeTracker : IWorkspaceChangeTracker
+    {
+        private readonly Queue<WorkspaceChangeSet> _queued = new();
+        private WorkspaceChangeSet _current = WorkspaceChangeSet.Empty;
+
+        public void Enqueue(WorkspaceChangeSet changes) => _queued.Enqueue(changes);
+
+        public Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, CancellationToken cancellationToken)
+        {
+            _current = _queued.TryDequeue(out var changes) ? changes : WorkspaceChangeSet.Empty;
+            return Task.CompletedTask;
+        }
+
+        public Task RecordIntentAsync(WorkspaceRunKey run, ToolDescriptor tool, string arguments, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task RecordEffectAsync(WorkspaceRunKey run, ToolDescriptor tool, string arguments, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<WorkspaceChangeSet> SnapshotAsync(WorkspaceRunKey run, CancellationToken cancellationToken) =>
+            Task.FromResult(_current);
+
+        public Task CompleteRunAsync(WorkspaceRunKey run, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class TestTools : IToolSessionFactory, IToolSession

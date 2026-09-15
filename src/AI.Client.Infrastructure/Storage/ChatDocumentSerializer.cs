@@ -8,7 +8,8 @@ namespace AI.Client.Infrastructure.Storage;
 
 public static class ChatDocumentSerializer
 {
-    private const int SchemaVersion = 5;
+    private const int SchemaVersion = 6;
+    private const int PreviousSchemaVersion = 5;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
     public static string Serialize(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatDocument(
@@ -26,7 +27,8 @@ public static class ChatDocumentSerializer
             message.Role,
             message.Content,
             message.CreatedAt,
-            message.IsIncomplete, message.ToolCalls, message.ToolCallId)).ToArray(),
+            message.IsIncomplete, message.ToolCalls, message.ToolCallId,
+            ToDocument(message.WorkspaceChanges))).ToArray(),
         chat.Branches.Select(branch => new BranchDocument(branch.Id, branch.HeadMessageId?.Value, branch.Title,
             branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
         chat.ToolPolicies.Select(policy => new ToolPolicyDocument(policy.Tool.ServerId.Value, policy.Tool.Name,
@@ -50,7 +52,7 @@ public static class ChatDocumentSerializer
     {
         var document = JsonSerializer.Deserialize<ChatDocument>(json, Options)
             ?? throw new JsonException("Chat document is empty.");
-        if (document.SchemaVersion != SchemaVersion || document.Revision < 0)
+        if (document.SchemaVersion is not (PreviousSchemaVersion or SchemaVersion) || document.Revision < 0)
         {
             throw new JsonException("Chat document schema or revision is invalid.");
         }
@@ -69,7 +71,8 @@ public static class ChatDocumentSerializer
                 message.Role,
                 message.Content,
                 message.CreatedAt,
-                message.IsIncomplete, message.ToolCalls, message.ToolCallId), message.CreatedAt);
+                message.IsIncomplete, message.ToolCalls, message.ToolCallId,
+                ToDomain(message.WorkspaceChanges)), message.CreatedAt);
         }
         chat.RestoreBranches(document.Branches.Select(branch => new ChatBranch(branch.Id,
             branch.HeadMessageId is { } head ? new ChatMessageId(head) : null, branch.Title,
@@ -87,7 +90,7 @@ public static class ChatDocumentSerializer
     {
         var document = JsonSerializer.Deserialize<ChatSummaryDocument>(json, Options)
             ?? throw new JsonException("Chat document is empty.");
-        if (document.SchemaVersion != SchemaVersion || document.Revision < 0)
+        if (document.SchemaVersion is not (PreviousSchemaVersion or SchemaVersion) || document.Revision < 0)
         {
             throw new JsonException("Chat document schema or revision is invalid.");
         }
@@ -140,6 +143,39 @@ public static class ChatDocumentSerializer
     private sealed record BranchDocument(Guid Id, Guid? HeadMessageId, string Title, Guid? ParentBranchId,
         Guid? RootMessageId, long Revision);
 
+    private static WorkspaceChangeDocument? ToDocument(ChatWorkspaceChangeSet? changes) => changes is null
+        ? null
+        : new WorkspaceChangeDocument(
+            changes.Files.Select(file => new FileChangeDocument(
+                file.Path, file.Kind, file.Additions, file.Deletions, file.PreviousPath,
+                file.Diff, file.IsBinary, file.Confidence)).ToArray(),
+            changes.Additions,
+            changes.Deletions);
+
+    private static ChatWorkspaceChangeSet? ToDomain(WorkspaceChangeDocument? changes) => changes is null
+        ? null
+        : new ChatWorkspaceChangeSet(
+            changes.Files.Select(file => new ChatFileChange(
+                file.Path, file.Kind, file.Additions, file.Deletions, file.PreviousPath,
+                file.Diff, file.IsBinary, file.Confidence)).ToArray(),
+            changes.Additions,
+            changes.Deletions);
+
+    private sealed record WorkspaceChangeDocument(
+        FileChangeDocument[] Files,
+        int Additions,
+        int Deletions);
+
+    private sealed record FileChangeDocument(
+        string Path,
+        ChatFileChangeKind Kind,
+        int? Additions,
+        int? Deletions,
+        string? PreviousPath = null,
+        string? Diff = null,
+        bool IsBinary = false,
+        ChatFileChangeConfidence Confidence = ChatFileChangeConfidence.Measured);
+
     private sealed record ChatMessageDocument(
         Guid Id,
         Guid? ParentId,
@@ -150,5 +186,7 @@ public static class ChatDocumentSerializer
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
         IReadOnlyList<ChatToolCall>? ToolCalls = null,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-        string? ToolCallId = null);
+        string? ToolCallId = null,
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        WorkspaceChangeDocument? WorkspaceChanges = null);
 }

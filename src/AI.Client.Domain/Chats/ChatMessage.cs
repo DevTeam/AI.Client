@@ -10,7 +10,8 @@ public sealed class ChatMessage(
     DateTimeOffset createdAt,
     bool isIncomplete = false,
     IReadOnlyList<ChatToolCall>? toolCalls = null,
-    string? toolCallId = null)
+    string? toolCallId = null,
+    ChatWorkspaceChangeSet? workspaceChanges = null)
 {
     public ChatMessageId Id { get; } = id;
 
@@ -28,4 +29,7 @@ public sealed class ChatMessage(
 
     public IReadOnlyList<ChatToolCall>? ToolCalls { get; } = toolCalls?.ToArray();
     public string? ToolCallId { get; } = toolCallId;
+    public ChatWorkspaceChangeSet? WorkspaceChanges { get; } = workspaceChanges is null
+        ? null
+        : workspaceChanges with { Files = workspaceChanges.Files.ToArray() };
 }

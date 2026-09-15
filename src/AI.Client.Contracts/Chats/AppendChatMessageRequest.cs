@@ -11,4 +11,5 @@ public sealed record AppendChatMessageRequest(
     Guid? ParentBranchId = null,
     Guid? ReplaceSourceId = null,
     IReadOnlyList<Chat.ChatToolCall>? ToolCalls = null,
-    string? ToolCallId = null);
+    string? ToolCallId = null,
+    Workspace.WorkspaceChangeSet? WorkspaceChanges = null);

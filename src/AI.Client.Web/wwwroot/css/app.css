@@ -2826,7 +2826,20 @@ textarea {
    shape as the settled ones so a call does not visibly change form when it lands. */
 .tool-activity-live {
     max-width: 48rem;
-    margin: 0 auto 0.7rem;
+    margin: 0 auto 0.75rem;
+}
+
+/* A running call belongs to the group that announced it, but it is rendered outside that article
+   because it comes from the run snapshot rather than from history. Left alone it inherited the
+   gap between messages — 0.75rem, plus the leaf's own padding — while the settled rows above it
+   sit 0.1rem apart, so the newest row looked detached from the ones it continues. These two rules
+   close that gap for the one article the live rows follow, and only while they exist. */
+.workspace-message:has(+ .tool-activity-live) {
+    margin-bottom: 0.1rem;
+}
+
+.workspace-message.branch-leaf:has(+ .tool-activity-live) {
+    padding-bottom: 0;
 }
 
 /* Every group is one collapsed line; opening it reveals its rows, indented. */

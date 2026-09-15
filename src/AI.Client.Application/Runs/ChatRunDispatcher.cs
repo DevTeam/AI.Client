@@ -364,7 +364,7 @@ public sealed class ChatRunDispatcher(
             // branch) can never run again and leaves nothing for the user to resume, retry or
             // rebase, so its entry is dropped instead of blocking the queue. Any message queued
             // behind it then starts normally from the finally block below.
-            else runtime.State.FailUnrecoverable(error.Message, FailureKind(error));
+            else runtime.State.FailUnrecoverable(Describe(error), FailureKind(error));
             if (error is OperationCanceledException && runtime.ResumeRequested && !_shutdown.IsCancellationRequested) runtime.State.Resume();
             try { await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, CancellationToken.None), CancellationToken.None); }
             catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException)
@@ -604,6 +604,29 @@ public sealed class ChatRunDispatcher(
             cursor = message.ParentId;
         }
         return false;
+    }
+
+    /// <summary>
+    /// What a failed run says about itself. A message the application itself wrote — a missing
+    /// branch, a refused endpoint — stands on its own. A fault from anywhere else does not: "Object
+    /// reference not set to an instance of an object" names neither the fault nor its origin, so the
+    /// type and the first frame of this assembly's own stack are added. Without them such a failure
+    /// can only be investigated by guessing, which is how it went the last time one happened.
+    /// </summary>
+    private static string Describe(Exception error) => error switch
+    {
+        RunDispatchException or InvalidOperationException or ArgumentException or HttpRequestException
+            or Domain.Common.DomainException => error.Message,
+        _ => $"{error.GetType().Name}: {error.Message}{Origin(error)}",
+    };
+
+    private static string Origin(Exception error)
+    {
+        var frame = (error.StackTrace ?? string.Empty)
+            .Split('\n')
+            .Select(line => line.Trim())
+            .FirstOrDefault(line => line.StartsWith("at AI.Client.", StringComparison.Ordinal));
+        return frame is null ? string.Empty : $" ({frame[3..]})";
     }
 
     private static RunFailureKind FailureKind(Exception error) => error switch

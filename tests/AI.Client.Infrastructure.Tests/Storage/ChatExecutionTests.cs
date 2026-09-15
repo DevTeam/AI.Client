@@ -193,6 +193,23 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task ShouldOpenAToolSessionEvenThoughToolsCanStartNestedRuns()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Anything"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        // A tool that can start a nested run makes the agent depend on the tools and the tools
+        // depend on the agent. Asking for the session factory by instance closed that loop during
+        // construction and produced an agent holding null, which surfaced only here — as a bare
+        // "Object reference not set" the moment a run started.
+        fixture.Tools.OpenCount.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
     public async Task GrantingTheToolInSettingsMustReleaseAWaitingApproval()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -211,6 +228,35 @@ public sealed class ChatExecutionTests
         fixture.Tools.CallCount.ShouldBe(1);
         second.Answer.SetResult("Done");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task ATimedOutCallMustNotTakeTheRestOfTheBatchWithIt()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        // One second of patience per call, so the first one's timeout arrives quickly.
+        await fixture.SetPolicyAsync("Allow", timeoutSeconds: 1);
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run two commands"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls =
+        [
+            new ChatToolCall("call-1", "mcp_built_in__process_run", "{}"),
+            new ChatToolCall("call-2", "mcp_built_in__process_run", "{}"),
+        ];
+        fixture.Tools.HangNextCall = true;
+        first.Answer.SetResult("");
+
+        // The second call must still run: one unresponsive server is that call's failure, not the
+        // turn's. Before this, its timeout ended the whole run and every later call was abandoned.
+        var second = await fixture.NextCallAsync();
+        second.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        fixture.Tools.CallCount.ShouldBe(2);
+        var answered = await fixture.WaitForToolAnswersAsync(2);
+        answered.ShouldBe(["call-1", "call-2"], ignoreOrder: true);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Single(message => message.ToolCallId == "call-1").Content.ShouldContain("did not answer within");
     }
 
     [Fact]
@@ -563,7 +609,7 @@ public sealed class ChatExecutionTests
             var policies = new ToolPolicyResolver(_projectService, Chats, _settings);
             return new ChatRunDispatcher(_runs, Chats, _projectService, _settings,
                 new GlobalSettingsService(_settings, _secrets),
-                new ChatAgent(Completion, Tools, _projectService, _settings, policies, Workspace),
+                new ChatAgent(Completion, () => Tools, _projectService, _settings, policies, Workspace),
                 _secrets, _clock, _synchronization, Workspace, policies);
         }
         public static async Task<Fixture> CreateAsync(IWorkspaceChangeTracker? workspace = null)
@@ -602,14 +648,14 @@ public sealed class ChatExecutionTests
             }, CancellationToken.None);
         }
 
-        public async Task SetPolicyAsync(string decision)
+        public async Task SetPolicyAsync(string decision, long timeoutSeconds = 120)
         {
             var global = await _settings.LoadAsync(CancellationToken.None);
             await _settings.SaveAsync(global with { McpServers = [DefaultMcpServer.Settings with { Policy = "Allow" }] }, CancellationToken.None);
             var project = await _projectService.GetAsync(ProjectId, CancellationToken.None);
             await _projectService.UpdateSecurityAsync(ProjectId, new UpdateProjectSecurityRequest(project!.Revision, [],
                 [new Contracts.Projects.McpServerSettings(DefaultMcpServer.Id, "Default", "Stdio", true)],
-                [new ToolPolicySettings(DefaultMcpServer.Id, "process_run", "schema", decision, 20, 120)]), CancellationToken.None);
+                [new ToolPolicySettings(DefaultMcpServer.Id, "process_run", "schema", decision, 20, timeoutSeconds)]), CancellationToken.None);
         }
         public async Task<Call> NextCallAsync() => await Completion.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
         public async Task<ChatRunSnapshot> WaitAsync(Func<ChatRunSnapshot, bool> predicate)
@@ -678,10 +724,19 @@ public sealed class ChatExecutionTests
             return Task.FromResult<IToolSession>(this);
         }
         public string ValidateArguments(AgentTool tool, string arguments) => arguments;
-        public Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
+        /// <summary>Set to make the next call hang until its own policy timeout cancels it.</summary>
+        public bool HangNextCall { get; set; }
+
+        public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
         {
             CallCount++;
-            return Task.FromResult(ToolResultCodec.Read("{\"structuredContent\":{\"exitCode\":0}}"));
+            if (HangNextCall)
+            {
+                HangNextCall = false;
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+
+            return ToolResultCodec.Read("{\"structuredContent\":{\"exitCode\":0}}");
         }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

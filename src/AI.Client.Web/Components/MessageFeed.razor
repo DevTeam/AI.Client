@@ -104,6 +104,11 @@
                     </div>
                     @renderBranchPicker(message)
                 </article>
+                @if (message.WorkspaceChanges is { IsEmpty: false } messageChanges)
+                {
+                    var changesKey = (message.Id, "workspace-changes");
+                    <WorkspaceChanges @key="changesKey" Changes="@messageChanges" />
+                }
             }
             else if (item.ToolGroup is { } group)
             {
@@ -158,9 +163,6 @@
                 <div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(activeRun.StreamingContent))</div>
             </article>
         }
-        @* Lands with the final answer: the aggregate describes the whole turn, and reading it
-           before the answer would be reading the receipt first. *@
-        <WorkspaceChanges Changes="@SelectedRun?.WorkspaceChanges" />
         @* Last in the transcript, after the workspace-changes summary: an approval is the user's
            next action, so it has to be the thing they end up looking at, not something they have
            to scroll past the receipt to reach. *@

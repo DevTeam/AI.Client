@@ -9,13 +9,52 @@ using Xunit;
 public class ChatDocumentSerializerTests
 {
     [Fact]
+    public void ShouldRestoreWorkspaceChangesAttachedToAMessage()
+    {
+        var createdAt = new DateTimeOffset(2026, 9, 14, 10, 0, 0, TimeSpan.Zero);
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", createdAt);
+        var changes = new ChatWorkspaceChangeSet(
+            [new ChatFileChange("src/file.cs", ChatFileChangeKind.Modified, 4, 2,
+                Diff: "@@ -1,1 +1,1 @@\n-old\n+new", Confidence: ChatFileChangeConfidence.Measured)],
+            4,
+            2);
+        chat.AddMessage(new ChatMessage(
+            new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.Assistant, "Done", createdAt,
+            workspaceChanges: changes), createdAt);
+
+        var restored = ChatDocumentSerializer.Deserialize(ChatDocumentSerializer.Serialize(chat, 3));
+
+        var restoredChanges = restored.Chat.Messages.ShouldHaveSingleItem().WorkspaceChanges!;
+        restoredChanges.Additions.ShouldBe(4);
+        restoredChanges.Deletions.ShouldBe(2);
+        restoredChanges.Files.ShouldHaveSingleItem().Diff.ShouldBe("@@ -1,1 +1,1 @@\n-old\n+new");
+    }
+
+    [Fact]
+    public void ShouldReadPreviousSchemaWithoutWorkspaceChanges()
+    {
+        var createdAt = new DateTimeOffset(2026, 9, 14, 10, 0, 0, TimeSpan.Zero);
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", createdAt);
+        chat.AddMessage(new ChatMessage(
+            new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.Assistant, "Done", createdAt), createdAt);
+        var previous = ChatDocumentSerializer.Serialize(chat, 1)
+            .Replace("\"SchemaVersion\": 6", "\"SchemaVersion\": 5", StringComparison.Ordinal);
+
+        var restored = ChatDocumentSerializer.Deserialize(previous);
+
+        restored.Chat.Messages.ShouldHaveSingleItem().WorkspaceChanges.ShouldBeNull();
+    }
+
+    [Fact]
     public void ShouldReadSummaryWithoutMaterializingMessages()
     {
         var createdAt = new DateTimeOffset(2026, 8, 13, 10, 0, 0, TimeSpan.Zero);
         var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", createdAt);
         chat.AddMessage(new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Question", createdAt), createdAt);
 
-        var summary = ChatDocumentSerializer.DeserializeSummary(ChatDocumentSerializer.Serialize(chat, 7));
+        var previous = ChatDocumentSerializer.Serialize(chat, 7)
+            .Replace("\"SchemaVersion\": 6", "\"SchemaVersion\": 5", StringComparison.Ordinal);
+        var summary = ChatDocumentSerializer.DeserializeSummary(previous);
 
         summary.Id.ShouldBe(chat.Id);
         summary.ProjectId.ShouldBe(chat.ProjectId);

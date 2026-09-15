@@ -4,6 +4,7 @@ namespace AI.Client.Application.Chats;
 using Projects;
 using AI.Client.Contracts.Chats;
 using AI.Client.Contracts.Projects;
+using AI.Client.Contracts.Workspace;
 using AI.Client.Domain.Chats;
 using AI.Client.Domain.Projects;
 
@@ -77,7 +78,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             now,
             request.IsIncomplete,
             request.ToolCalls?.Select(call => new ChatToolCall(call.Id, call.Name, call.Arguments)).ToArray(),
-            request.ToolCallId);
+            request.ToolCallId,
+            ToDomain(request.WorkspaceChanges));
         if (request.ReplaceSourceId is { } replaceId)
             stored.Chat.ReplaceInBranch(request.BranchId ?? throw new ArgumentException("A replacement branch is required."),
                 new ChatMessageId(replaceId), message, now);
@@ -234,13 +236,44 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
                 item.CreatedAt,
                 item.IsIncomplete,
                 item.ToolCalls?.Select(call => new Contracts.Chat.ChatToolCall(call.Id, call.Name, call.Arguments)).ToArray(),
-                item.ToolCallId))
+                item.ToolCallId,
+                ToContract(item.WorkspaceChanges)))
             .ToArray(),
         chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
             branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
         chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
             policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
             checked((long)policy.Timeout.TotalSeconds))).ToArray());
+
+    private static ChatWorkspaceChangeSet? ToDomain(WorkspaceChangeSet? changes) => changes is null
+        ? null
+        : new ChatWorkspaceChangeSet(
+            changes.Files.Select(file => new ChatFileChange(
+                file.Path,
+                (ChatFileChangeKind)file.Kind,
+                file.Additions,
+                file.Deletions,
+                file.PreviousPath,
+                file.Diff,
+                file.IsBinary,
+                (ChatFileChangeConfidence)file.Confidence)).ToArray(),
+            changes.Additions,
+            changes.Deletions);
+
+    private static WorkspaceChangeSet? ToContract(ChatWorkspaceChangeSet? changes) => changes is null
+        ? null
+        : new WorkspaceChangeSet(
+            changes.Files.Select(file => new FileChange(
+                file.Path,
+                (FileChangeKind)file.Kind,
+                file.Additions,
+                file.Deletions,
+                file.PreviousPath,
+                file.Diff,
+                file.IsBinary,
+                (FileChangeConfidence)file.Confidence)).ToArray(),
+            changes.Additions,
+            changes.Deletions);
 
     private static ToolPolicy ToPolicy(ToolPolicySettings policy) => new(
         new ToolIdentity(new McpServerId(policy.ServerId), policy.Name, policy.SchemaHash),

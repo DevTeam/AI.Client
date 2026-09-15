@@ -11,7 +11,6 @@ using Contracts.Chats;
 using Contracts.Runs;
 using Contracts.Projects;
 using Contracts.Settings;
-using Contracts.Workspace;
 using Workspace;
 using Domain.Runs;
 using System.Collections.Concurrent;
@@ -297,7 +296,7 @@ public sealed class ChatRunDispatcher(
                     await SaveAsync(runtime, chat, token);
                 }
 
-                await agent.RunAsync(runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId, request,
+                var workspaceChanges = await agent.RunAsync(runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId, request,
                     (message, ct) => PersistToolMessageAsync(runtime, message, ct),
                     async (content, ct) =>
                     {
@@ -323,7 +322,9 @@ public sealed class ChatRunDispatcher(
                     if (chat.Messages.All(message => message.Id != replyId))
                         chat = await chats.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
                             new AppendChatMessageRequest(replyId, runtime.ToolHead ?? queued.Id, "Assistant", runtime.State.StreamingContent, chat.Revision,
-                                BranchId: runtime.State.BranchId), token) ?? throw new InvalidOperationException("Response conflict.");
+                                BranchId: runtime.State.BranchId,
+                                WorkspaceChanges: workspaceChanges.IsEmpty ? null : workspaceChanges), token)
+                            ?? throw new InvalidOperationException("Response conflict.");
                     runtime.State.Remove(queued.Id);
                     runtime.State.Complete(true);
                     runtime.ActiveMessageId = null;
@@ -352,9 +353,8 @@ public sealed class ChatRunDispatcher(
         finally
         {
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
-            // Take the final measurement before the tracker lets go of its baselines: after this
-            // the summary is a fixed record of what the run did, not a live comparison.
-            runtime.WorkspaceChanges = await workspace.SnapshotAsync(WorkspaceKey(runtime), CancellationToken.None);
+            // Successful turns complete their tracker when ChatAgent returns the change set for
+            // the final message. This also releases a failed turn's baselines.
             await workspace.CompleteRunAsync(WorkspaceKey(runtime), CancellationToken.None);
             runtime.Cancellation?.Dispose();
             runtime.Cancellation = null;
@@ -439,8 +439,6 @@ public sealed class ChatRunDispatcher(
         if (activity is null)
         {
             runtime.ActiveTools.Clear();
-            // A call just finished, so this is the moment the workspace may have moved.
-            runtime.WorkspaceChanges = await workspace.SnapshotAsync(WorkspaceKey(runtime), token);
             runtime.State.Append("");
             await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
             return;
@@ -586,8 +584,7 @@ public sealed class ChatRunDispatcher(
             BranchRevision = chat?.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId)?.Revision
                 ?? previous.BranchRevision,
             PendingApproval = runtime.PendingApproval,
-            ActiveTools = runtime.ActiveTools.Values.ToArray(),
-            WorkspaceChanges = runtime.WorkspaceChanges
+            ActiveTools = runtime.ActiveTools.Values.ToArray()
         };
         if (runtime is { ActiveMessageId: { } active, State.Status: RunStatus.Generating })
             runtime.Snapshot = runtime.Snapshot with { Queue = runtime.Snapshot.Queue.Where(item => item.Id != active).ToArray() };
@@ -816,13 +813,6 @@ public sealed class ChatRunDispatcher(
         /// <summary>When the last progress-only update was published, for throttling.</summary>
         public DateTimeOffset LastProgressPublished { get; set; }
 
-        /// <summary>
-        /// The run's net file changes. Held on the runtime rather than recomputed per publish, and
-        /// deliberately kept after the tracker releases its baselines so the summary survives the
-        /// end of the run. It is in-memory only: a restart forgets it, which is honest — the
-        /// baselines it was measured against are gone too.
-        /// </summary>
-        public WorkspaceChangeSet? WorkspaceChanges { get; set; }
         public Task? Worker { get; set; }
         public CancellationTokenSource? Cancellation { get; set; }
         public Guid? ActiveMessageId { get; set; }

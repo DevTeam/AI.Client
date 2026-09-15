@@ -8,6 +8,7 @@ using Contracts.Chat;
 using Contracts.Tools;
 using Contracts.Runs;
 using Contracts.Settings;
+using Contracts.Workspace;
 using Workspace;
 using System.Text;
 using System.Text.Json;
@@ -16,7 +17,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
     IProjectService projects, IChatService chats, IGlobalSettingsRepository settings,
     IWorkspaceChangeTracker workspace)
 {
-    public async Task RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
+    public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
         Func<string, CancellationToken, Task> text,
         Func<ToolActivity?, CancellationToken, Task> activity,
@@ -59,7 +60,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, IToolSessionFact
             if (calls.Count == 0)
             {
                 if (content.Length == 0) throw new InvalidOperationException("The model returned an empty response.");
-                return;
+                var changes = await workspace.SnapshotAsync(runKey, token);
+                await workspace.CompleteRunAsync(runKey, CancellationToken.None);
+                return changes;
             }
             if (calls.Any(call => !seenIds.Add(call.Id)))
                 throw new InvalidOperationException("Duplicate tool call IDs or excessive calls.");

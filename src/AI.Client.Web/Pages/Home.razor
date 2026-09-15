@@ -384,8 +384,14 @@
     private readonly LinkedList<Guid> _chatDetailsLru = [];
     private Guid? _branchLeafId;
     // Set only for the single OnRunSnapshot transition that produced a new leaf (Generating → Completed/Paused),
-    // then cleared ~2.5s later so the accent-line animation fires once and only once per arrival.
+    // then cleared once the accent line has played out, so the animation fires once and only once per arrival.
     private Guid? _justArrivedLeafId;
+    // Cancels the pending clear. Without it, a second arrival on the same leaf leaves the first timer
+    // running, and it wipes the marker mid-animation of the second one.
+    private CancellationTokenSource? _justArrivedLeafCancellation;
+    // Must stay >= --branch-leaf-draw + --branch-leaf-hold + --branch-leaf-fade in app.css (0.6 + 5 + 0.8s):
+    // dropping the class earlier cuts the fade off and the line disappears with a jump.
+    private static readonly TimeSpan BranchLeafLineLifetime = TimeSpan.FromMilliseconds(6700);
     // Per-branch memory of whether the last seen run was Generating — used to detect the transition that
     // produced the new leaf. Cleared on chat/project switch.
     private readonly Dictionary<Guid, bool> _wasGeneratingByBranch = [];
@@ -602,28 +608,37 @@
                 && chatForArrival.Revision > 0)
             {
                 var arrivedHead = _selectedChat?.Branches?.SingleOrDefault(branch => branch.Id == snapshot.BranchId)?.HeadMessageId;
-                if (arrivedHead is { } headId && headId == _branchLeafId) _justArrivedLeafId = headId;
+                if (arrivedHead is { } headId && headId == _branchLeafId) SetJustArrivedLeaf(headId);
             }
             _wasGeneratingByBranch[snapshot.BranchId] = isGenerating;
         }
         await InvokeAsync(StateHasChanged);
-        // Schedule the marker to clear once the animation has played out. Slightly longer than
-        // the CSS duration so the keyframes always finish before the class disappears; subsequent
-        // renders then take the fast path through ShouldRender.
-        if (_justArrivedLeafId is not null)
-        {
-            var arrived = _justArrivedLeafId;
-            _ = ClearJustArrivedLeafIdAsync(arrived!.Value);
-        }
     }
 
-    private async Task ClearJustArrivedLeafIdAsync(Guid arrived)
+    // Single entry point for the transient accent-line marker: setting it also schedules the clear,
+    // and cancels whatever clear was already pending, so a restart can't be cut short by a stale timer.
+    private void SetJustArrivedLeaf(Guid? leafId)
+    {
+        _justArrivedLeafCancellation?.Cancel();
+        _justArrivedLeafCancellation?.Dispose();
+        _justArrivedLeafCancellation = null;
+        _justArrivedLeafId = leafId;
+        if (leafId is null) return;
+
+        var cancellation = new CancellationTokenSource();
+        _justArrivedLeafCancellation = cancellation;
+        _ = ClearJustArrivedLeafIdAsync(leafId.Value, cancellation.Token);
+    }
+
+    // Drops the class once the animation has played out; subsequent renders then take the fast
+    // path through MessageFeed's ShouldRender.
+    private async Task ClearJustArrivedLeafIdAsync(Guid arrived, CancellationToken cancellationToken)
     {
         try
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(2600));
+            await Task.Delay(BranchLeafLineLifetime, cancellationToken);
         }
-        catch (TaskCanceledException) { return; }
+        catch (OperationCanceledException) { return; }
         if (_justArrivedLeafId == arrived)
         {
             _justArrivedLeafId = null;
@@ -713,7 +728,7 @@
         _selectedChat = null;
         _selectedBranchId = null;
         _branchLeafId = null;
-        _justArrivedLeafId = null;
+        SetJustArrivedLeaf(null);
         _wasGeneratingByBranch.Clear();
         _editor = new ProjectEditor(project.Name, project.Description, project.Revision);
         _error = null;
@@ -1116,7 +1131,7 @@
         _selectedChat = null;
         _selectedBranchId = null;
         _branchLeafId = null;
-        _justArrivedLeafId = null;
+        SetJustArrivedLeaf(null);
         _wasGeneratingByBranch.Clear();
         if (_defaultConnectionId is { } endpointId)
         {
@@ -2071,7 +2086,7 @@
             _selectedChat = null;
         _selectedBranchId = null;
             _branchLeafId = null;
-            _justArrivedLeafId = null;
+            SetJustArrivedLeaf(null);
             _wasGeneratingByBranch.Clear();
             _chat.Message = string.Empty;
             _composerNeedsResize = true;
@@ -2437,6 +2452,12 @@
         {
             await _toastCancellation.CancelAsync();
             _toastCancellation.Dispose();
+        }
+
+        if (_justArrivedLeafCancellation is not null)
+        {
+            await _justArrivedLeafCancellation.CancelAsync();
+            _justArrivedLeafCancellation.Dispose();
         }
 
         await DisposeComposerHandleAsync();

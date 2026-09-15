@@ -103,6 +103,66 @@ public class ChatThreadTests
         chat.Title.ShouldBe("Chat");
     }
 
+    [Fact]
+    public void ShouldMoveBranchRootWhenTheRootMessageItselfIsReplaced()
+    {
+        var chat = CreateChat();
+        var question = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Question", _now);
+        chat.AddMessage(question, _now);
+        var forkId = Guid.CreateVersion7();
+        var forked = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), question.Id, ChatMessageRole.User, "Forked", _now);
+        chat.AddMessage(forked, _now, forkId, chat.Id.Value);
+        var replacement = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), question.Id, ChatMessageRole.User, "Edited", _now);
+
+        chat.ReplaceInBranch(forkId, forked.Id, replacement, _now);
+
+        var branch = chat.Branches.Single(item => item.Id == forkId);
+        branch.HeadMessageId.ShouldBe(replacement.Id);
+        branch.RootMessageId.ShouldBe(replacement.Id);
+        // The invariant RestoreBranches enforces: a branch root has to stay an ancestor of its head.
+        chat.GetBranch(branch.HeadMessageId).ShouldContain(message => message.Id == branch.RootMessageId);
+    }
+
+    [Fact]
+    public void ShouldKeepBranchRootWhenAMessageBelowTheRootIsReplaced()
+    {
+        var chat = CreateChat();
+        var question = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Question", _now);
+        chat.AddMessage(question, _now);
+        var forkId = Guid.CreateVersion7();
+        var forked = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), question.Id, ChatMessageRole.User, "Forked", _now);
+        chat.AddMessage(forked, _now, forkId, chat.Id.Value);
+        var answer = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), forked.Id, ChatMessageRole.Assistant, "Answer", _now);
+        chat.AddMessage(answer, _now, forkId);
+        var replacement = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), forked.Id, ChatMessageRole.Assistant, "Redone", _now);
+
+        chat.ReplaceInBranch(forkId, answer.Id, replacement, _now);
+
+        var branch = chat.Branches.Single(item => item.Id == forkId);
+        branch.HeadMessageId.ShouldBe(replacement.Id);
+        branch.RootMessageId.ShouldBe(forked.Id);
+    }
+
+    [Fact]
+    public void ShouldReloadAChatWhoseForkRootWasReplaced()
+    {
+        var chat = CreateChat();
+        var question = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Question", _now);
+        chat.AddMessage(question, _now);
+        var forkId = Guid.CreateVersion7();
+        var forked = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), question.Id, ChatMessageRole.User, "Forked", _now);
+        chat.AddMessage(forked, _now, forkId, chat.Id.Value);
+        var replacement = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), question.Id, ChatMessageRole.User, "Edited", _now);
+        chat.ReplaceInBranch(forkId, forked.Id, replacement, _now);
+
+        // RestoreBranches is the load-time gate that rejected the chat written by the old
+        // ReplaceInBranch; feeding it the branches we just produced is the crash, reproduced.
+        // ReSharper disable once ConvertToLocalFunction
+        var action = () => chat.RestoreBranches(chat.Branches.ToArray());
+
+        Should.NotThrow(action);
+    }
+
     private ChatThread CreateChat() => new(
         new ChatId(Guid.CreateVersion7()),
         new ProjectId(Guid.CreateVersion7()),

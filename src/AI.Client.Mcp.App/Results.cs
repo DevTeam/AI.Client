@@ -67,7 +67,11 @@ public sealed record ConnectionPayload(
     string BaseUrl,
     string Model,
     bool Enabled,
-    bool IsDefault);
+    bool IsDefault,
+    bool ForSubtasks = false,
+    int? Capability = null,
+    int? Cost = null,
+    string? GoodFor = null);
 
 public sealed record McpEnvironmentVariablePayload(string Name, string? Value, bool IsSecret);
 

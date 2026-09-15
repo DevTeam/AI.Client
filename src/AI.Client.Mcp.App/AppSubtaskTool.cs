@@ -87,7 +87,9 @@ public sealed class AppSubtaskTool(
             Description = "Delegate work to a separate conversation and get back only its answer, so the details never enter your own "
                           + "context. Pass the project and chat you are running in: the subtask inherits their directory grants and tool "
                           + "policies. Each task answers through its own 'connectionId' if it names an enabled one, else the call's "
-                          + "'connectionId', else the calling chat's — so mechanical work can go to a cheaper or faster model. Tasks of "
+                          + "'connectionId', else the one marked for subtasks, else the calling chat's. Read the settings resource to "
+                          + "see what each connection is worth: a connection may carry a capability and a cost from 1 to 5 and a line on "
+                          + "what it is good for, so mechanical work can go to a cheaper model and hard work to a stronger one. Tasks of "
                           + "one call run at the same time, while separate calls do not, so put every task you want run in parallel into "
                           + "a single call. A subtask has nobody "
                           + "to ask for confirmation, so any tool whose policy is 'Ask' is refused to it — allow such tools beforehand if "
@@ -248,10 +250,14 @@ public sealed class AppSubtaskTool(
         var project = await projects.GetAsync(projectId, cancellationToken)
             ?? throw new InvalidOperationException("Project not found.");
         var global = await settings.LoadAsync(cancellationToken);
+        // Naming a connection is exact and fails loudly. Naming none falls back to the one marked
+        // for subtasks — the whole point of that mark is that delegated work need not cost what the
+        // conversation costs — and only then to whatever the conversation itself runs on.
         var connection = requested is { } named
             ? global.Connections.SingleOrDefault(item => item.Id == named && item.Enabled)
               ?? throw new InvalidOperationException("No enabled connection has that id. Read the settings to see which exist.")
-            : global.Connections.SingleOrDefault(item => item.Id == (chat.ConnectionId ?? project.ConnectionId) && item.Enabled)
+            : global.Connections.SingleOrDefault(item => item.ForSubtasks && item.Enabled)
+              ?? global.Connections.SingleOrDefault(item => item.Id == (chat.ConnectionId ?? project.ConnectionId) && item.Enabled)
               ?? throw new InvalidOperationException("The calling chat has no enabled connection.");
         return (new ChatCompletionRequest(connection.BaseUrl, connection.Model,
             await secrets.GetAsync("connection", connection.Id, cancellationToken), string.Empty, null, []),

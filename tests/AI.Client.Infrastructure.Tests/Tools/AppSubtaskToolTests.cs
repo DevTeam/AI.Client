@@ -190,6 +190,38 @@ public sealed class AppSubtaskToolTests
     }
 
     [Fact]
+    public async Task ShouldSendUnaddressedWorkToTheConnectionMarkedForSubtasks()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        await fixture.MarkForSubtasksAsync(fixture.CheapConnectionId);
+        fixture.Completion.Answer("done");
+        await using var session = await fixture.OpenAsync();
+        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
+
+        // The mark exists so that delegated work need not cost what the conversation costs: nothing
+        // named a connection here, and the chat's own is the expensive one.
+        var result = await session.CallAsync(tool, fixture.Arguments("anything"), null, TestContext.Current.CancellationToken);
+
+        result.StructuredContent!.Value.GetProperty("results")[0].GetProperty("connection").GetString().ShouldBe("Cheap");
+    }
+
+    [Fact]
+    public async Task ShouldStillObeyANamedConnectionOverTheMark()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        await fixture.MarkForSubtasksAsync(fixture.CheapConnectionId);
+        fixture.Completion.Answer("done");
+        await using var session = await fixture.OpenAsync();
+        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
+
+        // The mark is a fallback, not a wall: checking every connection has to stay possible.
+        var result = await session.CallAsync(tool, fixture.ArgumentsOn(fixture.DefaultConnectionId, "anything"), null,
+            TestContext.Current.CancellationToken);
+
+        result.StructuredContent!.Value.GetProperty("results")[0].GetProperty("connection").GetString().ShouldBe("Test");
+    }
+
+    [Fact]
     public async Task ShouldLetEachTaskNameItsOwnConnection()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
@@ -311,6 +343,16 @@ public sealed class AppSubtaskToolTests
             fixture.ProjectId = (await fixture.Projects.CreateAsync(new CreateProjectRequest("Test", ""), CancellationToken.None)).Id;
             fixture.ChatId = (await fixture.Chats.CreateAsync(fixture.ProjectId, new CreateChatRequest("Chat"), CancellationToken.None)).Id;
             return fixture;
+        }
+
+        /// <summary>Puts the standing mark on one connection, the way the settings screen does.</summary>
+        public async Task MarkForSubtasksAsync(Guid connectionId)
+        {
+            var stored = await _settings.LoadAsync(CancellationToken.None);
+            await _settings.SaveAsync(stored with
+            {
+                Connections = stored.Connections.Select(item => item with { ForSubtasks = item.Id == connectionId }).ToArray()
+            }, CancellationToken.None);
         }
 
         public Task<IToolSession> OpenAsync() => _sessions.OpenAsync([], TestContext.Current.CancellationToken);

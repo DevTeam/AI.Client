@@ -30,6 +30,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IProjectRepository>()
             .Root<IProjectService>()
             .Root<IChatService>()
+            .Root<IChatSearchService>()
             .Root<IChatCompletionClient>()
             .Root<IGlobalSettingsService>()
             .Root<IChatEndpoint>()
@@ -40,10 +41,10 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             // provider says it can resolve it, and otherwise infer it as a request body.
             .Root<IAppDataChangeSignal>()
             .Singleton<HostDescriptor, ProjectStorageLocation, PhysicalTextFileSystem, ProjectStoragePaths, JsonProjectRepository,
-                Uuid7IdGenerator, SystemClock, ProjectService, ChatStoragePaths, JsonChatRepository, ChatService, ChatSynchronization,
+                Uuid7IdGenerator, SystemClock, ProjectService, ChatStoragePaths, JsonChatRepository, ChatService, ChatSearchService, ChatSynchronization,
                 ProtectedDataUserDataProtector, ChatCompletionSseParser,
                 OpenAiCompatibleChatCompletionClient, ChatEndpoint, GlobalSettingsPaths, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
-                GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, WorkspaceChangeTracker,
+                GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, ToolPolicyResolver, WorkspaceChangeTracker,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory>()
             // Both groups are consumed as sets, so each registration is tagged to stay distinct
             // instead of the last one silently winning its contract.

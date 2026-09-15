@@ -3204,3 +3204,14 @@ textarea {
     .workspace-changes-header { font-size: 0.85rem; }
     .workspace-change-summary { flex-wrap: wrap; }
 }
+
+/* Sidebar search. While a query is running these results stand in for the project tree, so they
+   match its rhythm rather than introducing a panel of their own. */
+.sidebar-search { display: flex; align-items: center; gap: .25rem; padding: .5rem .5rem .25rem; }
+.sidebar-search-input { flex: 1; min-width: 0; }
+.sidebar-search-results { display: flex; flex-direction: column; gap: .125rem; padding: 0 .25rem .5rem; overflow-y: auto; }
+.search-result { display: flex; flex-direction: column; gap: .125rem; width: 100%; padding: .375rem .5rem; border: none; border-radius: .375rem; background: none; color: inherit; text-align: left; cursor: pointer; }
+.search-result:hover, .search-result:focus-visible { background: rgb(255 255 255 / 6%); }
+.search-result-where { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-result-snippet { opacity: .85; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.search-result-meta { opacity: .6; font-size: .8125em; }

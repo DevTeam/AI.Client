@@ -21,7 +21,34 @@
         @* The projects list is the sidebar's top level now, so it has no heading of its own and
            nothing to collapse it into. Creating a project is an action row at the head of the
            list — the position the button already occupied, minus the section chrome around it. *@
-        <div id="projects-nav">
+        @* Search sits above the list it replaces: while a query is running the sidebar shows what
+           was found instead of the tree, because the two answer the same question. *@
+        <div class="sidebar-search">
+            @* A search input clears itself, so no button of ours is added next to the one the
+               browser already draws; Escape does the same from the keyboard. *@
+            <input type="search" class="sidebar-search-input" value="@_searchQuery" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown" placeholder="Search messages" aria-label="Search messages in all chats" />
+        </div>
+        @if (_searchResult is { } found)
+        {
+            <div class="sidebar-search-results">
+                @if (_isSearching) { <p class="empty-hint">Searching...</p> }
+                else if (found.Error is { Length: > 0 } searchError) { <p class="empty-hint">@searchError</p> }
+                else if (found.Matches.Count == 0) { <p class="empty-hint">Nothing found in @found.ChatsSearched chat(s).</p> }
+                else
+                {
+                    <p class="empty-hint">@found.Matches.Count match(es) in @found.ChatsSearched chat(s)@(found.Truncated ? ", more remain" : string.Empty)</p>
+                    @foreach (var match in found.Matches)
+                    {
+                        <button class="search-result" type="button" @onclick="() => OpenSearchMatchAsync(match)">
+                            <span class="search-result-where">@match.ProjectName · @match.ChatTitle</span>
+                            <span class="search-result-snippet">@match.Snippet</span>
+                            <span class="search-result-meta">@match.Role · @match.CreatedAt.LocalDateTime.ToString("g")@(match.MatchCount > 1 ? $" · {match.MatchCount} matches" : string.Empty)</span>
+                        </button>
+                    }
+                }
+            </div>
+        }
+        <div id="projects-nav" hidden="@(_searchResult is not null)">
         <button class="workspace-nav-item new-project-action" type="button" @onclick="BeginProjectCreation"><AppIcon Name="plus" /><span class="nav-item-label">New project</span></button>
         @if (_isLoading)
         {
@@ -1193,6 +1220,87 @@
         }
 
         await CreateChatAsync();
+    }
+
+    // Searching replaces the sidebar tree rather than sitting beside it, so state is only these
+    // three fields: what was typed, what came back, and whether a request is in flight. There is no
+    // paging in the UI — a person narrows a query sooner than they page through it — so the cursor
+    // the service returns is reported as "more remain" and otherwise left alone.
+    private string _searchQuery = string.Empty;
+    private ChatSearchResult? _searchResult;
+    private bool _isSearching;
+    private CancellationTokenSource? _searchCancellation;
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? string.Empty;
+        if (_searchQuery.Trim().Length < 2)
+        {
+            // One character matches nearly everything and costs a full scan to prove it.
+            await CancelSearchAsync();
+            _searchResult = null;
+            return;
+        }
+
+        await RunSearchAsync();
+    }
+
+    private Task OnSearchKeyDown(KeyboardEventArgs e) => e.Key == "Escape" ? ClearSearch() : Task.CompletedTask;
+
+    private async Task ClearSearch()
+    {
+        await CancelSearchAsync();
+        _searchQuery = string.Empty;
+        _searchResult = null;
+    }
+
+    private async Task CancelSearchAsync()
+    {
+        if (_searchCancellation is { } previous)
+        {
+            await previous.CancelAsync();
+            previous.Dispose();
+            _searchCancellation = null;
+        }
+
+        _isSearching = false;
+    }
+
+    private async Task RunSearchAsync()
+    {
+        // Typing is faster than searching, so each keystroke cancels the scan the last one started;
+        // otherwise the answer to a half-typed word could land after the answer to the whole one.
+        await CancelSearchAsync();
+        var cancellation = new CancellationTokenSource();
+        _searchCancellation = cancellation;
+        _isSearching = true;
+        var query = _searchQuery.Trim();
+        try
+        {
+            var result = await ChatHistoryApi.SearchAsync(query, null, cancellation.Token);
+            if (!cancellation.IsCancellationRequested && _searchQuery.Trim() == query)
+            {
+                _searchResult = result;
+                _isSearching = false;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (HttpRequestException)
+        {
+            if (!cancellation.IsCancellationRequested) _searchResult = new ChatSearchResult([], 0, 0, false, null, "Search is unavailable.");
+            _isSearching = false;
+        }
+    }
+
+    private async Task OpenSearchMatchAsync(ChatSearchMatch match)
+    {
+        if (_projects.SingleOrDefault(item => item.Id == match.ProjectId) is { } project)
+        {
+            if (_selectedProject?.Id != project.Id) await SelectProjectAsync(project, restoreLastChat: false);
+            await SelectChatAsync(match.ChatId);
+        }
+
+        await ClearSearch();
     }
 
     private async Task SelectChatAsync(Guid chatId)

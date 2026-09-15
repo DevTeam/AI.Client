@@ -208,6 +208,33 @@ public sealed class AppToolTests
     }
 
     [Fact]
+    public async Task ShouldFindMessagesWithoutReadingChatsOneByOne()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await fixture.Chats.AppendMessageAsync(fixture.ProjectId, fixture.ChatId,
+            new AppendChatMessageRequest(null, null, "User", "remember the deploy checklist", 1), CancellationToken.None);
+        await using var session = await fixture.OpenAsync();
+
+        var found = await AppFixture.CallAsync(session, "app_read", new { resource = "Search", query = "deploy" });
+
+        found.GetProperty("resource").GetString().ShouldBe("Search");
+        var match = found.GetProperty("items")[0];
+        match.GetProperty("chatId").GetString().ShouldBe(fixture.ChatId.ToString());
+        match.GetProperty("snippet").GetString().ShouldNotBeNull().ShouldContain("deploy");
+    }
+
+    [Fact]
+    public async Task ShouldRefuseASearchWithNoQuery()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var result = await AppFixture.CallAsync(session, "app_read", new { resource = "Search" }, expectError: true);
+
+        result.GetProperty("error").GetString().ShouldNotBeNull().ShouldContain("query");
+    }
+
+    [Fact]
     public async Task ShouldRefuseToRehearseAnOperationThatCannotBeRehearsed()
     {
         await using var fixture = await AppFixture.CreateAsync();
@@ -277,7 +304,7 @@ public sealed class AppToolTests
             var writes = new AppWrites(new AppOperationLog(), _signal);
             IEnumerable<IAppTool> tools =
             [
-                new AppReadTool(Projects, Chats, settingsService, () => dispatcher),
+                new AppReadTool(Projects, Chats, settingsService, new ChatSearchService(Projects, Chats), () => dispatcher),
                 new AppChatsTool(Chats, () => dispatcher, writes),
                 new AppRunsTool(() => dispatcher, writes),
                 new AppProjectsTool(Projects, Chats, () => dispatcher, writes),

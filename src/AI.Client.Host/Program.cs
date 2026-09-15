@@ -96,6 +96,17 @@ app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/submit",
         dispatcher.SubmitAsync(projectId, chatId, request, cancellationToken));
 
 app.MapGet("/api/runs", (IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.GetSnapshotAsync(cancellationToken));
+
+// Searching is reading, so it stays a GET: the whole request fits in the query string and a result
+// is a projection of stored history, never a change to it.
+app.MapGet("/api/chats/search", (
+    string query, Guid? projectId, Guid? chatId, Guid? branchId, bool? isRegex, bool? ignoreCase,
+    string? roles, DateTimeOffset? from, DateTimeOffset? to, int? limit, string? cursor,
+    IChatSearchService search, CancellationToken cancellationToken) =>
+    search.SearchAsync(new ChatSearchRequest(query, projectId, chatId, branchId,
+        isRegex ?? false, ignoreCase ?? true,
+        roles?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+        from, to, limit ?? ChatSearchLimits.DefaultMatches, cursor), cancellationToken));
 app.MapGet("/api/mcp/default/tools", async (AI.Client.Application.Tools.IToolSessionFactory factory, CancellationToken token) =>
 {
     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);

@@ -8,6 +8,8 @@ using AI.Client.Contracts.Projects;
 using AI.Client.Contracts.Settings;
 using AI.Client.Contracts.Runs;
 using AI.Client.Application.Runs;
+using AI.Client.Application.Notifications;
+using System.Threading.Channels;
 using System.Text.Json;
 using AI.Client.Infrastructure.Logging;
 using AI.Client.Infrastructure.Storage;
@@ -98,46 +100,92 @@ app.MapGet("/api/mcp/default/tools", async (AI.Client.Application.Tools.IToolSes
 {
     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
     timeout.CancelAfter(TimeSpan.FromSeconds(15));
-    await using var session = await factory.OpenAsync([], timeout.Token);
+    // Discovery lists what every Host-provided server declares, regardless of whether a project
+    // has it switched on: the settings UI is where it gets switched on, and it needs the tools to
+    // show first. Grants stay empty, so file system tools remain fail-closed here.
+    await using var session = await factory.OpenAsync([],
+        new HashSet<Guid> { DefaultMcpServer.Id, AppMcpServer.Id }, timeout.Token);
     return session.Tools.Select(tool => new McpToolInfo(tool.ServerId, tool.OriginalName, tool.ModelDefinition.Description, tool.SchemaHash)).ToArray();
 });
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/tools/decision",
     async (Guid projectId, Guid chatId, Guid branchId, ToolApprovalDecision decision, IChatRunDispatcher dispatcher, CancellationToken token) =>
         await dispatcher.DecideToolAsync(projectId, chatId, branchId, decision, token) ? Results.Ok() : Results.Conflict());
 
-app.MapGet("/api/runs/events", async (IChatRunDispatcher dispatcher, HttpResponse response, CancellationToken cancellationToken) =>
+app.MapGet("/api/runs/events", async (IChatRunDispatcher dispatcher, IAppDataChangeSignal changes, HttpResponse response, CancellationToken cancellationToken) =>
 {
     response.ContentType = "text/event-stream";
     response.Headers.CacheControl = "no-cache";
-    Dictionary<ChatRunKey, ChatRunSnapshot>? previous = null;
-    await foreach (var snapshot in dispatcher.SubscribeAsync(cancellationToken))
+    // One response, two sources. Frames are funnelled through a channel so that only this loop
+    // ever writes to the body: two producers writing to one HTTP response would interleave.
+    using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    var frames = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
+    var producers = Task.WhenAll(PublishRunsAsync(stop.Token), PublishDataChangesAsync(stop.Token))
+        .ContinueWith(_ => frames.Writer.TryComplete(), TaskScheduler.Default);
+    try
     {
-        var current = snapshot.ToDictionary(run => new ChatRunKey(run.ChatId, run.BranchId));
-        ChatRunSnapshotUpdate update;
-        if (previous is null)
+        await foreach (var frame in frames.Reader.ReadAllAsync(cancellationToken))
         {
-            update = new ChatRunSnapshotUpdate(true, snapshot, [], []);
+            await response.WriteAsync(frame, cancellationToken);
+            await response.Body.FlushAsync(cancellationToken);
         }
-        else
+    }
+    finally
+    {
+        await stop.CancelAsync();
+        try { await producers; } catch (OperationCanceledException) { }
+    }
+
+    // The signal says nothing about what moved, so the frame carries only a counter and the client
+    // re-reads whatever it is showing. Bursts are held back briefly: a tool that writes ten times
+    // in a second should cost the client one reload, not ten.
+    async Task PublishDataChangesAsync(CancellationToken token)
+    {
+        try
         {
-            var changed = new List<ChatRunSnapshot>();
-            var appends = new List<ChatRunStreamingAppend>();
-            foreach (var (key, run) in current)
+            await foreach (var version in changes.SubscribeAsync(token))
             {
-                if (!previous.TryGetValue(key, out var old)) changed.Add(run);
-                else if (ReferenceEquals(old, run)) continue;
-                else if (IsStreamingAppend(old, run))
-                    appends.Add(new ChatRunStreamingAppend(run.ChatId, run.BranchId, run.Revision,
-                        run.StreamingContent[old.StreamingContent.Length..]));
-                else changed.Add(run);
+                await Task.Delay(TimeSpan.FromMilliseconds(250), token);
+                frames.Writer.TryWrite($"event: data-changed\ndata: {version}\n\n");
             }
-            update = new ChatRunSnapshotUpdate(false, changed,
-                previous.Keys.Where(key => !current.ContainsKey(key)).ToArray(), appends);
         }
-        previous = current;
-        if (!update.IsFull && update.Runs.Count == 0 && update.Removed.Count == 0 && update.StreamingAppends.Count == 0) continue;
-        await response.WriteAsync($"event: snapshot\ndata: {JsonSerializer.Serialize(update)}\n\n", cancellationToken);
-        await response.Body.FlushAsync(cancellationToken);
+        catch (OperationCanceledException) { }
+    }
+
+    async Task PublishRunsAsync(CancellationToken token)
+    {
+        try
+        {
+            Dictionary<ChatRunKey, ChatRunSnapshot>? previous = null;
+            await foreach (var snapshot in dispatcher.SubscribeAsync(token))
+            {
+                var current = snapshot.ToDictionary(run => new ChatRunKey(run.ChatId, run.BranchId));
+                ChatRunSnapshotUpdate update;
+                if (previous is null)
+                {
+                    update = new ChatRunSnapshotUpdate(true, snapshot, [], []);
+                }
+                else
+                {
+                    var changed = new List<ChatRunSnapshot>();
+                    var appends = new List<ChatRunStreamingAppend>();
+                    foreach (var (key, run) in current)
+                    {
+                        if (!previous.TryGetValue(key, out var old)) changed.Add(run);
+                        else if (ReferenceEquals(old, run)) continue;
+                        else if (IsStreamingAppend(old, run))
+                            appends.Add(new ChatRunStreamingAppend(run.ChatId, run.BranchId, run.Revision,
+                                run.StreamingContent[old.StreamingContent.Length..]));
+                        else changed.Add(run);
+                    }
+                    update = new ChatRunSnapshotUpdate(false, changed,
+                        previous.Keys.Where(key => !current.ContainsKey(key)).ToArray(), appends);
+                }
+                previous = current;
+                if (!update.IsFull && update.Runs.Count == 0 && update.Removed.Count == 0 && update.StreamingAppends.Count == 0) continue;
+                frames.Writer.TryWrite($"event: snapshot\ndata: {JsonSerializer.Serialize(update)}\n\n");
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 });
 

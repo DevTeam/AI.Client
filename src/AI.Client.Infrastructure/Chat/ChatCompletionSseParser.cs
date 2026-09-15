@@ -14,6 +14,9 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
     // reasoning model) before sending anything at all, so that wait gets a much longer allowance
     // below rather than reusing this one; conflating the two used to fail a merely-slow-to-start
     // response with a bare "The operation has timed out." after only 10 seconds.
+    /// <summary>How many tool calls one assistant message may carry before the stream is rejected as malformed.</summary>
+    private const int MaxParallelToolCalls = 1024;
+
     private static readonly TimeSpan StreamIdleTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan FirstTokenTimeout = TimeSpan.FromSeconds(120);
 
@@ -87,7 +90,10 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
                 foreach (var fragment in toolCalls.EnumerateArray())
                 {
                     var index = fragment.GetProperty("index").GetInt32();
-                    if (index is < 0 or >= 20) throw new InvalidOperationException("Too many tool calls.");
+                    // A ceiling on parallel tool calls in one assistant message, not on a run: it
+                    // exists to stop a malformed stream from allocating without bound, so it sits
+                    // far above any plausible batch rather than anywhere near it.
+                    if (index is < 0 or >= MaxParallelToolCalls) throw new InvalidOperationException("Too many tool calls.");
                     if (!calls.TryGetValue(index, out var call)) calls[index] = call = (new(), new(), new());
                     if (fragment.TryGetProperty("id", out var id)) call.Id.Append(id.GetString());
                     if (fragment.TryGetProperty("function", out var function))

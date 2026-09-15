@@ -25,17 +25,17 @@
                     <header class="global-header"><div><h1>MCP</h1><p>Global MCP servers available to every project.</p></div></header>
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
-                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => _selectedMcpServerId = serverItem.Id"><span>@serverItem.Name</span><small>@serverItem.Transport В· @serverItem.Policy</small></button>@if (serverItem.Id == _selectedMcpServerId && serverItem.Id != AI.Client.Contracts.Settings.DefaultMcpServer.Id) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</div> }</nav>
+                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => _selectedMcpServerId = serverItem.Id"><span>@serverItem.Name</span><small>@serverItem.Transport В· @serverItem.Policy</small></button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</div> }</nav>
                             <button class="icon-action settings-list-add" type="button" title="Add MCP server" aria-label="Add MCP server" @onclick="AddGlobalMcpServer"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedMcpServer() is { } server)
                         {
                             <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true">
                                 <div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="server.Enabled" /> Enabled</label></div>
-                                <label>Name<InputText autocomplete="off" @bind-Value="server.Name" readonly="@(server.Id == AI.Client.Contracts.Settings.DefaultMcpServer.Id)" /></label>
-                                <label>Transport<select disabled="@(server.Id == AI.Client.Contracts.Settings.DefaultMcpServer.Id)" @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option></select></label>
+                                <label>Name<InputText autocomplete="off" @bind-Value="server.Name" readonly="@IsHostProvided(server.Id)" /></label>
+                                <label>Transport<select disabled="@IsHostProvided(server.Id)" @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option><option>InProcess</option></select></label>
                                 <label>Server policy<select @bind="server.Policy"><option>Allow</option><option>Ask</option><option>Deny</option></select></label>
-                                @if (server.Id == AI.Client.Contracts.Settings.DefaultMcpServer.Id)
+                                @if (IsHostProvided(server.Id))
                                 {
                                     <section class="mcp-tool-policies">
                                         <div class="section-heading"><div><h3>Tool defaults</h3><p>Used by every project unless that project has an override.</p></div><button class="secondary-action" type="button" @onclick="DiscoverDefaultToolsAsync">Discover tools</button></div>
@@ -136,6 +136,14 @@
 
     private GlobalMcpServerEditor? GetSelectedMcpServer() =>
         _globalMcpServers.SingleOrDefault(item => item.Id == _selectedMcpServerId);
+
+    /// <summary>
+    /// A server the Host ships and runs itself. Its name, transport and existence are not the
+    /// user's to edit — there is no command line behind it to get wrong — so it shows its tool
+    /// defaults where a third-party server shows its process configuration.
+    /// </summary>
+    private static bool IsHostProvided(Guid id) =>
+        id == AI.Client.Contracts.Settings.DefaultMcpServer.Id || id == AI.Client.Contracts.Settings.AppMcpServer.Id;
 
     private async Task DiscoverDefaultToolsAsync()
     {

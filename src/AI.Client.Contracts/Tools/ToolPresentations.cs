@@ -19,6 +19,8 @@ public sealed class ToolPresentations(IReadOnlyList<IToolPresentationAdapter> ad
         new FileToolPresentationAdapter(),
         new ProcessToolPresentationAdapter(),
         new WebToolPresentationAdapter(),
+        new AppReadPresentationAdapter(),
+        new AppWritePresentationAdapter(),
     ]);
 
     private IToolPresentationAdapter Select(ToolRef tool)

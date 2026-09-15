@@ -1,0 +1,118 @@
+namespace AI.Client.Mcp.App;
+
+using AI.Client.Application.Chats;
+using AI.Client.Application.Projects;
+using AI.Client.Application.Runs;
+using AI.Client.Contracts.Projects;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using System.Text.Json;
+
+public enum ProjectOperation
+{
+    /// <summary>Create a project. Needs 'name'; 'revision' is ignored.</summary>
+    Create,
+
+    /// <summary>Change a project's name, description or connection. Needs 'projectId' and 'revision'.</summary>
+    Update,
+
+    /// <summary>Delete a project with every chat in it. Needs 'projectId' and 'revision'. Honours 'dryRun'.</summary>
+    Delete,
+}
+
+[McpServerToolType]
+public sealed class AppProjectsTool(IProjectService projects, IChatService chats, Func<IChatRunDispatcher> runs, AppWrites writes) : IAppTool
+{
+    public McpServerTool Create() => McpServerTool.Create(
+        ProjectsAsync,
+        new McpServerToolCreateOptions
+        {
+            SerializerOptions = ToolReply.Json,
+            Description = "Create and change this application's projects. Security settings are not here: directory grants, MCP server "
+                          + "bindings and tool policies belong to 'app_security'. Read the project with 'app_read' first and pass the "
+                          + "'revision' you saw. 'operationId' must be a fresh UUID per distinct change. Only 'Delete' understands 'dryRun', and it rehearses by default: it "
+                          + "removes every chat in the project, and until 'dryRun' is false it only describes that. Other operations "
+                          + "apply straight away and reject 'dryRun: true' rather than quietly ignoring it."
+        });
+
+    [McpServerTool(Name = "app_projects", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(AppWriteResult))]
+    private Task<CallToolResult> ProjectsAsync(
+        ProjectOperation operation,
+        Guid operationId,
+        Guid? projectId = null,
+        string? name = null,
+        string? description = null,
+        Guid? connectionId = null,
+        long revision = 0,
+        bool? dryRun = null,
+        CancellationToken cancellationToken = default) =>
+        writes.RunAsync(operation.ToString(), operationId, builder => operation switch
+        {
+            _ when dryRun == true && operation != ProjectOperation.Delete =>
+                throw new ArgumentException(
+                    $"'{operation}' cannot be rehearsed; only Delete honours 'dryRun'.", nameof(dryRun)),
+            ProjectOperation.Create => CreateAsync(builder, name, description, cancellationToken),
+            ProjectOperation.Update => UpdateAsync(builder, projectId, name, description, connectionId, revision, cancellationToken),
+            ProjectOperation.Delete => DeleteAsync(builder, projectId, revision, dryRun ?? true, cancellationToken),
+            _ => throw new ArgumentException("Unknown operation.", nameof(operation)),
+        });
+
+    private async Task<AppWriteResult> CreateAsync(
+        AppWriteBuilder builder, string? name, string? description, CancellationToken cancellationToken)
+    {
+        var project = await projects.CreateAsync(
+            new CreateProjectRequest(Text(name, nameof(name)), description ?? string.Empty), cancellationToken);
+        return builder.Applied($"Created project '{project.Name}'.", project.Id, revision: project.Revision, current: Element(project));
+    }
+
+    private async Task<AppWriteResult> UpdateAsync(
+        AppWriteBuilder builder, Guid? projectId, string? name, string? description, Guid? connectionId, long revision,
+        CancellationToken cancellationToken)
+    {
+        var id = Required(projectId, nameof(projectId));
+        var stored = await projects.GetAsync(id, cancellationToken) ?? throw new InvalidOperationException("Project not found.");
+        // Unspecified fields keep their stored values, so a caller changing one thing need not
+        // re-send the rest and cannot blank it out by omission.
+        var result = await projects.UpdateAsync(id, new UpdateProjectRequest(
+            name ?? stored.Name, description ?? stored.Description, revision, connectionId ?? stored.ConnectionId), cancellationToken);
+        return Describe(builder, result, id, project => $"Updated project '{project.Name}'.", stored);
+    }
+
+    private async Task<AppWriteResult> DeleteAsync(
+        AppWriteBuilder builder, Guid? projectId, long revision, bool dryRun, CancellationToken cancellationToken)
+    {
+        var id = Required(projectId, nameof(projectId));
+        var project = await projects.GetAsync(id, cancellationToken) ?? throw new InvalidOperationException("Project not found.");
+        if (dryRun)
+        {
+            var count = (await chats.ListAsync(id, cancellationToken)).Count;
+            return builder.Planned($"Would delete project '{project.Name}' with {count} chat(s).",
+                id, revision: project.Revision, current: Element(project));
+        }
+
+        var result = await runs().DeleteProjectAsync(id, revision, cancellationToken);
+        return result.IsDeleted
+            ? builder.Applied($"Deleted project '{project.Name}'.", id, revision: result.Revision)
+            : builder.Conflict(result.Revision, Element(project), id);
+    }
+
+    internal static AppWriteResult Describe(
+        AppWriteBuilder builder, ProjectUpdateResult result, Guid projectId, Func<ProjectDetails, string> effect,
+        ProjectDetails? current) => result.Status switch
+    {
+        ProjectUpdateStatus.Updated when result.Project is { } project =>
+            builder.Applied(effect(project), projectId, revision: project.Revision, current: Element(project)),
+        ProjectUpdateStatus.Conflict =>
+            builder.Conflict(result.Revision, current is null ? null : Element(current), projectId),
+        _ => builder.Failed("Project not found.", projectId),
+    };
+
+    private static JsonElement Element<T>(T value) => JsonSerializer.SerializeToElement(value, ToolReply.Json);
+
+    private static Guid Required(Guid? value, string name) =>
+        value ?? throw new ArgumentException($"'{name}' is required for this operation.", name);
+
+    private static string Text(string? value, string name) =>
+        string.IsNullOrWhiteSpace(value) ? throw new ArgumentException($"'{name}' is required for this operation.", name) : value;
+}

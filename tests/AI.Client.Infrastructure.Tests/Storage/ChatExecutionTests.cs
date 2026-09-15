@@ -193,6 +193,54 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task GrantingTheToolInSettingsMustReleaseAWaitingApproval()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Ask");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+        await fixture.WaitAsync(run => run.PendingApproval is not null);
+
+        // Answering from settings rather than from the card is still answering. Before this, the
+        // prompt kept waiting on a policy that already said yes, and the run died on its timeout.
+        await fixture.SetPolicyAsync("Allow");
+
+        var second = await fixture.NextCallAsync();
+        fixture.Tools.CallCount.ShouldBe(1);
+        second.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task StoppingOneCallMustStillAnswerTheRestOfItsBatch()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Ask");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run three commands"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls =
+        [
+            new ChatToolCall("call-1", "mcp_built_in__process_run", "{}"),
+            new ChatToolCall("call-2", "mcp_built_in__process_run", "{}"),
+            new ChatToolCall("call-3", "mcp_built_in__process_run", "{}"),
+        ];
+        first.Answer.SetResult("");
+        await fixture.WaitAsync(run => run.PendingApproval is not null);
+        await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
+        await fixture.WaitAsync(run => run.Status != ChatRunStatus.Generating);
+
+        // Every tool call the model made must end up with an answer, or the stored history is one
+        // the endpoint rejects and the run can never be resumed from. Stopping publishes the paused
+        // state before the agent has finished unwinding, so the answers are waited for rather than
+        // read the instant the status flips.
+        var answered = await fixture.WaitForToolAnswersAsync(3);
+        answered.ShouldBe(["call-1", "call-2", "call-3"], ignoreOrder: true);
+        fixture.Tools.CallCount.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task StoppedApprovalMustNotExecuteOnRestart()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -510,9 +558,14 @@ public sealed class ChatExecutionTests
             Dispatcher = NewDispatcher();
         }
         public IWorkspaceChangeTracker Workspace { get; }
-        private ChatRunDispatcher NewDispatcher() => new(_runs, Chats, _projectService, _settings,
-            new GlobalSettingsService(_settings, _secrets),
-            new ChatAgent(Completion, Tools, _projectService, Chats, _settings, Workspace), _secrets, _clock, _synchronization, Workspace);
+        private ChatRunDispatcher NewDispatcher()
+        {
+            var policies = new ToolPolicyResolver(_projectService, Chats, _settings);
+            return new ChatRunDispatcher(_runs, Chats, _projectService, _settings,
+                new GlobalSettingsService(_settings, _secrets),
+                new ChatAgent(Completion, Tools, _projectService, _settings, policies, Workspace),
+                _secrets, _clock, _synchronization, Workspace, policies);
+        }
         public static async Task<Fixture> CreateAsync(IWorkspaceChangeTracker? workspace = null)
         {
             var fixture = new Fixture(workspace);
@@ -523,6 +576,20 @@ public sealed class ChatExecutionTests
             return fixture;
         }
         public Task<ChatRunSnapshot> SubmitAsync(SubmitChatMessageRequest request) => Dispatcher.SubmitAsync(ProjectId, ChatId, request, CancellationToken.None);
+        /// <summary>Waits for the agent to finish writing tool answers, which outlives the status change.</summary>
+        public async Task<IReadOnlyList<string?>> WaitForToolAnswersAsync(int expected)
+        {
+            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+            while (true)
+            {
+                var chat = await Chats.GetAsync(ProjectId, ChatId, CancellationToken.None);
+                var answers = chat!.Messages.Where(message => message.ToolCallId is not null)
+                    .Select(message => message.ToolCallId).ToArray();
+                if (answers.Length >= expected || DateTimeOffset.UtcNow > deadline) return answers;
+                await Task.Delay(20, TestContext.Current.CancellationToken);
+            }
+        }
+
         public Task<ProjectDetails?> GetProjectAsync() => _projectService.GetAsync(ProjectId, CancellationToken.None);
         public Task<GlobalSettings> GetGlobalAsync() => _settings.LoadAsync(CancellationToken.None);
         public async Task SetGlobalPolicyAsync(string decision)
@@ -601,10 +668,13 @@ public sealed class ChatExecutionTests
             ToolDescriptor.Basic("mcp_built_in__process_run", "process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
             DefaultMcpServer.Id, "process_run", "schema")];
         public IReadOnlyList<ToolDirectoryGrant> Grants { get; private set; } = [];
-        public Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, CancellationToken cancellationToken)
+        public IReadOnlySet<Guid> Servers { get; private set; } = new HashSet<Guid>();
+        public Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, IReadOnlySet<Guid> servers,
+            CancellationToken cancellationToken)
         {
             OpenCount++;
             Grants = directoryGrants;
+            Servers = servers;
             return Task.FromResult<IToolSession>(this);
         }
         public string ValidateArguments(AgentTool tool, string arguments) => arguments;

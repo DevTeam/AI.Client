@@ -175,6 +175,31 @@ public class ProjectServiceTests
         await Should.ThrowAsync<DomainException>(action);
     }
 
+    [Fact]
+    public async Task ShouldBindAnInProcessServerWhenItsToolGetsAProjectPolicy()
+    {
+        // Given: a project that has never heard of the Host's own application server, which is how
+        // every project starts — the binding is created the first time a policy is saved for it.
+        var service = CreateInstance();
+        var project = CreateProject("Project");
+        _repository.Setup(i => i.GetAsync(_projectId, CancellationToken.None)).ReturnsAsync(new StoredProject(project, 1));
+        _repository.Setup(i => i.SaveAsync(project, 1, CancellationToken.None)).ReturnsAsync(ProjectSaveResult.Saved(2));
+        _clock.SetupGet(i => i.UtcNow).Returns(_now);
+        _globalSettingsRepository.Setup(i => i.LoadAsync(CancellationToken.None))
+            .ReturnsAsync(new GlobalSettings([], [AppMcpServer.Settings], []));
+
+        // When
+        var result = await service.SetToolPolicyAsync(
+            _projectId.Value,
+            new ToolPolicySettings(AppMcpServer.Id, "app_chats", "schema", "Allow", 10, 60),
+            CancellationToken.None);
+
+        // Then
+        result.ShouldNotBeNull();
+        result.McpServers.ShouldHaveSingleItem().Transport.ShouldBe(AppMcpServer.Transport);
+        result.ToolPolicies.ShouldHaveSingleItem().Decision.ShouldBe("Allow");
+    }
+
     private ProjectService CreateInstance() => new(
         _repository.Object,
         _idGenerator.Object,

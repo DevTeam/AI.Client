@@ -21,8 +21,15 @@ public sealed class ChatRunDispatcher(
     IChatRunRepository repository, ChatService chats, IProjectService projects,
     IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, ChatAgent agent,
     IGlobalSecretStore secretStore, IClock clock, ChatSynchronization synchronization,
-    IWorkspaceChangeTracker workspace) : IChatRunDispatcher, IAsyncDisposable
+    IWorkspaceChangeTracker workspace, ToolPolicyResolver policies) : IChatRunDispatcher, IAsyncDisposable
 {
+    /// <summary>
+    /// How often a waiting confirmation re-reads the standing policy. Human-scale waiting, so the
+    /// cost is negligible and it catches a grant made anywhere — the card, the settings screen, or
+    /// a tool — without every writer having to know that a prompt is open.
+    /// </summary>
+    private static readonly TimeSpan PolicyRecheck = TimeSpan.FromSeconds(2);
+
     private readonly ConcurrentDictionary<RunKey, Runtime> _runtimes = new();
     private readonly ConcurrentDictionary<Guid, Channel<IReadOnlyList<ChatRunSnapshot>>> _subscribers = new();
     private readonly CancellationTokenSource _shutdown = new();
@@ -317,7 +324,7 @@ public sealed class ChatRunDispatcher(
                         }
                     },
                     (activity, ct) => ReportToolActivityAsync(runtime, activity, ct),
-                    (tool, arguments, timeout, ct) => ApproveAsync(runtime, tool, arguments, timeout, ct), token);
+                    (tool, arguments, timeout, position, ct) => ApproveAsync(runtime, tool, arguments, timeout, position, ct), token);
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
                 {
                     token.ThrowIfCancellationRequested();
@@ -432,18 +439,33 @@ public sealed class ChatRunDispatcher(
         return runtime.Approval?.TrySetResult(decision.Action) == true;
     }
 
-    private async Task<ToolApprovalAction> ApproveAsync(Runtime runtime, AgentTool tool, string arguments, long timeout, CancellationToken token)
+    private async Task<ToolApprovalAction> ApproveAsync(Runtime runtime, AgentTool tool, string arguments, long timeout,
+        ToolCallPosition position, CancellationToken token)
     {
         var completion = new TaskCompletionSource<ToolApprovalAction>(TaskCreationOptions.RunContinuationsAsynchronously);
         using (await synchronization.EnterAsync(runtime.State.ChatId, token))
         {
             runtime.PendingApproval = new ToolApproval(Guid.NewGuid(), tool.ServerId, tool.OriginalName,
-                tool.SchemaHash, arguments, timeout);
+                tool.SchemaHash, arguments, timeout, position.Index, position.BatchSize);
             runtime.Approval = completion;
             runtime.State.Append("");
             await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
         }
-        try { return await completion.Task.WaitAsync(token); }
+        try
+        {
+            while (true)
+            {
+                try { return await completion.Task.WaitAsync(PolicyRecheck, token); }
+                catch (TimeoutException) { }
+                // The card is not the only way to answer it. Someone who goes to settings and
+                // grants the tool there has answered just as clearly, and expects the call they
+                // were looking at to proceed — so the standing policy is re-read while waiting.
+                var policy = await policies.ResolveAsync(runtime.State.ProjectId, runtime.State.ChatId,
+                    tool.ServerId, tool.OriginalName, tool.SchemaHash, token);
+                if (policy.Decision == "Allow") return ToolApprovalAction.Allow;
+                if (policy.Decision == "Deny") return ToolApprovalAction.Deny;
+            }
+        }
         finally
         {
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);

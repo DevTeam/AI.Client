@@ -10,18 +10,25 @@ using System.Text.Json;
 /// </summary>
 public abstract class BuiltInToolPresentationAdapter : IToolPresentationAdapter
 {
-    /// <summary>Tool names this adapter speaks for, as the built-in server declares them.</summary>
+    /// <summary>Tool names this adapter speaks for, as the server declares them.</summary>
     protected abstract IReadOnlySet<string> Names { get; }
+
+    /// <summary>
+    /// Which server's tools these names belong to. Names are only unique within one server, so an
+    /// adapter that ignored the prefix would happily describe a third-party tool that happens to
+    /// share a name with a built-in one.
+    /// </summary>
+    protected virtual string Prefix => ToolRef.BuiltInPrefix;
 
     public bool CanHandle(ToolRef tool)
     {
         ArgumentNullException.ThrowIfNull(tool);
-        return tool.IsBuiltIn && Names.Contains(tool.Name);
+        return tool.ServerPrefix == Prefix && Names.Contains(tool.Name);
     }
 
     public abstract ToolCallPresentation DescribeCall(ToolRef tool, JsonElement? arguments);
 
-    public ToolResultPresentation DescribeResult(ToolRef tool, JsonElement? arguments, ToolCallResult result)
+    public virtual ToolResultPresentation DescribeResult(ToolRef tool, JsonElement? arguments, ToolCallResult result)
     {
         ArgumentNullException.ThrowIfNull(tool);
         ArgumentNullException.ThrowIfNull(result);

@@ -994,6 +994,25 @@ body {
 .chat-link > .app-icon.run-status-failed { color: #d96363; }
 .chat-link > .app-icon.run-status-interrupted { color: #858585; }
 
+/* Says "this chat has alternative branches" without opening it. Pushed to the right edge of the
+   label column by margin-left:auto, so it never competes with the title and a long name simply
+   ellipsises first. Deliberately muted and unnumbered: a numeral sitting next to a chat name in
+   the sidebar reads as an unread badge, and the precise count belongs in the tooltip. The glyph
+   is nested in a wrapper (the wrapper carries the native title attribute, which AppIcon has no
+   parameter for), which is why the existing `.chat-link > .app-icon` colour rule no longer
+   reaches it and the colour has to be set here. */
+.chat-branch-marker {
+    display: inline-flex;
+    margin-left: auto;
+    padding-left: 0.4rem;
+    color: #6b6b6b;
+}
+
+.chat-branch-marker .app-icon {
+    width: 0.85rem;
+    height: 0.85rem;
+}
+
 .workspace-conversation {
     display: grid;
     grid-template-columns: minmax(0, 1fr);

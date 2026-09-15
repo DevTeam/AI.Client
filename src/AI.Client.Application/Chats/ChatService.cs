@@ -22,7 +22,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             item.Revision,
             item.LastActivityAt,
             item.IsPinned,
-            item.PinnedAt))
+            item.PinnedAt,
+            item.BranchCount))
         .ToArray();
 
     public async Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
@@ -146,7 +147,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             result.Revision,
             stored.Chat.LastActivityAt,
             stored.Chat.IsPinned,
-            stored.Chat.PinnedAt);
+            stored.Chat.PinnedAt,
+            stored.Chat.BranchCount);
     }
 
     public async Task<ChatDetails?> RenameAsync(

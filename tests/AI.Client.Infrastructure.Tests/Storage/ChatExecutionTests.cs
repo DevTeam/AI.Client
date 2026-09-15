@@ -28,6 +28,34 @@ using System.Text.Json;
 public sealed class ChatExecutionTests
 {
     [Fact]
+    public async Task WorkspaceChangesShouldBeLiveBeforeBecomingPartOfTheFinalReply()
+    {
+        var workspace = new TestWorkspaceChangeTracker();
+        var changes = new WorkspaceChangeSet(
+            [new FileChange("live.cs", FileChangeKind.Modified, 1, 1, Diff: "live diff")], 1, 1);
+        workspace.Enqueue(changes);
+        await using var fixture = await Fixture.CreateAsync(workspace);
+        await fixture.SetPolicyAsync("Allow");
+
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Change a file"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+        var final = await fixture.NextCallAsync();
+
+        var live = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Generating
+            && run.WorkspaceChanges is { IsEmpty: false });
+        live.WorkspaceChanges!.Files.ShouldHaveSingleItem().Path.ShouldBe("live.cs");
+
+        final.Answer.SetResult("Done");
+        var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        completed.WorkspaceChanges.ShouldBeNull();
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Single(message => message.Content == "Done")
+            .WorkspaceChanges!.Files.ShouldHaveSingleItem().Path.ShouldBe("live.cs");
+    }
+
+    [Fact]
     public async Task CompletedRepliesShouldKeepTheirOwnWorkspaceChangesAfterRestart()
     {
         var workspace = new TestWorkspaceChangeTracker();

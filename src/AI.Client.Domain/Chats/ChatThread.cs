@@ -42,6 +42,15 @@ public sealed class ChatThread
     public IReadOnlyCollection<ChatMessage> Messages => _messages.Values;
     public ConnectionId? ConnectionId { get; private set; }
     public IReadOnlyCollection<ChatBranch> Branches => _branches.Values;
+
+    /// <summary>
+    /// Number of alternative branches a user can actually navigate to. The main branch is the
+    /// chat itself, and a branch with no head message has no row in the branch tree yet, so
+    /// neither is counted. Kept deliberately in step with the tree built by Home.razor's
+    /// <c>ComputeBranchTreeItems</c>, which filters on exactly these two conditions — if the two
+    /// ever disagree, the chat list advertises a branch row that cannot be opened.
+    /// </summary>
+    public int BranchCount => _branches.Values.Count(branch => branch.Id != Id.Value && branch.HeadMessageId is not null);
     public IReadOnlyCollection<ToolPolicy> ToolPolicies => _toolPolicies.Values;
 
     public void SetToolPolicy(ToolPolicy policy, DateTimeOffset updatedAt)

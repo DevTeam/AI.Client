@@ -6,45 +6,38 @@
 
 @if (Changes is { IsEmpty: false } changes)
 {
-    <section class="workspace-changes @(_showDetails ? "is-expanded" : "is-collapsed")" aria-label="Files changed by this run">
-        @if (!_showDetails)
-        {
-            <div class="workspace-changes-preview" id="@_previewId" role="tooltip">
-                <ul>
-                    @foreach (var file in changes.Files)
-                    {
-                        <li @key="file.Path">
-                            <span class="workspace-changes-preview-path" title="@file.Path">@PreviewDisplay(file)</span>
-                            <span class="workspace-changes-preview-counts">
-                                @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
-                                @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
-                                @if (file.IsBinary) { <span class="workspace-change-binary">binary</span> }
-                            </span>
-                        </li>
-                    }
-                </ul>
-            </div>
-            <button class="workspace-changes-compact" type="button" aria-expanded="false" aria-describedby="@_previewId" @onclick="ToggleDetails">
-                <span>@changes.Files.Count @(changes.Files.Count == 1 ? "file" : "files") changed</span>
-                <span class="workspace-changes-compact-totals">
-                    <span class="workspace-added">+@changes.Additions</span>
-                    <span class="workspace-removed">−@changes.Deletions</span>
-                </span>
-            </button>
-        }
-        else
-        {
-            <button class="workspace-changes-header" type="button" aria-expanded="true" title="Collapse file changes" @onclick="ToggleDetails">
-                <span class="workspace-changes-icon" aria-hidden="true"><AppIcon Name="diff" /></span>
-                <span class="workspace-changes-title">Files changed</span>
-                <span class="workspace-changes-count">@changes.Files.Count</span>
-                @* The sign carries the meaning, not the colour: red/green alone fails for anyone who
-                   cannot tell them apart, and in a diff the direction is the whole point. *@
-                <span class="workspace-changes-totals">
-                    <span class="workspace-added">+@changes.Additions</span>
-                    <span class="workspace-removed">−@changes.Deletions</span>
-                </span>
-            </button>
+    <section class="workspace-changes @(_showDetails ? "is-expanded" : "is-collapsed") @(_suppressPreview ? "is-preview-suppressed" : null)"
+             aria-label="Files changed by this run" @onmouseleave="EnablePreview">
+        <div class="workspace-changes-preview" id="@_previewId" role="tooltip">
+            <ul>
+                @foreach (var file in changes.Files)
+                {
+                    <li @key="file.Path">
+                        <span class="workspace-changes-preview-path" title="@file.Path">@PreviewDisplay(file)</span>
+                        <span class="workspace-changes-preview-counts">
+                            @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
+                            @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
+                            @if (file.IsBinary) { <span class="workspace-change-binary">binary</span> }
+                        </span>
+                    </li>
+                }
+            </ul>
+        </div>
+        <button class="workspace-changes-header" type="button" aria-expanded="@_showDetails"
+                aria-describedby="@(!_showDetails ? _previewId : null)"
+                title="@(_showDetails ? "Collapse file changes" : "Expand file changes")" @onclick="ToggleDetails">
+            <span class="workspace-changes-icon" aria-hidden="true"><AppIcon Name="diff" /></span>
+            <span class="workspace-changes-title">@changes.Files.Count @(changes.Files.Count == 1 ? "file" : "files") changed</span>
+            @* The sign carries the meaning, not the colour: red/green alone fails for anyone who
+               cannot tell them apart, and in a diff the direction is the whole point. *@
+            <span class="workspace-changes-totals">
+                <span class="workspace-added">+@changes.Additions</span>
+                <span class="workspace-removed">−@changes.Deletions</span>
+            </span>
+            <span class="workspace-changes-chevron" aria-hidden="true"><AppIcon Name="chevron-down" /></span>
+        </button>
+        <div class="workspace-changes-details" aria-hidden="@(!_showDetails)">
+            <div class="workspace-changes-details-inner">
             <ul class="workspace-changes-list">
                 @foreach (var file in changes.Files)
                 {
@@ -95,7 +88,8 @@
                     </li>
                 }
             </ul>
-        }
+            </div>
+        </div>
     </section>
 }
 
@@ -111,8 +105,15 @@
     private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _previewId = $"workspace-changes-preview-{Guid.NewGuid():N}";
     private bool _showDetails;
+    private bool _suppressPreview;
 
-    private void ToggleDetails() => _showDetails = !_showDetails;
+    private void ToggleDetails()
+    {
+        _suppressPreview = _showDetails;
+        _showDetails = !_showDetails;
+    }
+
+    private void EnablePreview() => _suppressPreview = false;
 
     private void Toggle(string path)
     {

@@ -2813,22 +2813,20 @@ textarea {
    summary: a header naming the count and the totals, then one row per file with its own counts
    on the right. */
 .workspace-changes {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
     max-width: 48rem;
     margin: 0 auto 0.75rem;
     border: 1px solid #333;
-    border-radius: 0.7rem;
+    border-radius: 0.85rem;
     background: #1b1b1b;
     font-size: 0.78rem;
     overflow: hidden;
+    transition: border-color 180ms ease;
 }
 
 .workspace-changes.is-collapsed {
-    position: relative;
-    width: fit-content;
-    max-width: 100%;
-    border-radius: 1.4rem;
-    background: #242424;
-    font-size: 0.92rem;
     overflow: visible;
 }
 
@@ -2849,7 +2847,7 @@ textarea {
     visibility: hidden;
     pointer-events: auto;
     transform: translate(-50%, 0.2rem);
-    transition: opacity 100ms ease, transform 100ms ease, visibility 100ms ease;
+    transition: opacity 110ms ease, transform 110ms ease, visibility 0s linear 110ms;
 }
 
 .workspace-changes-preview::after {
@@ -2861,11 +2859,11 @@ textarea {
     content: "";
 }
 
-.workspace-changes.is-collapsed:hover .workspace-changes-preview,
-.workspace-changes.is-collapsed:focus-within .workspace-changes-preview {
+.workspace-changes.is-collapsed:not(.is-preview-suppressed):hover .workspace-changes-preview {
     opacity: 1;
     visibility: visible;
     transform: translate(-50%, 0);
+    transition-delay: 160ms;
 }
 
 .workspace-changes-preview ul {
@@ -2901,53 +2899,37 @@ textarea {
     font-variant-numeric: tabular-nums;
 }
 
-.workspace-changes-compact {
+.workspace-changes-header {
     display: flex;
+    box-sizing: border-box;
+    width: 100%;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.65rem 0.9rem;
+    gap: 0.5rem;
+    padding: 0.58rem 0.75rem;
     border: 0;
+    border-bottom: 1px solid transparent;
     border-radius: inherit;
     background: transparent;
     color: #e0e0e0;
     font: inherit;
+    font-size: 0.92rem;
+    text-align: left;
     white-space: nowrap;
     cursor: pointer;
-}
-
-.workspace-changes-compact:hover {
-    background: #2b2b2b;
-}
-
-.workspace-changes-compact-totals {
-    display: flex;
-    gap: 0.35rem;
-    font-variant-numeric: tabular-nums;
-}
-
-.workspace-changes-compact .workspace-added,
-.workspace-changes-compact .workspace-removed {
-    min-width: 0;
-}
-
-.workspace-changes-header {
-    display: flex;
-    width: 100%;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.7rem;
-    border: 0;
-    border-bottom: 1px solid #2c2c2c;
-    border-radius: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
+    transition: background-color 140ms ease, border-color 180ms ease;
 }
 
 .workspace-changes-header:hover {
-    background: #202020;
+    background: #292929;
+}
+
+.workspace-changes.is-collapsed .workspace-changes-header {
+    width: 100%;
+}
+
+.workspace-changes.is-expanded .workspace-changes-header {
+    border-bottom-color: #2c2c2c;
+    border-radius: 0.85rem 0.85rem 0 0;
 }
 
 .workspace-changes-icon {
@@ -2968,14 +2950,37 @@ textarea {
 }
 
 .workspace-changes-title {
+    min-width: 0;
+    overflow: hidden;
     color: #e0e0e0;
     font-weight: 600;
+    text-overflow: ellipsis;
 }
 
-.workspace-changes-count,
 .workspace-change-approximate,
 .workspace-change-binary {
     color: #7a7a7a;
+}
+
+.workspace-changes-chevron {
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+    color: #8d8d8d;
+    transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1), color 140ms ease;
+}
+
+.workspace-changes-chevron .app-icon {
+    width: 0.85rem;
+    height: 0.85rem;
+}
+
+.workspace-changes-header:hover .workspace-changes-chevron {
+    color: #d0d0d0;
+}
+
+.workspace-changes.is-expanded .workspace-changes-chevron {
+    transform: rotate(180deg);
 }
 
 .workspace-changes-totals,
@@ -2985,6 +2990,33 @@ textarea {
     margin-left: auto;
     padding-left: 0.5rem;
     font-variant-numeric: tabular-nums;
+}
+
+.workspace-changes-details {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    visibility: hidden;
+    transition: grid-template-rows 200ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 130ms ease,
+        visibility 0s linear 200ms;
+}
+
+.workspace-changes-details-inner {
+    min-height: 0;
+    overflow: hidden;
+    transform: translateY(-0.25rem);
+    transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.workspace-changes.is-expanded .workspace-changes-details {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+}
+
+.workspace-changes.is-expanded .workspace-changes-details-inner {
+    transform: translateY(0);
 }
 
 /* The sign is always present, so colour is reinforcement rather than the only signal. */
@@ -3011,6 +3043,7 @@ textarea {
 
 .workspace-change-summary {
     display: flex;
+    box-sizing: border-box;
     width: 100%;
     align-items: center;
     gap: 0.5rem;
@@ -3129,7 +3162,19 @@ textarea {
     color: #8a8a8a;
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .workspace-changes,
+    .workspace-changes-header,
+    .workspace-changes-preview,
+    .workspace-changes-chevron,
+    .workspace-changes-details,
+    .workspace-changes-details-inner {
+        transition: none;
+    }
+}
+
 @media (max-width: 640px) {
     .workspace-changes { font-size: 0.72rem; }
-    .workspace-change > summary { flex-wrap: wrap; }
+    .workspace-changes-header { font-size: 0.85rem; }
+    .workspace-change-summary { flex-wrap: wrap; }
 }

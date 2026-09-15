@@ -16,11 +16,18 @@ internal static class FileLimits
     public const int SearchMatches = 1000;
     public const int SearchExamined = 200000;
     public const int SearchCharacters = 131072;
+    public const int GrepMatches = 1000;
+    public const int GrepFilesScanned = 5000;
+    public const int GrepCharacters = 131072;
+    public const int GrepLineCharacters = 400;
+    public const int GrepFileBytes = 16777216;
+    public const int BinaryProbeBytes = 8192;
     public const int Edits = 64;
     public const int WriteCharacters = 1048576;
 
     /// <summary>
-    /// Directory names <see cref="DirectoryTreeTool"/> and <see cref="SearchFilesTool"/> skip by
+    /// Directory names <see cref="DirectoryTreeTool"/>, <see cref="SearchFilesTool"/> and
+    /// <see cref="GrepFilesTool"/> skip by
     /// default — version control metadata and build/dependency output that is almost never what
     /// an agent means by "the project", and that on a real repository can dwarf everything else
     /// combined (a `.git` folder alone routinely holds thousands of loose object files). Matched

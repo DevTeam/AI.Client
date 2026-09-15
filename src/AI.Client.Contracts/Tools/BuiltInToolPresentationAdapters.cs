@@ -121,7 +121,7 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
 {
     protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        "read_text_file", "read_multiple_files", "list_directory", "directory_tree", "search_files",
+        "read_text_file", "read_multiple_files", "list_directory", "directory_tree", "search_files", "grep_files",
         "get_file_info", "write_file", "edit_file", "create_directory", "move_file", "list_allowed_directories",
     };
 
@@ -139,6 +139,8 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
             "directory_tree" => new ToolCallPresentation("Read directory tree", FileLabel(path), ToolSafety.ReadOnly),
             "search_files" => new ToolCallPresentation("Search files",
                 Argument(arguments, "pattern") ?? FileLabel(path), ToolSafety.ReadOnly),
+            "grep_files" => new ToolCallPresentation("Search in files",
+                Argument(arguments, "query") ?? FileLabel(path), ToolSafety.ReadOnly),
             "get_file_info" => new ToolCallPresentation("Inspect file", FileLabel(path), ToolSafety.ReadOnly),
             "list_allowed_directories" => new ToolCallPresentation("List allowed directories", null, ToolSafety.ReadOnly),
             "write_file" => new ToolCallPresentation("Write file", FileLabel(path), ToolSafety.Destructive),
@@ -188,6 +190,22 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
                 return new ToolResultPresentation(
                     Plural(matches, "match", "matches") + (truncated ? ", truncated" : ""),
                     SeverityFor(truncated), Facts(("Path", Text(structured, "path"))), null);
+            }
+            case "grep_files":
+            {
+                // The headline counts matching lines, not files, because that is what the caller
+                // asked for; the file count and what was skipped stay available as facts.
+                var total = Number(structured, "totalMatches") ?? 0;
+                var files = Count(structured, "files") ?? 0;
+                var skipped = Number(structured, "filesSkipped") ?? 0;
+                return new ToolResultPresentation(
+                    $"{Plural(total, "match", "matches")} in {Plural(files, "file", "files")}" + (truncated ? ", truncated" : ""),
+                    SeverityFor(truncated),
+                    Facts(("Path", Text(structured, "path")), ("Query", Text(structured, "query")),
+                        ("Files scanned", Number(structured, "filesScanned")?.ToString(CultureInfo.InvariantCulture)),
+                        ("Files skipped", skipped > 0 ? skipped.ToString(CultureInfo.InvariantCulture) : null),
+                        ("Truncated", truncated ? "yes" : null)),
+                    null);
             }
             case "get_file_info":
                 return new ToolResultPresentation(Text(structured, "kind") ?? "Inspected", ToolResultSeverity.Ok,

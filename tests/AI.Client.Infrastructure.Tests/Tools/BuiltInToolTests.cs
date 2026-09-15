@@ -58,7 +58,8 @@ public sealed class BuiltInToolTests
         session.Tools.Select(item => item.OriginalName).ShouldBe(
         [
             "process_run", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "list_directory",
-            "directory_tree", "search_files", "get_file_info", "write_file", "edit_file", "create_directory", "move_file"
+            "directory_tree", "search_files", "grep_files", "get_file_info", "write_file", "edit_file", "create_directory",
+            "move_file"
         ], ignoreOrder: true);
         var tool = session.Tools.Single(item => item.OriginalName == "process_run");
         tool.SchemaHash.Length.ShouldBe(64);
@@ -349,6 +350,112 @@ public sealed class BuiltInToolTests
 
             var relative = session.Tools.Single(item => item.OriginalName == "write_file");
             Should.Throw<ArgumentException>(() => session.ValidateArguments(relative, "{\"path\":\"relative.txt\",\"content\":\"x\"}"));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ShouldGrepFileContentsOverStdio()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-grep").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "a.txt"), "one\ntwo needle here\nthree\nfour\nneedle again\n");
+            File.WriteAllText(Path.Combine(root, "b.md"), "Needle in another file\n");
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+                [new ToolDirectoryGrant(root, true, ["read"])], timeout.Token);
+            var token = timeout.Token;
+
+            var plain = await Structured(session, "grep_files", new { path = root, query = "needle" }, token);
+            plain.GetProperty("totalMatches").GetInt32().ShouldBe(2);
+            plain.GetProperty("filesScanned").GetInt32().ShouldBe(2);
+            var file = plain.GetProperty("files").EnumerateArray().Single();
+            file.GetProperty("path").GetString().ShouldBe(Path.Combine(root, "a.txt"));
+            var first = file.GetProperty("matches").EnumerateArray().First();
+            first.GetProperty("line").GetInt32().ShouldBe(2);
+            first.GetProperty("column").GetInt32().ShouldBe(5);
+            first.GetProperty("text").GetString().ShouldBe("two needle here");
+
+            // Case-sensitive by default, so the second file only shows up when asked for.
+            (await Structured(session, "grep_files", new { path = root, query = "needle", ignoreCase = true }, token))
+                .GetProperty("files").GetArrayLength().ShouldBe(2);
+
+            // A literal query is not a pattern; the same text as a regular expression is.
+            (await Structured(session, "grep_files", new { path = root, query = "need.e" }, token))
+                .GetProperty("totalMatches").GetInt32().ShouldBe(0);
+            (await Structured(session, "grep_files", new { path = root, query = "need.e", isRegex = true }, token))
+                .GetProperty("totalMatches").GetInt32().ShouldBe(2);
+
+            var context = await Structured(session,
+                "grep_files", new { path = Path.Combine(root, "a.txt"), query = "needle", contextLines = 2 }, token);
+            var withContext = context.GetProperty("files").EnumerateArray().Single()
+                .GetProperty("matches").EnumerateArray().First();
+            withContext.GetProperty("before").EnumerateArray().Select(item => item.GetString()).ShouldBe(["one"]);
+            withContext.GetProperty("after").EnumerateArray().Select(item => item.GetString()).ShouldBe(["three", "four"]);
+
+            (await Structured(session, "grep_files", new { path = root, query = "needle", filePattern = "*.md", ignoreCase = true }, token))
+                .GetProperty("files").EnumerateArray().Single()
+                .GetProperty("path").GetString().ShouldBe(Path.Combine(root, "b.md"));
+
+            // Lookaround is unsupported by the non-backtracking engine and has to surface as a
+            // readable error rather than as an exception escaping the tool.
+            (await Structured(session, "grep_files", new { path = root, query = "(?=needle)", isRegex = true }, token))
+                .GetProperty("error").GetString().ShouldNotBeNullOrEmpty();
+            (await Structured(session, "grep_files", new { path = Path.Combine(root, "absent.txt"), query = "needle" }, token))
+                .GetProperty("error").GetString().ShouldBe("Path does not exist.");
+
+            var outside = Path.Combine(Path.GetTempPath(), "ai-client-grep-outside");
+            (await Structured(session, "grep_files", new { path = outside, query = "needle" }, token))
+                .GetProperty("error").GetString()!.ShouldContain("No directory grant");
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    // Three things a content search meets on a real repository and must not pass on to the model:
+    // a binary file, a line long enough to fill the whole result by itself, and a file matching on
+    // far more lines than anyone wants quoted back.
+    [Fact]
+    public async Task ShouldSkipBinaryFilesAndBoundLongLinesAndBusyFiles()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-grep-limits").FullName;
+        try
+        {
+            File.WriteAllBytes(Path.Combine(root, "image.bin"), [0x6E, 0x65, 0x65, 0x64, 0x6C, 0x65, 0x00, 0x01]);
+            File.WriteAllText(Path.Combine(root, "long.txt"), new string('x', 5000) + "needle" + new string('y', 5000) + "\n");
+            File.WriteAllText(Path.Combine(root, "busy.txt"), string.Concat(Enumerable.Repeat("needle\n", 40)));
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+                [new ToolDirectoryGrant(root, true, ["read"])], timeout.Token);
+            var token = timeout.Token;
+
+            var result = await Structured(session, "grep_files", new { path = root, query = "needle" }, token);
+            result.GetProperty("filesSkipped").GetInt32().ShouldBe(1);
+            result.GetProperty("filesScanned").GetInt32().ShouldBe(2);
+            var files = result.GetProperty("files").EnumerateArray()
+                .ToDictionary(item => Path.GetFileName(item.GetProperty("path").GetString()!));
+            files.Keys.ShouldNotContain("image.bin");
+
+            // The long line comes back as a window around the match rather than in full, while the
+            // reported column still points into the real line.
+            var window = files["long.txt"].GetProperty("matches").EnumerateArray().Single();
+            window.GetProperty("column").GetInt32().ShouldBe(5001);
+            var text = window.GetProperty("text").GetString()!;
+            text.Length.ShouldBeLessThan(500);
+            text.ShouldContain("needle");
+
+            // Every matching line is counted even though only a handful are quoted.
+            var busy = files["busy.txt"];
+            busy.GetProperty("matchCount").GetInt32().ShouldBe(40);
+            busy.GetProperty("matches").GetArrayLength().ShouldBe(5);
+            busy.GetProperty("truncated").GetBoolean().ShouldBeTrue();
+
+            (await Structured(session, "grep_files", new { path = root, query = "needle", maxMatchesPerFile = 40 }, token))
+                .GetProperty("files").EnumerateArray()
+                .Single(item => Path.GetFileName(item.GetProperty("path").GetString()!) == "busy.txt")
+                .GetProperty("matches").GetArrayLength().ShouldBe(40);
         }
         finally { Directory.Delete(root, true); }
     }

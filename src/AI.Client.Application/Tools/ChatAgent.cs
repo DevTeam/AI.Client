@@ -130,13 +130,17 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                         {
                             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                             // Leave a short transport margin for process_run to report its own timeout.
-                            timeout.CancelAfter(TimeSpan.FromSeconds(policy.TimeoutSeconds + 2));
+                            var patience = new Patience(timeout, TimeSpan.FromSeconds(policy.TimeoutSeconds + 2), MaxCallDuration);
                             // Progress arrives on the transport's own thread while the call is in
                             // flight, so it is forwarded fire-and-forget: a slow subscriber must
                             // not be able to stall the tool it is reporting on.
-                            var progress = new Progress<ToolProgress>(update => _ = activity(
-                                activeCall with { Progress = update.Progress, Total = update.Total, Message = update.Message },
-                                CancellationToken.None));
+                            var progress = new Progress<ToolProgress>(update =>
+                            {
+                                patience.Renew();
+                                _ = activity(
+                                    activeCall with { Progress = update.Progress, Total = update.Total, Message = update.Message },
+                                    CancellationToken.None);
+                            });
                             // The baseline has to exist before the call, not after: once a write
                             // lands there is nothing left to compare against.
                             await workspace.RecordIntentAsync(runKey, tool.Descriptor, arguments, token);
@@ -151,7 +155,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                             // difference this guard draws.
                             catch (OperationCanceledException) when (!token.IsCancellationRequested)
                             {
-                                result = Error($"The tool did not answer within {policy.TimeoutSeconds} seconds. "
+                                result = Error($"The tool went silent for {policy.TimeoutSeconds} seconds. "
                                     + "Its effects may have occurred. Do not automatically repeat it.");
                             }
 
@@ -182,6 +186,50 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             }
         }
     }
+    /// <summary>
+    /// The longest any one call may run, however talkative it is. A tool that keeps reporting keeps
+    /// its patience renewed, so without this a wedged loop that says so every second would never end.
+    /// </summary>
+    private static readonly TimeSpan MaxCallDuration = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// How long a call may stay silent. The policy timeout used to measure the call's whole
+    /// duration, which cannot be set correctly for both audiences: the same number has to fit a
+    /// file read and a fan-out of subtasks, and the fan-out lost — it was killed mid-flight with
+    /// every subtask it had started thrown away, while its progress notifications said plainly that
+    /// it was working. MCP allows resetting the timeout on progress for exactly this reason, so the
+    /// number now means what it can mean for both: how long a tool may say nothing at all.
+    /// </summary>
+    private sealed class Patience
+    {
+        private readonly CancellationTokenSource _source;
+        private readonly TimeSpan _silence;
+        private readonly long _expires;
+
+        public Patience(CancellationTokenSource source, TimeSpan silence, TimeSpan total)
+        {
+            _source = source;
+            _silence = silence;
+            _expires = Environment.TickCount64 + (long)total.TotalMilliseconds;
+            Renew();
+        }
+
+        public void Renew()
+        {
+            var left = TimeSpan.FromMilliseconds(Math.Max(0, _expires - Environment.TickCount64));
+            try
+            {
+                _source.CancelAfter(_silence < left ? _silence : left);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Progress is forwarded fire-and-forget, so a last notification can arrive after the
+                // call it belongs to has finished and disposed its source. There is nothing left to
+                // extend, which is the answer rather than a problem.
+            }
+        }
+    }
+
     private Task<EffectiveToolPolicy> PolicyAsync(Guid projectId, Guid chatId, AgentTool tool, CancellationToken token) =>
         policies.ResolveAsync(projectId, chatId, tool.ServerId, tool.OriginalName, tool.SchemaHash, token);
 

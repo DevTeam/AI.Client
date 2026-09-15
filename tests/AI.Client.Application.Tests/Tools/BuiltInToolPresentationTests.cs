@@ -21,6 +21,9 @@ public class BuiltInToolPresentationTests
         Call("read_text_file", """{"path":"C:\\src\\web\\MessageFeed.razor"}""").Detail.ShouldBe("web/MessageFeed.razor");
         Call("edit_file", """{"path":"/a/b/c.cs"}""").Title.ShouldBe("Edit file");
         Call("search_files", """{"path":"/src","pattern":"*.razor"}""").Detail.ShouldBe("*.razor");
+        // A content search is named after what is being looked for, not where.
+        Call("grep_files", """{"path":"/src","query":"IToolSession"}""").Title.ShouldBe("Search in files");
+        Call("grep_files", """{"path":"/src","query":"IToolSession"}""").Detail.ShouldBe("IToolSession");
     }
 
     [Fact]
@@ -55,6 +58,10 @@ public class BuiltInToolPresentationTests
             .Summary.ShouldBe("3 matches");
         Result("list_directory", "{}", """{"path":"/src","entries":[],"truncated":false}""")
             .Summary.ShouldBe("0 entries");
+        // Matching lines are the answer; the file count is how widely they are spread.
+        Result("grep_files", "{}",
+                """{"path":"/src","query":"x","files":[{"path":"/src/a.cs"}],"totalMatches":7,"filesScanned":3,"filesSkipped":0,"truncated":false}""")
+            .Summary.ShouldBe("7 matches in 1 file");
         Result("edit_file", "{}", """{"path":"/a.cs","applied":2,"diff":"-x\n+y","dryRun":false}""")
             .Summary.ShouldBe("2 edits");
         Result("create_directory", "{}", """{"path":"/a","created":false}""")

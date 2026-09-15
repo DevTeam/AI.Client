@@ -20,7 +20,7 @@ internal sealed partial class Composition
             .Root<Program>(nameof(Root))
             // Tools
             .Transient<ProcessRunTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ListDirectoryTool, DirectoryTreeTool,
-                SearchFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool>(Tag.Unique)
+                SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool>(Tag.Unique)
             .Singleton<ProcessRunner, EnvironmentGrantSource, PathGuard, WebFetcher, HtmlText>()
             .Singleton((IEnumerable<IToolFactory> toolFactories) =>
             {

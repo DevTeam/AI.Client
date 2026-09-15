@@ -260,6 +260,33 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task AnEmptyTurnShouldBeAskedAgainRatherThanEndTheRun()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"));
+        // Nothing at all: no text, no tool calls. Nothing is persisted for such a turn, so the
+        // retry sends the same request — and a run that had already done work used to lose it.
+        (await fixture.NextCallAsync()).Answer.SetResult("");
+        (await fixture.NextCallAsync()).Answer.SetResult("Reply");
+
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Select(message => message.Content).ShouldBe(["Question", "Reply"]);
+    }
+
+    [Fact]
+    public async Task AnEndpointThatKeepsAnsweringNothingShouldStillFailTheRun()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"));
+        // Retrying is for a hiccup, not for an endpoint that has nothing to say: the ceiling is
+        // what keeps the user from waiting through attempt after attempt for the same silence.
+        for (var attempt = 0; attempt < 3; attempt++) (await fixture.NextCallAsync()).Answer.SetResult("");
+
+        (await fixture.WaitAsync(run => run.Status == ChatRunStatus.Failed)).Error.ShouldNotBeNull().ShouldContain("empty response");
+    }
+
+    [Fact]
     public async Task AToolThatKeepsReportingMustNotBeKilledForOutLastingOneCallsPatience()
     {
         await using var fixture = await Fixture.CreateAsync();

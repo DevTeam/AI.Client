@@ -66,6 +66,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     CancellationToken.None);
         }
 
+        var empty = 0;
         while (true)
         {
             var available = new List<ChatToolDefinition>();
@@ -81,9 +82,23 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 content.Append(chunk.Content);
                 await text(chunk.Content, token);
             }
+            if (calls.Count == 0 && content.Length == 0)
+            {
+                // An endpoint that answers with nothing at all has not decided to stop — it has
+                // failed to answer, and usually only this once. Nothing is persisted for an empty
+                // turn, so asking again sends exactly the same request: the retry is free of any
+                // effect to repeat. Failing on the first one threw away everything the run had
+                // already done, which is a heavy price for a hiccup one more attempt would have
+                // absorbed — mid-way through configuring a project it left the project half made.
+                if (++empty > MaxEmptyTurns)
+                    throw new InvalidOperationException("The model returned an empty response.");
+                await Task.Delay(TimeSpan.FromSeconds(empty), token);
+                continue;
+            }
+
+            empty = 0;
             if (calls.Count == 0)
             {
-                if (content.Length == 0) throw new InvalidOperationException("The model returned an empty response.");
                 var changes = await workspace.SnapshotAsync(runKey, token);
                 await workspace.CompleteRunAsync(runKey, CancellationToken.None);
                 return changes;
@@ -186,6 +201,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             }
         }
     }
+    /// <summary>
+    /// How many times a turn that produced nothing at all is asked again before the run gives up.
+    /// Small on purpose: an endpoint that is genuinely answering nothing should be reported, not
+    /// hammered, and the user is the one waiting through every attempt.
+    /// </summary>
+    private const int MaxEmptyTurns = 2;
+
     /// <summary>
     /// The longest any one call may run, however talkative it is. A tool that keeps reporting keeps
     /// its patience renewed, so without this a wedged loop that says so every second would never end.

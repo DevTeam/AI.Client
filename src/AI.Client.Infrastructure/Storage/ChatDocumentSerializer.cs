@@ -105,7 +105,8 @@ public static class ChatDocumentSerializer
             document.LastActivityAt == default ? document.UpdatedAt : document.LastActivityAt,
             document.IsPinned,
             document.PinnedAt,
-            document.BranchCount);
+            document.BranchCount ?? 0,
+            document.BranchCount is not null);
     }
 
     private sealed record ChatDocument(
@@ -138,13 +139,10 @@ public static class ChatDocumentSerializer
         bool IsPinned = false,
         DateTimeOffset? PinnedAt = null,
         DateTimeOffset LastActivityAt = default,
-        // Only ever "alternative branches" — the main branch is the chat itself. Defaults to 0,
-        // which is what a summary written before this field existed deserializes to; the count is
-        // not recomputed on read, so a chat whose summary predates the field shows no marker until
-        // its next save. Accepted rather than rewritten eagerly: listing chats must stay a read of
-        // the small manifests, and recomputing here would mean deserializing every full chat
-        // document just to list the sidebar — exactly what this record exists to avoid.
-        int BranchCount = 0);
+        // Only ever "alternative branches" — the main branch is the chat itself. Null identifies
+        // a summary written before this field existed, allowing the repository to migrate only
+        // those manifests without loading full documents for chats that genuinely have no forks.
+        int? BranchCount = null);
 
     private sealed record ToolPolicyDocument(Guid ServerId, string Name, string SchemaHash,
         ToolPolicyDecision Decision, int MaxCallsPerRun, TimeSpan Timeout);

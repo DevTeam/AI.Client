@@ -1,9 +1,10 @@
-namespace AI.Client.Web.State;
+﻿namespace AI.Client.Web.State;
 
 /// <summary>
 /// Client-only "where was I" memory (last project, last chat/branch per project, unsent composer
-/// drafts), persisted to localStorage. Unrelated to chat data itself, which the server already
-/// owns — this is purely a UI convenience so the app reopens where it was left.
+/// drafts, sent-message history), persisted to localStorage. Unrelated to chat data itself,
+/// which the server already owns — this is purely a UI convenience so the app reopens where it
+/// was left.
 /// </summary>
 public interface IWorkspaceStateService : IAsyncDisposable
 {
@@ -21,6 +22,19 @@ public interface IWorkspaceStateService : IAsyncDisposable
 
     /// <summary>Records the chat/branch last selected within the given project. No-op (no write) if unchanged.</summary>
     Task SetProjectContextAsync(Guid projectId, Guid? chatId, Guid? branchLeafId);
+
+    /// <summary>
+    /// Messages already sent from this project's composer, newest first. Shared by every chat in
+    /// the project — the reuse this exists for happens across chats, not inside one.
+    /// </summary>
+    IReadOnlyList<string> GetComposerHistory(Guid projectId);
+
+    /// <summary>
+    /// Records a sent message at the front of the project's history and persists immediately.
+    /// Blank text is ignored; an identical earlier entry is moved to the front instead of
+    /// being duplicated; the list is capped at 100 entries.
+    /// </summary>
+    Task AppendComposerHistoryAsync(Guid projectId, string text);
 
     /// <summary>The unsent composer draft for the given key (chat id, or "new:{projectId}" before the first message creates the chat).</summary>
     string GetComposerDraft(string draftKey);

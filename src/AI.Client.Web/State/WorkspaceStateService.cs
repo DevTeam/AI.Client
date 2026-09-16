@@ -8,6 +8,11 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
     private const string LastProjectKey = "ai-client.last-project.v1";
     private const string ProjectContextKey = "ai-client.project-context.v1";
     private const string ComposerDraftKey = "ai-client.composer-drafts.v1";
+    private const string ComposerHistoryKey = "ai-client.composer-history.v1";
+
+    // Enough to reach anything a user would still recognise, small enough that the whole blob
+    // stays cheap to serialize on every send.
+    private const int MaxHistoryEntries = 100;
 
     // 500ms after the last keystroke, not on every input: a save is a JSInterop call plus a
     // JsonSerializer.Serialize of the whole drafts dictionary, and the composer's oninput already
@@ -22,6 +27,11 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
     // -> A must not lose A's own context, and a chat can be mid-draft in more than one place at once.
     private Dictionary<Guid, ProjectContextEntry> _projectContexts = [];
     private Dictionary<string, string> _composerDrafts = [];
+    // Per project, newest first. Scoped to the project rather than the chat because the point of
+    // the feature is re-sending a phrasing the user already used ("run the tests", "do the
+    // recommended thing"), and that reuse happens across the project's chats — a per-chat history
+    // would be empty exactly when a new chat needs it most.
+    private Dictionary<Guid, List<string>> _composerHistory = [];
     private bool _initialized;
     // Tracks the last key/text that was queued but not yet persisted. Used by
     // FlushPendingComposerDraftAsync to know whether a write is actually owed. The text is
@@ -45,6 +55,7 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
 
         _projectContexts = await LoadDictionaryAsync<Guid, ProjectContextEntry>(ProjectContextKey);
         _composerDrafts = await LoadDictionaryAsync<string, string>(ComposerDraftKey);
+        _composerHistory = await LoadDictionaryAsync<Guid, List<string>>(ComposerHistoryKey);
     }
 
     private async Task<Dictionary<TKey, TValue>> LoadDictionaryAsync<TKey, TValue>(string key) where TKey : notnull
@@ -83,6 +94,28 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
 
     public string GetComposerDraft(string draftKey) =>
         draftKey.Length == 0 ? string.Empty : _composerDrafts.GetValueOrDefault(draftKey, string.Empty);
+
+    public IReadOnlyList<string> GetComposerHistory(Guid projectId) =>
+        _composerHistory.TryGetValue(projectId, out var entries) ? entries : [];
+
+    public async Task AppendComposerHistoryAsync(Guid projectId, string text)
+    {
+        var entry = text.Trim();
+        if (entry.Length == 0) return;
+
+        var entries = _composerHistory.TryGetValue(projectId, out var existing) ? existing : _composerHistory[projectId] = [];
+        // Move-to-front rather than plain append: re-sending the same phrasing is the whole
+        // point of the feature, and leaving the old copy behind would make the user walk past
+        // the same text several times to reach anything older.
+        entries.RemoveAll(item => item == entry);
+        entries.Insert(0, entry);
+        if (entries.Count > MaxHistoryEntries) entries.RemoveRange(MaxHistoryEntries, entries.Count - MaxHistoryEntries);
+
+        // Written straight through, not debounced like drafts: this runs once per send, not once
+        // per keystroke, and losing the last sent message from history to a tab close would
+        // defeat the point of persisting it at all.
+        await jsRuntime.InvokeVoidAsync("localStorage.setItem", ComposerHistoryKey, JsonSerializer.Serialize(_composerHistory));
+    }
 
     public void QueueComposerDraftSave(string draftKey, string text)
     {

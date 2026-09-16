@@ -18,6 +18,26 @@ public static class ChatFeed
         IReadOnlyList<ChatMessageView>? ToolGroup);
 
     /// <summary>
+    /// One user turn as it appears in the transcript. <see cref="UserMessage"/> is null only for
+    /// legacy/orphaned messages before the first user message. The final answer is deliberately
+    /// separated from the intermediate items so the latter can be replaced by one compact row.
+    /// </summary>
+    public sealed record FeedTurn(
+        ChatMessageView? UserMessage,
+        IReadOnlyList<FeedItem> IntermediateItems,
+        FeedItem? FinalAnswer)
+    {
+        public Guid? Id => UserMessage?.Id;
+
+        public IEnumerable<ChatMessageView> IntermediateMessages =>
+            IntermediateItems.SelectMany(MessagesOf);
+
+        public ChatMessageView? LastMessage => FinalAnswer is { } answer
+            ? MessagesOf(answer).LastOrDefault()
+            : IntermediateMessages.LastOrDefault();
+    }
+
+    /// <summary>
     /// One call paired with its result, plus the window it actually occupied. The agent runs a
     /// group's calls in order and persists each result as it lands, so a call's elapsed time is
     /// the gap between the previous landing and its own — an observed number, not an estimate.
@@ -60,7 +80,7 @@ public static class ChatFeed
     /// worth paying for first; anything above it is reached by scrolling, which cannot happen in
     /// the frame that opens the chat.
     /// </summary>
-    public static List<FeedItem> TakeTail(List<FeedItem> items, int limit) =>
+    public static List<T> TakeTail<T>(List<T> items, int limit) =>
         limit >= items.Count ? items : items.GetRange(items.Count - Math.Max(limit, 0), Math.Max(limit, 0));
 
     public static List<FeedItem> BuildFeedItems(IReadOnlyList<ChatMessageView> chain)
@@ -95,6 +115,123 @@ public static class ChatFeed
         FlushGroup();
         return items;
     }
+
+    /// <summary>
+    /// Splits the rendered feed at user messages and identifies the last plain assistant message
+    /// in each segment as its final answer. Earlier plain assistant messages remain intermediate:
+    /// agent loops can emit several progress notes without tool calls before answering.
+    /// </summary>
+    public static List<FeedTurn> BuildTurns(
+        IReadOnlyList<ChatMessageView> chain,
+        bool lastTurnEndedWithoutFinalAnswer = false)
+    {
+        var turns = new List<FeedTurn>();
+        ChatMessageView? user = null;
+        var body = new List<FeedItem>();
+
+        void FlushTurn()
+        {
+            if (user is null && body.Count == 0) return;
+
+            FeedItem? finalAnswer = null;
+            if (body.Count > 0 && IsPlainAssistantMessage(body[^1]))
+            {
+                finalAnswer = body[^1];
+                body.RemoveAt(body.Count - 1);
+            }
+
+            turns.Add(new FeedTurn(user, body.ToArray(), finalAnswer));
+            body = [];
+        }
+
+        foreach (var item in BuildFeedItems(chain))
+        {
+            if (item.Message is { Role: "User" } nextUser)
+            {
+                FlushTurn();
+                user = nextUser;
+            }
+            else
+            {
+                body.Add(item);
+            }
+        }
+
+        FlushTurn();
+
+        // While a run is generating (or after it stopped/failed), its latest plain assistant
+        // message is still a progress note. Shape alone cannot distinguish that note from a
+        // completed answer, so the caller supplies the run-state fact and we put the message
+        // back among the intermediate items.
+        if (lastTurnEndedWithoutFinalAnswer
+            && turns.Count > 0
+            && turns[^1] is { UserMessage: not null, FinalAnswer: { } pendingAnswer } lastTurn)
+        {
+            turns[^1] = lastTurn with
+            {
+                IntermediateItems = [.. lastTurn.IntermediateItems, pendingAnswer],
+                FinalAnswer = null
+            };
+        }
+
+        return turns;
+    }
+
+    /// <summary>Returns the root-to-leaf message chain for the selected branch.</summary>
+    public static IReadOnlyList<ChatMessageView> BuildBranch(
+        IReadOnlyList<ChatMessageView> messages,
+        Guid? branchLeafId)
+    {
+        if (branchLeafId is null) return messages.OrderBy(item => item.CreatedAt).ToArray();
+
+        var byId = messages.ToDictionary(item => item.Id);
+        var branch = new List<ChatMessageView>();
+        var currentId = branchLeafId;
+        while (currentId is { } messageId && byId.TryGetValue(messageId, out var message))
+        {
+            branch.Add(message);
+            currentId = message.ParentId;
+        }
+
+        branch.Reverse();
+        return branch;
+    }
+
+    /// <summary>
+    /// The live compact title, when the model has supplied one. Kept here so the transcript row
+    /// and composer status cannot disagree about which progress note is current.
+    /// </summary>
+    public static string? RunningTitleOf(FeedTurn turn, TimeSpan elapsed)
+    {
+        var action = turn.IntermediateMessages
+            .LastOrDefault(message => message.Role == "Assistant" && !string.IsNullOrWhiteSpace(message.Content))
+            ?.Content;
+        return string.IsNullOrWhiteSpace(action)
+            ? null
+            : $"{SingleLine(action)} · {FormatDuration(elapsed)}";
+    }
+
+    public static string FormatDuration(TimeSpan elapsed)
+    {
+        if (elapsed.TotalSeconds < 1) return $"{elapsed.TotalMilliseconds:F0} ms";
+        var totalSeconds = Math.Max(0, (int)elapsed.TotalSeconds);
+        return totalSeconds < 60
+            ? $"{totalSeconds}s"
+            : $"{totalSeconds / 60}m {totalSeconds % 60}s";
+    }
+
+    private static string SingleLine(string content) =>
+        string.Join(' ', content.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    public static IEnumerable<ChatMessageView> MessagesOf(FeedItem item)
+    {
+        if (item.Message is { } message) yield return message;
+        if (item.ToolGroup is not { } group) yield break;
+        foreach (var groupedMessage in group) yield return groupedMessage;
+    }
+
+    private static bool IsPlainAssistantMessage(FeedItem item) =>
+        item.Message is { Role: "Assistant", ToolCalls: not { Count: > 0 } };
 
     /// <summary>
     /// The assistant's explanation that opened this group, if it wrote one. Always the group's

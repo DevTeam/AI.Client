@@ -209,4 +209,104 @@ public sealed class ChatFeedTests
         tail[0].ToolGroup.ShouldBe(new[] { call, result });
         tail[1].Message.ShouldBe(answer);
     }
+
+    [Fact]
+    public void ShouldSplitTheFeedIntoTurnsAndKeepTheFinalAnswerSeparate()
+    {
+        var firstQuestion = User("first");
+        var preamble = Assistant("checking", "call-1");
+        var result = ToolResult("call-1");
+        var firstAnswer = Assistant("done");
+        var secondQuestion = User("second");
+        var secondAnswer = Assistant("also done");
+
+        var turns = ChatFeed.BuildTurns([
+            firstQuestion, preamble, result, firstAnswer, secondQuestion, secondAnswer
+        ]);
+
+        turns.Count.ShouldBe(2);
+        turns[0].UserMessage.ShouldBe(firstQuestion);
+        turns[0].IntermediateItems.ShouldHaveSingleItem();
+        turns[0].IntermediateItems[0].ToolGroup.ShouldBe(new[] { preamble, result });
+        turns[0].FinalAnswer!.Value.Message.ShouldBe(firstAnswer);
+        turns[1].UserMessage.ShouldBe(secondQuestion);
+        turns[1].IntermediateItems.ShouldBeEmpty();
+        turns[1].FinalAnswer!.Value.Message.ShouldBe(secondAnswer);
+    }
+
+    [Fact]
+    public void ShouldTreatEarlierPlainAssistantMessagesAsIntermediate()
+    {
+        var question = User("do it");
+        var progress = Assistant("still working");
+        var answer = Assistant("finished");
+
+        var turn = ChatFeed.BuildTurns([question, progress, answer]).ShouldHaveSingleItem();
+
+        turn.IntermediateItems.ShouldHaveSingleItem();
+        turn.IntermediateItems[0].Message.ShouldBe(progress);
+        turn.FinalAnswer!.Value.Message.ShouldBe(answer);
+    }
+
+    [Fact]
+    public void ShouldAllowATurnToEndWithoutAFinalAnswer()
+    {
+        var question = User("do it");
+        var preamble = Assistant("working", "call-1");
+        var result = ToolResult("call-1");
+
+        var turn = ChatFeed.BuildTurns([question, preamble, result]).ShouldHaveSingleItem();
+
+        turn.IntermediateItems.ShouldHaveSingleItem();
+        turn.FinalAnswer.ShouldBeNull();
+        turn.LastMessage.ShouldBe(result);
+    }
+
+    [Fact]
+    public void ShouldKeepLatestPlainAssistantMessageIntermediateWhileTurnIsUnfinished()
+    {
+        var question = User("do it");
+        var firstProgress = Assistant("checking", "call-1");
+        var result = ToolResult("call-1");
+        var latestProgress = Assistant("now checking usages");
+
+        var turn = ChatFeed.BuildTurns(
+            [question, firstProgress, result, latestProgress],
+            lastTurnEndedWithoutFinalAnswer: true).ShouldHaveSingleItem();
+
+        turn.IntermediateItems.Count.ShouldBe(2);
+        turn.IntermediateItems[1].Message.ShouldBe(latestProgress);
+        turn.FinalAnswer.ShouldBeNull();
+        turn.LastMessage.ShouldBe(latestProgress);
+    }
+
+    [Fact]
+    public void ShouldUseLatestIntermediateAssistantTextForRunningTitle()
+    {
+        var question = User("do it");
+        var firstProgress = Assistant("checking files", "call-1");
+        var result = ToolResult("call-1");
+        var latestProgress = Assistant("  now\nchecking   usages  ");
+        var turn = ChatFeed.BuildTurns(
+            [question, firstProgress, result, latestProgress],
+            lastTurnEndedWithoutFinalAnswer: true).ShouldHaveSingleItem();
+
+        ChatFeed.RunningTitleOf(turn, TimeSpan.FromSeconds(63))
+            .ShouldBe("now checking usages · 1m 3s");
+    }
+
+    [Fact]
+    public void ShouldReturnNoRunningTitleBeforeTheModelReportsAnAction()
+    {
+        var turn = ChatFeed.BuildTurns([User("do it")]).ShouldHaveSingleItem();
+
+        ChatFeed.RunningTitleOf(turn, TimeSpan.FromSeconds(2)).ShouldBeNull();
+    }
+
+    [Fact]
+    public void ShouldFormatCompactTurnTimeWithoutFractionalSeconds()
+    {
+        ChatFeed.FormatDuration(TimeSpan.FromSeconds(14.9)).ShouldBe("14s");
+        ChatFeed.FormatDuration(TimeSpan.FromSeconds(63.8)).ShouldBe("1m 3s");
+    }
 }

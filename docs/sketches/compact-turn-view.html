@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Compact turn view — sketch</title>
+<style>
+    /* Static sketch for docs/18-compact-turn-view.md. Colours and sizes are copied from
+       src/AI.Client.Web/wwwroot/css/app.css so the sketch can be compared with the app
+       side by side. Nothing here is meant to be imported: it is a picture, not a stylesheet. */
+    body {
+        margin: 0;
+        padding: 2rem;
+        background: #141414;
+        color: #c8c8c8;
+        font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    h1 { margin: 0 0 1.5rem; color: #e0e0e0; font-size: 1.1rem; font-weight: 600; }
+    h2 { margin: 2rem 0 0.6rem; color: #8d8d8d; font-size: 0.78rem; font-weight: 400; }
+    .note { margin: 0.4rem 0 0; color: #5f5f5f; font-size: 0.72rem; }
+
+    .feed {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 48rem;
+        padding: 1rem 1.25rem;
+        border: 1px solid #2a2a2a;
+        border-radius: 0.85rem;
+        background: #171717;
+    }
+
+    .user-message {
+        max-width: 70%;
+        margin: 0 0 0.9rem auto;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.9rem;
+        background: #2a2a2a;
+        color: #dcdcdc;
+        font-size: 0.88rem;
+    }
+
+    .answer { color: #dcdcdc; font-size: 0.9rem; line-height: 1.65; }
+
+    /* The turn summary line: the whole feature. Quiet, borderless, one line. */
+    .turn-summary {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        min-height: 1.3rem;
+        margin: 0 0 0.75rem;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: #8a8a8a;
+        font: inherit;
+        font-size: 0.76rem;
+        cursor: pointer;
+    }
+
+    .turn-summary:hover { color: #b4b4b4; }
+
+    .turn-summary-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .turn-summary-chevron {
+        flex: 0 0 auto;
+        color: #6f6f6f;
+        transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .turn-summary.is-expanded { color: #b4b4b4; }
+    .turn-summary.is-expanded .turn-summary-chevron { transform: rotate(90deg); color: #8d8d8d; }
+
+    .spinner { flex: 0 0 auto; color: #8ab4df; animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Everything below reproduces today's markup, unchanged by this feature. */
+    .preamble { margin: 0 0 0.3rem; color: #b4b4b4; font-size: 0.92rem; }
+
+    .tool-row {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        min-height: 1.3rem;
+        color: #8a8a8a;
+        font-size: 0.76rem;
+    }
+
+    .tool-row-title { color: #c8c8c8; white-space: nowrap; }
+    .tool-row-detail { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tool-row-meta { margin-left: auto; white-space: nowrap; }
+    .tool-row-elapsed { color: #6f6f6f; }
+    .tool-row-failure-count {
+        padding: 0 0.3rem;
+        border: 1px solid #6b3a36;
+        border-radius: 0.5rem;
+        color: #e0665f;
+        font-size: 0.66rem;
+    }
+
+    .cycle { margin: 0 0 0.9rem; }
+
+    .workspace-changes {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        box-sizing: border-box;
+        margin: 0.75rem 0 0;
+        padding: 0.58rem 0.75rem;
+        border: 1px solid #333;
+        border-radius: 0.85rem;
+        background: #1b1b1b;
+        color: #e0e0e0;
+        font-size: 0.92rem;
+    }
+
+    .workspace-changes-icon {
+        display: inline-grid;
+        place-items: center;
+        width: 1.6rem;
+        height: 1.6rem;
+        border: 1px solid #3a3a3a;
+        border-radius: 0.45rem;
+        background: #242424;
+        color: #b4b4b4;
+    }
+
+    .workspace-changes-title { font-weight: 600; }
+    .workspace-changes-totals { margin-left: auto; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+    .workspace-added { color: #5dc97c; }
+    .workspace-removed { color: #e0665f; }
+
+    svg { display: block; }
+</style>
+</head>
+<body>
+
+<h1>Компактное представление хода — состояния строки</h1>
+
+<h2>Ход идёт: текущее действие модели и время, лента не растёт</h2>
+<div class="feed">
+    <div class="user-message">Посмотри где классы используются без интерфейсов и без DI</div>
+    <button class="turn-summary" type="button" aria-expanded="false">
+        <svg class="spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9" /></svg>
+        <span class="turn-summary-text">Соберу данные по использованию конкретных классов в Web/Cli/Host… · 12s</span>
+        <svg class="turn-summary-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
+    </button>
+</div>
+<p class="note">Текст берётся из последнего промежуточного сообщения модели и обрезается до одной строки. Высота строки постоянна.</p>
+
+<h2>Ход завершён: только время</h2>
+<div class="feed">
+    <div class="user-message">Посмотри где классы используются без интерфейсов и без DI</div>
+    <button class="turn-summary" type="button" aria-expanded="false">
+        <span class="turn-summary-text">Worked for 1m 13s</span>
+        <svg class="turn-summary-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
+    </button>
+    <div class="answer">Без интерфейсов и вне DI создаются 7 классов. Из них 4 можно вынести в композицию без изменения поведения…</div>
+    <div class="workspace-changes">
+        <span class="workspace-changes-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+        </span>
+        <span class="workspace-changes-title">3 files changed</span>
+        <span class="workspace-changes-totals"><span class="workspace-added">+128</span> <span class="workspace-removed">−14</span></span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8d8d8d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+    </div>
+</div>
+<p class="note">Ни числа шагов, ни числа вызовов, ни бейджа ошибок в свёрнутом виде. Карточка изменений файлов видна всегда.</p>
+
+<h2>Ход остановлен или упал</h2>
+<div class="feed">
+    <button class="turn-summary" type="button" aria-expanded="false" style="margin-bottom:0.5rem">
+        <span class="turn-summary-text">Stopped after 22s</span>
+        <svg class="turn-summary-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
+    </button>
+    <button class="turn-summary" type="button" aria-expanded="false" style="margin-bottom:0">
+        <span class="turn-summary-text">Failed after 22s</span>
+        <svg class="turn-summary-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
+    </button>
+</div>
+<p class="note">Причину и кнопки Retry / Continue / Discard по-прежнему несёт карточка turn-status ниже — строка только называет исход.</p>
+
+<h2>Ход раскрыт: строка становится заголовком, ниже — сегодняшняя разметка без изменений</h2>
+<div class="feed">
+    <div class="user-message">Посмотри где классы используются без интерфейсов и без DI</div>
+    <button class="turn-summary is-expanded" type="button" aria-expanded="true">
+        <span class="turn-summary-text">Worked for 1m 13s</span>
+        <svg class="turn-summary-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
+    </button>
+
+    <div class="cycle">
+        <div class="preamble">Изучу структуру и точки регистрации DI.</div>
+        <div class="tool-row">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7" /></svg>
+            <span class="tool-row-title">Tools finished</span>
+            <span class="tool-row-detail">1 tool call</span>
+            <span class="tool-row-meta"><span class="tool-row-elapsed">164 ms</span></span>
+        </div>
+    </div>
+
+    <div class="cycle">
+        <div class="preamble">Соберу данные по использованию конкретных классов в Web/Cli/Host.</div>
+        <div class="tool-row">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7" /></svg>
+            <span class="tool-row-title">Tools finished</span>
+            <span class="tool-row-detail">8 tool calls</span>
+            <span class="tool-row-meta"><span class="tool-row-failure-count">1 failed</span> <span class="tool-row-elapsed">2.2 s</span></span>
+        </div>
+    </div>
+
+    <div class="answer">Без интерфейсов и вне DI создаются 7 классов. Из них 4 можно вынести в композицию без изменения поведения…</div>
+</div>
+<p class="note">Раскрытие накопительное: несколько ходов держатся раскрытыми одновременно. При переоткрытии чата всё снова свёрнуто.</p>
+
+</body>
+</html>

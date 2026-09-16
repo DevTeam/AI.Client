@@ -163,6 +163,14 @@ export function attach(scroller, owner) {
             anchor = null;
             captureAnchor();
         },
+        // A turn can add or remove several transcript blocks at once. Pin its summary row for
+        // that mutation so the control the user clicked stays under their pointer.
+        anchorElement: id => {
+            const element = document.getElementById(id);
+            if (element === null || !scroller.contains(element)) return;
+            anchor = element;
+            anchorOffset = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+        },
         jumpToBottom: () => toBottom(true),
         dispose: () => {
             observer.disconnect();

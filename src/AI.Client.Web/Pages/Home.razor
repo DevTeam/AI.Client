@@ -272,6 +272,7 @@
             ForkSourceId="@_forkSourceId"
             MessageBranchMenuId="@_messageBranchMenuId"
             SelectedRun="@GetSelectedRun()"
+            GeneratingElapsed="@GetGeneratingElapsed()"
             TranscriptRunPresentationVersion="@GetTranscriptRunPresentationVersion()"
             GetRunForBranch="@(messageId => _selectedChat is null ? null : GetRun(_selectedChat.Id, BranchLeafHelpers.RunBranchIdFor(messageId, _selectedChat)))"
             OnCopyMessage="CopyMessageAsync"
@@ -299,7 +300,7 @@
             @if (_composerHistoryNavigator.Index is { } historyIndex) { <span class="composer-history-counter">History @(historyIndex + 1)/@GetComposerHistory().Count</span> }
             @* Held states carry no status word: the turn chip above already names the state and,
                for a failure, its reason. This line says only what the Enter key will do. *@
-            @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <span>@($"Generating{(GetGeneratingElapsed() is { } elapsed ? $"... {FormatElapsed(elapsed)}" : "...")}{GetGeneratingEnterHint()}")</span> }
+            @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <span>@GetGeneratingStatusText()</span> }
             else if (GetSelectedRun() is { Status: ChatRunStatus.Paused or ChatRunStatus.Interrupted } heldRun) { <span>@GetHeldRunEnterHint(heldRun)</span> }
             else if (GetSelectedRun() is { Status: ChatRunStatus.Failed } failedRun) { <span class="error">@GetHeldRunEnterHint(failedRun)</span> }
             else if (GetReplaceSource() is { } replaceSource) { <span class="fork-mode replace-mode"><AppIcon Name="edit-replace" /><span>Replacing branch from “@GetMessagePreview(replaceSource.Content)”</span><button class="icon-action" type="button" title="Cancel replacement" aria-label="Cancel replacement" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
@@ -563,6 +564,18 @@
     {
         if (_selectedChat is null || GetSelectedRun()?.Status != ChatRunStatus.Generating) return null;
         return RunState.GetLlmGeneratingElapsed(new RunKey(_selectedChat.Id, GetSelectedRunBranchId()));
+    }
+
+    private string GetGeneratingStatusText()
+    {
+        var elapsed = GetGeneratingElapsed();
+        var fallback = $"Generating{(elapsed is { } value ? $"... {FormatElapsed(value)}" : "...")}";
+        if (_selectedChat is null || elapsed is null) return fallback + GetGeneratingEnterHint();
+
+        var branch = ChatFeed.BuildBranch(_selectedChat.Messages, _branchLeafId);
+        var turn = ChatFeed.BuildTurns(branch, lastTurnEndedWithoutFinalAnswer: true).LastOrDefault();
+        var title = turn is null ? null : ChatFeed.RunningTitleOf(turn, elapsed.Value);
+        return (title ?? fallback) + GetGeneratingEnterHint();
     }
 
     private static string FormatElapsed(TimeSpan elapsed)

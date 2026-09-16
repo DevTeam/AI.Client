@@ -91,12 +91,39 @@
                                   ForkSourceId="@ForkSourceId"
                                   BranchMenuId="@MessageBranchMenuId"
                                   RunPresentationVersion="@TranscriptRunPresentationVersion"
+                                  ExpandedTurnsVersion="@_expandedTurnsVersion"
+                                  TurnElapsedSeconds="@GetGeneratingElapsedSeconds()"
                                   ItemLimit="@_renderedItemLimit">
-        @foreach (var item in GetRenderedFeedItems())
+        @foreach (var entry in GetRenderedFeedItems())
         {
-            @if (item.Message is { } message)
+            var item = entry.Item;
+            @if (entry.Summary is { } summary)
             {
-                <article @key="message.Id" id="message-@message.Id" class="workspace-message @message.Role.ToLowerInvariant() @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)">
+                var turnId = summary.Id!.Value;
+                var expanded = IsTurnExpanded(summary);
+                var summaryKey = (turnId, "turn-summary");
+                <button @key="summaryKey" id="turn-summary-@turnId" type="button"
+                        class="turn-summary @(expanded ? "is-expanded" : string.Empty) @GetTurnSummaryStateClasses(summary)"
+                        aria-expanded="@(expanded ? "true" : "false")"
+                        @onclick="() => ToggleTurnAsync(turnId)">
+                    @if (IsRunningTurn(summary))
+                    {
+                        <span class="turn-summary-spinner" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
+                    }
+                    <span class="turn-summary-text">@GetTurnSummaryText(summary)</span>
+                    <span class="turn-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-right" /></span>
+                </button>
+            }
+            else if (entry.ChangesMessage is { WorkspaceChanges: { IsEmpty: false } collapsedChanges })
+            {
+                var changesKey = (entry.ChangesMessage.Id, "workspace-changes-collapsed");
+                <WorkspaceChanges @key="changesKey" Changes="@collapsedChanges" />
+            }
+            else if (item?.Message is { } message)
+            {
+                <article @key="message.Id" id="message-@message.Id"
+                         class="workspace-message @message.Role.ToLowerInvariant() @(entry.RevealIndex is null ? string.Empty : "turn-message-arriving") @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)"
+                         style="@(entry.RevealIndex is { } messageRevealIndex ? $"--turn-arrive-delay: {messageRevealIndex * 60}ms" : null)">
                     @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
                     <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div>
                     <div class="message-actions">
@@ -112,7 +139,7 @@
                     <WorkspaceChanges @key="changesKey" Changes="@messageChanges" />
                 }
             }
-            else if (item.ToolGroup is { } group)
+            else if (item?.ToolGroup is { } group)
             {
                 var anchor = group[^1];
                 var preamble = ChatFeed.PreambleOf(group);
@@ -126,7 +153,9 @@
                    every result and threw away ToolActivityGroup's state — an expanded group
                    snapped shut each time a tool reported back. The first message is what opened
                    the group and never changes while it grows. *@
-                <article @key="group[0].Id" id="message-@anchor.Id" class="workspace-message tool-group @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)">
+                <article @key="group[0].Id" id="message-@anchor.Id"
+                         class="workspace-message tool-group @(entry.RevealIndex is null ? string.Empty : "turn-message-arriving") @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)"
+                         style="@(entry.RevealIndex is { } groupRevealIndex ? $"--turn-arrive-delay: {groupRevealIndex * 60}ms" : null)">
                     @if (preamble is not null)
                     {
                         @if (preamble.IsIncomplete) { <span class="message-status">Incomplete</span> }
@@ -318,6 +347,7 @@
     [Parameter] public Guid? ForkSourceId { get; set; }
     [Parameter] public Guid? MessageBranchMenuId { get; set; }
     [Parameter] public ChatRunSnapshot? SelectedRun { get; set; }
+    [Parameter] public TimeSpan? GeneratingElapsed { get; set; }
     [Parameter] public int TranscriptRunPresentationVersion { get; set; }
     /// <summary>
     /// Looks up the run governing an arbitrary message's branch — given ANY message id (not
@@ -397,7 +427,9 @@
     private Guid? _renderedForkSourceId;
     private Guid? _renderedMessageBranchMenuId;
     private ChatRunSnapshot? _renderedSelectedRun;
+    private TimeSpan? _renderedGeneratingElapsed;
     private int _renderedTranscriptRunPresentationVersion;
+    private int _renderedExpandedTurnsVersion;
     private bool _renderedHasSelectedProject;
     private string? _renderedSelectedProjectName;
     private bool _renderedPinned = true;
@@ -412,7 +444,9 @@
             || _renderedForkSourceId != ForkSourceId
             || _renderedMessageBranchMenuId != MessageBranchMenuId
             || !ReferenceEquals(_renderedSelectedRun, SelectedRun)
+            || _renderedGeneratingElapsed != GeneratingElapsed
             || _renderedTranscriptRunPresentationVersion != TranscriptRunPresentationVersion
+            || _renderedExpandedTurnsVersion != _expandedTurnsVersion
             || _renderedHasSelectedProject != HasSelectedProject
             || _renderedSelectedProjectName != SelectedProjectName
             // The jump affordance lives entirely in this component's own state, and ShouldRender
@@ -430,7 +464,9 @@
         _renderedForkSourceId = ForkSourceId;
         _renderedMessageBranchMenuId = MessageBranchMenuId;
         _renderedSelectedRun = SelectedRun;
+        _renderedGeneratingElapsed = GeneratingElapsed;
         _renderedTranscriptRunPresentationVersion = TranscriptRunPresentationVersion;
+        _renderedExpandedTurnsVersion = _expandedTurnsVersion;
         _renderedHasSelectedProject = HasSelectedProject;
         _renderedSelectedProjectName = SelectedProjectName;
         _renderedPinned = _pinned;
@@ -475,6 +511,8 @@
             StateHasChanged();
             return;
         }
+
+        if (await AdvanceTurnExpansionAsync()) return;
 
         await ApplyDeferredScrollAsync();
         await SyncHistoryMarkersAsync();
@@ -590,6 +628,18 @@
     // from the position this feed is restored to.
     protected override void OnParametersSet()
     {
+        if (_expandedTurnsChatId != SelectedChat?.Id)
+        {
+            _expandedTurnsChatId = SelectedChat?.Id;
+            _expandedTurnItemLimits.Clear();
+            _turnExpansionsPending.Clear();
+            if (_expandedTurns.Count > 0)
+            {
+                _expandedTurns.Clear();
+                _expandedTurnsVersion++;
+            }
+        }
+
         // The tail limit has to be decided here rather than while rendering: it is handed to
         // TranscriptRenderBoundary as a parameter, and a parameter is read before the boundary
         // runs the child content that would otherwise compute it — so a limit set during the
@@ -765,8 +815,204 @@
     private string? _deferredRestoreKey;
     private bool _deferredScrollToBottom;
 
-    private List<ChatFeed.FeedItem> GetRenderedFeedItems() =>
-        ChatFeed.TakeTail(ChatFeed.BuildFeedItems(GetVisibleBranchMessages()), _renderedItemLimit);
+    private readonly record struct RenderedFeedEntry(
+        ChatFeed.FeedItem? Item = null,
+        ChatFeed.FeedTurn? Summary = null,
+        ChatMessageView? ChangesMessage = null,
+        int? RevealIndex = null);
+
+    private readonly HashSet<Guid> _expandedTurns = [];
+    private readonly Dictionary<Guid, int> _expandedTurnItemLimits = [];
+    private readonly HashSet<Guid> _turnExpansionsPending = [];
+    private int _expandedTurnsVersion;
+    private Guid? _expandedTurnsChatId;
+    private const int InitialExpandedTurnItemCount = 0;
+    private const int ExpandedTurnBatchSize = 2;
+
+    private List<RenderedFeedEntry> GetRenderedFeedItems()
+    {
+        var entries = new List<RenderedFeedEntry>();
+        foreach (var turn in ChatFeed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer()))
+        {
+            if (turn.UserMessage is { } user)
+            {
+                entries.Add(new RenderedFeedEntry(Item: new ChatFeed.FeedItem(user, null)));
+            }
+
+            // Orphaned legacy messages have no stable turn id and therefore keep their existing
+            // presentation. Normal turns get one summary when there is something to fold. A run
+            // which has only just started is the sole zero-item exception: "Working for ..."
+            // gives it a stable place before the first progress note lands.
+            if (turn.Id is null)
+            {
+                entries.AddRange(turn.IntermediateItems.Select(item => new RenderedFeedEntry(Item: item)));
+            }
+            else if (turn.IntermediateItems.Count > 0 || IsRunningTurn(turn))
+            {
+                entries.Add(new RenderedFeedEntry(Summary: turn));
+                if (IsTurnExpanded(turn))
+                {
+                    var visibleCount = Math.Min(GetExpandedTurnItemLimit(turn.Id!.Value), turn.IntermediateItems.Count);
+                    entries.AddRange(turn.IntermediateItems.Take(visibleCount)
+                        .Select((item, index) => new RenderedFeedEntry(
+                            Item: item,
+                            RevealIndex: index % ExpandedTurnBatchSize)));
+                    // File-change receipts from later chunks stay visible while the detailed
+                    // blocks are mounted over several frames.
+                    entries.AddRange(turn.IntermediateItems.Skip(visibleCount)
+                        .SelectMany(ChatFeed.MessagesOf)
+                        .Where(message => message.WorkspaceChanges is { IsEmpty: false })
+                        .Select(message => new RenderedFeedEntry(ChangesMessage: message)));
+                }
+                else
+                {
+                    // The message itself is folded, not its durable workspace receipt.
+                    entries.AddRange(turn.IntermediateMessages
+                        .Where(message => message.WorkspaceChanges is { IsEmpty: false })
+                        .Select(message => new RenderedFeedEntry(ChangesMessage: message)));
+                }
+            }
+
+            if (turn.FinalAnswer is { } answer)
+            {
+                entries.Add(new RenderedFeedEntry(Item: answer));
+            }
+        }
+
+        return ChatFeed.TakeTail(entries, _renderedItemLimit);
+    }
+
+    private bool LastTurnEndedWithoutFinalAnswer()
+    {
+        if (SelectedRun is not { } run
+            || run.Status is not (ChatRunStatus.Generating or ChatRunStatus.Failed
+                or ChatRunStatus.Interrupted or ChatRunStatus.Paused)) return false;
+
+        return run.ActiveMessageId is not null
+            || run.Queue.Any(item => item.Stage == QueuedMessageStage.UserCommitted);
+    }
+
+    private bool IsTurnExpanded(ChatFeed.FeedTurn turn) =>
+        turn.Id is { } id
+        && (_expandedTurns.Contains(id)
+            || (ForkSourceId is { } forkSource
+                && turn.IntermediateMessages.Any(message => message.Id == forkSource)));
+
+    private async Task ToggleTurnAsync(Guid turnId)
+    {
+        if (_messageScrollHandle is { } handle)
+        {
+            try { await handle.InvokeVoidAsync("anchorElement", $"turn-summary-{turnId}"); }
+            catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+        }
+
+        if (_expandedTurns.Remove(turnId))
+        {
+            _expandedTurnItemLimits.Remove(turnId);
+            _turnExpansionsPending.Remove(turnId);
+        }
+        else
+        {
+            _expandedTurns.Add(turnId);
+            _expandedTurnItemLimits[turnId] = InitialExpandedTurnItemCount;
+            _turnExpansionsPending.Add(turnId);
+        }
+        _expandedTurnsVersion++;
+    }
+
+    private int GetExpandedTurnItemLimit(Guid turnId) =>
+        _expandedTurnItemLimits.GetValueOrDefault(turnId, int.MaxValue);
+
+    private async Task<bool> AdvanceTurnExpansionAsync()
+    {
+        if (_turnExpansionsPending.Count == 0) return false;
+
+        // Yield between batches so the chevron paints immediately instead of one click paying
+        // for every accumulated tool-result presentation in a single UI-thread task.
+        await Task.Delay(TimeSpan.FromMilliseconds(16));
+        if (_disposed) return true;
+
+        var turns = ChatFeed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer())
+            .Where(turn => turn.Id is not null)
+            .ToDictionary(turn => turn.Id!.Value);
+        foreach (var turnId in _turnExpansionsPending.ToArray())
+        {
+            if (!turns.TryGetValue(turnId, out var turn) || !_expandedTurns.Contains(turnId))
+            {
+                _turnExpansionsPending.Remove(turnId);
+                _expandedTurnItemLimits.Remove(turnId);
+                continue;
+            }
+
+            var next = GetExpandedTurnItemLimit(turnId) + ExpandedTurnBatchSize;
+            if (next >= turn.IntermediateItems.Count)
+            {
+                _expandedTurnItemLimits[turnId] = int.MaxValue;
+                _turnExpansionsPending.Remove(turnId);
+            }
+            else
+            {
+                _expandedTurnItemLimits[turnId] = next;
+            }
+        }
+
+        _expandedTurnsVersion++;
+        StateHasChanged();
+        return true;
+    }
+
+    private bool IsCurrentTurn(ChatFeed.FeedTurn turn)
+    {
+        if (turn.Id is not { } id) return false;
+        return GetVisibleBranchMessages().LastOrDefault(message => message.Role == "User")?.Id == id;
+    }
+
+    private bool IsRunningTurn(ChatFeed.FeedTurn turn) =>
+        IsCurrentTurn(turn) && SelectedRun?.Status == ChatRunStatus.Generating;
+
+    private string GetTurnSummaryText(ChatFeed.FeedTurn turn)
+    {
+        var elapsed = GetTurnDuration(turn);
+        var duration = ChatFeed.FormatDuration(elapsed);
+        if (IsRunningTurn(turn))
+        {
+            return ChatFeed.RunningTitleOf(turn, elapsed) ?? $"Working for {duration}";
+        }
+
+        if (IsCurrentTurn(turn))
+        {
+            return SelectedRun?.Status switch
+            {
+                ChatRunStatus.Failed => $"Failed after {duration}",
+                ChatRunStatus.Interrupted or ChatRunStatus.Paused => $"Stopped after {duration}",
+                _ => $"Worked for {duration}"
+            };
+        }
+
+        return $"Worked for {duration}";
+    }
+
+    private TimeSpan GetTurnDuration(ChatFeed.FeedTurn turn)
+    {
+        if (IsRunningTurn(turn) && GeneratingElapsed is { } generating) return generating;
+        if (turn.UserMessage is not { } user || turn.LastMessage is not { } last) return TimeSpan.Zero;
+        return last.CreatedAt > user.CreatedAt ? last.CreatedAt - user.CreatedAt : TimeSpan.Zero;
+    }
+
+    private int? GetGeneratingElapsedSeconds() => GeneratingElapsed is { } elapsed
+        ? Math.Max(0, (int)elapsed.TotalSeconds)
+        : null;
+
+    private string GetTurnSummaryStateClasses(ChatFeed.FeedTurn turn)
+    {
+        var messages = turn.IntermediateMessages.ToArray();
+        return string.Join(' ', new[]
+        {
+            messages.Any(message => message.Id == BranchLeafId) ? "branch-leaf" : null,
+            messages.Any(message => message.Id == JustArrivedLeafId) ? "branch-leaf-arrived" : null,
+            messages.Any(message => message.Id == ForkSourceId) ? "fork-source" : null
+        }.Where(value => value is not null));
+    }
 
     private void EnsureBranchCache()
     {
@@ -825,22 +1071,7 @@
 
     private IReadOnlyList<ChatMessageView> ComputeVisibleBranchMessages()
     {
-        if (SelectedChat is null || BranchLeafId is null)
-        {
-            return SelectedChat?.Messages.OrderBy(item => item.CreatedAt).ToArray() ?? [];
-        }
-
-        var byId = SelectedChat.Messages.ToDictionary(item => item.Id);
-        var branch = new List<ChatMessageView>();
-        var currentId = BranchLeafId;
-        while (currentId is { } messageId && byId.TryGetValue(messageId, out var message))
-        {
-            branch.Add(message);
-            currentId = message.ParentId;
-        }
-
-        branch.Reverse();
-        return branch;
+        return SelectedChat is null ? [] : ChatFeed.BuildBranch(SelectedChat.Messages, BranchLeafId);
     }
 
     private HashSet<Guid> GetForkPointIds()

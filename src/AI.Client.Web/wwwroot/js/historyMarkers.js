@@ -63,7 +63,23 @@ const persistCapturedScrollPosition = (key, saved) => {
     localStorage.setItem(ScrollPositionKeyPrefix + key, JSON.stringify(saved));
 };
 
-const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
+// A frame, or a timer if frames are not coming. requestAnimationFrame stops ticking in a tab that
+// is not being painted — another window in front, another tab selected, a headless viewport — and
+// the restore loop below would then wait forever, leaving the feed wherever the switch left it and
+// the caller's await unresolved. The timer keeps the loop advancing at a coarser rate instead,
+// which is all it needs: it only re-applies a scroll target until the height stops moving.
+const FrameFallbackMs = 100;
+
+const nextFrame = () => new Promise(resolve => {
+    const frame = requestAnimationFrame(() => {
+        clearTimeout(fallback);
+        resolve();
+    });
+    const fallback = setTimeout(() => {
+        cancelAnimationFrame(frame);
+        resolve();
+    }, FrameFallbackMs);
+});
 
 const restoreAfterLayoutSettles = async (scroller, key, saved) => {
     const startedAt = performance.now();

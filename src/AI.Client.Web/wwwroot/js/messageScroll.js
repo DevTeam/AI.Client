@@ -38,6 +38,11 @@ export function attach(scroller, owner) {
     // computes a no-op, because it compares against where the anchor actually ended up.
     let anchor = null;
     let anchorOffset = 0;
+    // Anchoring holds the transcript still against content appearing above — which is exactly
+    // what a deliberate move (restoring a remembered reading position) looks like from the
+    // outside. Left on, it measures the drift its own caller just introduced and undoes it, so
+    // the feed is put back where the move started.
+    let anchoring = true;
 
     // How far down the tree the anchor is allowed to sit. A message is not a small enough unit to
     // anchor to on its own: expanding a tool group inside the very message being read leaves that
@@ -85,7 +90,7 @@ export function attach(scroller, owner) {
         // offsetParent is null for an anchor that has since been hidden — inside a tool row that
         // was collapsed, say. There is nothing to hold it against any more, so leave the position
         // alone rather than acting on a zeroed rectangle.
-        if (pinned || anchor === null || !anchor.isConnected || anchor.offsetParent === null) return;
+        if (!anchoring || pinned || anchor === null || !anchor.isConnected || anchor.offsetParent === null) return;
         const edge = scroller.getBoundingClientRect().top;
         const drift = anchor.getBoundingClientRect().top - edge - anchorOffset;
         if (Math.abs(drift) < 1) return;
@@ -146,6 +151,18 @@ export function attach(scroller, owner) {
             return true;
         },
         scrollToBottom: () => toBottom(false),
+        // Called after the feed has been put somewhere deliberately — a restored reading position.
+        // The anchor still holds whatever was under the top edge before that move, and the next
+        // mutation would drag the transcript back to it; re-reading it makes the new position the
+        // one worth holding.
+        // Brackets a deliberate move. Off, the anchor stops fighting it; on, the position the move
+        // arrived at becomes the one worth holding against everything that lands afterwards.
+        setAnchoring: enabled => {
+            anchoring = enabled;
+            if (!enabled) return;
+            anchor = null;
+            captureAnchor();
+        },
         jumpToBottom: () => toBottom(true),
         dispose: () => {
             observer.disconnect();

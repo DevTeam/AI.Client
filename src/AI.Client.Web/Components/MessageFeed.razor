@@ -90,8 +90,9 @@
                                   JustArrivedLeafId="@JustArrivedLeafId"
                                   ForkSourceId="@ForkSourceId"
                                   BranchMenuId="@MessageBranchMenuId"
-                                  RunPresentationVersion="@TranscriptRunPresentationVersion">
-        @foreach (var item in ChatFeed.BuildFeedItems(GetVisibleBranchMessages()))
+                                  RunPresentationVersion="@TranscriptRunPresentationVersion"
+                                  ItemLimit="@_renderedItemLimit">
+        @foreach (var item in GetRenderedFeedItems())
         {
             @if (item.Message is { } message)
             {
@@ -401,6 +402,7 @@
     private string? _renderedSelectedProjectName;
     private bool _renderedPinned = true;
     private bool _renderedNewBelow;
+    private bool _expandRenderRequested;
 
     protected override bool ShouldRender()
     {
@@ -416,7 +418,11 @@
             // The jump affordance lives entirely in this component's own state, and ShouldRender
             // is what decides whether its StateHasChanged reaches the DOM at all.
             || _renderedPinned != _pinned
-            || _renderedNewBelow != _newBelow;
+            || _renderedNewBelow != _newBelow
+            // The expansion render changes no parameter at all — only how much of the chain this
+            // component draws — so without this it would never reach the DOM. It cannot be
+            // expressed as a comparison: ShouldRender runs before the render that sets the limit.
+            || _expandRenderRequested;
 
         _renderedSelectedChat = SelectedChat;
         _renderedBranchLeafId = BranchLeafId;
@@ -429,6 +435,7 @@
         _renderedSelectedProjectName = SelectedProjectName;
         _renderedPinned = _pinned;
         _renderedNewBelow = _newBelow;
+        _expandRenderRequested = false;
 
         return changed;
     }
@@ -455,7 +462,42 @@
             }
         }
 
+        if (_expandPending)
+        {
+            _expandPending = false;
+            // One frame for the browser to paint the tail before the rest of the chain is parsed:
+            // the point of the split is that the user sees something, not that the work is
+            // reordered behind an unchanged blank screen.
+            await Task.Delay(TimeSpan.FromMilliseconds(16));
+            if (_disposed) return;
+            _renderedItemLimit = int.MaxValue;
+            _expandRenderRequested = true;
+            StateHasChanged();
+            return;
+        }
+
+        await ApplyDeferredScrollAsync();
         await SyncHistoryMarkersAsync();
+    }
+
+    // The tail is rendered bottom-anchored, so a scroll request made against it is either already
+    // right (the bottom) or aimed at a message that does not exist yet. Either way it is replayed
+    // here, once the whole chain is in the DOM.
+    private async Task ApplyDeferredScrollAsync()
+    {
+        if (_deferredRestoreKey is { } key)
+        {
+            _deferredRestoreKey = null;
+            _deferredScrollToBottom = false;
+            await RestoreScrollPositionAsync(key);
+            return;
+        }
+
+        if (_deferredScrollToBottom)
+        {
+            _deferredScrollToBottom = false;
+            await ScrollToBottomAsync();
+        }
     }
 
     /// <summary>
@@ -467,6 +509,11 @@
     public async Task ScrollToBottomAsync()
     {
         if (_disposed) return;
+        // While only the tail is rendered the bottom is real but provisional: the rest of the
+        // chain lands above it and the scroller grows, so go there now (the first paint should
+        // show the newest message, not the middle of the transcript) and again afterwards.
+        if (_renderedItemLimit != int.MaxValue) _deferredScrollToBottom = true;
+
         ClearNewBelow();
         if (_messageScrollHandle is { } handle)
         {
@@ -543,6 +590,21 @@
     // from the position this feed is restored to.
     protected override void OnParametersSet()
     {
+        // The tail limit has to be decided here rather than while rendering: it is handed to
+        // TranscriptRenderBoundary as a parameter, and a parameter is read before the boundary
+        // runs the child content that would otherwise compute it — so a limit set during the
+        // render reaches the boundary one render too late and its content stays truncated.
+        // A new revision of the same transcript is not a new transcript: streaming must not send
+        // the feed back to its tail on every token.
+        if (_progressiveChatId != SelectedChat?.Id || _progressiveBranchLeafId != BranchLeafId)
+        {
+            _progressiveChatId = SelectedChat?.Id;
+            _progressiveBranchLeafId = BranchLeafId;
+            var isLongTranscript = (SelectedChat?.Messages.Count ?? 0) > InitialRenderedItemCount;
+            _renderedItemLimit = isLongTranscript ? InitialRenderedItemCount : int.MaxValue;
+            _expandPending = isLongTranscript;
+        }
+
         if (_scrollResetChatId == SelectedChat?.Id && _scrollResetBranchLeafId == BranchLeafId) return;
         _scrollResetChatId = SelectedChat?.Id;
         _scrollResetBranchLeafId = BranchLeafId;
@@ -557,6 +619,17 @@
     {
         var module = _historyMarkersModule;
         if (_disposed) return;
+        // A remembered position points at a message that the tail does not contain yet. Show the
+        // end of the transcript meanwhile — the same thing a chat with nothing remembered shows —
+        // and put the feed where the user left it once there is something to put it against.
+        if (_renderedItemLimit != int.MaxValue)
+        {
+            _deferredRestoreKey = key;
+            await ScrollToBottomAsync();
+            return;
+        }
+
+
         if (module is null)
         {
             await ScrollToBottomAsync();
@@ -564,13 +637,37 @@
         }
         try
         {
-            var restored = await module.InvokeAsync<bool>("restoreScrollPosition", _messagesContainer, key);
+            // Anchoring off for the duration: it holds the position the feed is being moved AWAY
+            // from, and the rest of a transcript landing above the tail gives it every excuse to
+            // put it back. Back on at the restored position — see SetScrollAnchoringAsync.
+            await SetScrollAnchoringAsync(false);
+            bool restored;
+            try
+            {
+                restored = await module.InvokeAsync<bool>("restoreScrollPosition", _messagesContainer, key);
+            }
+            finally
+            {
+                await SetScrollAnchoringAsync(true);
+            }
+
             if (!restored) await ScrollToBottomAsync();
         }
         catch (Exception error) when (error is JSException or ObjectDisposedException)
         {
             await ScrollToBottomAsync();
         }
+    }
+
+    // The scroll anchor is the transcript's memory of what the user was reading, held against
+    // anything that changes height above it. Turning it back on re-reads that memory from where
+    // the feed now is, so a deliberate move becomes the position being defended rather than the
+    // one being corrected away.
+    private async Task SetScrollAnchoringAsync(bool enabled)
+    {
+        if (_disposed || _messageScrollHandle is not { } handle) return;
+        try { await handle.InvokeVoidAsync("setAnchoring", enabled); }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
     }
 
     public async Task SaveScrollPositionAsync(string key)
@@ -596,6 +693,9 @@
     private async Task SyncHistoryMarkersAsync()
     {
         if (_disposed || _historyMarkersModule is null) return;
+        // The strip measures the position of every message element it points at, so measuring it
+        // against a half-rendered chain would place every marker wrong.
+        if (_renderedItemLimit != int.MaxValue) return;
 
         if (SelectedChat is null)
         {
@@ -647,6 +747,26 @@
     private HashSet<Guid> _branchCacheMessageIds = [];
     private Dictionary<Guid, List<ChatMessageView>> _branchCacheChildrenByParent = [];
     private HashSet<Guid> _branchCacheForkPoints = [];
+
+    // Opening a transcript renders its tail first — the part that is actually on screen — and the
+    // rest one frame later. Markdig plus the sanitizer cost hundreds of milliseconds on a long
+    // chat (and several times that in the browser's interpreter), all of it on the one thread that
+    // also has to paint, so rendering the whole chain up front is the freeze the user feels on
+    // every switch. The tail is what the eye lands on, so it is what the first frame owes them.
+    private const int InitialRenderedItemCount = 10;
+    private Guid? _progressiveChatId;
+    private Guid? _progressiveBranchLeafId;
+    private int _renderedItemLimit = int.MaxValue;
+    private bool _expandPending;
+
+    // Position requests that arrive while only the tail exists. Restoring to a message that is not
+    // in the DOM yet would silently fall back to the bottom, and a bottom that is about to grow
+    // upwards is not the same bottom — so both are re-applied once the full chain is rendered.
+    private string? _deferredRestoreKey;
+    private bool _deferredScrollToBottom;
+
+    private List<ChatFeed.FeedItem> GetRenderedFeedItems() =>
+        ChatFeed.TakeTail(ChatFeed.BuildFeedItems(GetVisibleBranchMessages()), _renderedItemLimit);
 
     private void EnsureBranchCache()
     {
@@ -802,7 +922,9 @@
     // SelectedRun tracks — so "is this branch generating" is a single check, not per-message.
     private bool IsBranchGenerating() => SelectedRun?.Status == ChatRunStatus.Generating;
 
-    private const int RetainedMarkdownChatCount = 2;
+    // Matches the chat-details LRU in Home: the same five transcripts stay instant to switch
+    // between, and the rendered HTML for the rest is dropped rather than accumulated.
+    private const int RetainedMarkdownChatCount = 5;
     private readonly Dictionary<Guid, (Guid ChatId, string Content, string Html)> _markdownCache = [];
     private readonly LinkedList<Guid> _markdownChatLru = [];
 

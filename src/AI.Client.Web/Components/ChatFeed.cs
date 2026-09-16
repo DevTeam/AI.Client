@@ -54,6 +54,15 @@ public static class ChatFeed
     /// <c>preamble + its tools → preamble + its tools → final answer</c>: each cycle is one block
     /// reading intent first, actions under it.
     /// </summary>
+    /// <summary>
+    /// The last <paramref name="limit"/> items, in order — what a transcript shows before the
+    /// rest of it has been rendered. The tail is the part the feed opens at, so it is the part
+    /// worth paying for first; anything above it is reached by scrolling, which cannot happen in
+    /// the frame that opens the chat.
+    /// </summary>
+    public static List<FeedItem> TakeTail(List<FeedItem> items, int limit) =>
+        limit >= items.Count ? items : items.GetRange(items.Count - Math.Max(limit, 0), Math.Max(limit, 0));
+
     public static List<FeedItem> BuildFeedItems(IReadOnlyList<ChatMessageView> chain)
     {
         var items = new List<FeedItem>();

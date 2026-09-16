@@ -87,7 +87,8 @@ public sealed class AppSubtaskTool(
             Description = "Delegate work to a separate conversation and get back only its answer, so the details never enter your own "
                           + "context. Pass the project and chat you are running in: the subtask inherits their directory grants and tool "
                           + "policies. Each task answers through its own 'connectionId' if it names an enabled one, else the call's "
-                          + "'connectionId', else the one marked for subtasks, else the calling chat's. Read the settings resource to "
+                          + "'connectionId', else one of the connections marked for subtasks — several may be, and tasks naming none "
+                          + "are dealt out over them in turn — else the calling chat's. Read the settings resource to "
                           + "see what each connection is worth: a connection may carry a capability and a cost from 1 to 5 and a line on "
                           + "what it is good for, so mechanical work can go to a cheaper model and hard work to a stronger one. Tasks of "
                           + "one call run at the same time, while separate calls do not, so put every task you want run in parallel into "
@@ -116,8 +117,13 @@ public sealed class AppSubtaskTool(
         (ChatCompletionRequest Template, string Name)[] endpoints;
         try
         {
-            endpoints = await Task.WhenAll(tasks.Select(item =>
-                RequestTemplateAsync(projectId, chatId, item.ConnectionId ?? connectionId, cancellationToken)));
+            // Only the tasks that named nothing take a turn in the rotation, so one pinned task
+            // does not shift where the rest of the batch lands.
+            var unaddressed = 0;
+            var wanted = tasks.Select(item => item.ConnectionId ?? connectionId)
+                .Select(chosen => (Chosen: chosen, Turn: chosen is null ? unaddressed++ : 0)).ToArray();
+            endpoints = await Task.WhenAll(wanted.Select(item =>
+                RequestTemplateAsync(projectId, chatId, item.Chosen, item.Turn, cancellationToken)));
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
@@ -238,27 +244,35 @@ public sealed class AppSubtaskTool(
         text is null ? string.Empty : text.Length <= MaxEntryLength ? text : text[..MaxEntryLength] + "…";
 
     /// <summary>
-    /// The connection the subtask speaks through: the one it was given, else the calling chat's,
-    /// else its project's. A named connection must be one of the user's own and switched on — the
-    /// subtask chooses among what is configured, it does not describe an endpoint of its own.
+    /// The connection the subtask speaks through: the one it was given, else one of those marked
+    /// for subtasks, else the calling chat's or its project's. A named connection must be one of
+    /// the user's own and switched on — the subtask chooses among what is configured, it does not
+    /// describe an endpoint of its own.
     /// </summary>
+    /// <param name="turn">
+    /// Which unaddressed task this is. Several connections may be marked for subtasks, and the
+    /// tasks that named none are dealt out over them in turn, so a fan-out is answered by several
+    /// providers at once rather than queueing behind one.
+    /// </param>
     private async Task<(ChatCompletionRequest Template, string Name)> RequestTemplateAsync(
-        Guid projectId, Guid chatId, Guid? requested, CancellationToken cancellationToken)
+        Guid projectId, Guid chatId, Guid? requested, int turn, CancellationToken cancellationToken)
     {
         var chat = await chats.GetAsync(projectId, chatId, cancellationToken)
             ?? throw new InvalidOperationException("Chat not found.");
         var project = await projects.GetAsync(projectId, cancellationToken)
             ?? throw new InvalidOperationException("Project not found.");
         var global = await settings.LoadAsync(cancellationToken);
-        // Naming a connection is exact and fails loudly. Naming none falls back to the one marked
+        // Naming a connection is exact and fails loudly. Naming none falls back to the ones marked
         // for subtasks — the whole point of that mark is that delegated work need not cost what the
         // conversation costs — and only then to whatever the conversation itself runs on.
+        var marked = global.Connections.Where(item => item.ForSubtasks && item.Enabled).ToArray();
         var connection = requested is { } named
             ? global.Connections.SingleOrDefault(item => item.Id == named && item.Enabled)
               ?? throw new InvalidOperationException("No enabled connection has that id. Read the settings to see which exist.")
-            : global.Connections.SingleOrDefault(item => item.ForSubtasks && item.Enabled)
-              ?? global.Connections.SingleOrDefault(item => item.Id == (chat.ConnectionId ?? project.ConnectionId) && item.Enabled)
-              ?? throw new InvalidOperationException("The calling chat has no enabled connection.");
+            : marked.Length > 0
+                ? marked[turn % marked.Length]
+                : global.Connections.SingleOrDefault(item => item.Id == (chat.ConnectionId ?? project.ConnectionId) && item.Enabled)
+                  ?? throw new InvalidOperationException("The calling chat has no enabled connection.");
         return (new ChatCompletionRequest(connection.BaseUrl, connection.Model,
             await secrets.GetAsync("connection", connection.Id, cancellationToken), string.Empty, null, []),
             connection.Name);

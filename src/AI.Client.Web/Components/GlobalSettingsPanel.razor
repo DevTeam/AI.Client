@@ -133,13 +133,14 @@
     }
 
     /// <summary>
-    /// Unlike the default, which the application always needs one of, subtasks are content to
-    /// inherit the calling chat's connection — so unticking this leaves none marked, and does.
+    /// Unlike the default, which the application always needs exactly one of, this mark is a set:
+    /// tick several and a fan-out of subtasks is dealt out over them instead of queueing behind one
+    /// provider. Ticking none is also an answer — subtasks then inherit the calling chat's.
     /// </summary>
     private void SetSubtaskConnection(Guid id, ChangeEventArgs args)
     {
-        var wanted = args.Value is true;
-        foreach (var connection in _connections) connection.ForSubtasks = wanted && connection.Id == id;
+        var connection = _connections.SingleOrDefault(item => item.Id == id);
+        if (connection is not null) connection.ForSubtasks = args.Value is true;
     }
 
     private static readonly string[] Capabilities = ["weak", "modest", "solid", "strong", "frontier"];

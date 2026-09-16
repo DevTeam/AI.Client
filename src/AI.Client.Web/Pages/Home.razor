@@ -258,10 +258,11 @@
             <section class="chat-queue"><div class="queue-header"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @pendingQueue.Count</span><AppIcon Name="chevron-right" /></button><div class="queue-actions">@if (_isConfirmingQueueClearAll) { <span class="queue-clear-confirm"><span>Stop the run and drop everything?</span><button class="danger compact-action" type="button" @onclick="ClearEverythingAsync">Clear all</button><button class="secondary-action compact-action" type="button" @onclick="() => _isConfirmingQueueClearAll = false">Cancel</button></span> } else { <button type="button" class="queue-action-button queue-action-clear" title="@($"Remove the {pendingQueue.Count} message(s) still waiting in the queue")" aria-label="Clear queued messages" @onclick="ClearQueueAsync"><AppIcon Name="x" /></button>@if (HasCommittedCommand(selectedRun)) { <button type="button" class="queue-action-button destructive-action" title="Stop the run and clear everything, including the message already sent" aria-label="Stop and clear everything" @onclick="() => _isConfirmingQueueClearAll = true"><AppIcon Name="trash" /></button> } }</div></div>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in pendingQueue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span title="@item.Content">@GetSingleLine(item.Content)</span><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }</section>
         }
         <div class="composer-status" role="status">
+            @* Held states carry no status word: the turn chip above already names the state and,
+               for a failure, its reason. This line says only what the Enter key will do. *@
             @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <span>@($"Generating{(GetGeneratingElapsed() is { } elapsed ? $"... {FormatElapsed(elapsed)}" : "...")}{GetGeneratingEnterHint()}")</span> }
-            else if (GetSelectedRun() is { Status: ChatRunStatus.Paused } pausedRun) { <span>@($"Stopped{GetHeldRunEnterHint(pausedRun)}")</span> }
-            else if (GetSelectedRun() is { Status: ChatRunStatus.Interrupted } interruptedRun) { <span>@($"Interrupted{GetHeldRunEnterHint(interruptedRun)}")</span> }
-            else if (GetSelectedRun() is { Status: ChatRunStatus.Failed } failedRun) { <span class="error">@($"Failed{GetHeldRunEnterHint(failedRun)}")</span> }
+            else if (GetSelectedRun() is { Status: ChatRunStatus.Paused or ChatRunStatus.Interrupted } heldRun) { <span>@GetHeldRunEnterHint(heldRun)</span> }
+            else if (GetSelectedRun() is { Status: ChatRunStatus.Failed } failedRun) { <span class="error">@GetHeldRunEnterHint(failedRun)</span> }
             else if (GetReplaceSource() is { } replaceSource) { <span class="fork-mode replace-mode"><AppIcon Name="edit-replace" /><span>Replacing branch from “@GetMessagePreview(replaceSource.Content)”</span><button class="icon-action" type="button" title="Cancel replacement" aria-label="Cancel replacement" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
             else if (GetForkSource() is { } forkSource) { <span class="fork-mode"><AppIcon Name="fork" /><span>Forking from “@GetMessagePreview(forkSource.Content)”</span><button class="icon-action" type="button" title="Cancel fork" aria-label="Cancel fork" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
             else { <span>@GetComposerHint()</span> }
@@ -1106,11 +1107,11 @@
 
     private string GetHeldRunEnterHint(ChatRunSnapshot run)
     {
-        if (run.Status == ChatRunStatus.Failed && !run.CanRetry) return " · retry, rebase or discard the message above";
-        if (_composerAltDown && _composerCtrlDown) return " · fork on Enter, starts immediately";
-        if (_composerCtrlDown && _composerShiftDown) return " · discard the stopped message and send on Enter";
-        if (_composerCtrlDown) return " · queue on Enter, stays paused";
-        return run.Queue.Count > 0 ? " · resume queue and send on Enter" : " · resume and send on Enter";
+        if (run.Status == ChatRunStatus.Failed && !run.CanRetry) return "Retry, rebase or discard the message above";
+        if (_composerAltDown && _composerCtrlDown) return "Fork on Enter, starts immediately";
+        if (_composerCtrlDown && _composerShiftDown) return "Discard the stopped message and send on Enter";
+        if (_composerCtrlDown) return "Queue on Enter, stays paused";
+        return run.Queue.Count > 0 ? "Resume queue and send on Enter" : "Resume and send on Enter";
     }
 
     private ComposerSendButton.SendMode GetComposerSendMode() =>

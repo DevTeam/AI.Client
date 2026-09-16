@@ -709,7 +709,9 @@ public sealed class ChatRunDispatcher(
     /// </summary>
     private async Task CommitPartialAnswerAsync(Runtime runtime)
     {
-        if (runtime.ActiveMessageId is not { } active || runtime.State.StreamingContent.Length == 0) return;
+        // Whitespace is not an answer: a message made of it is refused by the domain, so there is
+        // nothing to keep and nothing to report.
+        if (runtime.ActiveMessageId is not { } active || string.IsNullOrWhiteSpace(runtime.State.StreamingContent)) return;
         if (_maintenance.ContainsKey(runtime.State.ChatId) || _deletingProjects.ContainsKey(runtime.State.ProjectId)) return;
         try
         {

@@ -46,11 +46,6 @@ public sealed class GlobalSettingsService(
             throw new ArgumentException("Only one connection can be the default.", nameof(request));
         }
 
-        if (connections.Count(item => item.ForSubtasks) > 1)
-        {
-            throw new ArgumentException("Only one connection can be the one subtasks use.", nameof(request));
-        }
-
         connections = connections
             .Select(item => item.Enabled ? item : item with { IsDefault = false, ForSubtasks = false }).ToArray();
 

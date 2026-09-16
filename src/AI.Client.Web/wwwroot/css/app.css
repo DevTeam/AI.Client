@@ -2945,6 +2945,14 @@ textarea {
     color: #b4b4b4;
 }
 
+.turn-summary.is-static {
+    cursor: default;
+}
+
+.turn-summary.is-static:hover {
+    color: #8a8a8a;
+}
+
 .turn-summary-text {
     min-width: 0;
     overflow: hidden;

@@ -102,18 +102,35 @@
             {
                 var turnId = summary.Id!.Value;
                 var expanded = IsTurnExpanded(summary);
+                var canExpand = CanExpandTurn(summary);
                 var summaryKey = (turnId, "turn-summary");
-                <button @key="summaryKey" id="turn-summary-@turnId" type="button"
-                        class="turn-summary @(expanded ? "is-expanded" : string.Empty) @(IsAbsorbingInto(summary) ? "is-receiving" : string.Empty) @GetTurnSummaryStateClasses(summary)"
-                        aria-expanded="@(expanded ? "true" : "false")"
-                        @onclick="() => ToggleTurnAsync(turnId)">
+                RenderFragment summaryContent = @<text>
                     @if (IsRunningTurn(summary))
                     {
                         <span class="turn-summary-spinner" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
                     }
                     <span class="turn-summary-text">@GetTurnSummaryText(summary)</span>
-                    <span class="turn-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-right" /></span>
-                </button>
+                    @if (canExpand)
+                    {
+                        <span class="turn-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-right" /></span>
+                    }
+                </text>;
+                @if (canExpand)
+                {
+                    <button @key="summaryKey" id="turn-summary-@turnId" type="button"
+                            class="turn-summary @(expanded ? "is-expanded" : string.Empty) @(IsAbsorbingInto(summary) ? "is-receiving" : string.Empty) @GetTurnSummaryStateClasses(summary)"
+                            aria-expanded="@(expanded ? "true" : "false")"
+                            @onclick="() => ToggleTurnAsync(turnId)">
+                        @summaryContent
+                    </button>
+                }
+                else
+                {
+                    <div @key="summaryKey" id="turn-summary-@turnId"
+                         class="turn-summary is-static @(IsAbsorbingInto(summary) ? "is-receiving" : string.Empty) @GetTurnSummaryStateClasses(summary)">
+                        @summaryContent
+                    </div>
+                }
             }
             else if (entry.ChangesMessage is { WorkspaceChanges: { IsEmpty: false } collapsedChanges })
             {
@@ -976,6 +993,10 @@
         && (_expandedTurns.Contains(id)
             || (ForkSourceId is { } forkSource
                 && turn.IntermediateMessages.Any(message => message.Id == forkSource)));
+
+    private bool CanExpandTurn(ChatFeed.FeedTurn turn) =>
+        turn.IntermediateItems.Count > 0
+        || IsCurrentTurn(turn) && SelectedRun?.ActiveTools is { Count: > 0 };
 
     private async Task ToggleTurnAsync(Guid turnId)
     {

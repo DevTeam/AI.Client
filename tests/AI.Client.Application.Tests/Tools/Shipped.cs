@@ -10,14 +10,15 @@ using AI.Client.Contracts.Tools;
 internal static class Shipped
 {
     private static ToolPresentations Instance { get; } = new(
-    [
-        new FileToolPresentationAdapter(),
-        new ProcessToolPresentationAdapter(),
-        new WebToolPresentationAdapter(),
-        new AppReadPresentationAdapter(),
-        new AppWritePresentationAdapter(),
-        new AppSubtaskPresentationAdapter(),
-    ]);
+        new GenericToolPresentationAdapter(),
+        [
+            new FileToolPresentationAdapter(),
+            new ProcessToolPresentationAdapter(),
+            new WebToolPresentationAdapter(),
+            new AppReadPresentationAdapter(),
+            new AppWritePresentationAdapter(),
+            new AppSubtaskPresentationAdapter(),
+        ]);
 
     public static ToolCallPresentation DescribeCall(string callName, string? arguments) =>
         Instance.DescribeCall(callName, arguments);

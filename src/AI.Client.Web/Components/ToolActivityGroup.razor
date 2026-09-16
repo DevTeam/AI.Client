@@ -5,7 +5,7 @@
    anything the Host did not observe. Raw arguments and bulk output stay out of the DOM until a
    row is expanded, so a 10MB stdout costs nothing to scroll past. *@
 @using AI.Client.Contracts.Tools
-@inject AI.Client.Contracts.Tools.ToolPresentations Presentations
+@inject IToolPresentations Presentations
 
 <div class="tool-activity">
     @{

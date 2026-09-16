@@ -120,7 +120,7 @@ public class ToolPresentationsTests
     [Fact]
     public void ShouldFallBackToTheGenericAdapterWhenASpecificOneThrows()
     {
-        var presentations = new ToolPresentations([new ThrowingAdapter()]);
+        var presentations = new ToolPresentations(new GenericToolPresentationAdapter(), [new ThrowingAdapter()]);
 
         var call = presentations.DescribeCall("some__tool", "{}");
         var result = presentations.DescribeResult("some__tool", "{}", Result("""{"content":[]}"""));

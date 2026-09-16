@@ -46,24 +46,18 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 ProtectedDataUserDataProtector, ChatCompletionSseParser,
                 OpenAiCompatibleChatCompletionClient, ChatEndpoint, GlobalSettingsPaths, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
                 GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, ToolPolicyResolver, WorkspaceChangeTracker,
-                AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory>()
+                AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ToolPresentations>()
             // Both groups are consumed as sets, so each registration is tagged to stay distinct
             // instead of the last one silently winning its contract.
             .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool>(Tag.Unique)
-            // The adapters are pure functions with no dependencies of their own, and the set is
-            // what the container has to hand out: three of them share the same abstract base, so
-            // registering them individually would also register them against that base and one
-            // would silently override the others. The set is therefore built here, where the
-            // composition decides which adapters this build ships.
-            .Singleton(_ => new ToolPresentations(
-            [
-                new FileToolPresentationAdapter(),
-                new ProcessToolPresentationAdapter(),
-                new WebToolPresentationAdapter(),
-                new AppReadPresentationAdapter(),
-                new AppWritePresentationAdapter(),
-                new AppSubtaskPresentationAdapter(),
-            ]))
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<FileToolPresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<ProcessToolPresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<WebToolPresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppReadPresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppWritePresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppSubtaskPresentationAdapter>()
+            // Should be last
+            .Bind<IToolPresentationAdapter>().As(Lifetime.Singleton).To<GenericToolPresentationAdapter>()
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
             .Transient((ProjectStorageLocation location) => location.RootDirectory);

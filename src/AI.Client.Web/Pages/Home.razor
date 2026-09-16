@@ -78,7 +78,13 @@
             @if (project.Id == _selectedProject?.Id)
             {
                 <nav class="workspace-chat-list" aria-label="Chats in @project.Name" @onkeydown="OnChatListKeyDown">
-                    @foreach (var chat in GetOrderedChats())
+                    @{
+                        var orderedChats = GetOrderedChats();
+                        var visibleChatCount = GetVisibleChatCount(orderedChats);
+                        var hiddenChatCount = orderedChats.Count - visibleChatCount;
+                        var hiddenChatAttention = hiddenChatCount > 0 ? CountHiddenChatsNeedingAttention(orderedChats, visibleChatCount) : 0;
+                    }
+                    @foreach (var chat in orderedChats.Take(visibleChatCount))
                     {
                         var branchCount = GetBranchCount(chat);
                         <div @key="chat.Id" class="chat-nav-row @(_globalSection is null && chat.Id == _selectedChat?.Id && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty)" title="@GetRunTitle(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
@@ -151,6 +157,19 @@
                                 </div>
                             }
                         }
+                    }
+                    @if (hiddenChatCount > 0 || _visibleChatCount > ChatPageSize)
+                    {
+                        <div class="chat-list-pager">
+                            @if (hiddenChatCount > 0)
+                            {
+                                <button class="workspace-nav-item chat-list-more" type="button" @onclick="ShowMoreChats" aria-label="@GetShowMoreChatsLabel(hiddenChatCount, hiddenChatAttention)"><span class="nav-item-label">Show @hiddenChatCount more</span>@if (hiddenChatAttention > 0) { <span class="chat-list-more-attention" title="@GetHiddenAttentionTitle(hiddenChatAttention)" aria-hidden="true">@FormatBranchCount(hiddenChatAttention)</span> }</button>
+                            }
+                            @if (_visibleChatCount > ChatPageSize)
+                            {
+                                <button class="workspace-nav-item chat-list-less" type="button" @onclick="ShowFewerChats" aria-label="Show fewer chats"><span class="nav-item-label">Less</span></button>
+                            }
+                        </div>
                     }
                     @if (_chats.Count == 0) { <span class="empty-hint">No chats yet</span> }
                 </nav>
@@ -445,6 +464,10 @@
     private ElementReference _composer;
     private MessageFeed? _messageFeed;
     private bool _scrollMessagesToBottom;
+    // New transcript content has arrived on its own (a run snapshot), as opposed to the user
+    // asking to be at the end. The feed decides what to do with it: follow it only if the user is
+    // already at the bottom. See MessageFeed.FollowNewContentAsync.
+    private bool _followNewMessages;
     private IJSObjectReference? _composerModule;
     private IJSObjectReference? _composerHandle;
     private DotNetObjectReference<Home>? _dotNetReference;
@@ -550,16 +573,25 @@
 
         if (_scrollMessagesToBottom && _messageFeed is not null)
         {
-            // An explicit "just sent/received a message" always wins over a stale pending
-            // restore from whatever chat/branch switch happened to precede it in this render.
+            // An explicit "just sent a message" always wins over a stale pending restore from
+            // whatever chat/branch switch happened to precede it in this render.
             _scrollMessagesToBottom = false;
+            _followNewMessages = false;
             _pendingScrollRestoreKey = null;
             await _messageFeed.ScrollToBottomAsync();
         }
         else if (_pendingScrollRestoreKey is { } restoreKey && _messageFeed is not null)
         {
+            // Restoring where the user left this chat is itself a position decision, so a
+            // snapshot that landed in the same render must not also drag the feed to the end.
             _pendingScrollRestoreKey = null;
+            _followNewMessages = false;
             await _messageFeed.RestoreScrollPositionAsync(restoreKey);
+        }
+        else if (_followNewMessages && _messageFeed is not null)
+        {
+            _followNewMessages = false;
+            await _messageFeed.FollowNewContentAsync();
         }
 
         if (_composerNeedsResize && _composerHandle is not null)
@@ -662,7 +694,9 @@
             {
                 var isSelectedRun = snapshot.BranchId == GetSelectedRunBranchId();
                 var isPendingBranchRun = _pendingBranchAnchorId is { } pendingId && snapshot.BranchId == pendingId;
-                if (isSelectedRun || isPendingBranchRun) _scrollMessagesToBottom = true;
+                // Not a scroll-to-bottom: the run producing output is not a reason to yank the
+                // user away from whatever they scrolled up to read.
+                if (isSelectedRun || isPendingBranchRun) _followNewMessages = true;
                 if (snapshot.ChatRevision > _selectedChat.Revision && _selectedProject is not null)
                 {
                     _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, snapshot.ChatId, CancellationToken.None);
@@ -1643,6 +1677,12 @@
     {
         var chats = await ChatHistoryApi.ListAsync(projectId, CancellationToken.None);
         if (_selectedProject?.Id != projectId) return;
+        if (_chatPagingProjectId != projectId)
+        {
+            _chatPagingProjectId = projectId;
+            _visibleChatCount = ChatPageSize;
+        }
+
         _chats.Clear();
         _chats.AddRange(chats);
 
@@ -2109,7 +2149,48 @@
 
     private void OnChatDragStart(Guid chatId) => _draggedChatId = chatId;
 
-    private IEnumerable<ChatSummary> GetOrderedChats() => _chats.OrderByDescending(chat => chat.IsPinned);
+    private List<ChatSummary> GetOrderedChats() => _chats.OrderByDescending(chat => chat.IsPinned).ToList();
+
+    // The sidebar shows one page of chats at a time: a long-lived project accumulates dozens of
+    // them and the directory/settings groups below the list get pushed off-screen otherwise.
+    private const int ChatPageSize = 10;
+    private int _visibleChatCount = ChatPageSize;
+    // The project whose chats _visibleChatCount belongs to, so a background refresh of the same
+    // project keeps the pages the user opened while switching projects starts over at one page.
+    private Guid? _chatPagingProjectId;
+
+    // The open chat is never paged away: it carries the branch tree and the selection highlight,
+    // and losing it from the list would make the sidebar disagree with the transcript on screen.
+    private int GetVisibleChatCount(IReadOnlyList<ChatSummary> orderedChats)
+    {
+        var count = Math.Min(_visibleChatCount, orderedChats.Count);
+        if (_selectedChat is { } selected)
+        {
+            for (var index = count; index < orderedChats.Count; index++)
+            {
+                if (orderedChats[index].Id == selected.Id) return index + 1;
+            }
+        }
+
+        return count;
+    }
+
+    // A run that finished (or wants approval) below the fold would otherwise be invisible, so the
+    // count rides on the "Show more" button the same way the branch count rides on a chat row.
+    private int CountHiddenChatsNeedingAttention(IReadOnlyList<ChatSummary> orderedChats, int visibleChatCount) =>
+        orderedChats.Skip(visibleChatCount).Count(chat => RunState.Runs.Values.Any(run => run.ChatId == chat.Id && IsVisibleRun(run)));
+
+    private void ShowMoreChats() => _visibleChatCount = GetVisibleChatCount(GetOrderedChats()) + ChatPageSize;
+
+    private void ShowFewerChats() => _visibleChatCount = ChatPageSize;
+
+    private static string GetShowMoreChatsLabel(int hiddenChatCount, int hiddenChatAttention) =>
+        hiddenChatAttention > 0
+            ? $"Show {hiddenChatCount} more chats, {GetHiddenAttentionTitle(hiddenChatAttention)}"
+            : $"Show {hiddenChatCount} more chats";
+
+    private static string GetHiddenAttentionTitle(int hiddenChatAttention) =>
+        hiddenChatAttention == 1 ? "1 hidden chat needs attention" : $"{hiddenChatAttention} hidden chats need attention";
 
     // The same git-branch glyph the history-marker tooltip already uses for this fact, and the
     // count form of its "Has branches" wording, so "this chat has alternatives" reads the same
@@ -2484,6 +2565,7 @@
         CloseContextMenus();
         _messageFeed = null;
         _scrollMessagesToBottom = false;
+        _followNewMessages = false;
         _pendingScrollRestoreKey = null;
         _globalSection = section;
         _attachComposer = true;

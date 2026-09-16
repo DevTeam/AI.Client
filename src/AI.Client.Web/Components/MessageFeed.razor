@@ -237,6 +237,19 @@
         }
     }
 </div>
+@* Only shown when the feed is NOT following the bottom and there is in fact something down
+   there to go to — a new answer, or one being written. A permanent "scroll down" control would
+   duplicate the history-marker strip on the left, which already exists to move around the
+   transcript; this one exists to say "the thing you were waiting for arrived elsewhere". *@
+@if (SelectedChat is not null && !_pinned && (_newBelow || SelectedRun is { Status: ChatRunStatus.Generating }))
+{
+    <button type="button" class="messages-jump @(SelectedRun is { Status: ChatRunStatus.Generating } ? "messages-jump-live" : string.Empty)"
+            title="Jump to the latest message (End)" aria-label="Jump to the latest message"
+            @onclick="JumpToBottomAsync">
+        <AppIcon Name="chevron-down" />
+        <span class="messages-jump-dot" aria-hidden="true"></span>
+    </button>
+}
 </div>
 
 @code {
@@ -357,6 +370,17 @@
     private IJSObjectReference? _historyMarkersModule;
     private IJSObjectReference? _historyMarkersHandle;
     private IJSObjectReference? _scrollModule;
+    private IJSObjectReference? _messageScrollModule;
+    private IJSObjectReference? _messageScrollHandle;
+    private DotNetObjectReference<MessageFeed>? _selfReference;
+    // Mirrors the JS side's "the user is at the bottom" state, which is the only thing that
+    // decides whether new content scrolls the feed. Starts true: an empty feed is at its bottom.
+    private bool _pinned = true;
+    // Something arrived below the viewport while the user was reading further up. Cleared as soon
+    // as they are back at the bottom, by whatever means.
+    private bool _newBelow;
+    private Guid? _scrollResetChatId;
+    private Guid? _scrollResetBranchLeafId;
     private int _historyMarkerCount = -1;
     private string? _historyMarkerScrollKey;
     private bool _disposed;
@@ -375,6 +399,8 @@
     private int _renderedTranscriptRunPresentationVersion;
     private bool _renderedHasSelectedProject;
     private string? _renderedSelectedProjectName;
+    private bool _renderedPinned = true;
+    private bool _renderedNewBelow;
 
     protected override bool ShouldRender()
     {
@@ -386,7 +412,11 @@
             || !ReferenceEquals(_renderedSelectedRun, SelectedRun)
             || _renderedTranscriptRunPresentationVersion != TranscriptRunPresentationVersion
             || _renderedHasSelectedProject != HasSelectedProject
-            || _renderedSelectedProjectName != SelectedProjectName;
+            || _renderedSelectedProjectName != SelectedProjectName
+            // The jump affordance lives entirely in this component's own state, and ShouldRender
+            // is what decides whether its StateHasChanged reaches the DOM at all.
+            || _renderedPinned != _pinned
+            || _renderedNewBelow != _newBelow;
 
         _renderedSelectedChat = SelectedChat;
         _renderedBranchLeafId = BranchLeafId;
@@ -397,6 +427,8 @@
         _renderedTranscriptRunPresentationVersion = TranscriptRunPresentationVersion;
         _renderedHasSelectedProject = HasSelectedProject;
         _renderedSelectedProjectName = SelectedProjectName;
+        _renderedPinned = _pinned;
+        _renderedNewBelow = _newBelow;
 
         return changed;
     }
@@ -411,6 +443,11 @@
             {
                 _historyMarkersModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/historyMarkers.js");
                 _scrollModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
+                _messageScrollModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/messageScroll.js");
+                // The scroller element is part of this component's fixed markup, so it outlives
+                // every chat switch — one attach for the lifetime of the feed.
+                _selfReference = DotNetObjectReference.Create(this);
+                _messageScrollHandle = await _messageScrollModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer, _selfReference);
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException)
             {
@@ -421,10 +458,30 @@
         await SyncHistoryMarkersAsync();
     }
 
+    /// <summary>
+    /// Goes to the bottom and starts following again, regardless of where the user was. Reserved
+    /// for what the user themselves just asked for — sending a message, or opening a chat with no
+    /// remembered position. New content arriving on its own goes through
+    /// <see cref="FollowNewContentAsync"/> instead.
+    /// </summary>
     public async Task ScrollToBottomAsync()
     {
+        if (_disposed) return;
+        ClearNewBelow();
+        if (_messageScrollHandle is { } handle)
+        {
+            try
+            {
+                await handle.InvokeVoidAsync("scrollToBottom");
+                return;
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException)
+            {
+                return;
+            }
+        }
         var module = _scrollModule;
-        if (_disposed || module is null) return;
+        if (module is null) return;
         try
         {
             await module.InvokeVoidAsync("scrollToBottom", _messagesContainer);
@@ -433,6 +490,63 @@
         {
             // The parent can request a scroll while this feed is being replaced by a settings view.
         }
+    }
+
+    /// <summary>
+    /// Reports that new content has just been rendered at the end of the transcript. The feed
+    /// follows it only if the user was already at the bottom; otherwise their position is left
+    /// exactly where it was and the jump affordance is lit instead.
+    /// </summary>
+    public async Task FollowNewContentAsync()
+    {
+        if (_disposed || _messageScrollHandle is not { } handle) return;
+        try
+        {
+            if (await handle.InvokeAsync<bool>("followIfPinned")) return;
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+            return;
+        }
+        if (_newBelow) return;
+        _newBelow = true;
+        StateHasChanged();
+    }
+
+    private async Task JumpToBottomAsync()
+    {
+        if (_disposed || _messageScrollHandle is not { } handle) return;
+        ClearNewBelow();
+        try { await handle.InvokeVoidAsync("jumpToBottom"); }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+    }
+
+    /// <summary>Called from messageScroll.js whenever the user enters or leaves the bottom.</summary>
+    [JSInvokable]
+    public void OnPinnedChanged(bool pinned)
+    {
+        if (_pinned == pinned) return;
+        _pinned = pinned;
+        // Back at the bottom means everything below has been seen, whatever put them there.
+        if (pinned) _newBelow = false;
+        StateHasChanged();
+    }
+
+    private void ClearNewBelow()
+    {
+        _pinned = true;
+        _newBelow = false;
+    }
+
+    // A different chat or branch is a different transcript: whatever was waiting below in the old
+    // one says nothing about this one. The pinned flag is left to the JS side, which recomputes it
+    // from the position this feed is restored to.
+    protected override void OnParametersSet()
+    {
+        if (_scrollResetChatId == SelectedChat?.Id && _scrollResetBranchLeafId == BranchLeafId) return;
+        _scrollResetChatId = SelectedChat?.Id;
+        _scrollResetBranchLeafId = BranchLeafId;
+        _newBelow = false;
     }
 
     // Restores the last-viewed message for `key` (as persisted by historyMarkers.js while the
@@ -812,15 +926,27 @@
         await DisposeHistoryMarkersAsync();
         var historyMarkersModule = _historyMarkersModule;
         var scrollModule = _scrollModule;
+        var messageScrollModule = _messageScrollModule;
+        var messageScrollHandle = _messageScrollHandle;
         _historyMarkersModule = null;
         _scrollModule = null;
+        _messageScrollModule = null;
+        _messageScrollHandle = null;
         try
         {
+            if (messageScrollHandle is not null)
+            {
+                await messageScrollHandle.InvokeVoidAsync("dispose");
+                await messageScrollHandle.DisposeAsync();
+            }
             if (historyMarkersModule is not null) await historyMarkersModule.DisposeAsync();
             if (scrollModule is not null) await scrollModule.DisposeAsync();
+            if (messageScrollModule is not null) await messageScrollModule.DisposeAsync();
         }
         catch (Exception error) when (error is JSException or ObjectDisposedException)
         {
         }
+        _selfReference?.Dispose();
+        _selfReference = null;
     }
 }

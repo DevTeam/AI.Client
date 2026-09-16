@@ -423,6 +423,60 @@ body {
     margin: var(--sidebar-group-gap, 0.1rem) 0 0.35rem var(--sidebar-row-indent, 0.65rem);
 }
 
+/* Placeholder rows, not a spinner: they carry the geometry of the real rows (mark slot, then
+   label), so the list arrives into the shape already on screen instead of pushing it down. Shown
+   only while there is nothing to show — see DelayedBusyIndicator for when that is. */
+.sidebar-skeleton {
+    display: grid;
+    gap: var(--sidebar-row-gap, 0.05rem);
+}
+
+.sidebar-skeleton-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.55rem;
+}
+
+.sidebar-skeleton-mark,
+.sidebar-skeleton-label {
+    background: linear-gradient(90deg, #262626 0%, #333333 50%, #262626 100%);
+    background-size: 220% 100%;
+    animation: sidebar-skeleton-shimmer 1.3s ease-in-out infinite;
+}
+
+.sidebar-skeleton-mark {
+    flex: 0 0 auto;
+    width: var(--nav-mark, 1rem);
+    height: var(--nav-mark, 1rem);
+    border-radius: 50%;
+}
+
+/* Uneven, like titles are: a column of identical bars reads as a broken table rather than as a
+   list that is still arriving. */
+.sidebar-skeleton-label {
+    height: 0.55rem;
+    border-radius: 1rem;
+}
+
+.sidebar-skeleton-row:nth-child(4n + 1) .sidebar-skeleton-label { width: 62%; }
+.sidebar-skeleton-row:nth-child(4n + 2) .sidebar-skeleton-label { width: 44%; }
+.sidebar-skeleton-row:nth-child(4n + 3) .sidebar-skeleton-label { width: 71%; }
+.sidebar-skeleton-row:nth-child(4n + 4) .sidebar-skeleton-label { width: 51%; }
+
+@keyframes sidebar-skeleton-shimmer {
+    0% { background-position: 120% 0; }
+    100% { background-position: -120% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar-skeleton-mark,
+    .sidebar-skeleton-label {
+        background: #2b2b2b;
+        animation: none;
+    }
+}
+
 /* "Show N more" takes the row; "Less" only claims the width of its own label, so collapsing
    stays available without competing with the primary action for the eye. */
 .chat-list-pager {
@@ -436,7 +490,7 @@ body {
    edge instead of gaining a second one. */
 .chat-list-more,
 .chat-list-less {
-    padding-left: calc(0.55rem + var(--nav-mark) + 0.4rem);
+    padding-left: calc(0.55rem + var(--nav-mark, 1rem) + 0.4rem);
     border-radius: 0.45rem;
     color: #858585;
     font-size: 0.8rem;
@@ -2927,8 +2981,40 @@ textarea {
     to { transform: rotate(360deg); }
 }
 
+/* A row that appeared while its group was already open. Only the content is animated — the row
+   takes its full height immediately, because the feed's stick-to-bottom scroll runs right after
+   the render and a height still growing under it would leave the view short of the bottom.
+   `backwards` holds the start frame through the stagger delay, so a row waiting its turn is
+   invisible rather than flashing in and out. */
+.tool-row-arriving {
+    animation: tool-row-arrive 160ms ease-out backwards;
+    animation-delay: calc(var(--arrive-index, 0) * 40ms);
+}
+
+@keyframes tool-row-arrive {
+    from { opacity: 0; transform: translateY(-0.2rem); }
+}
+
+/* The second flicker in a live group: a row swapping its spinner for an outcome and growing a
+   summary and a duration on the right. Marked only on rows the user actually watched run, so
+   opening a finished group stays perfectly still. */
+.tool-row-resolved > .tool-row > .tool-row-glyph,
+.tool-row-resolved > .tool-row > .tool-row-meta {
+    animation: tool-row-settle 120ms ease-out;
+}
+
+@keyframes tool-row-settle {
+    from { opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .tool-row-spinner { animation: none; }
+
+    .tool-row-arriving,
+    .tool-row-resolved > .tool-row > .tool-row-glyph,
+    .tool-row-resolved > .tool-row > .tool-row-meta {
+        animation: none;
+    }
 }
 
 .tool-row-body {

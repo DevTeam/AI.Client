@@ -1,6 +1,7 @@
 @page "/"
 @using System.Diagnostics.CodeAnalysis
 @using System.Text.Json
+@using AI.Client.Web.State
 @inject IClientMetadata ClientMetadata
 @inject IProjectApi ProjectApi
 @inject IChatHistoryApi ChatHistoryApi
@@ -50,9 +51,14 @@
         }
         <div id="projects-nav" hidden="@(_searchResult is not null)">
         <button class="workspace-nav-item new-project-action" type="button" @onclick="BeginProjectCreation"><AppIcon Name="plus" /><span class="nav-item-label">New project</span></button>
-        @if (_isLoading)
+        @if (ProjectsBusy.IsVisible)
         {
-            <p>Loading...</p>
+            <div class="sidebar-skeleton" role="status" aria-label="Loading projects">
+                @for (var row = 0; row < SkeletonProjectRows; row++)
+                {
+                    <div class="sidebar-skeleton-row" aria-hidden="true"><span class="sidebar-skeleton-mark"></span><span class="sidebar-skeleton-label"></span></div>
+                }
+            </div>
         }
         @if (_isCreatingProject)
         {
@@ -171,7 +177,16 @@
                             }
                         </div>
                     }
-                    @if (_chats.Count == 0) { <span class="empty-hint">No chats yet</span> }
+                    @if (ChatsBusy.IsVisible)
+                    {
+                        <div class="sidebar-skeleton" role="status" aria-label="Loading chats">
+                            @for (var row = 0; row < SkeletonChatRows; row++)
+                            {
+                                <div class="sidebar-skeleton-row" aria-hidden="true"><span class="sidebar-skeleton-mark"></span><span class="sidebar-skeleton-label"></span></div>
+                            }
+                        </div>
+                    }
+                    else if (_chats.Count == 0) { <span class="empty-hint">No chats yet</span> }
                 </nav>
                 <div class="directory-nav-group">
                     @if (_security.DirectoryGrants.Count == 0)
@@ -453,7 +468,16 @@
     private Guid? _forkSourceId;
     private Guid? _replaceSourceId;
     private Guid? _pendingBranchAnchorId;
-    private bool _isLoading = true;
+    // Two loads with two placeholders, not one flag over both: the project list arrives in a
+    // single request, while the selected project's chats only arrive after its settings
+    // round-trip, and holding the whole sidebar back until the slower of them was what made the
+    // wait feel long. Created lazily because a field initializer cannot capture `this`.
+    private const int SkeletonProjectRows = 5;
+    private const int SkeletonChatRows = 4;
+    private DelayedBusyIndicator? _projectsBusy;
+    private DelayedBusyIndicator? _chatsBusy;
+    private DelayedBusyIndicator ProjectsBusy => _projectsBusy ??= new DelayedBusyIndicator(() => InvokeAsync(StateHasChanged));
+    private DelayedBusyIndicator ChatsBusy => _chatsBusy ??= new DelayedBusyIndicator(() => InvokeAsync(StateHasChanged));
     private readonly ChatEditor _chat = new();
     private string? _chatError;
 
@@ -829,6 +853,11 @@
         // RestoreComposerDraft below actually has something to find.
         await WorkspaceStateService.FlushPendingComposerDraftAsync();
         _selectedProject = project;
+        // The previous project's chats are still in _chats at this point, and the list re-renders
+        // under the new project's name before LoadChatsAsync replaces them. Drop them and show the
+        // placeholder instead of someone else's chats.
+        _chats.Clear();
+        ChatsBusy.Begin();
         _isProjectMenuOpen = false;
         _isProjectSettingsOpen = false;
         _isConfirmingProjectDelete = false;
@@ -846,6 +875,10 @@
         _error = null;
         await LoadSecurityAsync(project.Id);
         await WorkspaceStateService.SetLastProjectIdAsync(project.Id);
+
+        // LoadChatsAsync ends this in the normal case; here it covers the paths where the
+        // security round-trip returned a different project (or nothing) and never reached it.
+        ChatsBusy.End();
 
         var context = restoreLastChat ? WorkspaceStateService.GetProjectContext(project.Id) : default;
         if (context.ChatId is { } chatId && _chats.Any(chat => chat.Id == chatId))
@@ -930,11 +963,19 @@
     {
         try
         {
-            _isLoading = true;
+            // Only when there is nothing to show: a refresh must not replace the list the user is
+            // reading with placeholders.
+            if (_projects.Count == 0) ProjectsBusy.Begin();
             _error = null;
+            // Into a local first: clearing before the await emptied the sidebar for the length of
+            // the request even when the list was about to come back unchanged.
+            var projects = await ProjectApi.ListAsync(CancellationToken.None);
             _projects.Clear();
-            _projects.AddRange(await ProjectApi.ListAsync(CancellationToken.None));
+            _projects.AddRange(projects);
             await ApplyProjectOrderAsync();
+            // The project list can be shown — and clicked — now. Its chats arrive later, under
+            // their own placeholder, instead of holding this one up.
+            ProjectsBusy.End();
             var project = selectedId is null
                 ? _projects.FirstOrDefault()
                 : _projects.SingleOrDefault(item => item.Id == selectedId) ?? _projects.FirstOrDefault();
@@ -953,7 +994,8 @@
         }
         finally
         {
-            _isLoading = false;
+            ProjectsBusy.End();
+            ChatsBusy.End();
         }
     }
 
@@ -1676,6 +1718,7 @@
     private async Task LoadChatsAsync(Guid projectId, bool refreshSelected = true)
     {
         var chats = await ChatHistoryApi.ListAsync(projectId, CancellationToken.None);
+        ChatsBusy.End();
         if (_selectedProject?.Id != projectId) return;
         if (_chatPagingProjectId != projectId)
         {
@@ -2747,6 +2790,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _projectsBusy?.Dispose();
+        _chatsBusy?.Dispose();
         await _generatingTickerCancellation.CancelAsync();
         _generatingTickerCancellation.Dispose();
 

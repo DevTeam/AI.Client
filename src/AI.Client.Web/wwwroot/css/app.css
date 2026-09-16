@@ -2016,6 +2016,10 @@ body {
     font-size: 0.8rem;
 }
 
+/* Dimmer than the status text it shares the line with: the counter is a position marker, not a
+   message, and it must not read as louder than a fork/replace chip standing next to it. */
+.composer-history-counter { margin-right: .4rem; color: #6d6d6d; }
+
 .branch-nav-row > .branch-link,
 .branch-nav-row > .sidebar-inline-editor { margin-left: .75rem; width: calc(100% - .75rem); }
 

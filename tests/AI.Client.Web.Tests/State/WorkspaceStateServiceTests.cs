@@ -1,4 +1,4 @@
-namespace AI.Client.Web.Tests.State;
+﻿namespace AI.Client.Web.Tests.State;
 
 using System.Text.Json;
 using AI.Client.Web.State;
@@ -9,6 +9,7 @@ using Xunit;
 public class WorkspaceStateServiceTests
 {
     private const string DraftsStorageKey = "ai-client.composer-drafts.v1";
+    private const string HistoryStorageKey = "ai-client.composer-history.v1";
 
     // Hand-rolled IJSRuntime fake: Moq's strict mode mishandles the InvokeVoidAsync
     // extension method (which the SDK rewrites into InvokeAsync<object>), and we want
@@ -170,5 +171,93 @@ public class WorkspaceStateServiceTests
         await service.DisposeAsync();
 
         js.Calls.ShouldNotContain(call => call.Identifier == "localStorage.setItem");
+    }
+
+    [Fact]
+    public async Task ShouldKeepSentMessagesNewestFirstPerProject()
+    {
+        var (service, _) = CreateService();
+        await service.InitializeAsync();
+
+        var projectA = Guid.NewGuid();
+        var projectB = Guid.NewGuid();
+        await service.AppendComposerHistoryAsync(projectA, "first");
+        await service.AppendComposerHistoryAsync(projectA, "second");
+        await service.AppendComposerHistoryAsync(projectB, "elsewhere");
+
+        // Up walks from the newest backwards, so index 0 has to be the last thing sent.
+        service.GetComposerHistory(projectA).ShouldBe(["second", "first"]);
+        // Scoped per project: another project's messages never surface here.
+        service.GetComposerHistory(projectB).ShouldBe(["elsewhere"]);
+    }
+
+    [Fact]
+    public async Task ShouldMoveARepeatedMessageToTheFrontInsteadOfDuplicatingIt()
+    {
+        var (service, _) = CreateService();
+        await service.InitializeAsync();
+
+        var project = Guid.NewGuid();
+        await service.AppendComposerHistoryAsync(project, "run the tests");
+        await service.AppendComposerHistoryAsync(project, "fix the build");
+        await service.AppendComposerHistoryAsync(project, "run the tests");
+
+        // Otherwise the same phrasing — which is exactly what gets re-sent — would make the
+        // user press Up past several copies of it to reach anything older.
+        service.GetComposerHistory(project).ShouldBe(["run the tests", "fix the build"]);
+    }
+
+    [Fact]
+    public async Task ShouldIgnoreBlankMessagesAndTrimTheRest()
+    {
+        var (service, _) = CreateService();
+        await service.InitializeAsync();
+
+        var project = Guid.NewGuid();
+        await service.AppendComposerHistoryAsync(project, "   ");
+        await service.AppendComposerHistoryAsync(project, "  spaced  ");
+
+        service.GetComposerHistory(project).ShouldBe(["spaced"]);
+    }
+
+    [Fact]
+    public async Task ShouldCapHistoryAtTheNewestHundredEntries()
+    {
+        var (service, _) = CreateService();
+        await service.InitializeAsync();
+
+        var project = Guid.NewGuid();
+        for (var index = 0; index < 105; index++) await service.AppendComposerHistoryAsync(project, $"message {index}");
+
+        var history = service.GetComposerHistory(project);
+        history.Count.ShouldBe(100);
+        history[0].ShouldBe("message 104");
+        history[99].ShouldBe("message 5");
+    }
+
+    [Fact]
+    public async Task ShouldPersistHistoryImmediatelyAndReloadIt()
+    {
+        var (service, js) = CreateService();
+        await service.InitializeAsync();
+
+        var project = Guid.NewGuid();
+        // No debounce here, unlike drafts: a send happens once, and losing the message that was
+        // just sent to a tab close would defeat the point of storing it.
+        await service.AppendComposerHistoryAsync(project, "do the recommended thing");
+
+        js.Entries.ShouldContainKey(HistoryStorageKey);
+        var reloaded = new WorkspaceStateService(js);
+        await reloaded.InitializeAsync();
+        reloaded.GetComposerHistory(project).ShouldBe(["do the recommended thing"]);
+    }
+
+    [Fact]
+    public async Task ShouldReturnEmptyHistoryForAProjectThatNeverSentAnything()
+    {
+        var (service, _) = CreateService();
+        await service.InitializeAsync();
+
+        service.GetComposerHistory(Guid.NewGuid()).ShouldBeEmpty();
     }
 }

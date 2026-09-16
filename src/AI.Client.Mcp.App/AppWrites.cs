@@ -8,7 +8,7 @@ using System.Text.Json;
 /// The parts every mutating tool shares: replay protection, the change signal, and turning an
 /// outcome into a result whose shape does not depend on whether it succeeded.
 /// </summary>
-public sealed class AppWrites(AppOperationLog log, IAppDataChangeSignal signal)
+public sealed class AppWrites(IAppOperationLog log, IAppDataChangeSignal signal) : IAppWrites
 {
     public async Task<CallToolResult> RunAsync(
         string operation,

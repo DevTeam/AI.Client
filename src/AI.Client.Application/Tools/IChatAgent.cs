@@ -1,0 +1,23 @@
+namespace AI.Client.Application.Tools;
+
+using Contracts.Chat;
+using Contracts.Runs;
+using Contracts.Workspace;
+
+/// <summary>
+/// One agent turn: streams the model's answer, runs the tool calls it asks for, and reports what
+/// the workspace looks like once the turn is over.
+/// </summary>
+public interface IChatAgent
+{
+    Task<WorkspaceChangeSet> RunAsync(
+        Guid projectId,
+        Guid chatId,
+        Guid branchId,
+        ChatCompletionRequest request,
+        Func<ChatCompletionMessage, CancellationToken, Task> persist,
+        Func<string, CancellationToken, Task> text,
+        Func<ToolActivity?, CancellationToken, Task> activity,
+        Func<AgentTool, string, long, ToolCallPosition, CancellationToken, Task<ToolApprovalAction>> approve,
+        CancellationToken cancellationToken);
+}

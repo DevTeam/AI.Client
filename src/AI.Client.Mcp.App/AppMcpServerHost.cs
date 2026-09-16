@@ -9,7 +9,7 @@ using ModelContextProtocol.Server;
 /// in its transport, which the caller supplies. Running it inside the Host is what gives it access
 /// to the application services; nothing about the protocol is shortcut to achieve that.
 /// </summary>
-public sealed class AppMcpServerHost(IEnumerable<IAppTool> tools)
+public sealed class AppMcpServerHost(IEnumerable<IAppTool> tools) : IAppMcpServerHost
 {
     public const string Name = "App tools";
 

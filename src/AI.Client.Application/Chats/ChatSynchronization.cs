@@ -2,7 +2,7 @@ namespace AI.Client.Application.Chats;
 
 using System.Collections.Concurrent;
 
-public sealed class ChatSynchronization
+public sealed class ChatSynchronization : IChatSynchronization
 {
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _chats = new();
 

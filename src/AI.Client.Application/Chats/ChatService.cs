@@ -8,7 +8,7 @@ using AI.Client.Contracts.Workspace;
 using AI.Client.Domain.Chats;
 using AI.Client.Domain.Projects;
 
-public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, ChatSynchronization synchronization) : IChatService
+public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, IChatSynchronization synchronization) : IChatService
 {
     public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken) =>
         (await repository.ListSummariesAsync(new ProjectId(projectId), cancellationToken))

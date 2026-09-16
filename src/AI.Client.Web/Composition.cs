@@ -31,7 +31,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IWorkspaceStateService>()
             .Root<IGlobalSettingsApi>()
             .Root<IChatRunsApi>()
-            .Root<RunStateService>()
+            .Root<IRunStateService>()
             .Root<IChatComposerService>()
             .Singleton<ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService, WorkspaceStateService, ChatComposerService, RunStateService>()
             .Transient<ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi>()

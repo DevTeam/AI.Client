@@ -21,8 +21,8 @@ using System.Text.Json;
 /// only when a run started rather than when the container was built.
 /// </remarks>
 public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessionFactory> sessions,
-    IProjectService projects, IGlobalSettingsRepository settings, ToolPolicyResolver policies,
-    IWorkspaceChangeTracker workspace)
+    IProjectService projects, IGlobalSettingsRepository settings, IToolPolicyResolver policies,
+    IWorkspaceChangeTracker workspace) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,

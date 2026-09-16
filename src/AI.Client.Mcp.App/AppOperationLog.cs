@@ -11,7 +11,7 @@ namespace AI.Client.Mcp.App;
 /// would mean a storage format of its own, and a mutation interrupted by a crash is already
 /// visible to the caller through the revision it reads back.
 /// </remarks>
-public sealed class AppOperationLog
+public sealed class AppOperationLog : IAppOperationLog
 {
     private const int Capacity = 1024;
     private readonly Lock _gate = new();

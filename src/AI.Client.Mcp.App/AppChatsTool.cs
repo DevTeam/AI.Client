@@ -37,7 +37,7 @@ public enum ChatOperation
 /// is what keeps that loop from having to be built all at once — every tool here does the same.
 /// </remarks>
 [McpServerToolType]
-public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> runs, AppWrites writes) : IAppTool
+public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> runs, IAppWrites writes) : IAppTool
 {
     public McpServerTool Create() => McpServerTool.Create(
         ChatsAsync,

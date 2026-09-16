@@ -22,6 +22,35 @@ const isTextEntry = target =>
 export function attach(scroller, owner) {
     let pinned = distanceFromBottom(scroller) <= PinThresholdPx;
     let notified = null;
+    let watchedElementId = null;
+    let watchedElement = null;
+    let visibilityNotified = null;
+
+    const notifyVisibility = visible => {
+        if (visibilityNotified === visible) return;
+        visibilityNotified = visible;
+        owner.invokeMethodAsync("OnTurnSummaryVisibilityChanged", visible);
+    };
+
+    const visibilityObserver = new IntersectionObserver(entries => {
+        const entry = entries.find(item => item.target === watchedElement);
+        if (entry) notifyVisibility(entry.isIntersecting && entry.intersectionRatio > 0);
+    }, { root: scroller, threshold: 0 });
+
+    // The run snapshot can precede the chat revision that creates the summary element. Remember
+    // its id and retry binding on transcript mutations instead of reporting it permanently absent.
+    const bindWatchedElement = () => {
+        const next = watchedElementId === null
+            ? null
+            : document.getElementById(watchedElementId);
+        const insideScroller = next !== null && scroller.contains(next) ? next : null;
+        if (insideScroller === watchedElement && (watchedElement === null || watchedElement.isConnected)) return;
+        visibilityObserver.disconnect();
+        watchedElement = insideScroller;
+        visibilityNotified = null;
+        if (watchedElement === null) notifyVisibility(false);
+        else visibilityObserver.observe(watchedElement);
+    };
 
     // Blazor only needs to hear about transitions: this fires on every scroll event.
     const notify = () => {
@@ -117,7 +146,10 @@ export function attach(scroller, owner) {
     // it back, leaving the transcript hundreds of pixels off. Re-measuring the anchor every time
     // is self-correcting: while content is only being appended below, the drift is zero and this
     // does nothing.
-    const observer = new MutationObserver(restoreAnchor);
+    const observer = new MutationObserver(() => {
+        restoreAnchor();
+        bindWatchedElement();
+    });
     observer.observe(scroller, { childList: true, subtree: true, characterData: true });
 
     const toBottom = smooth => {
@@ -171,9 +203,14 @@ export function attach(scroller, owner) {
             anchor = element;
             anchorOffset = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
         },
+        watchElementVisibility: id => {
+            watchedElementId = id;
+            bindWatchedElement();
+        },
         jumpToBottom: () => toBottom(true),
         dispose: () => {
             observer.disconnect();
+            visibilityObserver.disconnect();
             scroller.removeEventListener("scroll", onScroll);
             document.removeEventListener("keydown", onKeyDown);
         },

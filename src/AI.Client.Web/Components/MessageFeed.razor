@@ -37,7 +37,7 @@
         }
         @if (SelectedRun is { Status: ChatRunStatus.Generating })
         {
-            <button class="history-marker history-marker-assistant history-marker-generating" type="button" tabindex="-1" data-target="message-streaming" data-question-text="Generating…" data-fork=""></button>
+            <button class="history-marker history-marker-assistant history-marker-generating" type="button" tabindex="-1" data-target="@GetGeneratingMarkerTarget()" data-question-text="Generating…" data-fork=""></button>
         }
         </TranscriptRenderBoundary>
     </nav>
@@ -104,7 +104,7 @@
                 var expanded = IsTurnExpanded(summary);
                 var summaryKey = (turnId, "turn-summary");
                 <button @key="summaryKey" id="turn-summary-@turnId" type="button"
-                        class="turn-summary @(expanded ? "is-expanded" : string.Empty) @GetTurnSummaryStateClasses(summary)"
+                        class="turn-summary @(expanded ? "is-expanded" : string.Empty) @(IsAbsorbingInto(summary) ? "is-receiving" : string.Empty) @GetTurnSummaryStateClasses(summary)"
                         aria-expanded="@(expanded ? "true" : "false")"
                         @onclick="() => ToggleTurnAsync(turnId)">
                     @if (IsRunningTurn(summary))
@@ -119,6 +119,47 @@
             {
                 var changesKey = (entry.ChangesMessage.Id, "workspace-changes-collapsed");
                 <WorkspaceChanges @key="changesKey" Changes="@collapsedChanges" />
+            }
+            else if (entry.ActiveTools is { Count: > 0 } activeTools)
+            {
+                var activeToolsKey = (entry.TurnId, "active-tools");
+                @* Live calls belong to the turn that announced them. They are deliberately
+                   mounted only while that turn is open, rather than floating below the compact
+                   transcript when its context is hidden. *@
+                <div @key="activeToolsKey" class="tool-activity turn-active-tools" role="status" aria-live="polite">
+                    @foreach (var active in activeTools)
+                    {
+                        var call = Presentations.DescribeCall(active.Name, active.Arguments);
+                        <div class="tool-row" @key="active.CallId">
+                            <span class="tool-row-glyph" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
+                            <span class="tool-row-title">@call.Title</span>
+                            @if (call.Detail is { Length: > 0 } detail) { <span class="tool-row-detail" title="@detail">@detail</span> }
+                            <span class="tool-row-meta">@(FormatProgress(active) ?? "Running…")</span>
+                        </div>
+                    }
+                </div>
+            }
+            else if (entry.StreamingRun is { } streamingRun)
+            {
+                @* Until the provider returns tool calls, this can still be the final answer. Keep
+                   it in the dialogue so the user sees that answer being written live. *@
+                <article id="message-streaming" class="workspace-message assistant @(streamingRun.Status == ChatRunStatus.Generating ? "streaming" : string.Empty)">
+                    @if (streamingRun.Status != ChatRunStatus.Generating) { <span class="message-status">Incomplete</span> }
+                    <div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(streamingRun.StreamingContent))</div>
+                </article>
+            }
+            else if (entry.AbsorbingContent is { } absorbingContent)
+            {
+                @* A generating response is only known to be intermediate when the same run
+                   clears it before starting tools. Preserve that last live frame long enough to
+                   fold it into the closed turn instead of making it disappear abruptly. *@
+                <div @key="entry.TransitionId" class="turn-stream-absorption" aria-hidden="true">
+                    <div class="turn-stream-absorption-clip">
+                        <article class="workspace-message assistant streaming">
+                            <div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(absorbingContent))</div>
+                        </article>
+                    </div>
+                </div>
             }
             else if (item?.Message is { } message)
             {
@@ -172,38 +213,6 @@
             }
         }
         </TranscriptRenderBoundary>
-        @if (SelectedRun?.ActiveTools is { Count: > 0 } activeTools)
-        {
-            @* aria-live is on the live region only: settled history must never be re-announced,
-               and the same call is described by the same adapters that will describe it in the
-               transcript a moment later, so the wording does not change when it lands. *@
-            <div class="tool-activity tool-activity-live" role="status" aria-live="polite">
-                @foreach (var active in activeTools)
-                {
-                    var call = Presentations.DescribeCall(active.Name, active.Arguments);
-                    <div class="tool-row" @key="active.CallId">
-                        <span class="tool-row-glyph" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
-                        <span class="tool-row-title">@call.Title</span>
-                        @if (call.Detail is { Length: > 0 } detail) { <span class="tool-row-detail" title="@detail">@detail</span> }
-                        <span class="tool-row-meta">@(FormatProgress(active) ?? "Running…")</span>
-                    </div>
-                }
-            </div>
-        }
-        @* StreamingContent survives Pause()/Fail() untouched (only Complete() clears it) — the
-           only in-progress answer this turn produced isn't committed as a real chat message
-           until the run finishes normally, so it has to keep rendering from here after a stop
-           or an error or it just vanishes from the transcript. *@
-        @* Whitespace is not a partial answer. An endpoint that returns nothing used to leave an
-           "Incomplete" badge sitting over an empty block, which reads as a broken answer rather
-           than as no answer - the failure card below already says what happened. *@
-        @if (SelectedRun is { } activeRun && !string.IsNullOrWhiteSpace(activeRun.StreamingContent))
-        {
-            <article id="message-streaming" class="workspace-message assistant @(activeRun.Status == ChatRunStatus.Generating ? "streaming" : string.Empty)">
-                @if (activeRun.Status != ChatRunStatus.Generating) { <span class="message-status">Incomplete</span> }
-                <div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(activeRun.StreamingContent))</div>
-            </article>
-        }
         @if (SelectedRun is { Status: not ChatRunStatus.Completed, WorkspaceChanges: { IsEmpty: false } liveChanges })
         {
             <WorkspaceChanges Changes="@liveChanges" />
@@ -437,6 +446,7 @@
     private bool _renderedPinned = true;
     private bool _renderedNewBelow;
     private bool _expandRenderRequested;
+    private int _renderedAbsorptionVersion;
 
     protected override bool ShouldRender()
     {
@@ -455,6 +465,7 @@
             // is what decides whether its StateHasChanged reaches the DOM at all.
             || _renderedPinned != _pinned
             || _renderedNewBelow != _newBelow
+            || _renderedAbsorptionVersion != _absorptionVersion
             // The expansion render changes no parameter at all — only how much of the chain this
             // component draws — so without this it would never reach the DOM. It cannot be
             // expressed as a comparison: ShouldRender runs before the render that sets the limit.
@@ -473,6 +484,7 @@
         _renderedSelectedProjectName = SelectedProjectName;
         _renderedPinned = _pinned;
         _renderedNewBelow = _newBelow;
+        _renderedAbsorptionVersion = _absorptionVersion;
         _expandRenderRequested = false;
 
         return changed;
@@ -656,6 +668,8 @@
     // from the position this feed is restored to.
     protected override void OnParametersSet()
     {
+        ObserveStreamingTransition();
+
         if (_expandedTurnsChatId != SelectedChat?.Id)
         {
             _expandedTurnsChatId = SelectedChat?.Id;
@@ -847,13 +861,26 @@
         ChatFeed.FeedItem? Item = null,
         ChatFeed.FeedTurn? Summary = null,
         ChatMessageView? ChangesMessage = null,
-        int? RevealIndex = null);
+        int? RevealIndex = null,
+        IReadOnlyList<ActiveToolInvocation>? ActiveTools = null,
+        Guid? TurnId = null,
+        ChatRunSnapshot? StreamingRun = null,
+        string? AbsorbingContent = null,
+        int TransitionId = 0);
 
     private readonly HashSet<Guid> _expandedTurns = [];
     private readonly Dictionary<Guid, int> _expandedTurnItemLimits = [];
     private readonly HashSet<Guid> _turnExpansionsPending = [];
     private int _expandedTurnsVersion;
     private Guid? _expandedTurnsChatId;
+    private ChatRunSnapshot? _observedRun;
+    private string? _absorbingContent;
+    private Guid? _absorbingChatId;
+    private Guid? _absorbingBranchId;
+    private int _absorptionVersion;
+    private int _absorptionTransitionId;
+    private CancellationTokenSource? _absorptionCancellation;
+    private static readonly TimeSpan AbsorptionDuration = TimeSpan.FromMilliseconds(240);
     private const int InitialExpandedTurnItemCount = 0;
     private const int ExpandedTurnBatchSize = 2;
 
@@ -875,7 +902,7 @@
             {
                 entries.AddRange(turn.IntermediateItems.Select(item => new RenderedFeedEntry(Item: item)));
             }
-            else if (turn.IntermediateItems.Count > 0 || IsRunningTurn(turn))
+            else if (turn.IntermediateItems.Count > 0 || IsCurrentUnfinishedTurn(turn))
             {
                 entries.Add(new RenderedFeedEntry(Summary: turn));
                 if (IsTurnExpanded(turn))
@@ -898,6 +925,26 @@
                     entries.AddRange(turn.IntermediateMessages
                         .Where(message => message.WorkspaceChanges is { IsEmpty: false })
                         .Select(message => new RenderedFeedEntry(ChangesMessage: message)));
+                }
+
+                if (IsRunningTurn(turn) && IsTurnExpanded(turn)
+                    && SelectedRun?.ActiveTools is { Count: > 0 } activeTools)
+                {
+                    entries.Add(new RenderedFeedEntry(ActiveTools: activeTools, TurnId: turn.Id));
+                }
+
+                if (IsCurrentTurn(turn) && SelectedRun is { } streamingRun
+                    && !string.IsNullOrWhiteSpace(streamingRun.StreamingContent))
+                {
+                    entries.Add(new RenderedFeedEntry(StreamingRun: streamingRun, TurnId: turn.Id));
+                }
+                else if (IsCurrentTurn(turn) && !IsTurnExpanded(turn) && IsAbsorbingInto(turn)
+                    && _absorbingContent is { } absorbingContent)
+                {
+                    entries.Add(new RenderedFeedEntry(
+                        AbsorbingContent: absorbingContent,
+                        TurnId: turn.Id,
+                        TransitionId: _absorptionTransitionId));
                 }
             }
 
@@ -1001,6 +1048,89 @@
 
     private bool IsRunningTurn(ChatFeed.FeedTurn turn) =>
         IsCurrentTurn(turn) && SelectedRun?.Status == ChatRunStatus.Generating;
+
+    private bool IsCurrentUnfinishedTurn(ChatFeed.FeedTurn turn) =>
+        IsCurrentTurn(turn) && LastTurnEndedWithoutFinalAnswer();
+
+    private bool IsAbsorbingInto(ChatFeed.FeedTurn turn) =>
+        IsCurrentTurn(turn)
+        && !IsTurnExpanded(turn)
+        && _absorbingContent is not null
+        && SelectedRun is { } run
+        && run.ChatId == _absorbingChatId
+        && run.BranchId == _absorbingBranchId;
+
+    private void ObserveStreamingTransition()
+    {
+        var previous = _observedRun;
+        var current = SelectedRun;
+        _observedRun = current;
+
+        if (previous is null || current is null
+            || previous.ChatId != current.ChatId || previous.BranchId != current.BranchId)
+        {
+            CancelAbsorption();
+            return;
+        }
+
+        // Completion persists the exact same text as the final answer. Only a clear while the run
+        // remains generating means that the text was a preamble for a tool cycle.
+        if (previous.Status == ChatRunStatus.Generating
+            && current.Status == ChatRunStatus.Generating
+            && !string.IsNullOrWhiteSpace(previous.StreamingContent)
+            && string.IsNullOrWhiteSpace(current.StreamingContent))
+        {
+            BeginAbsorption(current, previous.StreamingContent);
+        }
+    }
+
+    private void BeginAbsorption(ChatRunSnapshot run, string content)
+    {
+        _absorptionCancellation?.Cancel();
+        _absorptionCancellation?.Dispose();
+        _absorptionCancellation = new CancellationTokenSource();
+        _absorbingContent = content;
+        _absorbingChatId = run.ChatId;
+        _absorbingBranchId = run.BranchId;
+        _absorptionTransitionId++;
+        _absorptionVersion++;
+        _ = FinishAbsorptionAsync(_absorptionCancellation.Token);
+    }
+
+    private async Task FinishAbsorptionAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(AbsorptionDuration, token);
+            await InvokeAsync(() =>
+            {
+                if (token.IsCancellationRequested || _disposed) return;
+                _absorbingContent = null;
+                _absorptionVersion++;
+                StateHasChanged();
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void CancelAbsorption()
+    {
+        _absorptionCancellation?.Cancel();
+        _absorptionCancellation?.Dispose();
+        _absorptionCancellation = null;
+        if (_absorbingContent is null) return;
+        _absorbingContent = null;
+        _absorptionVersion++;
+    }
+
+    private string GetGeneratingMarkerTarget()
+    {
+        if (!string.IsNullOrWhiteSpace(SelectedRun?.StreamingContent)) return "message-streaming";
+        var turnId = GetVisibleBranchMessages().LastOrDefault(message => message.Role == "User")?.Id;
+        return turnId is { } id ? $"turn-summary-{id}" : "message-streaming";
+    }
 
     private string GetTurnSummaryText(ChatFeed.FeedTurn turn)
     {
@@ -1308,6 +1438,7 @@
     {
         if (_disposed) return;
         _disposed = true;
+        CancelAbsorption();
         await DisposeHistoryMarkersAsync();
         var historyMarkersModule = _historyMarkersModule;
         var scrollModule = _scrollModule;

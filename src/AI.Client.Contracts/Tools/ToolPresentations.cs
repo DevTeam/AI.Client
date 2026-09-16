@@ -11,16 +11,22 @@ using System.Text.Json;
 /// the composition decides which set of them the build ships. Consumers take it as a dependency so
 /// that nothing reaches for a global instance behind the container's back.
 /// </remarks>
-public sealed class ToolPresentations(IEnumerable<IToolPresentationAdapter> adapters)
+public sealed class ToolPresentations(
+    IToolPresentationAdapter genericAdapter,
+    IReadOnlyCollection<IToolPresentationAdapter> adapters)
+    : IToolPresentations
 {
-    private static readonly GenericToolPresentationAdapter Generic = new();
-
     private IToolPresentationAdapter Select(ToolRef tool)
     {
         foreach (var adapter in adapters)
+        {
             if (adapter.CanHandle(tool))
+            {
                 return adapter;
-        return Generic;
+            }
+        }
+
+        return genericAdapter;
     }
 
     public ToolCallPresentation DescribeCall(string callName, string? arguments)
@@ -36,7 +42,7 @@ public sealed class ToolPresentations(IEnumerable<IToolPresentationAdapter> adap
         {
             // An adapter that trips over unexpected arguments must not take the transcript with
             // it; the generic description is always derivable.
-            return Generic.DescribeCall(tool, input);
+            return genericAdapter.DescribeCall(tool, input);
         }
     }
 
@@ -51,7 +57,7 @@ public sealed class ToolPresentations(IEnumerable<IToolPresentationAdapter> adap
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or FormatException)
         {
-            return Generic.DescribeResult(tool, input, result);
+            return genericAdapter.DescribeResult(tool, input, result);
         }
     }
 

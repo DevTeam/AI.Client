@@ -304,10 +304,11 @@ public sealed class AppToolTests
                 _secrets, _clock, _synchronization, workspace, policies);
             var writes = new AppWrites(new AppOperationLog(), _signal);
             var presentations = new ToolPresentations(
-            [
-                new FileToolPresentationAdapter(), new ProcessToolPresentationAdapter(), new WebToolPresentationAdapter(),
-                new AppReadPresentationAdapter(), new AppWritePresentationAdapter(), new AppSubtaskPresentationAdapter(),
-            ]);
+                new GenericToolPresentationAdapter(),
+                [
+                    new FileToolPresentationAdapter(), new ProcessToolPresentationAdapter(), new WebToolPresentationAdapter(),
+                    new AppReadPresentationAdapter(), new AppWritePresentationAdapter(), new AppSubtaskPresentationAdapter(),
+                ]);
             IEnumerable<IAppTool> tools =
             [
                 new AppReadTool(Projects, Chats, settingsService, new ChatSearchService(Projects, Chats), () => dispatcher),

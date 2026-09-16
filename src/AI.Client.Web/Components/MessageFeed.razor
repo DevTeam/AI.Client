@@ -5,10 +5,10 @@
    Home and calls StateHasChanged on the whole page) also rebuilt and diffed this list. *@
 @inject IMarkdownRenderer MarkdownRenderer
 @inject IJSRuntime JsRuntime
-@inject AI.Client.Web.Runs.IChatRunsApi RunsApi
+@inject IChatRunsApi RunsApi
 @implements IAsyncDisposable
 @using AI.Client.Contracts.Tools
-@inject AI.Client.Contracts.Tools.ToolPresentations Presentations
+@inject IToolPresentations Presentations
 
 <div class="messages-area">
 @if (SelectedChat is not null)

@@ -346,10 +346,11 @@ public sealed class AppSubtaskToolTests
             // keeps the test from starting child processes.
             var agent = new ChatAgent(Completion, Mock.Of<IToolSessionFactory>, Projects, _settings, policies, workspace);
             var presentations = new ToolPresentations(
-            [
-                new FileToolPresentationAdapter(), new ProcessToolPresentationAdapter(), new WebToolPresentationAdapter(),
-                new AppReadPresentationAdapter(), new AppWritePresentationAdapter(), new AppSubtaskPresentationAdapter(),
-            ]);
+                new GenericToolPresentationAdapter(),
+                [
+                    new FileToolPresentationAdapter(), new ProcessToolPresentationAdapter(), new WebToolPresentationAdapter(),
+                    new AppReadPresentationAdapter(), new AppWritePresentationAdapter(), new AppSubtaskPresentationAdapter(),
+                ]);
             IEnumerable<IAppTool> tools = [new AppSubtaskTool(() => agent, Projects, Chats, _settings, _secrets, presentations)];
             _sessions = new AppToolSessionFactory(new AppMcpServerHost(tools));
         }

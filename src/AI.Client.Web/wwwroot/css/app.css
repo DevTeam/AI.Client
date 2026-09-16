@@ -2984,6 +2984,42 @@ textarea {
     transform: rotate(90deg);
 }
 
+/* When a live response turns out to be a tool preamble, the closed heading briefly acknowledges
+   receiving it. The pulse is intentionally quieter than the unread/branch accent. */
+.turn-summary.is-receiving .turn-summary-text {
+    animation: turn-summary-receive 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes turn-summary-receive {
+    45% { color: #b4b4b4; }
+}
+
+/* The last streamed frame remains in the dialogue while its box folds upward. CSS grid gives us
+   an intrinsic-height collapse, so this works for one-line and multi-paragraph preambles alike. */
+.turn-stream-absorption {
+    display: grid;
+    grid-template-rows: 1fr;
+    animation: turn-stream-collapse 240ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.turn-stream-absorption-clip {
+    min-height: 0;
+    overflow: hidden;
+    animation: turn-stream-fade 240ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    will-change: opacity, transform;
+}
+
+@keyframes turn-stream-collapse {
+    to { grid-template-rows: 0fr; }
+}
+
+@keyframes turn-stream-fade {
+    to {
+        opacity: 0;
+        transform: translateY(-0.4rem);
+    }
+}
+
 .turn-summary.fork-source {
     border-radius: 0.6rem;
     outline: 1px solid #5a89c7;
@@ -3132,7 +3168,6 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .tool-row-spinner { animation: none; }
     .turn-summary-chevron { transition: none; }
     .turn-summary.branch-leaf-arrived::after {
         transform: scaleX(1);
@@ -3140,6 +3175,12 @@ textarea {
             calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
     }
     .workspace-message.turn-message-arriving { animation: none; }
+    .turn-summary.is-receiving .turn-summary-text { animation: none; }
+    .turn-stream-absorption { animation-duration: 80ms; }
+    .turn-stream-absorption-clip {
+        animation-duration: 80ms;
+        transform: none;
+    }
 
     .tool-row-arriving,
     .tool-row-resolved > .tool-row > .tool-row-glyph,
@@ -3196,24 +3237,11 @@ textarea {
     font-size: 0.72rem;
 }
 
-/* The live region sits below the transcript while a run is in flight; its rows use the same
-   shape as the settled ones so a call does not visibly change form when it lands. */
-.tool-activity-live {
+/* Live calls stay inside their expanded turn and use the same column as the settled groups they
+   will become. */
+.turn-active-tools {
     max-width: 48rem;
     margin: 0 auto 0.75rem;
-}
-
-/* A running call belongs to the group that announced it, but it is rendered outside that article
-   because it comes from the run snapshot rather than from history. Left alone it inherited the
-   gap between messages — 0.75rem, plus the leaf's own padding — while the settled rows above it
-   sit 0.1rem apart, so the newest row looked detached from the ones it continues. These two rules
-   close that gap for the one article the live rows follow, and only while they exist. */
-.workspace-message:has(+ .tool-activity-live) {
-    margin-bottom: 0.1rem;
-}
-
-.workspace-message.branch-leaf:has(+ .tool-activity-live) {
-    padding-bottom: 0;
 }
 
 /* Every group is one collapsed line; opening it reveals its rows, indented. */

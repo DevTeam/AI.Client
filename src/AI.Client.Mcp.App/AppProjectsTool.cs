@@ -21,7 +21,7 @@ public enum ProjectOperation
 }
 
 [McpServerToolType]
-public sealed class AppProjectsTool(IProjectService projects, IChatService chats, Func<IChatRunDispatcher> runs, AppWrites writes) : IAppTool
+public sealed class AppProjectsTool(IProjectService projects, IChatService chats, Func<IChatRunDispatcher> runs, IAppWrites writes) : IAppTool
 {
     public McpServerTool Create() => McpServerTool.Create(
         ProjectsAsync,

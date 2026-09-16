@@ -53,7 +53,7 @@ public enum SubmitMode
 }
 
 [McpServerToolType]
-public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, AppWrites writes) : IAppTool
+public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes) : IAppTool
 {
     /// <summary>Anything longer than this belongs in the chat, not in a wait inside one tool call.</summary>
     private const int MaxWaitMs = 600_000;

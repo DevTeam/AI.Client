@@ -4,7 +4,7 @@ using Contracts.Runs;
 
 public readonly record struct RunKey(Guid ChatId, Guid BranchId);
 
-public sealed class RunStateService
+public sealed class RunStateService : IRunStateService
 {
     private readonly Dictionary<RunKey, ChatRunSnapshot> _runs = [];
     private readonly Dictionary<RunKey, LlmGeneratingTracker> _llmGenerating = [];

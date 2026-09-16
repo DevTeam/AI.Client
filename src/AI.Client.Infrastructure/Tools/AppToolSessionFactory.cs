@@ -14,7 +14,7 @@ using System.IO.Pipelines;
 /// ends are joined by a pair of in-memory pipes instead of a child process's standard streams —
 /// the same protocol, the same client, one less process.
 /// </summary>
-public sealed class AppToolSessionFactory(AppMcpServerHost host) : IMcpServerConnection
+public sealed class AppToolSessionFactory(IAppMcpServerHost host) : IMcpServerConnection
 {
     public Guid ServerId => AppMcpServer.Id;
 

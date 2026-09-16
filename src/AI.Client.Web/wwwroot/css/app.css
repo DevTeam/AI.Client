@@ -2016,6 +2016,15 @@ body {
     font-size: 0.8rem;
 }
 
+.composer-generating-status {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+    white-space: nowrap;
+}
+
 /* Dimmer than the status text it shares the line with: the counter is a position marker, not a
    message, and it must not read as louder than a fork/replace chip standing next to it. */
 .composer-history-counter { margin-right: .4rem; color: #6d6d6d; }

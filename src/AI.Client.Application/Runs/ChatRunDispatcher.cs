@@ -19,9 +19,9 @@ using System.Threading.Channels;
 
 public sealed class ChatRunDispatcher(
     IChatRunRepository repository, ChatService chats, IProjectService projects,
-    IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, ChatAgent agent,
-    IGlobalSecretStore secretStore, IClock clock, ChatSynchronization synchronization,
-    IWorkspaceChangeTracker workspace, ToolPolicyResolver policies) : IChatRunDispatcher, IAsyncDisposable
+    IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, IChatAgent agent,
+    IGlobalSecretStore secretStore, IClock clock, IChatSynchronization synchronization,
+    IWorkspaceChangeTracker workspace, IToolPolicyResolver policies) : IChatRunDispatcher, IAsyncDisposable
 {
     /// <summary>
     /// How often a waiting confirmation re-reads the standing policy. Human-scale waiting, so the

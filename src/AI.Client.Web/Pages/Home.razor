@@ -10,7 +10,7 @@
 @inject IWorkspaceStateService WorkspaceStateService
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject IChatRunsApi ChatRunsApi
-@inject RunStateService RunState
+@inject IRunStateService RunState
 @inject IChatComposerService Composer
 @implements IAsyncDisposable
 
@@ -282,6 +282,7 @@
             OnToggleBranchMenu="ToggleMessageBranchMenu"
             OnSelectBranch="SelectMessageBranch"
             OnBranchPickerKeyDown="HandleBranchPickerKeyDown"
+            OnCurrentTurnSummaryVisibilityChanged="SetCurrentTurnSummaryVisibility"
             OnResumeRun="ResumeQueueAsync"
             OnRebaseRun="RebaseQueueAsync"
             OnDiscardRun="DiscardCommandAsync" />
@@ -300,7 +301,7 @@
             @if (_composerHistoryNavigator.Index is { } historyIndex) { <span class="composer-history-counter">History @(historyIndex + 1)/@GetComposerHistory().Count</span> }
             @* Held states carry no status word: the turn chip above already names the state and,
                for a failure, its reason. This line says only what the Enter key will do. *@
-            @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <span>@GetGeneratingStatusText()</span> }
+            @if (GetSelectedRun()?.Status == ChatRunStatus.Generating && GetGeneratingStatusText() is { Length: > 0 } generatingStatus) { <span class="composer-generating-status">@generatingStatus</span> }
             else if (GetSelectedRun() is { Status: ChatRunStatus.Paused or ChatRunStatus.Interrupted } heldRun) { <span>@GetHeldRunEnterHint(heldRun)</span> }
             else if (GetSelectedRun() is { Status: ChatRunStatus.Failed } failedRun) { <span class="error">@GetHeldRunEnterHint(failedRun)</span> }
             else if (GetReplaceSource() is { } replaceSource) { <span class="fork-mode replace-mode"><AppIcon Name="edit-replace" /><span>Replacing branch from “@GetMessagePreview(replaceSource.Content)”</span><button class="icon-action" type="button" title="Cancel replacement" aria-label="Cancel replacement" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
@@ -570,13 +571,26 @@
     {
         var elapsed = GetGeneratingElapsed();
         var fallback = $"Generating{(elapsed is { } value ? $"... {FormatElapsed(value)}" : "...")}";
-        if (_selectedChat is null || elapsed is null) return fallback + GetGeneratingEnterHint();
+        var run = GetSelectedRun();
+        var activeMessageId = run?.ActiveMessageId
+            ?? run?.Queue.FirstOrDefault(item => item.Stage == QueuedMessageStage.UserCommitted)?.Id;
+        if (_selectedChat is null || elapsed is null || activeMessageId is null)
+            return fallback + GetGeneratingEnterHint();
 
         var branch = ChatFeed.BuildBranch(_selectedChat.Messages, _branchLeafId);
-        var turn = ChatFeed.BuildTurns(branch, lastTurnEndedWithoutFinalAnswer: true).LastOrDefault();
+        // A run snapshot can reach the browser before the matching chat revision. Do not borrow
+        // the previous turn's final answer as the new run's progress title during that window.
+        var turn = ChatFeed.BuildTurns(branch, lastTurnEndedWithoutFinalAnswer: true)
+            .LastOrDefault(item => item.UserMessage?.Id == activeMessageId);
         var title = turn is null ? null : ChatFeed.RunningTitleOf(turn, elapsed.Value);
+        if (title is not null && _currentTurnSummaryVisible)
+            return GetGeneratingEnterHint().TrimStart(' ', '·');
         return (title ?? fallback) + GetGeneratingEnterHint();
     }
+
+    private bool _currentTurnSummaryVisible;
+    private void SetCurrentTurnSummaryVisibility(bool visible) =>
+        _currentTurnSummaryVisible = visible;
 
     private static string FormatElapsed(TimeSpan elapsed)
     {

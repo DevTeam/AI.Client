@@ -367,6 +367,7 @@
     [Parameter] public EventCallback OnResumeRun { get; set; }
     [Parameter] public EventCallback OnRebaseRun { get; set; }
     [Parameter] public EventCallback OnDiscardRun { get; set; }
+    [Parameter] public EventCallback<bool> OnCurrentTurnSummaryVisibilityChanged { get; set; }
 
     private readonly record struct TurnState(string Kind, string Icon, string Text, bool CanResume, bool CanRebase);
 
@@ -498,6 +499,8 @@
             }
         }
 
+        await SyncCurrentTurnSummaryVisibilityAsync();
+
         if (_expandPending)
         {
             _expandPending = false;
@@ -517,6 +520,30 @@
         await ApplyDeferredScrollAsync();
         await SyncHistoryMarkersAsync();
     }
+
+    private string? _watchedTurnSummaryElementId;
+
+    private async Task SyncCurrentTurnSummaryVisibilityAsync()
+    {
+        if (_messageScrollHandle is not { } handle) return;
+        var elementId = GetCurrentTurnSummaryElementId();
+        if (_watchedTurnSummaryElementId == elementId) return;
+        _watchedTurnSummaryElementId = elementId;
+        try { await handle.InvokeVoidAsync("watchElementVisibility", elementId); }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+    }
+
+    private string? GetCurrentTurnSummaryElementId()
+    {
+        if (SelectedRun is not { Status: ChatRunStatus.Generating } run) return null;
+        var activeMessageId = run.ActiveMessageId
+            ?? run.Queue.FirstOrDefault(item => item.Stage == QueuedMessageStage.UserCommitted)?.Id;
+        return activeMessageId is { } id ? $"turn-summary-{id}" : null;
+    }
+
+    [JSInvokable]
+    public Task OnTurnSummaryVisibilityChanged(bool visible) =>
+        OnCurrentTurnSummaryVisibilityChanged.InvokeAsync(visible);
 
     // The tail is rendered bottom-anchored, so a scroll request made against it is either already
     // right (the bottom) or aimed at a message that does not exist yet. Either way it is replayed
@@ -888,8 +915,12 @@
             || run.Status is not (ChatRunStatus.Generating or ChatRunStatus.Failed
                 or ChatRunStatus.Interrupted or ChatRunStatus.Paused)) return false;
 
-        return run.ActiveMessageId is not null
-            || run.Queue.Any(item => item.Stage == QueuedMessageStage.UserCommitted);
+        var activeMessageId = run.ActiveMessageId
+            ?? run.Queue.FirstOrDefault(item => item.Stage == QueuedMessageStage.UserCommitted)?.Id;
+        if (activeMessageId is null) return false;
+
+        return GetVisibleBranchMessages().LastOrDefault(message => message.Role == "User")?.Id
+            == activeMessageId;
     }
 
     private bool IsTurnExpanded(ChatFeed.FeedTurn turn) =>

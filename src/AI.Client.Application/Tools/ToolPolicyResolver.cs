@@ -18,6 +18,7 @@ public sealed record EffectiveToolPolicy(string Decision, int MaxCalls, long Tim
 /// user grants the tool from settings instead of from the prompt.
 /// </remarks>
 public sealed class ToolPolicyResolver(IProjectService projects, IChatService chats, IGlobalSettingsRepository settings)
+    : IToolPolicyResolver
 {
     public async Task<EffectiveToolPolicy> ResolveAsync(
         Guid projectId, Guid chatId, Guid serverId, string name, string schemaHash, CancellationToken cancellationToken)

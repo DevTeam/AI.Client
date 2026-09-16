@@ -56,7 +56,7 @@ public sealed record SubtaskTranscript(IReadOnlyList<SubtaskTranscriptEntry> Tra
 /// </remarks>
 [McpServerToolType]
 public sealed class AppSubtaskTool(
-    Func<ChatAgent> agent,
+    Func<IChatAgent> agent,
     IProjectService projects,
     IChatService chats,
     IGlobalSettingsRepository settings,

@@ -1,0 +1,23 @@
+namespace AI.Client.Web.Runs;
+
+using AI.Client.Contracts.Runs;
+
+/// <summary>
+/// Holds the run snapshots the client is showing, keyed by chat and branch, and applies the
+/// incremental updates the Host streams.
+/// </summary>
+public interface IRunStateService
+{
+    IReadOnlyDictionary<RunKey, ChatRunSnapshot> Runs { get; }
+
+    void RemoveMissing(IReadOnlyList<ChatRunSnapshot> snapshot);
+
+    void Remove(IReadOnlyList<ChatRunKey> keys);
+
+    void AppendStreaming(IReadOnlyList<ChatRunStreamingAppend> appends);
+
+    void Store(ChatRunSnapshot run);
+
+    /// <summary>Elapsed time spent with the model itself generating, excluding tool and approval waits.</summary>
+    TimeSpan? GetLlmGeneratingElapsed(RunKey key);
+}

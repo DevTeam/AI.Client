@@ -47,7 +47,7 @@ public sealed class AppSecurityTool(
     IProjectService projects,
     IChatService chats,
     IGlobalSettingsService settings,
-    AppWrites writes) : IAppTool
+    IAppWrites writes) : IAppTool
 {
     public McpServerTool Create() => McpServerTool.Create(
         SecurityAsync,

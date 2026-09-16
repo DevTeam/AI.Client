@@ -62,7 +62,7 @@ public class ToolUserInterfaceTests
     {
         // A declaration must never cost a tool its ordinary row: the native description is what
         // the user actually sees, today and whenever a server's view fails to load.
-        var described = ToolPresentations.Default.DescribeCall("mcp_other__edit_files", """{"path":"/src/a.cs"}""");
+        var described = Shipped.DescribeCall("mcp_other__edit_files", """{"path":"/src/a.cs"}""");
 
         described.Title.ShouldBe("Edit files");
         described.Detail.ShouldBe("/src/a.cs");

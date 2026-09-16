@@ -6,23 +6,14 @@ using System.Text.Json;
 /// Picks the adapter for an invocation and hands back its presentation. The generic adapter always
 /// answers last, so every tool — including one this build has never seen — gets a description.
 /// </summary>
-public sealed class ToolPresentations(IReadOnlyList<IToolPresentationAdapter> adapters)
+/// <remarks>
+/// The adapters are injected rather than built here: this type only decides which one answers, and
+/// the composition decides which set of them the build ships. Consumers take it as a dependency so
+/// that nothing reaches for a global instance behind the container's back.
+/// </remarks>
+public sealed class ToolPresentations(IEnumerable<IToolPresentationAdapter> adapters)
 {
     private static readonly GenericToolPresentationAdapter Generic = new();
-
-    /// <summary>
-    /// The Host's own tools, described from their declared output schemas, with the generic
-    /// adapter behind them for everything else.
-    /// </summary>
-    public static ToolPresentations Default { get; } = new(
-    [
-        new FileToolPresentationAdapter(),
-        new ProcessToolPresentationAdapter(),
-        new WebToolPresentationAdapter(),
-        new AppReadPresentationAdapter(),
-        new AppWritePresentationAdapter(),
-        new AppSubtaskPresentationAdapter(),
-    ]);
 
     private IToolPresentationAdapter Select(ToolRef tool)
     {

@@ -13,6 +13,7 @@ using AI.Client.Infrastructure.Projects;
 using AI.Client.Infrastructure.Storage;
 using AI.Client.Infrastructure.Settings;
 using AI.Client.Infrastructure.Workspace;
+using AI.Client.Contracts.Tools;
 using System.Diagnostics;
 using Pure.DI;
 using Pure.DI.MS;
@@ -49,6 +50,20 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             // Both groups are consumed as sets, so each registration is tagged to stay distinct
             // instead of the last one silently winning its contract.
             .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool>(Tag.Unique)
+            // The adapters are pure functions with no dependencies of their own, and the set is
+            // what the container has to hand out: three of them share the same abstract base, so
+            // registering them individually would also register them against that base and one
+            // would silently override the others. The set is therefore built here, where the
+            // composition decides which adapters this build ships.
+            .Singleton(_ => new ToolPresentations(
+            [
+                new FileToolPresentationAdapter(),
+                new ProcessToolPresentationAdapter(),
+                new WebToolPresentationAdapter(),
+                new AppReadPresentationAdapter(),
+                new AppWritePresentationAdapter(),
+                new AppSubtaskPresentationAdapter(),
+            ]))
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
             .Transient((ProjectStorageLocation location) => location.RootDirectory);

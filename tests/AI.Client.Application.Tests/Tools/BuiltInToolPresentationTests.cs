@@ -7,10 +7,10 @@ using Xunit;
 public class BuiltInToolPresentationTests
 {
     private static ToolCallPresentation Call(string name, string arguments) =>
-        ToolPresentations.Default.DescribeCall("mcp_built_in__" + name, arguments);
+        Shipped.DescribeCall("mcp_built_in__" + name, arguments);
 
     private static ToolResultPresentation Result(string name, string arguments, string structured) =>
-        ToolPresentations.Default.DescribeResult("mcp_built_in__" + name, arguments,
+        Shipped.DescribeResult("mcp_built_in__" + name, arguments,
             ToolResultCodec.Read($$"""{"structuredContent":{{structured}}}"""));
 
     [Fact]
@@ -149,7 +149,7 @@ public class BuiltInToolPresentationTests
     {
         // Structured content is validated against the output schema on the way in, but a chat file
         // can be hand-edited and a schema can change between builds.
-        var described = ToolPresentations.Default.DescribeResult(
+        var described = Shipped.DescribeResult(
             "mcp_built_in__" + name, "{}", ToolResultCodec.Read("""{"structuredContent":{"unexpected":[1,2]}}"""));
 
         described.ShouldNotBeNull();
@@ -160,9 +160,9 @@ public class BuiltInToolPresentationTests
     public void ShouldLeaveToolsFromOtherServersToTheGenericAdapter()
     {
         // A third-party server may well have a tool called edit_file; its result shape is its own.
-        ToolPresentations.Default.DescribeCall("mcp_other__edit_file", """{"path":"/a"}""")
+        Shipped.DescribeCall("mcp_other__edit_file", """{"path":"/a"}""")
             .Title.ShouldBe("Edit file");
-        ToolPresentations.Default.DescribeCall("mcp_other__edit_file", """{"path":"/a"}""")
+        Shipped.DescribeCall("mcp_other__edit_file", """{"path":"/a"}""")
             .Safety.ShouldBe(ToolSafety.Unknown);
     }
 }

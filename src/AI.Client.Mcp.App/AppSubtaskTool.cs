@@ -60,7 +60,8 @@ public sealed class AppSubtaskTool(
     IProjectService projects,
     IChatService chats,
     IGlobalSettingsRepository settings,
-    IGlobalSecretStore secrets) : IAppTool
+    IGlobalSecretStore secrets,
+    ToolPresentations presentations) : IAppTool
 {
     /// <summary>
     /// How many subtask runs may be in flight across the Host at once. A nested subtask holds its
@@ -183,7 +184,7 @@ public sealed class AppSubtaskTool(
                         answer.Clear();
                     }
 
-                    transcript.Add(Entry(task, message, made));
+                    transcript.Add(Entry(task, message, made, presentations));
                     return Task.CompletedTask;
                 },
                 (content, _) =>
@@ -225,12 +226,13 @@ public sealed class AppSubtaskTool(
     /// same adapters that describe every other tool result instead.
     /// </summary>
     private static SubtaskTranscriptEntry Entry(
-        string task, ChatCompletionMessage message, Dictionary<string, (string Name, string Arguments)> made)
+        string task, ChatCompletionMessage message, Dictionary<string, (string Name, string Arguments)> made,
+        ToolPresentations presentations)
     {
         if (message.ToolCallId is not { Length: > 0 } callId || !made.TryGetValue(callId, out var call))
             return new SubtaskTranscriptEntry(task, message.Role, Clamp(message.Content),
                 message.ToolCalls is { Count: > 0 } named ? ToolRef.Parse(named[0].Name).Name : null);
-        var described = ToolPresentations.Default.DescribeResult(call.Name, call.Arguments,
+        var described = presentations.DescribeResult(call.Name, call.Arguments,
             ToolResultCodec.Read(message.Content));
         var text = described.Body is { Length: > 0 } body ? $"{described.Summary}{Environment.NewLine}{body}" : described.Summary;
         return new SubtaskTranscriptEntry(task, message.Role, Clamp(text), ToolRef.Parse(call.Name).Name);

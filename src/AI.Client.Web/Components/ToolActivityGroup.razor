@@ -5,6 +5,7 @@
    anything the Host did not observe. Raw arguments and bulk output stay out of the DOM until a
    row is expanded, so a 10MB stdout costs nothing to scroll past. *@
 @using AI.Client.Contracts.Tools
+@inject AI.Client.Contracts.Tools.ToolPresentations Presentations
 
 <div class="tool-activity">
     @{
@@ -60,7 +61,7 @@
 
     private RenderFragment RenderRow(ChatFeed.ToolInvocation invocation) => @<text>
         @{
-            var call = ToolPresentations.Default.DescribeCall(invocation.Call.Name, invocation.Call.Arguments);
+            var call = Presentations.DescribeCall(invocation.Call.Name, invocation.Call.Arguments);
             var running = invocation.Result is null && IsLive;
             var abandoned = invocation.Result is null && !IsLive;
             var result = invocation.Result is null ? null : Describe(invocation);
@@ -197,7 +198,7 @@
     {
         if (invocation.Result is not { } message) return EmptyResult;
         if (_described.TryGetValue(message.Id, out var cached)) return cached;
-        var described = ToolPresentations.Default.DescribeResult(
+        var described = Presentations.DescribeResult(
             invocation.Call.Name, invocation.Call.Arguments, ToolResultCodec.Read(message.Content));
         _described[message.Id] = described;
         return described;

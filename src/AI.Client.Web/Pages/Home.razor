@@ -301,7 +301,8 @@
             @if (_composerHistoryNavigator.Index is { } historyIndex) { <span class="composer-history-counter">History @(historyIndex + 1)/@GetComposerHistory().Count</span> }
             @* Held states carry no status word: the turn chip above already names the state and,
                for a failure, its reason. This line says only what the Enter key will do. *@
-            @if (GetSelectedRun()?.Status == ChatRunStatus.Generating && GetGeneratingStatusText() is { Length: > 0 } generatingStatus) { <span class="composer-generating-status">@generatingStatus</span> }
+            @if (GetSelectedRun()?.Status == ChatRunStatus.Generating && _chat.Message.Length > 0) { <span>@GetComposerHint()</span> }
+            else if (GetSelectedRun()?.Status == ChatRunStatus.Generating && GetGeneratingStatusText() is { Length: > 0 } generatingStatus) { <span class="composer-generating-status">@generatingStatus</span> }
             else if (GetSelectedRun() is { Status: ChatRunStatus.Paused or ChatRunStatus.Interrupted } heldRun) { <span>@GetHeldRunEnterHint(heldRun)</span> }
             else if (GetSelectedRun() is { Status: ChatRunStatus.Failed } failedRun) { <span class="error">@GetHeldRunEnterHint(failedRun)</span> }
             else if (GetReplaceSource() is { } replaceSource) { <span class="fork-mode replace-mode"><AppIcon Name="edit-replace" /><span>Replacing branch from “@GetMessagePreview(replaceSource.Content)”</span><button class="icon-action" type="button" title="Cancel replacement" aria-label="Cancel replacement" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }

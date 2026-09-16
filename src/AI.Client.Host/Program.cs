@@ -216,6 +216,7 @@ static bool IsStreamingAppend(ChatRunSnapshot old, ChatRunSnapshot current) =>
     && current.CanRetry == old.CanRetry
     && current.BranchRevision == old.BranchRevision
     && (current.RecoveryActions ?? []).SequenceEqual(old.RecoveryActions ?? [])
+    && current.ActiveMessageId == old.ActiveMessageId
     && Equals(current.WorkspaceChanges, old.WorkspaceChanges);
 
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/stop",
@@ -241,6 +242,12 @@ app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/rebase",
 
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/clear",
     (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.ClearAsync(projectId, chatId, branchId, cancellationToken, operationId));
+
+app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/discard",
+    (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.DiscardAsync(projectId, chatId, branchId, cancellationToken, operationId));
+
+app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/clear-all",
+    (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.ClearAllAsync(projectId, chatId, branchId, cancellationToken, operationId));
 
 app.MapPost(
     "/api/chat/completions",

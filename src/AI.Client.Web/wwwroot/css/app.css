@@ -1877,8 +1877,6 @@ body {
 .queue-item > input { padding: .3rem; }
 .queue-item .icon-action { width: 1.4rem; height: 1.4rem; }
 .queue-item .icon-action .app-icon { width: .85rem; height: .85rem; }
-.queue-item-active { padding-left: 1.6rem; }
-.queue-active-badge { flex: 0 0 auto !important; color: #777; font-size: .8rem; }
 .queue-actions { justify-content: flex-end; gap: .35rem; flex: 0 0 auto; }
 .queue-action-button {
     display: inline-grid;
@@ -1898,6 +1896,52 @@ body {
 .queue-action-button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 1px; }
 .queue-action-resume:hover { color: #54c27c; border-color: rgba(84, 194, 124, 0.3); }
 .queue-action-clear:hover { color: #e57373; border-color: rgba(229, 115, 115, 0.3); }
+.queue-clear-confirm { display: flex; align-items: center; gap: .4rem; color: #c9ced6; font-size: .85rem; }
+
+/* Why the turn stopped, and what to do about it. Deliberately the same card as the file-change
+   summary it sits under - same width, radius, border and background - so the end of a turn reads
+   as one stack of cards rather than a pile of unrelated widgets. */
+.turn-status {
+    display: flex;
+    box-sizing: border-box;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    max-width: 48rem;
+    margin: 0 auto 0.75rem;
+    padding: 0.58rem 0.75rem;
+    border: 1px solid #333;
+    border-radius: 0.85rem;
+    background: #1b1b1b;
+    color: #e0e0e0;
+    font-size: 0.92rem;
+}
+
+.turn-status-icon { display: inline-grid; flex: 0 0 auto; place-items: center; }
+.turn-status-icon .app-icon { width: 1rem; height: 1rem; }
+.turn-status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn-status-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 0.3rem; }
+
+.turn-status-action {
+    padding: 0.2rem 0.55rem;
+    border: 1px solid #333;
+    border-radius: 0.45rem;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.turn-status-action:hover { background: #292929; }
+.turn-status-action:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 1px; }
+.turn-status-primary { border-color: rgba(84, 194, 124, 0.4); color: #7ed69b; }
+.turn-status-stopped .turn-status-icon { color: #d6b25e; }
+.turn-status-failed .turn-status-icon { color: #e57373; }
+.turn-status-failed .turn-status-text { color: #e9a3a3; }
+}
 .fork-mode {
     display: flex;
     min-width: 0;

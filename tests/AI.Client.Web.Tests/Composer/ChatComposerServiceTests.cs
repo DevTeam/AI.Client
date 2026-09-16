@@ -15,6 +15,7 @@ public class ChatComposerServiceTests
     [InlineData(ComposerSubmitMode.Send, ChatSubmitMode.Send)]
     [InlineData(ComposerSubmitMode.Queue, ChatSubmitMode.Queue)]
     [InlineData(ComposerSubmitMode.Fork, ChatSubmitMode.Fork)]
+    [InlineData(ComposerSubmitMode.SendNow, ChatSubmitMode.SendNow)]
     public async Task ShouldSubmitOneServerCommand(ComposerSubmitMode mode, ChatSubmitMode expected)
     {
         var history = new Mock<IChatHistoryApi>(MockBehavior.Strict);

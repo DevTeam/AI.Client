@@ -39,6 +39,25 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         _queue.Add(message); Revision++; return true;
     }
 
+    /// <summary>
+    /// Drops the command the run is already working from — the one whose user message is in the
+    /// transcript — and unblocks the queue. This is what interrupting means: the attempt is
+    /// abandoned rather than kept for a retry, so a Paused or Failed run goes back to Idle and
+    /// whatever is queued behind it can start. What the transcript keeps is the user message and,
+    /// when the model had produced any, the truncated answer.
+    /// </summary>
+    public void DropCommitted()
+    {
+        if (Status == RunStatus.Generating) throw new DomainException("Stop the run before dropping its command.");
+        foreach (var committed in _queue.Where(item => item.Stage == QueuedRunStage.UserCommitted).ToArray())
+            _queue.Remove(committed);
+        Status = RunStatus.Idle;
+        Error = null;
+        FailureKind = RunFailureKind.None;
+        StreamingContent = string.Empty;
+        Revision++;
+    }
+
     // ReSharper disable once UnusedMethodReturnValue.Global
     public bool RememberOperation(Guid operationId) => _operations.Add(operationId);
 
@@ -82,6 +101,19 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         {
             _queue.RemoveAt(index); Revision++;
         }
+    }
+
+    /// <summary>
+    /// Releases the live copy of a partial answer once it has been committed as a real message.
+    /// Pause()/Fail() deliberately keep <see cref="StreamingContent"/> so the text does not vanish
+    /// from the transcript while the answer is only in memory; once it has been persisted, keeping
+    /// it would render it twice.
+    /// </summary>
+    public void ClearStreaming()
+    {
+        if (StreamingContent.Length == 0) return;
+        StreamingContent = string.Empty;
+        Revision++;
     }
 
     public void Update(Guid id, string content)
@@ -174,6 +206,18 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
             FailureKind = RunFailureKind.None;
             Revision++;
         }
+    }
+
+    /// <summary>
+    /// Removes everything that has not been sent yet, leaving an in-flight or failed command
+    /// alone. "Clear the queue" means exactly the rows the user can see in the queue panel: a
+    /// command that is already a message in the transcript is not one of them, and silently
+    /// keeping some of what was cleared is what made the old behaviour look broken.
+    /// </summary>
+    public void ClearPending()
+    {
+        if (_queue.RemoveAll(item => item.Stage == QueuedRunStage.Prepared) == 0) return;
+        Revision++;
     }
 
     public void Clear()

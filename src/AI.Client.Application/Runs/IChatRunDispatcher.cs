@@ -21,6 +21,8 @@ public interface IChatRunDispatcher
     Task<ChatRunSnapshot?> SkipFailedAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null);
     Task<ChatRunSnapshot?> RebaseAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null);
     Task<ChatRunSnapshot?> ClearAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null);
+    Task<ChatRunSnapshot?> ClearAllAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null);
+    Task<ChatRunSnapshot?> DiscardAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null);
     Task ReconcileChatAsync(Guid projectId, Guid chatId, IReadOnlySet<Guid> branchIds, CancellationToken cancellationToken);
     Task<ChatDeleteResult> DeleteChatAsync(Guid projectId, Guid chatId, long revision, CancellationToken cancellationToken);
     Task<ChatBranchDeleteResult> DeleteBranchAsync(Guid projectId, Guid chatId, Guid branchId, long revision, CancellationToken cancellationToken);

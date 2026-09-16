@@ -100,6 +100,11 @@ public sealed class ChatRunDispatcher(
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Content);
         if (request.OperationId == Guid.Empty || request.MessageId == Guid.Empty || !Enum.IsDefined(request.Mode))
             throw new ArgumentException("Valid operation, message and submission mode are required.");
+        // Interrupting has to finish before the queue is rewritten: the worker commits the
+        // truncated answer and releases the active command on its way out, and rewriting the
+        // queue underneath it would race both.
+        if (request.Mode == ChatSubmitMode.SendNow)
+            await InterruptBranchAsync(projectId, chatId, request.BranchId ?? chatId, request.OperationId, cancellationToken);
         using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         if (_maintenance.ContainsKey(chatId) || _deletingProjects.ContainsKey(projectId)) throw new InvalidOperationException("Chat is being changed.");
         _ = await projects.GetAsync(projectId, cancellationToken) ?? throw new InvalidOperationException("Project not found.");
@@ -117,6 +122,8 @@ public sealed class ChatRunDispatcher(
         if (request.Mode != ChatSubmitMode.Fork && chat.Branches?.All(branch => branch.Id != branchId) == true
             && runtime.State.Queue.Count == 0 && branchId != request.MessageId)
             throw new ArgumentException("Branch does not exist.");
+        if (request.Mode == ChatSubmitMode.SendNow && runtime.State.Status == RunStatus.Generating)
+            throw new InvalidOperationException("The branch started generating again. Send the message once more.");
         Guid? replaceId = null;
         var parentId = request.ParentMessageId;
         var parentMode = request.ParentMode switch
@@ -158,6 +165,14 @@ public sealed class ChatRunDispatcher(
 
             runtime.State.Pause();
         }
+        else if (request.Mode == ChatSubmitMode.SendNow)
+        {
+            // The interrupted command is abandoned, not kept for a retry: the user answered the
+            // question of what to do with it by typing something else and asking for it now.
+            runtime.ResumeRequested = false;
+            runtime.State.DropCommitted();
+            runtime.State.Move(request.MessageId, 0);
+        }
         else
         {
             runtime.ResumeRequested = runtime.Cancellation?.IsCancellationRequested == true;
@@ -187,30 +202,47 @@ public sealed class ChatRunDispatcher(
                 ?? throw new InvalidOperationException("The branch required to rebase this message no longer exists.");
             runtime.State.RebaseFirst(anchor.Revision, anchor.HeadMessageId);
         }, operationId, cancellationToken);
+    /// <summary>
+    /// Removes every command that has not been sent yet and nothing else. It used to depend on
+    /// whether a worker happened to be unwinding, so the same click removed a different number of
+    /// messages depending on timing; now it removes exactly the rows the queue panel shows.
+    /// </summary>
     public Task<ChatRunSnapshot?> ClearAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null) =>
-        MutateAsync(projectId, chatId, branchId, runtime =>
-        {
-            // While a running request is being cancelled, Stop has already changed the state to
-            // Paused but the worker can still retain ActiveMessageId until its finally block runs.
-            // At that point the message is paused queue work again and Clear must remove it too.
-            if (runtime.ActiveMessageId is null || runtime.State.Status != RunStatus.Generating)
-            {
-                runtime.State.Clear();
-                return;
-            }
-            foreach (var item in runtime.State.Queue.Where(item => item.Id != runtime.ActiveMessageId).ToArray()) runtime.State.Remove(item.Id);
-        }, operationId, cancellationToken);
+        MutateAsync(projectId, chatId, branchId, runtime => runtime.State.ClearPending(), operationId, cancellationToken);
+
+    /// <summary>
+    /// Abandons the command the run is working from, or stopped on, and lets the rest of the
+    /// queue continue. What the transcript keeps is the user message and whatever truncated
+    /// answer the attempt produced; what it does not keep is a run stuck on a command nobody
+    /// intends to retry.
+    /// </summary>
+    public async Task<ChatRunSnapshot?> DiscardAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null)
+    {
+        await InterruptBranchAsync(projectId, chatId, branchId, operationId ?? Guid.Empty, cancellationToken);
+        return await MutateAsync(projectId, chatId, branchId, runtime => runtime.State.DropCommitted(), operationId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Stops the branch and empties the queue, the command in flight included. The destructive
+    /// counterpart to <see cref="ClearAsync"/>, asked for explicitly.
+    /// </summary>
+    public async Task<ChatRunSnapshot?> ClearAllAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null)
+    {
+        await InterruptBranchAsync(projectId, chatId, branchId, operationId ?? Guid.Empty, cancellationToken);
+        return await MutateAsync(projectId, chatId, branchId, runtime => runtime.State.Clear(), operationId, cancellationToken);
+    }
     public Task<ChatRunSnapshot?> UpdateQueuedAsync(Guid projectId, Guid chatId, Guid branchId, Guid messageId, UpdateQueuedMessageRequest request, CancellationToken cancellationToken) =>
         MutateAsync(projectId, chatId, branchId, runtime =>
         {
-            if (runtime.ActiveMessageId == messageId) throw new InvalidOperationException("Message is already running.");
+            if (runtime.ActiveMessageId == messageId) throw new InvalidOperationException("This message has already been sent, so it can no longer be edited.");
             if (request.Content is not null) runtime.State.Update(messageId, request.Content);
-            if (request.Position is { } position) runtime.State.Move(messageId, Math.Max(runtime.ActiveMessageId is null ? 0 : 1, position));
+            if (request.Position is { } position)
+                runtime.State.Move(messageId, Math.Max(runtime.State.Queue.Count(item => item.Stage == QueuedRunStage.UserCommitted), position));
         }, request.OperationId, cancellationToken);
     public Task<ChatRunSnapshot?> RemoveQueuedAsync(Guid projectId, Guid chatId, Guid branchId, Guid messageId, CancellationToken cancellationToken, Guid? operationId = null) =>
         MutateAsync(projectId, chatId, branchId, runtime =>
         {
-            if (runtime.ActiveMessageId == messageId) throw new InvalidOperationException("Message is already running.");
+            if (runtime.ActiveMessageId == messageId) throw new InvalidOperationException("This message has already been sent. Stop the run to drop it.");
             if (runtime.State.Status == RunStatus.Failed && runtime.State.Queue.Count > 0 && runtime.State.Queue[0].Id == messageId)
                 runtime.State.SkipFailed();
             else
@@ -272,7 +304,17 @@ public sealed class ChatRunDispatcher(
                     token = runtime.Cancellation.Token;
                     runtime.State.Start();
                     runtime.WorkspaceChanges = null;
+                    // A previous attempt at this same command may have been cut short, leaving a
+                    // truncated answer and its tool messages on the branch. Retrying replaces that
+                    // attempt rather than continuing from it, so the branch is rewound to the user
+                    // message first and the abandoned tail pruned.
+                    runtime.ToolHead = null;
                     var chat = await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token) ?? throw new InvalidOperationException("Chat not found.");
+                    if (chat.Messages.Any(message => message.Id == PartialReplyId(queued.Id))
+                        && chat.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId) is { } attemptBranch
+                        && IsAncestor(chat, attemptBranch.HeadMessageId, queued.Id))
+                        chat = await chats.RewindBranchCoreAsync(chat.ProjectId, chat.Id, runtime.State.BranchId,
+                            queued.Id, RetainedMessageIds(chat.Id), token) ?? chat;
                     if (chat.Messages.Any(message => message.Id == ReplyId(queued.Id)))
                     {
                         runtime.State.Remove(queued.Id);
@@ -354,6 +396,7 @@ public sealed class ChatRunDispatcher(
         catch (Exception error)
         {
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
+            await CommitPartialAnswerAsync(runtime);
             // Clear can empty the queue while a cancelled worker is still unwinding. Keep the
             // Idle state established by Clear instead of changing the empty queue back to Paused.
             if (error is OperationCanceledException)
@@ -370,7 +413,7 @@ public sealed class ChatRunDispatcher(
             catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException)
             {
                 runtime.State.Fail(saveError.Message, RunFailureKind.Storage);
-                runtime.Snapshot = Snapshot(runtime.State, null);
+                runtime.Snapshot = Snapshot(runtime.State, null, runtime.ActiveMessageId);
                 Publish();
             }
         }
@@ -392,6 +435,10 @@ public sealed class ChatRunDispatcher(
             {
                 PendingApproval = null,
                 ActiveTools = [],
+                // This block patches the last published snapshot instead of rebuilding it, so
+                // every field the worker just released has to be named here. Leaving this one out
+                // left the run advertising an active command it had already finished with.
+                ActiveMessageId = runtime.ActiveMessageId,
                 WorkspaceChanges = runtime.State.Status == RunStatus.Completed ? null : runtime.WorkspaceChanges
             };
             Publish();
@@ -637,17 +684,58 @@ public sealed class ChatRunDispatcher(
         _ => RunFailureKind.Transient
     };
 
-    private static Guid ReplyId(Guid messageId)
+    private static Guid ReplyId(Guid messageId) => DerivedId($"assistant:{messageId:N}");
+
+    /// <summary>
+    /// Id of the truncated answer an interrupted attempt leaves behind. Deliberately different
+    /// from <see cref="ReplyId"/>: the "this command already has its reply, treat it as done"
+    /// check keys on the full answer, and a partial one must never satisfy it. Deterministic, so
+    /// committing the same interrupted attempt twice cannot produce two messages.
+    /// </summary>
+    private static Guid PartialReplyId(Guid messageId) => DerivedId($"assistant-partial:{messageId:N}");
+
+    private static Guid DerivedId(string seed)
     {
-        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"assistant:{messageId:N}"));
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(seed));
         return new Guid(hash.AsSpan(0, 16));
+    }
+
+    /// <summary>
+    /// Persists whatever the model had produced before the attempt was cut short, as an
+    /// incomplete assistant message. Without it the text simply disappeared when a run was
+    /// stopped or failed, and the user message was left in the transcript with nothing under it.
+    /// Never allowed to throw: it runs from the worker's own failure path, where the error that
+    /// got us here is the one worth reporting.
+    /// </summary>
+    private async Task CommitPartialAnswerAsync(Runtime runtime)
+    {
+        if (runtime.ActiveMessageId is not { } active || runtime.State.StreamingContent.Length == 0) return;
+        if (_maintenance.ContainsKey(runtime.State.ChatId) || _deletingProjects.ContainsKey(runtime.State.ProjectId)) return;
+        try
+        {
+            var chat = await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, CancellationToken.None);
+            if (chat is null || chat.Messages.All(message => message.Id != active)) return;
+            var partialId = PartialReplyId(active);
+            if (chat.Messages.Any(message => message.Id == partialId))
+            {
+                runtime.State.ClearStreaming();
+                return;
+            }
+            var appended = await chats.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
+                new AppendChatMessageRequest(partialId, runtime.ToolHead ?? active, "Assistant",
+                    runtime.State.StreamingContent, chat.Revision, IsIncomplete: true,
+                    BranchId: runtime.State.BranchId), CancellationToken.None);
+            if (appended is not null) runtime.State.ClearStreaming();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException
+            or InvalidOperationException or ArgumentException or Domain.Common.DomainException) { }
     }
 
     private async Task SaveAsync(Runtime runtime, ChatDetails? chat, CancellationToken token)
     {
         await repository.SaveAsync(runtime.State, token);
         var previous = runtime.Snapshot;
-        runtime.Snapshot = Snapshot(runtime.State, chat) with
+        runtime.Snapshot = Snapshot(runtime.State, chat, runtime.ActiveMessageId) with
         {
             ChatRevision = chat?.Revision ?? previous.ChatRevision,
             HeadMessageId = chat?.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId)?.HeadMessageId
@@ -658,8 +746,6 @@ public sealed class ChatRunDispatcher(
             ActiveTools = runtime.ActiveTools.Values.ToArray(),
             WorkspaceChanges = runtime.WorkspaceChanges
         };
-        if (runtime is { ActiveMessageId: { } active, State.Status: RunStatus.Generating })
-            runtime.Snapshot = runtime.Snapshot with { Queue = runtime.Snapshot.Queue.Where(item => item.Id != active).ToArray() };
         if (chat is not null)
             foreach (var other in _runtimes.Values.Where(item => item.State.ChatId == chat.Id && item != runtime))
                 other.Snapshot = other.Snapshot with
@@ -763,6 +849,27 @@ public sealed class ChatRunDispatcher(
         await Task.WhenAll(workers).WaitAsync(token);
     }
 
+    /// <summary>
+    /// Cancels whatever the branch is generating and waits for its worker to unwind, so a caller
+    /// about to rewrite the queue sees a settled run: truncated answer committed, no active
+    /// command, no worker about to write over the change. Does nothing when the operation has
+    /// already been applied, so a resubmitted request cannot stop a run a second time.
+    /// </summary>
+    private async Task InterruptBranchAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken token)
+    {
+        Task worker;
+        using (await synchronization.EnterAsync(chatId, token))
+        {
+            if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)) return;
+            if (operationId != Guid.Empty && runtime.State.Operations.Contains(operationId)) return;
+            runtime.ResumeRequested = false;
+            if (runtime.Cancellation is { } cancellation) await cancellation.CancelAsync();
+            if (runtime.Worker is not null) runtime.State.Pause();
+            worker = runtime.Worker ?? Task.CompletedTask;
+        }
+        await worker.WaitAsync(token);
+    }
+
     private async Task PauseBranchWorkerAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken token)
     {
         Task worker;
@@ -816,15 +923,26 @@ public sealed class ChatRunDispatcher(
         }
     }
 
-    private static ChatRunSnapshot Snapshot(ChatRunState state, ChatDetails? chat) => new(state.ProjectId, state.ChatId, state.BranchId,
+    // The whole queue is published, stage and all, including the command the run is working
+    // from. Hiding that entry while it generated is what made the queue read differently from one
+    // moment to the next: it vanished on start and came back on failure, and the first waiting
+    // message inherited its "Running" badge. The client decides what a stage means; the snapshot
+    // just says what is true.
+    private static ChatRunSnapshot Snapshot(ChatRunState state, ChatDetails? chat, Guid? activeMessageId = null) => new(state.ProjectId, state.ChatId, state.BranchId,
         (ChatRunStatus)state.Status, state.StreamingContent,
         state.Queue.Select(item => new QueuedChatMessage(item.Id, item.Content, item.CreatedAt,
-            ParentMode(item.ParentMode), item.ParentMessageId)).ToArray(),
+            ParentMode(item.ParentMode), item.ParentMessageId, Stage(item.Stage))).ToArray(),
         state.HasUnreadResponse, state.Error, state.Revision, chat?.Revision ?? 0,
         chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.HeadMessageId,
         FailureCode: FailureCode(state.FailureKind), CanRetry: state.CanRetry,
         BranchRevision: chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.Revision ?? 0,
-        RecoveryActions: RecoveryActions(state));
+        RecoveryActions: RecoveryActions(state), ActiveMessageId: activeMessageId);
+
+    private static QueuedMessageStage Stage(QueuedRunStage stage) => stage switch
+    {
+        QueuedRunStage.UserCommitted => QueuedMessageStage.UserCommitted,
+        _ => QueuedMessageStage.Prepared
+    };
 
     private static RunRecoveryAction[] RecoveryActions(ChatRunState state)
     {

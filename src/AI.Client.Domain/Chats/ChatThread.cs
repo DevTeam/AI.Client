@@ -214,6 +214,29 @@ public sealed class ChatThread
         LastActivityAt = updatedAt;
     }
 
+    /// <summary>
+    /// Moves a branch head back to an earlier message on the same branch, abandoning everything
+    /// after it. Used to throw away an attempt that was interrupted: its truncated answer and any
+    /// tool messages it wrote are left unreachable, for <see cref="PruneUnreachableMessages"/> to
+    /// collect. Returns false when the head is already there, so a caller can skip the save.
+    /// </summary>
+    public bool RewindBranchTo(Guid branchId, ChatMessageId head, DateTimeOffset updatedAt)
+    {
+        if (!_branches.TryGetValue(branchId, out var branch)) throw new DomainException("Branch does not exist in this chat.");
+        if (!_messages.ContainsKey(head)) throw new DomainException("Branch message does not exist in this chat.");
+        if (branch.HeadMessageId == head) return false;
+        if (!GetBranch(branch.HeadMessageId).Any(message => message.Id == head))
+            throw new DomainException("A branch can only be rewound to a message it already contains.");
+        // RestoreBranches refuses a branch whose root is not an ancestor of its head, so rewinding
+        // past the fork point would write a chat that throws on the next load.
+        if (branch.RootMessageId is { } root && !GetBranch(head).Any(message => message.Id == root))
+            throw new DomainException("A branch cannot be rewound past its own root.");
+        EnsureTimestampDoesNotMoveBackwards(updatedAt);
+        _branches[branchId] = branch with { HeadMessageId = head, Revision = checked(branch.Revision + 1) };
+        UpdatedAt = updatedAt;
+        return true;
+    }
+
     public IReadOnlyList<ChatMessage> GetBranch(ChatMessageId? leafId)
     {
         if (leafId is null)

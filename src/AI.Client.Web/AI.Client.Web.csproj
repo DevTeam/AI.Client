@@ -11,6 +11,5 @@
     <PackageReference Include="Pure.DI" PrivateAssets="all" />
     <PackageReference Include="Pure.DI.MS" />
     <PackageReference Include="Markdig" />
-    <PackageReference Include="HtmlSanitizer" />
   </ItemGroup>
 </Project>

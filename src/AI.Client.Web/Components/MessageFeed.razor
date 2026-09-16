@@ -928,7 +928,7 @@
     private readonly Dictionary<Guid, (Guid ChatId, string Content, string Html)> _markdownCache = [];
     private readonly LinkedList<Guid> _markdownChatLru = [];
 
-    // Markdig + HtmlSanitizer are not cheap; caching by message id means a re-render only
+    // Markdig is not cheap; caching by message id means a re-render only
     // re-parses messages whose content actually changed (in practice, just the one being edited).
     private string RenderMarkdownCached(Guid messageId, string content)
     {

@@ -167,4 +167,46 @@ public sealed class ChatFeedTests
         invocations[0].Duration.ShouldBe(TimeSpan.FromSeconds(1));
         invocations[1].Duration.ShouldBe(TimeSpan.FromSeconds(1));
     }
+
+    [Fact]
+    public void ShouldRenderTheTailOfALongTranscriptFirst()
+    {
+        var chain = Enumerable.Range(0, 30)
+            .SelectMany(index => new[] { User($"question {index}"), Assistant($"answer {index}") })
+            .ToArray();
+
+        var items = ChatFeed.BuildFeedItems(chain);
+        var tail = ChatFeed.TakeTail(items, 10);
+
+        // The end of the transcript, in order — this is what the feed opens at.
+        tail.Count.ShouldBe(10);
+        tail.ShouldBe(items.Skip(items.Count - 10).ToArray());
+    }
+
+    [Fact]
+    public void ShouldKeepEveryItemWhenTheTranscriptIsShorterThanTheLimit()
+    {
+        var items = ChatFeed.BuildFeedItems([User("one"), Assistant("two")]);
+
+        ChatFeed.TakeTail(items, 10).ShouldBeSameAs(items);
+        ChatFeed.TakeTail(items, int.MaxValue).ShouldBeSameAs(items);
+    }
+
+    [Fact]
+    public void ShouldTreatAToolGroupAsOneTailItem()
+    {
+        var question = User("do it");
+        var call = Assistant("checking", "call-1");
+        var result = ToolResult("call-1");
+        var answer = Assistant("done");
+
+        var items = ChatFeed.BuildFeedItems([question, call, result, answer]);
+        var tail = ChatFeed.TakeTail(items, 2);
+
+        // The group is indivisible: a tail of two is "the tool block, then the answer", never
+        // half a block.
+        tail.Count.ShouldBe(2);
+        tail[0].ToolGroup.ShouldBe(new[] { call, result });
+        tail[1].Message.ShouldBe(answer);
+    }
 }

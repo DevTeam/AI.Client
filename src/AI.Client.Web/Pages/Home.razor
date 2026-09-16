@@ -93,7 +93,7 @@
                     @foreach (var chat in orderedChats.Take(visibleChatCount))
                     {
                         var branchCount = GetBranchCount(chat);
-                        <div @key="chat.Id" class="chat-nav-row @(_globalSection is null && chat.Id == _selectedChat?.Id && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty)" title="@GetRunTitle(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
+                        <div @key="chat.Id" class="chat-nav-row @(_globalSection is null && chat.Id == GetActiveChatId() && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty)" title="@GetRunTitle(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
                             @if (_editingChatId == chat.Id)
                             {
                                 <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveChatTitleAsync(chat))" @onblur="() => SaveChatTitleAsync(chat)" aria-label="Chat name" />
@@ -453,7 +453,10 @@
     private string? _error;
     private readonly List<ChatSummary> _chats = [];
     private ChatDetails? _selectedChat;
-    private const int RetainedChatDetailsCount = 2;
+    // One page of the sidebar is ten chats, and moving between a handful of them is the normal
+    // working pattern; retaining five keeps that instant without pinning a whole project's
+    // transcripts in memory (a long chat deserialises into several megabytes).
+    private const int RetainedChatDetailsCount = 5;
     private readonly Dictionary<Guid, ChatDetails> _chatDetailsCache = [];
     private readonly LinkedList<Guid> _chatDetailsLru = [];
     private Guid? _branchLeafId;
@@ -473,6 +476,17 @@
     private Guid? _forkSourceId;
     private Guid? _replaceSourceId;
     private Guid? _pendingBranchAnchorId;
+    // Opening a chat is cancellable and last-click-wins. Two quick clicks used to race to assign
+    // _selectedChat in whatever order their responses happened to arrive, so the slower one could
+    // land last and leave the wrong transcript open.
+    private CancellationTokenSource? _chatSelectionCancellation;
+    // The chat the user has just asked for, before its transcript exists. The sidebar highlights
+    // it immediately: the click IS the selection, loading is only how long the content takes.
+    private Guid? _pendingChatId;
+    // Work that belongs to an opened chat but not to opening it — marking it read (a server
+    // round-trip) and recording where the user is (a localStorage write). Run after the render
+    // that puts the transcript on screen, not before it.
+    private (Guid ProjectId, Guid? ChatId, Guid? BranchLeafId)? _openedChatToSettle;
     // Two loads with two placeholders, not one flag over both: the project list arrives in a
     // single request, while the selected project's chats only arrive after its settings
     // round-trip, and holding the whole sidebar back until the slower of them was what made the
@@ -622,6 +636,18 @@
         {
             _followNewMessages = false;
             await _messageFeed.FollowNewContentAsync();
+        }
+
+        // After the render that shows the transcript, never before it: both of these are round
+        // trips, and neither of them changes what the user is looking at.
+        if (_openedChatToSettle is { } opened)
+        {
+            _openedChatToSettle = null;
+            if (_selectedProject?.Id == opened.ProjectId && _selectedChat?.Id == opened.ChatId)
+            {
+                await MarkSelectedChatReadAsync();
+                await WorkspaceStateService.SetProjectContextAsync(opened.ProjectId, opened.ChatId, opened.BranchLeafId);
+            }
         }
 
         if (_composerNeedsResize && _composerHandle is not null)
@@ -892,6 +918,7 @@
         // RestoreComposerDraft below actually has something to find.
         await WorkspaceStateService.FlushPendingComposerDraftAsync();
         _selectedProject = project;
+        CancelChatSelection();
         // The previous project's chats are still in _chats at this point, and the list re-renders
         // under the new project's name before LoadChatsAsync replaces them. Drop them and show the
         // placeholder instead of someone else's chats.
@@ -1471,12 +1498,37 @@
         await ClearSearch();
     }
 
+    // The chat the sidebar should show as selected: what the user just clicked, if its transcript
+    // is still loading, and otherwise what is actually open.
+    private Guid? GetActiveChatId() => _pendingChatId ?? _selectedChat?.Id;
+
+    // Supersedes any selection still in flight. The abandoned one stops at its next guard, and
+    // its HTTP request is cancelled rather than deserialised into a transcript nobody wants.
+    private CancellationToken BeginChatSelection(Guid chatId)
+    {
+        CancelChatSelection();
+        var cancellation = new CancellationTokenSource();
+        _chatSelectionCancellation = cancellation;
+        _pendingChatId = chatId;
+        return cancellation.Token;
+    }
+
+    private void CancelChatSelection()
+    {
+        _chatSelectionCancellation?.Cancel();
+        _chatSelectionCancellation?.Dispose();
+        _chatSelectionCancellation = null;
+        _pendingChatId = null;
+    }
+
     private async Task SelectChatAsync(Guid chatId)
     {
         _globalSection = null;
         _attachComposer = true;
         CloseContextMenus();
+        var cancellation = BeginChatSelection(chatId);
         await SaveCurrentScrollPositionAsync();
+        if (cancellation.IsCancellationRequested) return;
         if (_selectedProject is not null)
         {
             if (_selectedChat is { } currentChat) CacheChatDetails(currentChat);
@@ -1490,7 +1542,22 @@
             // this method serves — arriving at this chat from somewhere else (a different chat, a
             // fresh page load) — which is exactly what "already viewing this chat" rules out.
             var wasAlreadyOnThisChat = _selectedChat?.Id == chatId;
-            _selectedChat = await GetChatForSelectionAsync(_selectedProject.Id, chatId);
+            ChatDetails? details;
+            try
+            {
+                details = await GetChatForSelectionAsync(_selectedProject.Id, chatId, cancellation);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            // Superseded while the transcript was on its way: everything below writes selection
+            // state, and writing it now would undo the chat the user has since asked for.
+            if (cancellation.IsCancellationRequested) return;
+
+            _pendingChatId = null;
+            _selectedChat = details;
             _branchLeafId = GetOriginalBranchLeaf(_selectedChat);
 
             // Prefer the branch this chat was last left on, within this project, if it's still
@@ -1515,12 +1582,15 @@
             // Whether to jump to the bottom or restore the last-viewed message is decided in
             // MessageFeed (it knows whether a saved position exists) — see OnAfterRenderAsync.
             _pendingScrollRestoreKey = GetScrollPositionKey();
-            await MarkSelectedChatReadAsync();
-            await WorkspaceStateService.SetProjectContextAsync(_selectedProject.Id, _selectedChat?.Id, _branchLeafId);
+            _openedChatToSettle = (_selectedProject.Id, _selectedChat?.Id, _branchLeafId);
+        }
+        else
+        {
+            _pendingChatId = null;
         }
     }
 
-    private async Task<ChatDetails?> GetChatForSelectionAsync(Guid projectId, Guid chatId)
+    private async Task<ChatDetails?> GetChatForSelectionAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
     {
         var knownRevision = _chats.FirstOrDefault(chat => chat.Id == chatId)?.Revision;
         if (_chatDetailsCache.TryGetValue(chatId, out var cached)
@@ -1531,7 +1601,7 @@
             return cached;
         }
 
-        var loaded = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);
+        var loaded = await ChatHistoryApi.GetAsync(projectId, chatId, cancellationToken);
         if (loaded is not null) CacheChatDetails(loaded);
         return loaded;
     }
@@ -2139,9 +2209,26 @@
     {
         if (_selectedProject is null || _selectedChat is null) return;
 
+        // A branch is a transcript too, so switching to one is superseded by the next click the
+        // same way opening a chat is.
+        var chatId = _selectedChat.Id;
+        var cancellation = BeginChatSelection(chatId);
         await SaveCurrentScrollPositionAsync();
+        if (cancellation.IsCancellationRequested) return;
 
-        var refreshedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, _selectedChat.Id, CancellationToken.None);
+        ChatDetails? refreshedChat;
+        try
+        {
+            refreshedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, chatId, cancellation);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (cancellation.IsCancellationRequested || _selectedChat?.Id != chatId) return;
+
+        _pendingChatId = null;
         if (refreshedChat is not null)
         {
             _selectedChat = refreshedChat;
@@ -2152,8 +2239,7 @@
         _branchLeafId = refreshedBranch?.LeafId ?? branch.LeafId;
         RestoreComposerDraft();
         _pendingScrollRestoreKey = GetScrollPositionKey();
-        await MarkSelectedChatReadAsync();
-        await WorkspaceStateService.SetProjectContextAsync(_selectedProject.Id, _selectedChat.Id, _branchLeafId);
+        _openedChatToSettle = (_selectedProject.Id, chatId, _branchLeafId);
     }
 
     private async Task OnProjectContextMenu(ProjectSummary project)
@@ -2260,11 +2346,11 @@
     private int GetVisibleChatCount(IReadOnlyList<ChatSummary> orderedChats)
     {
         var count = Math.Min(_visibleChatCount, orderedChats.Count);
-        if (_selectedChat is { } selected)
+        if (GetActiveChatId() is { } activeChatId)
         {
             for (var index = count; index < orderedChats.Count; index++)
             {
-                if (orderedChats[index].Id == selected.Id) return index + 1;
+                if (orderedChats[index].Id == activeChatId) return index + 1;
             }
         }
 
@@ -2668,6 +2754,7 @@
     private void OpenGlobalSection(string section)
     {
         CloseContextMenus();
+        CancelChatSelection();
         _messageFeed = null;
         _scrollMessagesToBottom = false;
         _followNewMessages = false;
@@ -2852,6 +2939,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        CancelChatSelection();
         _projectsBusy?.Dispose();
         _chatsBusy?.Dispose();
         await _generatingTickerCancellation.CancelAsync();

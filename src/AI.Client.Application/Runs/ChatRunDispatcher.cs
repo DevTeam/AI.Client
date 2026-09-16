@@ -18,7 +18,7 @@ using System.Collections.Concurrent;
 using System.Threading.Channels;
 
 public sealed class ChatRunDispatcher(
-    IChatRunRepository repository, ChatService chats, IProjectService projects,
+    IChatRunRepository repository, IChatService chats, IChatMutations chatMutations, IProjectService projects,
     IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, IChatAgent agent,
     IGlobalSecretStore secretStore, IClock clock, IChatSynchronization synchronization,
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies) : IChatRunDispatcher, IAsyncDisposable
@@ -313,7 +313,7 @@ public sealed class ChatRunDispatcher(
                     if (chat.Messages.Any(message => message.Id == PartialReplyId(queued.Id))
                         && chat.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId) is { } attemptBranch
                         && IsAncestor(chat, attemptBranch.HeadMessageId, queued.Id))
-                        chat = await chats.RewindBranchCoreAsync(chat.ProjectId, chat.Id, runtime.State.BranchId,
+                        chat = await chatMutations.RewindBranchCoreAsync(chat.ProjectId, chat.Id, runtime.State.BranchId,
                             queued.Id, RetainedMessageIds(chat.Id), token) ?? chat;
                     if (chat.Messages.Any(message => message.Id == ReplyId(queued.Id)))
                     {
@@ -322,7 +322,7 @@ public sealed class ChatRunDispatcher(
                         runtime.ActiveMessageId = null;
                         runtime.Cancellation.Dispose();
                         runtime.Cancellation = null;
-                        chat = await chats.PruneMessagesCoreAsync(chat.ProjectId, chat.Id,
+                        chat = await chatMutations.PruneMessagesCoreAsync(chat.ProjectId, chat.Id,
                             RetainedMessageIds(chat.Id), token) ?? chat;
                         await SaveAsync(runtime, chat, token);
                         continue;
@@ -337,7 +337,7 @@ public sealed class ChatRunDispatcher(
                     if (chat.Messages.All(message => message.Id != queued.Id))
                     {
                         var parent = ResolveParent(chat, runtime.State.BranchId, queued);
-                        chat = await chats.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
+                        chat = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
                             new AppendChatMessageRequest(queued.Id, parent, "User", queued.Content, chat.Revision,
                                 BranchId: runtime.State.BranchId, ParentBranchId: queued.ParentBranchId,
                                 ReplaceSourceId: queued.ReplaceSourceId), token)
@@ -374,7 +374,7 @@ public sealed class ChatRunDispatcher(
                     // Stable reply id avoids duplicate assistant messages if the process stops between chat and run commits.
                     var replyId = ReplyId(queued.Id);
                     if (chat.Messages.All(message => message.Id != replyId))
-                        chat = await chats.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
+                        chat = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
                             new AppendChatMessageRequest(replyId, runtime.ToolHead ?? queued.Id, "Assistant", runtime.State.StreamingContent, chat.Revision,
                                 BranchId: runtime.State.BranchId,
                                 WorkspaceChanges: workspaceChanges.IsEmpty ? null : workspaceChanges), token)
@@ -387,7 +387,7 @@ public sealed class ChatRunDispatcher(
                     runtime.ActiveMessageId = null;
                     runtime.Cancellation.Dispose();
                     runtime.Cancellation = null;
-                    chat = await chats.PruneMessagesCoreAsync(chat.ProjectId, chat.Id,
+                    chat = await chatMutations.PruneMessagesCoreAsync(chat.ProjectId, chat.Id,
                         RetainedMessageIds(chat.Id), token) ?? chat;
                     await SaveAsync(runtime, chat, token);
                 }
@@ -569,7 +569,7 @@ public sealed class ChatRunDispatcher(
         var chat = await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token)
             ?? throw new InvalidOperationException("Chat not found.");
         var id = Guid.NewGuid();
-        chat = await chats.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
+        chat = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
             new AppendChatMessageRequest(id, runtime.ToolHead, message.Role, message.Content, chat.Revision,
                 BranchId: runtime.State.BranchId, ToolCalls: message.ToolCalls, ToolCallId: message.ToolCallId), token)
             ?? throw new InvalidOperationException("Tool history conflict.");
@@ -723,7 +723,7 @@ public sealed class ChatRunDispatcher(
                 runtime.State.ClearStreaming();
                 return;
             }
-            var appended = await chats.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
+            var appended = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
                 new AppendChatMessageRequest(partialId, runtime.ToolHead ?? active, "Assistant",
                     runtime.State.StreamingContent, chat.Revision, IsIncomplete: true,
                     BranchId: runtime.State.BranchId), CancellationToken.None);
@@ -775,7 +775,7 @@ public sealed class ChatRunDispatcher(
             if (chat is null) return new ChatDeleteResult(false, 0);
             if (chat.Revision != revision) return new ChatDeleteResult(false, chat.Revision);
             await PauseWorkersAsync(projectId, chatId, cancellationToken);
-            var result = await chats.DeleteAsync(projectId, chatId, revision, cancellationToken);
+            var result = await chatMutations.DeleteAsync(projectId, chatId, revision, cancellationToken);
             if (result.IsDeleted) await RemoveAsync(projectId, chatId, null, CancellationToken.None);
             return result;
         }
@@ -797,7 +797,7 @@ public sealed class ChatRunDispatcher(
                     { message.ParentMessageId, message.ReplaceSourceId, message.Stage == QueuedRunStage.UserCommitted ? message.Id : null })
                     .Append(item.ToolHead))
                 .OfType<Guid>().ToHashSet();
-            var result = await chats.DeleteBranchAsync(projectId, chatId, branchId, revision, retainedMessages, cancellationToken);
+            var result = await chatMutations.DeleteBranchAsync(projectId, chatId, branchId, revision, retainedMessages, cancellationToken);
             if (!result.IsDeleted)
             {
                 return result;

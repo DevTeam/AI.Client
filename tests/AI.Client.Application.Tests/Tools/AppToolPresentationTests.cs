@@ -10,7 +10,7 @@ public sealed class AppToolPresentationTests
     [Fact]
     public void ShouldNameTheResourceBeingRead()
     {
-        var call = ToolPresentations.Default.DescribeCall("mcp_app__app_read",
+        var call = Shipped.DescribeCall("mcp_app__app_read",
             """{"resource":"Messages","chatId":"0199c0de-0000-7000-8000-000000000001"}""");
 
         call.Title.ShouldBe("Read messages");
@@ -21,7 +21,7 @@ public sealed class AppToolPresentationTests
     [Fact]
     public void ShouldSummariseHowMuchOfAPageCameBack()
     {
-        var result = ToolPresentations.Default.DescribeResult("mcp_app__app_read", """{"resource":"Chats"}""",
+        var result = Shipped.DescribeResult("mcp_app__app_read", """{"resource":"Chats"}""",
             Structured("""{"resource":"Chats","items":[],"nextCursor":"2","truncated":false,"returned":2,"total":9,"error":null}"""));
 
         result.Summary.ShouldBe("2 of 9 items");
@@ -32,7 +32,7 @@ public sealed class AppToolPresentationTests
     [Fact]
     public void ShouldWarnWhenAPageEndedOnItsCharacterBudget()
     {
-        var result = ToolPresentations.Default.DescribeResult("mcp_app__app_read", null,
+        var result = Shipped.DescribeResult("mcp_app__app_read", null,
             Structured("""{"resource":"Messages","items":[],"nextCursor":"1","truncated":true,"returned":1,"total":4,"error":null}"""));
 
         result.Severity.ShouldBe(ToolResultSeverity.Warning);
@@ -41,7 +41,7 @@ public sealed class AppToolPresentationTests
     [Fact]
     public void ShouldDescribeAChangeByWhatItDid()
     {
-        var result = ToolPresentations.Default.DescribeResult("mcp_app__app_chats", """{"operation":"Create"}""",
+        var result = Shipped.DescribeResult("mcp_app__app_chats", """{"operation":"Create"}""",
             Structured("""
                 {"operation":"Create","applied":true,"dryRun":false,"effect":"Created chat 'Notes'.",
                  "projectId":"0199c0de-0000-7000-8000-000000000002","chatId":null,"branchId":null,"messageId":null,
@@ -56,7 +56,7 @@ public sealed class AppToolPresentationTests
     [Fact]
     public void ShouldTreatAConflictAsSomethingToNoticeRatherThanAFailure()
     {
-        var result = ToolPresentations.Default.DescribeResult("mcp_app__app_chats", """{"operation":"Rename"}""",
+        var result = Shipped.DescribeResult("mcp_app__app_chats", """{"operation":"Rename"}""",
             Structured("""
                 {"operation":"Rename","applied":false,"dryRun":false,"effect":"Nothing was changed.",
                  "projectId":null,"chatId":null,"branchId":null,"messageId":null,"revision":7,"status":"Conflict",
@@ -70,9 +70,9 @@ public sealed class AppToolPresentationTests
     [Fact]
     public void ShouldMarkARunAsMutatingRatherThanDestructive()
     {
-        ToolPresentations.Default.DescribeCall("mcp_app__app_runs", """{"operation":"Submit","content":"Go"}""")
+        Shipped.DescribeCall("mcp_app__app_runs", """{"operation":"Submit","content":"Go"}""")
             .Safety.ShouldBe(ToolSafety.Mutating);
-        ToolPresentations.Default.DescribeCall("mcp_app__app_security", """{"operation":"SetProjectSecurity"}""")
+        Shipped.DescribeCall("mcp_app__app_security", """{"operation":"SetProjectSecurity"}""")
             .Safety.ShouldBe(ToolSafety.Destructive);
     }
 
@@ -80,7 +80,7 @@ public sealed class AppToolPresentationTests
     public void ShouldNotClaimAThirdPartyToolThatSharesAName()
     {
         // Tool names are unique only within a server, so the prefix is what decides ownership.
-        ToolPresentations.Default.DescribeCall("mcp_other__app_read", """{"resource":"Projects"}""")
+        Shipped.DescribeCall("mcp_other__app_read", """{"resource":"Projects"}""")
             .Title.ShouldBe("App read");
     }
 
@@ -99,7 +99,7 @@ public sealed class AppToolPresentationTests
         var result = new ToolCallResult([new ToolContent(ToolContentKind.Text, structured.GetRawText(), null, null, null)],
             structured, meta, false, structured.GetRawText());
 
-        var presentation = ToolPresentations.Default.DescribeResult("mcp_app__spawn_subtask", """{"tasks":["count the files"]}""", result);
+        var presentation = Shipped.DescribeResult("mcp_app__spawn_subtask", """{"tasks":["count the files"]}""", result);
 
         presentation.Summary.ShouldBe("1 of 2 subtasks failed");
         presentation.Severity.ShouldBe(ToolResultSeverity.Warning);
@@ -130,21 +130,21 @@ public sealed class AppToolPresentationTests
         var restored = ToolResultCodec.Read(ToolResultCodec.Write(live));
 
         restored.ModelContent.ShouldNotContain("secret reasoning");
-        ToolPresentations.Default.DescribeResult("mcp_app__spawn_subtask", """{"tasks":["count"]}""", restored)
+        Shipped.DescribeResult("mcp_app__spawn_subtask", """{"tasks":["count"]}""", restored)
             .Body.ShouldNotBeNull().ShouldContain("secret reasoning");
     }
 
     [Fact]
     public void ShouldDescribeADelegationByItsFirstTask()
     {
-        var call = ToolPresentations.Default.DescribeCall("mcp_app__spawn_subtask",
+        var call = Shipped.DescribeCall("mcp_app__spawn_subtask",
             """{"tasks":[{"task":"read the changelog"},{"task":"summarise it"}]}""");
 
         call.Title.ShouldBe("Delegate 2 subtasks");
         call.Detail.ShouldBe("read the changelog");
 
         // History written before tasks carried their own connection still describes itself.
-        ToolPresentations.Default.DescribeCall("mcp_app__spawn_subtask", """{"tasks":["older shape"]}""")
+        Shipped.DescribeCall("mcp_app__spawn_subtask", """{"tasks":["older shape"]}""")
             .Detail.ShouldBe("older shape");
     }
 

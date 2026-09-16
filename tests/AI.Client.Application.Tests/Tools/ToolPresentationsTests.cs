@@ -18,7 +18,7 @@ public class ToolPresentationsTests
     {
         // Reformatting the server's own name is the whole liberty taken here. Nothing about what
         // the tool does is inferred, because nothing about it is known.
-        ToolPresentations.Default.DescribeCall(callName, "{}").Title.ShouldBe(expected);
+        Shipped.DescribeCall(callName, "{}").Title.ShouldBe(expected);
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public class ToolPresentationsTests
     [Fact]
     public void ShouldPutARecognizableArgumentOnTheRow()
     {
-        var call = ToolPresentations.Default.DescribeCall(
+        var call = Shipped.DescribeCall(
             "some__tool", """{"depth":3,"path":"C:\\src\\MessageFeed.razor"}""");
 
         call.Detail.ShouldBe("C:\\src\\MessageFeed.razor");
@@ -53,7 +53,7 @@ public class ToolPresentationsTests
     [Fact]
     public void ShouldCountAListArgumentRatherThanInventingASummary()
     {
-        var call = ToolPresentations.Default.DescribeCall("some__tool", """{"paths":["a.cs","b.cs","c.cs"]}""");
+        var call = Shipped.DescribeCall("some__tool", """{"paths":["a.cs","b.cs","c.cs"]}""");
 
         call.Detail.ShouldBe("3 items");
     }
@@ -66,7 +66,7 @@ public class ToolPresentationsTests
     [InlineData("""{"path":null}""")]
     public void ShouldLeaveTheDetailEmptyWhenArgumentsSayNothingUsable(string? arguments)
     {
-        var call = ToolPresentations.Default.DescribeCall("some__tool", arguments);
+        var call = Shipped.DescribeCall("some__tool", arguments);
 
         call.Title.ShouldBe("Tool");
         call.Detail.ShouldBeNull();
@@ -75,7 +75,7 @@ public class ToolPresentationsTests
     [Fact]
     public void ShouldReportAFailedResultAsAnError()
     {
-        var described = ToolPresentations.Default.DescribeResult(
+        var described = Shipped.DescribeResult(
             "some__tool", "{}", Result("""{"isError":true,"error":"No directory grant covers this path."}"""));
 
         described.Severity.ShouldBe(ToolResultSeverity.Error);
@@ -85,7 +85,7 @@ public class ToolPresentationsTests
     [Fact]
     public void ShouldLiftScalarFieldsOfAnUnknownStructuredResultIntoFacts()
     {
-        var described = ToolPresentations.Default.DescribeResult("some__tool", "{}",
+        var described = Shipped.DescribeResult("some__tool", "{}",
             Result("""{"structuredContent":{"exitCode":0,"timedOut":false,"entries":[1,2],"nested":{"a":1}}}"""));
 
         described.Facts.Select(fact => fact.Label).ShouldBe(["Exit code", "Timed out"]);
@@ -98,7 +98,7 @@ public class ToolPresentationsTests
     public void ShouldKeepTheCollapsedSummaryToASingleShortLine()
     {
         var long_ = new string('x', 400);
-        var described = ToolPresentations.Default.DescribeResult("some__tool", "{}",
+        var described = Shipped.DescribeResult("some__tool", "{}",
             Result($$"""{"content":[{"type":"text","text":"line one\nline two {{long_}}"}]}"""));
 
         described.Summary.ShouldNotContain("\n");
@@ -111,7 +111,7 @@ public class ToolPresentationsTests
     [Fact]
     public void ShouldSayDoneRatherThanGuessWhenAResultCarriesNoText()
     {
-        var described = ToolPresentations.Default.DescribeResult("some__tool", "{}", Result("""{"content":[]}"""));
+        var described = Shipped.DescribeResult("some__tool", "{}", Result("""{"content":[]}"""));
 
         described.Summary.ShouldBe("Done");
         described.Severity.ShouldBe(ToolResultSeverity.Ok);

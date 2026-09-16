@@ -8,6 +8,7 @@
 @inject AI.Client.Web.Runs.IChatRunsApi RunsApi
 @implements IAsyncDisposable
 @using AI.Client.Contracts.Tools
+@inject AI.Client.Contracts.Tools.ToolPresentations Presentations
 
 <div class="messages-area">
 @if (SelectedChat is not null)
@@ -179,7 +180,7 @@
             <div class="tool-activity tool-activity-live" role="status" aria-live="polite">
                 @foreach (var active in activeTools)
                 {
-                    var call = ToolPresentations.Default.DescribeCall(active.Name, active.Arguments);
+                    var call = Presentations.DescribeCall(active.Name, active.Arguments);
                     <div class="tool-row" @key="active.CallId">
                         <span class="tool-row-glyph" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
                         <span class="tool-row-title">@call.Title</span>

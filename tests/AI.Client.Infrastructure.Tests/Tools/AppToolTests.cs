@@ -10,6 +10,7 @@ using AI.Client.Application.Workspace;
 using AI.Client.Contracts.Chats;
 using AI.Client.Contracts.Projects;
 using AI.Client.Contracts.Settings;
+using AI.Client.Contracts.Tools;
 using AI.Client.Infrastructure.Projects;
 using AI.Client.Infrastructure.Settings;
 using AI.Client.Infrastructure.Storage;
@@ -297,11 +298,16 @@ public sealed class AppToolTests
             var settingsService = new GlobalSettingsService(_settings, _secrets);
             IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker();
             var policies = new ToolPolicyResolver(Projects, Chats, _settings);
-            var dispatcher = new ChatRunDispatcher(runRepository, Chats, Projects, _settings, settingsService,
+            var dispatcher = new ChatRunDispatcher(runRepository, Chats, Chats, Projects, _settings, settingsService,
                 new ChatAgent(Mock.Of<AI.Client.Application.Chat.IChatCompletionClient>(), Mock.Of<IToolSessionFactory>,
                     Projects, _settings, policies, workspace),
                 _secrets, _clock, _synchronization, workspace, policies);
             var writes = new AppWrites(new AppOperationLog(), _signal);
+            var presentations = new ToolPresentations(
+            [
+                new FileToolPresentationAdapter(), new ProcessToolPresentationAdapter(), new WebToolPresentationAdapter(),
+                new AppReadPresentationAdapter(), new AppWritePresentationAdapter(), new AppSubtaskPresentationAdapter(),
+            ]);
             IEnumerable<IAppTool> tools =
             [
                 new AppReadTool(Projects, Chats, settingsService, new ChatSearchService(Projects, Chats), () => dispatcher),
@@ -309,7 +315,7 @@ public sealed class AppToolTests
                 new AppRunsTool(() => dispatcher, writes),
                 new AppProjectsTool(Projects, Chats, () => dispatcher, writes),
                 new AppSecurityTool(Projects, Chats, settingsService, writes),
-                new AppSubtaskTool(() => throw new InvalidOperationException("not used"), Projects, Chats, _settings, _secrets),
+                new AppSubtaskTool(() => throw new InvalidOperationException("not used"), Projects, Chats, _settings, _secrets, presentations),
             ];
             IMcpServerConnection connection = new AppToolSessionFactory(new AppMcpServerHost(tools));
             _sessions = new CompositeToolSessionFactory([connection]);

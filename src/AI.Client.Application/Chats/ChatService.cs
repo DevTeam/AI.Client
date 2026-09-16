@@ -8,7 +8,7 @@ using AI.Client.Contracts.Workspace;
 using AI.Client.Domain.Chats;
 using AI.Client.Domain.Projects;
 
-public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, IChatSynchronization synchronization) : IChatService
+public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, IChatSynchronization synchronization) : IChatService, IChatMutations
 {
     public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken) =>
         (await repository.ListSummariesAsync(new ProjectId(projectId), cancellationToken))
@@ -52,7 +52,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         return await AppendMessageCoreAsync(projectId, chatId, request, cancellationToken);
     }
 
-    internal async Task<ChatDetails?> AppendMessageCoreAsync(
+    public async Task<ChatDetails?> AppendMessageCoreAsync(
         Guid projectId,
         Guid chatId,
         AppendChatMessageRequest request,
@@ -94,7 +94,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
     /// Moves a branch head back to <paramref name="headMessageId"/> and drops everything the
     /// abandoned attempt left behind it. Callers hold the chat lease already.
     /// </summary>
-    internal async Task<ChatDetails?> RewindBranchCoreAsync(Guid projectId, Guid chatId, Guid branchId,
+    public async Task<ChatDetails?> RewindBranchCoreAsync(Guid projectId, Guid chatId, Guid branchId,
         Guid headMessageId, IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken)
     {
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
@@ -106,7 +106,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
 
-    internal async Task<ChatDetails?> PruneMessagesCoreAsync(Guid projectId, Guid chatId,
+    public async Task<ChatDetails?> PruneMessagesCoreAsync(Guid projectId, Guid chatId,
         IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken)
     {
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);

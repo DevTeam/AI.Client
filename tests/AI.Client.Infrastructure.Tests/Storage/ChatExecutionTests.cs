@@ -827,7 +827,7 @@ public sealed class ChatExecutionTests
         private ChatRunDispatcher NewDispatcher()
         {
             var policies = new ToolPolicyResolver(_projectService, Chats, _settings);
-            return new ChatRunDispatcher(_runs, Chats, _projectService, _settings,
+            return new ChatRunDispatcher(_runs, Chats, Chats, _projectService, _settings,
                 new GlobalSettingsService(_settings, _secrets),
                 new ChatAgent(Completion, () => Tools, _projectService, _settings, policies, Workspace),
                 _secrets, _clock, _synchronization, Workspace, policies);

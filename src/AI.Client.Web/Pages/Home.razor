@@ -1283,6 +1283,7 @@
         // shows its own status text for those instead (see GetHeldRunEnterHint for their Enter
         // hint suffix).
         if (_composerAltDown && _composerCtrlDown) return $"{baseHint} · fork on Enter";
+        if (_composerCtrlDown && _composerShiftDown) return $"{baseHint} · interrupt and send now on Enter";
         if (_composerCtrlDown) return $"{baseHint} · queue on Enter";
         // The only affordance history has: nothing in the composer points at the Up key, and an
         // empty composer is exactly the moment the key is worth mentioning.

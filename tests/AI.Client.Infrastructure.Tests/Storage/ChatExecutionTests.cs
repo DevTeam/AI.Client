@@ -706,6 +706,21 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task DeletingAChatMidGenerationShouldNotBeDefeatedByItsOwnShutdown()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.StreamPreludeAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"), "Half an");
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+
+        var result = await fixture.Dispatcher.DeleteChatAsync(fixture.ProjectId, fixture.ChatId, chat!.Revision, CancellationToken.None);
+
+        // Stopping the run would otherwise commit its truncated answer and move the revision the
+        // delete was checked against, turning the caller's own cleanup into a conflict.
+        result.IsDeleted.ShouldBeTrue();
+        (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None)).ShouldBeNull();
+    }
+
+    [Fact]
     public async Task InterruptedRunShouldKeepItsPartialAnswerAcrossRestart()
     {
         await using var fixture = await Fixture.CreateAsync();

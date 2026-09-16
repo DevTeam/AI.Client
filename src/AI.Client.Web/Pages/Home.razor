@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @using System.Diagnostics.CodeAnalysis
 @using System.Text.Json
 @using AI.Client.Web.State
@@ -2541,9 +2541,17 @@
     {
         if (_selectedProject is null) return;
 
-        // The sidebar's ChatSummary.Revision can go stale for a chat that isn't the one
-        // currently selected (e.g. it kept generating after the user switched away), so
-        // re-fetch the current revision right before deleting instead of trusting it.
+        // Stopping the runs comes first, and the revision is read only afterwards: interrupting a
+        // generating branch commits whatever the model had written as a truncated message, which
+        // changes the chat. A revision read before that is stale by the time the delete uses it,
+        // and the delete comes back as "the chat changed elsewhere" for a change this very method
+        // caused. The sidebar's own ChatSummary.Revision is never trusted here either - it goes
+        // stale for a chat that kept generating after the user switched away.
+        foreach (var run in RunState.Runs.Values.Where(item => item.ChatId == chat.Id).ToArray())
+        {
+            await ChatRunsApi.ClearAllAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
+        }
+
         var current = await ChatHistoryApi.GetAsync(_selectedProject.Id, chat.Id, CancellationToken.None);
         if (current is null)
         {
@@ -2552,10 +2560,6 @@
             return;
         }
 
-        foreach (var run in RunState.Runs.Values.Where(item => item.ChatId == chat.Id).ToArray())
-        {
-            await ChatRunsApi.ClearAllAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
-        }
         var result = await ChatHistoryApi.DeleteAsync(_selectedProject.Id, chat.Id, current.Revision, CancellationToken.None);
         if (!result.IsDeleted)
         {

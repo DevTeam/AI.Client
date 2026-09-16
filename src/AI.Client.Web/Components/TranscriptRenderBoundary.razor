@@ -12,6 +12,8 @@
     [Parameter] public Guid? ForkSourceId { get; set; }
     [Parameter] public Guid? BranchMenuId { get; set; }
     [Parameter] public int RunPresentationVersion { get; set; }
+    [Parameter] public int ExpandedTurnsVersion { get; set; }
+    [Parameter] public int? TurnElapsedSeconds { get; set; }
     // How much of the chain the feed is currently drawing. A transcript opens at its tail and
     // expands one frame later (see MessageFeed), and that expansion changes nothing else about
     // the transcript — without this the boundary would hold the tail on screen for good.
@@ -24,6 +26,8 @@
     private Guid? _renderedForkSourceId;
     private Guid? _renderedBranchMenuId;
     private int _renderedRunPresentationVersion;
+    private int _renderedExpandedTurnsVersion;
+    private int? _renderedTurnElapsedSeconds;
     private int _renderedItemLimit = int.MaxValue;
 
     protected override bool ShouldRender()
@@ -35,6 +39,8 @@
             || _renderedForkSourceId != ForkSourceId
             || _renderedBranchMenuId != BranchMenuId
             || _renderedRunPresentationVersion != RunPresentationVersion
+            || _renderedExpandedTurnsVersion != ExpandedTurnsVersion
+            || _renderedTurnElapsedSeconds != TurnElapsedSeconds
             || _renderedItemLimit != ItemLimit;
 
         _renderedChatId = ChatId;
@@ -44,6 +50,8 @@
         _renderedForkSourceId = ForkSourceId;
         _renderedBranchMenuId = BranchMenuId;
         _renderedRunPresentationVersion = RunPresentationVersion;
+        _renderedExpandedTurnsVersion = ExpandedTurnsVersion;
+        _renderedTurnElapsedSeconds = TurnElapsedSeconds;
         _renderedItemLimit = ItemLimit;
         return changed;
     }

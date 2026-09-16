@@ -2910,6 +2910,117 @@ textarea {
     color: #b4b4b4;
 }
 
+/* One calm heading replaces all intermediate blocks in a model turn. It intentionally shares
+   the tool-row scale and palette so expanding a turn reveals detail without changing visual
+   hierarchy. */
+.turn-summary {
+    display: flex;
+    flex-wrap: nowrap;
+    width: min(100%, 48rem);
+    min-height: 1.3rem;
+    margin: 0 auto 0.75rem;
+    padding: 0.05rem 0;
+    align-items: center;
+    gap: 0.35rem;
+    border: 0;
+    background: none;
+    color: #8a8a8a;
+    font: inherit;
+    font-size: 0.76rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.turn-summary:hover,
+.turn-summary.is-expanded {
+    color: #b4b4b4;
+}
+
+.turn-summary-text {
+    min-width: 0;
+    overflow: hidden;
+    font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.turn-summary-spinner,
+.turn-summary-chevron {
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+}
+
+.turn-summary-spinner .app-icon,
+.turn-summary-chevron .app-icon {
+    width: 0.85rem;
+    height: 0.85rem;
+}
+
+.turn-summary-spinner {
+    color: #8ab4df;
+}
+
+.turn-summary-chevron {
+    color: #6f6f6f;
+    transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1), color 140ms ease;
+}
+
+.turn-summary:hover .turn-summary-chevron,
+.turn-summary.is-expanded .turn-summary-chevron {
+    color: #8d8d8d;
+}
+
+.turn-summary.is-expanded .turn-summary-chevron {
+    transform: rotate(90deg);
+}
+
+.turn-summary.fork-source {
+    border-radius: 0.6rem;
+    outline: 1px solid #5a89c7;
+    outline-offset: 0.3rem;
+}
+
+.turn-summary.branch-leaf-arrived {
+    position: relative;
+    padding-bottom: 0.3rem;
+}
+
+.turn-summary.branch-leaf-arrived::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 1px;
+    background: var(--accent-color);
+    transform-origin: left center;
+    animation:
+        branch-leaf-draw var(--branch-leaf-draw) cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards,
+        branch-leaf-fade var(--branch-leaf-fade) ease-out calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
+    pointer-events: none;
+}
+
+/* Intermediate blocks are mounted progressively when a turn opens. Fade each newly mounted
+   block into its final position; no height animation, so scroll anchoring has a stable box from
+   the first frame. */
+.workspace-message.turn-message-arriving {
+    animation: turn-message-arrive 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation-delay: var(--turn-arrive-delay, 0ms);
+    will-change: opacity, transform;
+}
+
+@keyframes turn-message-arrive {
+    from {
+        opacity: 0;
+        transform: translateY(-0.35rem);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 .tool-row-glyph {
     display: inline-grid;
     flex: 0 0 auto;
@@ -3013,6 +3124,13 @@ textarea {
 
 @media (prefers-reduced-motion: reduce) {
     .tool-row-spinner { animation: none; }
+    .turn-summary-chevron { transition: none; }
+    .turn-summary.branch-leaf-arrived::after {
+        transform: scaleX(1);
+        animation: branch-leaf-fade var(--branch-leaf-fade) ease-out
+            calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
+    }
+    .workspace-message.turn-message-arriving { animation: none; }
 
     .tool-row-arriving,
     .tool-row-resolved > .tool-row > .tool-row-glyph,

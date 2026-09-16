@@ -246,16 +246,22 @@
             OnEditAndReplaceBranch="EditAndReplaceBranchAsync"
             OnToggleBranchMenu="ToggleMessageBranchMenu"
             OnSelectBranch="SelectMessageBranch"
-            OnBranchPickerKeyDown="HandleBranchPickerKeyDown" />
-        @if (GetSelectedRun() is { Queue.Count: > 0 } selectedRun)
+            OnBranchPickerKeyDown="HandleBranchPickerKeyDown"
+            OnResumeRun="ResumeQueueAsync"
+            OnRebaseRun="RebaseQueueAsync"
+            OnDiscardRun="DiscardCommandAsync" />
+        @if (GetSelectedRun() is { } selectedRun && GetPendingQueue(selectedRun) is { Count: > 0 } pendingQueue)
         {
-            <section class="chat-queue"><div class="queue-header"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @selectedRun.Queue.Count</span><AppIcon Name="chevron-right" /></button>@if (selectedRun.Status is ChatRunStatus.Paused or ChatRunStatus.Interrupted or ChatRunStatus.Failed) { <div class="queue-actions">@if (selectedRun.RecoveryActions?.Contains(RunRecoveryAction.Retry) == true || selectedRun.RecoveryActions?.Contains(RunRecoveryAction.Resume) == true) { <button type="button" class="queue-action-button queue-action-resume" title="Resume queue" aria-label="Resume queue" @onclick="ResumeQueueAsync"><AppIcon Name="play" /></button> }@if (selectedRun.RecoveryActions?.Contains(RunRecoveryAction.Rebase) == true) { <button type="button" class="queue-action-button" title="Continue failed message from the current branch head" aria-label="Rebase failed message" @onclick="RebaseQueueAsync"><AppIcon Name="fork" /></button> }@if (selectedRun.RecoveryActions?.Contains(RunRecoveryAction.Skip) == true) { <button type="button" class="queue-action-button destructive-action" title="Skip failed message" aria-label="Skip failed message" @onclick="SkipFailedQueueAsync"><AppIcon Name="trash" /></button> }<button type="button" class="queue-action-button queue-action-clear" title="Clear queue" aria-label="Clear queue" @onclick="ClearQueueAsync"><AppIcon Name="x" /></button></div> }</div>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in selectedRun.Queue) { var isActive = selectedRun.Status == ChatRunStatus.Generating && selectedRun.Queue[0].Id == item.Id; <div @key="item.Id" class="queue-item @(isActive ? "queue-item-active" : null)" data-queue-id="@item.Id">@if (isActive) { <span title="@item.Content">@GetSingleLine(item.Content)</span><span class="queue-active-badge" title="This message is already being generated and can't be edited or removed">Running…</span> } else if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span title="@item.Content">@GetSingleLine(item.Content)</span><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }</section>
+            @* Only what has not been sent yet. A command that is already a message in the
+               transcript belongs to the turn chip above, not to a list whose every row promises
+               that it can still be edited, reordered or removed. *@
+            <section class="chat-queue"><div class="queue-header"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @pendingQueue.Count</span><AppIcon Name="chevron-right" /></button><div class="queue-actions">@if (_isConfirmingQueueClearAll) { <span class="queue-clear-confirm"><span>Stop the run and drop everything?</span><button class="danger compact-action" type="button" @onclick="ClearEverythingAsync">Clear all</button><button class="secondary-action compact-action" type="button" @onclick="() => _isConfirmingQueueClearAll = false">Cancel</button></span> } else { <button type="button" class="queue-action-button queue-action-clear" title="@($"Remove the {pendingQueue.Count} message(s) still waiting in the queue")" aria-label="Clear queued messages" @onclick="ClearQueueAsync"><AppIcon Name="x" /></button>@if (HasCommittedCommand(selectedRun)) { <button type="button" class="queue-action-button destructive-action" title="Stop the run and clear everything, including the message already sent" aria-label="Stop and clear everything" @onclick="() => _isConfirmingQueueClearAll = true"><AppIcon Name="trash" /></button> } }</div></div>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in pendingQueue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span title="@item.Content">@GetSingleLine(item.Content)</span><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }</section>
         }
         <div class="composer-status" role="status">
-            @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <span>Generating@(GetGeneratingElapsed() is { } elapsed ? $"... {FormatElapsed(elapsed)}" : "...")</span> }
-            else if (GetSelectedRun() is { Status: ChatRunStatus.Paused } pausedRun) { <span>@($"Stopped · queue paused{GetHeldRunEnterHint(pausedRun)}")</span> }
-            else if (GetSelectedRun() is { Status: ChatRunStatus.Interrupted } interruptedRun) { <span>@($"Interrupted · resume when ready{GetHeldRunEnterHint(interruptedRun)}")</span> }
-            else if (GetSelectedRun() is { Status: ChatRunStatus.Failed } failedRun) { <span class="error">@($"Failed: {failedRun.Error}{GetHeldRunEnterHint(failedRun)}")</span> }
+            @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <span>@($"Generating{(GetGeneratingElapsed() is { } elapsed ? $"... {FormatElapsed(elapsed)}" : "...")}{GetGeneratingEnterHint()}")</span> }
+            else if (GetSelectedRun() is { Status: ChatRunStatus.Paused } pausedRun) { <span>@($"Stopped{GetHeldRunEnterHint(pausedRun)}")</span> }
+            else if (GetSelectedRun() is { Status: ChatRunStatus.Interrupted } interruptedRun) { <span>@($"Interrupted{GetHeldRunEnterHint(interruptedRun)}")</span> }
+            else if (GetSelectedRun() is { Status: ChatRunStatus.Failed } failedRun) { <span class="error">@($"Failed{GetHeldRunEnterHint(failedRun)}")</span> }
             else if (GetReplaceSource() is { } replaceSource) { <span class="fork-mode replace-mode"><AppIcon Name="edit-replace" /><span>Replacing branch from “@GetMessagePreview(replaceSource.Content)”</span><button class="icon-action" type="button" title="Cancel replacement" aria-label="Cancel replacement" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
             else if (GetForkSource() is { } forkSource) { <span class="fork-mode"><AppIcon Name="fork" /><span>Forking from “@GetMessagePreview(forkSource.Content)”</span><button class="icon-action" type="button" title="Cancel fork" aria-label="Cancel fork" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
             else { <span>@GetComposerHint()</span> }
@@ -284,7 +290,8 @@
                         </span>
                     }
                 </div>
-                @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation" aria-label="Stop generation" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> } else { <ComposerSendButton ActiveMode="@GetComposerSendMode()" Disabled="@(!CanSendMessage())" OnClick="@(() => SubmitComposerAsync(ComposerSubmitMode.Send))" /> }
+                @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation" aria-label="Stop generation" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> }
+                <ComposerSendButton ActiveMode="@GetComposerSendMode()" Disabled="@(!CanSendMessage())" OnClick="SubmitFromSendButtonAsync" />
             </div>
             @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
         </footer>
@@ -444,6 +451,7 @@
     private bool _attachComposer = true;
     private bool _composerNeedsResize;
     private bool _isQueueExpanded;
+    private bool _isConfirmingQueueClearAll;
     private bool _isSubmittingMessage;
     private Guid? _editingQueueId;
     private string _editingQueueText = string.Empty;
@@ -454,6 +462,7 @@
     private IJSObjectReference? _queueDragSubscription;
     private bool _composerCtrlDown;
     private bool _composerAltDown;
+    private bool _composerShiftDown;
     private readonly CancellationTokenSource _generatingTickerCancellation = new();
     private readonly SemaphoreSlim _projectMutationGate = new(1, 1);
 
@@ -583,11 +592,15 @@
     public Task ForkFromKeyboard() => SubmitComposerAsync(ComposerSubmitMode.Fork);
 
     [JSInvokable]
-    public Task OnComposerModifiersChanged(bool ctrl, bool alt)
+    public Task SendNowFromKeyboard() => SubmitComposerAsync(ComposerSubmitMode.SendNow);
+
+    [JSInvokable]
+    public Task OnComposerModifiersChanged(bool ctrl, bool alt, bool shift)
     {
-        if (_composerCtrlDown == ctrl && _composerAltDown == alt) return Task.CompletedTask;
+        if (_composerCtrlDown == ctrl && _composerAltDown == alt && _composerShiftDown == shift) return Task.CompletedTask;
         _composerCtrlDown = ctrl;
         _composerAltDown = alt;
+        _composerShiftDown = shift;
         return InvokeAsync(StateHasChanged);
     }
 
@@ -1093,8 +1106,9 @@
 
     private string GetHeldRunEnterHint(ChatRunSnapshot run)
     {
-        if (run.Status == ChatRunStatus.Failed && !run.CanRetry) return " · choose rebase, skip, or clear queue";
+        if (run.Status == ChatRunStatus.Failed && !run.CanRetry) return " · retry, rebase or discard the message above";
         if (_composerAltDown && _composerCtrlDown) return " · fork on Enter, starts immediately";
+        if (_composerCtrlDown && _composerShiftDown) return " · discard the stopped message and send on Enter";
         if (_composerCtrlDown) return " · queue on Enter, stays paused";
         return run.Queue.Count > 0 ? " · resume queue and send on Enter" : " · resume and send on Enter";
     }
@@ -1102,9 +1116,33 @@
     private ComposerSendButton.SendMode GetComposerSendMode() =>
         _composerAltDown && _composerCtrlDown
             ? ComposerSendButton.SendMode.Fork
-            : _composerCtrlDown
-                ? ComposerSendButton.SendMode.Queue
-                : ComposerSendButton.SendMode.Send;
+            : _composerCtrlDown && _composerShiftDown
+                ? ComposerSendButton.SendMode.SendNow
+                : _composerCtrlDown
+                    ? ComposerSendButton.SendMode.Queue
+                    : ComposerSendButton.SendMode.Send;
+
+    // The button does whatever its tooltip is highlighting, so pressing it and pressing the keys
+    // it shows can never mean two different things.
+    private Task SubmitFromSendButtonAsync() => SubmitComposerAsync(GetComposerSendMode() switch
+    {
+        ComposerSendButton.SendMode.Fork => ComposerSubmitMode.Fork,
+        ComposerSendButton.SendMode.Queue => ComposerSubmitMode.Queue,
+        ComposerSendButton.SendMode.SendNow => ComposerSubmitMode.SendNow,
+        _ => ComposerSubmitMode.Send
+    });
+
+    /// <summary>
+    /// What Enter does while the branch is generating. Plain Enter still queues the message
+    /// behind the answer being written; interrupting is a deliberate, separate chord.
+    /// </summary>
+    private string GetGeneratingEnterHint()
+    {
+        if (_composerAltDown && _composerCtrlDown) return " · fork on Enter";
+        if (_composerCtrlDown && _composerShiftDown) return " · interrupt and send now on Enter";
+        if (_composerCtrlDown) return " · queue on Enter, stays paused";
+        return " · Ctrl+Shift+Enter sends now";
+    }
 
     private void ToggleDirectoriesExpanded() => _directoriesExpanded = !_directoriesExpanded;
 
@@ -1533,16 +1571,17 @@
     private async Task SaveQueuedMessageAsync(Guid id)
     {
         if (_editingQueueId != id || _selectedProject is null || _selectedChat is null) return;
-        var snapshot = await ChatRunsApi.UpdateQueuedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), id, new UpdateQueuedMessageRequest(Guid.CreateVersion7(), _editingQueueText), CancellationToken.None);
-        if (snapshot is not null) StoreRun(snapshot); else ShowToast("Message is already running and can't be edited.", "error");
+        await RunQueueCommandAsync(() => ChatRunsApi.UpdateQueuedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), id, new UpdateQueuedMessageRequest(Guid.CreateVersion7(), _editingQueueText), CancellationToken.None));
         _editingQueueId = null;
     }
     private async Task MoveQueuedMessageAsync(Guid id, int offset)
     {
         if (_selectedProject is null || _selectedChat is null || GetSelectedRun() is not { } run) return;
+        // Positions are indices into the whole queue, including a command that is already in the
+        // transcript and so has no row of its own - computing them from the visible rows instead
+        // would move the message one place short.
         var position = run.Queue.ToList().FindIndex(item => item.Id == id) + offset;
-        var snapshot = await ChatRunsApi.UpdateQueuedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), id, new UpdateQueuedMessageRequest(Guid.CreateVersion7(), Position: position), CancellationToken.None);
-        if (snapshot is not null) StoreRun(snapshot); else ShowToast("Message is already running and can't be reordered.", "error");
+        await RunQueueCommandAsync(() => ChatRunsApi.UpdateQueuedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), id, new UpdateQueuedMessageRequest(Guid.CreateVersion7(), Position: position), CancellationToken.None));
     }
     [JSInvokable]
     public async Task DropQueuedMessageAsync(string draggedValue, string targetValue)
@@ -1550,19 +1589,55 @@
         if (!Guid.TryParse(draggedValue, out var draggedId) || !Guid.TryParse(targetValue, out var targetId) || draggedId == targetId || GetSelectedRun() is not { } run) return;
         var position = run.Queue.ToList().FindIndex(item => item.Id == targetId);
         if (_selectedProject is null || _selectedChat is null || position < 0) return;
-        var snapshot = await ChatRunsApi.UpdateQueuedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), draggedId, new UpdateQueuedMessageRequest(Guid.CreateVersion7(), Position: position), CancellationToken.None);
-        if (snapshot is not null) StoreRun(snapshot); else ShowToast("Message is already running and can't be reordered.", "error");
+        await RunQueueCommandAsync(() => ChatRunsApi.UpdateQueuedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), draggedId, new UpdateQueuedMessageRequest(Guid.CreateVersion7(), Position: position), CancellationToken.None));
     }
     private async Task RemoveQueuedMessageAsync(Guid id)
     {
         if (_selectedProject is null || _selectedChat is null) return;
-        var snapshot = await ChatRunsApi.RemoveQueuedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), id, Guid.CreateVersion7(), CancellationToken.None);
-        if (snapshot is not null) StoreRun(snapshot); else ShowToast("Message is already running and can't be removed.", "error");
+        await RunQueueCommandAsync(() => ChatRunsApi.RemoveQueuedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), id, Guid.CreateVersion7(), CancellationToken.None));
     }
-    private async Task ResumeQueueAsync() { if (_selectedProject is null || _selectedChat is null) return; var snapshot = await ChatRunsApi.ResumeAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None); if (snapshot is not null) StoreRun(snapshot); }
-    private async Task SkipFailedQueueAsync() { if (_selectedProject is null || _selectedChat is null) return; var snapshot = await ChatRunsApi.SkipFailedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None); if (snapshot is not null) StoreRun(snapshot); }
-    private async Task RebaseQueueAsync() { if (_selectedProject is null || _selectedChat is null) return; var snapshot = await ChatRunsApi.RebaseAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None); if (snapshot is not null) StoreRun(snapshot); }
-    private async Task ClearQueueAsync() { if (_selectedProject is null || _selectedChat is null) return; var snapshot = await ChatRunsApi.ClearAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None); if (snapshot is not null) StoreRun(snapshot); }
+
+    /// <summary>
+    /// Runs one queue command and makes its outcome visible. A refusal carries the server's own
+    /// reason - "this message has already been sent", "the branch changed" - and showing it is the
+    /// whole point: these buttons used to fail silently, leaving no way to tell a refusal from a
+    /// no-op. A null snapshot means the run itself is gone, which needs no announcement.
+    /// </summary>
+    private async Task RunQueueCommandAsync(Func<Task<ChatRunSnapshot?>> command)
+    {
+        try
+        {
+            if (await command() is { } snapshot) StoreRun(snapshot);
+        }
+        catch (Exception error) when (error is InvalidOperationException or HttpRequestException)
+        {
+            ShowToast(error.Message, "error");
+        }
+    }
+    private Task ResumeQueueAsync() => _selectedProject is null || _selectedChat is null ? Task.CompletedTask
+        : RunQueueCommandAsync(() => ChatRunsApi.ResumeAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None));
+    private Task SkipFailedQueueAsync() => _selectedProject is null || _selectedChat is null ? Task.CompletedTask
+        : RunQueueCommandAsync(() => ChatRunsApi.SkipFailedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None));
+    private Task RebaseQueueAsync() => _selectedProject is null || _selectedChat is null ? Task.CompletedTask
+        : RunQueueCommandAsync(() => ChatRunsApi.RebaseAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None));
+    private Task ClearQueueAsync() => _selectedProject is null || _selectedChat is null ? Task.CompletedTask
+        : RunQueueCommandAsync(() => ChatRunsApi.ClearAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None));
+    private async Task ClearEverythingAsync()
+    {
+        _isConfirmingQueueClearAll = false;
+        if (_selectedProject is null || _selectedChat is null) return;
+        await RunQueueCommandAsync(() => ChatRunsApi.ClearAllAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None));
+    }
+    private Task DiscardCommandAsync() => _selectedProject is null || _selectedChat is null ? Task.CompletedTask
+        : RunQueueCommandAsync(() => ChatRunsApi.DiscardAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None));
+
+    /// <summary>The rows the queue panel shows: everything that has not been sent yet.</summary>
+    private static IReadOnlyList<QueuedChatMessage> GetPendingQueue(ChatRunSnapshot run) =>
+        run.Queue.Where(item => item.Stage == QueuedMessageStage.Prepared).ToArray();
+
+    /// <summary>Whether a command of this run is already a message in the transcript.</summary>
+    private static bool HasCommittedCommand(ChatRunSnapshot run) =>
+        run.ActiveMessageId is not null || run.Queue.Any(item => item.Stage == QueuedMessageStage.UserCommitted);
     private async Task LoadChatsAsync(Guid projectId, bool refreshSelected = true)
     {
         var chats = await ChatHistoryApi.ListAsync(projectId, CancellationToken.None);
@@ -2215,8 +2290,7 @@
 
         foreach (var run in RunState.Runs.Values.Where(item => item.ChatId == chat.Id).ToArray())
         {
-            if (run.Status == ChatRunStatus.Generating) await ChatRunsApi.StopAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
-            await ChatRunsApi.ClearAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
+            await ChatRunsApi.ClearAllAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
         }
         var result = await ChatHistoryApi.DeleteAsync(_selectedProject.Id, chat.Id, current.Revision, CancellationToken.None);
         if (!result.IsDeleted)

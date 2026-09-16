@@ -5,4 +5,5 @@ public sealed record ChatRunSnapshot(Guid ProjectId, Guid ChatId, Guid BranchId,
     long ChatRevision = 0, Guid? HeadMessageId = null, ToolApproval? PendingApproval = null, IReadOnlyList<ActiveToolInvocation>? ActiveTools = null,
     RunFailureCode FailureCode = RunFailureCode.None, bool CanRetry = true, long BranchRevision = 0,
     IReadOnlyList<RunRecoveryAction>? RecoveryActions = null,
-    Workspace.WorkspaceChangeSet? WorkspaceChanges = null);
+    Workspace.WorkspaceChangeSet? WorkspaceChanges = null,
+    Guid? ActiveMessageId = null);

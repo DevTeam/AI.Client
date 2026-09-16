@@ -90,6 +90,22 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
 
+    /// <summary>
+    /// Moves a branch head back to <paramref name="headMessageId"/> and drops everything the
+    /// abandoned attempt left behind it. Callers hold the chat lease already.
+    /// </summary>
+    internal async Task<ChatDetails?> RewindBranchCoreAsync(Guid projectId, Guid chatId, Guid branchId,
+        Guid headMessageId, IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        if (!stored.Chat.RewindBranchTo(branchId, new ChatMessageId(headMessageId), clock.UtcNow))
+            return ToDetails(stored.Chat, stored.Revision);
+        stored.Chat.PruneUnreachableMessages(retainedMessageIds.Select(id => new ChatMessageId(id)));
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
     internal async Task<ChatDetails?> PruneMessagesCoreAsync(Guid projectId, Guid chatId,
         IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken)
     {

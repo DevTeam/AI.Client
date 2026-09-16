@@ -168,6 +168,28 @@
         {
             <WorkspaceChanges Changes="@liveChanges" />
         }
+        @* Why the turn stopped, and what can be done about it. Only for a turn that is NOT
+           running: while it generates, the composer already says so and already offers Stop, and
+           a second copy of both here was pure duplication. Placed after the file-change summary
+           so the receipt for what the run did reads before the question of what to do next. *@
+        @if (GetTurnState() is { } turn)
+        {
+            <section class="turn-status turn-status-@turn.Kind" role="status">
+                <span class="turn-status-icon" aria-hidden="true"><AppIcon Name="@turn.Icon" /></span>
+                <span class="turn-status-text">@turn.Text</span>
+                <span class="turn-status-actions">
+                    @if (turn.CanResume)
+                    {
+                        <button type="button" class="turn-status-action turn-status-primary" title="Run this message again" @onclick="() => OnResumeRun.InvokeAsync()">@(turn.Kind == "failed" ? "Retry" : "Continue")</button>
+                    }
+                    @if (turn.CanRebase)
+                    {
+                        <button type="button" class="turn-status-action" title="Continue this message from the current branch head" @onclick="() => OnRebaseRun.InvokeAsync()">From branch head</button>
+                    }
+                    <button type="button" class="turn-status-action destructive-action" title="Drop this message from the queue and let the rest of it continue" @onclick="() => OnDiscardRun.InvokeAsync()">Discard</button>
+                </span>
+            </section>
+        }
         @* Last in the transcript, after the workspace-changes summary: an approval is the user's
            next action, so it has to be the thing they end up looking at, not something they have
            to scroll past the receipt to reach. *@
@@ -289,6 +311,37 @@
     [Parameter] public EventCallback<Guid> OnToggleBranchMenu { get; set; }
     [Parameter] public EventCallback<Guid> OnSelectBranch { get; set; }
     [Parameter] public EventCallback<KeyboardEventArgs> OnBranchPickerKeyDown { get; set; }
+    [Parameter] public EventCallback OnResumeRun { get; set; }
+    [Parameter] public EventCallback OnRebaseRun { get; set; }
+    [Parameter] public EventCallback OnDiscardRun { get; set; }
+
+    private readonly record struct TurnState(string Kind, string Icon, string Text, bool CanResume, bool CanRebase);
+
+    /// <summary>
+    /// Why the turn at the head of this branch's queue stopped, or null when there is nothing to
+    /// answer for. A generating run is deliberately not one of these: the composer already shows
+    /// its elapsed time and its Stop button, and repeating them here said nothing new. Only a
+    /// command that already reached the transcript gets a status - a message still waiting its
+    /// turn is a queue row, not a state.
+    /// </summary>
+    private TurnState? GetTurnState()
+    {
+        if (SelectedRun is not { } run) return null;
+        var committed = run.ActiveMessageId is not null
+            || run.Queue.Any(item => item.Stage == QueuedMessageStage.UserCommitted);
+        // A failure always gets a chip, committed command or not: its text is the only place the
+        // reason is shown now that the composer line no longer repeats it.
+        if (!committed && run.Status != ChatRunStatus.Failed) return null;
+        var canResume = run.RecoveryActions?.Any(action => action is RunRecoveryAction.Retry or RunRecoveryAction.Resume) == true;
+        var canRebase = run.RecoveryActions?.Contains(RunRecoveryAction.Rebase) == true;
+        return run.Status switch
+        {
+            ChatRunStatus.Failed => new TurnState("failed", "error", $"Failed: {run.Error}", canResume, canRebase),
+            ChatRunStatus.Interrupted => new TurnState("stopped", "interrupted", "Interrupted before it finished", canResume, canRebase),
+            ChatRunStatus.Paused => new TurnState("stopped", "interrupted", "Stopped before it finished", canResume, canRebase),
+            _ => null
+        };
+    }
 
     private ElementReference _historyMarkers;
     private ElementReference _messagesContainer;

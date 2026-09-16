@@ -120,6 +120,77 @@ public class ChatRunStateTests
     }
 
     [Fact]
+    public void ShouldClearOnlyMessagesThatHaveNotBeenSent()
+    {
+        var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var sent = new QueuedRunMessage(Guid.NewGuid(), "Sent", DateTimeOffset.UtcNow);
+        var waiting = new QueuedRunMessage(Guid.NewGuid(), "Waiting", DateTimeOffset.UtcNow);
+        state.Enqueue(Guid.NewGuid(), sent);
+        state.Enqueue(Guid.NewGuid(), waiting);
+        state.MarkUserCommitted(sent.Id);
+        state.Start();
+        state.Pause();
+
+        state.ClearPending();
+
+        // Exactly the rows the queue panel offers to clear, and no others: the command that is
+        // already a message in the transcript is not one of them.
+        state.Queue.ShouldHaveSingleItem().Id.ShouldBe(sent.Id);
+        state.Status.ShouldBe(RunStatus.Paused);
+    }
+
+    [Fact]
+    public void ShouldDropTheCommittedCommandAndUnblockTheQueue()
+    {
+        var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var interrupted = new QueuedRunMessage(Guid.NewGuid(), "Interrupted", DateTimeOffset.UtcNow);
+        var next = new QueuedRunMessage(Guid.NewGuid(), "Next", DateTimeOffset.UtcNow);
+        state.Enqueue(Guid.NewGuid(), interrupted);
+        state.Enqueue(Guid.NewGuid(), next);
+        state.MarkUserCommitted(interrupted.Id);
+        state.Start();
+        state.Append("Half an answer");
+        state.Fail("Endpoint failed");
+
+        state.DropCommitted();
+
+        state.Queue.ShouldHaveSingleItem().ShouldBe(next);
+        state.Status.ShouldBe(RunStatus.Idle);
+        state.Error.ShouldBeNull();
+        state.StreamingContent.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void ShouldRefuseToDropTheCommandOfARunningGeneration()
+    {
+        var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var message = new QueuedRunMessage(Guid.NewGuid(), "Message", DateTimeOffset.UtcNow);
+        state.Enqueue(Guid.NewGuid(), message);
+        state.MarkUserCommitted(message.Id);
+        state.Start();
+
+        Should.Throw<Common.DomainException>(() => state.DropCommitted());
+        state.Queue.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void ShouldKeepPartialAnswerUntilItHasBeenPersisted()
+    {
+        var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        state.Enqueue(Guid.NewGuid(), new QueuedRunMessage(Guid.NewGuid(), "Message", DateTimeOffset.UtcNow));
+        state.Start();
+        state.Append("Half an answer");
+
+        // Pause keeps it so the transcript can still render it from memory; clearing it is the
+        // explicit step the worker takes once the text is a real message.
+        state.Pause();
+        state.StreamingContent.ShouldBe("Half an answer");
+
+        state.ClearStreaming();
+        state.StreamingContent.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void ShouldNotRemoveNextQueuedMessageWhenCurrentRunCompletes()
     {
         var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());

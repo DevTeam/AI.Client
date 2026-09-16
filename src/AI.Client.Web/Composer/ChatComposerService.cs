@@ -11,7 +11,9 @@ public sealed class ChatComposerService(IChatHistoryApi chatHistory, IChatRunsAp
     {
         if (request.ProjectId is not { } projectId) return new ComposerSubmitOutcome.Rejected("Select a project.");
         if (string.IsNullOrWhiteSpace(request.Message)) return new ComposerSubmitOutcome.Rejected("The composer is empty.");
-        if (request.SelectedRun is { Status: ChatRunStatus.Failed, CanRetry: false })
+        // Send-now is itself a way to resolve a stuck run — it drops the command that is stuck —
+        // so it is the one mode this gate must not block.
+        if (request.SelectedRun is { Status: ChatRunStatus.Failed, CanRetry: false } && request.Mode != ComposerSubmitMode.SendNow)
             return new ComposerSubmitOutcome.Rejected("Resolve or skip the failed queued message before sending another one.");
         try
         {
@@ -20,7 +22,8 @@ public sealed class ChatComposerService(IChatHistoryApi chatHistory, IChatRunsAp
                 new CreateChatRequest(prompt[..Math.Min(48, prompt.Length)], request.CredentialProfileId), cancellationToken);
             var mode = request.ReplaceSourceId is not null ? ChatSubmitMode.Replace
                 : request.ForkSourceId is not null || request.Mode == ComposerSubmitMode.Fork ? ChatSubmitMode.Fork
-                : request.Mode == ComposerSubmitMode.Queue ? ChatSubmitMode.Queue : ChatSubmitMode.Send;
+                : request.Mode == ComposerSubmitMode.Queue ? ChatSubmitMode.Queue
+                : request.Mode == ComposerSubmitMode.SendNow ? ChatSubmitMode.SendNow : ChatSubmitMode.Send;
             var parent = mode == ChatSubmitMode.Fork ? request.ForkSourceId ?? request.BranchLeafId : null;
             var sourceBranchId = request.SelectedBranchId ?? request.SelectedRun?.BranchId
                 ?? BranchLeafHelpers.RunBranchIdFor(request.BranchLeafId, chat);

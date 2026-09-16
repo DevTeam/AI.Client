@@ -378,32 +378,41 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
-    public async Task ClearShouldRemoveActiveMessageWhileStoppedWorkerIsUnwinding()
+    public async Task ClearShouldBehaveTheSameWhileAStoppedWorkerIsStillUnwinding()
     {
         await using var fixture = await Fixture.CreateAsync();
         var cancellationObserved = fixture.Completion.DelayCancellation();
+        var messageId = Guid.NewGuid();
+        var pendingId = Guid.NewGuid();
         try
         {
-            await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"));
+            await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), messageId, "Question"));
             await fixture.NextCallAsync();
+            await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), pendingId, "Waiting"));
 
             var stopped = await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
                 CancellationToken.None);
             stopped!.Status.ShouldBe(ChatRunStatus.Paused);
             await cancellationObserved.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
+            // Clear used to remove the sent command too, but only while a worker happened to be
+            // unwinding - the same click did different things depending on timing. It now removes
+            // exactly what has not been sent, whenever it is called.
             var cleared = await fixture.Dispatcher.ClearAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
                 CancellationToken.None);
-            cleared!.Status.ShouldBe(ChatRunStatus.Idle);
-            cleared.Queue.ShouldBeEmpty();
+            cleared!.Queue.ShouldHaveSingleItem().Id.ShouldBe(messageId);
+            cleared.Queue[0].Stage.ShouldBe(QueuedMessageStage.UserCommitted);
         }
         finally
         {
             fixture.Completion.ReleaseCancellation();
         }
 
-        var settled = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Idle && run.Queue.Count == 0);
-        settled.Queue.ShouldBeEmpty();
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused);
+        var emptied = await fixture.Dispatcher.ClearAllAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            CancellationToken.None);
+        emptied!.Queue.ShouldBeEmpty();
+        emptied.Status.ShouldBe(ChatRunStatus.Idle);
     }
 
     [Fact]
@@ -587,20 +596,166 @@ public sealed class ChatExecutionTests
         (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None)).ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task StoppingShouldKeepWhatTheModelHadAlreadyWritten()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.StreamPreludeAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"), "Half an");
+
+        await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused);
+
+        // The user message keeps its answer instead of being left alone in the transcript, and
+        // the answer says for itself that it is unfinished.
+        var truncated = await fixture.WaitForMessageAsync(message => message.Role == "Assistant");
+        truncated.Content.ShouldBe("Half an");
+        truncated.IsIncomplete.ShouldBeTrue();
+
+        // The command is still queued, because Resume is expected to rebuild it - but it is no
+        // longer the active one, so nothing is left claiming to be running.
+        var paused = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused && run.ActiveMessageId is null);
+        paused.Queue.ShouldHaveSingleItem().Stage.ShouldBe(QueuedMessageStage.UserCommitted);
+    }
+
+    [Fact]
+    public async Task ResumingShouldReplaceTheTruncatedAnswerRatherThanAddToIt()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.StreamPreludeAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"), "Half an");
+        await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused);
+        await fixture.WaitForMessageAsync(message => message.Role == "Assistant");
+
+        await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
+        (await fixture.NextCallAsync()).Answer.SetResult("A whole answer");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var answers = chat!.Messages.Where(message => message.Role == "Assistant").ToArray();
+        answers.ShouldHaveSingleItem().Content.ShouldBe("A whole answer");
+        answers[0].IsIncomplete.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task SendNowShouldInterruptAndAnswerTheNewMessageFirst()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.StreamPreludeAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Slow question"), "Thinking");
+        var queuedId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), queuedId, "Later question"));
+
+        var urgentId = Guid.NewGuid();
+        var snapshot = await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), urgentId, "Answer this now", ChatSubmitMode.SendNow));
+
+        // The interrupted command is gone rather than kept for a retry, the urgent message is
+        // first, and what was queued behind it keeps its place.
+        snapshot.Queue.Select(item => item.Id).ShouldBe([urgentId, queuedId]);
+        var urgent = await fixture.NextCallAsync();
+        urgent.Request.Message.ShouldBe("Answer this now");
+        urgent.Answer.SetResult("Right away");
+        await fixture.WaitAsync(run => run.Queue.Count == 1);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.ShouldContain(message => message.Content == "Thinking" && message.IsIncomplete);
+    }
+
+    [Fact]
+    public async Task ClearingShouldRemoveWhatIsWaitingAndLeaveTheRunningMessageAlone()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var runningId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), runningId, "Running"));
+        var call = await fixture.NextCallAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Waiting one", ChatSubmitMode.Queue));
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused);
+
+        var cleared = await fixture.Dispatcher.ClearAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
+
+        cleared!.Queue.ShouldHaveSingleItem().Id.ShouldBe(runningId);
+        cleared.Queue[0].Stage.ShouldBe(QueuedMessageStage.UserCommitted);
+        call.Answer.SetResult("Done");
+    }
+
+    [Fact]
+    public async Task ClearingEverythingShouldStopTheRunAndEmptyTheQueue()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.StreamPreludeAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Running"), "Partial");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Waiting"));
+
+        var cleared = await fixture.Dispatcher.ClearAllAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
+
+        cleared!.Queue.ShouldBeEmpty();
+        cleared.Status.ShouldBe(ChatRunStatus.Idle);
+    }
+
+    [Fact]
+    public async Task DiscardingShouldDropTheStoppedCommandAndLetTheQueueContinue()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.StreamPreludeAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Stuck"), "Partial");
+        var nextId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), nextId, "Next"));
+
+        var discarded = await fixture.Dispatcher.DiscardAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
+
+        discarded!.Queue.ShouldHaveSingleItem().Id.ShouldBe(nextId);
+        var next = await fixture.NextCallAsync();
+        next.Request.Message.ShouldBe("Next");
+        next.Answer.SetResult("Answered");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task InterruptedRunShouldKeepItsPartialAnswerAcrossRestart()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.StreamPreludeAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"), "Half an");
+        await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused);
+        await fixture.WaitForMessageAsync(message => message.Role == "Assistant");
+        await fixture.RestartAsync();
+
+        // A partial answer must never satisfy the "this command already has its reply" check, or
+        // resuming after a restart would quietly close the command without generating anything.
+        await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
+        (await fixture.NextCallAsync()).Answer.SetResult("A whole answer");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Where(message => message.Role == "Assistant")
+            .ShouldHaveSingleItem().Content.ShouldBe("A whole answer");
+    }
+
     private sealed record Call(ChatCompletionRequest Request, TaskCompletionSource<string> Answer)
     {
         public IReadOnlyList<ChatToolCall>? ToolCalls { get; set; }
+
+        /// <summary>Text streamed before the call is answered, for tests that interrupt mid-answer.</summary>
+        public string? Prelude { get; set; }
+
+        /// <summary>Completes once <see cref="Prelude"/> has been yielded to the agent.</summary>
+        public TaskCompletionSource<bool> PreludeStreamed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
     private sealed class Completion : IChatCompletionClient
     {
         private TaskCompletionSource<bool>? _cancellationObserved;
         private TaskCompletionSource<bool>? _cancellationRelease;
         public Channel<Call> Calls { get; } = Channel.CreateUnbounded<Call>();
+
+        /// <summary>Text the next call streams before it is answered; consumed once.</summary>
+        public string? NextPrelude { get; set; }
         public Task<ChatCompletionResponse> CompleteAsync(ChatCompletionRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
         public async IAsyncEnumerable<ChatCompletionChunk> StreamAsync(ChatCompletionRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             var call = new Call(request, new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously));
             Calls.Writer.TryWrite(call);
+            call.Prelude = NextPrelude;
+            NextPrelude = null;
+            if (call.Prelude is { Length: > 0 } prelude)
+            {
+                yield return new ChatCompletionChunk(prelude);
+                call.PreludeStreamed.TrySetResult(true);
+            }
             string content;
             try
             {
@@ -708,6 +863,33 @@ public sealed class ChatExecutionTests
                 [new ToolPolicySettings(DefaultMcpServer.Id, "process_run", "schema", decision, 20, timeoutSeconds)]), CancellationToken.None);
         }
         public async Task<Call> NextCallAsync() => await Completion.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        /// <summary>
+        /// Submits a message, lets its call stream <paramref name="text"/>, and leaves the call
+        /// unanswered - the state an interruption has to cope with. Arming the prelude and
+        /// submitting are one step because the worker can reach the endpoint immediately.
+        /// </summary>
+        public async Task<Call> StreamPreludeAsync(SubmitChatMessageRequest request, string text)
+        {
+            Completion.NextPrelude = text;
+            await SubmitAsync(request);
+            var call = await NextCallAsync();
+            await call.PreludeStreamed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await WaitAsync(run => run.StreamingContent.Contains(text, StringComparison.Ordinal));
+            return call;
+        }
+
+        public async Task<ChatMessageView> WaitForMessageAsync(Func<ChatMessageView, bool> predicate)
+        {
+            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+            while (true)
+            {
+                var chat = await Chats.GetAsync(ProjectId, ChatId, CancellationToken.None);
+                if (chat!.Messages.FirstOrDefault(predicate) is { } message) return message;
+                if (DateTimeOffset.UtcNow > deadline) throw new InvalidOperationException("No matching message.");
+                await Task.Delay(20, TestContext.Current.CancellationToken);
+            }
+        }
         public async Task<ChatRunSnapshot> WaitAsync(Func<ChatRunSnapshot, bool> predicate)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));

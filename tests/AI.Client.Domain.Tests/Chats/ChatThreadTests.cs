@@ -33,6 +33,40 @@ public class ChatThreadTests
     }
 
     [Fact]
+    public void ShouldRewindBranchAndLeaveTheAbandonedTailUnreachable()
+    {
+        var chat = CreateChat();
+        var question = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Question", _now);
+        var truncated = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), question.Id, ChatMessageRole.Assistant, "Half", _now, true);
+        chat.AddMessage(question, _now);
+        chat.AddMessage(truncated, _now);
+        var revision = chat.Branches.Single(branch => branch.Id == chat.Id.Value).Revision;
+
+        chat.RewindBranchTo(chat.Id.Value, question.Id, _now).ShouldBeTrue();
+        chat.PruneUnreachableMessages([]);
+
+        chat.Branches.Single(branch => branch.Id == chat.Id.Value).HeadMessageId.ShouldBe(question.Id);
+        chat.Branches.Single(branch => branch.Id == chat.Id.Value).Revision.ShouldBe(revision + 1);
+        chat.Messages.ShouldNotContain(message => message.Id == truncated.Id);
+        chat.RewindBranchTo(chat.Id.Value, question.Id, _now).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ShouldRefuseToRewindPastTheBranchRoot()
+    {
+        var chat = CreateChat();
+        var root = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Root", _now);
+        var branchId = Guid.CreateVersion7();
+        var forked = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), root.Id, ChatMessageRole.User, "Forked", _now);
+        chat.AddMessage(root, _now);
+        chat.AddMessage(forked, _now, branchId, chat.Id.Value);
+
+        // A branch whose root is no longer an ancestor of its head cannot be loaded back, so the
+        // rewind is refused rather than written.
+        Should.Throw<AI.Client.Domain.Common.DomainException>(() => chat.RewindBranchTo(branchId, root.Id, _now));
+    }
+
+    [Fact]
     public void ShouldRenameBranch()
     {
         var chat = CreateChat();

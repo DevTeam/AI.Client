@@ -2,37 +2,48 @@ export function attach(textarea, dotNetReference) {
     let sending = false;
     let lastCtrl = false;
     let lastAlt = false;
+    let lastShift = false;
 
-    const pushModifiers = (ctrl, alt) => {
-        if (ctrl === lastCtrl && alt === lastAlt) return;
+    const pushModifiers = (ctrl, alt, shift) => {
+        if (ctrl === lastCtrl && alt === lastAlt && shift === lastShift) return;
         lastCtrl = ctrl;
         lastAlt = alt;
-        dotNetReference.invokeMethodAsync("OnComposerModifiersChanged", ctrl, alt);
+        lastShift = shift;
+        dotNetReference.invokeMethodAsync("OnComposerModifiersChanged", ctrl, alt, shift);
     };
 
     const handler = event => {
-        if (event.isComposing || event.key !== "Enter" || event.shiftKey) {
-            pushModifiers(event.ctrlKey, event.altKey);
+        if (event.isComposing || event.key !== "Enter") {
+            pushModifiers(event.ctrlKey, event.altKey, event.shiftKey);
+            return;
+        }
+        // Shift+Enter is a newline, but Ctrl+Shift+Enter is "interrupt and send now" — so the
+        // combination has to be recognised before Shift is treated as "the user is typing".
+        const interrupting = event.ctrlKey && event.shiftKey && !event.altKey;
+        if (event.shiftKey && !interrupting) {
+            pushModifiers(event.ctrlKey, event.altKey, event.shiftKey);
             return;
         }
         event.preventDefault();
         sending = true;
-        const method = event.ctrlKey && event.altKey
-            ? "ForkFromKeyboard"
-            : event.ctrlKey
-                ? "QueueFromKeyboard"
-                : "SendFromKeyboard";
+        const method = interrupting
+            ? "SendNowFromKeyboard"
+            : event.ctrlKey && event.altKey
+                ? "ForkFromKeyboard"
+                : event.ctrlKey
+                    ? "QueueFromKeyboard"
+                    : "SendFromKeyboard";
         dotNetReference.invokeMethodAsync(method).finally(() => { sending = false; });
     };
 
     const releaseHandler = event => {
-        if (event.key !== "Control" && event.key !== "Alt") return;
-        // After Ctrl/Alt release the textarea no longer reports them on the next keydown
+        if (event.key !== "Control" && event.key !== "Alt" && event.key !== "Shift") return;
+        // After Ctrl/Alt/Shift release the textarea no longer reports them on the next keydown
         // until the user presses them again — read modifiers from the event itself.
-        pushModifiers(event.ctrlKey, event.altKey);
+        pushModifiers(event.ctrlKey, event.altKey, event.shiftKey);
     };
 
-    const blurHandler = () => pushModifiers(false, false);
+    const blurHandler = () => pushModifiers(false, false, false);
 
     textarea.addEventListener("keydown", handler);
     textarea.addEventListener("keyup", releaseHandler);

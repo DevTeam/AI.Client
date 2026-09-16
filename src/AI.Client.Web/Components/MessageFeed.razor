@@ -118,8 +118,14 @@
                 @* One block per cycle: the assistant's explanation, then the tools it announced.
                    They were two articles with a boundary between them, which read as unrelated
                    cards; together they read as intent followed by actions. The preamble needs no
-                   id of its own here — the block already has the anchor's. *@
-                <article @key="anchor.Id" id="message-@anchor.Id" class="workspace-message tool-group @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)">
+                   id of its own here — the block already has the anchor's.
+
+                   The key is the group's *first* message, not the anchor: a live group grows as
+                   each call lands, so keying it by the last one handed Blazor a new identity on
+                   every result and threw away ToolActivityGroup's state — an expanded group
+                   snapped shut each time a tool reported back. The first message is what opened
+                   the group and never changes while it grows. *@
+                <article @key="group[0].Id" id="message-@anchor.Id" class="workspace-message tool-group @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)">
                     @if (preamble is not null)
                     {
                         @if (preamble.IsIncomplete) { <span class="message-status">Incomplete</span> }

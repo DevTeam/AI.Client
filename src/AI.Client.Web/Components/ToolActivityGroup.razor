@@ -66,12 +66,14 @@
             var severity = abandoned
                 ? ToolResultSeverity.Warning
                 : result?.Severity ?? ToolResultSeverity.Ok;
-            // Success collapses; a failure starts open because that is the state the user has to
-            // act on. Either state can still be changed explicitly by the user.
-            var open = IsOpen(invocation.Call.Id, severity);
+            // Every row starts collapsed, failures included. A failure used to open itself, which
+            // made a batch jump around as results landed and buried the rows either side of it in
+            // output nobody asked for; the row's icon, severity colour and summary already say it
+            // failed, and opening it is the user's call.
+            var open = _expanded.Contains(invocation.Call.Id);
         }
         <details class="tool-row-item @SeverityClass(severity)" open="@open">
-            <summary class="tool-row" @onclick="() => Toggle(invocation.Call.Id, open)" @onclick:preventDefault="true">
+            <summary class="tool-row" @onclick="() => Toggle(invocation.Call.Id)" @onclick:preventDefault="true">
                 <span class="tool-row-glyph" aria-hidden="true">
                     @if (running) { <AppIcon Name="spinner" Class="tool-row-spinner" /> }
                     else if (severity == ToolResultSeverity.Error) { <AppIcon Name="error" /> }
@@ -127,24 +129,13 @@
         </details>
     </text>;
 
+    // Which rows the user opened, by call id. Nothing else opens a row, so one set is enough —
+    // there is no default-open state left to remember an override for.
     private readonly HashSet<string> _expanded = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _collapsed = new(StringComparer.Ordinal);
 
-    private bool IsOpen(string id, ToolResultSeverity severity) =>
-        _expanded.Contains(id) || severity == ToolResultSeverity.Error && !_collapsed.Contains(id);
-
-    private void Toggle(string id, bool open)
+    private void Toggle(string id)
     {
-        if (open)
-        {
-            _expanded.Remove(id);
-            _collapsed.Add(id);
-        }
-        else
-        {
-            _collapsed.Remove(id);
-            _expanded.Add(id);
-        }
+        if (!_expanded.Remove(id)) _expanded.Add(id);
     }
 
     // Parsing a result and describing it is not free — a single process_run can carry megabytes of

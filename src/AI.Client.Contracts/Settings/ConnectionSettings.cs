@@ -7,8 +7,9 @@ namespace AI.Client.Contracts.Settings;
 /// deliberately coarse, and absent until someone states one.
 /// </summary>
 /// <param name="ForSubtasks">
-/// Where a subtask goes when neither the task nor the call named a connection. At most one
-/// connection holds this, and a disabled one never does.
+/// Where a subtask may go when neither the task nor the call named a connection. Any number of
+/// connections can hold it, and unaddressed work is spread over them in turn — several providers
+/// share a fan-out that one would have had to answer alone. A disabled connection never holds it.
 /// </param>
 /// <param name="Capability">How much this endpoint can be trusted with, 1 to 5; null when nobody has said.</param>
 /// <param name="Cost">What it costs to use, 1 to 5; null when nobody has said.</param>

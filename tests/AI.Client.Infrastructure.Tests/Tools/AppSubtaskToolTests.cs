@@ -206,6 +206,25 @@ public sealed class AppSubtaskToolTests
     }
 
     [Fact]
+    public async Task ShouldDealUnaddressedWorkOutOverEveryMarkedConnection()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        await fixture.MarkForSubtasksAsync(fixture.DefaultConnectionId, fixture.CheapConnectionId);
+        fixture.Completion.Answer("done");
+        await using var session = await fixture.OpenAsync();
+        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
+
+        // Marking several is how a fan-out stops queueing behind one provider: nothing here named a
+        // connection, so the tasks are dealt out over the marked ones in turn.
+        var result = await session.CallAsync(tool, fixture.Arguments("one", "two", "three"), null,
+            TestContext.Current.CancellationToken);
+
+        var used = result.StructuredContent!.Value.GetProperty("results").EnumerateArray()
+            .Select(item => item.GetProperty("connection").GetString()).ToArray();
+        used.ShouldBe(["Test", "Cheap", "Test"]);
+    }
+
+    [Fact]
     public async Task ShouldStillObeyANamedConnectionOverTheMark()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
@@ -345,13 +364,14 @@ public sealed class AppSubtaskToolTests
             return fixture;
         }
 
-        /// <summary>Puts the standing mark on one connection, the way the settings screen does.</summary>
-        public async Task MarkForSubtasksAsync(Guid connectionId)
+        /// <summary>Puts the standing mark on connections, the way the settings screen does.</summary>
+        public async Task MarkForSubtasksAsync(params Guid[] connectionIds)
         {
             var stored = await _settings.LoadAsync(CancellationToken.None);
             await _settings.SaveAsync(stored with
             {
-                Connections = stored.Connections.Select(item => item with { ForSubtasks = item.Id == connectionId }).ToArray()
+                Connections = stored.Connections
+                    .Select(item => item with { ForSubtasks = connectionIds.Contains(item.Id) }).ToArray()
             }, CancellationToken.None);
         }
 

@@ -157,7 +157,10 @@
            only in-progress answer this turn produced isn't committed as a real chat message
            until the run finishes normally, so it has to keep rendering from here after a stop
            or an error or it just vanishes from the transcript. *@
-        @if (SelectedRun is { } activeRun && !string.IsNullOrEmpty(activeRun.StreamingContent))
+        @* Whitespace is not a partial answer. An endpoint that returns nothing used to leave an
+           "Incomplete" badge sitting over an empty block, which reads as a broken answer rather
+           than as no answer - the failure card below already says what happened. *@
+        @if (SelectedRun is { } activeRun && !string.IsNullOrWhiteSpace(activeRun.StreamingContent))
         {
             <article id="message-streaming" class="workspace-message assistant @(activeRun.Status == ChatRunStatus.Generating ? "streaming" : string.Empty)">
                 @if (activeRun.Status != ChatRunStatus.Generating) { <span class="message-status">Incomplete</span> }

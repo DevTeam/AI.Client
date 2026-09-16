@@ -55,19 +55,15 @@ public class GlobalSettingsServiceTests
     }
 
     [Fact]
-    public async Task ShouldRejectTwoConnectionsClaimingSubtasks()
+    public async Task ShouldLetSeveralConnectionsShareTheSubtaskMark()
     {
-        var request = new SaveGlobalSettingsRequest(
-            [
-                new ConnectionSettings(Guid.CreateVersion7(), "One", "https://one/v1", "one", true, true, false, ForSubtasks: true),
-                new ConnectionSettings(Guid.CreateVersion7(), "Two", "https://two/v1", "two", true, false, false, ForSubtasks: true)
-            ],
-            [],
-            []);
+        // Unlike the default, this mark is a set: a fan-out of subtasks is dealt out over every
+        // connection wearing it, which is the whole reason for marking more than one.
+        var result = await SaveAsync(
+            new ConnectionSettings(Guid.CreateVersion7(), "One", "https://one/v1", "one", true, true, false, ForSubtasks: true),
+            new ConnectionSettings(Guid.CreateVersion7(), "Two", "https://two/v1", "two", true, false, false, ForSubtasks: true));
 
-        var action = () => CreateInstance().SaveAsync(request, CancellationToken.None);
-
-        await action.ShouldThrowAsync<ArgumentException>();
+        result.Connections.Count(item => item.ForSubtasks).ShouldBe(2);
     }
 
     [Fact]

@@ -9,6 +9,7 @@
 <div class="tool-activity">
     @{
         var invocations = ChatFeed.BuildInvocations(Group);
+        TrackArrivals(invocations);
         var failed = invocations.Count(item => item.Result is not null && Describe(item).Severity == ToolResultSeverity.Error);
         var unfinished = invocations.Count(item => item.Result is null);
         var pending = IsLive ? unfinished : 0;
@@ -71,8 +72,13 @@
             // output nobody asked for; the row's icon, severity colour and summary already say it
             // failed, and opening it is the user's call.
             var open = _expanded.Contains(invocation.Call.Id);
+            // Set only for a row that showed up while the group was already on screen (see
+            // TrackArrivals); its value staggers the row against the others that landed with it.
+            var arriving = _arriving.TryGetValue(invocation.Call.Id, out var index) ? index : (int?)null;
         }
-        <details class="tool-row-item @SeverityClass(severity)" open="@open">
+        <details class="tool-row-item @SeverityClass(severity) @(arriving is null ? string.Empty : "tool-row-arriving") @(_resolved.Contains(invocation.Call.Id) ? "tool-row-resolved" : string.Empty)"
+                 style="@(arriving is { } order ? $"--arrive-index: {order}" : null)"
+                 open="@open">
             <summary class="tool-row" @onclick="() => Toggle(invocation.Call.Id)" @onclick:preventDefault="true">
                 <span class="tool-row-glyph" aria-hidden="true">
                     @if (running) { <AppIcon Name="spinner" Class="tool-row-spinner" /> }
@@ -136,6 +142,50 @@
     private void Toggle(string id)
     {
         if (!_expanded.Remove(id)) _expanded.Add(id);
+    }
+
+    // Calls this group has rendered at least once, so a row can tell "just arrived" from "was
+    // always here". Without it the first render of an old group would animate every row at once.
+    private readonly HashSet<string> _known = new(StringComparer.Ordinal);
+
+    // The arrivals that earned an entry animation, each with its position within the batch it
+    // landed in. A CSS animation only plays when the element enters the DOM, so the marks are
+    // never cleared: dropping one on a later render would cut the animation off mid-flight, and
+    // keeping it costs one dictionary entry per call.
+    private readonly Dictionary<string, int> _arriving = new(StringComparer.Ordinal);
+
+    // Calls seen without a result that later got one, i.e. the ones whose row changed under the
+    // user's eyes from spinner to outcome. Only those cross-fade; a row rendered as finished from
+    // the start has nothing to fade between.
+    private readonly HashSet<string> _pending = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _resolved = new(StringComparer.Ordinal);
+
+    private bool _primed;
+
+    /// <summary>
+    /// Notes which calls are new since the previous render. Runs on every render, collapsed group
+    /// included: a call that lands while the group is folded is absorbed silently, so unfolding it
+    /// later shows a settled list instead of replaying a cascade the user never watched happen.
+    /// </summary>
+    private void TrackArrivals(IReadOnlyList<ChatFeed.ToolInvocation> invocations)
+    {
+        var batch = 0;
+        foreach (var invocation in invocations)
+        {
+            var id = invocation.Call.Id;
+            // A group's very first render is the baseline, never an arrival — it is transcript
+            // that was already there, whether it was written a second or a week ago.
+            if (_known.Add(id) && _primed && _batchExpanded) _arriving[id] = batch++;
+            if (invocation.Result is null)
+            {
+                if (IsLive) _pending.Add(id);
+            }
+            else if (_pending.Remove(id))
+            {
+                _resolved.Add(id);
+            }
+        }
+        _primed = true;
     }
 
     // Parsing a result and describing it is not free — a single process_run can carry megabytes of

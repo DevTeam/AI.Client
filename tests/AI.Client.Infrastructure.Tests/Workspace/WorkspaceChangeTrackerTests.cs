@@ -108,6 +108,19 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
     }
 
     [Fact]
+    public async Task ShouldCarryTheContentsOfACreatedFileAsADiff()
+    {
+        var file = Path("new.txt");
+        var tracker = await StartAsync();
+
+        await EditAsync(tracker, "write_file", file, () => File.WriteAllTextAsync(file, "a\nb"));
+
+        var change = (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).Files.ShouldHaveSingleItem();
+        var lines = UnifiedDiff.Parse(change.Diff);
+        lines.Where(line => line.Kind == DiffLineKind.Added).Select(line => line.Text).ShouldBe(["a", "b"]);
+    }
+
+    [Fact]
     public async Task ShouldReportBothEndsOfAMove()
     {
         var source = Path("from.txt");

@@ -378,6 +378,11 @@
     [Parameter] public bool HasSelectedProject { get; set; }
     [Parameter] public string? SelectedProjectName { get; set; }
     [Parameter] public ChatDetails? SelectedChat { get; set; }
+    /// <summary>
+    /// Stable identity of the selected main/fork transcript. Unlike <see cref="BranchLeafId"/>,
+    /// this does not advance whenever another message is appended to the same branch.
+    /// </summary>
+    [Parameter] public Guid? TranscriptId { get; set; }
     [Parameter] public Guid? BranchLeafId { get; set; }
     /// <summary>
     /// When set to the same id as <see cref="BranchLeafId"/>, marks the leaf message as
@@ -454,7 +459,7 @@
     // as they are back at the bottom, by whatever means.
     private bool _newBelow;
     private Guid? _scrollResetChatId;
-    private Guid? _scrollResetBranchLeafId;
+    private Guid? _scrollResetTranscriptId;
     private int _historyMarkerCount = -1;
     private string? _historyMarkerScrollKey;
     private bool _disposed;
@@ -465,6 +470,7 @@
     // "parameters actually changed" — without it, this component would rebuild and diff its own
     // render tree (the whole message list) just as often as before the split.
     private ChatDetails? _renderedSelectedChat;
+    private Guid? _renderedTranscriptId;
     private Guid? _renderedBranchLeafId;
     private Guid? _renderedJustArrivedLeafId;
     private Guid? _renderedForkSourceId;
@@ -483,6 +489,7 @@
     protected override bool ShouldRender()
     {
         var changed = !ReferenceEquals(_renderedSelectedChat, SelectedChat)
+            || _renderedTranscriptId != TranscriptId
             || _renderedBranchLeafId != BranchLeafId
             || _renderedJustArrivedLeafId != JustArrivedLeafId
             || _renderedForkSourceId != ForkSourceId
@@ -504,6 +511,7 @@
             || _expandRenderRequested;
 
         _renderedSelectedChat = SelectedChat;
+        _renderedTranscriptId = TranscriptId;
         _renderedBranchLeafId = BranchLeafId;
         _renderedJustArrivedLeafId = JustArrivedLeafId;
         _renderedForkSourceId = ForkSourceId;
@@ -720,18 +728,18 @@
         // render reaches the boundary one render too late and its content stays truncated.
         // A new revision of the same transcript is not a new transcript: streaming must not send
         // the feed back to its tail on every token.
-        if (_progressiveChatId != SelectedChat?.Id || _progressiveBranchLeafId != BranchLeafId)
+        if (_progressiveChatId != SelectedChat?.Id || _progressiveTranscriptId != TranscriptId)
         {
             _progressiveChatId = SelectedChat?.Id;
-            _progressiveBranchLeafId = BranchLeafId;
+            _progressiveTranscriptId = TranscriptId;
             var isLongTranscript = (SelectedChat?.Messages.Count ?? 0) > InitialRenderedItemCount;
             _renderedItemLimit = isLongTranscript ? InitialRenderedItemCount : int.MaxValue;
             _expandPending = isLongTranscript;
         }
 
-        if (_scrollResetChatId == SelectedChat?.Id && _scrollResetBranchLeafId == BranchLeafId) return;
+        if (_scrollResetChatId == SelectedChat?.Id && _scrollResetTranscriptId == TranscriptId) return;
         _scrollResetChatId = SelectedChat?.Id;
-        _scrollResetBranchLeafId = BranchLeafId;
+        _scrollResetTranscriptId = TranscriptId;
         _newBelow = false;
     }
 
@@ -879,7 +887,7 @@
     // every switch. The tail is what the eye lands on, so it is what the first frame owes them.
     private const int InitialRenderedItemCount = 10;
     private Guid? _progressiveChatId;
-    private Guid? _progressiveBranchLeafId;
+    private Guid? _progressiveTranscriptId;
     private int _renderedItemLimit = int.MaxValue;
     private bool _expandPending;
 

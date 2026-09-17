@@ -253,15 +253,25 @@ public sealed class ChatRunDispatcher(
             if (request.Position is { } position)
                 runtime.State.Move(messageId, Math.Max(runtime.State.Queue.Count(item => item.Stage == QueuedRunStage.UserCommitted), position));
         }, request.OperationId, cancellationToken);
-    public Task<ChatRunSnapshot?> RemoveQueuedAsync(Guid projectId, Guid chatId, Guid branchId, Guid messageId, CancellationToken cancellationToken, Guid? operationId = null) =>
-        MutateAsync(projectId, chatId, branchId, runtime =>
+    public async Task<ChatRunSnapshot?> RemoveQueuedAsync(Guid projectId, Guid chatId, Guid branchId, Guid messageId, CancellationToken cancellationToken, Guid? operationId = null)
+    {
+        // The browser may still show a Prepared snapshot while the worker has already claimed
+        // the row. Honour the click against that exact message instead of returning 409: stop it,
+        // wait until its partial answer/tool history is settled, then drop its committed command.
+        // A different active message is never interrupted by this targeted operation.
+        await InterruptMessageAsync(projectId, chatId, branchId, messageId, operationId ?? Guid.Empty, cancellationToken);
+        return await MutateAsync(projectId, chatId, branchId, runtime =>
         {
-            if (runtime.ActiveMessageId == messageId) throw new InvalidOperationException("This message has already been sent. Stop the run to drop it.");
-            if (runtime.State.Status == RunStatus.Failed && runtime.State.Queue.Count > 0 && runtime.State.Queue[0].Id == messageId)
+            var queued = runtime.State.Queue.FirstOrDefault(item => item.Id == messageId);
+            if (queued is null) return;
+            if (queued.Stage == QueuedRunStage.UserCommitted)
+                runtime.State.DropCommitted();
+            else if (runtime.State.Status == RunStatus.Failed && runtime.State.Queue.Count > 0 && runtime.State.Queue[0].Id == messageId)
                 runtime.State.SkipFailed();
             else
                 runtime.State.Remove(messageId);
         }, operationId, cancellationToken);
+    }
 
     /// <summary>
     /// Abandons the command currently being generated and immediately starts the selected waiting
@@ -893,6 +903,22 @@ public sealed class ChatRunDispatcher(
         {
             if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)) return;
             if (operationId != Guid.Empty && runtime.State.Operations.Contains(operationId)) return;
+            runtime.ResumeRequested = false;
+            if (runtime.Cancellation is { } cancellation) await cancellation.CancelAsync();
+            if (runtime.Worker is not null) runtime.State.Pause();
+            worker = runtime.Worker ?? Task.CompletedTask;
+        }
+        await worker.WaitAsync(token);
+    }
+
+    private async Task InterruptMessageAsync(Guid projectId, Guid chatId, Guid branchId, Guid messageId, Guid operationId, CancellationToken token)
+    {
+        Task worker;
+        using (await synchronization.EnterAsync(chatId, token))
+        {
+            if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)
+                || runtime.ActiveMessageId != messageId
+                || operationId != Guid.Empty && runtime.State.Operations.Contains(operationId)) return;
             runtime.ResumeRequested = false;
             if (runtime.Cancellation is { } cancellation) await cancellation.CancelAsync();
             if (runtime.Worker is not null) runtime.State.Pause();

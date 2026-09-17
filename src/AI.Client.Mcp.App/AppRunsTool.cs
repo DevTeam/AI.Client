@@ -1,6 +1,7 @@
-namespace AI.Client.Mcp.App;
+﻿namespace AI.Client.Mcp.App;
 
 using AI.Client.Application.Runs;
+using AI.Client.Application.Tools;
 using AI.Client.Contracts.Runs;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -60,7 +61,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
 
     private const int MinWaitMs = 1_000;
 
-    public McpServerTool Create() => McpServerTool.Create(
+    public McpServerTool Create(ToolRunContext run) => McpServerTool.Create(
         RunsAsync,
         new McpServerToolCreateOptions
         {

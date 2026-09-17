@@ -1,4 +1,4 @@
-namespace AI.Client.Web.Runs;
+﻿namespace AI.Client.Web.Runs;
 
 using Contracts.Runs;
 
@@ -79,7 +79,8 @@ public sealed class RunStateService : IRunStateService
                 return;
             }
 
-            var isLlmGenerating = run.PendingApproval is null && run.ActiveTools is not { Count: > 0 };
+            var isLlmGenerating = run.PendingApproval is null && run.PendingPrompt is null
+                && run.ActiveTools is not { Count: > 0 };
             var now = DateTimeOffset.UtcNow;
             if (isLlmGenerating)
             {

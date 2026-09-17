@@ -1,4 +1,4 @@
-using AI.Client.Application.Chat;
+﻿using AI.Client.Application.Chat;
 using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Notifications;
@@ -64,13 +64,14 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             })
             // Both groups are consumed as sets, so each registration is tagged to stay distinct
             // instead of the last one silently winning its contract.
-            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool>(Tag.Unique)
+            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool>(Tag.Unique)
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<FileToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<ProcessToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<WebToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppReadPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppWritePresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppSubtaskPresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AskUserPresentationAdapter>()
             // Should be last
             .Bind<IToolPresentationAdapter>().As(Lifetime.Singleton).To<GenericToolPresentationAdapter>()
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)

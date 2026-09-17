@@ -1,4 +1,4 @@
-namespace AI.Client.Cli;
+﻿namespace AI.Client.Cli;
 
 using Contracts.Chats;
 using Contracts.Projects;
@@ -11,6 +11,7 @@ using System.Text.Json;
 internal interface IHeadlessChatClient
 {
     Task DecideToolAsync(Uri host, Guid projectId, Guid chatId, ToolApprovalDecision decision, CancellationToken cancellationToken);
+    Task AnswerPromptAsync(Uri host, Guid projectId, Guid chatId, UserPromptResponse response, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProjectSummary>> GetProjectsAsync(Uri host, CancellationToken cancellationToken);
     Task<ProjectDetails> GetProjectAsync(Uri host, Guid id, CancellationToken cancellationToken);
     Task<GlobalSettings> GetSettingsAsync(Uri host, CancellationToken cancellationToken);
@@ -28,6 +29,11 @@ internal sealed class HeadlessChatClient(HttpClient client) : IHeadlessChatClien
     {
         using var response = await client.PostAsJsonAsync(new Uri(host, $"api/projects/{projectId}/chats/{chatId}/tools/decision?branchId={chatId}"), decision, cancellationToken);
         response.EnsureSuccessStatusCode();
+    }
+    public async Task AnswerPromptAsync(Uri host, Guid projectId, Guid chatId, UserPromptResponse response, CancellationToken cancellationToken)
+    {
+        using var result = await client.PostAsJsonAsync(new Uri(host, $"api/projects/{projectId}/chats/{chatId}/prompts/answer?branchId={chatId}"), response, cancellationToken);
+        result.EnsureSuccessStatusCode();
     }
     public async Task<IReadOnlyList<ProjectSummary>> GetProjectsAsync(Uri host, CancellationToken cancellationToken) =>
         await GetAsync<ProjectSummary[]>(host, "api/projects", cancellationToken);

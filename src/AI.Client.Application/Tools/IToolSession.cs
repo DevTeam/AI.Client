@@ -37,6 +37,26 @@ public sealed record ToolActivity(
 public sealed record ToolDirectoryGrant(string Root, bool Recursive, IReadOnlyList<string> Capabilities);
 
 /// <summary>
+/// Which run a tool session was opened for. A session is opened per run, so this is handed down at
+/// connection time rather than asked for per call: a tool that acts on the conversation it was
+/// called from should not have to be told which one that is by the model, which can be wrong about
+/// it or can name somebody else's.
+/// </summary>
+/// <param name="Interactive">
+/// Whether a person can be reached from this run. False for a run nobody is watching — a subtask
+/// delegating work in the background — where anything that would stop to ask is answered "no" at
+/// once instead of waiting out a timeout nobody will interrupt.
+/// </param>
+public sealed record ToolRunContext(Guid ProjectId, Guid ChatId, Guid BranchId, bool Interactive)
+{
+    /// <summary>
+    /// No run at all: a session opened to inspect what the servers offer, never to call anything.
+    /// Not interactive, because there is no conversation for an answer to return to.
+    /// </summary>
+    public static readonly ToolRunContext None = new(Guid.Empty, Guid.Empty, Guid.Empty, false);
+}
+
+/// <summary>
 /// Where one call sits in the batch the model asked for, counting from one. Carried into approval
 /// so a user deciding on the first of several is told there are more, rather than discovering it
 /// one prompt at a time.
@@ -64,6 +84,7 @@ public interface IToolSessionFactory
     Task<IToolSession> OpenAsync(
         IReadOnlyList<ToolDirectoryGrant> directoryGrants,
         IReadOnlySet<Guid> servers,
+        ToolRunContext run,
         CancellationToken cancellationToken);
 }
 
@@ -75,5 +96,5 @@ public interface IMcpServerConnection
 {
     Guid ServerId { get; }
 
-    Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, CancellationToken cancellationToken);
+    Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, ToolRunContext run, CancellationToken cancellationToken);
 }

@@ -1,4 +1,4 @@
-@page "/"
+﻿@page "/"
 @using System.Diagnostics.CodeAnalysis
 @using System.Text.Json
 @using AI.Client.Web.State
@@ -312,7 +312,7 @@
             else if (!_composerHistoryNavigator.IsActive) { <span>@GetComposerHint()</span> }
         </div>
         <footer class="workspace-composer">
-            <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@(_replaceSourceId is not null ? "Edit the message to replace this branch..." : _isForking ? "Write the first message in the new branch..." : "Message the assistant...")" aria-label="Message"></textarea>
+            <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@(_replaceSourceId is not null ? "Edit the message to replace this branch..." : _isForking ? "Write the first message in the new branch..." : GetSelectedRun() is { PendingPrompt: not null } ? "Answer the question above..." : "Message the assistant...")" aria-label="Message"></textarea>
             <div class="composer-footer">
                 <div class="composer-endpoint">
                     <button class="composer-endpoint-trigger" type="button" title="Endpoint for this chat" aria-label="Endpoint for this chat" aria-haspopup="true" aria-expanded="@(_isEndpointMenuOpen ? "true" : "false")" @onclick="ToggleEndpointMenu" disabled="@(_connections.Count == 0)">
@@ -1126,9 +1126,39 @@
         }
     }
 
+    /// <summary>
+    /// A question is open, so what was typed is the answer to it.
+    /// </summary>
+    /// <remarks>
+    /// Someone reading a question and writing underneath it means that as a reply, not as the next
+    /// piece of work. Queueing it instead deadlocks the obvious thing to do: the run holds until
+    /// the question times out, and the message they wrote is delivered a quarter of an hour after
+    /// they wrote it. It answers the first question that takes free text; if none does — every
+    /// question is a closed list — the message is an ordinary one and goes to the queue.
+    /// </remarks>
+    private async Task<bool> TryAnswerPendingPromptAsync(string text)
+    {
+        if (_isForking || _replaceSourceId is not null || string.IsNullOrWhiteSpace(text)) return false;
+        if (GetSelectedRun() is not { PendingPrompt: { } prompt } run) return false;
+        if (prompt.Questions.FirstOrDefault(question => question.AllowOther) is not { } target) return false;
+        if (!await ChatRunsApi.AnswerPromptAsync(run.ProjectId, run.ChatId, run.BranchId,
+                new UserPromptResponse(prompt.Id, UserPromptOutcome.Answered,
+                    [new UserPromptAnswer(target.Id, [], text.Trim())]), CancellationToken.None))
+            // The question moved on while they were typing. Their text stays in the composer, so
+            // nothing is lost and the next Enter sends it the ordinary way.
+            return false;
+
+        var draftKey = GetComposerDraftKey();
+        _chat.Message = string.Empty;
+        _composerHistoryNavigator.Reset();
+        WorkspaceStateService.QueueComposerDraftSave(draftKey, string.Empty);
+        return true;
+    }
+
     private async Task SubmitComposerAsync(ComposerSubmitMode mode)
     {
         if (_isSubmittingMessage || !CanSendMessage()) return;
+        if (await TryAnswerPendingPromptAsync(_chat.Message)) return;
 
         var effectiveMode = _isForking ? ComposerSubmitMode.Fork
             : _replaceSourceId is not null ? ComposerSubmitMode.Send
@@ -1685,6 +1715,7 @@
             hash.Add(run.Status);
             hash.Add(run.HasUnreadResponse);
             hash.Add(run.PendingApproval?.Id);
+            hash.Add(run.PendingPrompt?.Id);
             hash.Add(run.Error);
         }
         return hash.ToHashCode();

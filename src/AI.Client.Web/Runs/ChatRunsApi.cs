@@ -1,4 +1,4 @@
-namespace AI.Client.Web.Runs;
+﻿namespace AI.Client.Web.Runs;
 
 using AI.Client.Contracts.Runs;
 using System.Net;
@@ -11,6 +11,15 @@ public sealed class ChatRunsApi(HttpClient httpClient) : IChatRunsApi
         using var response = await httpClient.PostAsJsonAsync($"api/projects/{projectId}/chats/{chatId}/tools/decision?branchId={branchId}", decision, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
+    public async Task<bool> AnswerPromptAsync(Guid projectId, Guid chatId, Guid branchId, UserPromptResponse response, CancellationToken cancellationToken)
+    {
+        using var result = await httpClient.PostAsJsonAsync(
+            $"api/projects/{projectId}/chats/{chatId}/prompts/answer?branchId={branchId}", response, cancellationToken);
+        if (result.StatusCode == HttpStatusCode.Conflict) return false;
+        result.EnsureSuccessStatusCode();
+        return true;
+    }
+
     public async Task<ChatRunSnapshot> SubmitAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request, CancellationToken cancellationToken)
     {
         using var response = await httpClient.PostAsJsonAsync($"api/projects/{projectId}/chats/{chatId}/submit", request, cancellationToken);

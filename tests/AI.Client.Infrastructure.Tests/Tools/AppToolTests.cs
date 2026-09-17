@@ -1,4 +1,4 @@
-namespace AI.Client.Infrastructure.Tests.Tools;
+﻿namespace AI.Client.Infrastructure.Tests.Tools;
 
 using AI.Client.Application.Chats;
 using AI.Client.Application.Notifications;
@@ -9,6 +9,7 @@ using AI.Client.Application.Tools;
 using AI.Client.Application.Workspace;
 using AI.Client.Contracts.Chats;
 using AI.Client.Contracts.Projects;
+using AI.Client.Contracts.Runs;
 using AI.Client.Contracts.Settings;
 using AI.Client.Contracts.Tools;
 using AI.Client.Infrastructure.Projects;
@@ -39,7 +40,7 @@ public sealed class AppToolTests
 
         // The server decides its own listing order, so the set is what matters, not the sequence.
         session.Tools.Select(tool => tool.OriginalName).Order(StringComparer.Ordinal).ShouldBe(
-            ["app_chats", "app_projects", "app_read", "app_runs", "app_security", "spawn_subtask"]);
+            ["app_chats", "app_projects", "app_read", "app_runs", "app_security", "ask_user", "spawn_subtask"]);
         session.Tools.ShouldAllBe(tool => tool.ServerId == AppMcpServer.Id);
         session.Tools.ShouldAllBe(tool => tool.ModelDefinition.Name.StartsWith("mcp_app__", StringComparison.Ordinal));
         // A schema hash is what ties a saved policy to the tool it was granted for.
@@ -271,6 +272,110 @@ public sealed class AppToolTests
 
     private static readonly string[] ReadOnlyCapability = ["read"];
 
+    [Fact]
+    public async Task AskUserShouldReturnTheChosenLabelsAndNameWhatWasLeftOpen()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        fixture.Broker.Answer = request => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Answered,
+            [new UserPromptAnswer("scope", [1], null)]);
+
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[]
+            {
+                new { id = "scope", text = "How far?", options = new[] { new { label = "Narrow" }, new { label = "Wide" } } },
+                new { id = "tests", text = "Add tests?", options = new[] { new { label = "Yes" }, new { label = "No" } } }
+            }
+        });
+
+        result.GetProperty("outcome").GetString().ShouldBe("answered");
+        var answers = result.GetProperty("answers").EnumerateArray().ToArray();
+        // Positions travel over the wire; labels are what the model and the transcript get.
+        answers.ShouldHaveSingleItem().GetProperty("selected")[0].GetString().ShouldBe("Wide");
+        result.GetProperty("guidance").GetString()!.ShouldContain("tests");
+    }
+
+    [Fact]
+    public async Task AskUserShouldDropAnAnswerNamingAnOptionThatWasNeverOffered()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        fixture.Broker.Answer = _ => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Answered,
+            [new UserPromptAnswer("scope", [7], null), new UserPromptAnswer("gone", [0], null)]);
+
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[] { new { id = "scope", text = "How far?", options = new[] { new { label = "Narrow" } } } }
+        });
+
+        result.GetProperty("answers").GetArrayLength().ShouldBe(0);
+        result.GetProperty("guidance").GetString()!.ShouldContain("state the assumption");
+    }
+
+    [Fact]
+    public async Task AskUserShouldCarryFreeTextThroughUntouched()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        fixture.Broker.Answer = _ => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Answered,
+            [new UserPromptAnswer("name", [], "  Контрагенты  ")]);
+
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[] { new { id = "name", text = "What should it be called?", options = Array.Empty<object>() } }
+        });
+
+        result.GetProperty("answers")[0].GetProperty("other").GetString().ShouldBe("Контрагенты");
+    }
+
+    [Theory]
+    // Every limit here is about the card staying readable, and each one is reported in words the
+    // model can act on rather than as a schema failure it can only repeat.
+    [InlineData("no questions")]
+    [InlineData("duplicate ids")]
+    [InlineData("unanswerable")]
+    public async Task AskUserShouldRefuseAQuestionNobodyCouldRead(string kind)
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        object arguments = kind switch
+        {
+            "no questions" => new { questions = Array.Empty<object>() },
+            "duplicate ids" => new
+            {
+                questions = new[]
+                {
+                    new { id = "a", text = "One?", options = new[] { new { label = "Yes" } }, allowOther = true },
+                    new { id = "a", text = "Two?", options = new[] { new { label = "Yes" } }, allowOther = true }
+                }
+            },
+            _ => new { questions = new[] { new { id = "a", text = "One?", options = Array.Empty<object>(), allowOther = false } } }
+        };
+
+        var result = await AppFixture.CallAsync(session, "ask_user", arguments, expectError: true);
+        result.GetProperty("outcome").GetString().ShouldBe("invalid");
+        result.GetProperty("error").GetString().ShouldNotBeNullOrWhiteSpace();
+        fixture.Broker.LastRequest.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task AskUserInABackgroundRunShouldAnswerItselfAndSendTheQuestionUpwards()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync(interactive: false);
+
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[] { new { id = "scope", text = "How far?", options = new[] { new { label = "Narrow" } } } }
+        });
+
+        result.GetProperty("outcome").GetString().ShouldBe("dismissed");
+        result.GetProperty("guidance").GetString()!.ShouldContain("final answer");
+        // Nobody was asked, rather than asked and timed out.
+        fixture.Broker.LastRequest.ShouldBeNull();
+    }
+
     private sealed class AppFixture : IAsyncDisposable
     {
         private readonly MemoryFileSystem _fileSystem = new();
@@ -281,6 +386,9 @@ public sealed class AppToolTests
         private readonly JsonGlobalSettingsRepository _settings;
         private readonly AppDataChangeSignal _signal = new();
         private readonly CompositeToolSessionFactory _sessions;
+
+        /// <summary>Stands in for the run waiting on the question, so the tool can be exercised alone.</summary>
+        public TestPromptBroker Broker { get; } = new();
 
         public ProjectService Projects { get; }
         public ChatService Chats { get; }
@@ -317,6 +425,7 @@ public sealed class AppToolTests
                 new AppProjectsTool(Projects, Chats, () => dispatcher, writes),
                 new AppSecurityTool(Projects, Chats, settingsService, writes),
                 new AppSubtaskTool(() => throw new InvalidOperationException("not used"), Projects, Chats, _settings, _secrets, presentations),
+                new AppAskUserTool(() => Broker),
             ];
             IMcpServerConnection connection = new AppToolSessionFactory(new AppMcpServerHost(tools));
             _sessions = new CompositeToolSessionFactory([connection]);
@@ -333,8 +442,9 @@ public sealed class AppToolTests
             return fixture;
         }
 
-        public Task<IToolSession> OpenAsync() =>
-            _sessions.OpenAsync([], AppServerOnly, TestContext.Current.CancellationToken);
+        public Task<IToolSession> OpenAsync(bool interactive = true) =>
+            _sessions.OpenAsync([], AppServerOnly, new ToolRunContext(ProjectId, ChatId, ChatId, interactive),
+                TestContext.Current.CancellationToken);
 
         /// <summary>Calls a tool the way the agent does, and hands back its structured result.</summary>
         public static async Task<JsonElement> CallAsync(IToolSession session, string name, object arguments, bool expectError = false)
@@ -349,6 +459,27 @@ public sealed class AppToolTests
         public ChangeWatch WatchChanges() => new(_signal);
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Answers a question however the test wants it answered, and keeps what was asked. The real
+    /// broker is the dispatcher, which needs a live run; this one needs nothing, which is what lets
+    /// the tool's own behaviour be tested without one.
+    /// </summary>
+    private sealed class TestPromptBroker : IUserPromptBroker
+    {
+        public UserPromptRequest? LastRequest { get; private set; }
+
+        public Func<UserPromptRequest, UserPromptResponse> Answer { get; set; } =
+            request => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Answered,
+                request.Questions.Select(question => new UserPromptAnswer(question.Id, [0], null)).ToArray());
+
+        public Task<UserPromptResponse> AskAsync(ToolRunContext run, UserPromptRequest request, TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            LastRequest = request;
+            return Task.FromResult(Answer(request));
+        }
     }
 
     /// <summary>Waits for the Host to announce that application data moved.</summary>

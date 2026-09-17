@@ -1,4 +1,4 @@
-namespace AI.Client.Cli;
+﻿namespace AI.Client.Cli;
 
 using Contracts.Chats;
 using Contracts.Runs;
@@ -22,6 +22,7 @@ internal sealed class HeadlessApplication(
                 ["session", "create", .. var options] => await CreateAsync(Parse(options)),
                 ["session", "send", .. var options] => await SendAsync(Parse(options)),
                 ["session", "approve", .. var options] => await ApproveAsync(Parse(options)),
+                ["session", "answer", .. var options] => await AnswerAsync(Parse(options)),
                 ["session", "show", .. var options] => await ShowAsync(Parse(options)),
                 ["session", "delete", .. var options] => await DeleteAsync(Parse(options)),
                 _ => Write(new { status = "invalid_arguments", error = Usage }, 2)
@@ -75,6 +76,10 @@ internal sealed class HeadlessApplication(
                 var chat = await chatClient.GetChatAsync(host, session.ProjectId, session.Id, timeout.Token);
                 if (last.PendingApproval is { } approval)
                     return Write(new { status = "awaiting_approval", sessionId = session.Id, approval });
+                // The same shape of stop as an approval, and answered the same way: the run is
+                // holding for a person, and this command is how a person reaches it from here.
+                if (last.PendingPrompt is { } prompt)
+                    return Write(new { status = "awaiting_answer", sessionId = session.Id, prompt });
                 if (last.Status != ChatRunStatus.Completed) continue;
                 var reply = chat.Messages.SingleOrDefault(item => item.Id == last.HeadMessageId && item.Role == "Assistant" && item.ToolCalls is not { Count: > 0 });
                 if (reply is null) continue;
@@ -104,6 +109,35 @@ internal sealed class HeadlessApplication(
             : bool.Parse(Required(options, "allow")) ? ToolApprovalAction.Allow : ToolApprovalAction.Deny;
         await chatClient.DecideToolAsync(session.Host, session.ProjectId, session.Id,
             new ToolApprovalDecision(Guid.Parse(Required(options, "approval")), action), CancellationToken.None);
+        return Write(new { status = "accepted", sessionId = session.Id });
+    }
+
+    /// <summary>
+    /// Answers a question a run is waiting on. Options are chosen by position, matching what the
+    /// prompt printed; '--dismiss true' is the "you decide" answer, and either form lets the run
+    /// continue rather than leaving it to time out.
+    /// </summary>
+    private async Task<int> AnswerAsync(Dictionary<string, string> options)
+    {
+        var session = await GetSessionAsync(options);
+        var promptId = Guid.Parse(Required(options, "prompt"));
+        var dismissed = options.TryGetValue("dismiss", out var dismiss) && bool.Parse(dismiss);
+        UserPromptAnswer[] answers = [];
+        if (!dismissed)
+        {
+            var selected = options.TryGetValue("select", out var indices) && indices.Length > 0
+                ? indices.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(int.Parse).ToArray()
+                : [];
+            options.TryGetValue("text", out var text);
+            if (selected.Length == 0 && string.IsNullOrWhiteSpace(text))
+                throw new ArgumentException("Give --select, --text, or --dismiss true.");
+            answers = [new UserPromptAnswer(Required(options, "question"), selected, text)];
+        }
+
+        await chatClient.AnswerPromptAsync(session.Host, session.ProjectId, session.Id,
+            new UserPromptResponse(promptId, dismissed ? UserPromptOutcome.Dismissed : UserPromptOutcome.Answered, answers),
+            CancellationToken.None);
         return Write(new { status = "accepted", sessionId = session.Id });
     }
 
@@ -149,5 +183,5 @@ internal sealed class HeadlessApplication(
         return exitCode;
     }
 
-    private const string Usage = "session create --project <name> [--connection <name>] [--host <url>] | session send --session <id> --message <text> [--host <url>] [--cancel-after-ms <ms>] | session approve --session <id> --approval <id> (--action <Allow|AllowForChat|AllowForProject|AllowGlobally|Deny> | --allow <true|false>) | session show --session <id> | session delete --session <id>";
+    private const string Usage = "session create --project <name> [--connection <name>] [--host <url>] | session send --session <id> --message <text> [--host <url>] [--cancel-after-ms <ms>] | session approve --session <id> --approval <id> (--action <Allow|AllowForChat|AllowForProject|AllowGlobally|Deny> | --allow <true|false>) | session answer --session <id> --prompt <id> (--question <id> [--select <0,2>] [--text <text>] | --dismiss true) | session show --session <id> | session delete --session <id>";
 }

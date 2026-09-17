@@ -1,8 +1,9 @@
-namespace AI.Client.Mcp.App;
+﻿namespace AI.Client.Mcp.App;
 
 using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Settings;
+using AI.Client.Application.Tools;
 using AI.Client.Contracts.Projects;
 using AI.Client.Contracts.Settings;
 using ModelContextProtocol.Protocol;
@@ -49,7 +50,7 @@ public sealed class AppSecurityTool(
     IGlobalSettingsService settings,
     IAppWrites writes) : IAppTool
 {
-    public McpServerTool Create() => McpServerTool.Create(
+    public McpServerTool Create(ToolRunContext run) => McpServerTool.Create(
         SecurityAsync,
         new McpServerToolCreateOptions
         {

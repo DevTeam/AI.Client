@@ -19,5 +19,8 @@ public interface IChatAgent
         Func<string, CancellationToken, Task> text,
         Func<ToolActivity?, CancellationToken, Task> activity,
         Func<AgentTool, string, long, ToolCallPosition, CancellationToken, Task<ToolApprovalAction>> approve,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        // Whether a person can be reached from this run. A background run says so once here rather
+        // than refusing tool by tool, because "nobody is watching" is a property of the run.
+        bool interactive = true);
 }

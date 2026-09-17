@@ -1,4 +1,4 @@
-namespace AI.Client.Application.Tools;
+﻿namespace AI.Client.Application.Tools;
 
 using Chat;
 using Chats;
@@ -29,11 +29,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         Func<string, CancellationToken, Task> text,
         Func<ToolActivity?, CancellationToken, Task> activity,
         Func<AgentTool, string, long, ToolCallPosition, CancellationToken, Task<ToolApprovalAction>> approve,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool interactive = true)
     {
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromMinutes(60));
-        var token = deadline.Token;
+        using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var deadline = new TurnDeadline(source, TimeSpan.FromMinutes(60));
+        var token = source.Token;
         var global = await settings.LoadAsync(token);
         var project = await projects.GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
         // Every server is gated the same way: enabled and not denied globally, and not switched off
@@ -45,7 +46,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var servers = new[] { DefaultMcpServer.Id, AppMcpServer.Id }.Where(Enabled).ToHashSet();
         var grants = project.DirectoryGrants
             .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
-        await using var session = servers.Count > 0 ? await sessions().OpenAsync(grants, servers, token) : null;
+        var run = new ToolRunContext(projectId, chatId, branchId, interactive);
+        await using var session = servers.Count > 0 ? await sessions().OpenAsync(grants, servers, run, token) : null;
         var runKey = new WorkspaceRunKey(projectId, chatId, branchId);
         await workspace.BeginRunAsync(runKey, grants, token);
         var context = request.ContextMessages?.ToList() ?? [new ChatCompletionMessage("user", request.Message)];
@@ -149,9 +151,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     counts[call.Name] = count;
                     if (policy.Decision == "Deny") result = Error("Tool denied by current policy.");
                     else if (count > policy.MaxCalls) result = Error("Tool call limit reached.");
-                    else if (policy.Decision == "Ask"
-                             && await approve(tool, arguments, policy.TimeoutSeconds,
-                                 new ToolCallPosition(index + 1, calls.Count), token) == ToolApprovalAction.Deny)
+                    // Asking to be allowed to ask is one prompt too many: the confirmation and the
+                    // question put the same decision to the same person twice, and the first one
+                    // tells them nothing the second does not. Deny still applies, above, so someone
+                    // who does not want to be asked at all still has a way to say so.
+                    else if (policy.Decision == "Ask" && !AsksTheUser(tool)
+                             && await deadline.WhileWaitingForAPersonAsync(() => approve(tool, arguments, policy.TimeoutSeconds,
+                                 new ToolCallPosition(index + 1, calls.Count), token)) == ToolApprovalAction.Deny)
                         // Worded for both callers: a person declining at the card, and a background run that
                         // has nobody to ask and refuses anything needing confirmation.
                         result = Error("This invocation was not approved. Do not retry it.");
@@ -164,14 +170,21 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                         else
                         {
                             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                            // A tool that is waiting on a person is not a tool that has gone quiet.
+                            // Both clocks are off while it waits: the silence timer, which would
+                            // kill the question in under a minute, and the turn's own hour, which
+                            // must not be spent on time the person took to read it.
+                            var asking = AsksTheUser(tool);
                             // Leave a short transport margin for process_run to report its own timeout.
-                            var patience = new Patience(timeout, TimeSpan.FromSeconds(policy.TimeoutSeconds + 2), MaxCallDuration);
+                            var patience = asking
+                                ? null
+                                : new Patience(timeout, TimeSpan.FromSeconds(policy.TimeoutSeconds + 2), MaxCallDuration);
                             // Progress arrives on the transport's own thread while the call is in
                             // flight, so it is forwarded fire-and-forget: a slow subscriber must
                             // not be able to stall the tool it is reporting on.
                             var progress = new Progress<ToolProgress>(update =>
                             {
-                                patience.Renew();
+                                patience?.Renew();
                                 _ = activity(
                                     activeCall with { Progress = update.Progress, Total = update.Total, Message = update.Message },
                                     CancellationToken.None);
@@ -181,7 +194,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                             await workspace.RecordIntentAsync(runKey, tool.Descriptor, arguments, token);
                             try
                             {
-                                result = await session.CallAsync(tool, arguments, progress, timeout.Token);
+                                result = asking
+                                    ? await deadline.WhileWaitingForAPersonAsync(
+                                        () => session.CallAsync(tool, arguments, progress, timeout.Token))
+                                    : await session.CallAsync(tool, arguments, progress, timeout.Token);
                             }
                             // A call that outlived its own policy timeout has failed; the turn has
                             // not. Letting that reach the outer handler abandoned every call after
@@ -253,6 +269,66 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// </summary>
     private static bool Truncated(string? finishReason) =>
         finishReason is "length" or "max_tokens";
+
+    /// <summary>
+    /// The protocol name of the tool that puts a question to the person. Matched on the App server's
+    /// own tool, never on a name alone: a third-party server calling something "ask_user" must not
+    /// be able to buy itself an unlimited call by picking the right word.
+    /// </summary>
+    private const string AskUserTool = "ask_user";
+
+    private static bool AsksTheUser(AgentTool tool) =>
+        tool.ServerId == AppMcpServer.Id && tool.OriginalName == AskUserTool;
+
+    /// <summary>
+    /// The turn's own hour, which time spent waiting on a person does not count against.
+    /// </summary>
+    /// <remarks>
+    /// The ceiling exists to stop a run that has gone wrong, and a run stopped at a confirmation
+    /// card has not gone wrong — it is doing exactly what it should. Charging the person's reading
+    /// time to it meant a turn could be killed while the only thing it was waiting for was the
+    /// answer sitting on screen, and the longer they thought about it the likelier that became.
+    /// So the budget is given back: the ceiling measures the work, not the waiting.
+    /// </remarks>
+    private sealed class TurnDeadline
+    {
+        private readonly CancellationTokenSource _source;
+        private long _expires;
+
+        public TurnDeadline(CancellationTokenSource source, TimeSpan budget)
+        {
+            _source = source;
+            _expires = Environment.TickCount64 + (long)budget.TotalMilliseconds;
+            Reschedule();
+        }
+
+        public async Task<T> WhileWaitingForAPersonAsync<T>(Func<Task<T>> wait)
+        {
+            var started = Environment.TickCount64;
+            try
+            {
+                return await wait();
+            }
+            finally
+            {
+                _expires += Environment.TickCount64 - started;
+                Reschedule();
+            }
+        }
+
+        private void Reschedule()
+        {
+            var left = TimeSpan.FromMilliseconds(Math.Max(0, _expires - Environment.TickCount64));
+            try
+            {
+                _source.CancelAfter(left);
+            }
+            catch (ObjectDisposedException)
+            {
+                // The turn ended while the last wait was unwinding. Nothing left to extend.
+            }
+        }
+    }
 
     /// <summary>
     /// The longest any one call may run, however talkative it is. A tool that keeps reporting keeps

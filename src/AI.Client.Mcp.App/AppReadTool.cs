@@ -1,9 +1,10 @@
-namespace AI.Client.Mcp.App;
+﻿namespace AI.Client.Mcp.App;
 
 using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Runs;
 using AI.Client.Application.Settings;
+using AI.Client.Application.Tools;
 using AI.Client.Contracts.Chats;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
@@ -48,7 +49,7 @@ public sealed class AppReadTool(
     IChatSearchService search,
     Func<IChatRunDispatcher> runs) : IAppTool
 {
-    public McpServerTool Create() => McpServerTool.Create(
+    public McpServerTool Create(ToolRunContext run) => McpServerTool.Create(
         ReadAsync,
         new McpServerToolCreateOptions
         {

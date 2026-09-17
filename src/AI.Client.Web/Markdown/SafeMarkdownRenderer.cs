@@ -1,4 +1,4 @@
-namespace AI.Client.Web.Markdown;
+﻿namespace AI.Client.Web.Markdown;
 
 using Markdig;
 
@@ -19,5 +19,25 @@ public sealed class SafeMarkdownRenderer : IMarkdownRenderer
         .DisableHtml()
         .Build();
 
+    /// <summary>
+    /// No advanced extensions here: the attribute syntax they add is what lets markdown hang an
+    /// event handler on an element, and a label written by a model is not worth that surface.
+    /// </summary>
+    private readonly MarkdownPipeline _inline = new MarkdownPipelineBuilder()
+        .DisableHtml()
+        .Build();
+
     public string Render(string markdown) => Markdown.ToHtml(markdown, _pipeline);
+
+    public string RenderInline(string markdown)
+    {
+        // Folding the source onto one line is what makes this inline: a list or a fence needs its
+        // own lines to be one, so without them the syntax stays the literal text it looks like.
+        var single = string.Join(' ', (markdown ?? string.Empty)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        var html = Markdown.ToHtml(single, _inline).Trim();
+        return html.StartsWith("<p>", StringComparison.Ordinal) && html.EndsWith("</p>", StringComparison.Ordinal)
+            ? html[3..^4]
+            : html;
+    }
 }

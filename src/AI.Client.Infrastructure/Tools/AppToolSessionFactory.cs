@@ -1,4 +1,4 @@
-namespace AI.Client.Infrastructure.Tools;
+﻿namespace AI.Client.Infrastructure.Tools;
 
 using AI.Client.Mcp.App;
 using Application.Tools;
@@ -18,15 +18,20 @@ public sealed class AppToolSessionFactory(IAppMcpServerHost host) : IMcpServerCo
 {
     public Guid ServerId => AppMcpServer.Id;
 
-    /// <summary>Directory grants mean nothing here: this server reaches application data, not the file system.</summary>
-    public async Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, CancellationToken cancellationToken)
+    /// <summary>
+    /// Directory grants mean nothing here: this server reaches application data, not the file
+    /// system. The run does: a tool that asks the person a question has to know which conversation
+    /// the question belongs to, and being built per session is what lets it be told rather than
+    /// having to trust the model to name it.
+    /// </summary>
+    public async Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, ToolRunContext run, CancellationToken cancellationToken)
     {
         // Two simplex pipes make one duplex link: the client writes where the server reads, and
         // reads where the server writes.
         var toServer = new Pipe();
         var toClient = new Pipe();
         var server = host.Create(new StreamServerTransport(
-            toServer.Reader.AsStream(), toClient.Writer.AsStream(), AppMcpServerHost.Name));
+            toServer.Reader.AsStream(), toClient.Writer.AsStream(), AppMcpServerHost.Name), run);
         // The server's message loop lives as long as the session; it ends when the transport is
         // closed by disposing the server, which the session does on its way out.
         var serving = server.RunAsync(CancellationToken.None);

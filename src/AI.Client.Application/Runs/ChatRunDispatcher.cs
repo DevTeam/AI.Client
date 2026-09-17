@@ -1,4 +1,4 @@
-// ReSharper disable UseCollectionExpression
+﻿// ReSharper disable UseCollectionExpression
 namespace AI.Client.Application.Runs;
 
 using Chat;
@@ -21,7 +21,7 @@ public sealed class ChatRunDispatcher(
     IChatRunRepository repository, IChatService chats, IChatMutations chatMutations, IProjectService projects,
     IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, IChatAgent agent,
     IGlobalSecretStore secretStore, IClock clock, IIdGenerator ids, IChatSynchronization synchronization,
-    IWorkspaceChangeTracker workspace, IToolPolicyResolver policies) : IChatRunDispatcher, IAsyncDisposable
+    IWorkspaceChangeTracker workspace, IToolPolicyResolver policies) : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     /// <summary>
     /// How often a waiting confirmation re-reads the standing policy. Human-scale waiting, so the
@@ -483,10 +483,17 @@ public sealed class ChatRunDispatcher(
             runtime.ActiveMessageId = null;
             runtime.Approval = null;
             runtime.PendingApproval = null;
+            // A question outlives neither its run nor its turn: whoever was waiting on the answer
+            // is already gone, so the card has to go with them rather than linger unanswerable.
+            runtime.Prompt?.TrySetResult(new UserPromptResponse(runtime.PendingPrompt?.Id ?? Guid.Empty,
+                UserPromptOutcome.Interrupted, []));
+            runtime.Prompt = null;
+            runtime.PendingPrompt = null;
             runtime.ActiveTools.Clear();
             runtime.Snapshot = runtime.Snapshot with
             {
                 PendingApproval = null,
+                PendingPrompt = null,
                 ActiveTools = [],
                 // This block patches the last published snapshot instead of rebuilding it, so
                 // every field the worker just released has to be named here. Leaving this one out
@@ -572,6 +579,75 @@ public sealed class ChatRunDispatcher(
             runtime.PendingApproval = null;
             runtime.Approval = null;
         }
+    }
+
+    /// <summary>
+    /// Hands the person a question from a tool and waits. Everything about the wait matches a
+    /// confirmation's — the card is snapshot state, the answer arrives through the dispatcher, the
+    /// run holds still — because to the person the two are the same act: the work stopped for them.
+    /// </summary>
+    public async Task<UserPromptResponse> AskAsync(ToolRunContext run, UserPromptRequest request,
+        TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentNullException.ThrowIfNull(request);
+        var prompt = new UserPrompt(ids.Create(), request.Questions, (long)timeout.TotalSeconds);
+        var unanswerable = new UserPromptResponse(prompt.Id, UserPromptOutcome.Interrupted, []);
+        // Nobody to ask: a background run, or one already on its way out. Answered at once rather
+        // than waited out, so a subtask reports what it could not decide instead of stalling on it.
+        if (!run.Interactive) return unanswerable;
+
+        var completion = new TaskCompletionSource<UserPromptResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Runtime runtime;
+        using (await synchronization.EnterAsync(run.ChatId, cancellationToken))
+        {
+            if (!_runtimes.TryGetValue(new RunKey(run.ProjectId, run.ChatId, run.BranchId), out runtime!)
+                || runtime.Cancellation?.IsCancellationRequested != false)
+                return unanswerable;
+            runtime.PendingPrompt = prompt;
+            runtime.Prompt = completion;
+            runtime.State.Append("");
+            await SaveAsync(runtime, await chats.GetAsync(run.ProjectId, run.ChatId, cancellationToken), cancellationToken);
+        }
+
+        try
+        {
+            return await completion.Task.WaitAsync(timeout, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            // Walking away is not refusing. The model is told there is no answer and carries on
+            // choosing for itself, which is what it would have done had it never asked.
+            return new UserPromptResponse(prompt.Id, UserPromptOutcome.Expired, []);
+        }
+        finally
+        {
+            using var lease = await synchronization.EnterAsync(run.ChatId, CancellationToken.None);
+            if (runtime.PendingPrompt?.Id == prompt.Id)
+            {
+                runtime.PendingPrompt = null;
+                runtime.Prompt = null;
+                runtime.State.Append("");
+                await SaveAsync(runtime, await chats.GetAsync(run.ProjectId, run.ChatId, CancellationToken.None),
+                    CancellationToken.None);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Delivers an answer to the question a run is waiting on. Stale answers are refused rather
+    /// than applied: a card left open in a second window names a prompt that is no longer current,
+    /// and answering the question that replaced it is not what that click meant.
+    /// </summary>
+    public async Task<bool> AnswerPromptAsync(Guid projectId, Guid chatId, Guid branchId,
+        UserPromptResponse response, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        using var lease = await synchronization.EnterAsync(chatId, token);
+        if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)
+            || runtime.PendingPrompt?.Id != response.PromptId)
+            return false;
+        return runtime.Prompt?.TrySetResult(response) == true;
     }
 
     /// <summary>
@@ -799,6 +875,7 @@ public sealed class ChatRunDispatcher(
             BranchRevision = chat?.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId)?.Revision
                 ?? previous.BranchRevision,
             PendingApproval = runtime.PendingApproval,
+            PendingPrompt = runtime.PendingPrompt,
             ActiveTools = runtime.ActiveTools.Values.ToArray(),
             WorkspaceChanges = runtime.WorkspaceChanges
         };
@@ -1072,6 +1149,8 @@ public sealed class ChatRunDispatcher(
         public Guid? ToolHead { get; set; }
         public ToolApproval? PendingApproval { get; set; }
         public TaskCompletionSource<ToolApprovalAction>? Approval { get; set; }
+        public UserPrompt? PendingPrompt { get; set; }
+        public TaskCompletionSource<UserPromptResponse>? Prompt { get; set; }
         /// <summary>Live tool calls, keyed by call id. A list, so parallel calls need no contract change.</summary>
         public Dictionary<string, ActiveToolInvocation> ActiveTools { get; } = [];
 

@@ -1,4 +1,4 @@
-namespace AI.Client.Infrastructure.Tests.Tools;
+﻿namespace AI.Client.Infrastructure.Tests.Tools;
 
 using AI.Client.Application.Chat;
 using AI.Client.Application.Chats;
@@ -381,7 +381,8 @@ public sealed class AppSubtaskToolTests
             }, CancellationToken.None);
         }
 
-        public Task<IToolSession> OpenAsync() => _sessions.OpenAsync([], TestContext.Current.CancellationToken);
+        public Task<IToolSession> OpenAsync(bool interactive = true) => _sessions.OpenAsync([],
+            new ToolRunContext(ProjectId, ChatId, ChatId, interactive), TestContext.Current.CancellationToken);
 
         public string Arguments(params string[] tasks) =>
             JsonSerializer.Serialize(new { projectId = ProjectId, chatId = ChatId, tasks = tasks.Select(task => new { task }) });

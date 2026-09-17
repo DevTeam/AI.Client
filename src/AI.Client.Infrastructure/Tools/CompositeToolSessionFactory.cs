@@ -1,4 +1,4 @@
-namespace AI.Client.Infrastructure.Tools;
+﻿namespace AI.Client.Infrastructure.Tools;
 
 using Application.Tools;
 using Contracts.Tools;
@@ -13,6 +13,7 @@ public sealed class CompositeToolSessionFactory(IEnumerable<IMcpServerConnection
     public async Task<IToolSession> OpenAsync(
         IReadOnlyList<ToolDirectoryGrant> directoryGrants,
         IReadOnlySet<Guid> servers,
+        ToolRunContext run,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(servers);
@@ -21,7 +22,7 @@ public sealed class CompositeToolSessionFactory(IEnumerable<IMcpServerConnection
         {
             foreach (var connection in connections)
                 if (servers.Contains(connection.ServerId))
-                    sessions.Add(await connection.OpenAsync(directoryGrants, cancellationToken));
+                    sessions.Add(await connection.OpenAsync(directoryGrants, run, cancellationToken));
         }
         catch
         {

@@ -1,4 +1,4 @@
-:root {
+﻿:root {
     color-scheme: dark;
     font-family: Inter, ui-sans-serif, system-ui, sans-serif;
     background: #0c1017;
@@ -2872,6 +2872,29 @@ textarea {
 .tool-approval-global-confirm { display: grid; gap: .55rem; padding: .65rem; border-top: 1px solid #3b3b3b; font-size: .8rem; }
 .tool-approval-global-confirm > div { display: flex; justify-content: flex-end; gap: .4rem; }
 .tool-approval-global-confirm > div button { display: block; width: auto; padding: .4rem .55rem; }
+
+/* A question from the assistant. Built to read as one decision: the accent edge marks it as the
+   thing to act on, and every option is a full-width hit target so choosing is one click anywhere
+   on the line rather than one on a control the size of a full stop. */
+.user-prompt { display: grid; gap: .85rem; padding: 1rem; border: 1px solid #3b3b3b; border-left: 3px solid #6aa6ff; border-radius: .5rem; background: #212121; }
+.user-prompt-title { font-size: .95rem; }
+.user-prompt-question { display: grid; gap: .3rem; margin: 0; padding: 0; border: 0; }
+.user-prompt-question > legend { display: flex; align-items: baseline; gap: .45rem; margin-bottom: .35rem; padding: 0; font-size: .9rem; }
+.user-prompt-question + .user-prompt-question { padding-top: .65rem; border-top: 1px solid #333; }
+.user-prompt-chip { flex: none; padding: .1rem .4rem; border-radius: .35rem; background: #333; color: #b5b5b5; font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; }
+.user-prompt-option { display: flex; align-items: start; gap: .55rem; padding: .4rem .5rem; border: 1px solid transparent; border-radius: .4rem; cursor: pointer; }
+.user-prompt-option:hover { border-color: #3d3d3d; background: #272727; }
+/* Radios and checkboxes have to opt out of the global `input { width: 100% }`, the same way
+   .checkbox does: left as is, one control takes the whole row and shoulders its own label off it. */
+.user-prompt-option > input { width: auto; flex: none; margin: .15rem 0 0; padding: 0; }
+.user-prompt-option > span { display: grid; flex: 1; gap: .15rem; min-width: 0; }
+.user-prompt-option-label { font-size: .875rem; }
+.user-prompt-option-description { color: #929292; font-size: .75rem; }
+.user-prompt-other-input { width: 100%; margin-top: .15rem; padding: .3rem .45rem; border: 1px solid #3d3d3d; border-radius: .35rem; background: #1b1b1b; color: inherit; font-size: .8rem; }
+.user-prompt-note { margin: 0; color: #8d8d8d; font-size: .75rem; }
+.user-prompt-actions { display: flex; justify-content: flex-end; gap: .45rem; }
+.user-prompt-actions > button { margin: 0; }
+.user-prompt-error { margin: 0; color: #ff8f8f; font-size: .8rem; }
 
 .permissions-drawer-backdrop { position: fixed; z-index: 44; inset: 0; background: rgb(0 0 0 / 12%); }
 .permissions-drawer { position: fixed; z-index: 45; top: 0; right: 0; bottom: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(26rem, 100vw); border-left: 1px solid #383838; background: #1d1d1d; box-shadow: -1rem 0 2.5rem rgb(0 0 0 / 38%); }

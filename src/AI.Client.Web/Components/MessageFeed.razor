@@ -1,4 +1,4 @@
-@* Split out of Home.razor so that typing in the composer doesn't re-render the whole message
+﻿@* Split out of Home.razor so that typing in the composer doesn't re-render the whole message
    list: Blazor only re-renders a child component if ShouldRender() says so, so this component
    can be skipped entirely on renders where none of its parameters actually changed (see
    ShouldRender below). Without this boundary, every keystroke in the composer (which lives in
@@ -255,6 +255,13 @@
                     <button type="button" class="turn-status-action destructive-action" title="Drop this message from the queue and let the rest of it continue" @onclick="() => OnDiscardRun.InvokeAsync()">Discard</button>
                 </span>
             </section>
+        }
+        @* A question the model asked, in the same place and for the same reason as an approval:
+           it is what the person has to do next, so it is what they should end up looking at. *@
+        @if (SelectedRun is { PendingPrompt: { } prompt } promptRun)
+        {
+            <UserPromptCard Prompt="prompt"
+                            OnAnswer="response => RunsApi.AnswerPromptAsync(promptRun.ProjectId, promptRun.ChatId, promptRun.BranchId, response, CancellationToken.None)" />
         }
         @* Last in the transcript, after the workspace-changes summary: an approval is the user's
            next action, so it has to be the thing they end up looking at, not something they have

@@ -54,7 +54,7 @@ public sealed class BuiltInToolTests
     public async Task ShouldDiscoverValidateAndRunOverStdio()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await using var session = await new DefaultToolSessionFactory().OpenAsync([], timeout.Token);
+        await using var session = await new DefaultToolSessionFactory().OpenAsync([], ToolRunContext.None, timeout.Token);
         session.Tools.Select(item => item.OriginalName).ShouldBe(
         [
             "process_run", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "list_directory",
@@ -185,7 +185,7 @@ public sealed class BuiltInToolTests
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await using var session = await new DefaultToolSessionFactory().OpenAsync(
-                [new ToolDirectoryGrant(root, true, ["read"])], timeout.Token);
+                [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
             var defaultTree = await Structured(session, "directory_tree", new { path = root }, token);
@@ -232,7 +232,7 @@ public sealed class BuiltInToolTests
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
             await using var session = await new DefaultToolSessionFactory().OpenAsync(
-                [new ToolDirectoryGrant(root, true, ["read"])], timeout.Token);
+                [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
             var tree = await Structured(session, "directory_tree", new { path = root }, token);
@@ -274,7 +274,7 @@ public sealed class BuiltInToolTests
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await using var session = await new DefaultToolSessionFactory().OpenAsync(
-                [new ToolDirectoryGrant(root, true, ["read"])], timeout.Token);
+                [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var tool = session.Tools.Single(item => item.OriginalName == "read_text_file");
             var result = await session.CallAsync(tool, JsonSerializer.Serialize(new { path = file }), null, timeout.Token);
 
@@ -297,7 +297,7 @@ public sealed class BuiltInToolTests
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
             await using var session = await new DefaultToolSessionFactory().OpenAsync(
-                [new ToolDirectoryGrant(root, true, ["read", "write", "edit", "delete"])], timeout.Token);
+                [new ToolDirectoryGrant(root, true, ["read", "write", "edit", "delete"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
             (await Structured(session, "list_allowed_directories", new { }, token))
@@ -365,7 +365,7 @@ public sealed class BuiltInToolTests
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
             await using var session = await new DefaultToolSessionFactory().OpenAsync(
-                [new ToolDirectoryGrant(root, true, ["read"])], timeout.Token);
+                [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
             var plain = await Structured(session, "grep_files", new { path = root, query = "needle" }, token);
@@ -428,7 +428,7 @@ public sealed class BuiltInToolTests
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
             await using var session = await new DefaultToolSessionFactory().OpenAsync(
-                [new ToolDirectoryGrant(root, true, ["read"])], timeout.Token);
+                [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
             var result = await Structured(session, "grep_files", new { path = root, query = "needle" }, token);

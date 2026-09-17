@@ -1,7 +1,8 @@
-namespace AI.Client.Mcp.App;
+﻿namespace AI.Client.Mcp.App;
 
 using AI.Client.Application.Chats;
 using AI.Client.Application.Runs;
+using AI.Client.Application.Tools;
 using AI.Client.Contracts.Chats;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -39,7 +40,7 @@ public enum ChatOperation
 [McpServerToolType]
 public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> runs, IAppWrites writes) : IAppTool
 {
-    public McpServerTool Create() => McpServerTool.Create(
+    public McpServerTool Create(ToolRunContext run) => McpServerTool.Create(
         ChatsAsync,
         new McpServerToolCreateOptions
         {

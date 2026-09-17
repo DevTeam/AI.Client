@@ -7,6 +7,7 @@ using AI.Client.Contracts.Projects;
 public interface IChatRunDispatcher
 {
     Task<bool> DecideToolAsync(Guid projectId, Guid chatId, Guid branchId, ToolApprovalDecision decision, CancellationToken token);
+    Task<bool> AnswerPromptAsync(Guid projectId, Guid chatId, Guid branchId, UserPromptResponse response, CancellationToken token);
     Task ShutdownAsync(CancellationToken cancellationToken);
     Task<ChatRunSnapshot> SubmitAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request, CancellationToken cancellationToken);
     Task WarmUpAsync(CancellationToken cancellationToken);

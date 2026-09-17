@@ -110,6 +110,92 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task QuestionShouldStopTheRunAndCarryTheAnswerBack()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.Broker = fixture.Dispatcher;
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Refactor it"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_app__ask_user", "{}")];
+        first.Answer.SetResult("");
+
+        // No confirmation card on the way in: asking to be allowed to ask would put the same
+        // decision to the same person twice.
+        var waiting = await fixture.WaitAsync(run => run.PendingPrompt is not null);
+        waiting.PendingApproval.ShouldBeNull();
+        var prompt = waiting.PendingPrompt!;
+        prompt.Questions.ShouldHaveSingleItem().Options.Count.ShouldBe(2);
+
+        (await fixture.Dispatcher.AnswerPromptAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            new UserPromptResponse(prompt.Id, UserPromptOutcome.Answered,
+                [new UserPromptAnswer("scope", [1], null)]), CancellationToken.None)).ShouldBeTrue();
+
+        var second = await fixture.NextCallAsync();
+        second.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        fixture.Tools.LastResponse!.Outcome.ShouldBe(UserPromptOutcome.Answered);
+        fixture.Tools.LastResponse.Answers.ShouldHaveSingleItem().Selected.ShouldBe([1]);
+        // The card belongs to the question, not to the chat: once answered there is nothing to show.
+        (await fixture.WaitAsync(run => run.PendingPrompt is null)).PendingPrompt.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task AnswerToAQuestionThatIsNoLongerCurrentShouldBeRefused()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.Broker = fixture.Dispatcher;
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Refactor it"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_app__ask_user", "{}")];
+        first.Answer.SetResult("");
+        var prompt = (await fixture.WaitAsync(run => run.PendingPrompt is not null)).PendingPrompt!;
+
+        // A card left open in another window names a prompt that has moved on; answering the
+        // question that replaced it is not what that click meant.
+        (await fixture.Dispatcher.AnswerPromptAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Answered, []), CancellationToken.None)).ShouldBeFalse();
+        (await fixture.Dispatcher.AnswerPromptAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            new UserPromptResponse(prompt.Id, UserPromptOutcome.Dismissed, []), CancellationToken.None)).ShouldBeTrue();
+
+        var second = await fixture.NextCallAsync();
+        second.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        fixture.Tools.LastResponse!.Outcome.ShouldBe(UserPromptOutcome.Dismissed);
+    }
+
+    [Fact]
+    public async Task StoppingTheRunShouldReleaseTheQuestionWithIt()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.Broker = fixture.Dispatcher;
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Refactor it"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_app__ask_user", "{}")];
+        first.Answer.SetResult("");
+        await fixture.WaitAsync(run => run.PendingPrompt is not null);
+
+        await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
+
+        // Whoever was waiting on the answer is gone, so the card cannot be left behind for someone
+        // to answer into nothing.
+        (await fixture.WaitAsync(run => run.PendingPrompt is null)).PendingPrompt.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task BackgroundRunShouldBeToldAtOnceThatNobodyIsThere()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var response = await ((IUserPromptBroker)fixture.Dispatcher).AskAsync(
+            new ToolRunContext(fixture.ProjectId, fixture.ChatId, fixture.ChatId, Interactive: false),
+            new UserPromptRequest([new UserPromptQuestion("q", "Which?", null, [], false, true)]),
+            TimeSpan.FromMinutes(15), CancellationToken.None);
+
+        response.Outcome.ShouldBe(UserPromptOutcome.Interrupted);
+        response.Answers.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GlobalToolPolicyShouldApplyWithoutProjectSettings()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -1223,18 +1309,39 @@ public sealed class ChatExecutionTests
     {
         public int CallCount { get; private set; }
         public int OpenCount { get; private set; }
-        public IReadOnlyList<AgentTool> Tools { get; } = [new(
+        private static readonly AgentTool ProcessRun = new(
             new ChatToolDefinition("mcp_built_in__process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
             ToolDescriptor.Basic("mcp_built_in__process_run", "process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
-            DefaultMcpServer.Id, "process_run", "schema")];
+            DefaultMcpServer.Id, "process_run", "schema");
+
+        /// <summary>
+        /// Stands in for the real ask_user: same server, same name, and it reaches the person the
+        /// same way — through the broker — so the run's side of a question is exercised here rather
+        /// than only inside the tool that asks it. Offered only to a test that set a broker, so
+        /// every other test still sees the one tool it was written against.
+        /// </summary>
+        private static readonly AgentTool AskUser = new(
+            new ChatToolDefinition("mcp_app__ask_user", "Ask", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_app__ask_user", "ask_user", "Ask", JsonSerializer.Deserialize<JsonElement>("{}")),
+            AppMcpServer.Id, "ask_user", "schema");
+
+        public IReadOnlyList<AgentTool> Tools => Broker is null ? [ProcessRun] : [ProcessRun, AskUser];
+
+        /// <summary>Set to route an ask_user call to the run that is waiting on it.</summary>
+        public IUserPromptBroker? Broker { get; set; }
+
+        /// <summary>The last response a question came back with, for the test to inspect.</summary>
+        public UserPromptResponse? LastResponse { get; private set; }
         public IReadOnlyList<ToolDirectoryGrant> Grants { get; private set; } = [];
         public IReadOnlySet<Guid> Servers { get; private set; } = new HashSet<Guid>();
+        public ToolRunContext? Run { get; private set; }
         public Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, IReadOnlySet<Guid> servers,
-            CancellationToken cancellationToken)
+            ToolRunContext run, CancellationToken cancellationToken)
         {
             OpenCount++;
             Grants = directoryGrants;
             Servers = servers;
+            Run = run;
             return Task.FromResult<IToolSession>(this);
         }
         public string ValidateArguments(AgentTool tool, string arguments) => arguments;
@@ -1247,6 +1354,16 @@ public sealed class ChatExecutionTests
         public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
         {
             CallCount++;
+            if (tool.OriginalName == "ask_user" && Broker is { } broker && Run is { } run)
+            {
+                LastResponse = await broker.AskAsync(run,
+                    new UserPromptRequest([new UserPromptQuestion("scope", "How far?", "Scope",
+                        [new UserPromptOption("Narrow", null), new UserPromptOption("Wide", null)], false, true)]),
+                    TimeSpan.FromSeconds(30), cancellationToken);
+                return ToolResultCodec.Read("{\"structuredContent\":{\"outcome\":\""
+                    + LastResponse.Outcome.ToString().ToLowerInvariant() + "\"}}");
+            }
+
             if (HangNextCall)
             {
                 HangNextCall = false;

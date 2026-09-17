@@ -1,8 +1,9 @@
-namespace AI.Client.Mcp.App;
+﻿namespace AI.Client.Mcp.App;
 
 using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Runs;
+using AI.Client.Application.Tools;
 using AI.Client.Contracts.Projects;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -23,7 +24,7 @@ public enum ProjectOperation
 [McpServerToolType]
 public sealed class AppProjectsTool(IProjectService projects, IChatService chats, Func<IChatRunDispatcher> runs, IAppWrites writes) : IAppTool
 {
-    public McpServerTool Create() => McpServerTool.Create(
+    public McpServerTool Create(ToolRunContext run) => McpServerTool.Create(
         ProjectsAsync,
         new McpServerToolCreateOptions
         {

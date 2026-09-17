@@ -1,4 +1,4 @@
-namespace AI.Client.Infrastructure.Tools;
+﻿namespace AI.Client.Infrastructure.Tools;
 
 using Application.Tools;
 using Contracts.Settings;
@@ -17,7 +17,8 @@ public sealed class DefaultToolSessionFactory : IMcpServerConnection
     /// <summary>Name of the environment variable through which the built-in server receives its directory grants.</summary>
     public const string DirectoryGrantsVariable = "AI_CLIENT_DIRECTORY_GRANTS";
 
-    public async Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, CancellationToken cancellationToken)
+    /// <summary>The run context means nothing here: this server is a child process reaching the file system, not the conversation.</summary>
+    public async Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, ToolRunContext run, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(directoryGrants);
         var executable = Path.Combine(AppContext.BaseDirectory, "mcp", "AI.Client.Mcp.BuiltIn" + (OperatingSystem.IsWindows() ? ".exe" : ""));

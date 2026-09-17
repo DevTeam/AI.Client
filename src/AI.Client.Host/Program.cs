@@ -1,4 +1,4 @@
-using AI.Client.Host;
+﻿using AI.Client.Host;
 using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Settings;
@@ -117,12 +117,17 @@ app.MapGet("/api/mcp/default/tools", async (AI.Client.Application.Tools.IToolSes
     // has it switched on: the settings UI is where it gets switched on, and it needs the tools to
     // show first. Grants stay empty, so file system tools remain fail-closed here.
     await using var session = await factory.OpenAsync([],
-        new HashSet<Guid> { DefaultMcpServer.Id, AppMcpServer.Id }, timeout.Token);
+        new HashSet<Guid> { DefaultMcpServer.Id, AppMcpServer.Id },
+        AI.Client.Application.Tools.ToolRunContext.None, timeout.Token);
     return session.Tools.Select(tool => new McpToolInfo(tool.ServerId, tool.OriginalName, tool.ModelDefinition.Description, tool.SchemaHash)).ToArray();
 });
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/tools/decision",
     async (Guid projectId, Guid chatId, Guid branchId, ToolApprovalDecision decision, IChatRunDispatcher dispatcher, CancellationToken token) =>
         await dispatcher.DecideToolAsync(projectId, chatId, branchId, decision, token) ? Results.Ok() : Results.Conflict());
+
+app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/prompts/answer",
+    async (Guid projectId, Guid chatId, Guid branchId, UserPromptResponse response, IChatRunDispatcher dispatcher, CancellationToken token) =>
+        await dispatcher.AnswerPromptAsync(projectId, chatId, branchId, response, token) ? Results.Ok() : Results.Conflict());
 
 app.MapGet("/api/runs/events", async (IChatRunDispatcher dispatcher, IAppDataChangeSignal changes, HttpResponse response, CancellationToken cancellationToken) =>
 {

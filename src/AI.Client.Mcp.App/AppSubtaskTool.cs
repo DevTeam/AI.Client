@@ -1,4 +1,4 @@
-namespace AI.Client.Mcp.App;
+﻿namespace AI.Client.Mcp.App;
 
 using AI.Client.Application.Chat;
 using AI.Client.Application.Chats;
@@ -80,7 +80,7 @@ public sealed class AppSubtaskTool(
 
     private static int _running;
 
-    public McpServerTool Create() => McpServerTool.Create(
+    public McpServerTool Create(ToolRunContext run) => McpServerTool.Create(
         RunAsync,
         new McpServerToolCreateOptions
         {
@@ -204,7 +204,10 @@ public sealed class AppSubtaskTool(
                 // Nobody is watching a background run, so anything that would stop to ask is refused.
                 // The subtask is told as much and can report what it could not do.
                 (_, _, _, _, _) => Task.FromResult(ToolApprovalAction.Deny),
-                cancellationToken);
+                cancellationToken,
+                // Same reason, said once for every tool rather than per callback: this run has no
+                // person behind it, so ask_user answers itself instead of waiting for one.
+                interactive: false);
             var text = answer.ToString();
             transcript.Add(new SubtaskTranscriptEntry(task, "assistant", text, null));
             board.Finish(index);

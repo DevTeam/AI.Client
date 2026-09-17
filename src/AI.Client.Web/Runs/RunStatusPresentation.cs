@@ -1,4 +1,4 @@
-namespace AI.Client.Web.Runs;
+﻿namespace AI.Client.Web.Runs;
 
 using AI.Client.Contracts.Runs;
 
@@ -17,6 +17,7 @@ public static class RunStatusPresentation
     public static bool NeedsAttention(ChatRunSnapshot run) => run switch
     {
         { PendingApproval: not null } => true,
+        { PendingPrompt: not null } => true,
         { Status: ChatRunStatus.Paused or ChatRunStatus.Interrupted } => true,
         { Status: ChatRunStatus.Failed, RecoveryActions: { Count: > 0 } } => true,
         _ => false
@@ -31,7 +32,8 @@ public static class RunStatusPresentation
     /// an unread completion.
     /// </summary>
     public static bool HasVisibleAttention(ChatRunSnapshot run) =>
-        run.PendingApproval is not null || (NeedsAttention(run) && run.HasUnreadResponse);
+        run.PendingApproval is not null || run.PendingPrompt is not null
+        || (NeedsAttention(run) && run.HasUnreadResponse);
 
     public static string GetStatusTooltip(ChatRunSnapshot run) =>
         GetAttentionTooltip(run) ?? GetNonAttentionStatusTooltip(run);
@@ -40,6 +42,7 @@ public static class RunStatusPresentation
     {
         _ when !HasVisibleAttention(run) => null,
         { PendingApproval: not null } => "Waiting for tool approval",
+        { PendingPrompt: not null } => "Waiting for your answer",
         { Status: ChatRunStatus.Paused } => "Queue paused - action required",
         { Status: ChatRunStatus.Interrupted } => "Run interrupted - action required",
         { Status: ChatRunStatus.Failed, RecoveryActions: { Count: > 0 } } => "Recovery action required",

@@ -80,28 +80,48 @@ public sealed class AppSubtaskTool(
 
     private static int _running;
 
-    public McpServerTool Create(ToolRunContext run) => McpServerTool.Create(
-        RunAsync,
-        new McpServerToolCreateOptions
-        {
-            SerializerOptions = ToolReply.Json,
-            Description = "Delegate work to a separate conversation and get back only its answer, so the details never enter your own "
-                          + "context. Pass the project and chat you are running in: the subtask inherits their directory grants and tool "
-                          + "policies. Each task answers through its own 'connectionId' if it names an enabled one, else the call's "
-                          + "'connectionId', else one of the connections marked for subtasks — several may be, and tasks naming none "
-                          + "are dealt out over them in turn — else the calling chat's. Read the settings resource to "
-                          + "see what each connection is worth: a connection may carry a capability and a cost from 1 to 5 and a line on "
-                          + "what it is good for, so mechanical work can go to a cheaper model and hard work to a stronger one. Tasks of "
-                          + "one call run at the same time, while separate calls do not, so put every task you want run in parallel into "
-                          + "a single call. A subtask has nobody "
-                          + "to ask for confirmation, so any tool whose policy is 'Ask' is refused to it — allow such tools beforehand if "
-                          + "a subtask needs them. Nothing is saved: there is no chat to open afterwards, though the full exchange is "
-                          + "attached to this result for the user to read."
-        });
+    public McpServerTool Create(ToolRunContext run) => new Session(this, run).Create();
 
-    [McpServerTool(Name = "spawn_subtask", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = true,
-        UseStructuredContent = true, OutputSchemaType = typeof(SubtaskResult))]
+    /// <summary>
+    /// Binds the tool to the run that opened the session. The tool itself is shared by every
+    /// session, so the calling run cannot be held on it; the call needs it because a subtask is
+    /// tracked as a child of whoever delegated it, and what identifies that parent is its branch.
+    /// </summary>
+    private sealed class Session(AppSubtaskTool tool, ToolRunContext run)
+    {
+        public McpServerTool Create() => McpServerTool.Create(
+            RunAsync,
+            new McpServerToolCreateOptions
+            {
+                SerializerOptions = ToolReply.Json,
+                Description = "Delegate work to a separate conversation and get back only its answer, so the details never enter your own "
+                              + "context. Pass the project and chat you are running in: the subtask inherits their directory grants and tool "
+                              + "policies. Each task answers through its own 'connectionId' if it names an enabled one, else the call's "
+                              + "'connectionId', else one of the connections marked for subtasks — several may be, and tasks naming none "
+                              + "are dealt out over them in turn — else the calling chat's. Read the settings resource to "
+                              + "see what each connection is worth: a connection may carry a capability and a cost from 1 to 5 and a line on "
+                              + "what it is good for, so mechanical work can go to a cheaper model and hard work to a stronger one. Tasks of "
+                              + "one call run at the same time, while separate calls do not, so put every task you want run in parallel into "
+                              + "a single call. A subtask has nobody "
+                              + "to ask for confirmation, so any tool whose policy is 'Ask' is refused to it — allow such tools beforehand if "
+                              + "a subtask needs them. Nothing is saved: there is no chat to open afterwards, though the full exchange is "
+                              + "attached to this result for the user to read."
+            });
+
+        [McpServerTool(Name = "spawn_subtask", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = true,
+            UseStructuredContent = true, OutputSchemaType = typeof(SubtaskResult))]
+        private Task<CallToolResult> RunAsync(
+            Guid projectId,
+            Guid chatId,
+            SubtaskRequest[] tasks,
+            IProgress<ProgressNotificationValue> progress,
+            Guid? connectionId = null,
+            CancellationToken cancellationToken = default) =>
+            tool.RunAsync(run, projectId, chatId, tasks, progress, connectionId, cancellationToken);
+    }
+
     private async Task<CallToolResult> RunAsync(
+        ToolRunContext run,
         Guid projectId,
         Guid chatId,
         SubtaskRequest[] tasks,
@@ -141,7 +161,7 @@ public sealed class AppSubtaskTool(
         try
         {
             var board = new Board(progress, tasks.Length);
-            var runs = tasks.Select((item, index) => RunOneAsync(projectId, chatId,
+            var runs = tasks.Select((item, index) => RunOneAsync(run, projectId, chatId,
                 endpoints[index].Template, endpoints[index].Name, item.Task, index, board, cancellationToken)).ToArray();
             var completed = await Task.WhenAll(runs);
             return ToolReply.Of(
@@ -156,8 +176,8 @@ public sealed class AppSubtaskTool(
     }
 
     private async Task<(SubtaskOutcome Outcome, IReadOnlyList<SubtaskTranscriptEntry> Transcript)> RunOneAsync(
-        Guid projectId, Guid chatId, ChatCompletionRequest template, string connection, string task, int index,
-        Board board, CancellationToken cancellationToken)
+        ToolRunContext run, Guid projectId, Guid chatId, ChatCompletionRequest template, string connection, string task,
+        int index, Board board, CancellationToken cancellationToken)
     {
         var transcript = new List<SubtaskTranscriptEntry>();
         var answer = new System.Text.StringBuilder();
@@ -170,7 +190,9 @@ public sealed class AppSubtaskTool(
         {
             var changes = await agent().RunAsync(projectId, chatId,
                 // A branch of its own keeps the subtask's workspace baseline apart from the parent's,
-                // so its file changes are attributed to it rather than folded into the caller's diff.
+                // so repeated edits here collapse against what this subtask found rather than against
+                // what the caller found. The caller is still told the total: the run is registered as
+                // its child below, and a parent's snapshot covers its children.
                 Guid.CreateVersion7(),
                 template with { Message = task, ContextMessages = [new ChatCompletionMessage("user", task)] },
                 (message, _) =>
@@ -207,7 +229,8 @@ public sealed class AppSubtaskTool(
                 cancellationToken,
                 // Same reason, said once for every tool rather than per callback: this run has no
                 // person behind it, so ask_user answers itself instead of waiting for one.
-                interactive: false);
+                interactive: false,
+                parentBranchId: run.BranchId);
             var text = answer.ToString();
             transcript.Add(new SubtaskTranscriptEntry(task, "assistant", text, null));
             board.Finish(index);

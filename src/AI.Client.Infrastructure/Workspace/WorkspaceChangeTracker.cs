@@ -26,10 +26,14 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
 
     private readonly ConcurrentDictionary<WorkspaceRunKey, RunState> _runs = new();
 
-    public Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, CancellationToken cancellationToken)
+    public Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, WorkspaceRunKey? parent,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(grants);
-        _runs[run] = new RunState(grants.Select(grant => grant.Root).ToArray());
+        // A run cannot be its own parent, and a parent that is not being tracked is no parent at
+        // all: either would turn the walk below into a loop or a dead end.
+        var linked = parent is { } above && above != run && _runs.ContainsKey(above) ? above : (WorkspaceRunKey?)null;
+        _runs[run] = new RunState(grants.Select(grant => grant.Root).ToArray(), linked);
         return Task.CompletedTask;
     }
 
@@ -53,13 +57,50 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
         return Task.CompletedTask;
     }
 
-    public Task<WorkspaceChangeSet> SnapshotAsync(WorkspaceRunKey run, CancellationToken cancellationToken) =>
-        Task.FromResult(_runs.TryGetValue(run, out var state) ? state.Snapshot() : WorkspaceChangeSet.Empty);
+    public Task<WorkspaceChangeSet> SnapshotAsync(WorkspaceRunKey run, CancellationToken cancellationToken)
+    {
+        if (!_runs.TryGetValue(run, out var state)) return Task.FromResult(WorkspaceChangeSet.Empty);
+
+        // A path both the run and one of its subtasks touched is one file with one net difference,
+        // not two rows, so the earliest baseline wins: measuring against the later one would credit
+        // the turn with only the tail of its own change.
+        var merged = new Dictionary<string, Baseline>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (path, baseline) in state.Baselines().Concat(Descendants(run).SelectMany(child => child.Baselines())))
+            if (!merged.TryGetValue(path, out var held) || baseline.Order < held.Order)
+                merged[path] = baseline;
+        return Task.FromResult(RunState.Compose(merged));
+    }
 
     public Task CompleteRunAsync(WorkspaceRunKey run, CancellationToken cancellationToken)
     {
-        _runs.TryRemove(run, out _);
+        if (!_runs.TryRemove(run, out var state)) return Task.CompletedTask;
+
+        // The parent outlives its subtasks by definition, and its total must keep covering them
+        // once they are gone. Anything the parent already tracks for the same path stays: it was
+        // captured first, so it is the older of the two.
+        if (state.Parent is { } parent && _runs.TryGetValue(parent, out var above)) above.Absorb(state.Baselines());
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Every run delegated from <paramref name="run"/>, however deeply. Walked from the children
+    /// rather than held as a list on the parent, so a subtask that has already finished and handed
+    /// its baselines up is simply absent instead of leaving a dangling entry behind.
+    /// </summary>
+    private IEnumerable<RunState> Descendants(WorkspaceRunKey run)
+    {
+        var frontier = new Queue<WorkspaceRunKey>([run]);
+        var seen = new HashSet<WorkspaceRunKey> { run };
+        while (frontier.Count > 0)
+        {
+            var current = frontier.Dequeue();
+            foreach (var (key, state) in _runs)
+            {
+                if (state.Parent != current || !seen.Add(key)) continue;
+                frontier.Enqueue(key);
+                yield return state;
+            }
+        }
     }
 
     private static IEnumerable<string> PathsFor(ToolDescriptor tool, string arguments)
@@ -74,10 +115,31 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
                 yield return path;
     }
 
-    private sealed class RunState(IReadOnlyList<string> grantRoots)
+    private sealed class RunState(IReadOnlyList<string> grantRoots, WorkspaceRunKey? parent)
     {
         private readonly Lock _gate = new();
         private readonly Dictionary<string, Baseline> _baselines = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The run that delegated this one, if any. Fixed at the run's start.</summary>
+        public WorkspaceRunKey? Parent => parent;
+
+        /// <summary>The baselines held right now, safe to read while the run is still going.</summary>
+        public IReadOnlyList<KeyValuePair<string, Baseline>> Baselines()
+        {
+            lock (_gate) return [.. _baselines];
+        }
+
+        /// <summary>
+        /// Takes over the baselines of a finished subtask. A path this run already tracks keeps the
+        /// baseline it has: this run started first, so its copy is the older one.
+        /// </summary>
+        public void Absorb(IReadOnlyList<KeyValuePair<string, Baseline>> inherited)
+        {
+            lock (_gate)
+                foreach (var (path, baseline) in inherited)
+                    if (!_baselines.TryGetValue(path, out var held) || baseline.Order < held.Order)
+                        _baselines[path] = baseline;
+        }
 
         /// <summary>
         /// Remembers a path's content the first time the run is about to touch it. Later calls are
@@ -95,14 +157,12 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
             }
         }
 
-        public WorkspaceChangeSet Snapshot()
+        /// <summary>
+        /// Turns baselines into the net change set, reading each path as it stands now. Static
+        /// because the set a caller is shown may span several runs: its own and its subtasks'.
+        /// </summary>
+        public static WorkspaceChangeSet Compose(IReadOnlyDictionary<string, Baseline> tracked)
         {
-            List<KeyValuePair<string, Baseline>> tracked;
-            lock (_gate)
-            {
-                tracked = [.. _baselines];
-            }
-
             var byPath = new Dictionary<string, FileChange>(StringComparer.OrdinalIgnoreCase);
             foreach (var (path, baseline) in tracked)
             {
@@ -165,12 +225,13 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
             {
                 var info = new FileInfo(path);
                 if (!info.Exists) return Baseline.Missing;
-                if (info.Length > MaxTrackedBytes) return new Baseline(true, null, info.Length, info.LastWriteTimeUtc);
+                var order = Baseline.Next();
+                if (info.Length > MaxTrackedBytes) return new Baseline(true, null, info.Length, info.LastWriteTimeUtc, order);
                 var text = File.ReadAllText(path);
                 // A NUL byte is the usual cheap tell for binary content, where line counts are noise.
                 return text.Contains('\0', StringComparison.Ordinal)
-                    ? new Baseline(true, null, info.Length, info.LastWriteTimeUtc)
-                    : new Baseline(true, text, info.Length, info.LastWriteTimeUtc);
+                    ? new Baseline(true, null, info.Length, info.LastWriteTimeUtc, order)
+                    : new Baseline(true, text, info.Length, info.LastWriteTimeUtc, order);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException
                                               or NotSupportedException or ArgumentException)
@@ -208,10 +269,23 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
             }
             return null;
         }
+    }
 
-        private readonly record struct Baseline(bool Exists, string? Text, long Length, DateTime ModifiedAt)
-        {
-            public static Baseline Missing => new(false, null, 0, default);
-        }
+    /// <summary>
+    /// A path as it stood when the run first reached for it.
+    /// </summary>
+    /// <param name="Order">
+    /// When it was captured, relative to every other baseline this Host has taken. A path a turn and
+    /// its subtask both touched is held twice, and the totals are only right if the older of the two
+    /// is the one kept — comparing timestamps would not settle it, because two captures inside the
+    /// same tick are exactly the case that arises when subtasks run at once.
+    /// </param>
+    private readonly record struct Baseline(bool Exists, string? Text, long Length, DateTime ModifiedAt, long Order)
+    {
+        private static long _taken;
+
+        public static Baseline Missing => new(false, null, 0, default, Next());
+
+        public static long Next() => Interlocked.Increment(ref _taken);
     }
 }

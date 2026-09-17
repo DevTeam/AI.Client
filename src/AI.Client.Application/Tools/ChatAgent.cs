@@ -30,7 +30,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         Func<ToolActivity?, CancellationToken, Task> activity,
         Func<AgentTool, string, long, ToolCallPosition, CancellationToken, Task<ToolApprovalAction>> approve,
         CancellationToken cancellationToken,
-        bool interactive = true)
+        bool interactive = true,
+        Guid? parentBranchId = null)
     {
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var deadline = new TurnDeadline(source, TimeSpan.FromMinutes(60));
@@ -49,7 +50,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var run = new ToolRunContext(projectId, chatId, branchId, interactive);
         await using var session = servers.Count > 0 ? await sessions().OpenAsync(grants, servers, run, token) : null;
         var runKey = new WorkspaceRunKey(projectId, chatId, branchId);
-        await workspace.BeginRunAsync(runKey, grants, token);
+        await workspace.BeginRunAsync(runKey, grants,
+            parentBranchId is { } parent ? new WorkspaceRunKey(projectId, chatId, parent) : null, token);
         var context = request.ContextMessages?.ToList() ?? [new ChatCompletionMessage("user", request.Message)];
         var runStart = context.FindLastIndex(message => message.Role == "user");
         var counts = context.Skip(Math.Max(0, runStart)).SelectMany(message => message.ToolCalls ?? [])

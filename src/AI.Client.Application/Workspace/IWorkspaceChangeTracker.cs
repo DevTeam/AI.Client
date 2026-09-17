@@ -23,7 +23,14 @@ public interface IWorkspaceChangeTracker
     /// Starts tracking for a run, discarding anything held for a previous one on the same branch.
     /// <paramref name="grants"/> bounds every path this tracker will read.
     /// </summary>
-    Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, CancellationToken cancellationToken);
+    /// <param name="parent">
+    /// The run that delegated this one, when there is one. A subtask keeps baselines of its own so
+    /// its work stays attributable, but the person watching the conversation is owed one total:
+    /// naming the parent here is what lets the caller's snapshot include what its subtasks did,
+    /// while they are still doing it.
+    /// </param>
+    Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, WorkspaceRunKey? parent,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Called before a call that may modify the workspace, so a baseline exists to compare against.
@@ -36,10 +43,18 @@ public interface IWorkspaceChangeTracker
     /// </summary>
     Task RecordEffectAsync(WorkspaceRunKey run, ToolDescriptor tool, string arguments, CancellationToken cancellationToken);
 
-    /// <summary>The net change set as it stands, safe to call mid-run.</summary>
+    /// <summary>
+    /// The net change set as it stands, safe to call mid-run. It covers the run's own paths and
+    /// those of every run delegated from it, so a caller is never shown a total that omits work it
+    /// handed to a subtask.
+    /// </summary>
     Task<WorkspaceChangeSet> SnapshotAsync(WorkspaceRunKey run, CancellationToken cancellationToken);
 
-    /// <summary>Releases the baselines held for a run.</summary>
+    /// <summary>
+    /// Releases the baselines held for a run. A run with a parent hands its baselines up instead of
+    /// dropping them: a subtask finishes long before the turn that delegated it, and the caller's
+    /// total has to keep covering what it did.
+    /// </summary>
     Task CompleteRunAsync(WorkspaceRunKey run, CancellationToken cancellationToken);
 }
 

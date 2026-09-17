@@ -267,6 +267,7 @@
             HasSelectedProject="@(_selectedProject is not null)"
             SelectedProjectName="@_selectedProject?.Name"
             SelectedChat="@_selectedChat"
+            TranscriptId="@_selectedBranchId"
             BranchLeafId="@_branchLeafId"
             JustArrivedLeafId="@_justArrivedLeafId"
             ForkSourceId="@_forkSourceId"
@@ -1280,12 +1281,14 @@
         // The textarea's DOM value is independent from the bound _chat.Message — Blazor will
         // sync it on the next render, but for Queue mode the snapshot that triggers a render
         // doesn't always arrive (the dispatcher only Publishes when the worker actually
-        // starts). Force a render + tell the JS module to clear the DOM and resize, so the
-        // composer visibly empties the moment Ctrl+Enter is pressed instead of staying full.
-        await InvokeAsync(StateHasChanged);
-        if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("reset");
+        // starts). Arm every after-render action BEFORE requesting that render: keyboard submits
+        // arrive through JS interop and are not guaranteed a second automatic render after this
+        // method returns. Requesting the render first could therefore rebuild a long transcript
+        // at scrollTop 0 and never run the pending scroll-to-bottom action.
         _composerNeedsResize = true;
         _scrollMessagesToBottom = true;
+        await InvokeAsync(StateHasChanged);
+        if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("reset");
 
         // Refresh chat list in a guarded block so a transient failure (network blip,
         // revision conflict) doesn't roll back the projection already applied in

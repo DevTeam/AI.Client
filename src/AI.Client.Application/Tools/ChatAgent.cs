@@ -67,6 +67,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         }
 
         var empty = 0;
+        var truncated = 0;
         while (true)
         {
             var available = new List<ChatToolDefinition>();
@@ -75,9 +76,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     if ((await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") available.Add(tool.ModelDefinition);
             var calls = new List<ChatToolCall>();
             var content = new StringBuilder();
+            string? finish = null;
             await foreach (var chunk in completion.StreamAsync(request with { ContextMessages = context, Tools = available }, token))
             {
                 if (chunk.ToolCalls is { } received) calls.AddRange(received);
+                if (chunk.FinishReason is { Length: > 0 } reason) finish = reason;
                 if (chunk.Content.Length == 0) continue;
                 content.Append(chunk.Content);
                 await text(chunk.Content, token);
@@ -97,6 +100,23 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             }
 
             empty = 0;
+            if (calls.Count == 0 && Truncated(finish))
+            {
+                // The answer was cut at the token ceiling, not finished. Returning here would end
+                // the run as a success and leave a sentence hanging, which is indistinguishable to
+                // the reader from the model choosing to stop there. Instead the partial answer goes
+                // back as context and the model is asked to carry on: nothing is persisted for this
+                // turn, and the caller keeps appending to the same streamed message, so the
+                // continuation arrives as one uninterrupted answer.
+                if (++truncated > MaxTruncatedTurns)
+                    throw new InvalidOperationException(
+                        $"The model's answer was cut off at the token limit {MaxTruncatedTurns} times in a row.");
+                context.Add(new ChatCompletionMessage("assistant", content.ToString()));
+                context.Add(new ChatCompletionMessage("user", ContinueAfterTruncation));
+                continue;
+            }
+
+            truncated = 0;
             if (calls.Count == 0)
             {
                 var changes = await workspace.SnapshotAsync(runKey, token);
@@ -207,6 +227,32 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// hammered, and the user is the one waiting through every attempt.
     /// </summary>
     private const int MaxEmptyTurns = 2;
+
+    /// <summary>
+    /// How many times in a row an answer may be cut off at the token ceiling and asked to continue.
+    /// Each continuation is progress — a truncated turn always produced a ceiling's worth of text —
+    /// so this is not a budget for patience but a stop for the pathological case: a model that has
+    /// started repeating itself would otherwise be paid to do so forever, and nobody is watching,
+    /// because the whole point of continuing is that it happens without anyone being told.
+    /// </summary>
+    private const int MaxTruncatedTurns = 5;
+
+    /// <summary>
+    /// Sent as the user so every endpoint honours it — a trailing assistant message is a prefix to
+    /// complete on some and a protocol error on others. It never reaches the transcript: the caller
+    /// stores the streamed answer, not the context this loop assembles to obtain it.
+    /// </summary>
+    private const string ContinueAfterTruncation =
+        "Your previous message was cut off at the output token limit. Continue it from exactly where "
+        + "it stopped, in the middle of the word or line if that is where the cut fell. Do not repeat "
+        + "any text you have already sent, do not restate what you were doing, and do not apologise.";
+
+    /// <summary>
+    /// OpenAI-compatible endpoints report the ceiling as "length"; several report the Anthropic
+    /// spelling instead, and a gateway in front of either may pass through whichever it received.
+    /// </summary>
+    private static bool Truncated(string? finishReason) =>
+        finishReason is "length" or "max_tokens";
 
     /// <summary>
     /// The longest any one call may run, however talkative it is. A tool that keeps reporting keeps

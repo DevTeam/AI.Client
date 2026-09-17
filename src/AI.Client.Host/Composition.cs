@@ -15,6 +15,7 @@ using AI.Client.Infrastructure.Settings;
 using AI.Client.Infrastructure.Workspace;
 using AI.Client.Contracts.Tools;
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Pure.DI;
 using Pure.DI.MS;
 // ReSharper disable InconsistentNaming
@@ -48,9 +49,19 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Singleton<HostDescriptor, PhysicalTextFileSystem, ProjectStoragePaths, JsonProjectRepository,
                 Uuid7IdGenerator, SystemClock, ProjectService, ChatStoragePaths, JsonChatRepository, ChatService, ChatSearchService, ChatSynchronization,
                 ProtectedDataUserDataProtector, ChatCompletionSseParser,
-                OpenAiCompatibleChatCompletionClient, ChatEndpoint, GlobalSettingsPaths, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
+                ChatEndpoint, GlobalSettingsPaths, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
                 GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, ToolPolicyResolver, WorkspaceChangeTracker,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ToolPresentations>()
+            // Everything that talks to the model talks to the retrying wrapper; the tag names the
+            // one place that is allowed to see the bare endpoint. Composed here rather than in the
+            // agent so waiting out a rate limit stays invisible to the code above it.
+            .Bind<IChatCompletionClient>("endpoint").As(Lifetime.Singleton).To<OpenAiCompatibleChatCompletionClient>()
+            .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To(ctx =>
+            {
+                ctx.Inject<IChatCompletionClient>("endpoint", out var endpoint);
+                ctx.Inject<ILogger<RetryingChatCompletionClient>>(out var retryLogger);
+                return new RetryingChatCompletionClient(endpoint, retryLogger);
+            })
             // Both groups are consumed as sets, so each registration is tagged to stay distinct
             // instead of the last one silently winning its contract.
             .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool>(Tag.Unique)

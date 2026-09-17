@@ -118,17 +118,22 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
             }
             if (choice.TryGetProperty("finish_reason", out var finishReason)
                 && finishReason.ValueKind == JsonValueKind.String
-                && !string.IsNullOrWhiteSpace(finishReason.GetString()))
+                && finishReason.GetString() is { } reason
+                && !string.IsNullOrWhiteSpace(reason))
             {
                 if (calls.Count > 0)
                 {
-                    if (finishReason.GetString() != "tool_calls") throw new InvalidOperationException("Incomplete tool call response.");
+                    if (reason != "tool_calls") throw new InvalidOperationException("Incomplete tool call response.");
                     var completed = calls.Values.Select(call => new ChatToolCall(call.Id.ToString(), call.Name.ToString(), call.Arguments.ToString())).ToArray();
                     if (completed.Any(call => string.IsNullOrWhiteSpace(call.Id) || string.IsNullOrWhiteSpace(call.Name))
                         || completed.Select(call => call.Id).Distinct(StringComparer.Ordinal).Count() != completed.Length)
                         throw new InvalidOperationException("Invalid tool call identity.");
-                    yield return new ChatCompletionChunk("", model, completed);
+                    yield return new ChatCompletionChunk("", model, completed, reason);
                 }
+                // An empty chunk carrying nothing but the reason. The caller has already been given
+                // every character of the answer; what it still lacks is whether that answer is the
+                // whole one, and this is the only place the stream says so.
+                else yield return new ChatCompletionChunk("", model, null, reason);
                 yield break;
             }
 

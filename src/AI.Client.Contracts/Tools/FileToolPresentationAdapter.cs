@@ -9,7 +9,8 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
     protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         "read_text_file", "read_multiple_files", "list_directory", "directory_tree", "search_files", "grep_files",
-        "get_file_info", "write_file", "edit_file", "create_directory", "move_file", "list_allowed_directories",
+        "get_file_info", "write_file", "edit_file", "create_directory", "move_file", "delete_file", "delete_directory",
+        "list_allowed_directories",
     };
 
     public override ToolCallPresentation DescribeCall(ToolRef tool, JsonElement? arguments)
@@ -38,6 +39,12 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
             "create_directory" => new ToolCallPresentation("Create directory", FileLabel(path), ToolSafety.Mutating),
             "move_file" => new ToolCallPresentation("Move file",
                 FileLabel(Argument(arguments, "destination")), ToolSafety.Destructive),
+            // A recursive delete removes a whole subtree, which is worth saying on the row itself
+            // rather than leaving to the expanded arguments.
+            "delete_file" => new ToolCallPresentation("Delete file", FileLabel(path), ToolSafety.Destructive),
+            "delete_directory" => new ToolCallPresentation(
+                FlagArgument(arguments, "recursive") ? "Delete directory (recursive)" : "Delete directory",
+                FileLabel(path), ToolSafety.Destructive),
             _ => new ToolCallPresentation(tool.FallbackLabel, FileLabel(path), ToolSafety.Unknown),
         };
     }
@@ -119,6 +126,15 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
             case "move_file":
                 return new ToolResultPresentation("Moved", ToolResultSeverity.Ok,
                     Facts(("From", Text(structured, "source")), ("To", Text(structured, "destination"))), null);
+            case "delete_file":
+                return new ToolResultPresentation("Deleted" + Suffix(Bytes(Size(structured, "bytes"))),
+                    ToolResultSeverity.Ok, Facts(("Path", Text(structured, "path"))), null);
+            case "delete_directory":
+                return new ToolResultPresentation(
+                    Flag(structured, "recursive") ? "Deleted, recursive" : "Deleted",
+                    ToolResultSeverity.Ok,
+                    Facts(("Path", Text(structured, "path")), ("Recursive", Flag(structured, "recursive") ? "yes" : null)),
+                    null);
             case "list_allowed_directories":
             {
                 var directories = Count(structured, "directories") ?? 0;
@@ -133,6 +149,11 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
     private static bool IsDryRun(JsonElement? arguments) =>
         arguments is { ValueKind: JsonValueKind.Object } input
         && input.TryGetProperty("dryRun", out var value)
+        && value.ValueKind == JsonValueKind.True;
+
+    private static bool FlagArgument(JsonElement? arguments, string property) =>
+        arguments is { ValueKind: JsonValueKind.Object } input
+        && input.TryGetProperty(property, out var value)
         && value.ValueKind == JsonValueKind.True;
 
     private static string Suffix(string? value) => value is null ? "" : $" · {value}";

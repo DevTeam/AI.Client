@@ -152,6 +152,50 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
     }
 
     [Fact]
+    public async Task ShouldReportADeletedFileAsDeleted()
+    {
+        var file = Path("gone.txt");
+        await File.WriteAllTextAsync(file, "one\ntwo", TestContext.Current.CancellationToken);
+        var tracker = await StartAsync();
+
+        await EditAsync(tracker, "delete_file", file, () =>
+        {
+            File.Delete(file);
+            return Task.CompletedTask;
+        });
+
+        var change = (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).Files.ShouldHaveSingleItem();
+        change.Kind.ShouldBe(FileChangeKind.Deleted);
+        // The deleted lines are counted from the content the file had before the run.
+        change.Deletions.ShouldBe(2);
+        change.Additions.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ShouldReportAFileRemovedWithItsDirectory()
+    {
+        // `delete_directory` names only the directory, but a file the run had already touched is
+        // compared against its own baseline and so still shows up as deleted.
+        var directory = Path("sub");
+        var file = System.IO.Path.Combine(directory, "gone.txt");
+        Directory.CreateDirectory(directory);
+        await File.WriteAllTextAsync(file, "one\ntwo", TestContext.Current.CancellationToken);
+        var tracker = await StartAsync();
+        await EditAsync(tracker, "edit_file", file,
+            () => File.WriteAllTextAsync(file, "one\ntwo\nthree", TestContext.Current.CancellationToken));
+
+        var descriptor = BuiltIn("delete_directory");
+        var arguments = JsonSerializer.Serialize(new { path = directory, recursive = true });
+        await tracker.RecordIntentAsync(_run, descriptor, arguments, TestContext.Current.CancellationToken);
+        Directory.Delete(directory, true);
+        await tracker.RecordEffectAsync(_run, descriptor, arguments, TestContext.Current.CancellationToken);
+
+        var change = (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).Files.ShouldHaveSingleItem();
+        change.Path.ShouldBe(file);
+        change.Kind.ShouldBe(FileChangeKind.Deleted);
+    }
+
+    [Fact]
     public async Task ShouldListNothingWhenAToolTouchedAPathButChangedNothing()
     {
         var file = Path("a.txt");

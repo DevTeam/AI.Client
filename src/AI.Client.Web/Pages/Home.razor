@@ -537,6 +537,7 @@
     private IJSObjectReference? _runEventsModule;
     private IJSObjectReference? _runEventsSubscription;
     private IJSObjectReference? _focusSubscription;
+    private IJSObjectReference? _escapeSubscription;
     private IJSObjectReference? _queueDragSubscription;
     private readonly ComposerHistoryNavigator _composerHistoryNavigator = new();
     private bool _composerCtrlDown;
@@ -622,6 +623,7 @@
                 _runEventsModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/runEvents.js");
                 _runEventsSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("subscribe", _dotNetReference);
                 _focusSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchFocus", _dotNetReference);
+                _escapeSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchEscape", _dotNetReference);
                 _queueDragSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchQueueDrag", _dotNetReference);
                 _applicationFocused = await _runEventsModule.InvokeAsync<bool>("isFocused");
             }
@@ -2623,6 +2625,50 @@
         _isConfirmingDirectoryDelete = false;
     }
 
+    [JSInvokable]
+    public async Task OnEscapePressed()
+    {
+        if (_permissionsScope is not null)
+        {
+            ClosePermissions();
+        }
+        else if (_isEndpointMenuOpen)
+        {
+            CloseEndpointMenu();
+        }
+        else if (_messageBranchMenuId is not null)
+        {
+            _messageBranchMenuId = null;
+        }
+        else if (_isProjectMenuOpen || _chatMenuId is not null || _branchMenuId is not null || _directoryMenuId is not null)
+        {
+            CloseContextMenus();
+        }
+        else if (_isConfirmingQueueClearAll)
+        {
+            _isConfirmingQueueClearAll = false;
+        }
+        else if (_messageFeed?.CancelTransientUi() == true)
+        {
+            // The child invalidates its cached render; the parent render below schedules it.
+        }
+        else if (_replaceSourceId is not null || _forkSourceId is not null)
+        {
+            CancelBranchOperation();
+        }
+        else if (_toast is not null)
+        {
+            DismissToast();
+            return;
+        }
+        else
+        {
+            return;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
     private void ConfirmChatDelete() => _isConfirmingChatDelete = true;
 
     private void CancelChatDelete() => CloseContextMenus();
@@ -3069,6 +3115,7 @@
 
         if (_runEventsSubscription is not null) { await _runEventsSubscription.InvokeVoidAsync("dispose"); await _runEventsSubscription.DisposeAsync(); }
         if (_focusSubscription is not null) { await _focusSubscription.InvokeVoidAsync("dispose"); await _focusSubscription.DisposeAsync(); }
+        if (_escapeSubscription is not null) { await _escapeSubscription.InvokeVoidAsync("dispose"); await _escapeSubscription.DisposeAsync(); }
         if (_queueDragSubscription is not null) { await _queueDragSubscription.InvokeVoidAsync("dispose"); await _queueDragSubscription.DisposeAsync(); }
         if (_runEventsModule is not null) await _runEventsModule.DisposeAsync();
 

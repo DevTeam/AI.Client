@@ -1,4 +1,4 @@
-namespace AI.Client.Infrastructure.Tests.Chat;
+﻿namespace AI.Client.Infrastructure.Tests.Chat;
 
 using AI.Client.Infrastructure.Chat;
 using Shouldly;
@@ -36,6 +36,22 @@ public class ChatCompletionSseParserTests
             await foreach (var _ in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) { }
         });
     }
+    [Fact]
+    public async Task ShouldReportThatAnAnswerWasCutOffAtTheTokenLimit()
+    {
+        const string sse = """
+            data: {"choices":[{"delta":{"content":"Half a sen"}}]}
+            data: {"choices":[{"delta":{},"finish_reason":"length"}]}
+            """;
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
+        var chunks = new List<Contracts.Chat.ChatCompletionChunk>();
+        await foreach (var chunk in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
+
+        // The text, then the fact that there was meant to be more of it.
+        chunks.Select(chunk => chunk.Content).ShouldBe(["Half a sen", ""]);
+        chunks[^1].FinishReason.ShouldBe("length");
+    }
+
     [Fact]
     public async Task ShouldReadContentDeltasUntilDone()
     {
@@ -80,6 +96,7 @@ public class ChatCompletionSseParserTests
             chunks.Add(chunk.Content);
         }
 
-        chunks.ShouldBe(["Complete"]);
+        // The trailing empty chunk is the one that carries the finish reason.
+        chunks.ShouldBe(["Complete", ""]);
     }
 }

@@ -59,7 +59,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new HttpRequestException(FormatErrorMessage(response, body));
+            throw Failure(response, body);
         }
 
         using var document = JsonDocument.Parse(body);
@@ -88,7 +88,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            throw new HttpRequestException(FormatErrorMessage(response, errorBody));
+            throw Failure(response, errorBody);
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -125,6 +125,20 @@ public sealed class OpenAiCompatibleChatCompletionClient(
 
         return message;
     }
+    // What the endpoint refused with, kept whole: the text for the person reading it, the status
+    // code and Retry-After for whoever has to decide whether asking again could ever work.
+    private static ChatEndpointException Failure(HttpResponseMessage response, string body) =>
+        new(FormatErrorMessage(response, body), response.StatusCode, RetryAfter(response));
+
+    // Retry-After comes either as a number of seconds or as an absolute date; a date already in the
+    // past means "now", and a clock skewed the other way must not turn into a negative delay.
+    private static TimeSpan? RetryAfter(HttpResponseMessage response) => response.Headers.RetryAfter switch
+    {
+        { Delta: { } delta } => delta > TimeSpan.Zero ? delta : TimeSpan.Zero,
+        { Date: { } date } => date - DateTimeOffset.UtcNow is { Ticks: > 0 } wait ? wait : TimeSpan.Zero,
+        _ => null
+    };
+
     // Trims to one line so a multi-line HTML/JSON error body doesn't blow up log formatting, and
     // truncates it rather than the whole thing so this message stays safe to surface in the UI
     // and to persist in chat/run history.

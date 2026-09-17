@@ -1,4 +1,4 @@
-namespace AI.Client.Infrastructure.Tests.Storage;
+﻿namespace AI.Client.Infrastructure.Tests.Storage;
 
 using AI.Client.Application.Chat;
 using Application.Chats;
@@ -908,6 +908,46 @@ public sealed class ChatExecutionTests
             .ShouldHaveSingleItem().Content.ShouldBe("A whole answer");
     }
 
+    [Fact]
+    public async Task AnswersCutOffAtTheTokenLimitShouldBeContinuedIntoOneMessage()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Write at length"));
+
+        var cut = await fixture.NextCallAsync();
+        cut.FinishReason = "length";
+        cut.Answer.SetResult("The first half");
+        var rest = await fixture.NextCallAsync();
+        rest.Answer.SetResult(" and the second half.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        // One answer, not two, and no seam where the ceiling fell.
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Where(message => message.Role == "Assistant")
+            .ShouldHaveSingleItem().Content.ShouldBe("The first half and the second half.");
+
+        // The model was told to carry on, and the person was not: the instruction exists only in
+        // the context the agent assembles, never in the chat it stores.
+        rest.Request.ContextMessages![^1].Content.ShouldContain("cut off at the output token limit");
+        chat.Messages.ShouldAllBe(message => !message.Content.Contains("cut off at the output token limit"));
+    }
+
+    [Fact]
+    public async Task AnswersThatEndNormallyShouldNotBeContinued()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Answer briefly"));
+
+        var only = await fixture.NextCallAsync();
+        only.FinishReason = "stop";
+        only.Answer.SetResult("Short.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Where(message => message.Role == "Assistant")
+            .ShouldHaveSingleItem().Content.ShouldBe("Short.");
+    }
+
     private sealed record Call(ChatCompletionRequest Request, TaskCompletionSource<string> Answer)
     {
         public IReadOnlyList<ChatToolCall>? ToolCalls { get; set; }
@@ -917,6 +957,9 @@ public sealed class ChatExecutionTests
 
         /// <summary>Completes once <see cref="Prelude"/> has been yielded to the agent.</summary>
         public TaskCompletionSource<bool> PreludeStreamed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>What the stream reports as its reason for stopping; "length" for a cut-off answer.</summary>
+        public string? FinishReason { get; set; }
     }
     private sealed class Completion : IChatCompletionClient
     {
@@ -949,7 +992,7 @@ public sealed class ChatExecutionTests
                 await release.Task;
                 throw;
             }
-            yield return new ChatCompletionChunk(content, ToolCalls: call.ToolCalls);
+            yield return new ChatCompletionChunk(content, ToolCalls: call.ToolCalls, FinishReason: call.FinishReason);
         }
 
         public Task<bool> DelayCancellation()

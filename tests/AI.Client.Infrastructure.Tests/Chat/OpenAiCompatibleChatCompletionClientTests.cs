@@ -1,4 +1,4 @@
-namespace AI.Client.Infrastructure.Tests.Chat;
+﻿namespace AI.Client.Infrastructure.Tests.Chat;
 
 using AI.Client.Contracts.Chat;
 using AI.Client.Infrastructure.Chat;
@@ -194,6 +194,28 @@ public class OpenAiCompatibleChatCompletionClientTests
 
         capturedContent.ShouldNotBeNull();
         capturedContent.ShouldNotContain("\"tools\"");
+    }
+
+    [Fact]
+    public async Task ShouldReportWhatTheEndpointRefusedWithSoWaitingCanBeDecided()
+    {
+        var response = CreateResponse(HttpStatusCode.TooManyRequests, """{"error":{"message":"rate limited"}}""");
+        response.Headers.Add("Retry-After", "7");
+        _handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(response);
+
+        var error = await Should.ThrowAsync<ChatEndpointException>(async () =>
+        {
+            await foreach (var _ in CreateInstance().StreamAsync(
+                new ChatCompletionRequest("https://llm.example/v1", "test-model", null, "Hi"),
+                CancellationToken.None)) { }
+        });
+
+        error.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
+        error.RetryAfter.ShouldBe(TimeSpan.FromSeconds(7));
+        error.Message.ShouldContain("rate limited");
     }
 
     private OpenAiCompatibleChatCompletionClient CreateInstance() =>

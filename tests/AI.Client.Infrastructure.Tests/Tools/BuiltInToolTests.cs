@@ -1,4 +1,4 @@
-﻿using AI.Client.Mcp.BuiltIn;
+using AI.Client.Mcp.BuiltIn;
 using AI.Client.Mcp.BuiltIn.Grants;
 using AI.Client.Mcp.BuiltIn.Process;
 using AI.Client.Mcp.BuiltIn.Web;
@@ -59,7 +59,7 @@ public sealed class BuiltInToolTests
         [
             "process_run", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "list_directory",
             "directory_tree", "search_files", "grep_files", "get_file_info", "write_file", "edit_file", "create_directory",
-            "move_file"
+            "move_file", "delete_file", "delete_directory"
         ], ignoreOrder: true);
         var tool = session.Tools.Single(item => item.OriginalName == "process_run");
         tool.SchemaHash.Length.ShouldBe(64);
@@ -285,6 +285,106 @@ public sealed class BuiltInToolTests
             // before this fix, \uXXXX-per-character escaping (applied twice) alone made it well
             // over 12x the source text's length. This bound only needs to rule that out.
             result.ModelContent.Length.ShouldBeLessThan(text.Length * 4);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ShouldDeleteFilesAndDirectoriesWithinGrantOverStdio()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-delete").FullName;
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+                [new ToolDirectoryGrant(root, true, ["read", "write", "edit", "delete"])], ToolRunContext.None, timeout.Token);
+            var token = timeout.Token;
+
+            var directory = Path.Combine(root, "sub");
+            var file = Path.Combine(directory, "sample.txt");
+            (await Structured(session, "create_directory", new { path = directory }, token))
+                .GetProperty("created").GetBoolean().ShouldBeTrue();
+            (await Structured(session, "write_file", new { path = file, content = "alpha\n" }, token))
+                .GetProperty("created").GetBoolean().ShouldBeTrue();
+
+            // The size is reported for the file that was removed, not for whatever is left behind.
+            var deleted = await Structured(session, "delete_file", new { path = file }, token);
+            deleted.GetProperty("deleted").GetBoolean().ShouldBeTrue();
+            deleted.GetProperty("bytes").GetInt64().ShouldBe(6);
+            File.Exists(file).ShouldBeFalse();
+            // A second call has nothing left to remove, and says so instead of claiming success.
+            (await Structured(session, "delete_file", new { path = file }, token))
+                .GetProperty("deleted").GetBoolean().ShouldBeFalse();
+
+            // Each tool owns one kind of path and points at the other one rather than guessing.
+            (await Structured(session, "delete_file", new { path = directory }, token))
+                .GetProperty("error").GetString()!.ShouldContain("Use delete_directory");
+            (await Structured(session, "delete_file", new { path = Path.Combine(root, "absent.txt") }, token))
+                .GetProperty("error").GetString().ShouldBe("File does not exist.");
+            var plain = Path.Combine(root, "plain.txt");
+            File.WriteAllText(plain, "plain");
+            (await Structured(session, "delete_directory", new { path = plain }, token))
+                .GetProperty("error").GetString()!.ShouldContain("Use delete_file");
+            File.Exists(plain).ShouldBeTrue();
+            (await Structured(session, "delete_directory", new { path = Path.Combine(root, "absent") }, token))
+                .GetProperty("error").GetString().ShouldBe("Directory does not exist.");
+
+            // Without `recursive` a non-empty directory is refused and stays where it is.
+            var nested = Path.Combine(directory, "nested");
+            (await Structured(session, "create_directory", new { path = nested }, token))
+                .GetProperty("created").GetBoolean().ShouldBeTrue();
+            File.WriteAllText(Path.Combine(nested, "keep.txt"), "keep");
+            (await Structured(session, "delete_directory", new { path = directory }, token))
+                .GetProperty("error").GetString()!.ShouldContain("recursive: true");
+            Directory.Exists(directory).ShouldBeTrue();
+            File.Exists(Path.Combine(nested, "keep.txt")).ShouldBeTrue();
+
+            var recursive = await Structured(session, "delete_directory", new { path = directory, recursive = true }, token);
+            recursive.GetProperty("deleted").GetBoolean().ShouldBeTrue();
+            recursive.GetProperty("recursive").GetBoolean().ShouldBeTrue();
+            Directory.Exists(directory).ShouldBeFalse();
+
+            var empty = Path.Combine(root, "empty");
+            (await Structured(session, "create_directory", new { path = empty }, token))
+                .GetProperty("created").GetBoolean().ShouldBeTrue();
+            (await Structured(session, "delete_directory", new { path = empty }, token))
+                .GetProperty("deleted").GetBoolean().ShouldBeTrue();
+            Directory.Exists(empty).ShouldBeFalse();
+
+            // The grant boundary applies to deletion exactly as it does to writing.
+            var outside = Path.Combine(Path.GetTempPath(), "ai-client-delete-outside.txt");
+            File.WriteAllText(outside, "no");
+            try
+            {
+                (await Structured(session, "delete_file", new { path = outside }, token))
+                    .GetProperty("error").GetString()!.ShouldContain("No directory grant");
+                File.Exists(outside).ShouldBeTrue();
+            }
+            finally { File.Delete(outside); }
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ShouldRefuseDeletionUnderAGrantWithoutTheDeleteCapability()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-delete-capability").FullName;
+        try
+        {
+            var file = Path.Combine(root, "sample.txt");
+            File.WriteAllText(file, "alpha");
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            // Read/write is not delete: an ordinary editing grant must not be able to unlink a file.
+            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+                [new ToolDirectoryGrant(root, true, ["read", "write", "edit"])], ToolRunContext.None, timeout.Token);
+            var token = timeout.Token;
+
+            (await Structured(session, "delete_file", new { path = file }, token))
+                .GetProperty("error").GetString()!.ShouldContain("No directory grant");
+            (await Structured(session, "delete_directory", new { path = root, recursive = true }, token))
+                .GetProperty("error").GetString()!.ShouldContain("No directory grant");
+            File.Exists(file).ShouldBeTrue();
         }
         finally { Directory.Delete(root, true); }
     }

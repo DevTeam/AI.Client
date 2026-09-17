@@ -40,6 +40,18 @@ public class BuiltInToolPresentationTests
         Call("edit_file", """{"path":"/a"}""").Safety.ShouldBe(ToolSafety.Destructive);
         Call("write_file", """{"path":"/a"}""").Safety.ShouldBe(ToolSafety.Destructive);
         Call("create_directory", """{"path":"/a"}""").Safety.ShouldBe(ToolSafety.Mutating);
+        Call("delete_file", """{"path":"/a"}""").Safety.ShouldBe(ToolSafety.Destructive);
+        Call("delete_directory", """{"path":"/a"}""").Safety.ShouldBe(ToolSafety.Destructive);
+    }
+
+    [Fact]
+    public void ShouldSayWhenADirectoryDeleteTakesTheWholeSubtreeWithIt()
+    {
+        // The destructive flag is on the tool either way; the row should tell the two calls apart.
+        Call("delete_directory", """{"path":"/src/gen","recursive":true}""").Title.ShouldBe("Delete directory (recursive)");
+        Call("delete_directory", """{"path":"/src/gen","recursive":false}""").Title.ShouldBe("Delete directory");
+        Call("delete_directory", """{"path":"/src/gen"}""").Title.ShouldBe("Delete directory");
+        Call("delete_directory", """{"path":"/src/gen"}""").Detail.ShouldBe("src/gen");
     }
 
     [Fact]
@@ -66,6 +78,13 @@ public class BuiltInToolPresentationTests
             .Summary.ShouldBe("2 edits");
         Result("create_directory", "{}", """{"path":"/a","created":false}""")
             .Summary.ShouldBe("Already existed");
+        // A byte count below 1 KB keeps this assertion independent of the machine's culture.
+        Result("delete_file", "{}", """{"path":"/a.cs","deleted":true,"bytes":512}""")
+            .Summary.ShouldBe("Deleted · 512 B");
+        Result("delete_directory", "{}", """{"path":"/src","deleted":true,"recursive":false}""")
+            .Summary.ShouldBe("Deleted");
+        Result("delete_directory", "{}", """{"path":"/src","deleted":true,"recursive":true}""")
+            .Summary.ShouldBe("Deleted, recursive");
     }
 
     [Fact]

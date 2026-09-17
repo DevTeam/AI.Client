@@ -19,6 +19,8 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
         ["edit_file"] = ["path"],
         ["create_directory"] = ["path"],
         ["move_file"] = ["source", "destination"],
+        ["delete_file"] = ["path"],
+        ["delete_directory"] = ["path"],
     };
 
     /// <summary>Past this size a file is compared by existence only; reading it twice is not worth it.</summary>

@@ -66,6 +66,11 @@ public sealed record CreateDirectoryResult(string Path, bool Created, string? Er
 
 public sealed record MoveFileResult(string Source, string Destination, string? Error);
 
+/// <summary><paramref name="Bytes"/> is the size the file had just before it was removed.</summary>
+public sealed record DeleteFileResult(string Path, bool Deleted, long Bytes, string? Error);
+
+public sealed record DeleteDirectoryResult(string Path, bool Deleted, bool Recursive, string? Error);
+
 public sealed record AllowedDirectory(string Root, bool Recursive, string[] Capabilities);
 
 public sealed record AllowedDirectoriesResult(AllowedDirectory[] Directories);

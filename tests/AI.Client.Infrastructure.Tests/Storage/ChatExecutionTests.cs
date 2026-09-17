@@ -659,6 +659,109 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task SendingQueuedMessageNowShouldInterruptAndPromoteTheSelectedMessage()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.StreamPreludeAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Slow question"), "Thinking");
+        var firstQueuedId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), firstQueuedId, "First queued"));
+        var selectedId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), selectedId, "Send this now"));
+
+        var snapshot = await fixture.Dispatcher.SendQueuedNowAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            selectedId, CancellationToken.None, Guid.NewGuid());
+
+        snapshot!.Queue.Select(item => item.Id).ShouldBe([selectedId, firstQueuedId]);
+        var selected = await fixture.NextCallAsync();
+        selected.Request.Message.ShouldBe("Send this now");
+        selected.Answer.SetResult("Sent first");
+        await fixture.WaitAsync(run => run.Queue.Count == 1);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.ShouldContain(message => message.Content == "Thinking" && message.IsIncomplete);
+    }
+
+    [Fact]
+    public async Task SendNowFromComposerShouldKeepCompletedToolBatchesValid()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await StartRunAfterTwoToolBatchesAsync(fixture);
+
+        var urgent = await fixture.SubmitAsync(new SubmitChatMessageRequest(
+            Guid.NewGuid(), Guid.NewGuid(), "Composer urgent", ChatSubmitMode.SendNow));
+
+        urgent.Queue.ShouldHaveSingleItem().Content.ShouldBe("Composer urgent");
+        var call = await fixture.NextCallAsync();
+        AssertValidToolContext(call.Request.ContextMessages!, "Composer urgent");
+        call.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task SendNowFromQueueShouldKeepCompletedToolBatchesValid()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await StartRunAfterTwoToolBatchesAsync(fixture);
+        var ordinaryId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), ordinaryId, "Ordinary queued"));
+        var urgentId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), urgentId, "Queued urgent"));
+
+        var urgent = await fixture.Dispatcher.SendQueuedNowAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            urgentId, CancellationToken.None, Guid.NewGuid());
+
+        urgent!.Queue.Select(item => item.Id).ShouldBe([urgentId, ordinaryId]);
+        var call = await fixture.NextCallAsync();
+        AssertValidToolContext(call.Request.ContextMessages!, "Queued urgent");
+        call.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Queue.Count == 1);
+    }
+
+    private static async Task StartRunAfterTwoToolBatchesAsync(Fixture fixture)
+    {
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Use several tools"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls =
+        [
+            new ChatToolCall("batch-1-call-1", "mcp_built_in__process_run", "{}"),
+            new ChatToolCall("batch-1-call-2", "mcp_built_in__process_run", "{}")
+        ];
+        first.Answer.SetResult("");
+        var second = await fixture.NextCallAsync();
+        second.ToolCalls =
+        [
+            new ChatToolCall("batch-2-call-1", "mcp_built_in__process_run", "{}"),
+            new ChatToolCall("batch-2-call-2", "mcp_built_in__process_run", "{}")
+        ];
+        second.Answer.SetResult("");
+        await fixture.NextCallAsync();
+        fixture.Tools.CallCount.ShouldBe(4);
+    }
+
+    private static void AssertValidToolContext(IReadOnlyList<ChatCompletionMessage> context, string lastUserMessage)
+    {
+        var expectedResults = new Queue<string>();
+        foreach (var message in context)
+        {
+            if (expectedResults.Count > 0)
+            {
+                message.Role.ShouldBe("tool");
+                message.ToolCallId.ShouldBe(expectedResults.Dequeue());
+            }
+            else
+            {
+                message.Role.ShouldNotBe("tool");
+            }
+
+            foreach (var call in message.ToolCalls ?? []) expectedResults.Enqueue(call.Id);
+        }
+
+        expectedResults.ShouldBeEmpty();
+        context[^1].Role.ShouldBe("user");
+        context[^1].Content.ShouldBe(lastUserMessage);
+    }
+
+    [Fact]
     public async Task ClearingShouldRemoveWhatIsWaitingAndLeaveTheRunningMessageAlone()
     {
         await using var fixture = await Fixture.CreateAsync();

@@ -249,6 +249,23 @@ public sealed class ChatRunDispatcher(
                 runtime.State.Remove(messageId);
         }, operationId, cancellationToken);
 
+    /// <summary>
+    /// Abandons the command currently being generated and immediately starts the selected waiting
+    /// command. Other prepared commands keep their relative order behind it.
+    /// </summary>
+    public async Task<ChatRunSnapshot?> SendQueuedNowAsync(Guid projectId, Guid chatId, Guid branchId, Guid messageId,
+        CancellationToken cancellationToken, Guid? operationId = null)
+    {
+        await InterruptBranchAsync(projectId, chatId, branchId, operationId ?? Guid.Empty, cancellationToken);
+        return await MutateAsync(projectId, chatId, branchId, runtime =>
+        {
+            if (runtime.State.Queue.All(item => item.Id != messageId || item.Stage != QueuedRunStage.Prepared))
+                throw new InvalidOperationException("This message is no longer waiting in the queue.");
+            runtime.State.DropCommitted();
+            runtime.State.Move(messageId, 0);
+        }, operationId, cancellationToken);
+    }
+
     private Task<ChatRunSnapshot?> MutateAsync(Guid projectId, Guid chatId, Guid branchId, Action<Runtime> mutate,
         Guid? operationId, CancellationToken token) =>
         MutateAsync(projectId, chatId, branchId, (runtime, _) => mutate(runtime), operationId, token);

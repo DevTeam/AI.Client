@@ -2058,6 +2058,9 @@ body {
 .queue-item .icon-action { width: 1.4rem; height: 1.4rem; }
 .queue-item .icon-action .app-icon { width: .85rem; height: .85rem; }
 .queue-item .queue-send-now:hover { color: #f2c94c; }
+.queue-busy { pointer-events: none; }
+.queue-transition-status { display: inline-flex; align-items: center; gap: .35rem; color: #d7bc67; }
+.queue-transition-status .app-icon { width: .9rem; height: .9rem; }
 .queue-actions { justify-content: flex-end; gap: .35rem; flex: 0 0 auto; }
 .queue-action-button {
     display: inline-grid;
@@ -2137,13 +2140,24 @@ body {
 }
 
 .fork-mode .icon-action {
+    display: inline-grid;
     flex: 0 0 auto;
+    align-self: center;
     width: 1.7rem;
     height: 1.7rem;
     margin-left: auto;
     border-color: transparent;
     background: transparent;
+    line-height: 0;
+    place-items: center;
 }
+
+.fork-mode .icon-action .app-icon { display: block; margin: auto; }
+
+/* SVGs are geometrically centred, while the font's visual centre sits lower than its line box.
+   Nudge both glyphs onto the text's optical axis so the close button no longer floats above it. */
+.fork-mode > .app-icon,
+.fork-mode .icon-action { transform: translateY(.25rem); }
 
 .replace-mode {
     color: #ffabab;

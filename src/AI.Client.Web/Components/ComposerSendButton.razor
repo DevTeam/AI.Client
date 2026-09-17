@@ -1,6 +1,6 @@
 <span class="composer-send-wrapper">
     <button class="composer-send" type="button" disabled="@Disabled" aria-label="@(ActiveMode == SendMode.SendNow ? "Interrupt and send now" : "Send message")" @onclick="OnClick">
-        <AppIcon Name="@(ActiveMode == SendMode.SendNow ? "zap" : "arrow-up")" />
+        <AppIcon Name="@(Busy ? "spinner" : ActiveMode == SendMode.SendNow ? "zap" : "arrow-up")" Class="@(Busy ? "tool-row-spinner" : null)" />
     </button>
     <span class="composer-send-tooltip" role="tooltip">
         <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Send ? "active" : string.Empty)"><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send</span></span>
@@ -16,6 +16,9 @@
 
     [Parameter]
     public bool Disabled { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
 
     [Parameter, EditorRequired]
     public EventCallback OnClick { get; set; }

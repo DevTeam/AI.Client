@@ -22,20 +22,31 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
     private async Task<WorkspaceChangeTracker> StartAsync(params string[] roots)
     {
         var tracker = new WorkspaceChangeTracker();
-        await tracker.BeginRunAsync(_run,
-            (roots.Length == 0 ? [_root] : roots).Select(root => new ToolDirectoryGrant(root, true, ["edit"])).ToArray(),
-            TestContext.Current.CancellationToken);
+        await BeginAsync(tracker, _run, null, roots);
         return tracker;
     }
 
-    private async Task EditAsync(WorkspaceChangeTracker tracker, string tool, string path, Func<Task> change)
+    private Task BeginAsync(WorkspaceChangeTracker tracker, WorkspaceRunKey run, WorkspaceRunKey? parent,
+        params string[] roots) =>
+        tracker.BeginRunAsync(run,
+            (roots.Length == 0 ? [_root] : roots).Select(root => new ToolDirectoryGrant(root, true, ["edit"])).ToArray(),
+            parent, TestContext.Current.CancellationToken);
+
+    private Task EditAsync(WorkspaceChangeTracker tracker, string tool, string path, Func<Task> change) =>
+        EditAsync(tracker, _run, tool, path, change);
+
+    private static async Task EditAsync(
+        WorkspaceChangeTracker tracker, WorkspaceRunKey run, string tool, string path, Func<Task> change)
     {
         var descriptor = BuiltIn(tool);
         var arguments = JsonSerializer.Serialize(new { path });
-        await tracker.RecordIntentAsync(_run, descriptor, arguments, TestContext.Current.CancellationToken);
+        await tracker.RecordIntentAsync(run, descriptor, arguments, TestContext.Current.CancellationToken);
         await change();
-        await tracker.RecordEffectAsync(_run, descriptor, arguments, TestContext.Current.CancellationToken);
+        await tracker.RecordEffectAsync(run, descriptor, arguments, TestContext.Current.CancellationToken);
     }
+
+    /// <summary>A run delegated from <see cref="_run"/>, as a subtask is.</summary>
+    private WorkspaceRunKey Child() => _run with { BranchId = Guid.CreateVersion7() };
 
     private string Path(string name) => System.IO.Path.Combine(_root, name);
 
@@ -209,4 +220,83 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
         change.Confidence.ShouldBe(FileChangeConfidence.Approximate);
     }
 
+    [Fact]
+    public async Task ShouldCoverASubtaskStillRunningInTheCallersSnapshot()
+    {
+        var file = Path("delegated.txt");
+        var tracker = await StartAsync();
+        var child = Child();
+        await BeginAsync(tracker, child, _run);
+
+        await EditAsync(tracker, child, "write_file", file, () => File.WriteAllTextAsync(file, "a\nb"));
+
+        // No CompleteRunAsync: the caller is shown the total while the subtask is still working.
+        var change = (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).Files.ShouldHaveSingleItem();
+        change.Path.ShouldBe(file);
+        change.Additions.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task ShouldKeepASubtasksChangesAfterItHasFinished()
+    {
+        var file = Path("delegated.txt");
+        var tracker = await StartAsync();
+        var child = Child();
+        await BeginAsync(tracker, child, _run);
+        await EditAsync(tracker, child, "write_file", file, () => File.WriteAllTextAsync(file, "a\nb"));
+
+        await tracker.CompleteRunAsync(child, TestContext.Current.CancellationToken);
+
+        var change = (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).Files.ShouldHaveSingleItem();
+        change.Additions.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task ShouldRollUpChangesThroughNestedSubtasks()
+    {
+        var file = Path("deep.txt");
+        var tracker = await StartAsync();
+        var child = Child();
+        var grandchild = Child();
+        await BeginAsync(tracker, child, _run);
+        await BeginAsync(tracker, grandchild, child);
+
+        await EditAsync(tracker, grandchild, "write_file", file, () => File.WriteAllTextAsync(file, "a"));
+
+        (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).Files.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task ShouldMeasureAFileTouchedByBothTheCallerAndASubtaskFromTheCallersBaseline()
+    {
+        var file = Path("shared.txt");
+        await File.WriteAllTextAsync(file, "one", TestContext.Current.CancellationToken);
+        var tracker = await StartAsync();
+        await EditAsync(tracker, "edit_file", file, () => File.WriteAllTextAsync(file, "one\ntwo"));
+        var child = Child();
+        await BeginAsync(tracker, child, _run);
+
+        await EditAsync(tracker, child, "edit_file", file, () => File.WriteAllTextAsync(file, "one\ntwo\nthree"));
+
+        // One row, and both added lines counted: measuring from the subtask's own baseline would
+        // report a single addition and lose the caller's.
+        var change = (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).Files.ShouldHaveSingleItem();
+        change.Additions.ShouldBe(2);
+        change.Deletions.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ShouldNotCoverASubtaskOfAnotherRun()
+    {
+        var file = Path("elsewhere.txt");
+        var tracker = await StartAsync();
+        var stranger = Child();
+        var child = Child();
+        await BeginAsync(tracker, stranger, null);
+        await BeginAsync(tracker, child, stranger);
+
+        await EditAsync(tracker, child, "write_file", file, () => File.WriteAllTextAsync(file, "a"));
+
+        (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).IsEmpty.ShouldBeTrue();
+    }
 }

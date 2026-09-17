@@ -22,5 +22,8 @@ public interface IChatAgent
         CancellationToken cancellationToken,
         // Whether a person can be reached from this run. A background run says so once here rather
         // than refusing tool by tool, because "nobody is watching" is a property of the run.
-        bool interactive = true);
+        bool interactive = true,
+        // The branch of the run that delegated this one, when one did. It buys nothing for the run
+        // itself: it is what lets the delegating turn report a file total that includes this work.
+        Guid? parentBranchId = null);
 }

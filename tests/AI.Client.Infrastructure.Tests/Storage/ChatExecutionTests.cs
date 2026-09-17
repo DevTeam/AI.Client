@@ -1287,7 +1287,8 @@ public sealed class ChatExecutionTests
 
         public void Enqueue(WorkspaceChangeSet changes) => _queued.Enqueue(changes);
 
-        public Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, CancellationToken cancellationToken)
+        public Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, WorkspaceRunKey? parent,
+            CancellationToken cancellationToken)
         {
             _current = _queued.TryDequeue(out var changes) ? changes : WorkspaceChangeSet.Empty;
             return Task.CompletedTask;

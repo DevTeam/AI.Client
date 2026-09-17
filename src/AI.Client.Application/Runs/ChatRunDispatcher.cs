@@ -58,6 +58,20 @@ public sealed class ChatRunDispatcher(
             };
             _runtimes.TryAdd(new RunKey(state.ProjectId, state.ChatId, state.BranchId), runtime);
         }
+
+        // Older builds left replacement siblings behind after moving the branch head. Once every
+        // persisted run has been restored, its queue gives us the complete set of anchors that must
+        // survive; anything else no branch reaches is abandoned history and can be collected.
+        foreach (var ((projectId, chatId), loadedChat) in loadedChats)
+        {
+            if (loadedChat is null) continue;
+            using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+            var pruned = await chatMutations.PruneMessagesCoreAsync(projectId, chatId,
+                RetainedMessageIds(chatId), cancellationToken);
+            if (pruned is null || pruned.Revision == loadedChat.Revision) continue;
+            foreach (var runtime in _runtimes.Values.Where(item => item.State.ChatId == chatId))
+                runtime.Snapshot = Snapshot(runtime.State, pruned);
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -357,7 +371,8 @@ public sealed class ChatRunDispatcher(
                         chat = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
                             new AppendChatMessageRequest(queued.Id, parent, "User", queued.Content, chat.Revision,
                                 BranchId: runtime.State.BranchId, ParentBranchId: queued.ParentBranchId,
-                                ReplaceSourceId: queued.ReplaceSourceId), token)
+                                ReplaceSourceId: queued.ReplaceSourceId),
+                            RetainedMessageIds(chat.Id, queued.Id), token)
                             ?? throw new InvalidOperationException("Message conflict.");
                     }
                     runtime.State.MarkUserCommitted(queued.Id);
@@ -394,7 +409,8 @@ public sealed class ChatRunDispatcher(
                         chat = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
                             new AppendChatMessageRequest(replyId, runtime.ToolHead ?? queued.Id, "Assistant", runtime.State.StreamingContent, chat.Revision,
                                 BranchId: runtime.State.BranchId,
-                                WorkspaceChanges: workspaceChanges.IsEmpty ? null : workspaceChanges), token)
+                                WorkspaceChanges: workspaceChanges.IsEmpty ? null : workspaceChanges),
+                            RetainedMessageIds(chat.Id), token)
                             ?? throw new InvalidOperationException("Response conflict.");
                     runtime.State.Remove(queued.Id);
                     runtime.State.Complete(true);
@@ -588,7 +604,8 @@ public sealed class ChatRunDispatcher(
         var id = Guid.NewGuid();
         chat = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
             new AppendChatMessageRequest(id, runtime.ToolHead, message.Role, message.Content, chat.Revision,
-                BranchId: runtime.State.BranchId, ToolCalls: message.ToolCalls, ToolCallId: message.ToolCallId), token)
+                BranchId: runtime.State.BranchId, ToolCalls: message.ToolCalls, ToolCallId: message.ToolCallId),
+            RetainedMessageIds(chat.Id), token)
             ?? throw new InvalidOperationException("Tool history conflict.");
         runtime.ToolHead = id;
         if (runtime.State.Status == RunStatus.Generating) runtime.State.Start();
@@ -743,7 +760,7 @@ public sealed class ChatRunDispatcher(
             var appended = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
                 new AppendChatMessageRequest(partialId, runtime.ToolHead ?? active, "Assistant",
                     runtime.State.StreamingContent, chat.Revision, IsIncomplete: true,
-                    BranchId: runtime.State.BranchId), CancellationToken.None);
+                    BranchId: runtime.State.BranchId), RetainedMessageIds(chat.Id), CancellationToken.None);
             if (appended is not null) runtime.State.ClearStreaming();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException
@@ -808,12 +825,7 @@ public sealed class ChatRunDispatcher(
             if (chat is null) return new ChatBranchDeleteResult(false, 0, null, null);
             if (chat.Revision != revision) return new ChatBranchDeleteResult(false, chat.Revision, null, null);
             await PauseBranchWorkerAsync(projectId, chatId, branchId, cancellationToken);
-            var retainedMessages = _runtimes.Values
-                .Where(item => item.State.ChatId == chatId && item.State.BranchId != branchId)
-                .SelectMany(item => item.State.Queue.SelectMany(message => new Guid?[]
-                    { message.ParentMessageId, message.ReplaceSourceId, message.Stage == QueuedRunStage.UserCommitted ? message.Id : null })
-                    .Append(item.ToolHead))
-                .OfType<Guid>().ToHashSet();
+            var retainedMessages = RetainedMessageIds(chatId, excludedBranchId: branchId);
             var result = await chatMutations.DeleteBranchAsync(projectId, chatId, branchId, revision, retainedMessages, cancellationToken);
             if (!result.IsDeleted)
             {
@@ -997,12 +1009,20 @@ public sealed class ChatRunDispatcher(
         _ => Contracts.Runs.MessageParentMode.BranchHead
     };
 
-    private HashSet<Guid> RetainedMessageIds(Guid chatId) => _runtimes.Values
-        .Where(item => item.State.ChatId == chatId)
-        .SelectMany(item => item.State.Queue.SelectMany(message => new Guid?[]
-            { message.ParentMessageId, message.ReplaceSourceId, message.Stage == QueuedRunStage.UserCommitted ? message.Id : null })
-            .Append(item.ToolHead))
-        .OfType<Guid>().ToHashSet();
+    private HashSet<Guid> RetainedMessageIds(Guid chatId, Guid? committingMessageId = null, Guid? excludedBranchId = null) =>
+        _runtimes.Values
+            .Where(item => item.State.ChatId == chatId && item.State.BranchId != excludedBranchId)
+            .SelectMany(item => item.State.Queue.SelectMany(message =>
+                {
+                    var committed = message.Stage == QueuedRunStage.UserCommitted || message.Id == committingMessageId;
+                    return new Guid?[]
+                    {
+                        message.ParentMessageId,
+                        committed ? message.Id : message.ReplaceSourceId
+                    };
+                })
+                .Append(item.ToolHead))
+            .OfType<Guid>().ToHashSet();
 
     private static ChatRunState Clone(ChatRunState state) => ChatRunState.Restore(state.ProjectId, state.ChatId, state.BranchId,
         state.Status, state.StreamingContent, state.Error, state.FailureKind, state.HasUnreadResponse, state.Revision,

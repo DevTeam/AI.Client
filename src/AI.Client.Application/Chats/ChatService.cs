@@ -49,13 +49,14 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
     public async Task<ChatDetails?> AppendMessageAsync(Guid projectId, Guid chatId, AppendChatMessageRequest request, CancellationToken cancellationToken)
     {
         using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
-        return await AppendMessageCoreAsync(projectId, chatId, request, cancellationToken);
+        return await AppendMessageCoreAsync(projectId, chatId, request, new HashSet<Guid>(), cancellationToken);
     }
 
     public async Task<ChatDetails?> AppendMessageCoreAsync(
         Guid projectId,
         Guid chatId,
         AppendChatMessageRequest request,
+        IReadOnlySet<Guid> retainedMessageIds,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -82,8 +83,16 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             request.ToolCallId,
             ToDomain(request.WorkspaceChanges));
         if (request.ReplaceSourceId is { } replaceId)
+        {
             stored.Chat.ReplaceInBranch(request.BranchId ?? throw new ArgumentException("A replacement branch is required."),
                 new ChatMessageId(replaceId), message, now);
+            // Replace is destructive by contract: once the replacement and the new branch head
+            // are ready, the abandoned tail is no longer a user-visible version. Prune before the
+            // repository save so either the whole replacement is persisted or the original chat
+            // remains intact. Queued work may still own otherwise unreachable anchors, supplied by
+            // the dispatcher as retained roots.
+            stored.Chat.PruneUnreachableMessages(retainedMessageIds.Select(id => new ChatMessageId(id)));
+        }
         else
             stored.Chat.AddMessage(message, now, request.BranchId, request.ParentBranchId);
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);

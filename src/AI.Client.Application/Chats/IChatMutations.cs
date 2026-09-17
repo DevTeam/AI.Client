@@ -15,9 +15,13 @@ using AI.Client.Contracts.Chats;
 /// </remarks>
 public interface IChatMutations
 {
-    /// <summary>Appends a message. The caller must already hold the chat's lease.</summary>
+    /// <summary>
+    /// Appends a message and, for a replacement, removes the abandoned tail in the same save.
+    /// The caller must already hold the chat's lease.
+    /// </summary>
     Task<ChatDetails?> AppendMessageCoreAsync(
-        Guid projectId, Guid chatId, AppendChatMessageRequest request, CancellationToken cancellationToken);
+        Guid projectId, Guid chatId, AppendChatMessageRequest request, IReadOnlySet<Guid> retainedMessageIds,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Moves a branch head back and drops what the abandoned attempt left behind it. The caller

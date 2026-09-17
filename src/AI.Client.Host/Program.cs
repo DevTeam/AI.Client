@@ -15,10 +15,12 @@ using AI.Client.Infrastructure.Logging;
 using AI.Client.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
+// One value decides both where logs go and where the container writes its data, so the two can
+// never disagree about the storage root.
 var storageLocation = new ProjectStorageLocation();
 builder.Logging.AddProvider(new JsonLineFileLoggerProvider(storageLocation.RootDirectory));
 builder.Services.AddHostedService<ChatRunHostedService>();
-var composition = new Composition();
+var composition = new Composition(storageLocation.RootDirectory);
 builder.Host.UseServiceProviderFactory(composition);
 
 var app = builder.Build();

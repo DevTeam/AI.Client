@@ -27,6 +27,10 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            // The storage root arrives from the entry point, which also hands it to the file logger,
+            // so one instance decides where the application writes instead of two independently
+            // resolved ones that merely happen to agree.
+            .Arg<string>("rootDirectory")
             .Root<IHostDescriptor>()
             .Root<IProjectRepository>()
             .Root<IProjectService>()
@@ -41,7 +45,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             // A root as well as a singleton: minimal APIs only treat a type as a service when the
             // provider says it can resolve it, and otherwise infer it as a request body.
             .Root<IAppDataChangeSignal>()
-            .Singleton<HostDescriptor, ProjectStorageLocation, PhysicalTextFileSystem, ProjectStoragePaths, JsonProjectRepository,
+            .Singleton<HostDescriptor, PhysicalTextFileSystem, ProjectStoragePaths, JsonProjectRepository,
                 Uuid7IdGenerator, SystemClock, ProjectService, ChatStoragePaths, JsonChatRepository, ChatService, ChatSearchService, ChatSynchronization,
                 ProtectedDataUserDataProtector, ChatCompletionSseParser,
                 OpenAiCompatibleChatCompletionClient, ChatEndpoint, GlobalSettingsPaths, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
@@ -59,6 +63,5 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             // Should be last
             .Bind<IToolPresentationAdapter>().As(Lifetime.Singleton).To<GenericToolPresentationAdapter>()
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
-            .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
-            .Transient((ProjectStorageLocation location) => location.RootDirectory);
+            .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
 }

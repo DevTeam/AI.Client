@@ -1279,7 +1279,7 @@ body {
     position: absolute;
     z-index: 5;
     right: 0;
-    bottom: 0.7rem;
+    bottom: 0;
     left: 0;
     display: flex;
     width: 2.25rem;
@@ -1854,6 +1854,16 @@ body {
     background: linear-gradient(to right, rgb(41 41 41 / 0%), rgb(41 41 41) 1.8rem);
 }
 
+/* A short user bubble can be narrower than its four-button toolbar. Keep the bubble sized to its
+   text and let the visible toolbar open into the ample space on its left instead of clipping its
+   first actions. `content-visibility:auto` also applies paint containment, so both constraints
+   have to be relaxed while the toolbar is actually on screen. */
+.workspace-message.user:hover,
+.workspace-message.user:has(:focus-visible) {
+    overflow: visible;
+    content-visibility: visible;
+}
+
 /* Keep the branch control as its own row. The actions are anchored to the article, so without
    this offset they cover the branch trigger as soon as the message is hovered. */
 .workspace-message:has(.message-branch-indicator) .message-actions {
@@ -1893,6 +1903,11 @@ body {
     .message-actions {
         opacity: 1;
         pointer-events: auto;
+    }
+
+    .workspace-message.user {
+        overflow: visible;
+        content-visibility: visible;
     }
 }
 

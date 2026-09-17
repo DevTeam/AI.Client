@@ -127,10 +127,19 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
                     Confidence: before.Text is null ? FileChangeConfidence.Approximate : FileChangeConfidence.Measured);
 
             if (!before.Exists && after.Exists)
-                return new FileChange(path, FileChangeKind.Added, after.Text is { } added ? Lines(added) : null, 0,
-                    Diff: null,
-                    IsBinary: after.Text is null,
-                    Confidence: after.Text is null ? FileChangeConfidence.Approximate : FileChangeConfidence.Measured);
+            {
+                // A created file is a comparison against nothing, not a case without one: every
+                // line is an addition, and the run is the only chance to show them, so the diff is
+                // built here rather than left null for the card to explain away.
+                if (after.Text is not { } added)
+                    return new FileChange(path, FileChangeKind.Added, null, 0,
+                        IsBinary: true, Confidence: FileChangeConfidence.Approximate);
+
+                var creation = LineDiff.Compare(null, added);
+                return new FileChange(path, FileChangeKind.Added, creation.Additions, 0,
+                    Diff: string.IsNullOrEmpty(creation.Diff) ? null : creation.Diff,
+                    Confidence: creation.IsExact ? FileChangeConfidence.Measured : FileChangeConfidence.Approximate);
+            }
 
             if (before.Text is null || after.Text is null)
                 // Unreadable or oversized on at least one side: report the change, not fake counts.

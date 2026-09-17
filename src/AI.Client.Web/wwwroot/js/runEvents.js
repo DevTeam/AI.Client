@@ -54,6 +54,18 @@ export function watchFocus(dotNetReference) {
     return { dispose: () => { window.removeEventListener("focus", handler); window.removeEventListener("blur", handler); document.removeEventListener("visibilitychange", handler); } };
 }
 
+export function watchEscape(dotNetReference) {
+    const locallyHandled = ".sidebar-search-input, .sidebar-inline-editor, .queue-item input, .project-settings-modal, .message-branch-indicator";
+    const handler = event => {
+        if (event.key !== "Escape" || event.repeat || event.defaultPrevented) return;
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest(locallyHandled)) return;
+        void dotNetReference.invokeMethodAsync("OnEscapePressed");
+    };
+    document.addEventListener("keydown", handler);
+    return { dispose: () => document.removeEventListener("keydown", handler) };
+}
+
 export function watchQueueDrag(dotNetReference) {
     let source = null;
     let target = null;

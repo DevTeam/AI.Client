@@ -349,6 +349,14 @@
         _confirmGlobalApprovalId = null;
         _renderedSelectedRun = null;
     }
+
+    public bool CancelTransientUi()
+    {
+        if (_confirmGlobalApprovalId is null) return false;
+        CancelGlobalApproval();
+        return true;
+    }
+
     private async Task DecideToolAsync(ChatRunSnapshot run, Guid approvalId, ToolApprovalAction action)
     {
         _decidingApproval = approvalId;

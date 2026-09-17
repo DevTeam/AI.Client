@@ -1,12 +1,23 @@
 <span class="composer-send-wrapper">
-    <button class="composer-send" type="button" disabled="@Disabled" aria-label="@(ActiveMode == SendMode.SendNow ? "Interrupt and send now" : "Send message")" @onclick="OnClick">
-        <AppIcon Name="@(Busy ? "spinner" : ActiveMode == SendMode.SendNow ? "zap" : "arrow-up")" Class="@(Busy ? "tool-row-spinner" : null)" />
+    <button class="composer-send" type="button" disabled="@Disabled" aria-label="@GetAriaLabel()" @onclick="OnClick">
+        <AppIcon Name="@GetIcon()" Class="@(Busy ? "tool-row-spinner" : null)" />
     </button>
     <span class="composer-send-tooltip" role="tooltip">
-        <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Send ? "active" : string.Empty)"><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send</span></span>
-        <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Queue ? "active" : string.Empty)"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Queue for later</span></span>
-        <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Fork ? "active" : string.Empty)"><kbd>Ctrl</kbd><span>+</span><kbd>Alt</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send in a forked session</span></span>
-        <span class="composer-send-tooltip-row @(ActiveMode == SendMode.SendNow ? "active" : string.Empty)"><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Interrupt and send now</span></span>
+        @if (ActiveMode == SendMode.EditFork)
+        {
+            <span class="composer-send-tooltip-row active"><kbd>Enter</kbd><span class="composer-send-tooltip-label">Create edited branch</span></span>
+        }
+        else if (ActiveMode == SendMode.Replace)
+        {
+            <span class="composer-send-tooltip-row active"><kbd>Enter</kbd><span class="composer-send-tooltip-label">Replace branch now</span></span>
+        }
+        else
+        {
+            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Send ? "active" : string.Empty)"><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send</span></span>
+            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Queue ? "active" : string.Empty)"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Queue for later</span></span>
+            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Fork ? "active" : string.Empty)"><kbd>Ctrl</kbd><span>+</span><kbd>Alt</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send in a forked session</span></span>
+            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.SendNow ? "active" : string.Empty)"><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Interrupt and send now</span></span>
+        }
     </span>
 </span>
 
@@ -23,5 +34,21 @@
     [Parameter, EditorRequired]
     public EventCallback OnClick { get; set; }
 
-    public enum SendMode { Send, Queue, Fork, SendNow }
+    private string GetAriaLabel() => ActiveMode switch
+    {
+        SendMode.SendNow => "Interrupt and send now",
+        SendMode.EditFork => "Create edited branch",
+        SendMode.Replace => "Replace branch now",
+        _ => "Send message"
+    };
+
+    private string GetIcon() => Busy ? "spinner" : ActiveMode switch
+    {
+        SendMode.SendNow => "zap",
+        SendMode.EditFork => "fork",
+        SendMode.Replace => "edit-replace",
+        _ => "arrow-up"
+    };
+
+    public enum SendMode { Send, Queue, Fork, SendNow, EditFork, Replace }
 }

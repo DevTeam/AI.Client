@@ -188,7 +188,7 @@
                     <div class="message-actions">
                         <button class="icon-action" type="button" title="Copy Markdown" aria-label="Copy Markdown" @onclick="() => OnCopyMessage.InvokeAsync(message.Content)"><AppIcon Name="copy" /></button>
                         <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
-                        @if (message.Role == "User") { <button class="icon-action" type="button" title="Edit and branch" aria-label="Edit and branch" @onclick="() => OnEditAndBranch.InvokeAsync(message)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="@(IsBranchGenerating() ? "Can't replace while a response is being generated on this branch" : "Edit and replace branch")" aria-label="Edit and replace branch" disabled="@IsBranchGenerating()" @onclick="() => OnEditAndReplaceBranch.InvokeAsync(message)"><AppIcon Name="edit-replace" /></button> }
+                        @if (message.Role == "User") { <button class="icon-action" type="button" title="Edit and branch" aria-label="Edit and branch" @onclick="() => OnEditAndBranch.InvokeAsync(message)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Edit and replace branch" aria-label="Edit and replace branch" @onclick="() => OnEditAndReplaceBranch.InvokeAsync(message)"><AppIcon Name="edit-replace" /></button> }
                     </div>
                     @renderBranchPicker(message)
                 </article>

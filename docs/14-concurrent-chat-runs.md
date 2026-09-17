@@ -1,6 +1,6 @@
 # Параллельные запуски
 
-SubmitChatMessageRequest передаёт OperationId, MessageId, Content и режим Send, Queue, Fork, Replace или SendNow. BranchId определяет ветку, ParentMessageId — точку ответвления, ReplaceSourceId — корень замены. ExpectedRevision защищает замену, HoldInQueue откладывает выполнение.
+SubmitChatMessageRequest передаёт OperationId, MessageId, Content и режим Send, Queue, Fork, Replace или SendNow. BranchId определяет ветку, ParentMessageId — точку ответвления, ReplaceSourceId — корень замены. Режим Queue откладывает выполнение; отдельного параллельного флага состояния очереди нет.
 
 Повторный OperationId не добавляет команду второй раз. Очередь сохраняется до фиксации ответа. Генерации веток параллельны, изменения чата проходят через ChatSynchronization. HTTP-запрос не удерживает блокировку.
 

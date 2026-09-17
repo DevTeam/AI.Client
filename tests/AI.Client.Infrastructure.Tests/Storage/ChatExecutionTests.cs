@@ -434,6 +434,30 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task EditingRootIntoForkShouldCreateAnIndependentRootBranch()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var original = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), original, "Original root"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Original reply");
+        var main = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var forkId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), forkId, "Alternative root",
+            ChatSubmitMode.Fork, BranchId: fixture.ChatId, ParentMode: MessageParentMode.Root));
+        var fork = await fixture.NextCallAsync();
+        fork.Request.ContextMessages!.Select(message => message.Content).ShouldBe(["Alternative root"]);
+        fork.Answer.SetResult("Alternative reply");
+        await fixture.WaitAsync(run => run.BranchId == forkId && run.Status == ChatRunStatus.Completed);
+
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var branches = chat!.Branches!;
+        branches.Single(branch => branch.Id == fixture.ChatId).HeadMessageId.ShouldBe(main.HeadMessageId);
+        ChatContext.Get(chat, branches.Single(branch => branch.Id == forkId).HeadMessageId!.Value)
+            .Select(message => message.Content).ShouldBe(["Alternative root", "Alternative reply"]);
+    }
+
+    [Fact]
     public async Task ConcurrentBranchesShouldNotShareTheirReplyParent()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -756,6 +780,28 @@ public sealed class ChatExecutionTests
         AssertValidToolContext(call.Request.ContextMessages!, "Queued urgent");
         call.Answer.SetResult("Done");
         await fixture.WaitAsync(run => run.Queue.Count == 1);
+    }
+
+    [Fact]
+    public async Task ReplacingAnActiveBranchAfterToolBatchesShouldDropItsOldQueueAndStartReplacement()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var sourceId = await StartRunAfterTwoToolBatchesAsync(fixture);
+        var abandonedId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), abandonedId, "Abandoned queued message"));
+
+        var replacementId = Guid.NewGuid();
+        var replacing = await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), replacementId,
+            "Replacement", ChatSubmitMode.Replace, BranchId: fixture.ChatId, ReplaceSourceId: sourceId));
+
+        replacing.Queue.Select(item => item.Id).ShouldBe([replacementId]);
+        var replacement = await fixture.NextCallAsync();
+        AssertValidToolContext(replacement.Request.ContextMessages!, "Replacement");
+        replacement.Answer.SetResult("Replacement reply");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Select(message => message.Content).ShouldBe(["Replacement", "Replacement reply"]);
     }
 
     [Fact]

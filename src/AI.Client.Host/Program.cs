@@ -231,6 +231,9 @@ app.MapPut("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/{messageId:
 app.MapDelete("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/{messageId:guid}",
     (Guid projectId, Guid chatId, Guid messageId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.RemoveQueuedAsync(projectId, chatId, branchId, messageId, cancellationToken, operationId));
 
+app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/queue/{messageId:guid}/send-now",
+    (Guid projectId, Guid chatId, Guid messageId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.SendQueuedNowAsync(projectId, chatId, branchId, messageId, cancellationToken, operationId));
+
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/resume",
     (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.ResumeAsync(projectId, chatId, branchId, cancellationToken, operationId));
 

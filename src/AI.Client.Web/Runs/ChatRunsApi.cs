@@ -41,6 +41,11 @@ public sealed class ChatRunsApi(HttpClient httpClient) : IChatRunsApi
         using var response = await httpClient.DeleteAsync($"api/projects/{projectId}/chats/{chatId}/queue/{messageId}{BranchQuery(branchId)}&operationId={operationId}", cancellationToken);
         return await ReadSnapshotAsync(response, cancellationToken);
     }
+    public async Task<ChatRunSnapshot?> SendQueuedNowAsync(Guid projectId, Guid chatId, Guid branchId, Guid messageId, Guid operationId, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PostAsync($"api/projects/{projectId}/chats/{chatId}/queue/{messageId}/send-now{BranchQuery(branchId)}&operationId={operationId}", null, cancellationToken);
+        return await ReadSnapshotAsync(response, cancellationToken);
+    }
     public Task<ChatRunSnapshot?> ResumeAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken) => PostCommandAsync(projectId, chatId, "resume", branchId, operationId, cancellationToken);
     public Task<ChatRunSnapshot?> SkipFailedAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken) => PostCommandAsync(projectId, chatId, "queue/skip", branchId, operationId, cancellationToken);
     public Task<ChatRunSnapshot?> RebaseAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken) => PostCommandAsync(projectId, chatId, "queue/rebase", branchId, operationId, cancellationToken);

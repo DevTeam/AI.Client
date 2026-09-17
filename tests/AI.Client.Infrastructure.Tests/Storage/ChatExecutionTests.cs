@@ -484,6 +484,48 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task ReplacingMessageShouldRemoveAbandonedTailBeforeCompletion()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var original = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), original, "Original"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Original reply");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var replacement = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), replacement, "Replacement",
+            ChatSubmitMode.Replace, BranchId: fixture.ChatId, ReplaceSourceId: original));
+        var replacementCall = await fixture.NextCallAsync();
+
+        var runningChat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        runningChat!.Messages.Select(message => message.Content).ShouldBe(["Replacement"]);
+
+        replacementCall.Answer.SetResult("Replacement reply");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var completedChat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        completedChat!.Messages.Select(message => message.Content).ShouldBe(["Replacement", "Replacement reply"]);
+    }
+
+    [Fact]
+    public async Task WarmUpShouldRemoveReplacementTailsLeftByOlderBuilds()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var original = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), original, "Original"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Original reply");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        await fixture.AppendLegacyReplacementAsync(original, Guid.NewGuid(), "Replacement");
+        var staleChat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        staleChat!.Messages.Select(message => message.Content).ShouldBe(["Original", "Original reply", "Replacement"]);
+
+        await fixture.RestartAsync();
+
+        var cleanedChat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        cleanedChat!.Messages.Select(message => message.Content).ShouldBe(["Replacement"]);
+    }
+
+    [Fact]
     public async Task DeletingParentBranchMustKeepAndReparentChildBranch()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -945,6 +987,17 @@ public sealed class ChatExecutionTests
             return fixture;
         }
         public Task<ChatRunSnapshot> SubmitAsync(SubmitChatMessageRequest request) => Dispatcher.SubmitAsync(ProjectId, ChatId, request, CancellationToken.None);
+        public async Task AppendLegacyReplacementAsync(Guid sourceId, Guid replacementId, string content)
+        {
+            var stored = await _chatRepository.GetAsync(new Domain.Projects.ProjectId(ProjectId),
+                new Domain.Chats.ChatId(ChatId), CancellationToken.None) ?? throw new InvalidOperationException("Chat not found.");
+            var source = stored.Chat.Messages.Single(message => message.Id.Value == sourceId);
+            stored.Chat.ReplaceInBranch(ChatId, source.Id,
+                new Domain.Chats.ChatMessage(new Domain.Chats.ChatMessageId(replacementId), source.ParentId,
+                    Domain.Chats.ChatMessageRole.User, content, _clock.UtcNow), _clock.UtcNow);
+            var result = await _chatRepository.SaveAsync(stored.Chat, stored.Revision, CancellationToken.None);
+            if (!result.IsSaved) throw new InvalidOperationException("Legacy replacement was not saved.");
+        }
         /// <summary>Waits for the agent to finish writing tool answers, which outlives the status change.</summary>
         public async Task<IReadOnlyList<string?>> WaitForToolAnswersAsync(int expected)
         {

@@ -758,10 +758,31 @@ public sealed class ChatExecutionTests
         await fixture.WaitAsync(run => run.Queue.Count == 1);
     }
 
-    private static async Task StartRunAfterTwoToolBatchesAsync(Fixture fixture)
+    [Fact]
+    public async Task RemovingAQueuedMessageClaimedAfterToolBatchesShouldInterruptOnlyThatMessage()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var claimedId = await StartRunAfterTwoToolBatchesAsync(fixture);
+
+        var removed = await fixture.Dispatcher.RemoveQueuedAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            claimedId, CancellationToken.None, Guid.NewGuid());
+
+        removed!.Queue.ShouldBeEmpty();
+        removed.ActiveMessageId.ShouldBeNull();
+
+        var nextId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), nextId, "Continue after removal"));
+        var next = await fixture.NextCallAsync();
+        AssertValidToolContext(next.Request.ContextMessages!, "Continue after removal");
+        next.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    private static async Task<Guid> StartRunAfterTwoToolBatchesAsync(Fixture fixture)
     {
         await fixture.SetPolicyAsync("Allow");
-        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Use several tools"));
+        var messageId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), messageId, "Use several tools"));
         var first = await fixture.NextCallAsync();
         first.ToolCalls =
         [
@@ -778,6 +799,7 @@ public sealed class ChatExecutionTests
         second.Answer.SetResult("");
         await fixture.NextCallAsync();
         fixture.Tools.CallCount.ShouldBe(4);
+        return messageId;
     }
 
     private static void AssertValidToolContext(IReadOnlyList<ChatCompletionMessage> context, string lastUserMessage)

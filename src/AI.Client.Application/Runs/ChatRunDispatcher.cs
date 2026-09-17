@@ -20,7 +20,7 @@ using System.Threading.Channels;
 public sealed class ChatRunDispatcher(
     IChatRunRepository repository, IChatService chats, IChatMutations chatMutations, IProjectService projects,
     IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, IChatAgent agent,
-    IGlobalSecretStore secretStore, IClock clock, IChatSynchronization synchronization,
+    IGlobalSecretStore secretStore, IClock clock, IIdGenerator ids, IChatSynchronization synchronization,
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies) : IChatRunDispatcher, IAsyncDisposable
 {
     /// <summary>
@@ -96,7 +96,7 @@ public sealed class ChatRunDispatcher(
     public async IAsyncEnumerable<IReadOnlyList<ChatRunSnapshot>> SubscribeAsync(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var id = Guid.NewGuid();
+        var id = ids.Create();
         var channel = Channel.CreateBounded<IReadOnlyList<ChatRunSnapshot>>(new BoundedChannelOptions(1)
         { FullMode = BoundedChannelFullMode.DropOldest });
         _subscribers[id] = channel;
@@ -525,7 +525,7 @@ public sealed class ChatRunDispatcher(
         var completion = new TaskCompletionSource<ToolApprovalAction>(TaskCreationOptions.RunContinuationsAsynchronously);
         using (await synchronization.EnterAsync(runtime.State.ChatId, token))
         {
-            runtime.PendingApproval = new ToolApproval(Guid.NewGuid(), tool.ServerId, tool.OriginalName,
+            runtime.PendingApproval = new ToolApproval(ids.Create(), tool.ServerId, tool.OriginalName,
                 tool.SchemaHash, arguments, timeout, position.Index, position.BatchSize);
             runtime.Approval = completion;
             runtime.State.Append("");
@@ -601,7 +601,7 @@ public sealed class ChatRunDispatcher(
         using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
         var chat = await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token)
             ?? throw new InvalidOperationException("Chat not found.");
-        var id = Guid.NewGuid();
+        var id = ids.Create();
         chat = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
             new AppendChatMessageRequest(id, runtime.ToolHead, message.Role, message.Content, chat.Revision,
                 BranchId: runtime.State.BranchId, ToolCalls: message.ToolCalls, ToolCallId: message.ToolCallId),

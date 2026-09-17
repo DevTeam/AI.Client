@@ -15,7 +15,6 @@ public sealed record ComposerSubmitRequest(
     Guid? BranchLeafId,
     Guid? ForkSourceId,
     Guid? ReplaceSourceId,
-    bool ReplaceSourceIsGenerating,
     Guid? CredentialProfileId,
     string? EndpointBaseUrl,
     string? EndpointModel,

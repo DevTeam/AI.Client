@@ -308,11 +308,11 @@
             else if (GetSelectedRun() is { Status: ChatRunStatus.Paused or ChatRunStatus.Interrupted } heldRun) { <span>@GetHeldRunEnterHint(heldRun)</span> }
             else if (GetSelectedRun() is { Status: ChatRunStatus.Failed } failedRun) { <span class="error">@GetHeldRunEnterHint(failedRun)</span> }
             else if (GetReplaceSource() is { } replaceSource) { <span class="fork-mode replace-mode"><AppIcon Name="edit-replace" /><span>Replacing branch from “@GetMessagePreview(replaceSource.Content)”</span><button class="icon-action" type="button" title="Cancel replacement" aria-label="Cancel replacement" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
-            else if (GetForkSource() is { } forkSource) { <span class="fork-mode"><AppIcon Name="fork" /><span>Forking from “@GetMessagePreview(forkSource.Content)”</span><button class="icon-action" type="button" title="Cancel fork" aria-label="Cancel fork" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
+            else if (_isForking) { <span class="fork-mode"><AppIcon Name="fork" /><span>@GetForkModeText()</span><button class="icon-action" type="button" title="Cancel fork" aria-label="Cancel fork" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
             else if (!_composerHistoryNavigator.IsActive) { <span>@GetComposerHint()</span> }
         </div>
         <footer class="workspace-composer">
-            <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@(_replaceSourceId is not null ? "Edit the message to replace this branch..." : _forkSourceId is not null ? "Write the first message in the new branch..." : "Message the assistant...")" aria-label="Message"></textarea>
+            <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@(_replaceSourceId is not null ? "Edit the message to replace this branch..." : _isForking ? "Write the first message in the new branch..." : "Message the assistant...")" aria-label="Message"></textarea>
             <div class="composer-footer">
                 <div class="composer-endpoint">
                     <button class="composer-endpoint-trigger" type="button" title="Endpoint for this chat" aria-label="Endpoint for this chat" aria-haspopup="true" aria-expanded="@(_isEndpointMenuOpen ? "true" : "false")" @onclick="ToggleEndpointMenu" disabled="@(_connections.Count == 0)">
@@ -479,6 +479,7 @@
     private readonly Dictionary<Guid, bool> _wasGeneratingByBranch = [];
     private Guid? _selectedBranchId;
     private Guid? _forkSourceId;
+    private bool _isForking;
     private Guid? _replaceSourceId;
     private Guid? _pendingBranchAnchorId;
     // Opening a chat is cancellable and last-click-wins. Two quick clicks used to race to assign
@@ -947,6 +948,7 @@
     {
         _globalSection = null;
         _attachComposer = true;
+        ResetBranchOperationState();
         await SaveCurrentScrollPositionAsync();
         // Flush any unsent composer text for the project we're leaving BEFORE we reset
         // _selectedProject/_selectedChat. Without this, a draft typed up to 500ms ago can be
@@ -1128,8 +1130,11 @@
     {
         if (_isSubmittingMessage || !CanSendMessage()) return;
 
+        var effectiveMode = _isForking ? ComposerSubmitMode.Fork
+            : _replaceSourceId is not null ? ComposerSubmitMode.Send
+            : mode;
         _isSubmittingMessage = true;
-        _isSendingNowFromComposer = mode == ComposerSubmitMode.SendNow;
+        _isSendingNowFromComposer = effectiveMode == ComposerSubmitMode.SendNow;
         _chatError = null;
         ComposerSubmitOutcome.Accepted? pendingUiUpdate = null;
         // Keep the key that owns the submitted text. A first message changes the current
@@ -1142,19 +1147,15 @@
         var submittedProjectId = _selectedProject?.Id;
         try
         {
-            // _branchLeafId already points at the replace target's parent by the time we get
-            // here (set in EditAndReplaceBranchAsync), so GetSelectedRun() here re-checks the
-            // branch the replacement will actually land on, not the one the replaced message
-            // originally lived on — re-validating against a race is the whole point.
-            var replaceSourceIsGenerating = _replaceSourceId is not null && GetSelectedRun()?.Status == ChatRunStatus.Generating;
+            // The selected branch id remains stable while edit/fork modes temporarily move the
+            // visible leaf to their parent. The server revalidates that branch atomically.
             var request = new ComposerSubmitRequest(
-                mode,
+                effectiveMode,
                 _selectedProject?.Id,
                 _selectedChat,
                 _branchLeafId,
                 _forkSourceId,
                 _replaceSourceId,
-                replaceSourceIsGenerating,
                 _chat.CredentialProfileId,
                 _chat.BaseUrl,
                 _chat.Model,
@@ -1234,6 +1235,7 @@
         }
         _messageBranchMenuId = null;
         _forkSourceId = null;
+        _isForking = false;
         _replaceSourceId = null;
         _chat.Message = string.Empty;
         _composerHistoryNavigator.Reset();
@@ -1312,19 +1314,25 @@
     }
 
     private ComposerSendButton.SendMode GetComposerSendMode() =>
-        _composerAltDown && _composerCtrlDown
-            ? ComposerSendButton.SendMode.Fork
-            : _composerCtrlDown && _composerShiftDown
-                ? ComposerSendButton.SendMode.SendNow
-                : _composerCtrlDown
-                    ? ComposerSendButton.SendMode.Queue
-                    : ComposerSendButton.SendMode.Send;
+        _replaceSourceId is not null
+            ? ComposerSendButton.SendMode.Replace
+            : _isForking
+                ? ComposerSendButton.SendMode.EditFork
+                : _composerAltDown && _composerCtrlDown
+                    ? ComposerSendButton.SendMode.Fork
+                    : _composerCtrlDown && _composerShiftDown
+                        ? ComposerSendButton.SendMode.SendNow
+                        : _composerCtrlDown
+                            ? ComposerSendButton.SendMode.Queue
+                            : ComposerSendButton.SendMode.Send;
 
     // The button does whatever its tooltip is highlighting, so pressing it and pressing the keys
     // it shows can never mean two different things.
     private Task SubmitFromSendButtonAsync() => SubmitComposerAsync(GetComposerSendMode() switch
     {
         ComposerSendButton.SendMode.Fork => ComposerSubmitMode.Fork,
+        ComposerSendButton.SendMode.EditFork => ComposerSubmitMode.Fork,
+        ComposerSendButton.SendMode.Replace => ComposerSubmitMode.Send,
         ComposerSendButton.SendMode.Queue => ComposerSubmitMode.Queue,
         ComposerSendButton.SendMode.SendNow => ComposerSubmitMode.SendNow,
         _ => ComposerSubmitMode.Send
@@ -1428,6 +1436,7 @@
         if (_selectedProject is null) return;
         _globalSection = null;
         _attachComposer = true;
+        ResetBranchOperationState();
         _selectedChat = null;
         _selectedBranchId = null;
         _branchLeafId = null;
@@ -1566,6 +1575,7 @@
     {
         _globalSection = null;
         _attachComposer = true;
+        ResetBranchOperationState();
         CloseContextMenus();
         var cancellation = BeginChatSelection(chatId);
         await SaveCurrentScrollPositionAsync();
@@ -1967,7 +1977,9 @@
 
     private async Task EditAndBranchAsync(ChatMessageView message)
     {
+        _isForking = true;
         _forkSourceId = message.ParentId;
+        _replaceSourceId = null;
         _branchLeafId = message.ParentId;
         _chat.Message = message.Content;
         _composerNeedsResize = true;
@@ -1976,17 +1988,10 @@
 
     private async Task EditAndReplaceBranchAsync(ChatMessageView message)
     {
-        // MessageFeed only ever renders the ancestor chain of _branchLeafId, so `message` is
-        // necessarily on the branch GetSelectedRun() already reflects — checking it here (before
-        // _branchLeafId moves to the parent below) tells us whether a response is still being
-        // generated at or beyond this message. The button itself mirrors this same condition
-        // (see MessageFeed's disabled state) so this is a defense-in-depth check, not the only gate.
-        if (GetSelectedRun()?.Status == ChatRunStatus.Generating)
-        {
-            _chatError = "Can't replace this message while a response is being generated on this branch.";
-            return;
-        }
+        // Keep the stable selected branch id while the visible leaf moves to the replacement's
+        // parent. The server owns interruption and queue cleanup so this remains race-safe.
         _replaceSourceId = message.Id;
+        _isForking = false;
         _forkSourceId = null;
         _branchLeafId = message.ParentId;
         _chat.Message = message.Content;
@@ -1999,6 +2004,7 @@
         if (message.Id == _branchLeafId) return;
         _messageBranchMenuId = null;
         _branchLeafId = message.Id;
+        _isForking = true;
         _forkSourceId = message.Id;
         _chat.Message = string.Empty;
         _composerNeedsResize = true;
@@ -2011,15 +2017,25 @@
     private void CancelBranchOperation()
     {
         _messageBranchMenuId = null;
-        _forkSourceId = null;
-        _replaceSourceId = null;
+        ResetBranchOperationState();
         _branchLeafId = GetOriginalBranchLeaf(_selectedChat);
         _chat.Message = string.Empty;
         _composerNeedsResize = true;
     }
 
+    private void ResetBranchOperationState()
+    {
+        _forkSourceId = null;
+        _isForking = false;
+        _replaceSourceId = null;
+    }
+
     private ChatMessageView? GetForkSource() =>
         _forkSourceId is { } id ? _selectedChat?.Messages.FirstOrDefault(message => message.Id == id) : null;
+
+    private string GetForkModeText() => GetForkSource() is { } source
+        ? $"Forking from “{GetMessagePreview(source.Content)}”"
+        : "Forking from start";
 
     private ChatMessageView? GetReplaceSource() =>
         _replaceSourceId is { } id ? _selectedChat?.Messages.FirstOrDefault(message => message.Id == id) : null;
@@ -2035,6 +2051,7 @@
     private void SwitchBranch(Guid siblingId)
     {
         if (_selectedChat is null) return;
+        ResetBranchOperationState();
         var current = siblingId;
         while (true)
         {
@@ -2304,6 +2321,7 @@
     private async Task SelectBranchTreeItemAsync(BranchTreeItem branch)
     {
         if (_selectedProject is null || _selectedChat is null) return;
+        ResetBranchOperationState();
 
         // A branch is a transcript too, so switching to one is superseded by the next click the
         // same way opening a chat is.
@@ -2652,7 +2670,7 @@
         {
             // The child invalidates its cached render; the parent render below schedules it.
         }
-        else if (_replaceSourceId is not null || _forkSourceId is not null)
+        else if (_replaceSourceId is not null || _isForking)
         {
             CancelBranchOperation();
         }
@@ -2898,6 +2916,7 @@
     private void OpenGlobalSection(string section)
     {
         CloseContextMenus();
+        ResetBranchOperationState();
         CancelChatSelection();
         _messageFeed = null;
         _scrollMessagesToBottom = false;

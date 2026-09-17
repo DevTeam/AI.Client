@@ -117,7 +117,7 @@ public sealed class ChatRunDispatcher(
         // Interrupting has to finish before the queue is rewritten: the worker commits the
         // truncated answer and releases the active command on its way out, and rewriting the
         // queue underneath it would race both.
-        if (request.Mode == ChatSubmitMode.SendNow)
+        if (request.Mode is ChatSubmitMode.SendNow or ChatSubmitMode.Replace)
             await InterruptBranchAsync(projectId, chatId, request.BranchId ?? chatId, request.OperationId, cancellationToken);
         using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         if (_maintenance.ContainsKey(chatId) || _deletingProjects.ContainsKey(projectId)) throw new InvalidOperationException("Chat is being changed.");
@@ -129,14 +129,15 @@ public sealed class ChatRunDispatcher(
             ?? throw new ArgumentException("Branch does not exist.");
         var runtime = await GetRuntimeAsync(projectId, chatId, branchId, chat, cancellationToken);
         if (runtime.State.Operations.Contains(request.OperationId)) return runtime.Snapshot;
-        if (request.ExpectedBranchRevision is { } branchRevision && branchRevision != sourceBranch.Revision)
+        if (request.ExpectedBranchRevision is { } branchRevision && branchRevision != sourceBranch.Revision
+            && request.Mode != ChatSubmitMode.Replace)
             throw new InvalidOperationException("The branch changed. Reload it before submitting.");
         if (request.ParentMessageId is { } parent && chat.Messages.All(message => message.Id != parent))
             throw new ArgumentException("Parent message does not exist.");
         if (request.Mode != ChatSubmitMode.Fork && chat.Branches?.All(branch => branch.Id != branchId) == true
             && runtime.State.Queue.Count == 0 && branchId != request.MessageId)
             throw new ArgumentException("Branch does not exist.");
-        if (request.Mode == ChatSubmitMode.SendNow && runtime.State.Status == RunStatus.Generating)
+        if (request.Mode is ChatSubmitMode.SendNow or ChatSubmitMode.Replace && runtime.State.Status == RunStatus.Generating)
             throw new InvalidOperationException("The branch started generating again. Send the message once more.");
         Guid? replaceId = null;
         var parentId = request.ParentMessageId;
@@ -152,24 +153,33 @@ public sealed class ChatRunDispatcher(
                 ?? throw new ArgumentException("Replacement message does not exist.");
             if (!IsAncestor(chat, sourceBranch.HeadMessageId, source.Id))
                 throw new ArgumentException("Replacement message does not belong to the selected branch.");
-            if (runtime.State.Status == RunStatus.Generating)
-                throw new InvalidOperationException("Stop the branch before replacing a message.");
             replaceId = source.Id;
             parentId = source.ParentId;
             parentMode = parentId is null ? Domain.Runs.MessageParentMode.Root : Domain.Runs.MessageParentMode.Explicit;
         }
         else if (request.Mode == ChatSubmitMode.Fork)
         {
-            parentMode = Domain.Runs.MessageParentMode.Explicit;
-            parentId ??= sourceBranch.HeadMessageId;
-            if (parentId is null || !IsAncestor(chat, sourceBranch.HeadMessageId, parentId.Value))
-                throw new ArgumentException("Fork parent does not belong to the selected branch.");
+            if (parentMode == Domain.Runs.MessageParentMode.Root)
+            {
+                parentId = null;
+            }
+            else
+            {
+                parentMode = Domain.Runs.MessageParentMode.Explicit;
+                parentId ??= sourceBranch.HeadMessageId;
+                if (parentId is null || !IsAncestor(chat, sourceBranch.HeadMessageId, parentId.Value))
+                    throw new ArgumentException("Fork parent does not belong to the selected branch.");
+            }
         }
         var before = Clone(runtime.State);
+        // Replacement abandons the selected branch from the source message onward. Keeping a
+        // committed command or prepared rows from that abandoned tail would either resume the old
+        // answer first or later execute messages against a context that no longer exists.
+        if (request.Mode == ChatSubmitMode.Replace) runtime.State.Clear();
         runtime.State.Enqueue(request.OperationId, new QueuedRunMessage(request.MessageId, request.Content.Trim(), clock.UtcNow,
             parentMode, parentId, replaceId, request.Mode == ChatSubmitMode.Fork ? sourceBranchId : null,
             sourceBranch.Revision));
-        if (request.Mode == ChatSubmitMode.Queue || request.HoldInQueue)
+        if (request.Mode == ChatSubmitMode.Queue)
         {
             runtime.ResumeRequested = false;
             if (runtime.Cancellation is { } cancellation)

@@ -1,4 +1,4 @@
-﻿using AI.Client.Application.Chat;
+using AI.Client.Application.Chat;
 using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Notifications;
@@ -43,29 +43,16 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatRunRepository>()
             .Root<IChatRunDispatcher>()
             .Root<IToolSessionFactory>()
-            // A root as well as a singleton: minimal APIs only treat a type as a service when the
-            // provider says it can resolve it, and otherwise infer it as a request body.
             .Root<IAppDataChangeSignal>()
-            .Singleton<HostDescriptor, PhysicalTextFileSystem, ProjectStoragePaths, JsonProjectRepository,
-                Uuid7IdGenerator, SystemClock, ProjectService, ChatStoragePaths, JsonChatRepository, ChatService, ChatSearchService, ChatSynchronization,
+            .Singleton<HostDescriptor, PhysicalTextFileSystem, JsonProjectRepository,
+                Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatService, ChatSearchService, ChatSynchronization,
                 ProtectedDataUserDataProtector, ChatCompletionSseParser,
-                ChatEndpoint, GlobalSettingsPaths, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
-                GlobalSettingsService, ChatRunStoragePaths, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, ToolPolicyResolver, WorkspaceChangeTracker,
+                ChatEndpoint, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
+                GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, ToolPolicyResolver, WorkspaceChangeTracker,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ToolPresentations>()
-            // Everything that talks to the model talks to the retrying wrapper; the tag names the
-            // one place that is allowed to see the bare endpoint. Composed here rather than in the
-            // agent so waiting out a rate limit stays invisible to the code above it.
-            .Bind<IChatCompletionClient>("endpoint").As(Lifetime.Singleton).To<OpenAiCompatibleChatCompletionClient>()
-            .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To(ctx =>
-            {
-                ctx.Inject<IChatCompletionClient>("endpoint", out var endpoint);
-                ctx.Inject<ILogger<RetryingChatCompletionClient>>(out var retryLogger);
-                return new RetryingChatCompletionClient(endpoint, retryLogger);
-            })
-            .Bind<IToolResultModelProjector>().As(Lifetime.Singleton).To<ToolResultModelProjector>()
-            .Bind<IToolResultCodec>().As(Lifetime.Singleton).To<ToolResultCodec>()
-            // Both groups are consumed as sets, so each registration is tagged to stay distinct
-            // instead of the last one silently winning its contract.
+            .Singleton<OpenAiCompatibleChatCompletionClient>("base")
+            .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To(([Tag("base")] IChatCompletionClient baseClient, ILogger<RetryingChatCompletionClient> retryLogger) => new RetryingChatCompletionClient(baseClient, retryLogger))
+            .Singleton<ToolResultModelProjector, ToolResultCodec, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()
             .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool>(Tag.Unique)
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<FileToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<ProcessToolPresentationAdapter>()

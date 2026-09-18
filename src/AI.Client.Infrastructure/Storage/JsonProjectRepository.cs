@@ -6,7 +6,7 @@ using AI.Client.Domain.Projects;
 
 public sealed class JsonProjectRepository(
     ITextFileSystem fileSystem,
-    ProjectStoragePaths paths) : IProjectRepository, IDisposable
+    IProjectStoragePaths paths) : IProjectRepository, IDisposable
 {
     public void Dispose() => _writes.Dispose();
 

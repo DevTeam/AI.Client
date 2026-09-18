@@ -1,6 +1,6 @@
 namespace AI.Client.Infrastructure.Settings;
 
-public sealed class GlobalSettingsPaths(string rootDirectory)
+public sealed class GlobalSettingsPaths(string rootDirectory) : IGlobalSettingsPaths
 {
     public string SettingsPath { get; } = Path.Combine(rootDirectory, "settings.json");
 

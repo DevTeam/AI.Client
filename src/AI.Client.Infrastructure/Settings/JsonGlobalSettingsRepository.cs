@@ -5,7 +5,7 @@ using AI.Client.Contracts.Settings;
 using Storage;
 using System.Text.Json;
 
-public sealed class JsonGlobalSettingsRepository(ITextFileSystem fileSystem, GlobalSettingsPaths paths) : IGlobalSettingsRepository, IDisposable
+public sealed class JsonGlobalSettingsRepository(ITextFileSystem fileSystem, IGlobalSettingsPaths paths) : IGlobalSettingsRepository, IDisposable
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
     private readonly AsyncGate _writes = new();

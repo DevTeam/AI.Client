@@ -398,7 +398,7 @@ public sealed class AppToolTests
         private AppFixture()
         {
             _settings = new JsonGlobalSettingsRepository(_fileSystem, new GlobalSettingsPaths("data"));
-            var projectRepository = new JsonProjectRepository(_fileSystem, new ProjectStoragePaths("data"));
+            var projectRepository = new JsonProjectRepository(_fileSystem, new ProjectStoragePaths("data"), new ProjectDocumentSerializer());
             var chatRepository = new JsonChatRepository(_fileSystem, new ChatStoragePaths("data"), new ChatDocumentSerializer());
             var runRepository = new JsonChatRunRepository(_fileSystem, new ChatRunStoragePaths("data"));
             Projects = new ProjectService(projectRepository, _ids, _clock, _settings);

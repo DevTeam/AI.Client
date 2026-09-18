@@ -5,12 +5,12 @@ using System.Text.Json;
 
 namespace AI.Client.Infrastructure.Storage;
 
-public static class ProjectDocumentSerializer
+public sealed class ProjectDocumentSerializer : IProjectDocumentSerializer
 {
     private const int SchemaVersion = 2;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
-    public static string Serialize(Project project, long revision)
+    public string Serialize(Project project, long revision)
     {
         ArgumentNullException.ThrowIfNull(project);
         ArgumentOutOfRangeException.ThrowIfNegative(revision);
@@ -45,7 +45,7 @@ public static class ProjectDocumentSerializer
             Options);
     }
 
-    public static StoredProject Deserialize(string json)
+    public StoredProject Deserialize(string json)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
         var document = JsonSerializer.Deserialize<ProjectDocument>(json, Options)

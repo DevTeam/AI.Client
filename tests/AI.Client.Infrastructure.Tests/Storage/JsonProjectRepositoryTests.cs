@@ -10,6 +10,7 @@ using Xunit;
 public class JsonProjectRepositoryTests
 {
     private readonly InMemoryTextFileSystem _fileSystem = new();
+    private readonly ProjectDocumentSerializer _serializer = new();
     private readonly DateTimeOffset _createdAt = new(2026, 8, 12, 9, 0, 0, TimeSpan.Zero);
     private readonly ProjectId _projectId = new(Guid.Parse("019f0000-0000-7000-8000-000000000001"));
 
@@ -58,7 +59,7 @@ public class JsonProjectRepositoryTests
         // Given
         var repository = CreateInstance();
         var project = CreateProject();
-        _fileSystem.Add(GetTemporaryPath(), ProjectDocumentSerializer.Serialize(project, 1));
+        _fileSystem.Add(GetTemporaryPath(), _serializer.Serialize(project, 1));
 
         // When
         var restoredProject = await repository.GetAsync(_projectId, CancellationToken.None);
@@ -77,8 +78,8 @@ public class JsonProjectRepositoryTests
         // Given
         var repository = CreateInstance();
         var project = CreateProject();
-        _fileSystem.Add(GetProjectPath(), ProjectDocumentSerializer.Serialize(project, 1));
-        _fileSystem.Add(GetTemporaryPath(), ProjectDocumentSerializer.Serialize(project, 2));
+        _fileSystem.Add(GetProjectPath(), _serializer.Serialize(project, 1));
+        _fileSystem.Add(GetTemporaryPath(), _serializer.Serialize(project, 2));
 
         // When
         var restoredProject = await repository.GetAsync(_projectId, CancellationToken.None);
@@ -98,14 +99,14 @@ public class JsonProjectRepositoryTests
 
         // When
         // ReSharper disable once ConvertToLocalFunction
-        var action = () => ProjectDocumentSerializer.Deserialize(json);
+        var action = () => _serializer.Deserialize(json);
 
         // Then
         Should.Throw<Exception>(action);
     }
 
     private JsonProjectRepository CreateInstance() =>
-        new(_fileSystem, new ProjectStoragePaths("storage"));
+        new(_fileSystem, new ProjectStoragePaths("storage"), _serializer);
 
     private Project CreateProject() => new(_projectId, "Project", "Description", _createdAt);
 

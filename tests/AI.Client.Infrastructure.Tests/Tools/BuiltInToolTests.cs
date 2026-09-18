@@ -264,8 +264,7 @@ public sealed class BuiltInToolTests
         var root = Directory.CreateTempSubdirectory("ai-client-non-ascii").FullName;
         try
         {
-            // Long enough that fixed JSON scaffolding (field names, the echoed path, and the
-            // result being wrapped twice — as content text and again as structuredContent) is
+            // Long enough that fixed JSON scaffolding (field names and the echoed path) is
             // negligible next to the source text, so the assertion below is actually measuring
             // the escaping fix rather than per-call overhead.
             var text = string.Concat(Enumerable.Repeat("Привет, мир! Это тестовый файл с кириллицей.\n", 100));
@@ -280,10 +279,8 @@ public sealed class BuiltInToolTests
 
             result.ModelContent.ShouldContain("Привет, мир!");
             result.ModelContent.ShouldNotContain("\\u04");
-            // The result still embeds the file's content twice (once as content text, once as
-            // structuredContent — a separate, larger fix), so this isn't 1:1 with the source; but
-            // before this fix, \uXXXX-per-character escaping (applied twice) alone made it well
-            // over 12x the source text's length. This bound only needs to rule that out.
+            // Successful structured content now wins over the duplicate text block. The remaining
+            // overhead is the structured result's field names and path; Unicode text stays literal.
             result.ModelContent.Length.ShouldBeLessThan(text.Length * 4);
         }
         finally { Directory.Delete(root, true); }

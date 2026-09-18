@@ -7,4 +7,5 @@ public sealed record ChatRunSnapshot(Guid ProjectId, Guid ChatId, Guid BranchId,
     IReadOnlyList<RunRecoveryAction>? RecoveryActions = null,
     Workspace.WorkspaceChangeSet? WorkspaceChanges = null,
     Guid? ActiveMessageId = null,
-    UserPrompt? PendingPrompt = null);
+    UserPrompt? PendingPrompt = null,
+    bool StreamingToolCallsStarted = false);

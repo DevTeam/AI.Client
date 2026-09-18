@@ -10,4 +10,8 @@ public sealed record ChatCompletionChunk(
     string Content,
     string? Model = null,
     IReadOnlyList<ChatToolCall>? ToolCalls = null,
-    string? FinishReason = null);
+    string? FinishReason = null,
+    // Raised on the first streamed tool-call delta, before its arguments are complete. This lets
+    // presentation code classify preceding text as a preamble without waiting for a potentially
+    // large arguments payload to finish streaming.
+    bool ToolCallsStarted = false);

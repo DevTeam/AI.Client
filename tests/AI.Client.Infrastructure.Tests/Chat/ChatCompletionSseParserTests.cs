@@ -18,7 +18,10 @@ public class ChatCompletionSseParserTests
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         var chunks = new List<Contracts.Chat.ChatCompletionChunk>();
         await foreach (var chunk in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
-        var calls = chunks.ShouldHaveSingleItem().ToolCalls!;
+        chunks.Count.ShouldBe(2);
+        chunks[0].ToolCallsStarted.ShouldBeTrue();
+        chunks[0].ToolCalls.ShouldBeNull();
+        var calls = chunks[1].ToolCalls!;
         calls[0].Arguments.ShouldBe("{\"x\":1}");
         calls[1].Id.ShouldBe("two");
     }

@@ -498,6 +498,7 @@
     private bool _renderedNewBelow;
     private bool _expandRenderRequested;
     private int _renderedAbsorptionVersion;
+    private int _renderedStreamPlacementVersion;
 
     protected override bool ShouldRender()
     {
@@ -518,6 +519,7 @@
             || _renderedPinned != _pinned
             || _renderedNewBelow != _newBelow
             || _renderedAbsorptionVersion != _absorptionVersion
+            || _renderedStreamPlacementVersion != _streamPlacementVersion
             // The expansion render changes no parameter at all — only how much of the chain this
             // component draws — so without this it would never reach the DOM. It cannot be
             // expressed as a comparison: ShouldRender runs before the render that sets the limit.
@@ -538,6 +540,7 @@
         _renderedPinned = _pinned;
         _renderedNewBelow = _newBelow;
         _renderedAbsorptionVersion = _absorptionVersion;
+        _renderedStreamPlacementVersion = _streamPlacementVersion;
         _expandRenderRequested = false;
 
         return changed;
@@ -722,6 +725,7 @@
     protected override void OnParametersSet()
     {
         ObserveStreamingTransition();
+        ObserveStreamingPlacement();
 
         if (_expandedTurnsChatId != SelectedChat?.Id)
         {
@@ -936,6 +940,12 @@
     private int _absorptionVersion;
     private int _absorptionTransitionId;
     private CancellationTokenSource? _absorptionCancellation;
+    private Guid? _streamPlacementChatId;
+    private Guid? _streamPlacementBranchId;
+    private DateTimeOffset _streamPlacementStartedAt;
+    private bool _streamPromoted;
+    private int _streamPlacementVersion;
+    private CancellationTokenSource? _streamPlacementCancellation;
     private static readonly TimeSpan AbsorptionDuration = TimeSpan.FromMilliseconds(240);
     private const int InitialExpandedTurnItemCount = 0;
     private const int ExpandedTurnBatchSize = 2;
@@ -1002,7 +1012,8 @@
                 if (IsCurrentTurn(turn) && SelectedRun is { } streamingRun
                     && !string.IsNullOrWhiteSpace(streamingRun.StreamingContent))
                 {
-                    entries.Add(new RenderedFeedEntry(StreamingRun: streamingRun, TurnId: turn.Id));
+                    if (IsStreamingPromoted(streamingRun))
+                        entries.Add(new RenderedFeedEntry(StreamingRun: streamingRun, TurnId: turn.Id));
                 }
                 else if (IsCurrentTurn(turn) && !IsTurnExpanded(turn) && IsAbsorbingInto(turn)
                     && _absorbingContent is { } absorbingContent)
@@ -1172,10 +1183,98 @@
         if (previous.Status == ChatRunStatus.Generating
             && current.Status == ChatRunStatus.Generating
             && !string.IsNullOrWhiteSpace(previous.StreamingContent)
-            && string.IsNullOrWhiteSpace(current.StreamingContent))
+            && string.IsNullOrWhiteSpace(current.StreamingContent)
+            && IsStreamingPromoted(previous))
         {
             BeginAbsorption(current, previous.StreamingContent);
         }
+    }
+
+    private void ObserveStreamingPlacement()
+    {
+        var run = SelectedRun;
+        if (run is null || string.IsNullOrWhiteSpace(run.StreamingContent))
+        {
+            CancelStreamingPlacement();
+            return;
+        }
+
+        if (_streamPlacementChatId != run.ChatId || _streamPlacementBranchId != run.BranchId)
+        {
+            BeginStreamingPlacement(run);
+        }
+
+        if (run.StreamingToolCallsStarted)
+        {
+            // From this point the text is certainly a preamble. It stays in the intermediate
+            // region until the durable assistant/tool block replaces the live copy.
+            _streamPlacementCancellation?.Cancel();
+            return;
+        }
+
+        if (!_streamPromoted && StreamingPlacement.ShouldPromote(
+                DateTimeOffset.UtcNow - _streamPlacementStartedAt, run.StreamingContent))
+        {
+            PromoteStreaming();
+        }
+    }
+
+    private void BeginStreamingPlacement(ChatRunSnapshot run)
+    {
+        _streamPlacementCancellation?.Cancel();
+        _streamPlacementCancellation?.Dispose();
+        _streamPlacementCancellation = new CancellationTokenSource();
+        _streamPlacementChatId = run.ChatId;
+        _streamPlacementBranchId = run.BranchId;
+        _streamPlacementStartedAt = DateTimeOffset.UtcNow;
+        _streamPromoted = false;
+        _streamPlacementVersion++;
+        _ = AdvanceStreamingPlacementAsync(run.ChatId, run.BranchId, _streamPlacementCancellation.Token);
+    }
+
+    private async Task AdvanceStreamingPlacementAsync(Guid chatId, Guid branchId, CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(StreamingPlacement.MinimumDelay, token);
+            await InvokeAsync(() =>
+            {
+                if (token.IsCancellationRequested || _disposed) return;
+                if (SelectedRun is { } run && run.ChatId == chatId && run.BranchId == branchId
+                    && !run.StreamingToolCallsStarted
+                    && StreamingPlacement.ShouldPromote(
+                        DateTimeOffset.UtcNow - _streamPlacementStartedAt, run.StreamingContent))
+                    PromoteStreaming();
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void PromoteStreaming()
+    {
+        if (_streamPromoted) return;
+        _streamPromoted = true;
+        _streamPlacementVersion++;
+        StateHasChanged();
+    }
+
+    private bool IsStreamingPromoted(ChatRunSnapshot run) =>
+        _streamPromoted
+        && _streamPlacementChatId == run.ChatId
+        && _streamPlacementBranchId == run.BranchId;
+
+    private void CancelStreamingPlacement()
+    {
+        _streamPlacementCancellation?.Cancel();
+        _streamPlacementCancellation?.Dispose();
+        _streamPlacementCancellation = null;
+        if (_streamPlacementChatId is null) return;
+        _streamPlacementChatId = null;
+        _streamPlacementBranchId = null;
+        _streamPromoted = false;
+        _streamPlacementVersion++;
     }
 
     private void BeginAbsorption(ChatRunSnapshot run, string content)
@@ -1221,7 +1320,9 @@
 
     private string GetGeneratingMarkerTarget()
     {
-        if (!string.IsNullOrWhiteSpace(SelectedRun?.StreamingContent)) return "message-streaming";
+        if (SelectedRun is { } run
+            && !string.IsNullOrWhiteSpace(run.StreamingContent)
+            && IsStreamingPromoted(run)) return "message-streaming";
         var turnId = GetVisibleBranchMessages().LastOrDefault(message => message.Role == "User")?.Id;
         return turnId is { } id ? $"turn-summary-{id}" : "message-streaming";
     }
@@ -1232,6 +1333,12 @@
         var duration = ChatFeed.FormatDuration(elapsed);
         if (IsRunningTurn(turn))
         {
+            if (SelectedRun is { } run
+                && !string.IsNullOrWhiteSpace(run.StreamingContent)
+                && !IsStreamingPromoted(run))
+            {
+                return StreamingPlacement.RunningTitle(run.StreamingContent, duration);
+            }
             return ChatFeed.RunningTitleOf(turn, elapsed) ?? $"Working for {duration}";
         }
 
@@ -1533,6 +1640,7 @@
         if (_disposed) return;
         _disposed = true;
         CancelAbsorption();
+        CancelStreamingPlacement();
         await DisposeHistoryMarkersAsync();
         var historyMarkersModule = _historyMarkersModule;
         var scrollModule = _scrollModule;

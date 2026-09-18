@@ -28,6 +28,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
         Func<string, CancellationToken, Task> text,
+        Func<CancellationToken, Task> toolCallsStarted,
         Func<ToolActivity?, CancellationToken, Task> activity,
         Func<AgentTool, string, long, ToolCallPosition, CancellationToken, Task<ToolApprovalAction>> approve,
         CancellationToken cancellationToken,
@@ -84,6 +85,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             string? finish = null;
             await foreach (var chunk in completion.StreamAsync(request with { ContextMessages = context, Tools = available }, token))
             {
+                if (chunk.ToolCallsStarted) await toolCallsStarted(token);
                 if (chunk.ToolCalls is { } received) calls.AddRange(received);
                 if (chunk.FinishReason is { Length: > 0 } reason) finish = reason;
                 if (chunk.Content.Length == 0) continue;

@@ -13,7 +13,7 @@ public sealed class ChatGraphStorageTests
     {
         var fs = new MemoryFileSystem();
         var paths = new ChatStoragePaths("data");
-        using var repository = new JsonChatRepository(fs, paths);
+        using var repository = new JsonChatRepository(fs, paths, new ChatDocumentSerializer());
         var now = DateTimeOffset.UtcNow;
         var chat = new ChatThread(new ChatId(Guid.NewGuid()), new ProjectId(Guid.NewGuid()), "Chat", now);
         await repository.SaveAsync(chat, 0, CancellationToken.None);
@@ -33,7 +33,7 @@ public sealed class ChatGraphStorageTests
     public async Task ShouldRejectOneOfTwoConcurrentWritesWithTheSameRevision()
     {
         var fs = new MemoryFileSystem();
-        using var repository = new JsonChatRepository(fs, new ChatStoragePaths("data"));
+        using var repository = new JsonChatRepository(fs, new ChatStoragePaths("data"), new ChatDocumentSerializer());
         var chat = new ChatThread(new ChatId(Guid.NewGuid()), new ProjectId(Guid.NewGuid()), "Chat", DateTimeOffset.UtcNow);
         await repository.SaveAsync(chat, 0, CancellationToken.None);
         var writes = await Task.WhenAll(repository.SaveAsync(chat, 1, CancellationToken.None), repository.SaveAsync(chat, 1, CancellationToken.None));
@@ -45,7 +45,7 @@ public sealed class ChatGraphStorageTests
     public async Task ShouldPreserveBranchHeadsAndNamesAcrossRoundTrip()
     {
         var fs = new MemoryFileSystem();
-        using var repository = new JsonChatRepository(fs, new ChatStoragePaths("data"));
+        using var repository = new JsonChatRepository(fs, new ChatStoragePaths("data"), new ChatDocumentSerializer());
         var now = DateTimeOffset.UtcNow;
         var chat = new ChatThread(new ChatId(Guid.NewGuid()), new ProjectId(Guid.NewGuid()), "Chat", now);
         var root = new ChatMessage(new ChatMessageId(Guid.NewGuid()), null, ChatMessageRole.User, "Root", now);

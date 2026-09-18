@@ -9,6 +9,8 @@ using Xunit;
 
 public class ChatDocumentSerializerTests
 {
+    private readonly ChatDocumentSerializer _serializer = new();
+
     [Fact]
     public void ShouldRestoreWorkspaceChangesAttachedToAMessage()
     {
@@ -23,7 +25,7 @@ public class ChatDocumentSerializerTests
             new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.Assistant, "Done", createdAt,
             workspaceChanges: changes), createdAt);
 
-        var restored = ChatDocumentSerializer.Deserialize(ChatDocumentSerializer.Serialize(chat, 3));
+        var restored = _serializer.Deserialize(_serializer.Serialize(chat, 3));
 
         var restoredChanges = restored.Chat.Messages.ShouldHaveSingleItem().WorkspaceChanges!;
         restoredChanges.Additions.ShouldBe(4);
@@ -38,10 +40,10 @@ public class ChatDocumentSerializerTests
         var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", createdAt);
         chat.AddMessage(new ChatMessage(
             new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.Assistant, "Done", createdAt), createdAt);
-        var previous = ChatDocumentSerializer.Serialize(chat, 1)
+        var previous = _serializer.Serialize(chat, 1)
             .Replace("\"SchemaVersion\": 6", "\"SchemaVersion\": 5", StringComparison.Ordinal);
 
-        var restored = ChatDocumentSerializer.Deserialize(previous);
+        var restored = _serializer.Deserialize(previous);
 
         restored.Chat.Messages.ShouldHaveSingleItem().WorkspaceChanges.ShouldBeNull();
     }
@@ -53,9 +55,9 @@ public class ChatDocumentSerializerTests
         var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", createdAt);
         chat.AddMessage(new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Question", createdAt), createdAt);
 
-        var previous = ChatDocumentSerializer.Serialize(chat, 7)
+        var previous = _serializer.Serialize(chat, 7)
             .Replace("\"SchemaVersion\": 6", "\"SchemaVersion\": 5", StringComparison.Ordinal);
-        var summary = ChatDocumentSerializer.DeserializeSummary(previous);
+        var summary = _serializer.DeserializeSummary(previous);
 
         summary.Id.ShouldBe(chat.Id);
         summary.ProjectId.ShouldBe(chat.ProjectId);
@@ -72,7 +74,7 @@ public class ChatDocumentSerializerTests
         chat.AddMessage(message, createdAt, message.Id.Value);
         chat.RenameBranch(message.Id, "Alternative", createdAt);
 
-        var restored = ChatDocumentSerializer.Deserialize(ChatDocumentSerializer.Serialize(chat, 2));
+        var restored = _serializer.Deserialize(_serializer.Serialize(chat, 2));
 
         restored.Chat.Branches.Single(branch => branch.Id == message.Id.Value).Title.ShouldBe("Alternative");
     }
@@ -89,7 +91,7 @@ public class ChatDocumentSerializerTests
         chat.AddMessage(child, createdAt);
 
         // When
-        var restored = ChatDocumentSerializer.Deserialize(ChatDocumentSerializer.Serialize(chat, 3));
+        var restored = _serializer.Deserialize(_serializer.Serialize(chat, 3));
 
         // Then
         restored.Revision.ShouldBe(3);
@@ -108,7 +110,7 @@ public class ChatDocumentSerializerTests
             createdAt,
             endpointId);
 
-        var restored = ChatDocumentSerializer.Deserialize(ChatDocumentSerializer.Serialize(chat, 1));
+        var restored = _serializer.Deserialize(_serializer.Serialize(chat, 1));
 
         restored.Chat.ConnectionId.ShouldBe(endpointId);
     }
@@ -128,7 +130,7 @@ public class ChatDocumentSerializerTests
                 true),
             createdAt);
 
-        var restored = ChatDocumentSerializer.Deserialize(ChatDocumentSerializer.Serialize(chat, 1));
+        var restored = _serializer.Deserialize(_serializer.Serialize(chat, 1));
 
         restored.Chat.Messages.ShouldHaveSingleItem().IsIncomplete.ShouldBeTrue();
     }
@@ -148,7 +150,7 @@ public class ChatDocumentSerializerTests
         chat.AddMessage(firstHead, createdAt, firstHead.Id.Value, chat.Id.Value);
         chat.AddMessage(secondHead, createdAt, secondHead.Id.Value, chat.Id.Value);
 
-        var summary = ChatDocumentSerializer.DeserializeSummary(ChatDocumentSerializer.SerializeSummary(chat, 4));
+        var summary = _serializer.DeserializeSummary(_serializer.SerializeSummary(chat, 4));
 
         summary.BranchCount.ShouldBe(2);
         summary.HasStoredBranchCount.ShouldBeTrue();
@@ -187,12 +189,12 @@ public class ChatDocumentSerializerTests
         // zero rather than throw, so an older data directory keeps listing its chats. The property
         // is removed through the JSON DOM rather than by string replacement, which would depend on
         // the writer's indentation and line endings.
-        var document = JsonNode.Parse(ChatDocumentSerializer.SerializeSummary(chat, 1))!.AsObject();
+        var document = JsonNode.Parse(_serializer.SerializeSummary(chat, 1))!.AsObject();
         document.ShouldContainKey("BranchCount");
         document.Remove("BranchCount");
         var withoutCount = document.ToJsonString();
 
-        var summary = ChatDocumentSerializer.DeserializeSummary(withoutCount);
+        var summary = _serializer.DeserializeSummary(withoutCount);
 
         summary.BranchCount.ShouldBe(0);
         summary.HasStoredBranchCount.ShouldBeFalse();

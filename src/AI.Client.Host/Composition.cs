@@ -45,7 +45,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IToolSessionFactory>()
             .Root<IAppDataChangeSignal>()
             .Singleton<HostDescriptor, PhysicalTextFileSystem, JsonProjectRepository,
-                Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatService, ChatSearchService, ChatSynchronization,
+                Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
                 ProtectedDataUserDataProtector, ChatCompletionSseParser,
                 ChatEndpoint, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
                 GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatAgent, ToolPolicyResolver, WorkspaceChangeTracker,

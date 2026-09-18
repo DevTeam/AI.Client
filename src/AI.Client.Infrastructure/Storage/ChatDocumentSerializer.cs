@@ -6,13 +6,13 @@ using System.Text.Json;
 
 namespace AI.Client.Infrastructure.Storage;
 
-public static class ChatDocumentSerializer
+public sealed class ChatDocumentSerializer : IChatDocumentSerializer
 {
     private const int SchemaVersion = 6;
     private const int PreviousSchemaVersion = 5;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
-    public static string Serialize(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatDocument(
+    public string Serialize(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatDocument(
         SchemaVersion,
         revision,
         chat.Id.Value,
@@ -37,7 +37,7 @@ public static class ChatDocumentSerializer
         chat.PinnedAt,
         chat.LastActivityAt), Options);
 
-    public static string SerializeSummary(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatSummaryDocument(
+    public string SerializeSummary(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatSummaryDocument(
         SchemaVersion,
         revision,
         chat.Id.Value,
@@ -49,7 +49,7 @@ public static class ChatDocumentSerializer
         chat.LastActivityAt,
         chat.BranchCount), Options);
 
-    public static StoredChat Deserialize(string json)
+    public StoredChat Deserialize(string json)
     {
         var document = JsonSerializer.Deserialize<ChatDocument>(json, Options)
             ?? throw new JsonException("Chat document is empty.");
@@ -87,7 +87,7 @@ public static class ChatDocumentSerializer
         return new StoredChat(chat, document.Revision);
     }
 
-    public static StoredChatSummary DeserializeSummary(string json)
+    public StoredChatSummary DeserializeSummary(string json)
     {
         var document = JsonSerializer.Deserialize<ChatSummaryDocument>(json, Options)
             ?? throw new JsonException("Chat document is empty.");

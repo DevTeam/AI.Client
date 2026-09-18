@@ -16,7 +16,7 @@ public sealed class JsonChatRepositoryTests
         var fs = new MemoryFileSystem();
         var paths = new ChatStoragePaths("data");
         fs.Files[Path.Combine(paths.GetChatsDirectory(projectId), "chat.run.json")] = "{}";
-        using var repository = new JsonChatRepository(fs, paths);
+        using var repository = new JsonChatRepository(fs, paths, new ChatDocumentSerializer());
         (await repository.ListSummariesAsync(projectId, CancellationToken.None)).ShouldBeEmpty();
     }
 
@@ -30,7 +30,7 @@ public sealed class JsonChatRepositoryTests
         var paths = new ChatStoragePaths("data");
         var chat = new ChatThread(chatId, projectId, "Large chat", now);
         chat.AddMessage(new ChatMessage(new ChatMessageId(Guid.NewGuid()), null, ChatMessageRole.User, "Question", now), now);
-        using var repository = new JsonChatRepository(fs, paths);
+        using var repository = new JsonChatRepository(fs, paths, new ChatDocumentSerializer());
         await repository.SaveAsync(chat, 0, CancellationToken.None);
         while (fs.ReadPaths.TryDequeue(out _)) { }
 
@@ -54,7 +54,7 @@ public sealed class JsonChatRepositoryTests
         var branchHead = new ChatMessage(new ChatMessageId(Guid.NewGuid()), root.Id, ChatMessageRole.Assistant, "Alternative", now);
         chat.AddMessage(root, now);
         chat.AddMessage(branchHead, now, branchHead.Id.Value, chat.Id.Value);
-        using var repository = new JsonChatRepository(fs, paths);
+        using var repository = new JsonChatRepository(fs, paths, new ChatDocumentSerializer());
         await repository.SaveAsync(chat, 0, CancellationToken.None);
 
         var summaryPath = paths.GetChatSummaryPath(chatId, projectId);
@@ -85,7 +85,7 @@ public sealed class JsonChatRepositoryTests
         var paths = new ChatStoragePaths("data");
         var chat = new ChatThread(chatId, projectId, "Chat", now);
         chat.AddMessage(new ChatMessage(firstId, null, ChatMessageRole.User, "Question", now), now);
-        using var repository = new JsonChatRepository(fs, paths);
+        using var repository = new JsonChatRepository(fs, paths, new ChatDocumentSerializer());
         await repository.SaveAsync(chat, 0, CancellationToken.None);
         while (fs.ReadPaths.TryDequeue(out _)) { }
         chat.AddMessage(new ChatMessage(new ChatMessageId(Guid.NewGuid()), firstId, ChatMessageRole.Assistant, "Answer", now), now);

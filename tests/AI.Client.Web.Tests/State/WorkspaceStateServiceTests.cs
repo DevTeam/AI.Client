@@ -1,4 +1,4 @@
-﻿namespace AI.Client.Web.Tests.State;
+namespace AI.Client.Web.Tests.State;
 
 using System.Text.Json;
 using AI.Client.Web.State;
@@ -10,6 +10,7 @@ public class WorkspaceStateServiceTests
 {
     private const string DraftsStorageKey = "ai-client.composer-drafts.v1";
     private const string HistoryStorageKey = "ai-client.composer-history.v1";
+    private const string ProjectContextStorageKey = "ai-client.project-context.v1";
 
     // Hand-rolled IJSRuntime fake: Moq's strict mode mishandles the InvokeVoidAsync
     // extension method (which the SDK rewrites into InvokeAsync<object>), and we want
@@ -259,5 +260,120 @@ public class WorkspaceStateServiceTests
         await service.InitializeAsync();
 
         service.GetComposerHistory(Guid.NewGuid()).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ShouldReturnNullForProjectWithoutStoredContext()
+    {
+        // A fresh project has no remembered chat/branch — the sidebar must fall back to its
+        // "new chat" composer draft instead of trying to restore an empty tuple.
+        var (service, _) = CreateService();
+        await service.InitializeAsync();
+
+        service.GetProjectContext(Guid.NewGuid()).ShouldBe((null, null));
+    }
+
+    [Fact]
+    public async Task ShouldRoundTripProjectContextThroughLocalStorage()
+    {
+        // Switching from project A → B → A should reopen A on the same chat/branch the user
+        // was on when they left it. The persistence path is what carries the remembered
+        // values across that round trip.
+        var (service, js) = CreateService();
+        await service.InitializeAsync();
+
+        var projectA = Guid.NewGuid();
+        var chatA = Guid.NewGuid();
+        var leafA = Guid.NewGuid();
+        await service.SetProjectContextAsync(projectA, chatA, leafA);
+
+        var reloaded = new WorkspaceStateService(js);
+        await reloaded.InitializeAsync();
+        reloaded.GetProjectContext(projectA).ShouldBe((chatA, leafA));
+    }
+
+    [Fact]
+    public async Task ShouldOverwriteStoredContextWhenTheSameProjectIsReopened()
+    {
+        // The user opened chat X with branch Y, then opened chat P with branch Q in the same
+        // project. The second selection must replace the first — not stack behind it — so
+        // returning to the project lands the user on the chat they actually left.
+        var (service, _) = CreateService();
+        await service.InitializeAsync();
+
+        var project = Guid.NewGuid();
+        var chatX = Guid.NewGuid();
+        var leafY = Guid.NewGuid();
+        var chatP = Guid.NewGuid();
+        var leafQ = Guid.NewGuid();
+
+        await service.SetProjectContextAsync(project, chatX, leafY);
+        await service.SetProjectContextAsync(project, chatP, leafQ);
+
+        var context = service.GetProjectContext(project);
+        context.ShouldBe((chatP, leafQ));
+    }
+
+    [Fact]
+    public async Task ShouldKeepProjectContextsIndependent()
+    {
+        // One project's remembered chat/branch must never surface under another project's
+        // key — otherwise switching projects briefly would scramble the other one's restore.
+        var (service, _) = CreateService();
+        await service.InitializeAsync();
+
+        var projectA = Guid.NewGuid();
+        var projectB = Guid.NewGuid();
+        var chatA = Guid.NewGuid();
+        var leafA = Guid.NewGuid();
+        var chatB = Guid.NewGuid();
+        var leafB = Guid.NewGuid();
+
+        await service.SetProjectContextAsync(projectA, chatA, leafA);
+        await service.SetProjectContextAsync(projectB, chatB, leafB);
+
+        service.GetProjectContext(projectA).ShouldBe((chatA, leafA));
+        service.GetProjectContext(projectB).ShouldBe((chatB, leafB));
+    }
+
+    [Fact]
+    public async Task ShouldPersistProjectContextImmediatelyWithoutWaitingForADebounce()
+    {
+        // The post-render settle code in Home.razor relies on the context being on disk by the
+        // time it returns — a debounced write would lose the last selection to a tab close.
+        var (service, js) = CreateService();
+        await service.InitializeAsync();
+
+        var project = Guid.NewGuid();
+        var chat = Guid.NewGuid();
+        var leaf = Guid.NewGuid();
+        await service.SetProjectContextAsync(project, chat, leaf);
+
+        js.Entries.ShouldContainKey(ProjectContextStorageKey);
+        var persisted = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(js.Entries[ProjectContextStorageKey])!;
+        persisted.ShouldContainKey(project.ToString());
+        var entry = persisted[project.ToString()];
+        entry.GetProperty("ChatId").GetGuid().ShouldBe(chat);
+        entry.GetProperty("BranchLeafId").GetGuid().ShouldBe(leaf);
+    }
+
+    [Fact]
+    public async Task ShouldNotWriteProjectContextWhenNothingHasChanged()
+    {
+        // The post-render settle code calls SetProjectContextAsync on every chat open. A no-op
+        // detection keeps that path from spamming localStorage — and avoids thrashing the
+        // last-project-modified timestamp, which other UI elements watch.
+        var (service, js) = CreateService();
+        await service.InitializeAsync();
+
+        var project = Guid.NewGuid();
+        var chat = Guid.NewGuid();
+        var leaf = Guid.NewGuid();
+
+        await service.SetProjectContextAsync(project, chat, leaf);
+        var writesAfterFirst = js.Calls.Count(call => call.Identifier == "localStorage.setItem");
+
+        await service.SetProjectContextAsync(project, chat, leaf);
+        js.Calls.Count(call => call.Identifier == "localStorage.setItem").ShouldBe(writesAfterFirst);
     }
 }

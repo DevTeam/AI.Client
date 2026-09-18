@@ -858,16 +858,18 @@
 
     private async Task DisposeHistoryMarkersAsync()
     {
-        if (_historyMarkersHandle is null) return;
+        if (_historyMarkersHandle is not { } handle) return;
+        // Clear the shared reference before yielding. Component disposal can overlap an in-flight
+        // render callback, and both paths may otherwise dispose (and mutate) the same handle.
+        _historyMarkersHandle = null;
         try
         {
-            await _historyMarkersHandle.InvokeVoidAsync("dispose");
-            await _historyMarkersHandle.DisposeAsync();
+            await handle.InvokeVoidAsync("dispose");
+            await handle.DisposeAsync();
         }
         catch (Exception error) when (error is JSException or ObjectDisposedException)
         {
         }
-        _historyMarkersHandle = null;
     }
 
     // _selectedChat is always replaced wholesale rather than mutated, so a reference check on it

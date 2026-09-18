@@ -3048,6 +3048,34 @@ textarea {
     transform: rotate(90deg);
 }
 
+/* The matching control at the far end of an expanded turn remains deliberately icon-only. Its
+   centred placement marks the boundary of the intermediate detail without looking like another
+   message or competing with the final answer below it. */
+.turn-collapse-footer {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    margin: -0.15rem auto 0.75rem;
+    padding: 0;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #6f6f6f;
+    cursor: pointer;
+}
+
+.turn-collapse-footer:hover,
+.turn-collapse-footer:focus-visible {
+    background: rgba(255, 255, 255, 0.05);
+    color: #b4b4b4;
+}
+
+.turn-collapse-footer .app-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+}
+
 /* When a live response turns out to be a tool preamble, the closed heading briefly acknowledges
    receiving it. The pulse is intentionally quieter than the unread/branch accent. */
 .turn-summary.is-receiving .turn-summary-text {

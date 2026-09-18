@@ -203,6 +203,24 @@ export function attach(scroller, owner) {
             anchor = element;
             anchorOffset = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
         },
+        // A control at the end of a collapsible region disappears with that region. Anchor the
+        // stable content after it instead, so collapsing a long turn reveals the final answer at
+        // the same reading position rather than throwing the reader back to the turn heading.
+        anchorFollowingElement: id => {
+            const element = document.getElementById(id);
+            const following = element?.nextElementSibling;
+            if (following === null || following === undefined || !scroller.contains(following)) {
+                anchor = null;
+                return;
+            }
+            anchor = following;
+            anchorOffset = following.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+        },
+        focusElement: id => {
+            const element = document.getElementById(id);
+            if (element === null || !scroller.contains(element)) return;
+            element.focus({ preventScroll: true });
+        },
         watchElementVisibility: id => {
             watchedElementId = id;
             bindWatchedElement();

@@ -10,7 +10,7 @@ using System.Text.Json;
 /// Connects to the built-in tool server, which ships alongside the application and runs as a child
 /// process over stdio.
 /// </summary>
-public sealed class DefaultToolSessionFactory : IMcpServerConnection
+public sealed class DefaultToolSessionFactory(IToolResultModelProjector modelProjector) : IMcpServerConnection
 {
     public Guid ServerId => DefaultMcpServer.Id;
 
@@ -40,7 +40,7 @@ public sealed class DefaultToolSessionFactory : IMcpServerConnection
         {
             var tools = await client.ListToolsAsync(cancellationToken: cancellationToken);
             return new McpToolSession(client, tools.Select(tool => tool.ProtocolTool).ToArray(),
-                DefaultMcpServer.Id, ToolRef.BuiltInPrefix, canonicalizePaths: true);
+                DefaultMcpServer.Id, ToolRef.BuiltInPrefix, canonicalizePaths: true, modelProjector);
         }
         catch { await client.DisposeAsync(); throw; }
     }

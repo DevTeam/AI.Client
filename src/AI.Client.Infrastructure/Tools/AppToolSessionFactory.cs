@@ -14,7 +14,9 @@ using System.IO.Pipelines;
 /// ends are joined by a pair of in-memory pipes instead of a child process's standard streams —
 /// the same protocol, the same client, one less process.
 /// </summary>
-public sealed class AppToolSessionFactory(IAppMcpServerHost host) : IMcpServerConnection
+public sealed class AppToolSessionFactory(
+    IAppMcpServerHost host,
+    IToolResultModelProjector modelProjector) : IMcpServerConnection
 {
     public Guid ServerId => AppMcpServer.Id;
 
@@ -42,7 +44,7 @@ public sealed class AppToolSessionFactory(IAppMcpServerHost host) : IMcpServerCo
         {
             var tools = await client.ListToolsAsync(cancellationToken: cancellationToken);
             return new McpToolSession(client, tools.Select(tool => tool.ProtocolTool).ToArray(),
-                AppMcpServer.Id, ToolRef.AppPrefix, canonicalizePaths: false,
+                AppMcpServer.Id, ToolRef.AppPrefix, canonicalizePaths: false, modelProjector,
                 shutdown: async () =>
                 {
                     await server.DisposeAsync();

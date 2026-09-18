@@ -1,9 +1,7 @@
 namespace AI.Client.Contracts.Tools;
 
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 
 /// <summary>
 /// A tool result split into the parts that have different audiences: <see cref="Content"/> and
@@ -15,44 +13,7 @@ public sealed record ToolCallResult(
     JsonElement? StructuredContent,
     JsonElement? Meta,
     bool IsError,
-    string ModelContent)
-{
-    // Result text is read back by a model, not embedded in a browser, so the default encoder's
-    // `\uXXXX` escaping of every non-ASCII character is pure overhead here — the same reasoning
-    // (and the same relaxed encoder) as ToolReply one layer in.
-    private static readonly JsonSerializerOptions ModelFacingJson = new(JsonSerializerDefaults.Web)
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
-
-    /// <summary>
-    /// Renders the model-facing projection of a result: content, structured content and the error
-    /// flag, but never <c>_meta</c>. Metadata is addressed to the host — a third-party server can
-    /// put anything in it, including instructions aimed at the model — so it stays out of context.
-    /// </summary>
-    public static string ProjectForModel(
-        IReadOnlyList<ToolContent> content,
-        JsonElement? structuredContent,
-        bool isError)
-    {
-        ArgumentNullException.ThrowIfNull(content);
-        var payload = new JsonObject { ["isError"] = isError };
-        var blocks = new JsonArray();
-        foreach (var block in content) blocks.Add(block.ToModelJson());
-        if (blocks.Count > 0) payload["content"] = blocks;
-        if (structuredContent is { } structured) payload["structuredContent"] = JsonNode.Parse(structured.GetRawText());
-        return payload.ToJsonString(ModelFacingJson);
-    }
-
-    /// <summary>A host-side failure that never reached the server, or a refusal by policy.</summary>
-    public static ToolCallResult FromError(string message)
-    {
-        var content = new[] { ToolContent.OfText(message) };
-        var payload = new JsonObject { ["isError"] = true, ["error"] = message };
-        return new ToolCallResult(content, null, null, true, payload.ToJsonString(ModelFacingJson));
-    }
-}
+    string ModelContent);
 
 /// <summary>One MCP content block, flattened to what presentation actually needs.</summary>
 public sealed record ToolContent(

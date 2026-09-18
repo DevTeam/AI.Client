@@ -35,6 +35,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IRunStateService>()
             .Root<IChatComposerService>()
             .RootBind<IToolPresentations>().To<ToolPresentations>()
+            .RootBind<IToolResultModelProjector>().To<ToolResultModelProjector>()
+            .RootBind<IToolResultCodec>().To<ToolResultCodec>()
             .Singleton<ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService, WorkspaceStateService, ChatComposerService, RunStateService>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<FileToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<ProcessToolPresentationAdapter>()

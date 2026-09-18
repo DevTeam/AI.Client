@@ -342,17 +342,21 @@ public sealed class AppSubtaskToolTests
             Chats = new ChatService(new JsonChatRepository(_fileSystem, new ChatStoragePaths("data")), _ids, _clock, _synchronization);
             var policies = new ToolPolicyResolver(Projects, Chats, _settings);
             IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker();
+            var modelProjector = new ToolResultModelProjector();
+            var toolResultCodec = new ToolResultCodec(modelProjector);
             // No tool servers: a subtask that needs none is enough to prove the plumbing, and it
             // keeps the test from starting child processes.
-            var agent = new ChatAgent(Completion, Mock.Of<IToolSessionFactory>, Projects, _settings, policies, workspace);
+            var agent = new ChatAgent(Completion, Mock.Of<IToolSessionFactory>, Projects, _settings, policies, workspace,
+                modelProjector, toolResultCodec);
             var presentations = new ToolPresentations(
                 new GenericToolPresentationAdapter(),
                 [
                     new FileToolPresentationAdapter(), new ProcessToolPresentationAdapter(), new WebToolPresentationAdapter(),
                     new AppReadPresentationAdapter(), new AppWritePresentationAdapter(), new AppSubtaskPresentationAdapter(),
                 ]);
-            IEnumerable<IAppTool> tools = [new AppSubtaskTool(() => agent, Projects, Chats, _settings, _secrets, presentations)];
-            _sessions = new AppToolSessionFactory(new AppMcpServerHost(tools));
+            IEnumerable<IAppTool> tools =
+                [new AppSubtaskTool(() => agent, Projects, Chats, _settings, _secrets, presentations, toolResultCodec)];
+            _sessions = new AppToolSessionFactory(new AppMcpServerHost(tools), modelProjector);
         }
 
         public static async Task<SubtaskFixture> CreateAsync(bool withConnection = true)

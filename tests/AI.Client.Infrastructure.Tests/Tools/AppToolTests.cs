@@ -406,9 +406,11 @@ public sealed class AppToolTests
             var settingsService = new GlobalSettingsService(_settings, _secrets);
             IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker();
             var policies = new ToolPolicyResolver(Projects, Chats, _settings);
+            var modelProjector = new ToolResultModelProjector();
+            var toolResultCodec = new ToolResultCodec(modelProjector);
             var dispatcher = new ChatRunDispatcher(runRepository, Chats, Chats, Projects, _settings, settingsService,
                 new ChatAgent(Mock.Of<AI.Client.Application.Chat.IChatCompletionClient>(), Mock.Of<IToolSessionFactory>,
-                    Projects, _settings, policies, workspace),
+                    Projects, _settings, policies, workspace, modelProjector, toolResultCodec),
                 _secrets, _clock, _ids, _synchronization, workspace, policies);
             var writes = new AppWrites(new AppOperationLog(), _signal);
             var presentations = new ToolPresentations(
@@ -424,10 +426,11 @@ public sealed class AppToolTests
                 new AppRunsTool(() => dispatcher, writes),
                 new AppProjectsTool(Projects, Chats, () => dispatcher, writes),
                 new AppSecurityTool(Projects, Chats, settingsService, writes),
-                new AppSubtaskTool(() => throw new InvalidOperationException("not used"), Projects, Chats, _settings, _secrets, presentations),
+                new AppSubtaskTool(() => throw new InvalidOperationException("not used"), Projects, Chats, _settings, _secrets,
+                    presentations, toolResultCodec),
                 new AppAskUserTool(() => Broker),
             ];
-            IMcpServerConnection connection = new AppToolSessionFactory(new AppMcpServerHost(tools));
+            IMcpServerConnection connection = new AppToolSessionFactory(new AppMcpServerHost(tools), modelProjector);
             _sessions = new CompositeToolSessionFactory([connection]);
         }
 

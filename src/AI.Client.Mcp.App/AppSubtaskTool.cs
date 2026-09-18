@@ -61,7 +61,8 @@ public sealed class AppSubtaskTool(
     IChatService chats,
     IGlobalSettingsRepository settings,
     IGlobalSecretStore secrets,
-    IToolPresentations presentations) : IAppTool
+    IToolPresentations presentations,
+    IToolResultCodec toolResultCodec) : IAppTool
 {
     /// <summary>
     /// How many subtask runs may be in flight across the Host at once. A nested subtask holds its
@@ -251,7 +252,7 @@ public sealed class AppSubtaskTool(
     /// inside escaped JSON — technically complete and practically unreadable. It is described by the
     /// same adapters that describe every other tool result instead.
     /// </summary>
-    private static SubtaskTranscriptEntry Entry(
+    private SubtaskTranscriptEntry Entry(
         string task, ChatCompletionMessage message, Dictionary<string, (string Name, string Arguments)> made,
         IToolPresentations presentations)
     {
@@ -259,7 +260,7 @@ public sealed class AppSubtaskTool(
             return new SubtaskTranscriptEntry(task, message.Role, Clamp(message.Content),
                 message.ToolCalls is { Count: > 0 } named ? ToolRef.Parse(named[0].Name).Name : null);
         var described = presentations.DescribeResult(call.Name, call.Arguments,
-            ToolResultCodec.Read(message.Content));
+            toolResultCodec.Read(message.Content));
         var text = described.Body is { Length: > 0 } body ? $"{described.Summary}{Environment.NewLine}{body}" : described.Summary;
         return new SubtaskTranscriptEntry(task, message.Role, Clamp(text), ToolRef.Parse(call.Name).Name);
     }

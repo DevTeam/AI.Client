@@ -18,7 +18,7 @@ using System.Text.Json.Nodes;
 /// be hand-edited. Anything unparseable degrades to a single text block instead of throwing, so a
 /// malformed result cannot take the transcript down with it.
 /// </remarks>
-public static class ToolResultCodec
+public sealed class ToolResultCodec(IToolResultModelProjector modelProjector) : IToolResultCodec
 {
     private static readonly JsonSerializerOptions StorageJson = new(JsonSerializerDefaults.Web)
     {
@@ -26,7 +26,7 @@ public static class ToolResultCodec
     };
 
     /// <summary>Serializes the full result, metadata included, for durable history.</summary>
-    public static string Write(ToolCallResult result)
+    public string Write(ToolCallResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
         var payload = new JsonObject { ["isError"] = result.IsError };
@@ -43,7 +43,7 @@ public static class ToolResultCodec
     /// is reprojected rather than read back: a rehydrated result is for display, and re-deriving it
     /// keeps the "metadata never reaches the model" rule true even for history written by an older build.
     /// </summary>
-    public static ToolCallResult Read(string? storedContent)
+    public ToolCallResult Read(string? storedContent)
     {
         if (string.IsNullOrWhiteSpace(storedContent)) return Fallback(string.Empty);
         JsonElement root;
@@ -78,13 +78,13 @@ public static class ToolResultCodec
             blocks.Add(ToolContent.OfText(message.GetString() ?? string.Empty));
 
         return new ToolCallResult(blocks, structured, meta, isError,
-            ToolCallResult.ProjectForModel(blocks, structured, isError));
+            modelProjector.Project(blocks, structured, isError));
     }
 
-    private static ToolCallResult Fallback(string text)
+    private ToolCallResult Fallback(string text)
     {
         var blocks = new[] { ToolContent.OfText(text) };
-        return new ToolCallResult(blocks, null, null, false, ToolCallResult.ProjectForModel(blocks, null, false));
+        return new ToolCallResult(blocks, null, null, false, modelProjector.Project(blocks, null, false));
     }
 
     private static JsonObject WriteBlock(ToolContent block)

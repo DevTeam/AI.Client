@@ -10,8 +10,15 @@ using Contracts.Workspace;
 /// <summary>
 /// Observes the built-in mutating tools and turns them into a net, per-run list of changed files.
 /// </summary>
-public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
+public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTracker
 {
+    /// <summary>
+    /// Real Myers' implementation, used everywhere except tests that want a fixture diff.
+    /// </summary>
+    public WorkspaceChangeTracker() : this(new LineDiff())
+    {
+    }
+
     /// <summary>Built-in tools whose arguments name a path they are about to modify.</summary>
     private static readonly Dictionary<string, string[]> MutatingPathArguments = new(StringComparer.Ordinal)
     {
@@ -26,6 +33,7 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
     /// <summary>Past this size a file is compared by existence only; reading it twice is not worth it.</summary>
     private const long MaxTrackedBytes = 8 * 1024 * 1024;
 
+    private readonly ILineDiff _diff = diff;
     private readonly ConcurrentDictionary<WorkspaceRunKey, RunState> _runs = new();
 
     public Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, WorkspaceRunKey? parent,
@@ -70,7 +78,7 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
         foreach (var (path, baseline) in state.Baselines().Concat(Descendants(run).SelectMany(child => child.Baselines())))
             if (!merged.TryGetValue(path, out var held) || baseline.Order < held.Order)
                 merged[path] = baseline;
-        return Task.FromResult(RunState.Compose(merged));
+        return Task.FromResult(RunState.Compose(_diff, merged));
     }
 
     public Task CompleteRunAsync(WorkspaceRunKey run, CancellationToken cancellationToken)
@@ -163,13 +171,13 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
         /// Turns baselines into the net change set, reading each path as it stands now. Static
         /// because the set a caller is shown may span several runs: its own and its subtasks'.
         /// </summary>
-        public static WorkspaceChangeSet Compose(IReadOnlyDictionary<string, Baseline> tracked)
+        public static WorkspaceChangeSet Compose(ILineDiff diff, IReadOnlyDictionary<string, Baseline> tracked)
         {
             var byPath = new Dictionary<string, FileChange>(StringComparer.OrdinalIgnoreCase);
             foreach (var (path, baseline) in tracked)
             {
                 var current = Read(path);
-                if (Describe(path, baseline, current) is not { } change) continue;
+                if (Describe(diff, path, baseline, current) is not { } change) continue;
                 byPath[path] = change;
             }
 
@@ -179,7 +187,7 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
                 files.Sum(file => file.Deletions ?? 0));
         }
 
-        private static FileChange? Describe(string path, Baseline before, Baseline after)
+        private static FileChange? Describe(ILineDiff diff, string path, Baseline before, Baseline after)
         {
             if (!before.Exists && !after.Exists) return null;
 
@@ -197,7 +205,7 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
                     return new FileChange(path, FileChangeKind.Added, null, 0,
                         IsBinary: true, Confidence: FileChangeConfidence.Approximate);
 
-                var creation = LineDiff.Compare(null, added);
+                var creation = diff.Compare(null, added);
                 return new FileChange(path, FileChangeKind.Added, creation.Additions, 0,
                     Diff: string.IsNullOrEmpty(creation.Diff) ? null : creation.Diff,
                     Confidence: creation.IsExact ? FileChangeConfidence.Measured : FileChangeConfidence.Approximate);
@@ -212,7 +220,7 @@ public sealed class WorkspaceChangeTracker : IWorkspaceChangeTracker
 
             if (string.Equals(before.Text, after.Text, StringComparison.Ordinal)) return null;
 
-            var difference = LineDiff.Compare(before.Text, after.Text);
+            var difference = diff.Compare(before.Text, after.Text);
             return new FileChange(path, FileChangeKind.Modified, difference.Additions, difference.Deletions,
                 Diff: string.IsNullOrEmpty(difference.Diff) ? null : difference.Diff,
                 Confidence: difference.IsExact ? FileChangeConfidence.Measured : FileChangeConfidence.Approximate);

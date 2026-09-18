@@ -102,7 +102,7 @@ public class UnifiedDiffTests
     public void ShouldParseWhatLineDiffActuallyProduces()
     {
         // The two halves have to agree: whatever the writer emits, the reader has to classify.
-        var produced = LineDiff.Compare("one\ntwo\nthree\nfour\nfive", "one\ntwo\nTHREE\nfour\nfive").Diff;
+        var produced = new LineDiff().Compare("one\ntwo\nthree\nfour\nfive", "one\ntwo\nTHREE\nfour\nfive").Diff;
 
         var lines = UnifiedDiff.Parse(produced);
 

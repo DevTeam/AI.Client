@@ -5,6 +5,7 @@ using AI.Client.Application.Notifications;
 using AI.Client.Application.Settings;
 using AI.Client.Application.Runs;
 using AI.Client.Application.Tools;
+using AI.Client.Application.Workspace;
 using AI.Client.Infrastructure.Tools;
 using AI.Client.Mcp.App;
 using AI.Client.Infrastructure.Chat;
@@ -48,7 +49,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
                 ProtectedDataUserDataProtector, ChatCompletionSseParser,
                 ChatEndpoint, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
-                GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ToolPolicyResolver, WorkspaceChangeTracker,
+                GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ToolPolicyResolver, WorkspaceChangeTracker, LineDiff,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ToolPresentations>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
             .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To(([Tag("base")] IChatCompletionClient baseClient, ILogger<RetryingChatCompletionClient> retryLogger) => new RetryingChatCompletionClient(baseClient, retryLogger))

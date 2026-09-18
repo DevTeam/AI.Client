@@ -9,7 +9,7 @@ public class LineDiffTests
     [Fact]
     public void ShouldReportNothingForIdenticalText()
     {
-        var result = LineDiff.Compare("alpha\nbeta\n", "alpha\nbeta\n");
+        var result = new LineDiff().Compare("alpha\nbeta\n", "alpha\nbeta\n");
 
         result.Additions.ShouldBe(0);
         result.Deletions.ShouldBe(0);
@@ -25,7 +25,7 @@ public class LineDiffTests
         var before = string.Join('\n', Enumerable.Range(0, 500).Select(index => $"line {index}"));
         var after = before.Replace("line 250", "line 250 edited", StringComparison.Ordinal);
 
-        var result = LineDiff.Compare(before, after);
+        var result = new LineDiff().Compare(before, after);
 
         result.Additions.ShouldBe(1);
         result.Deletions.ShouldBe(1);
@@ -35,7 +35,7 @@ public class LineDiffTests
     [Fact]
     public void ShouldCountInsertionsAndDeletionsSeparately()
     {
-        var result = LineDiff.Compare("a\nb\nc", "a\nx\ny\nb\nc");
+        var result = new LineDiff().Compare("a\nb\nc", "a\nx\ny\nb\nc");
 
         result.Additions.ShouldBe(2);
         result.Deletions.ShouldBe(0);
@@ -44,8 +44,8 @@ public class LineDiffTests
     [Fact]
     public void ShouldTreatAnEmptySideAsAWholeFile()
     {
-        LineDiff.Compare(null, "a\nb").Additions.ShouldBe(2);
-        LineDiff.Compare("a\nb", null).Deletions.ShouldBe(2);
+        new LineDiff().Compare(null, "a\nb").Additions.ShouldBe(2);
+        new LineDiff().Compare("a\nb", null).Deletions.ShouldBe(2);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class LineDiffTests
     {
         // Normalization is for the comparison only; neither input is written back anywhere, so a
         // file's own CRLF style is never disturbed by being measured.
-        var result = LineDiff.Compare("a\r\nb\r\n", "a\nb\n");
+        var result = new LineDiff().Compare("a\r\nb\r\n", "a\nb\n");
 
         result.Additions.ShouldBe(0);
         result.Deletions.ShouldBe(0);
@@ -62,7 +62,7 @@ public class LineDiffTests
     [Fact]
     public void ShouldProduceAUnifiedDiffWithContext()
     {
-        var result = LineDiff.Compare("one\ntwo\nthree\nfour\nfive", "one\ntwo\nTHREE\nfour\nfive");
+        var result = new LineDiff().Compare("one\ntwo\nthree\nfour\nfive", "one\ntwo\nTHREE\nfour\nfive");
 
         result.Diff.ShouldContain("@@");
         result.Diff.ShouldContain("-three");
@@ -78,7 +78,7 @@ public class LineDiffTests
         var before = string.Join('\n', Enumerable.Range(0, LineDiff.MaxDifference).Select(index => $"a{index}"));
         var after = string.Join('\n', Enumerable.Range(0, LineDiff.MaxDifference).Select(index => $"b{index}"));
 
-        var result = LineDiff.Compare(before, after);
+        var result = new LineDiff().Compare(before, after);
 
         result.IsExact.ShouldBeFalse();
         result.Additions.ShouldBe(LineDiff.MaxDifference);

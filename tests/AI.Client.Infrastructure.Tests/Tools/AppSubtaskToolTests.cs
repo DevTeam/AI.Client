@@ -338,7 +338,7 @@ public sealed class AppSubtaskToolTests
         private SubtaskFixture()
         {
             _settings = new JsonGlobalSettingsRepository(_fileSystem, new GlobalSettingsPaths("data"));
-            Projects = new ProjectService(new JsonProjectRepository(_fileSystem, new ProjectStoragePaths("data")), _ids, _clock, _settings);
+            Projects = new ProjectService(new JsonProjectRepository(_fileSystem, new ProjectStoragePaths("data"), new ProjectDocumentSerializer()), _ids, _clock, _settings);
             Chats = new ChatService(new JsonChatRepository(_fileSystem, new ChatStoragePaths("data"), new ChatDocumentSerializer()), _ids, _clock, _synchronization);
             var policies = new ToolPolicyResolver(Projects, Chats, _settings);
             IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker();

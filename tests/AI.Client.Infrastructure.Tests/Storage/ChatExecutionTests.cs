@@ -1160,7 +1160,7 @@ public sealed class ChatExecutionTests
         private Fixture(IWorkspaceChangeTracker? workspace = null)
         {
             _chatRepository = new JsonChatRepository(FileSystem, new ChatStoragePaths("data"), new ChatDocumentSerializer());
-            _projects = new JsonProjectRepository(FileSystem, new ProjectStoragePaths("data"));
+            _projects = new JsonProjectRepository(FileSystem, new ProjectStoragePaths("data"), new ProjectDocumentSerializer());
             _runs = new JsonChatRunRepository(FileSystem, new ChatRunStoragePaths("data"));
             _settings = new JsonGlobalSettingsRepository(FileSystem, new GlobalSettingsPaths("data"));
             _projectService = new ProjectService(_projects, _ids, _clock, _settings);

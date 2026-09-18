@@ -1,4 +1,4 @@
-﻿using AI.Client.Host;
+using AI.Client.Host;
 using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Settings;
@@ -23,6 +23,22 @@ builder.Services.AddHostedService<ChatRunHostedService>();
 var composition = new Composition(storageLocation.RootDirectory);
 builder.Host.UseServiceProviderFactory(composition);
 
+// The frontend runs in a separate process on its own origin (default http://localhost:52174),
+// so every API request needs an explicit CORS allowlist. Origins are listed in appsettings.json
+// under `Cors:AllowedOrigins`; defaults come from appsettings.Development.json. We deliberately
+// avoid `AllowAnyOrigin` — the SPA needs a real origin so credentials and SSE can be added later
+// without rewriting the policy.
+var corsOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy => policy
+        .WithOrigins(corsOrigins)
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .WithExposedHeaders("Content-Disposition"));
+});
+
 var app = builder.Build();
 
 app.Use(async (context, next) =>
@@ -38,50 +54,9 @@ app.Use(async (context, next) =>
     }
 });
 
-
-app.Use(async (context, next) =>
-{
-    var isBootstrapModule = context.Request.Path.Equals("/_framework/dotnet.js", StringComparison.OrdinalIgnoreCase);
-    var isApplicationShell = context.Request.Path == "/" || context.Request.Path.Equals("/index.html", StringComparison.OrdinalIgnoreCase);
-    if (isBootstrapModule || isApplicationShell)
-    {
-        context.Request.Headers.Remove("If-None-Match");
-        context.Request.Headers.Remove("If-Modified-Since");
-        context.Response.OnStarting(() =>
-        {
-            context.Response.Headers.CacheControl = "no-store";
-            return Task.CompletedTask;
-        });
-    }
-    else if (context.Request.Path.StartsWithSegments("/_framework"))
-    {
-        // Every _framework asset is content-hashed (a changed file gets a new filename), so a
-        // successful (200) response is safe to cache forever and needs no help here. A 404 is
-        // the dangerous case: it can happen transiently — e.g. a request lands in the narrow
-        // window between Kestrel accepting connections and static assets finishing staging on
-        // startup — and unlike the hashed filename it's for, that specific 404 is NOT immutable:
-        // the same URL starts returning 200 moments later once staging finishes, but the browser
-        // has no way to know that from a bare 404 response. Confirmed live: a wasm file that
-        // reproducibly 404'd on every normal load (surviving even a manual page reload) started
-        // working the instant a request explicitly bypassed the cache — the browser had cached
-        // that transient 404 as if it were the asset's permanent state, and kept replaying it
-        // indefinitely because the hashed filename never changes to naturally invalidate it, and
-        // WASM startup depends on every one of these assemblies loading, so a single poisoned
-        // entry breaks the whole app until the user manually clears their cache.
-        context.Response.OnStarting(() =>
-        {
-            if (context.Response.StatusCode == StatusCodes.Status404NotFound)
-            {
-                context.Response.Headers.CacheControl = "no-store";
-            }
-            return Task.CompletedTask;
-        });
-    }
-
-    await next(context);
-});
-
-app.MapStaticAssets();
+// CORS runs before endpoint routing so preflight OPTIONS requests are handled before any
+// endpoint binding refuses to route them. WebApplication wires the rest of the pipeline itself.
+app.UseCors();
 
 app.MapGet(
     "/api/health",
@@ -446,7 +421,5 @@ app.MapDelete(
             ? Results.NoContent()
             : result.Revision == 0 ? Results.NotFound() : Results.Conflict(result);
     });
-
-app.MapFallbackToFile("index.html");
 
 await app.RunAsync();

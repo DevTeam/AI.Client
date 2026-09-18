@@ -10,7 +10,8 @@ internal sealed class BuildApplication(
     IVerifyTarget verifyTarget,
     IPublishTarget publishTarget,
     IChatSessionTarget chatSessionTarget,
-    IHostTarget hostTarget,
+    IRunTarget runTarget,
+    IRunBothTarget runBothTarget,
     CancellationToken cancellationToken)
 {
     public Task<int> RunAsync()
@@ -72,11 +73,54 @@ internal sealed class BuildApplication(
 
     private void RegisterHost(RootCommand root)
     {
-        // Publishes AI.Client.Host to `artifacts/host/` and launches it from there. The output
-        // directory lives outside `src/`, so the running host never holds handles to files that
-        // `dotnet build` or `dotnet test` need to overwrite.
-        var command = new Command("host", "Publish AI.Client.Host to artifacts/host/ and run it without blocking source-tree builds and tests.");
-        command.SetAction(_ => hostTarget.RunAsync(cancellationToken));
-        root.Subcommands.Add(command);
+        // `host` is the legacy name for the run target. Renamed to `run` everywhere else, but kept
+        // here as an alias so existing `.run` files and muscle memory continue to work until they
+        // get updated.
+        var hostCommand = new Command("host", "Alias for `run`. Publish AI.Client.Host to artifacts/host/ and run it without blocking source-tree builds and tests.");
+        hostCommand.SetAction(_ => runTarget.RunAsync(cancellationToken));
+        root.Subcommands.Add(hostCommand);
+
+        var runCommand = new Command("run", "Publish AI.Client.Host to artifacts/host/ and run it. The frontend is started separately (see AI.Client Backend.run.xml).");
+        runCommand.SetAction(_ => runTarget.RunAsync(cancellationToken));
+        root.Subcommands.Add(runCommand);
+
+        // `run-both` publishes the host and then starts both the host process and the web dev
+        // server in parallel. The frontend now runs in its own process on a different origin, so
+        // this is the one-stop command for local development after the host/frontend split.
+        var hostUrls = new Option<string?>("--host-urls")
+        {
+            Description = "Kestrel URLs forwarded to the host as the --urls argument.",
+            DefaultValueFactory = _ => "http://localhost:52173"
+        };
+        var webUrls = new Option<string?>("--web-urls")
+        {
+            Description = "URL for the Blazor WASM dev server.",
+            DefaultValueFactory = _ => "http://localhost:52174"
+        };
+        var corsOrigins = new Option<string?>("--cors-origins")
+        {
+            Description = "Comma-separated origins allowed by CORS. Forwarded as Cors__AllowedOrigins.",
+            DefaultValueFactory = _ => null
+        };
+        var environment = new Option<string?>("--environment")
+        {
+            Description = "ASPNETCORE_ENVIRONMENT for the host process.",
+            DefaultValueFactory = _ => "Development"
+        };
+        var runBothCommand = new Command(
+            "run-both",
+            "Publish AI.Client.Host, then run the host and the web dev server in parallel. CORS is configured automatically.");
+        runBothCommand.Options.Add(hostUrls);
+        runBothCommand.Options.Add(webUrls);
+        runBothCommand.Options.Add(corsOrigins);
+        runBothCommand.Options.Add(environment);
+        runBothCommand.SetAction(parseResult => runBothTarget.RunAsync(
+            new RunBothOptions(
+                parseResult.GetValue(hostUrls),
+                parseResult.GetValue(webUrls),
+                parseResult.GetValue(corsOrigins),
+                parseResult.GetValue(environment)),
+            cancellationToken));
+        root.Subcommands.Add(runBothCommand);
     }
 }

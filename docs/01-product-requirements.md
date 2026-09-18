@@ -1,62 +1,62 @@
-# Требования и границы продукта
+# Product requirements and boundaries
 
-Статус: Accepted
+Status: Accepted
 
-## Назначение
+## Purpose
 
-AI.Client — локальный пользовательский клиент для общения с AI-моделями и выполнения агентских сценариев. Все внешние инструменты подключаются через MCP. Работа ведётся внутри проекта, который определяет контекст, доступные endpoints, MCP-серверы и правила безопасности.
+AI.Client is a local user client for conversing with AI models and running agent scenarios. All external tools are connected through MCP. Work is performed within a project, which defines the context, available endpoints, MCP servers, and security rules.
 
-## Функциональные требования
+## Functional requirements
 
-### Проекты
+### Projects
 
-- Проект имеет ID, название, описание и даты создания/изменения.
-- Проект задаёт AI endpoint и модель по умолчанию.
-- Проект содержит системные инструкции для своих чатов.
-- Проект определяет список подключённых MCP-серверов.
-- Проект хранит отдельную политику для каждого MCP-инструмента.
-- Проект задаёт директории, доступные FileSystem MCP server.
-- Любой чат принадлежит ровно одному проекту.
-- Перенос чата между проектами выполняется копированием с новыми ID и повторной проверкой политики.
+- A project has an ID, name, description, and creation/modification dates.
+- A project specifies the default AI endpoint and model.
+- A project contains system instructions for its chats.
+- A project defines the list of connected MCP servers.
+- A project stores a separate policy for each MCP tool.
+- A project specifies the directories accessible to the FileSystem MCP server.
+- Any chat belongs to exactly one project.
+- Moving a chat between projects is performed by copying with new IDs and re-checking the policy.
 
-### Чаты
+### Chats
 
-- Streaming ответов.
-- Markdown, fenced code blocks, таблицы и безопасные ссылки.
-- Отмена текущего ответа.
-- Повторный запуск неуспешного ответа без повторного исполнения завершённых tool calls.
-- Сохранение model, endpoint, usage и результатов инструментов для каждого запуска.
-- Полное восстановление истории после перезапуска.
+- Streaming responses.
+- Markdown, fenced code blocks, tables, and safe links.
+- Cancellation of the current response.
+- Re-running a failed response without re-executing completed tool calls.
+- Saving the model, endpoint, usage, and tool results for each run.
+- Full restoration of history after restart.
 
-### Ветвление
+### Branching
 
-- Ветка создаётся от любого сообщения.
-- Общая история веток не копируется.
-- Редактирование старого сообщения создаёт новую ветку или новый путь истории.
-- У каждой ветки есть стабильный ID, имя и ссылка на head message.
-- Удаление ветки не удаляет узлы, доступные из других веток.
+- A branch is created from any message.
+- Common history of branches is not duplicated.
+- Editing an old message creates a new branch or a new history path.
+- Each branch has a stable ID, name, and reference to its head message.
+- Deleting a branch does not delete nodes reachable from other branches.
 
 ### AI endpoints
 
-- Поддерживается несколько endpoint profiles.
-- Основной OpenAI-протокол — Responses API.
-- Для совместимых провайдеров поддерживается Chat Completions fallback.
-- Профиль содержит Base URI, тип протокола, default model, custom headers и ссылку на credential.
-- Возможности endpoint проверяются capability probe и могут быть исправлены вручную.
-- Credentials не передаются в WASM и не сохраняются в JSON проекта.
+- Multiple endpoint profiles are supported.
+- The primary OpenAI protocol is the Responses API.
+- Chat Completions fallback is supported for compatible providers.
+- A profile contains the Base URI, protocol type, default model, custom headers, and a credential reference.
+- Endpoint capabilities are checked by capability probe and can be corrected manually.
+- Credentials are not transmitted to WASM and are not stored in the project JSON.
 
 ### MCP
 
-- Поддерживаются Streamable HTTP и локальный `stdio` через Host.
-- Инструменты обнаруживаются через `tools/list`.
-- Изменение каталога обрабатывается через `notifications/tools/list_changed`.
-- Имена инструментов разделяются по стабильному ID настроенного сервера.
-- Системные MCP-инструменты истории не передаются AI-модели.
-- Агентские MCP-инструменты передаются модели только после применения политики проекта.
+- Streamable HTTP and local `stdio` are supported through the Host.
+- Tools are discovered via `tools/list`.
+- Catalog changes are handled through `notifications/tools/list_changed`.
+- Tool names are separated by the stable ID of the configured server.
+- History system MCP tools are not transmitted to the AI model.
+- Agent MCP tools are transmitted to the model only after the project policy has been applied.
 
 ### FileSystem MCP
 
-Обязательные инструменты:
+Required tools:
 
 - `read`;
 - `write`;
@@ -65,33 +65,33 @@ AI.Client — локальный пользовательский клиент �
 - `list`;
 - `search`.
 
-Сервер обязан проверять разрешённые корни, нормализовать пути, предотвращать path traversal и symlink escape, ограничивать размеры и вести аудит.
+The server must verify allowed roots, normalize paths, prevent path traversal and symlink escape, enforce size limits, and maintain an audit log.
 
-## Нефункциональные требования
+## Non-functional requirements
 
 - Target framework: `net10.0`.
 - UI: Client-Side Blazor WebAssembly.
-- Hosting: локальный ASP.NET Core Host, раздающий WASM с того же origin.
-- DI: Pure.DI и Pure.DI.MS.
-- Application и domain code используют интерфейсы и экземпляры.
-- Статические application services и service locator запрещены.
-- Приватный `static SetupDI()` допускается только как compile-time маркер Pure.DI source generator.
-- Все сохраняемые JSON-документы версионируются.
-- Все изменяющие операции должны быть атомарными либо безопасно восстанавливаемыми.
-- UI не должен блокироваться во время AI или MCP streaming.
-- Автоматические тесты являются модульными и используют xUnit, Shouldly и Moq.
-- Тесты должны быть быстрыми, детерминированными и независимыми от файловой системы, сети, процессов, credentials, ОС и других элементов среды выполнения.
-- Интеграционные и end-to-end тесты не входят в автоматический test suite.
+- Hosting: local ASP.NET Core Host serving WASM from the same origin.
+- DI: Pure.DI and Pure.DI.MS.
+- Application and domain code uses interfaces and instances.
+- Static application services and service locator are forbidden.
+- Private `static SetupDI()` is allowed only as a compile-time marker of the Pure.DI source generator.
+- All persisted JSON documents are versioned.
+- All mutating operations must be atomic or safely recoverable.
+- The UI must not block during AI or MCP streaming.
+- Automated tests are unit tests and use xUnit, Shouldly, and Moq.
+- Tests must be fast, deterministic, and independent of the file system, network, processes, credentials, OS, and other elements of the execution environment.
+- Integration and end-to-end tests are not part of the automated test suite.
 
-## Не входит в первый релиз
+## Out of scope for the first release
 
-- Совместная работа нескольких пользователей.
-- Облачная синхронизация проектов.
-- Выполнение произвольных shell-команд.
-- Нативный desktop shell/WebView.
-- Автоматический доступ ко всем инструментам доверенного сервера.
-- Полноценный event sourcing.
+- Multi-user collaboration.
+- Cloud synchronization of projects.
+- Execution of arbitrary shell commands.
+- Native desktop shell/WebView.
+- Automatic access to all tools of a trusted server.
+- Full event sourcing.
 
-## Критерий MVP
+## MVP criterion
 
-Пользователь запускает один локальный Host, открывает WASM UI, создаёт проект, настраивает endpoint и credentials, добавляет разрешённые директории и MCP-серверы, создаёт чат, ветвится от сообщения и запускает агента. Любой новый инструмент требует подтверждения, а все tool calls и изменения файлов остаются в аудите.
+The user launches one local Host, opens the WASM UI, creates a project, configures the endpoint and credentials, adds allowed directories and MCP servers, creates a chat, branches from a message, and launches an agent. Any new tool requires confirmation, and all tool calls and file changes remain in the audit log.

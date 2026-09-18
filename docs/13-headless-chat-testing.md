@@ -1,12 +1,12 @@
 # Headless CLI
 
-CLI использует серверный чат, Submit и события выполнения, как Web. Локальная session содержит ID чата, ID проекта и адрес Host.
+The CLI uses the server-side chat, Submit and run events, like the Web. A local session holds the chat ID, the project ID and the Host address.
 
     dotnet run --project src/AI.Client.Cli -- session create --project "My project" --host http://localhost:52173/
     dotnet run --project src/AI.Client.Cli -- session send --session <id> --message "Hello"
     dotnet run --project src/AI.Client.Cli -- session show --session <id>
     dotnet run --project src/AI.Client.Cli -- session delete --session <id>
 
-create поддерживает --connection <name>; иначе чат наследует подключение проекта. send поддерживает --cancel-after-ms <ms> и останавливает серверный запуск при отмене. show читает серверную историю. delete удаляет серверный чат и локальную session.
+create supports --connection <name>; otherwise the chat inherits the project connection. send supports --cancel-after-ms <ms> and stops the server-side run on cancellation. show reads the server history. delete removes the server-side chat and the local session.
 
-AI_CLIENT_SESSION_DIRECTORY задаёт каталог sessions. Для изоляции проверок используйте отдельный AI_CLIENT_DATA_DIRECTORY у Host и локальный тестовый AI endpoint. Transcript служит диагностике, а не источником истории. Старые sessions не поддерживаются.
+AI_CLIENT_SESSION_DIRECTORY sets the sessions directory. To isolate tests, use a separate AI_CLIENT_DATA_DIRECTORY for the Host and a local test AI endpoint. The transcript serves diagnostics, not as a source of history. Old sessions are not supported.

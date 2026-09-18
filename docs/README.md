@@ -1,48 +1,51 @@
-﻿# Документация AI.Client
+# AI.Client Documentation
 
-Документы описывают согласованную архитектуру и являются исходным контрактом для реализации. При изменении ключевого решения сначала создаётся или обновляется ADR, затем синхронно обновляются затронутые документы.
+The documents describe the agreed-upon architecture and are the source of truth for implementation. When a key decision changes, the corresponding ADR is created or updated first, then the affected documents are updated in lockstep.
 
-## Порядок чтения
+## Reading order
 
-1. [Требования и границы продукта](01-product-requirements.md)
-2. [Архитектура](02-architecture.md)
-3. [Доменная модель](03-domain-model.md)
-4. [JSON-хранилище](04-storage.md)
-5. [MCP-интеграция](05-mcp-integration.md)
-6. [Безопасность](06-security.md)
-7. [AI endpoints и agent loop](07-ai-and-agent-loop.md)
-8. [План реализации](08-implementation-plan.md)
-9. [Стратегия тестирования](09-testing.md)
-10. [Эксплуатация и диагностика](10-operations.md)
-11. [Ход реализации](11-implementation-progress.md)
+1. [Product requirements and boundaries](01-product-requirements.md)
+2. [Architecture](02-architecture.md)
+3. [Domain model](03-domain-model.md)
+4. [JSON storage](04-storage.md)
+5. [MCP integration](05-mcp-integration.md)
+6. [Security](06-security.md)
+7. [AI endpoints and agent loop](07-ai-and-agent-loop.md)
+8. [Implementation plan](08-implementation-plan.md)
+9. [Testing strategy](09-testing.md)
+10. [Operations and diagnostics](10-operations.md)
+11. [Implementation progress](11-implementation-progress.md)
 12. [UX decisions](12-ux-decisions.md)
-13. [Composer rules](15-composer-rules.md)
-14. [Инструменты по умолчанию](16-default-mcp-tools.md)
-15. [Инструменты управления приложением](17-app-tools.md)
-16. [Компактное представление хода в чате](18-compact-turn-view.md)
-17. [Вопрос пользователю (ask_user)](19-ask-user.md)
-18. [Управление контекстом LLM](20-context-management.md)
+13. [Headless chat testing](13-headless-chat-testing.md)
+14. [Concurrent chat runs](14-concurrent-chat-runs.md)
+15. [Logging](14-logging.md)
+16. [Composer rules](15-composer-rules.md)
+17. [Default MCP tools](16-default-mcp-tools.md)
+18. [Application management tools](17-app-tools.md)
+19. [Compact turn view](18-compact-turn-view.md)
+20. [Asking the user (`ask_user`)](19-ask-user.md)
+21. [LLM context management](20-context-management.md)
 
-## Принятые решения
+## Accepted decisions
 
 - [ADR-001: Hosted Blazor WebAssembly](decisions/ADR-001-hosted-blazor-wasm.md)
-- [ADR-002: JSON-граф из неизменяемых узлов](decisions/ADR-002-immutable-json-graph.md)
-- [ADR-003: Права отдельно для каждого MCP-инструмента](decisions/ADR-003-per-tool-permissions.md)
-- [ADR-004: Responses API как основной OpenAI-протокол](decisions/ADR-004-openai-responses-api.md)
-- [ADR-005: Быстрые модульные тесты на xUnit](decisions/ADR-005-unit-testing.md)
-- [ADR-006: Упрощение архитектуры](decisions/ADR-006-architecture-simplification.md)
-- [ADR-007: Инструменты управления приложением во внутрипроцессном MCP-сервере](decisions/ADR-007-in-process-app-tools.md)
+- [ADR-002: JSON graph of immutable nodes](decisions/ADR-002-immutable-json-graph.md)
+- [ADR-003: Per-tool MCP permissions](decisions/ADR-003-per-tool-permissions.md)
+- [ADR-004: Responses API as the primary OpenAI protocol](decisions/ADR-004-openai-responses-api.md)
+- [ADR-005: Fast unit tests on xUnit](decisions/ADR-005-unit-testing.md)
+- [ADR-006: Architecture simplification](decisions/ADR-006-architecture-simplification.md)
+- [ADR-007: Application management tools in an in-process MCP server](decisions/ADR-007-in-process-app-tools.md)
 
-## Статусы документов
+## Document status
 
-Все перечисленные документы имеют статус `Accepted` и фиксируют решения, принятые до начала реализации. Версии NuGet-пакетов должны централизованно задаваться в `Directory.Packages.props`; при реализации выбирается последняя совместимая стабильная версия и фиксируется lock-файлом.
+All listed documents have the status `Accepted` and capture decisions made before implementation began. NuGet package versions must be set centrally in `Directory.Packages.props`; the latest compatible stable version is chosen during implementation and pinned by the lock file.
 
-Фактическое состояние работ, результаты проверок и следующий инкремент фиксируются в документе [«Ход реализации»](11-implementation-progress.md). Он имеет статус `Active` и обновляется после каждого завершённого инкремента.
+The actual state of work, verification results, and the next increment are recorded in [Implementation progress](11-implementation-progress.md). It has the status `Active` and is updated after each completed increment.
 
 ## Language convention
 
-All UI text, source-code comments, identifiers and technical messages introduced by the project are written in English. Project documentation is maintained in Russian unless a document explicitly requires another language.
+All UI text, source-code comments, identifiers, technical messages, and project documentation introduced by the project are written in English.
 
-Текущие решения: [ADR-006](decisions/ADR-006-architecture-simplification.md).
+Current decisions: [ADR-006](decisions/ADR-006-architecture-simplification.md).
 
-- [Инструменты MCP по умолчанию](16-default-mcp-tools.md) — запуск процессов, разрешения и CLI.
+- [Default MCP tools](16-default-mcp-tools.md) — process execution, permissions, and CLI.

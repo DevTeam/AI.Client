@@ -2,7 +2,7 @@ namespace Build.Targets;
 
 using System.Diagnostics;
 
-internal sealed class HostTarget(IProcessRunner processRunner, IBuildPaths buildPaths) : IHostTarget
+internal sealed class RunTarget(IProcessRunner processRunner, IBuildPaths buildPaths) : IRunTarget
 {
     public async Task<int> RunAsync(CancellationToken cancellationToken)
     {

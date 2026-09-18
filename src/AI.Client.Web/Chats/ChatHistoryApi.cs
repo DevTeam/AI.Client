@@ -85,7 +85,12 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
         using var response = await httpClient.DeleteAsync(
             $"api/projects/{projectId}/chats/{chatId}?revision={revision}",
             cancellationToken);
+        // The Host returns NoContent on success (no body), NotFound for missing chat, and Conflict
+        // with a body describing the current revision. Only parse the body when one exists — the
+        // default `ReadFromJsonAsync` would throw on an empty stream, which was happening in the
+        // browser when the chat had already been deleted server-side.
         if (response.IsSuccessStatusCode) return new ChatDeleteResult(true, revision);
+        if (response.StatusCode == HttpStatusCode.NotFound) return new ChatDeleteResult(false, 0);
         return await response.Content.ReadFromJsonAsync<ChatDeleteResult>(cancellationToken)
                ?? new ChatDeleteResult(false, 0);
     }

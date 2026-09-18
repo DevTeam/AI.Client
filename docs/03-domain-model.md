@@ -1,9 +1,9 @@
-# Доменная модель
+# Domain model
 
-Project хранит имя, настройки безопасности и ConnectionId. Подключения и секреты не дублируются в проектах.
+A `Project` stores its name, security settings, and `ConnectionId`. Connections and secrets are not duplicated in projects.
 
-ChatThread содержит неизменяемые сообщения и ChatBranch. Сообщение имеет ID, роль, текст, время и ParentId. Ветка содержит стабильный ID, HeadMessageId, название, ParentBranchId и RootMessageId. ID основной ветки совпадает с ID чата.
+A `ChatThread` contains immutable messages and a `ChatBranch`. A message has an ID, role, text, time, and `ParentId`. A branch has a stable ID, `HeadMessageId`, name, `ParentBranchId`, and `RootMessageId`. The main branch's ID matches the chat ID.
 
-Контекст AI строится по цепочке родителей выбранной головы без соседних веток. Fork создаёт новую ветку. Replace удаляет поддерево и добавляет новое сообщение одной записью чата.
+The AI context is built along the parent chain of the selected head, without sibling branches. Fork creates a new branch. Replace deletes a subtree and adds a new message in a single chat entry.
 
-ChatRunState хранит очередь, статус, ошибку, ревизию и обработанные OperationId. Восстановление явно переводит незавершённую генерацию в Interrupted; чтение состояния ничего не меняет.
+`ChatRunState` stores the queue, status, error, revision, and processed `OperationId` values. Recovery explicitly transitions an incomplete generation to `Interrupted`; reading the state changes nothing.

@@ -1,12 +1,12 @@
-﻿# Правила composer
+# Composer rules
 
-Enter отправляет сообщение, Ctrl+Enter ставит его в очередь, Ctrl+Alt+Enter создаёт ответвление, Ctrl+Shift+Enter прерывает текущий прогон и отправляет сообщение первым. Кнопка отправки выполняет то действие, которое подсвечено в её подсказке, поэтому клавиши и кнопка всегда означают одно и то же. Fork и Replace передают серверу точку ответвления или заменяемое сообщение. Replace всегда прерывает работу выбранной ветки, отбрасывает её старую очередь и сразу запускает замену.
+Enter sends the message, Ctrl+Enter queues it, Ctrl+Alt+Enter creates a branch, Ctrl+Shift+Enter interrupts the current run and sends the message first. The send button performs whichever action is highlighted in its tooltip, so the keys and the button always mean the same thing. Fork and Replace pass the server the branch point or the message being replaced. Replace always interrupts the work of the selected branch, discards its old queue and starts the replacement immediately.
 
-Во время генерации composer остаётся доступным: Enter ставит сообщение в хвост очереди, Ctrl+Shift+Enter отвечает на него немедленно. Composer выполняет одну команду Submit. Сервер выбирает контекст, изменяет историю и управляет очередью. Web не удаляет поддерево перед отправкой и не дублирует исполнение CLI.
+During generation the composer stays available: Enter puts the message at the tail of the queue, Ctrl+Shift+Enter answers it immediately. The composer performs a single Submit command. The server chooses the context, changes the history and manages the queue. The Web does not delete the subtree before sending and does not duplicate the CLI execution.
 
-`↑` и `↓` без модификаторов листают историю отправленных сообщений проекта, `Esc` выходит из неё
-и возвращает набранный текст. Клавиша уходит в историю только на крайней строке поля, поэтому
-многострочное сообщение остаётся навигабельным. Правка подставленной записи возвращает поле в
-обычный черновик. Подробности — в [UX decisions](12-ux-decisions.md#история-ввода).
+`↑` and `↓` without modifiers scroll through the project's history of sent messages, `Esc` leaves it
+and returns the typed text. The key goes into the history only on the last line of the field, so a
+multiline message stays navigable. Editing an inserted entry returns the field to
+a normal draft. Details — in [UX decisions](12-ux-decisions.md#история-ввода).
 
-Выбранная ветка передаётся стабильным ID независимо от временной позиции просмотра при редактировании. Замена использует ревизию чата. Ошибка оставляет текст для исправления и повторной отправки.
+The selected branch is passed as a stable ID regardless of the temporary view position during editing. Replacement uses the chat revision. An error leaves the text for fixing and resending.

@@ -1,19 +1,19 @@
-# AI endpoints и агентский цикл
+# AI endpoints and agent loop
 
-Статус: Accepted
+Status: Accepted
 
-> Текущее исполнение (2026-09-07): реализован встроенный stdio-сервер с `process_run`, потоковый агентский цикл Chat Completions, подтверждения и история вызовов. См. [инструменты по умолчанию](16-default-mcp-tools.md). Описания остальных серверов, транспортов и Responses API ниже относятся к целевой архитектуре; ранние preview-разделы отражают предыдущие этапы.
+> Current implementation (2026-09-07): a built-in stdio server with `process_run`, a streaming Chat Completions agent loop, confirmations, and call history have been implemented. See [default tools](16-default-mcp-tools.md). The descriptions of other servers, transports, and the Responses API below relate to the target architecture; the early preview sections reflect previous stages.
 
 
-## Ранний live chat preview (исторический этап)
+## Early live chat preview (historical stage)
 
-Для ранней ручной проверки реализован Host-only adapter к OpenAI-compatible `POST {baseUrl}/chat/completions`. Web UI передаёт base URL, model, сообщение и необязательный API key в локальный Host; Host отправляет один non-streaming request с `messages` и `stream: false`.
+For early manual verification, a Host-only adapter to OpenAI-compatible `POST {baseUrl}/chat/completions` is implemented. The Web UI passes the base URL, model, message, and optional API key to the local Host; the Host sends a single non-streaming request with `messages` and `stream: false`.
 
-API key не сохраняется в JSON, browser storage, логах или source code. Он существует только в памяти UI и в одном same-origin запросе до Host. Этот preview не является endpoint profile или agent loop: история не сохраняется, streaming и MCP tools ещё не включены. Постоянные endpoint profiles и защищённое credential storage остаются следующим этапом.
+The API key is not stored in JSON, browser storage, logs, or source code. It exists only in UI memory and in one same-origin request to the Host. This preview is not an endpoint profile or agent loop: history is not saved, and streaming and MCP tools are not yet enabled. Permanent endpoint profiles and protected credential storage remain the next stage.
 
 ## Provider-neutral contract
 
-Application layer не зависит от OpenAI SDK:
+The Application layer does not depend on the OpenAI SDK:
 
 ```csharp
 public interface IAIEndpoint
@@ -24,17 +24,17 @@ public interface IAIEndpoint
 }
 ```
 
-Реализации:
+Implementations:
 
 - `OpenAIResponsesEndpoint`;
 - `OpenAIChatCompletionsEndpoint`;
 - `OpenAICompatibleEndpoint`.
 
-## Основной протокол
+## Primary protocol
 
-Для OpenAI используется Responses API: он рекомендован для новых agent-like приложений и моделирует сообщения, function calls и function call outputs отдельными items. Chat Completions сохраняется как fallback для совместимых endpoints.
+For OpenAI, the Responses API is used: it is recommended for new agent-like applications and models messages, function calls, and function call outputs as separate items. Chat Completions remains a fallback for compatible endpoints.
 
-Официальные источники:
+Official sources:
 
 - [Migrate to the Responses API](https://developers.openai.com/api/docs/guides/migrate-to-responses)
 - [Function calling](https://developers.openai.com/api/docs/guides/function-calling)
@@ -56,17 +56,17 @@ EndpointProfile
 └─ RetryPolicy
 ```
 
-Profile хранится глобально; project ссылается на него и может задавать default model. Chat может переопределить endpoint/model, но каждый AgentRun сохраняет полный snapshot.
+The profile is stored globally; the project references it and can set a default model. A chat can override the endpoint/model, but each AgentRun saves a full snapshot.
 
 ## Capability probe
 
-Probe не должен выполнять дорогой model request без подтверждения. Проверяются доступность endpoint, auth response и заявленная/наблюдаемая поддержка protocol features. Результат является подсказкой и допускает ручные overrides.
+The probe must not perform an expensive model request without confirmation. It checks endpoint availability, auth response, and declared/observed support for protocol features. The result is a hint and allows manual overrides.
 
-## История и provider state
+## History and provider state
 
-Локальный message graph является источником истины. `previous_response_id` хранится как необязательная оптимизация. При fork, смене endpoint, `store: false`, истечении provider retention или ошибке continuation Host восстанавливает вход из локального пути ветки.
+The local message graph is the source of truth. `previous_response_id` is stored as an optional optimization. On fork, endpoint change, `store: false`, provider retention expiry, or continuation error, the Host restores the input from the local branch path.
 
-При ручном управлении reasoning history адаптер обязан сохранять и возвращать все необходимые provider items в соответствии с выбранным API и model contract. Provider-specific items хранятся в AgentRun/metadata, но не проникают в Domain API.
+When managing reasoning history manually, the adapter must save and return all necessary provider items according to the selected API and model contract. Provider-specific items are stored in `AgentRun`/metadata but do not penetrate the Domain API.
 
 ## Agent loop
 
@@ -88,21 +88,21 @@ flowchart TD
     Persist --> Request
 ```
 
-## Обязательные свойства цикла
+## Required properties of the loop
 
 - Preserve provider `call_id`/tool-use identity.
-- Валидация arguments по MCP input schema до approval и вызова.
-- Валидация structured result по output schema, если она задана.
-- Max iterations, max calls, deadline и cancellation.
-- Независимые read-only calls могут выполняться параллельно только после policy evaluation.
-- Side-effecting calls по умолчанию выполняются последовательно.
-- Completed invocation не повторяется автоматически.
-- Любой result считается недоверенным model input.
-- Пользователь видит tool timeline и может остановить run.
+- Validate arguments against MCP input schema before approval and invocation.
+- Validate the structured result against output schema, if defined.
+- Max iterations, max calls, deadline, and cancellation.
+- Independent read-only calls may run in parallel only after policy evaluation.
+- Side-effecting calls are executed sequentially by default.
+- A completed invocation is not repeated automatically.
+- Any result is treated as untrusted model input.
+- The user sees the tool timeline and can stop the run.
 
 ## Streaming events
 
-Provider events преобразуются в стабильный contract:
+Provider events are converted to a stable contract:
 
 ```text
 RunStarted
@@ -117,12 +117,12 @@ RunFailed
 RunCancelled
 ```
 
-UI не анализирует provider-specific SSE напрямую.
+The UI does not parse provider-specific SSE directly.
 
-## Ошибки и retries
+## Errors and retries
 
-Retry разрешён для transient transport failures до начала side effect или для явно idempotent invocation. `idempotentHint` неизвестного сервера недостаточен для автоматического retry. Rate limits и server retry hints учитываются, но ограничиваются общей deadline.
+Retries are allowed for transient transport failures before any side effect begins, or for an explicitly idempotent invocation. `idempotentHint` from an unknown server is not sufficient for automatic retries. Rate limits and server retry hints are respected but bounded by the overall deadline.
 
-## Контекст ветки
+## Branch context
 
-Путь root → head преобразуется в provider input. Технические сообщения аудита не добавляются автоматически. Tool call и tool result включаются парой, сохраняя исходные IDs. При превышении context window применяется явно видимая стратегия compaction; исходные nodes не изменяются.
+The root → head path is converted to provider input. Technical audit messages are not added automatically. Tool calls and tool results are included as a pair, preserving the original IDs. When the context window is exceeded, an explicitly visible compaction strategy is applied; the original nodes are not changed.

@@ -3,6 +3,7 @@
 @using System.Text.Json
 @using AI.Client.Web.State
 @inject IClientMetadata ClientMetadata
+@inject IApiBaseUrl _apiBaseUrl
 @inject IProjectApi ProjectApi
 @inject IChatHistoryApi ChatHistoryApi
 @inject IJSRuntime JsRuntime
@@ -629,7 +630,7 @@
                 _composerModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
                 _inlineEditorModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/inlineEditor.js");
                 _runEventsModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/runEvents.js");
-                _runEventsSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("subscribe", _dotNetReference);
+                _runEventsSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("subscribe", _apiBaseUrl.Value.ToString(), _dotNetReference);
                 _focusSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchFocus", _dotNetReference);
                 _escapeSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchEscape", _dotNetReference);
                 _queueDragSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchQueueDrag", _dotNetReference);

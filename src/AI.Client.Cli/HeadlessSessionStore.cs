@@ -10,7 +10,7 @@ internal interface IHeadlessSessionStore
     Task DeleteAsync(Guid id, CancellationToken cancellationToken);
 }
 
-internal sealed class HeadlessSessionStore(HeadlessPaths paths) : IHeadlessSessionStore
+internal sealed class HeadlessSessionStore(IHeadlessPaths paths) : IHeadlessSessionStore
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 

@@ -87,8 +87,11 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
             var choice = choices[0];
             if (choice.TryGetProperty("delta", out var toolDelta) && toolDelta.TryGetProperty("tool_calls", out var toolCalls))
             {
+                var firstToolCallDelta = calls.Count == 0;
+                var receivedToolCallDelta = false;
                 foreach (var fragment in toolCalls.EnumerateArray())
                 {
+                    receivedToolCallDelta = true;
                     var index = fragment.GetProperty("index").GetInt32();
                     // A ceiling on parallel tool calls in one assistant message, not on a run: it
                     // exists to stop a malformed stream from allocating without bound, so it sits
@@ -106,6 +109,8 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
                 }
                 hasContent = true;
                 contentIdleTimer.Restart();
+                if (firstToolCallDelta && receivedToolCallDelta)
+                    yield return new ChatCompletionChunk("", model, ToolCallsStarted: true);
             }
             if (choice.TryGetProperty("delta", out var delta)
                 && delta.TryGetProperty("content", out var contentElement)

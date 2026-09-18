@@ -355,6 +355,7 @@ public sealed class ChatRunDispatcher(
                     runtime.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
                     token = runtime.Cancellation.Token;
                     runtime.State.Start();
+                    runtime.StreamingToolCallsStarted = false;
                     runtime.WorkspaceChanges = null;
                     // A previous attempt at this same command may have been cut short, leaving a
                     // truncated answer and its tool messages on the branch. Retrying replaces that
@@ -417,6 +418,16 @@ public sealed class ChatRunDispatcher(
                             // storage several times per second.
                             await SaveAsync(runtime, null, ct);
                         }
+                    },
+                    async ct =>
+                    {
+                        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, ct);
+                        if (runtime.StreamingToolCallsStarted) return;
+                        runtime.StreamingToolCallsStarted = true;
+                        // The presentation-only phase change still needs its own revision so the
+                        // snapshot is not discarded as an already-applied streaming update.
+                        runtime.State.Append("");
+                        await SaveAsync(runtime, null, ct);
                     },
                     (activity, ct) => ReportToolActivityAsync(runtime, activity, ct),
                     (tool, arguments, timeout, position, ct) => ApproveAsync(runtime, tool, arguments, timeout, position, ct), token);
@@ -705,7 +716,11 @@ public sealed class ChatRunDispatcher(
             RetainedMessageIds(chat.Id), token)
             ?? throw new InvalidOperationException("Tool history conflict.");
         runtime.ToolHead = id;
-        if (runtime.State.Status == RunStatus.Generating) runtime.State.Start();
+        if (runtime.State.Status == RunStatus.Generating)
+        {
+            runtime.State.Start();
+            runtime.StreamingToolCallsStarted = false;
+        }
         await SaveAsync(runtime, chat, token);
     }
 
@@ -878,7 +893,8 @@ public sealed class ChatRunDispatcher(
             PendingApproval = runtime.PendingApproval,
             PendingPrompt = runtime.PendingPrompt,
             ActiveTools = runtime.ActiveTools.Values.ToArray(),
-            WorkspaceChanges = runtime.WorkspaceChanges
+            WorkspaceChanges = runtime.WorkspaceChanges,
+            StreamingToolCallsStarted = runtime.StreamingToolCallsStarted
         };
         if (chat is not null)
             foreach (var other in _runtimes.Values.Where(item => item.State.ChatId == chat.Id && item != runtime))
@@ -1165,6 +1181,7 @@ public sealed class ChatRunDispatcher(
         public Guid? ActiveMessageId { get; set; }
         public bool ResumeRequested { get; set; }
         public DateTimeOffset LastPublished { get; set; }
+        public bool StreamingToolCallsStarted { get; set; }
     }
 
     private readonly record struct RunKey(Guid ProjectId, Guid ChatId, Guid BranchId);

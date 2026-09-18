@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @using System.Diagnostics.CodeAnalysis
 @using System.Text.Json
 @using AI.Client.Web.State
@@ -75,7 +75,13 @@
                 }
                 else
                 {
-                    <button class="workspace-nav-item" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => SelectProjectAsync(project, restoreLastChat: false)"><span class="status-dot @GetProjectStatusClass(project.Id)"></span><span class="nav-item-label">@project.Name</span></button>
+                    @* Clicking the active project lands on its "new chat" composer, mirroring the
+                       per-project "+" button. Clicking a different project restores the
+                       chat/branch the user last left on, the same way a fresh page load does.
+                       Without the same-project shortcut the user would have to reach for the
+                       "+" button every time they wanted to start a new conversation in the
+                       project they were already in. *@
+                    <button class="workspace-nav-item" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => HandleProjectItemClickAsync(project)"><span class="status-dot @GetProjectStatusClass(project.Id)"></span><span class="nav-item-label">@project.Name</span></button>
                 }
                 <button class="icon-action project-action-button project-new-chat-button" type="button" title="New chat" aria-label="New chat" @onclick="() => CreateChatForProjectAsync(project)"><AppIcon Name="plus" /></button>
                 <button class="icon-action project-action-button project-rename-button" type="button" title="Rename" aria-label="Rename project" @onclick="() => BeginProjectRenameAsync(project)"><AppIcon Name="edit" /></button>
@@ -945,6 +951,17 @@
         }
     }
 
+    private async Task HandleProjectItemClickAsync(ProjectSummary project)
+    {
+        // Re-clicking the open project is a shortcut for its "new chat" composer: reload
+        // chats so anything created elsewhere shows up, but keep the chat/branch picker on
+        // the empty entry and preserve any draft the user was typing for a new chat in this
+        // project. Switching between projects is the path that restores the chat/branch the
+        // user last left on — without that, flipping from A → B → A would leave A empty even
+        // when there was a conversation in progress.
+        await SelectProjectAsync(project, restoreLastChat: _selectedProject?.Id != project.Id);
+    }
+
     private async Task SelectProjectAsync(ProjectSummary project, bool restoreLastChat = true)
     {
         _globalSection = null;
@@ -987,6 +1004,11 @@
         // security round-trip returned a different project (or nothing) and never reached it.
         ChatsBusy.End();
 
+        // restoreLastChat is true everywhere a user switches projects (sidebar click, initial
+        // load, right-click menu). The narrow paths that pass false are the ones that
+        // immediately follow up with a different selection — BeginProjectRenameAsync,
+        // ToggleProjectMenuAsync, CreateChatForProjectAsync, OpenSearchMatchAsync — and so
+        // would just throw away the restore work they asked for.
         var context = restoreLastChat ? WorkspaceStateService.GetProjectContext(project.Id) : default;
         if (context.ChatId is { } chatId && _chats.Any(chat => chat.Id == chatId))
         {
@@ -994,12 +1016,9 @@
         }
         else
         {
-            // Restore the "new chat" draft for this project regardless of restoreLastChat.
-            // restoreLastChat only governs whether to auto-reopen a chat (which carries its
-            // own draft, restored via SelectChatAsync above); the new-chat draft is per-
-            // project and was previously only restored on initial app load, so clicking the
-            // project in the sidebar — which passes restoreLastChat: false — would always
-            // show an empty composer even when the user had unsent text waiting.
+            // The new-chat draft lives per project ("new:{projectId}"); restore it when no
+            // remembered chat is available, so clicking a project never lands the user on a
+            // composer that has forgotten the message they were typing for that project.
             RestoreComposerDraft();
         }
     }

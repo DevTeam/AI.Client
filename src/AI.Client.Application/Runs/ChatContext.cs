@@ -3,9 +3,9 @@ namespace AI.Client.Application.Runs;
 using Contracts.Chat;
 using Contracts.Chats;
 
-public static class ChatContext
+public sealed class ChatContext : IChatContextBuilder
 {
-    public static IReadOnlyList<ChatCompletionMessage> Get(ChatDetails chat, Guid headId)
+    public IReadOnlyList<ChatCompletionMessage> Build(ChatDetails chat, Guid headId)
     {
         var byId = chat.Messages.ToDictionary(message => message.Id);
         var path = new List<ChatCompletionMessage>();

@@ -30,7 +30,7 @@ public sealed class ChatContextTests
                 new ChatMessageView(nextUser, firstResult, "User", "Urgent", DateTimeOffset.UnixEpoch)
             ]);
 
-        var context = ChatContext.Get(chat, nextUser);
+        var context = new ChatContext().Build(chat, nextUser);
 
         context.Select(message => message.Role).ShouldBe(["user", "assistant", "tool", "tool", "tool", "user"]);
         context.Where(message => message.Role == "tool").Select(message => message.ToolCallId)

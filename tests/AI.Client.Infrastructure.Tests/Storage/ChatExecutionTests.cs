@@ -277,7 +277,7 @@ public sealed class ChatExecutionTests
         await fixture.RestartAsync();
         var restored = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         restored!.Messages.Single(message => message.Id == completed.HeadMessageId).Content.ShouldBe("Final response");
-        ChatContext.Get(restored, completed.HeadMessageId!.Value).Select(message => message.Role).ShouldBe(["user", "assistant", "tool", "assistant"]);
+        new ChatContext().Build(restored, completed.HeadMessageId!.Value).Select(message => message.Role).ShouldBe(["user", "assistant", "tool", "assistant"]);
         fixture.Tools.CallCount.ShouldBe(allow ? 1 : 0);
     }
 
@@ -542,7 +542,7 @@ public sealed class ChatExecutionTests
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         var branches = chat!.Branches!;
         branches.Single(branch => branch.Id == fixture.ChatId).HeadMessageId.ShouldBe(main.HeadMessageId);
-        ChatContext.Get(chat, branches.Single(branch => branch.Id == forkId).HeadMessageId!.Value)
+        new ChatContext().Build(chat, branches.Single(branch => branch.Id == forkId).HeadMessageId!.Value)
             .Select(message => message.Content).ShouldBe(["Alternative root", "Alternative reply"]);
     }
 
@@ -590,9 +590,9 @@ public sealed class ChatExecutionTests
 
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         var branches = chat!.Branches!;
-        ChatContext.Get(chat, branches.Single(branch => branch.Id == fixture.ChatId).HeadMessageId!.Value)
+        new ChatContext().Build(chat, branches.Single(branch => branch.Id == fixture.ChatId).HeadMessageId!.Value)
             .Select(message => message.Content).ShouldBe(["Replacement", "Replacement reply"]);
-        ChatContext.Get(chat, branches.Single(branch => branch.Id == forkId).HeadMessageId!.Value)
+        new ChatContext().Build(chat, branches.Single(branch => branch.Id == forkId).HeadMessageId!.Value)
             .Select(message => message.Content).ShouldBe(["Original", "Fork", "Fork reply"]);
     }
 
@@ -674,7 +674,7 @@ public sealed class ChatExecutionTests
         branches.ShouldNotContain(branch => branch.Id == parentId);
         var child = branches.Single(branch => branch.Id == childId);
         child.ParentBranchId.ShouldBe(fixture.ChatId);
-        ChatContext.Get(chat, child.HeadMessageId!.Value).Select(message => message.Content)
+        new ChatContext().Build(chat, child.HeadMessageId!.Value).Select(message => message.Content)
             .ShouldBe(["Root", "Parent", "Child", "Child reply"]);
 
         var childRun = (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None))
@@ -1176,7 +1176,8 @@ public sealed class ChatExecutionTests
                 new GlobalSettingsService(_settings, _secrets),
                 new ChatAgent(Completion, () => Tools, _projectService, _settings, policies, Workspace,
                     ModelProjector, ToolResultCodec),
-                _secrets, _clock, _ids, _synchronization, Workspace, policies);
+                _secrets, _clock, _ids, _synchronization, Workspace, policies,
+                new ChatContext());
         }
         public static async Task<Fixture> CreateAsync(IWorkspaceChangeTracker? workspace = null)
         {

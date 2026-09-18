@@ -13,7 +13,7 @@ using System.Text;
 /// out to be genuinely large the search is abandoned at <see cref="MaxDifference"/> and the result
 /// is reported as a wholesale replacement, marked approximate rather than silently wrong.
 /// </remarks>
-public static class LineDiff
+public sealed class LineDiff : ILineDiff
 {
     /// <summary>Give up past this many differing lines and report a replacement instead.</summary>
     public const int MaxDifference = 5000;
@@ -30,7 +30,7 @@ public static class LineDiff
     /// Compares two texts. Line endings are normalized for the comparison only — neither input is
     /// written anywhere, so a file's own CRLF/LF style is never disturbed by measuring it.
     /// </summary>
-    public static Result Compare(string? before, string? after)
+    public Result Compare(string? before, string? after)
     {
         var source = Split(before);
         var target = Split(after);

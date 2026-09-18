@@ -130,7 +130,7 @@ ContextPlan
 
 #### Шаг A. Model projection инструментов
 
-Каждый сохранённый tool result сначала переводится через внедрённый `IToolResultCodec.Read(content)` в `ModelContent`. Кодек использует `IToolResultModelProjector`; UI metadata и `_meta` не попадают в модель. Это базовое представление, а не реакция на переполнение бюджета.
+Каждый сохранённый tool result сначала переводится через внедрённый `IToolResultCodec.Read(content)` в `ModelContent`. Кодек использует `IToolResultModelProjector`: успешный непустой `structuredContent` имеет приоритет, для результата с `isError` используется `content`, а `_meta` никогда не попадает в модель. Это базовое представление, а не реакция на переполнение бюджета.
 
 #### Шаг B. Ограничение крупных результатов
 

@@ -6,8 +6,9 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 /// <summary>
-/// Produces the canonical model-facing JSON for a tool result: content, structured content and
-/// the error flag, but never host/UI metadata.
+/// Produces the model-facing output for a tool result. Successful structured output takes
+/// precedence over content blocks; errors keep their content because it carries the actionable
+/// failure description. Host/UI metadata never participates in the projection.
 /// </summary>
 public sealed class ToolResultModelProjector : IToolResultModelProjector
 {
@@ -23,12 +24,25 @@ public sealed class ToolResultModelProjector : IToolResultModelProjector
         bool isError)
     {
         ArgumentNullException.ThrowIfNull(content);
-        var payload = new JsonObject { ["isError"] = isError };
+
+        // Match the OpenAI Agents MCP adapter: prefer structured output for successful calls,
+        // but keep content for errors because that is where MCP tools report corrective detail.
+        if (!isError && structuredContent is { } structured && HasValue(structured))
+            return JsonNode.Parse(structured.GetRawText())!.ToJsonString(ModelFacingJson);
+
         var blocks = new JsonArray();
         foreach (var block in content) blocks.Add(block.ToModelJson());
-        if (blocks.Count > 0) payload["content"] = blocks;
-        if (structuredContent is { } structured)
-            payload["structuredContent"] = JsonNode.Parse(structured.GetRawText());
-        return payload.ToJsonString(ModelFacingJson);
+        return blocks.Count == 1
+            ? blocks[0]!.ToJsonString(ModelFacingJson)
+            : blocks.ToJsonString(ModelFacingJson);
     }
+
+    private static bool HasValue(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Undefined or JsonValueKind.Null => false,
+        JsonValueKind.Object => value.EnumerateObject().Any(),
+        JsonValueKind.Array => value.GetArrayLength() > 0,
+        JsonValueKind.String => !string.IsNullOrEmpty(value.GetString()),
+        _ => true
+    };
 }

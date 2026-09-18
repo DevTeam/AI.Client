@@ -127,7 +127,7 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
         await EditAsync(tracker, "write_file", file, () => File.WriteAllTextAsync(file, "a\nb"));
 
         var change = (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).Files.ShouldHaveSingleItem();
-        var lines = UnifiedDiff.Parse(change.Diff);
+        var lines = new UnifiedDiff().Parse(change.Diff);
         lines.Where(line => line.Kind == DiffLineKind.Added).Select(line => line.Text).ShouldBe(["a", "b"]);
     }
 

@@ -3,6 +3,7 @@
    first touched each path, so repeated edits to one file collapse into a single net difference
    and anything the user changed beforehand is never counted here. *@
 @using AI.Client.Contracts.Workspace
+@inject IUnifiedDiffParser DiffParser
 
 @if (Changes is { IsEmpty: false } changes)
 {
@@ -64,7 +65,7 @@
                         @if (expanded)
                         {
                             <div class="workspace-change-body" id="@bodyId">
-                                @if (UnifiedDiff.Parse(file.Diff) is { Count: > 0 } lines)
+                                @if (DiffParser.Parse(file.Diff) is { Count: > 0 } lines)
                                 {
                                     <div class="workspace-change-diff">
                                         @foreach (var line in lines.Take(MaxRenderedLines))

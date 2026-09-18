@@ -12,9 +12,9 @@ using System.Globalization;
 /// becomes a <see cref="DiffLineKind.Note"/> rather than being dropped or throwing, because a
 /// malformed hunk must not be able to hide the rest of a file's changes.
 /// </remarks>
-public static class UnifiedDiff
+public sealed class UnifiedDiff : IUnifiedDiffParser
 {
-    public static IReadOnlyList<DiffLine> Parse(string? diff)
+    public IReadOnlyList<DiffLine> Parse(string? diff)
     {
         if (string.IsNullOrEmpty(diff)) return [];
 

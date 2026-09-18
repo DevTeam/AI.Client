@@ -5,6 +5,7 @@ namespace AI.Client.Web;
 
 using Chats;
 using Composer;
+using AI.Client.Contracts.Workspace;
 using Layout;
 using Markdown;
 using Projects;
@@ -37,6 +38,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IToolPresentations>().To<ToolPresentations>()
             .RootBind<IToolResultModelProjector>().To<ToolResultModelProjector>()
             .RootBind<IToolResultCodec>().To<ToolResultCodec>()
+            .RootBind<IUnifiedDiffParser>().As(Lifetime.Singleton).To<UnifiedDiff>()
             .Singleton<ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService, WorkspaceStateService, ChatComposerService, RunStateService>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<FileToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<ProcessToolPresentationAdapter>()

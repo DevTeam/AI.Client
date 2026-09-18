@@ -156,6 +156,19 @@
                     }
                 </div>
             }
+            else if (entry.CollapseTurnId is { } collapseTurnId)
+            {
+                var collapseKey = (collapseTurnId, "turn-collapse");
+                <button @key="collapseKey"
+                        id="turn-collapse-@collapseTurnId"
+                        class="turn-collapse-footer"
+                        type="button"
+                        title="Collapse intermediate steps"
+                        aria-label="Collapse intermediate steps"
+                        @onclick="() => CollapseTurnFromEndAsync(collapseTurnId)">
+                    <AppIcon Name="chevron-up" />
+                </button>
+            }
             else if (entry.StreamingRun is { } streamingRun)
             {
                 @* Until the provider returns tool calls, this can still be the final answer. Keep
@@ -906,6 +919,7 @@
         int? RevealIndex = null,
         IReadOnlyList<ActiveToolInvocation>? ActiveTools = null,
         Guid? TurnId = null,
+        Guid? CollapseTurnId = null,
         ChatRunSnapshot? StreamingRun = null,
         string? AbsorbingContent = null,
         int TransitionId = 0);
@@ -975,6 +989,16 @@
                     entries.Add(new RenderedFeedEntry(ActiveTools: activeTools, TurnId: turn.Id));
                 }
 
+                // Once every progressively mounted intermediate block is present, close the
+                // expanded region with a second affordance. A long turn can put its summary far
+                // above the viewport, so requiring the user to find that first button again
+                // defeats the purpose of folding the detail.
+                if (_expandedTurns.Contains(turn.Id.Value)
+                    && !_turnExpansionsPending.Contains(turn.Id.Value))
+                {
+                    entries.Add(new RenderedFeedEntry(CollapseTurnId: turn.Id));
+                }
+
                 if (IsCurrentTurn(turn) && SelectedRun is { } streamingRun
                     && !string.IsNullOrWhiteSpace(streamingRun.StreamingContent))
                 {
@@ -1042,6 +1066,30 @@
             _expandedTurnItemLimits[turnId] = InitialExpandedTurnItemCount;
             _turnExpansionsPending.Add(turnId);
         }
+        _expandedTurnsVersion++;
+    }
+
+    private async Task CollapseTurnFromEndAsync(Guid turnId)
+    {
+        if (!_expandedTurns.Contains(turnId)) return;
+
+        if (_messageScrollHandle is { } handle)
+        {
+            try
+            {
+                // Keep the content following the expanded region in place. This lets the final
+                // answer rise naturally into view instead of jumping back to the summary at the
+                // beginning of a potentially very long turn. Focus still returns to that summary
+                // for keyboard users, without changing the scroll position.
+                await handle.InvokeVoidAsync("anchorFollowingElement", $"turn-collapse-{turnId}");
+                await handle.InvokeVoidAsync("focusElement", $"turn-summary-{turnId}");
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+        }
+
+        _expandedTurns.Remove(turnId);
+        _expandedTurnItemLimits.Remove(turnId);
+        _turnExpansionsPending.Remove(turnId);
         _expandedTurnsVersion++;
     }
 

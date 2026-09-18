@@ -1,4 +1,4 @@
-﻿namespace AI.Client.Infrastructure.Tests.Storage;
+namespace AI.Client.Infrastructure.Tests.Storage;
 
 using AI.Client.Application.Chat;
 using Application.Chats;
@@ -1159,7 +1159,7 @@ public sealed class ChatExecutionTests
         public Guid ChatId { get; private set; }
         private Fixture(IWorkspaceChangeTracker? workspace = null)
         {
-            _chatRepository = new JsonChatRepository(FileSystem, new ChatStoragePaths("data"));
+            _chatRepository = new JsonChatRepository(FileSystem, new ChatStoragePaths("data"), new ChatDocumentSerializer());
             _projects = new JsonProjectRepository(FileSystem, new ProjectStoragePaths("data"));
             _runs = new JsonChatRunRepository(FileSystem, new ChatRunStoragePaths("data"));
             _settings = new JsonGlobalSettingsRepository(FileSystem, new GlobalSettingsPaths("data"));

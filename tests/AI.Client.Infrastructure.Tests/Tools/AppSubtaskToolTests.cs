@@ -1,4 +1,4 @@
-﻿namespace AI.Client.Infrastructure.Tests.Tools;
+namespace AI.Client.Infrastructure.Tests.Tools;
 
 using AI.Client.Application.Chat;
 using AI.Client.Application.Chats;
@@ -339,7 +339,7 @@ public sealed class AppSubtaskToolTests
         {
             _settings = new JsonGlobalSettingsRepository(_fileSystem, new GlobalSettingsPaths("data"));
             Projects = new ProjectService(new JsonProjectRepository(_fileSystem, new ProjectStoragePaths("data")), _ids, _clock, _settings);
-            Chats = new ChatService(new JsonChatRepository(_fileSystem, new ChatStoragePaths("data")), _ids, _clock, _synchronization);
+            Chats = new ChatService(new JsonChatRepository(_fileSystem, new ChatStoragePaths("data"), new ChatDocumentSerializer()), _ids, _clock, _synchronization);
             var policies = new ToolPolicyResolver(Projects, Chats, _settings);
             IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker();
             var modelProjector = new ToolResultModelProjector();

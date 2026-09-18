@@ -8,7 +8,8 @@ using System.Text.Json.Nodes;
 
 public sealed class JsonChatRepository(
     ITextFileSystem fileSystem,
-    IChatStoragePaths paths) : IChatRepository, IDisposable
+    IChatStoragePaths paths,
+    IChatDocumentSerializer serializer) : IChatRepository, IDisposable
 {
     public void Dispose() => _writes.Dispose();
 
@@ -23,7 +24,7 @@ public sealed class JsonChatRepository(
             var json = await fileSystem.ReadTextAsync(file, cancellationToken);
             if (json is not null)
             {
-                var summary = ChatDocumentSerializer.DeserializeSummary(json);
+                var summary = serializer.DeserializeSummary(json);
                 chats.Add(summary.HasStoredBranchCount
                     ? summary
                     : await MigrateBranchCountAsync(summary, cancellationToken));
@@ -44,25 +45,25 @@ public sealed class JsonChatRepository(
         // the manifest and avoid touching the full transcript when it has already been upgraded.
         var currentSummaryJson = await fileSystem.ReadTextAsync(summaryPath, cancellationToken);
         if (currentSummaryJson is null) return staleSummary;
-        var currentSummary = ChatDocumentSerializer.DeserializeSummary(currentSummaryJson);
+        var currentSummary = serializer.DeserializeSummary(currentSummaryJson);
         if (currentSummary.HasStoredBranchCount) return currentSummary;
 
         var chatJson = await fileSystem.ReadTextAsync(
             paths.GetChatPath(currentSummary.Id, currentSummary.ProjectId), cancellationToken);
         if (chatJson is null) return currentSummary;
 
-        var stored = ChatDocumentSerializer.Deserialize(chatJson);
-        var upgradedJson = ChatDocumentSerializer.SerializeSummary(stored.Chat, stored.Revision);
+        var stored = serializer.Deserialize(chatJson);
+        var upgradedJson = serializer.SerializeSummary(stored.Chat, stored.Revision);
         var temporarySummaryPath = paths.GetTemporaryChatSummaryPath(currentSummary.Id, currentSummary.ProjectId);
         await fileSystem.WriteTextAsync(temporarySummaryPath, upgradedJson, cancellationToken);
         await fileSystem.MoveAsync(temporarySummaryPath, summaryPath, true, cancellationToken);
-        return ChatDocumentSerializer.DeserializeSummary(upgradedJson);
+        return serializer.DeserializeSummary(upgradedJson);
     }
 
     public async Task<StoredChat?> GetAsync(ProjectId projectId, ChatId id, CancellationToken cancellationToken)
     {
         var json = await fileSystem.ReadTextAsync(paths.GetChatPath(id, projectId), cancellationToken);
-        return json is null ? null : ChatDocumentSerializer.Deserialize(json);
+        return json is null ? null : serializer.Deserialize(json);
     }
 
     public async Task<ChatSaveResult> SaveAsync(ChatThread chat, long expectedRevision, CancellationToken cancellationToken)
@@ -80,8 +81,8 @@ public sealed class JsonChatRepository(
         var temporaryPath = paths.GetTemporaryChatPath(chat.Id, chat.ProjectId);
         var summaryPath = paths.GetChatSummaryPath(chat.Id, chat.ProjectId);
         var temporarySummaryPath = paths.GetTemporaryChatSummaryPath(chat.Id, chat.ProjectId);
-        await fileSystem.WriteTextAsync(temporaryPath, ChatDocumentSerializer.Serialize(chat, nextRevision), cancellationToken);
-        await fileSystem.WriteTextAsync(temporarySummaryPath, ChatDocumentSerializer.SerializeSummary(chat, nextRevision), cancellationToken);
+        await fileSystem.WriteTextAsync(temporaryPath, serializer.Serialize(chat, nextRevision), cancellationToken);
+        await fileSystem.WriteTextAsync(temporarySummaryPath, serializer.SerializeSummary(chat, nextRevision), cancellationToken);
         await fileSystem.MoveAsync(temporaryPath, path, true, cancellationToken);
         await fileSystem.MoveAsync(temporarySummaryPath, summaryPath, true, cancellationToken);
         return ChatSaveResult.Saved(nextRevision);

@@ -122,12 +122,12 @@ public sealed class AppToolPresentationTests
             {"transcript":[{"task":"count","role":"assistant","content":"secret reasoning","toolName":null}]}
             """).RootElement.Clone();
         var live = new ToolCallResult([new ToolContent(ToolContentKind.Text, structured.GetRawText(), null, null, null)],
-            structured, meta, false, ToolCallResult.ProjectForModel(
+            structured, meta, false, Shipped.ModelProjector.Project(
                 [new ToolContent(ToolContentKind.Text, structured.GetRawText(), null, null, null)], structured, false));
 
         // History is what the card is rendered from, so the transcript has to survive the round trip
         // — and the model projection has to be re-derived without it on the way back.
-        var restored = ToolResultCodec.Read(ToolResultCodec.Write(live));
+        var restored = Shipped.ToolResultCodec.Read(Shipped.ToolResultCodec.Write(live));
 
         restored.ModelContent.ShouldNotContain("secret reasoning");
         Shipped.DescribeResult("mcp_app__spawn_subtask", """{"tasks":["count"]}""", restored)

@@ -6,6 +6,7 @@
    row is expanded, so a 10MB stdout costs nothing to scroll past. *@
 @using AI.Client.Contracts.Tools
 @inject IToolPresentations Presentations
+@inject IToolResultCodec ToolResultCodec
 
 <div class="tool-activity">
     @{

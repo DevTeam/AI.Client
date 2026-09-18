@@ -9,6 +9,9 @@ using AI.Client.Contracts.Tools;
 /// </summary>
 internal static class Shipped
 {
+    public static ToolResultModelProjector ModelProjector { get; } = new();
+    public static ToolResultCodec ToolResultCodec { get; } = new(ModelProjector);
+
     private static ToolPresentations Instance { get; } = new(
         new GenericToolPresentationAdapter(),
         [

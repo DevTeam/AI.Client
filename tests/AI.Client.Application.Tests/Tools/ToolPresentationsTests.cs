@@ -6,7 +6,7 @@ using Xunit;
 
 public class ToolPresentationsTests
 {
-    private static ToolCallResult Result(string json) => ToolResultCodec.Read(json);
+    private static ToolCallResult Result(string json) => Shipped.ToolResultCodec.Read(json);
 
     [Theory]
     [InlineData("mcp_built_in__something_new", "Something new")]

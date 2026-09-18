@@ -27,6 +27,9 @@ using System.Text.Json;
 
 public sealed class ChatExecutionTests
 {
+    private static readonly ToolResultModelProjector ModelProjector = new();
+    private static readonly ToolResultCodec ToolResultCodec = new(ModelProjector);
+
     [Fact]
     public async Task WorkspaceChangesShouldBeLiveBeforeBecomingPartOfTheFinalReply()
     {
@@ -1171,7 +1174,8 @@ public sealed class ChatExecutionTests
             var policies = new ToolPolicyResolver(_projectService, Chats, _settings);
             return new ChatRunDispatcher(_runs, Chats, Chats, _projectService, _settings,
                 new GlobalSettingsService(_settings, _secrets),
-                new ChatAgent(Completion, () => Tools, _projectService, _settings, policies, Workspace),
+                new ChatAgent(Completion, () => Tools, _projectService, _settings, policies, Workspace,
+                    ModelProjector, ToolResultCodec),
                 _secrets, _clock, _ids, _synchronization, Workspace, policies);
         }
         public static async Task<Fixture> CreateAsync(IWorkspaceChangeTracker? workspace = null)

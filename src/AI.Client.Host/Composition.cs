@@ -62,6 +62,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 ctx.Inject<ILogger<RetryingChatCompletionClient>>(out var retryLogger);
                 return new RetryingChatCompletionClient(endpoint, retryLogger);
             })
+            .Bind<IToolResultModelProjector>().As(Lifetime.Singleton).To<ToolResultModelProjector>()
+            .Bind<IToolResultCodec>().As(Lifetime.Singleton).To<ToolResultCodec>()
             // Both groups are consumed as sets, so each registration is tagged to stay distinct
             // instead of the last one silently winning its contract.
             .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool>(Tag.Unique)

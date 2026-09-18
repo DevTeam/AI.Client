@@ -22,7 +22,8 @@ using System.Text.Json;
 /// </remarks>
 public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessionFactory> sessions,
     IProjectService projects, IGlobalSettingsRepository settings, IToolPolicyResolver policies,
-    IWorkspaceChangeTracker workspace) : IChatAgent
+    IWorkspaceChangeTracker workspace, IToolResultModelProjector modelProjector,
+    IToolResultCodec toolResultCodec) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -381,8 +382,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
 
     // The history keeps the whole result, host metadata included; the model is sent a projection
     // without it, so a third-party server cannot smuggle anything into context through _meta.
-    private static ChatCompletionMessage ToolMessage(string callId, ToolCallResult result) =>
-        new("tool", ToolResultCodec.Write(result), ToolCallId: callId, ModelContent: result.ModelContent);
+    private ChatCompletionMessage ToolMessage(string callId, ToolCallResult result) =>
+        new("tool", toolResultCodec.Write(result), ToolCallId: callId, ModelContent: result.ModelContent);
 
-    private static ToolCallResult Error(string message) => ToolCallResult.FromError(message);
+    private ToolCallResult Error(string message)
+    {
+        var content = new[] { ToolContent.OfText(message) };
+        return new ToolCallResult(content, null, null, true, modelProjector.Project(content, null, true));
+    }
 }

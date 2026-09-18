@@ -11,7 +11,7 @@ public class BuiltInToolPresentationTests
 
     private static ToolResultPresentation Result(string name, string arguments, string structured) =>
         Shipped.DescribeResult("mcp_built_in__" + name, arguments,
-            ToolResultCodec.Read($$"""{"structuredContent":{{structured}}}"""));
+            Shipped.ToolResultCodec.Read($$"""{"structuredContent":{{structured}}}"""));
 
     [Fact]
     public void ShouldNameFileCallsAfterWhatTheyDoToWhichFile()
@@ -169,7 +169,8 @@ public class BuiltInToolPresentationTests
         // Structured content is validated against the output schema on the way in, but a chat file
         // can be hand-edited and a schema can change between builds.
         var described = Shipped.DescribeResult(
-            "mcp_built_in__" + name, "{}", ToolResultCodec.Read("""{"structuredContent":{"unexpected":[1,2]}}"""));
+            "mcp_built_in__" + name, "{}",
+            Shipped.ToolResultCodec.Read("""{"structuredContent":{"unexpected":[1,2]}}"""));
 
         described.ShouldNotBeNull();
         described.Summary.ShouldNotBeNullOrWhiteSpace();

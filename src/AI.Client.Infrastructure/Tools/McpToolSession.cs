@@ -29,6 +29,7 @@ public sealed class McpToolSession : IToolSession
     private readonly McpClient _client;
     private readonly Dictionary<string, ModelContextProtocol.Protocol.Tool> _descriptors;
     private readonly bool _canonicalizePaths;
+    private readonly IToolResultModelProjector _modelProjector;
     private readonly Func<ValueTask>? _shutdown;
 
     public McpToolSession(
@@ -37,11 +38,13 @@ public sealed class McpToolSession : IToolSession
         Guid serverId,
         string namePrefix,
         bool canonicalizePaths,
+        IToolResultModelProjector modelProjector,
         Func<ValueTask>? shutdown = null)
     {
         ArgumentNullException.ThrowIfNull(descriptors);
         _client = client;
         _canonicalizePaths = canonicalizePaths;
+        _modelProjector = modelProjector;
         _shutdown = shutdown;
         _descriptors = descriptors.ToDictionary(tool => tool.Name);
         Tools = descriptors.Select(tool =>
@@ -155,7 +158,7 @@ public sealed class McpToolSession : IToolSession
             throw new InvalidOperationException("Tool result does not match the output schema.");
         var blocks = (result.Content ?? []).Select(Describe).ToArray();
         return new ToolCallResult(blocks, result.StructuredContent, ToElement(result.Meta), result.IsError ?? false,
-            ToolCallResult.ProjectForModel(blocks, result.StructuredContent, result.IsError ?? false));
+            _modelProjector.Project(blocks, result.StructuredContent, result.IsError ?? false));
     }
 
     // The protocol exposes _meta as a mutable JsonObject; the Application contracts take an

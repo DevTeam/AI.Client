@@ -54,7 +54,7 @@ public sealed class BuiltInToolTests
     public async Task ShouldDiscoverValidateAndRunOverStdio()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await using var session = await new DefaultToolSessionFactory().OpenAsync([], ToolRunContext.None, timeout.Token);
+        await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync([], ToolRunContext.None, timeout.Token);
         session.Tools.Select(item => item.OriginalName).ShouldBe(
         [
             "process_run", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "list_directory",
@@ -184,7 +184,7 @@ public sealed class BuiltInToolTests
             File.WriteAllText(Path.Combine(root, ".git", "HEAD"), "ref: refs/heads/master");
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -231,7 +231,7 @@ public sealed class BuiltInToolTests
             }
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -273,7 +273,7 @@ public sealed class BuiltInToolTests
             await File.WriteAllTextAsync(file, text, TestContext.Current.CancellationToken);
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var tool = session.Tools.Single(item => item.OriginalName == "read_text_file");
             var result = await session.CallAsync(tool, JsonSerializer.Serialize(new { path = file }), null, timeout.Token);
@@ -296,7 +296,7 @@ public sealed class BuiltInToolTests
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read", "write", "edit", "delete"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -376,7 +376,7 @@ public sealed class BuiltInToolTests
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
             // Read/write is not delete: an ordinary editing grant must not be able to unlink a file.
-            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read", "write", "edit"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -396,7 +396,7 @@ public sealed class BuiltInToolTests
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read", "write", "edit", "delete"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -464,7 +464,7 @@ public sealed class BuiltInToolTests
             File.WriteAllText(Path.Combine(root, "b.md"), "Needle in another file\n");
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -527,7 +527,7 @@ public sealed class BuiltInToolTests
             File.WriteAllText(Path.Combine(root, "busy.txt"), string.Concat(Enumerable.Repeat("needle\n", 40)));
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            await using var session = await new DefaultToolSessionFactory().OpenAsync(
+            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 

@@ -1,4 +1,4 @@
-﻿// ReSharper disable UseCollectionExpression
+// ReSharper disable UseCollectionExpression
 namespace AI.Client.Application.Runs;
 
 using Chat;
@@ -21,7 +21,8 @@ public sealed class ChatRunDispatcher(
     IChatRunRepository repository, IChatService chats, IChatMutations chatMutations, IProjectService projects,
     IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, IChatAgent agent,
     IGlobalSecretStore secretStore, IClock clock, IIdGenerator ids, IChatSynchronization synchronization,
-    IWorkspaceChangeTracker workspace, IToolPolicyResolver policies) : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
+    IWorkspaceChangeTracker workspace, IToolPolicyResolver policies,
+    IChatContextBuilder contextBuilder) : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     /// <summary>
     /// How often a waiting confirmation re-reads the standing policy. Human-scale waiting, so the
@@ -397,7 +398,7 @@ public sealed class ChatRunDispatcher(
                     }
                     runtime.State.MarkUserCommitted(queued.Id);
                     request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
-                        await secretStore.GetAsync("connection", connection.Id, token), queued.Content, null, ChatContext.Get(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id)));
+                        await secretStore.GetAsync("connection", connection.Id, token), queued.Content, null, contextBuilder.Build(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id)));
                     runtime.ToolHead = ResumeHead(chat, runtime.State.BranchId, queued.Id);
                     await SaveAsync(runtime, chat, token);
                 }

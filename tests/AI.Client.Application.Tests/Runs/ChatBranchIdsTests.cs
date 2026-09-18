@@ -29,6 +29,6 @@ public sealed class ChatBranchIdsTests
             [new ChatMessageView(root, null, "User", "Question", DateTimeOffset.UnixEpoch),
              new ChatMessageView(first, root, "Assistant", "First", DateTimeOffset.UnixEpoch),
              new ChatMessageView(second, root, "Assistant", "Second", DateTimeOffset.UnixEpoch)]);
-        ChatContext.Get(chat, second).Select(message => message.Content).ShouldBe(["Question", "Second"]);
+        new ChatContext().Build(chat, second).Select(message => message.Content).ShouldBe(["Question", "Second"]);
     }
 }

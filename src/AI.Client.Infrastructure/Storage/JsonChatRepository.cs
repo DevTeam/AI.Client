@@ -8,7 +8,7 @@ using System.Text.Json.Nodes;
 
 public sealed class JsonChatRepository(
     ITextFileSystem fileSystem,
-    ChatStoragePaths paths) : IChatRepository, IDisposable
+    IChatStoragePaths paths) : IChatRepository, IDisposable
 {
     public void Dispose() => _writes.Dispose();
 

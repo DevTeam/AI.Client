@@ -7,7 +7,7 @@ using System.Text;
 
 public sealed class ProtectedGlobalSecretStore(
     ITextFileSystem fileSystem,
-    GlobalSettingsPaths paths,
+    IGlobalSettingsPaths paths,
     IUserDataProtector protector) : IGlobalSecretStore
 {
     public async Task<string?> GetAsync(string scope, Guid id, CancellationToken cancellationToken)

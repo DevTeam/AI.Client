@@ -10,7 +10,7 @@ public class UnifiedDiffTests
     [Fact]
     public void ShouldClassifyEveryLineOfAHunk()
     {
-        var lines = UnifiedDiff.Parse("@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three");
+        var lines = new UnifiedDiff().Parse("@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three");
 
         lines.Select(line => line.Kind).ShouldBe([
             DiffLineKind.Hunk, DiffLineKind.Context, DiffLineKind.Removed,
@@ -24,7 +24,7 @@ public class UnifiedDiffTests
     [Fact]
     public void ShouldNumberLinesFromTheHunkHeader()
     {
-        var lines = UnifiedDiff.Parse("@@ -12,4 +20,4 @@\n keep\n-gone\n+fresh\n keep");
+        var lines = new UnifiedDiff().Parse("@@ -12,4 +20,4 @@\n keep\n-gone\n+fresh\n keep");
 
         var context = lines[1];
         context.OldLine.ShouldBe(12);
@@ -44,7 +44,7 @@ public class UnifiedDiffTests
     [Fact]
     public void ShouldRestartNumberingAtEachHunk()
     {
-        var lines = UnifiedDiff.Parse("@@ -1,1 +1,1 @@\n first\n@@ -80,1 +90,1 @@\n later");
+        var lines = new UnifiedDiff().Parse("@@ -1,1 +1,1 @@\n first\n@@ -80,1 +90,1 @@\n later");
 
         lines[1].OldLine.ShouldBe(1);
         lines[3].OldLine.ShouldBe(80);
@@ -55,7 +55,7 @@ public class UnifiedDiffTests
     public void ShouldKeepAnEmptyContextLineAsAnEmptyLine()
     {
         // A blank line in the source arrives as a single space: the prefix and nothing else.
-        var lines = UnifiedDiff.Parse("@@ -1,2 +1,2 @@\n \n+added");
+        var lines = new UnifiedDiff().Parse("@@ -1,2 +1,2 @@\n \n+added");
 
         lines[1].Kind.ShouldBe(DiffLineKind.Context);
         lines[1].Text.ShouldBeEmpty();
@@ -64,7 +64,7 @@ public class UnifiedDiffTests
     [Fact]
     public void ShouldReadTheTruncationTrailerAsANote()
     {
-        var lines = UnifiedDiff.Parse("@@ -1,1 +1,1 @@\n one\n… diff truncated");
+        var lines = new UnifiedDiff().Parse("@@ -1,1 +1,1 @@\n one\n… diff truncated");
 
         lines[^1].Kind.ShouldBe(DiffLineKind.Note);
         lines[^1].Text.ShouldBe("… diff truncated");
@@ -74,14 +74,14 @@ public class UnifiedDiffTests
     [InlineData(null)]
     [InlineData("")]
     public void ShouldReturnNothingWhenThereIsNoDiff(string? diff) =>
-        UnifiedDiff.Parse(diff).ShouldBeEmpty();
+        new UnifiedDiff().Parse(diff).ShouldBeEmpty();
 
     [Fact]
     public void ShouldSurviveAHeaderItCannotRead()
     {
         // Truncation can cut a header in half, and a chat file can be hand-edited. A malformed
         // hunk must not be able to hide the lines under it.
-        var lines = UnifiedDiff.Parse("@@ nonsense @@\n keep\n+new");
+        var lines = new UnifiedDiff().Parse("@@ nonsense @@\n keep\n+new");
 
         lines.Count.ShouldBe(3);
         lines[1].Kind.ShouldBe(DiffLineKind.Context);
@@ -92,7 +92,7 @@ public class UnifiedDiffTests
     [Fact]
     public void ShouldTreatUnrecognizedLinesAsNotesRatherThanDroppingThem()
     {
-        var lines = UnifiedDiff.Parse("@@ -1,1 +1,1 @@\nno prefix at all");
+        var lines = new UnifiedDiff().Parse("@@ -1,1 +1,1 @@\nno prefix at all");
 
         lines[1].Kind.ShouldBe(DiffLineKind.Note);
         lines[1].Text.ShouldBe("no prefix at all");
@@ -104,7 +104,7 @@ public class UnifiedDiffTests
         // The two halves have to agree: whatever the writer emits, the reader has to classify.
         var produced = new LineDiff().Compare("one\ntwo\nthree\nfour\nfive", "one\ntwo\nTHREE\nfour\nfive").Diff;
 
-        var lines = UnifiedDiff.Parse(produced);
+        var lines = new UnifiedDiff().Parse(produced);
 
         lines.ShouldContain(line => line.Kind == DiffLineKind.Hunk);
         lines.ShouldContain(line => line.Kind == DiffLineKind.Removed && line.Text == "three");

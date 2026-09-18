@@ -1,6 +1,6 @@
 namespace Build.Targets;
 
-internal interface IHostTarget
+internal interface IRunTarget
 {
     Task<int> RunAsync(CancellationToken cancellationToken);
 }

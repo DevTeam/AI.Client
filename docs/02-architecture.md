@@ -1,15 +1,15 @@
-# Архитектура
+# Architecture
 
-Host, Web и CLI используют Pure.DI. Domain содержит правила и инварианты, Application — сценарии и интерфейсы внешних ресурсов, Infrastructure — HTTP, JSON и защиту секретов. Web зависит от Contracts; Host собирает зависимости и предоставляет HTTP/SSE.
+The Host, Web, and CLI use Pure.DI. The Domain layer contains rules and invariants, the Application layer contains scenarios and interfaces to external resources, and the Infrastructure layer contains HTTP, JSON, and secret protection. Web depends on Contracts; the Host assembles dependencies and provides HTTP/SSE.
 
-GlobalSettings.Connections — единый каталог подключений. Проект хранит ConnectionId, чат может его переопределить. Секреты доступны через IGlobalSecretStore. Дублирующие профили проекта удалены.
+`GlobalSettings.Connections` is the unified connections catalog. A project stores a `ConnectionId`; a chat can override it. Secrets are available through `IGlobalSecretStore`. Duplicate project profiles have been removed.
 
-Сервисы получают зависимости через конструкторы. Composition определяет реализации и сроки жизни. Чистые сериализаторы стали статическими функциями, вычислители путей — конкретными классами. Дополнительный контейнер DI не нужен.
+Services receive dependencies through their constructors. Composition defines implementations and lifetimes. Pure serializers have become static functions; path resolvers are concrete classes. No additional DI container is needed.
 
-ChatRunDispatcher находится в Application. Web и CLI отправляют одну команду Submit: Send, Queue, Fork или Replace. Сервер управляет очередью, идемпотентностью, контекстом и записью результата. ChatSynchronization сериализует изменения чата, но сетевые запросы разных веток идут параллельно.
+`ChatRunDispatcher` lives in the Application layer. Web and CLI send a single `Submit` command: Send, Queue, Fork, or Replace. The server manages the queue, idempotency, context, and result recording. `ChatSynchronization` serializes chat changes, but network requests for different branches run in parallel.
 
-ChatRunHostedService восстанавливает прерванные запуски и ожидает workers при остановке Host. Удаление сначала останавливает workers. SSE передаёт снимки с ревизиями и допускает объединение промежуточных событий.
+`ChatRunHostedService` recovers interrupted runs and waits for workers when the Host stops. Deletion first stops workers. SSE delivers snapshots with revisions and allows coalescing of intermediate events.
 
-GlobalSettingsPanel владеет редактированием настроек, RunStateService хранит снимки выполнения. Composer отправляет серверную команду. Ветки имеют явные стабильные ID и головы.
+`GlobalSettingsPanel` owns settings editing; `RunStateService` stores run snapshots. The composer sends a server command. Branches have explicit stable IDs and heads.
 
-MCP-исполнение и агентский цикл пока не реализованы: доступны настройки. API и форматы изменены без обратной совместимости. См. ADR-006.
+MCP execution and the agent loop are not yet implemented: settings are available. The API and formats have been changed without backward compatibility. See ADR-006.

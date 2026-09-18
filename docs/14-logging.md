@@ -1,13 +1,13 @@
 # Logging
 
-## Реализация
+## Implementation
 
-Host использует стандартные `Microsoft.Extensions.Logging` abstractions и два provider:
+The Host uses the standard `Microsoft.Extensions.Logging` abstractions and two providers:
 
-- Console — интерактивная диагностика в Rider;
-- постоянный JSONL file provider.
+- Console — interactive diagnostics in Rider;
+- a persistent JSONL file provider.
 
-Логи расположены в `%LocalAppData%\AI.Client\logs` и именуются `ai-client-YYYYMMDD.jsonl`. Хранение — 14 дней; устаревшие файлы удаляются при запуске Host.
+Logs are located in `%LocalAppData%\AI.Client\logs` and are named `ai-client-YYYYMMDD.jsonl`. Retention is 14 days; stale files are deleted when the Host starts.
 
 ## Streaming events
 
@@ -17,16 +17,16 @@ Host использует стандартные `Microsoft.Extensions.Logging` 
 - `ChatStreamCancelled` (`1004`);
 - `ChatStreamFailed` (`1005`).
 
-Каждая операция имеет UUIDv7 `OperationId`. Структурированные поля находятся в JSON object `Properties`: model, credential profile ID, chunk index, content length и elapsed time. Содержимое prompt/chunk, API key и Authorization headers не логируются.
+Each operation has a UUIDv7 `OperationId`. Structured fields live in the JSON object `Properties`: model, credential profile ID, chunk index, content length and elapsed time. Prompt/chunk content, API keys and Authorization headers are not logged.
 
-Provider является fail-safe: сложные значения системных ASP.NET events нормализуются в JSON primitives или строки, а ошибка файловой записи никогда не прерывает request pipeline.
+The provider is fail-safe: complex values of system ASP.NET events are normalized into JSON primitives or strings, and a file-write error never interrupts the request pipeline.
 
-## Диагностика незавершённой генерации
+## Diagnosing an unfinished generation
 
-После воспроизведения проверить последний файл:
+After reproducing, check the latest file:
 
 ```powershell
 Get-Content "$env:LOCALAPPDATA\AI.Client\logs\ai-client-$(Get-Date -Format yyyyMMdd).jsonl" | Select-Object -Last 100
 ```
 
-Если есть chunks, но нет `ChatStreamCompleted`, `ChatStreamCancelled` или `ChatStreamFailed`, upstream enumeration не завершился. Если `ChatStreamCompleted` присутствует, а Web остаётся в `Generating`, проблема находится в downstream/Web path.
+If there are chunks but no `ChatStreamCompleted`, `ChatStreamCancelled` or `ChatStreamFailed`, the upstream enumeration did not finish. If `ChatStreamCompleted` is present but the Web stays in `Generating`, the problem is in the downstream/Web path.

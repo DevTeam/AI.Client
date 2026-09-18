@@ -1,5 +1,11 @@
-export function subscribe(dotNetReference) {
-    const source = new EventSource("api/runs/events");
+// The frontend runs in its own process on a separate origin from the API, so a relative
+// URL like "api/runs/events" used to work only when both were served from the same origin.
+// Now we expect an absolute base URL (e.g. `http://localhost:52173/`) and append the API path
+// ourselves. Trailing slashes on the base are tolerated.
+export function subscribe(baseUrl, dotNetReference) {
+    const trimmed = (baseUrl || "").replace(/\/+$/, "");
+    const url = trimmed + "/api/runs/events";
+    const source = new EventSource(url);
     let latest = null;
     let dispatching = false;
     let disposed = false;

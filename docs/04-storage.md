@@ -1,13 +1,13 @@
-# Хранение
+# Storage
 
-По умолчанию данные находятся в %LOCALAPPDATA%/AI.Client. AI_CLIENT_DATA_DIRECTORY задаёт отдельный каталог Host.
+By default, data is located in `%LOCALAPPDATA%/AI.Client`. `AI_CLIENT_DATA_DIRECTORY` sets a separate Host data directory.
 
-Проекты и чаты используют schema 2, запуски — schema 4. Старые форматы не поддерживаются и не мигрируются. Нужен новый каталог данных; пользовательские файлы автоматически не удаляются.
+Projects and chats use schema 2; runs use schema 4. Old formats are not supported and are not migrated. A new data directory is required; user files are not removed automatically.
 
-Манифест чата содержит MessageIds и ветки. Сообщения записываются отдельно в <chatPath>.nodes/<messageId>.json. Сначала сохраняются неизменяемые узлы, затем атомарно заменяется манифест. Сбой до замены оставляет прежнюю историю. Изменять существующий узел запрещено.
+The chat manifest contains `MessageIds` and branches. Messages are written separately to `<chatPath>.nodes/<messageId>.json`. Immutable nodes are written first, then the manifest is replaced atomically. A failure before the replacement leaves the previous history intact. Modifying an existing node is forbidden.
 
-Репозитории сериализуют проверку ревизии и запись внутри одного Host. Несколько процессов не должны писать в один каталог. Неиспользуемые узлы пока сохраняются; сборщик мусора не реализован.
+Repositories serialize revision checking and writing within a single Host. Multiple processes must not write to the same directory. Unused nodes are currently retained; a garbage collector is not implemented.
 
-Подключения и MCP-настройки записываются одним settings.json. Секреты защищены пользовательской учётной записью.
+Connections and MCP settings are written to a single `settings.json`. Secrets are protected by the user account.
 
-Команда остаётся в очереди до фиксации ответа. Повтор использует прежний ID сообщения и детерминированный ID ответа. Это исключает дублирование сохранённой истории, но не гарантирует единственный внешний HTTP-запрос при аварии.
+A command remains in the queue until the response is committed. Retries reuse the original message ID and a deterministic response ID. This prevents duplication of saved history but does not guarantee a single external HTTP request in case of failure.

@@ -1,64 +1,64 @@
-# MCP-интеграция
+# MCP integration
 
-Статус: Accepted
+Status: Accepted
 
-> Текущее исполнение (2026-09-07): реализован встроенный stdio-сервер с `process_run`, потоковый агентский цикл Chat Completions, подтверждения и история вызовов. См. [инструменты по умолчанию](16-default-mcp-tools.md). Описания остальных серверов, транспортов и Responses API ниже относятся к целевой архитектуре; ранние preview-разделы отражают предыдущие этапы.
+> Current implementation (2026-09-07): a built-in stdio server with `process_run`, a streaming Chat Completions agent loop, confirmations, and call history have been implemented. See [default tools](16-default-mcp-tools.md). The descriptions of other servers, transports, and the Responses API below relate to the target architecture; the early preview sections reflect previous stages.
 
 
-## Текущий статус configuration UI
+## Current configuration UI status
 
-Project settings хранят MCP server bindings и per-tool policies. Для встроенного `Default tools` реализованы stdio, discovery и execution; кнопка `Discover tools` в настройках проекта загружает инструменты и позволяет задать политику. Для сторонних серверов сохраняется только конфигурация: их процессы и HTTP transports пока не открываются.
+Project settings store MCP server bindings and per-tool policies. For the built-in `Default tools`, stdio, discovery, and execution are implemented; the `Discover tools` button in project settings loads tools and lets you define a policy. For third-party servers, only the configuration is saved: their processes and HTTP transports are not opened yet.
 
-## Версия и negotiation
+## Version and negotiation
 
-Клиент использует официальный C# SDK Model Context Protocol и согласовывает protocol revision через MCP initialization. Нельзя жёстко предполагать draft-функции без negotiated capability.
+The client uses the official C# SDK for Model Context Protocol and negotiates the protocol revision through MCP initialization. Draft features cannot be assumed without a negotiated capability.
 
-Основные стандарты:
+Main standards:
 
 - [MCP specification](https://modelcontextprotocol.io/specification/2025-11-25)
 - [MCP Tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 - [MCP Authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)
 - [MCP C# SDK](https://github.com/modelcontextprotocol/csharp-sdk)
 
-## Транспорты
+## Transports
 
 ### stdio
 
-Используется для локальных History и FileSystem servers. Host запускает только предварительно зарегистрированные executable и arguments. Команда запуска никогда не формируется из model output или browser request.
+Used for local History and FileSystem servers. The Host launches only pre-registered executable and arguments. The launch command is never formed from model output or browser requests.
 
 ### Streamable HTTP
 
-Используется для удалённых MCP servers. Legacy SSE не используется для новых подключений. Для защищённых серверов реализуется стандартный OAuth flow.
+Used for remote MCP servers. Legacy SSE is not used for new connections. For protected servers, the standard OAuth flow is implemented.
 
 ## Lifecycle
 
-1. Создать transport.
-2. Выполнить MCP initialization и сохранить negotiated capabilities.
-3. Запросить `tools/list` со всей пагинацией.
-4. Нормализовать и закэшировать descriptors.
-5. Подписаться на `notifications/tools/list_changed`, если объявлен `listChanged`.
-6. При notification повторить list, пересчитать schema hashes и переоценить policies.
-7. Корректно завершить session и transport.
+1. Create a transport.
+2. Perform MCP initialization and store the negotiated capabilities.
+3. Request `tools/list` with full pagination.
+4. Normalize and cache descriptors.
+5. Subscribe to `notifications/tools/list_changed` if `listChanged` is declared.
+6. On a notification, re-run the list, recompute schema hashes, and re-evaluate policies.
+7. Properly close the session and transport.
 
-## Идентичность инструмента
+## Tool identity
 
-Имя уникально только внутри одного сервера. Внутренний ключ:
+A name is unique only within a single server. The internal key:
 
 ```text
 ToolIdentity = ConfiguredMcpServerId + ToolName + ToolSchemaHash
 ```
 
-`serverInfo.name` не используется как уникальный идентификатор. Для передачи в OpenAI применяется безопасный alias, например:
+`serverInfo.name` is not used as a unique identifier. For transmission to OpenAI, a safe alias is used, for example:
 
 ```text
 mcp_{shortServerId}__{normalizedToolName}
 ```
 
-Registry хранит обратное соответствие alias → original ToolIdentity.
+The registry stores the reverse alias → original ToolIdentity mapping.
 
 ## Tool descriptor
 
-Сохраняются без потерь:
+Saved without loss:
 
 - `name`;
 - `title`;
@@ -67,30 +67,30 @@ Registry хранит обратное соответствие alias → origin
 - `outputSchema`;
 - `annotations`;
 - `execution`;
-- `_meta`, когда это требуется для round trip.
+- `_meta`, when required for a round trip.
 
-JSON Schema валидируется до показа инструмента модели. Некорректный инструмент отключается с диагностикой.
+JSON Schema is validated before the tool is shown to the model. An invalid tool is disabled with diagnostic output.
 
 ## Tool annotations
 
-Поддерживаются стандартные hints:
+Supported standard hints:
 
 - `readOnlyHint`;
 - `destructiveHint`;
 - `idempotentHint`;
 - `openWorldHint`.
 
-Annotations являются недоверенными hints, а не ACL. Они используются для UI и оценки риска только после определения trust level сервера. Политика проекта остаётся обязательной.
+Annotations are untrusted hints, not an ACL. They are used for UI and risk assessment only after the server's trust level is determined. The project policy remains mandatory.
 
-## Системные и агентские подключения
+## System and agent connections
 
-### Системные
+### System
 
-History/Project MCP вызывается application layer и не передаётся модели. Его инструменты обслуживают projects, chats, branches, messages и audit.
+History/Project MCP is called by the application layer and is not transmitted to the model. Its tools serve projects, chats, branches, messages, and the audit log.
 
-### Агентские
+### Agent
 
-Передаются модели после фильтрации:
+Transmitted to the model after filtering:
 
 ```text
 tools/list
@@ -103,7 +103,7 @@ tools/list
 
 ## History MCP
 
-Минимальные инструменты:
+Minimum tools:
 
 ```text
 project_list, project_get, project_create, project_update, project_delete
@@ -113,7 +113,7 @@ message_append, message_get_path, message_search
 audit_list
 ```
 
-Для чтения дополнительно публикуются resources:
+For reads, additional resources are published:
 
 ```text
 project://{projectId}
@@ -124,13 +124,13 @@ project://{projectId}/audit
 
 ## FileSystem MCP
 
-Каждый tool имеет одну ясную операцию и корректные annotations. Многоцелевой `filesystem` с параметром `operation` не используется: отдельные tools легче авторизовать и объяснить пользователю.
+Each tool has a single clear operation and correct annotations. A multi-purpose `filesystem` with an `operation` parameter is not used: individual tools are easier to authorize and explain to the user.
 
-`edit` принимает expected content hash и структурированный patch/replacements. `write` не заменяет существующий файл без явного параметра и соответствующей политики. `delete` считается destructive независимо от annotations.
+`edit` accepts an expected content hash and a structured patch/replacements. `write` does not replace an existing file without an explicit parameter and corresponding policy. `delete` is considered destructive regardless of annotations.
 
-## OAuth для HTTP MCP
+## OAuth for HTTP MCP
 
-Поддерживаются OAuth 2.1, RFC 9728 Protected Resource Metadata, RFC 8414/OIDC discovery, RFC 8707 Resource Indicators и PKCE S256. Scopes запрашиваются постепенно, например:
+OAuth 2.1, RFC 9728 Protected Resource Metadata, RFC 8414/OIDC discovery, RFC 8707 Resource Indicators, and PKCE S256 are supported. Scopes are requested incrementally, for example:
 
 ```text
 files:read
@@ -140,15 +140,16 @@ history:read
 history:write
 ```
 
-Host обрабатывает `401` и `403 insufficient_scope` через `WWW-Authenticate`. Широкие wildcard scopes по умолчанию не запрашиваются.
+The Host handles `401` and `403 insufficient_scope` via `WWW-Authenticate`. Broad wildcard scopes are not requested by default.
+
 # Global MCP configuration
 
-MCP servers являются глобальными и доступны всем проектам. Первая итерация реализует только JSON storage и UI конфигурации:
+MCP servers are global and available to all projects. The first iteration implements only JSON storage and configuration UI:
 
-- transports `StreamableHttp` и `Stdio`;
+- transports `StreamableHttp` and `Stdio`;
 - enable/disable;
-- server-wide policy `Allow`, `Ask` или `Deny`;
-- command, arguments, working directory и environment variables для stdio;
-- write-only credential для Streamable HTTP.
+- server-wide policy `Allow`, `Ask`, or `Deny`;
+- command, arguments, working directory, and environment variables for stdio;
+- write-only credential for Streamable HTTP.
 
-Подключение и вызовы сторонних серверов остаются отложенными. Встроенный `Default tools` доступен автоматически; его запуском управляет Host, а обнаружение инструментов и per-tool policies доступны в настройках проекта.
+Connecting and calling third-party servers remains deferred. The built-in `Default tools` are available automatically; the Host manages their execution, and tool discovery and per-tool policies are available in project settings.

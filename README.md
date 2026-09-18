@@ -1,37 +1,37 @@
 # AI.Client
 
-Локальный клиент для работы с OpenAI и OpenAI-совместимыми AI endpoints. Интерфейс выполняется в Blazor WebAssembly, а локальный ASP.NET Core Host хранит credentials и выполняет генерацию ответов.
+A local client for working with OpenAI and OpenAI-compatible AI endpoints. The interface runs in Blazor WebAssembly, while the local ASP.NET Core Host stores credentials and performs response generation.
 
-Ключевые возможности:
+Key features:
 
-- streaming-чат с Markdown;
-- встроенный MCP-инструмент `process_run` с подтверждениями, политиками и историей вызовов;
-- несколько AI endpoints и наборов credentials;
-- проекты с независимыми настройками безопасности;
-- Git-подобное ветвление истории чата;
-- локальное JSON-хранилище на основе неизменяемых узлов;
-- Pure.DI и интерфейсные зависимости без статических application services.
+- streaming chat with Markdown;
+- built-in MCP tool `process_run` with confirmations, policies, and call history;
+- multiple AI endpoints and credential sets;
+- projects with independent security settings;
+- Git-like branching of chat history;
+- local JSON storage based on immutable nodes;
+- Pure.DI and interface dependencies without static application services.
 
-## Документация
+## Documentation
 
-Начальная точка: [docs/README.md](docs/README.md).
+Starting point: [docs/README.md](docs/README.md).
 
-Основные документы:
+Main documents:
 
-- [Требования и границы продукта](docs/01-product-requirements.md)
-- [Архитектура](docs/02-architecture.md)
-- [Доменная модель](docs/03-domain-model.md)
-- [JSON-хранилище](docs/04-storage.md)
-- [MCP-интеграция](docs/05-mcp-integration.md)
-- [Инструменты по умолчанию и запуск процессов](docs/16-default-mcp-tools.md)
-- [Безопасность](docs/06-security.md)
-- [AI endpoints и agent loop](docs/07-ai-and-agent-loop.md)
-- [План реализации](docs/08-implementation-plan.md)
-- [Стратегия тестирования](docs/09-testing.md)
-- [Эксплуатация и диагностика](docs/10-operations.md)
-- [Ход реализации](docs/11-implementation-progress.md)
+- [Product requirements and boundaries](docs/01-product-requirements.md)
+- [Architecture](docs/02-architecture.md)
+- [Domain model](docs/03-domain-model.md)
+- [JSON storage](docs/04-storage.md)
+- [MCP integration](docs/05-mcp-integration.md)
+- [Default tools and process execution](docs/16-default-mcp-tools.md)
+- [Security](docs/06-security.md)
+- [AI endpoints and agent loop](docs/07-ai-and-agent-loop.md)
+- [Implementation plan](docs/08-implementation-plan.md)
+- [Testing strategy](docs/09-testing.md)
+- [Operations and diagnostics](docs/10-operations.md)
+- [Implementation progress](docs/11-implementation-progress.md)
 
-Принятые архитектурные решения находятся в [docs/decisions](docs/decisions).
+Accepted architectural decisions are in [docs/decisions](docs/decisions).
 
 ## Automation
 
@@ -54,6 +54,6 @@ Shared Rider run configurations are stored in [`.run`](.run). Select one from Ri
 - `Verify AI.Client` builds the solution and runs the fast unit test suite;
 - `Publish AI.Client` publishes the Host to `artifacts/publish`.
 
-## Формат данных
+## Data format
 
-Обратная совместимость форматов удалена. Используйте новый каталог через AI_CLIENT_DATA_DIRECTORY. Подробнее: [архитектура](docs/02-architecture.md) и [хранение](docs/04-storage.md).
+Backward compatibility of formats has been removed. Use a new directory via `AI_CLIENT_DATA_DIRECTORY`. Details: [architecture](docs/02-architecture.md) and [storage](docs/04-storage.md).

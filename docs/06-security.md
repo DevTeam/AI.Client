@@ -1,54 +1,54 @@
-# Модель безопасности
+# Security model
 
-Статус: Accepted
+Status: Accepted
 
 ## Endpoint credentials
 
 Endpoint profile metadata is stored in the project JSON document. API keys are excluded from that document and are stored by the Host gateway in a separate local file protected with Windows DPAPI (`CurrentUser`). The WebAssembly client receives only a `HasCredential` flag. When a saved profile is selected for a chat request, the Host resolves its credential locally before calling the OpenAI-compatible endpoint.
 
-## Текущий security settings API
+## Current security settings API
 
-Настройки доступа проекта изменяются отдельной revisioned операцией `PUT /api/projects/{projectId}/security`. Один запрос содержит полный набор directory grants, MCP server bindings и per-tool policies; Host валидирует их как единое состояние и сохраняет атомарно. Несовпадение revision возвращает `409 Conflict` и не применяет частичное изменение.
+Project access settings are changed by a single revisioned operation `PUT /api/projects/{projectId}/security`. One request contains the complete set of directory grants, MCP server bindings, and per-tool policies; the Host validates them as a single state and saves them atomically. A revision mismatch returns `409 Conflict` and does not apply a partial change.
 
-Tool policy может ссылаться только на MCP server, присутствующий в том же документе настроек. UI предлагает `Ask` по умолчанию и не запускает MCP transport при его конфигурировании. Discovery инструментов, запуск server process и выдача фактических разрешений будут добавлены вместе с MCP connection manager.
+A tool policy can only reference an MCP server that is present in the same settings document. The UI offers `Ask` by default and does not start the MCP transport when configuring it. Tool discovery, server process launch, and actual permission issuance will be added together with the MCP connection manager.
 
-## Границы доверия
+## Trust boundaries
 
 ```mermaid
 flowchart LR
-    User["Пользователь"] --> Browser["WASM UI"]
+    User["User"] --> Browser["WASM UI"]
     Browser --> Host["Local Host"]
     Host --> AI["AI endpoint"]
     Host --> Mcp["MCP server"]
-    Mcp --> Resource["Файлы / внешние API"]
+    Mcp --> Resource["Files / external APIs"]
 ```
 
-Недоверенными считаются:
+Untrusted inputs:
 
-- текст пользователя;
-- ответы AI;
-- Markdown и ссылки;
-- tool descriptions и annotations неизвестного MCP server;
-- tool arguments модели;
+- user text;
+- AI responses;
+- Markdown and links;
+- tool descriptions and annotations of an unknown MCP server;
+- model tool arguments;
 - tool results;
-- remote OAuth metadata до валидации;
-- пути, переданные через UI или модель.
+- remote OAuth metadata before validation;
+- paths passed through the UI or the model.
 
-## Политика инструмента
+## Tool policy
 
-Для каждого project и каждого ToolIdentity хранится:
+For each project and each ToolIdentity, the following is stored:
 
 ```text
-Allow — разрешить вызов в заданных ограничениях
-Ask  — запросить подтверждение перед вызовом
-Deny — не показывать инструмент модели и отклонять прямой вызов
+Allow — permit the call within the given constraints
+Ask  — request confirmation before the call
+Deny — do not show the tool to the model and reject direct calls
 ```
 
-Начальная политика любого нового или изменившегося инструмента — `Ask`.
+The initial policy for any new or changed tool is `Ask`.
 
-Изменение tool schema hash сбрасывает сохранённое разрешение. `notifications/tools/list_changed` инициирует повторную оценку.
+A change in tool schema hash resets the stored permission. `notifications/tools/list_changed` triggers re-evaluation.
 
-## Принятие решения
+## Decision making
 
 ```text
 Server enabled?
@@ -60,11 +60,11 @@ Server enabled?
 → Allow / Ask / Deny
 ```
 
-Наиболее строгий результат побеждает. Tool annotation не может ослабить project policy.
+The most restrictive result wins. A tool annotation cannot weaken the project policy.
 
 ## Directory grants
 
-Права определяются отдельно для tools. Directory grants являются дополнительным ограничением аргументов FileSystem tools:
+Permissions are defined separately for tools. Directory grants are an additional restriction on FileSystem tool arguments:
 
 ```text
 DirectoryGrant
@@ -75,62 +75,62 @@ DirectoryGrant
 └─ ToolNames[]
 ```
 
-Например, `read` может иметь доступ ко всему project root, а `write` и `edit` — только к `src` и `docs`. `delete` может быть Deny независимо от directory grants.
+For example, `read` may have access to the entire project root, while `write` and `edit` only to `src` and `docs`. `delete` can be `Deny` regardless of directory grants.
 
-Server-side проверки:
+Server-side checks:
 
-- `Path.GetFullPath` и platform-aware comparison;
-- проверка containment после нормализации;
-- защита от `..`;
-- проверка symlink/junction/reparse point;
-- повторная проверка непосредственно перед изменением;
-- лимит размера и количества результатов;
-- запрет широких roots без отдельного подтверждения.
+- `Path.GetFullPath` and platform-aware comparison;
+- containment check after normalization;
+- protection against `..`;
+- symlink/junction/reparse point check;
+- re-check immediately before modification;
+- size and result count limits;
+- prohibition of broad roots without explicit confirmation.
 
-Реализовано во встроенном сервере: `ToolNames` трактуются как capability (`read`, `write`, `edit`, `delete`) и передаются серверу при открытии сессии; `PathGuard` выполняет канонизацию, разрешение reparse point по всей цепочке, containment с учётом `Recursive` и проверку capability. Отсутствие grants означает отказ всех FileSystem tools. `IncludePatterns`/`ExcludePatterns`, отдельный инструмент удаления и запрет широких roots пока не реализованы. Подробности и лимиты: [инструменты по умолчанию](16-default-mcp-tools.md).
+Implemented in the built-in server: `ToolNames` are treated as a capability (`read`, `write`, `edit`, `delete`) and passed to the server when opening a session; `PathGuard` performs canonicalization, reparse point resolution along the entire chain, containment with regard to `Recursive`, and capability verification. The absence of grants means rejection of all FileSystem tools. `IncludePatterns`/`ExcludePatterns`, a dedicated delete tool, and the prohibition of broad roots are not yet implemented. Details and limits: [default tools](16-default-mcp-tools.md).
 
 ## Approval dialog
 
-Показывает:
+Displays:
 
 - project;
-- MCP server и trust status;
+- MCP server and trust status;
 - tool name/title;
-- annotations как hints;
-- аргументы;
+- annotations as hints;
+- arguments;
 - canonical target;
-- diff для `edit`;
-- ожидаемый эффект;
-- scopes, которых не хватает;
-- timeout и лимиты.
+- diff for `edit`;
+- expected effect;
+- missing scopes;
+- timeout and limits.
 
-Варианты:
+Options:
 
-- разрешить один раз;
-- разрешить до конца текущего AgentRun;
-- сохранить `Allow` для текущего ToolIdentity;
-- отклонить;
-- сохранить `Deny`.
+- allow once;
+- allow until the end of the current AgentRun;
+- save `Allow` for the current ToolIdentity;
+- deny;
+- save `Deny`.
 
-Постоянное разрешение не переносится между проектами.
+A persistent permission is not transferred between projects.
 
 ## Hosted WASM security
 
-Host слушает только loopback по умолчанию и раздаёт WASM и API с одного origin. Требуются:
+The Host listens only on loopback by default and serves WASM and API from a single origin. Required:
 
 - HttpOnly, SameSite session cookie;
-- CSRF/origin validation для изменяющих запросов;
+- CSRF/origin validation for mutating requests;
 - Content Security Policy;
-- запрет произвольных MCP executable/arguments из браузера;
-- санитизация Markdown;
-- отсутствие secrets в WASM configuration, logs и JSON history;
-- ограничение размера запросов и streaming frames.
+- prohibition of arbitrary MCP executable/arguments from the browser;
+- Markdown sanitization;
+- no secrets in WASM configuration, logs, or JSON history;
+- size limits for requests and streaming frames.
 
 ## stdio proxy risk
 
-Web-to-stdio bridge является привилегированной границей. Host запускает только записи из локального registry, созданные пользователем вне model-controlled flow. Путь executable канонизируется, configuration подписывается или защищается от незаметной подмены, все запуски журналируются. Для сторонних servers рекомендуется sandbox/process isolation.
+The web-to-stdio bridge is a privileged boundary. The Host only launches entries from the local registry created by the user outside the model-controlled flow. The executable path is canonicalized, the configuration is signed or protected against unnoticed substitution, and all launches are logged. For third-party servers, sandbox/process isolation is recommended.
 
-Официальное руководство: [MCP Security Best Practices](https://modelcontextprotocol.io/docs/2025-11-25/tutorials/security/security_best_practices).
+Official guide: [MCP Security Best Practices](https://modelcontextprotocol.io/docs/2025-11-25/tutorials/security/security_best_practices).
 
 ## Markdown
 
@@ -143,35 +143,36 @@ Markdown source
 → safe Blazor MarkupString
 ```
 
-Разрешаются только необходимые tags, attributes и URI schemes `http`/`https`. `javascript:`, event attributes, embedded forms и активный SVG запрещены.
+Only necessary tags, attributes, and URI schemes `http`/`https` are allowed. `javascript:`, event attributes, embedded forms, and active SVG are forbidden.
 
 ## Credentials
 
-- Web хранит только CredentialReference.
-- Host хранит секреты в защищённом local credential store.
-- На Windows key material защищается средствами текущего пользователя/OS.
-- Секреты редактируются через masked UI и никогда не возвращаются обратно полностью.
-- Logs используют redaction для headers, query parameters и JSON properties.
+- Web stores only `CredentialReference`.
+- The Host stores secrets in a protected local credential store.
+- On Windows, key material is protected by the current user/OS.
+- Secrets are edited through a masked UI and are never returned in full.
+- Logs use redaction for headers, query parameters, and JSON properties.
 
 ## Audit
 
-Записываются project/policy changes, approvals, denials, MCP process starts, tool calls, canonical targets, result status, hashes и correlation IDs. Секреты и полный чувствительный content в audit не пишутся.
+Project/policy changes, approvals, denials, MCP process starts, tool calls, canonical targets, result status, hashes, and correlation IDs are recorded. Secrets and full sensitive content are not written to the audit log.
+
 # Current scope
 
-Глобальный раздел Security в текущей итерации является информационной страницей. Directory access задаётся только на уровне проекта:
+The global Security section in the current iteration is an informational page. Directory access is set only at the project level:
 
 - `Read only`;
 - `Read/write`;
-- доступ всегда рекурсивный;
-- канонический путь symbolic link или junction не может выходить за границы grant;
-- при пересечении директорий применяется наиболее специфичный grant.
+- access is always recursive;
+- the canonical path of a symbolic link or junction cannot escape the grant boundaries;
+- when directories intersect, the most specific grant applies.
 
-MCP policy задаётся глобально на уровне MCP server и не переопределяется проектом.
+MCP policy is set globally at the MCP server level and is not overridden by the project.
 
-## Инструменты управления приложением
+## Application management tools
 
-Host поставляет собственный MCP-сервер [App tools](17-app-tools.md), который читает и меняет данные самого приложения. Он проходит те же проверки, что и любой другой сервер: включение глобально и в проекте, политика на каждый инструмент, сброс политики при смене schema hash, подтверждение перед вызовом.
+The Host ships its own MCP server [App tools](17-app-tools.md), which reads and changes application data. It passes the same checks as any other server: global and project-level enablement, per-tool policy, policy reset on schema hash change, confirmation before invocation.
 
-Специальных ограничений на самоповышение привилегий у него нет: при политике `Allow` инструмент `app_security` может расширить directory grants своего проекта, изменить политику любого инструмента и включить произвольный MCP-сервер. Это осознанное решение для локального однопользовательского приложения — агент уже работает с правами учётной записи пользователя и располагает `process_run`. Единственной границей остаётся политика `Ask` по умолчанию и карточка подтверждения. Обоснование: [ADR-007](decisions/ADR-007-in-process-app-tools.md).
+There are no special restrictions on privilege escalation: with an `Allow` policy, the `app_security` tool can expand its project's directory grants, change the policy of any tool, and enable arbitrary MCP servers. This is a deliberate decision for a local single-user application — the agent already runs with the user's account permissions and has `process_run`. The only boundary is the default `Ask` policy and the confirmation card. Rationale: [ADR-007](decisions/ADR-007-in-process-app-tools.md).
 
-Секреты остаются односторонними и здесь: ключ можно записать и нельзя прочитать, а при замене глобальных настроек флаги наличия секретов пересчитываются из защищённого хранилища.
+Secrets remain one-way here as well: a key can be written but not read, and when global settings are replaced, the presence flags of secrets are recalculated from the protected store.

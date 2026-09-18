@@ -12,6 +12,7 @@ internal sealed class BuildPaths : IBuildPaths
                 if (File.Exists(Path.Combine(directory.FullName, "AI.Client.slnx")))
                 {
                     SolutionDirectory = directory.FullName;
+                    HostOutputPath = Path.Combine(SolutionDirectory, "artifacts", "host");
                     return;
                 }
 
@@ -23,4 +24,6 @@ internal sealed class BuildPaths : IBuildPaths
     }
 
     public string SolutionDirectory { get; }
+
+    public string HostOutputPath { get; }
 }

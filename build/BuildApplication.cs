@@ -10,6 +10,7 @@ internal sealed class BuildApplication(
     IVerifyTarget verifyTarget,
     IPublishTarget publishTarget,
     IChatSessionTarget chatSessionTarget,
+    IHostTarget hostTarget,
     CancellationToken cancellationToken)
 {
     public Task<int> RunAsync()
@@ -20,6 +21,7 @@ internal sealed class BuildApplication(
         RegisterVerify(root);
         RegisterPublish(root);
         RegisterChat(root);
+        RegisterHost(root);
         return root.Parse(args).InvokeAsync();
     }
 
@@ -65,6 +67,16 @@ internal sealed class BuildApplication(
         command.SetAction(parseResult => publishTarget.RunAsync(
             parseResult.GetValue(output)!,
             cancellationToken));
+        root.Subcommands.Add(command);
+    }
+
+    private void RegisterHost(RootCommand root)
+    {
+        // Publishes AI.Client.Host to `artifacts/host/` and launches it from there. The output
+        // directory lives outside `src/`, so the running host never holds handles to files that
+        // `dotnet build` or `dotnet test` need to overwrite.
+        var command = new Command("host", "Publish AI.Client.Host to artifacts/host/ and run it without blocking source-tree builds and tests.");
+        command.SetAction(_ => hostTarget.RunAsync(cancellationToken));
         root.Subcommands.Add(command);
     }
 }

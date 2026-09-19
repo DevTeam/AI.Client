@@ -1,4 +1,4 @@
-﻿@* Split out of Home.razor so that typing in the composer doesn't re-render the whole message
+@* Split out of Home.razor so that typing in the composer doesn't re-render the whole message
    list: Blazor only re-renders a child component if ShouldRender() says so, so this component
    can be skipped entirely on renders where none of its parameters actually changed (see
    ShouldRender below). Without this boundary, every keystroke in the composer (which lives in
@@ -464,6 +464,13 @@
     private IJSObjectReference? _scrollModule;
     private IJSObjectReference? _messageScrollModule;
     private IJSObjectReference? _messageScrollHandle;
+    // Mermaid fence rendering watches the same container as the scroll anchor: every streaming
+    // token Blazor diffs into the feed produces DOM mutations, and that is exactly when a newly
+    // completed ```mermaid block needs to be drawn. The handle owns a MutationObserver and a
+    // microtask-batched render loop; disposing it on chat switch (or on component teardown)
+    // stops the loop without leaving a dangling observer against a detached subtree.
+    private IJSObjectReference? _mermaidBlocksModule;
+    private IJSObjectReference? _mermaidBlocksHandle;
     private DotNetObjectReference<MessageFeed>? _selfReference;
     // Mirrors the JS side's "the user is at the bottom" state, which is the only thing that
     // decides whether new content scrolls the feed. Starts true: an empty feed is at its bottom.
@@ -557,14 +564,20 @@
                 _historyMarkersModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/historyMarkers.js");
                 _scrollModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
                 _messageScrollModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/messageScroll.js");
+                _mermaidBlocksModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/mermaidBlocks.js");
                 // The scroller element is part of this component's fixed markup, so it outlives
                 // every chat switch — one attach for the lifetime of the feed.
                 _selfReference = DotNetObjectReference.Create(this);
                 _messageScrollHandle = await _messageScrollModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer, _selfReference);
+                // Same lifetime as the scroller. attach() runs the first render pass for any
+                // fences already in the feed so opening a long transcript after a reload still
+                // shows diagrams without requiring the user to scroll to the bottom.
+                _mermaidBlocksHandle = await _mermaidBlocksModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer);
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException)
             {
                 _historyMarkersModule = null;
+                _mermaidBlocksModule = null;
             }
         }
 
@@ -1646,10 +1659,14 @@
         var scrollModule = _scrollModule;
         var messageScrollModule = _messageScrollModule;
         var messageScrollHandle = _messageScrollHandle;
+        var mermaidBlocksModule = _mermaidBlocksModule;
+        var mermaidBlocksHandle = _mermaidBlocksHandle;
         _historyMarkersModule = null;
         _scrollModule = null;
         _messageScrollModule = null;
         _messageScrollHandle = null;
+        _mermaidBlocksModule = null;
+        _mermaidBlocksHandle = null;
         try
         {
             if (messageScrollHandle is not null)
@@ -1657,9 +1674,18 @@
                 await messageScrollHandle.InvokeVoidAsync("dispose");
                 await messageScrollHandle.DisposeAsync();
             }
+            // The mermaid handle holds a MutationObserver; disposing it first stops new renders
+            // from being scheduled, which lets the module itself be released even if a render
+            // is mid-flight on the rAF queue (the await below yields to the event loop).
+            if (mermaidBlocksHandle is not null)
+            {
+                await mermaidBlocksHandle.InvokeVoidAsync("dispose");
+                await mermaidBlocksHandle.DisposeAsync();
+            }
             if (historyMarkersModule is not null) await historyMarkersModule.DisposeAsync();
             if (scrollModule is not null) await scrollModule.DisposeAsync();
             if (messageScrollModule is not null) await messageScrollModule.DisposeAsync();
+            if (mermaidBlocksModule is not null) await mermaidBlocksModule.DisposeAsync();
         }
         catch (Exception error) when (error is JSException or ObjectDisposedException)
         {

@@ -7,6 +7,46 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23171717'/%3E%3Cpath d='M9 22V10m7 12V6m7 16V13' stroke='%237eb4ed' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="css/app.css" />
     <title>AI Client</title>
+    <script src="js/vendor/mermaid.min.js"></script>
+    <script>
+        // Mermaid is loaded eagerly so that the JS module driving fence rendering can find a
+        // ready global. startOnLoad is off because we render fences as they land in the feed
+        // through a MutationObserver (see js/mermaidBlocks.js); letting mermaid run on document
+        // load would walk the entire app shell and race with the observer for the same nodes.
+        // theme 'base' reads CSS variables from :root so the diagrams pick up the app's dark
+        // palette (background, text, accent) without a second hardcoded colour scheme.
+        // securityLevel 'strict' disables mermaid's own click handling — diagrams stay inert
+        // links and the existing CSP / no-raw-html pipeline in SafeMarkdownRenderer is the only
+        // authority on what is rendered.
+        (function () {
+            if (!window.mermaid) return;
+            // `background` and `color` on :root are CSS shorthand values: querying them via
+            // getComputedStyle returns the whole shorthand (color + image + repeat + position +
+            // size + origin + clip) which mermaid's color parser cannot understand. Read the
+            // longhand `background-color` instead, and pull `font-family` separately because
+            // it is what mermaid actually consumes.
+            const root = getComputedStyle(document.documentElement);
+            const bg = root.getPropertyValue('background-color').trim() || '#0c1017';
+            const fg = root.getPropertyValue('color').trim() || '#edf2f7';
+            const ff = root.getPropertyValue('font-family').trim() || 'Inter, system-ui, sans-serif';
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'base',
+                securityLevel: 'strict',
+                fontFamily: ff,
+                themeVariables: {
+                    background: bg,
+                    primaryColor: bg,
+                    primaryTextColor: fg,
+                    primaryBorderColor: '#2a3441',
+                    lineColor: fg,
+                    secondaryColor: '#161b24',
+                    tertiaryColor: '#11161e',
+                    fontFamily: ff
+                }
+            });
+        })();
+    </script>
 </head>
 <body>
     <div id="app">

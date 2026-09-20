@@ -23,7 +23,8 @@ using System.Text.Json;
 public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessionFactory> sessions,
     IProjectService projects, IGlobalSettingsRepository settings, IToolPolicyResolver policies,
     IWorkspaceChangeTracker workspace, IToolResultModelProjector modelProjector,
-    IToolResultCodec toolResultCodec) : IChatAgent
+    IToolResultCodec toolResultCodec, IChatContextPlanner contextPlanner,
+    IContextPlanDiagnostics contextDiagnostics) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -83,7 +84,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var calls = new List<ChatToolCall>();
             var content = new StringBuilder();
             string? finish = null;
-            await foreach (var chunk in completion.StreamAsync(request with { ContextMessages = context, Tools = available }, token))
+            var plan = contextPlanner.Plan(request.Model, context, available);
+            contextDiagnostics.Record(request.Model, plan, context.Count, available.Count);
+            if (!plan.Fits) throw new ContextWindowExceededException(plan);
+            await foreach (var chunk in completion.StreamAsync(
+                               request with { ContextMessages = plan.Messages, Tools = available }, token))
             {
                 if (chunk.ToolCallsStarted) await toolCallsStarted(token);
                 if (chunk.ToolCalls is { } received) calls.AddRange(received);

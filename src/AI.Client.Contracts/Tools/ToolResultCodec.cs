@@ -45,7 +45,17 @@ public sealed class ToolResultCodec(IToolResultModelProjector modelProjector) : 
     /// </summary>
     public ToolCallResult Read(string? storedContent)
     {
-        if (string.IsNullOrWhiteSpace(storedContent)) return Fallback(string.Empty);
+        return TryRead(storedContent) ?? Fallback(storedContent ?? string.Empty);
+    }
+
+    /// <summary>
+    /// Recovers a result only when the stored content has a recognized tool-result shape. This lets
+    /// context restoration preserve unknown legacy content verbatim instead of projecting it as a
+    /// newly invented result envelope.
+    /// </summary>
+    public ToolCallResult? TryRead(string? storedContent)
+    {
+        if (string.IsNullOrWhiteSpace(storedContent)) return null;
         JsonElement root;
         try
         {
@@ -55,27 +65,35 @@ public sealed class ToolResultCodec(IToolResultModelProjector modelProjector) : 
         catch (JsonException)
         {
             // Not JSON at all — an older plain-text tool message, or a hand-edited file.
-            return Fallback(storedContent);
+            return null;
         }
 
-        if (root.ValueKind != JsonValueKind.Object) return Fallback(storedContent);
+        if (root.ValueKind != JsonValueKind.Object) return null;
 
-        var isError = root.TryGetProperty("isError", out var errorFlag)
-            && errorFlag.ValueKind is JsonValueKind.True or JsonValueKind.False
-            && errorFlag.GetBoolean();
-        var structured = root.TryGetProperty("structuredContent", out var structuredElement)
+        var hasErrorFlag = root.TryGetProperty("isError", out var errorFlag)
+            && errorFlag.ValueKind is JsonValueKind.True or JsonValueKind.False;
+        var isError = hasErrorFlag && errorFlag.GetBoolean();
+        var hasStructured = root.TryGetProperty("structuredContent", out var structuredElement);
+        var structured = hasStructured
             ? structuredElement.Clone()
             : (JsonElement?)null;
-        var meta = root.TryGetProperty("_meta", out var metaElement) ? metaElement.Clone() : (JsonElement?)null;
+        var hasMeta = root.TryGetProperty("_meta", out var metaElement);
+        var meta = hasMeta ? metaElement.Clone() : (JsonElement?)null;
 
         var blocks = new List<ToolContent>();
-        if (root.TryGetProperty("content", out var contentElement) && contentElement.ValueKind == JsonValueKind.Array)
+        var hasContent = root.TryGetProperty("content", out var contentElement)
+            && contentElement.ValueKind == JsonValueKind.Array;
+        if (hasContent)
             foreach (var block in contentElement.EnumerateArray())
                 if (ReadBlock(block) is { } parsed) blocks.Add(parsed);
 
         // A host-side refusal is written as {"isError":true,"error":"..."} with no content array.
-        if (blocks.Count == 0 && root.TryGetProperty("error", out var message) && message.ValueKind == JsonValueKind.String)
+        var hasErrorMessage = root.TryGetProperty("error", out var message)
+            && message.ValueKind == JsonValueKind.String;
+        if (blocks.Count == 0 && hasErrorMessage)
             blocks.Add(ToolContent.OfText(message.GetString() ?? string.Empty));
+
+        if (!hasContent && !hasStructured && !hasMeta && !hasErrorFlag && !hasErrorMessage) return null;
 
         return new ToolCallResult(blocks, structured, meta, isError,
             modelProjector.Project(blocks, structured, isError));

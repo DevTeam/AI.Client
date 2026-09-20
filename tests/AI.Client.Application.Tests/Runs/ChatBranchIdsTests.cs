@@ -2,6 +2,7 @@ namespace AI.Client.Application.Tests.Runs;
 
 using AI.Client.Application.Runs;
 using AI.Client.Contracts.Chats;
+using AI.Client.Contracts.Tools;
 using Shouldly;
 using Xunit;
 
@@ -29,6 +30,7 @@ public sealed class ChatBranchIdsTests
             [new ChatMessageView(root, null, "User", "Question", DateTimeOffset.UnixEpoch),
              new ChatMessageView(first, root, "Assistant", "First", DateTimeOffset.UnixEpoch),
              new ChatMessageView(second, root, "Assistant", "Second", DateTimeOffset.UnixEpoch)]);
-        new ChatContext().Build(chat, second).Select(message => message.Content).ShouldBe(["Question", "Second"]);
+        var toolResults = new ToolResultCodec(new ToolResultModelProjector());
+        new ChatContext(toolResults).Build(chat, second).Select(message => message.Content).ShouldBe(["Question", "Second"]);
     }
 }

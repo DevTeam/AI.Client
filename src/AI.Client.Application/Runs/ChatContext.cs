@@ -2,8 +2,9 @@ namespace AI.Client.Application.Runs;
 
 using Contracts.Chat;
 using Contracts.Chats;
+using Contracts.Tools;
 
-public sealed class ChatContext : IChatContextBuilder
+public sealed class ChatContext(IToolResultCodec toolResultCodec) : IChatContextBuilder
 {
     public IReadOnlyList<ChatCompletionMessage> Build(ChatDetails chat, Guid headId)
     {
@@ -15,7 +16,9 @@ public sealed class ChatContext : IChatContextBuilder
         {
             if (!visited.Add(id) || !byId.TryGetValue(id, out var message))
                 throw new InvalidOperationException("Invalid message ancestry.");
-            path.Add(new ChatCompletionMessage(message.Role.ToLowerInvariant(), message.Content, message.ToolCalls, message.ToolCallId));
+            var role = message.Role.ToLowerInvariant();
+            var modelContent = role == "tool" ? toolResultCodec.TryRead(message.Content)?.ModelContent : null;
+            path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent));
             current = message.ParentId;
         }
         path.Reverse();

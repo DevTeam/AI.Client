@@ -6,4 +6,6 @@ public interface IToolResultCodec
     string Write(ToolCallResult result);
 
     ToolCallResult Read(string? storedContent);
+
+    ToolCallResult? TryRead(string? storedContent);
 }

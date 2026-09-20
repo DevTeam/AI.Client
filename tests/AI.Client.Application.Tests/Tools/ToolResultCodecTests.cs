@@ -124,6 +124,16 @@ public class ToolResultCodecTests
         result.ModelContent.ShouldNotBeNullOrEmpty();
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("legacy plain text")]
+    [InlineData("[1,2,3]")]
+    [InlineData("{\"unexpected\":true}")]
+    public void ShouldNotRecognizeUnknownStoredContent(string stored)
+    {
+        Codec.TryRead(stored).ShouldBeNull();
+    }
+
     [Fact]
     public void ShouldLiftAnEmbeddedResourceIntoTheBlockPresentationReads()
     {

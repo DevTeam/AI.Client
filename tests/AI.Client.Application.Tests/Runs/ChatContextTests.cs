@@ -3,11 +3,14 @@ namespace AI.Client.Application.Tests.Runs;
 using AI.Client.Application.Runs;
 using AI.Client.Contracts.Chat;
 using AI.Client.Contracts.Chats;
+using AI.Client.Contracts.Tools;
 using Shouldly;
 using Xunit;
 
 public sealed class ChatContextTests
 {
+    private static readonly ToolResultCodec ToolResults = new(new ToolResultModelProjector());
+
     [Fact]
     public void ShouldRepairInterruptedToolBatchInOriginalCallOrder()
     {
@@ -30,10 +33,57 @@ public sealed class ChatContextTests
                 new ChatMessageView(nextUser, firstResult, "User", "Urgent", DateTimeOffset.UnixEpoch)
             ]);
 
-        var context = new ChatContext().Build(chat, nextUser);
+        var context = new ChatContext(ToolResults).Build(chat, nextUser);
 
         context.Select(message => message.Role).ShouldBe(["user", "assistant", "tool", "tool", "tool", "user"]);
         context.Where(message => message.Role == "tool").Select(message => message.ToolCallId)
             .ShouldBe(["call-1", "call-2", "call-3"]);
+    }
+
+    [Fact]
+    public void ShouldRestoreModelProjectionForPersistedToolResults()
+    {
+        var user = Guid.NewGuid();
+        var assistant = Guid.NewGuid();
+        var tool = Guid.NewGuid();
+        const string stored = """
+            {"content":[{"type":"text","text":"large presentation payload"}],"structuredContent":{"exitCode":0},"_meta":{"instruction":"do not expose"},"isError":false}
+            """;
+        var chat = new ChatDetails(Guid.NewGuid(), Guid.NewGuid(), "Chat", DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, 1, null,
+            [
+                new ChatMessageView(user, null, "User", "Run", DateTimeOffset.UnixEpoch),
+                new ChatMessageView(assistant, user, "Assistant", "", DateTimeOffset.UnixEpoch,
+                    ToolCalls: [new ChatToolCall("call-1", "tool", "{}")]),
+                new ChatMessageView(tool, assistant, "Tool", stored, DateTimeOffset.UnixEpoch, ToolCallId: "call-1")
+            ]);
+
+        var restored = new ChatContext(ToolResults).Build(chat, tool).Single(message => message.Role == "tool");
+
+        restored.Content.ShouldBe(stored);
+        restored.ForModel.ShouldBe("{\"exitCode\":0}");
+        restored.ForModel.ShouldNotContain("do not expose");
+        restored.ForModel.ShouldNotContain("large presentation payload");
+    }
+
+    [Theory]
+    [InlineData("legacy plain-text result")]
+    [InlineData("{\"unexpected\":true}")]
+    public void ShouldKeepUnknownToolResultVerbatim(string stored)
+    {
+        var assistant = Guid.NewGuid();
+        var tool = Guid.NewGuid();
+        var chat = new ChatDetails(Guid.NewGuid(), Guid.NewGuid(), "Chat", DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, 1, null,
+            [
+                new ChatMessageView(assistant, null, "Assistant", "", DateTimeOffset.UnixEpoch,
+                    ToolCalls: [new ChatToolCall("call-1", "tool", "{}")]),
+                new ChatMessageView(tool, assistant, "Tool", stored, DateTimeOffset.UnixEpoch, ToolCallId: "call-1")
+            ]);
+
+        var restored = new ChatContext(ToolResults).Build(chat, tool).Single(message => message.Role == "tool");
+
+        restored.ModelContent.ShouldBeNull();
+        restored.ForModel.ShouldBe(stored);
     }
 }

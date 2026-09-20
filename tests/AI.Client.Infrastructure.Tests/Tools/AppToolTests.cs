@@ -410,6 +410,7 @@ public sealed class AppToolTests
             var policies = new ToolPolicyResolver(Projects, Chats, _settings);
             var modelProjector = new ToolResultModelProjector();
             var toolResultCodec = new ToolResultCodec(modelProjector);
+            var instructionRegistry = new ModelInstructionRegistry();
             var dispatcher = new ChatRunDispatcher(runRepository, Chats, Chats, Projects, _settings, settingsService,
                 new ChatAgent(Mock.Of<AI.Client.Application.Chat.IChatCompletionClient>(), Mock.Of<IToolSessionFactory>,
                     Projects, _settings, policies, workspace, modelProjector, toolResultCodec,
@@ -417,7 +418,9 @@ public sealed class AppToolTests
                         new ConnectionContextLimitsResolver()),
                     Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity(),
                     new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()),
-                    new ToolCatalogRegistry(), new ModelContentCheckpointService()),
+                    new ToolCatalogRegistry(), new ModelContentCheckpointService(), instructionRegistry,
+                    new ModelInstructionComposer(instructionRegistry, new ContextTokenEstimator()),
+                    Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol()),
                 _secrets, _clock, _ids, _synchronization, workspace, policies, new ChatContext(toolResultCodec));
             var writes = new AppWrites(new AppOperationLog(), _signal);
             var presentations = new ToolPresentations(

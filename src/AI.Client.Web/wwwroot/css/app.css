@@ -3135,6 +3135,11 @@ textarea {
     animation: turn-stream-collapse 240ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
+.turn-live-intermediate {
+    margin-inline-start: 1.5rem;
+    opacity: .82;
+}
+
 .turn-stream-absorption-clip {
     min-height: 0;
     overflow: hidden;

@@ -25,6 +25,8 @@ The documents describe the agreed-upon architecture and are the source of truth 
 19. [Compact turn view](18-compact-turn-view.md)
 20. [Asking the user (`ask_user`)](19-ask-user.md)
 21. [LLM context management](20-context-management.md)
+22. [Tool selection and adaptive compaction](21-tool-selection-and-adaptive-compaction.md)
+23. [Hidden model instructions and run completion](22-hidden-model-instructions-and-run-completion.md)
 
 ## Accepted decisions
 

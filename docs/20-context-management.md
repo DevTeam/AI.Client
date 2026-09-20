@@ -130,7 +130,7 @@ ContextPlan
 
 #### Шаг A. Model projection инструментов
 
-Каждый сохранённый tool result сначала переводится через внедрённый `IToolResultCodec.Read(content)` в `ModelContent`. Кодек использует `IToolResultModelProjector`: успешный непустой `structuredContent` имеет приоритет, для результата с `isError` используется `content`, а `_meta` никогда не попадает в модель. Это базовое представление, а не реакция на переполнение бюджета.
+Каждый распознанный сохранённый tool result сначала переводится через внедрённый `IToolResultCodec.TryRead(content)` в `ModelContent`. Кодек использует `IToolResultModelProjector`: успешный непустой `structuredContent` имеет приоритет, для результата с `isError` используется `content`, а `_meta` никогда не попадает в модель. Это базовое представление, а не реакция на переполнение бюджета.
 
 #### Шаг B. Ограничение крупных результатов
 
@@ -163,11 +163,11 @@ Context plan каждый раз строится из текущего пути
 
 Полный tool result уже хранится в `ChatMessage.Content` в формате `ToolResultCodec`. Этого достаточно, чтобы восстановить адресованную модели проекцию при чтении.
 
-В `ChatContext.Get` для роли `tool` создаётся сообщение по правилу:
+В `ChatContext.Build` для роли `tool` создаётся сообщение по правилу:
 
 ```csharp
 var modelContent = message.Role == ChatMessageRole.Tool
-    ? TryReadModelContent(message.Content)
+    ? toolResultCodec.TryRead(message.Content)?.ModelContent
     : null;
 
 new ChatCompletionMessage(
@@ -178,12 +178,11 @@ new ChatCompletionMessage(
     modelContent);
 ```
 
-`TryReadModelContent`:
+Вызов `IToolResultCodec.TryRead`:
 
-1. вызывает внедрённый через DI `IToolResultCodec.Read`;
-2. возвращает `ModelContent`, если результат распознан;
-3. при старом или стороннем формате безопасно возвращает `null`, сохраняя текущее поведение `ModelContent ?? Content`;
-4. не изменяет сохранённый JSON.
+1. возвращает типизированный результат и его `ModelContent`, если формат распознан;
+2. при старом или стороннем формате безопасно возвращает `null`, сохраняя текущее поведение `ModelContent ?? Content`;
+3. не изменяет сохранённый JSON.
 
 Внутри текущего agent loop остаётся существующее поведение: `ChatAgent.ToolMessage` сразу кладёт `result.ModelContent` в runtime message. После restart или следующего пользовательского хода `ChatContext` получает эквивалентную проекцию из полного сохранённого результата.
 
@@ -198,9 +197,11 @@ new ChatCompletionMessage(
 
 ### Инкремент 1. Устранить потерю model projection
 
+Статус: выполнен.
+
 Изменения:
 
-- добавить в `ChatContext` восстановление `IToolResultCodec.Read(content).ModelContent` для tool messages;
+- добавить в `ChatContext` восстановление `IToolResultCodec.TryRead(content)?.ModelContent` для tool messages;
 - оставить fallback на полный `Content` для нераспознанных результатов;
 - не менять domain/storage contracts и schema version.
 

@@ -480,6 +480,33 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task LongHistoryShouldBeCompactedOnlyForTransport()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var requests = Enumerable.Range(1, 6)
+            .Select(index => $"request-{index} " + new string((char)('a' + index), 10_000))
+            .ToArray();
+        Call? last = null;
+        foreach (var request in requests)
+        {
+            await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), request));
+            last = await fixture.NextCallAsync();
+            last.Answer.SetResult("done");
+            await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        }
+
+        last.ShouldNotBeNull();
+        last.Request.ContextMessages![0].Role.ShouldBe("user");
+        last.Request.ContextMessages[0].Content.ShouldStartWith("Earlier conversation summary");
+        last.Request.ContextMessages[^1].Content.ShouldBe(requests[^1]);
+
+        var stored = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        stored.ShouldNotBeNull();
+        stored.Messages.Where(message => message.Role == "User").Select(message => message.Content)
+            .ShouldBe(requests);
+    }
+
+    [Fact]
     public async Task ClearShouldBehaveTheSameWhileAStoppedWorkerIsStillUnwinding()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -1188,7 +1215,8 @@ public sealed class ChatExecutionTests
             return new ChatRunDispatcher(_runs, Chats, Chats, _projectService, _settings,
                 new GlobalSettingsService(_settings, _secrets),
                 new ChatAgent(Completion, () => Tools, _projectService, _settings, policies, Workspace,
-                    ModelProjector, ToolResultCodec, new ChatContextPlanner(new ContextTokenEstimator()),
+                    ModelProjector, ToolResultCodec,
+                    new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator())),
                     Mock.Of<IContextPlanDiagnostics>()),
                 _secrets, _clock, _ids, _synchronization, Workspace, policies,
                 new ChatContext(ToolResultCodec));

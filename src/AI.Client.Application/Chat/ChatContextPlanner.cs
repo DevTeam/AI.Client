@@ -6,7 +6,9 @@ using Contracts.Chat;
 /// Measures a request against conservative OpenAI-compatible defaults. Model-specific and
 /// connection-level overrides can be added without changing the agent or transport boundary.
 /// </summary>
-public sealed class ChatContextPlanner(IContextTokenEstimator estimator) : IChatContextPlanner
+public sealed class ChatContextPlanner(
+    IContextTokenEstimator estimator,
+    IChatContextCompactor compactor) : IChatContextPlanner
 {
     private readonly ChatContextLimits _unknownModelLimits = new(
         ContextWindowTokens: 32_768,
@@ -28,14 +30,18 @@ public sealed class ChatContextPlanner(IContextTokenEstimator estimator) : IChat
         var fixedCost = Add(limits.ReservedOutputTokens, toolTokens,
             limits.ProtocolOverheadTokens, limits.SafetyMarginTokens);
         var inputLimit = Math.Max(0, limits.ContextWindowTokens - Math.Min(limits.ContextWindowTokens, fixedCost));
+        var estimated = estimator.EstimateMessages(messages);
+        var compaction = estimated > inputLimit
+            ? compactor.Compact(messages, inputLimit)
+            : new ContextCompactionResult(messages, 0, false);
         return new ContextPlan(
             inputLimit,
-            estimator.EstimateMessages(messages),
+            estimator.EstimateMessages(compaction.Messages),
             limits.ReservedOutputTokens,
             toolTokens,
-            WasCompacted: false,
-            OmittedMessages: 0,
-            messages);
+            compaction.WasCompacted,
+            compaction.OmittedMessages,
+            compaction.Messages);
     }
 
     private ChatContextLimits ResolveLimits(string model)

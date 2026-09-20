@@ -39,7 +39,7 @@ public sealed partial class ToolDefinitionSelector(
             var words = Words(definition.Name).Concat(Words(definition.Description)).Distinct(StringComparer.OrdinalIgnoreCase);
             var relevance = words.Count(query.Contains);
             var pinned = used.Contains(definition.Name) || pinnedTools?.Contains(definition.Name) == true
-                || tool.OriginalName is "ask_user" or "tool_search";
+                || tool.OriginalName is "ask_user" or "tool_search" or "context_compact";
             var tokens = estimator.EstimateTools([definition]);
             return new Candidate(tool, tokens, relevance, pinned);
         }).OrderByDescending(item => item.Pinned)

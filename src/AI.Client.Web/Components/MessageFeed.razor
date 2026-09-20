@@ -256,6 +256,7 @@
             <section class="turn-status turn-status-@turn.Kind" role="status">
                 <span class="turn-status-icon" aria-hidden="true"><AppIcon Name="@turn.Icon" /></span>
                 <span class="turn-status-text">@turn.Text</span>
+                <button class="icon-action turn-status-copy" type="button" title="Copy error" aria-label="Copy error" @onclick="() => OnCopyMessage.InvokeAsync(turn.Text)"><AppIcon Name="copy" /></button>
                 <span class="turn-status-actions">
                     @if (turn.CanResume)
                     {

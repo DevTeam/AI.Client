@@ -1,173 +1,174 @@
-# План реализации
+# Implementation plan
 
-## Выполнено: локальная история чатов
+## Completed: local chat history
 
-- Чат принадлежит проекту и содержит дерево сообщений с явной ссылкой на родительское сообщение.
-- Выбранная ветка формирует контекст от корня до leaf message; альтернативные ответы остаются отдельными ветками.
-- Чаты хранятся локально в JSON в каталоге проекта с revision и atomic temporary-file replace.
-- Добавлены same-origin API и минимальный UI: создание чата, выбор чата и сохранение пары user/assistant после live-chat completion.
+- A chat belongs to a project and contains a message tree with an explicit parent-message reference.
+- The selected branch builds the context from the root to the leaf message; alternative responses remain separate branches.
+- Chats are stored locally as JSON in the project directory with a revision and atomic temporary-file replace.
+- Same-origin API and a minimal UI have been added: create a chat, select a chat, and save a user/assistant pair after live-chat completion.
 
-Статус: Accepted
+Status: Accepted
 
-Фактическое выполнение этапов и результаты проверок ведутся в отдельном журнале [«Ход реализации»](11-implementation-progress.md). Этап считается завершённым только после выполнения всех указанных для него exit criteria.
+The actual execution of stages and verification results are kept in a separate log, [Implementation progress](11-implementation-progress.md). A stage is considered complete only after all its exit criteria have been satisfied.
 
-Каждый этап завершается работающим vertical slice и проверяемыми exit criteria.
+Each stage ends with a working vertical slice and verifiable exit criteria.
 
-## Этап 0. Foundation
+## Stage 0. Foundation
 
-- Создать solution и проекты.
-- Настроить `net10.0`, nullable, analyzers и central package management.
-- Подключить Pure.DI/Pure.DI.MS.
-- Ввести strongly typed UUID v7 IDs, clock и result/error contracts.
-- Добавить test projects на xUnit с Shouldly и Moq.
-- Добавить CI build и быстрый unit-test suite без внешних ресурсов.
-- Использовать отдельное build-приложение по образцу `dotnet-matrix/build`: Pure.DI composition root, интерфейсный target на каждую операцию и CLI-команды для build, test, verify и publish.
+- Create the solution and projects.
+- Configure `net10.0`, nullable, analyzers, and central package management.
+- Connect Pure.DI/Pure.DI.MS.
+- Introduce strongly typed UUID v7 IDs, a clock, and result/error contracts.
+- Add xUnit test projects with Shouldly and Moq.
+- Add CI build and a fast unit-test suite without external resources.
+- Use a dedicated build application following the `dotnet-matrix/build` model: a Pure.DI composition root, an interface target per operation, and CLI commands for build, test, verify, and publish.
 
-Готово, когда solution собирается, composition roots проверяются, Domain не зависит от Infrastructure, а `dotnet run --project build -- verify` выполняет build и быстрый unit-test suite.
+Done when the solution builds, composition roots are verified, Domain does not depend on Infrastructure, and `dotnet run --project build -- verify` builds the solution and runs the fast unit-test suite.
 
-## Этап 1. Projects и локальное storage ядро
+## Stage 1. Projects and local storage core
 
-- Реализовать Project aggregate.
-- Реализовать JSON envelopes, atomic writer и schema validation.
-- Реализовать project CRUD.
-- Добавить directory grants, MCP bindings и per-tool policies.
-- Добавить recovery после незавершённой atomic write.
+- Implement the Project aggregate.
+- Implement JSON envelopes, atomic writer, and schema validation.
+- Implement project CRUD.
+- Add directory grants, MCP bindings, and per-tool policies.
+- Add recovery after an unfinished atomic write.
 
-Готово, когда проект переживает перезапуск, конфликт revision обнаруживается, а secrets отсутствуют в JSON.
+Done when a project survives a restart, a revision conflict is detected, and secrets are absent from JSON.
 
-Текущий прогресс: project metadata и security settings CRUD, revision conflict и recovery реализованы. Добавлен временный live chat preview для проверки OpenAI-compatible endpoint без сохранения credentials. MCP configuration сохраняется локально, но transport ещё не запускается. Следующий этап — endpoint profiles и защищённое хранение credentials в Host.
+Current progress: project metadata and security settings CRUD, revision conflict, and recovery are implemented. A temporary live-chat preview for verifying an OpenAI-compatible endpoint without saving credentials has been added. MCP configuration is saved locally, but the transport is not launched yet. The next stage is endpoint profiles and protected credential storage in the Host.
 
-## Этап 2. Hosted WASM shell
+## Stage 2. Hosted WASM shell
 
-- Создать AI.Client.Host и AI.Client.Web.
-- Host раздаёт WASM с same origin.
-- Настроить Pure.DI composition roots по образцу Matrix.Web.
-- Реализовать project list/settings UI.
-- Добавить CSP, session и origin/CSRF protection.
+- Create AI.Client.Host and AI.Client.Web.
+- The Host serves WASM from the same origin.
+- Configure Pure.DI composition roots following the Matrix.Web model.
+- Implement the project list/settings UI.
+- Add CSP, session, and origin/CSRF protection.
 
-Готово, когда один Host executable открывает UI и CRUD проектов работает через versioned API.
+Done when one Host executable opens the UI and project CRUD works through a versioned API.
 
-## Этап 3. Endpoints и credentials
+## Stage 3. Endpoints and credentials
 
-- Реализовать credential store в Host.
-- Реализовать endpoint profiles.
-- Добавить OpenAI Responses adapter.
-- Добавить Chat Completions fallback.
-- Добавить безопасный connection/capability check.
+- Implement the credential store in the Host.
+- Implement endpoint profiles.
+- Add an OpenAI Responses adapter.
+- Add a Chat Completions fallback.
+- Add a safe connection/capability check.
 
-Готово, когда ключ не появляется в WASM/network response/log, а два endpoint profiles можно переключать.
+Done when the key never appears in WASM, network responses, or logs, and two endpoint profiles can be switched between.
 
-## Этап 4. Streaming Markdown chat
+## Stage 4. Streaming Markdown chat
 
-- Реализовать Chat и immutable MessageNode.
-- Реализовать streaming AgentEvents.
-- Добавить cancel, incomplete и failed states.
-- Добавить Markdig и HtmlSanitizer.
-- Сохранять endpoint/model snapshots и usage.
+- Implement Chat and immutable MessageNode.
+- Implement streaming AgentEvents.
+- Add cancel, incomplete, and failed states.
+- Add Markdig and HtmlSanitizer.
+- Save endpoint/model snapshots and usage.
 
-Готово, когда чат восстанавливается после перезапуска, Markdown безопасен, а отмена не создаёт завершённый ответ.
+Done when a chat is restored after a restart, Markdown is safe, and cancellation does not produce a completed response.
 
-## Этап 5. Branching
+## Stage 5. Branching
 
-- Реализовать refs и branch head updates.
-- Fork от любого node.
-- Редактирование через новый путь.
-- Garbage detection для недостижимых nodes.
-- Копирование чата между проектами с remap IDs.
+- Implement refs and branch head updates.
+- Fork from any node.
+- Editing via a new path.
+- Garbage detection for unreachable nodes.
+- Copying a chat between projects with ID remap.
 
-Готово, когда общая история не дублируется, а конфликт двух head updates обнаруживается revision check.
+Done when shared history is not duplicated and a conflict between two head updates is detected by revision check.
 
-## Этап 6. MCP connection manager
+## Stage 6. MCP connection manager
 
-- Подключить официальный MCP C# SDK.
-- Реализовать stdio и Streamable HTTP transports.
-- Реализовать initialization, pagination и list changed.
-- Ввести ToolIdentity, alias registry и schema hash.
-- Добавить trust status и tool catalog UI.
+- Connect the official MCP C# SDK.
+- Implement stdio and Streamable HTTP transports.
+- Implement initialization, pagination, and list changed.
+- Introduce ToolIdentity, alias registry, and schema hash.
+- Add trust status and a tool catalog UI.
 
-Готово, когда два сервера с одинаковым tool name корректно различаются, а schema change сбрасывает approval.
+Done when two servers with the same tool name are distinguished correctly and a schema change resets the approval.
 
-## Этап 7. History MCP
+## Stage 7. History MCP
 
-- Вынести project/chat repositories в отдельный MCP server.
-- Реализовать system tools и resources.
-- Перевести Host repository adapters на MCP.
-- Сохранить local cache только как восстанавливаемый кэш UI.
+- Move project/chat repositories into a separate MCP server.
+- Implement system tools and resources.
+- Switch Host repository adapters to MCP.
+- Keep the local cache only as a recoverable UI cache.
 
-Готово, когда все проекты и история доступны через MCP, но history tools не попадают в model tool list.
+Done when all projects and history are accessible through MCP, but history tools do not appear in the model tool list.
 
-## Этап 8. Agent loop
+## Stage 8. Agent loop
 
-- Преобразовать MCP descriptors в provider tools.
-- Реализовать validation, Allow/Ask/Deny и approvals.
-- Исполнять calls и сохранять call/result IDs.
-- Добавить limits, timeout, cancellation и retry rules.
-- Добавить tool timeline.
+- Convert MCP descriptors into provider tools.
+- Implement validation, Allow/Ask/Deny, and approvals.
+- Execute calls and save call/result IDs.
+- Add limits, timeout, cancellation, and retry rules.
+- Add the tool timeline.
 
-Готово, когда модель выполняет несколько MCP-вызовов, остановка безопасна, а completed side effect не повторяется.
+Done when the model performs several MCP calls, stopping is safe, and a completed side effect is not repeated.
 
-## Этап 9. FileSystem MCP
+## Stage 9. FileSystem MCP
 
-- Реализовать `read`, `write`, `edit`, `delete`, `list`, `search`.
-- Добавить canonical roots и argument constraints.
-- Защитить от traversal, symlink/junction escape и TOCTOU.
-- Реализовать hash-based optimistic edit и atomic write.
-- Добавить structured results и audit.
+- Implement `read`, `write`, `edit`, `delete`, `list`, and `search`.
+- Add canonical roots and argument constraints.
+- Protect against traversal, symlink/junction escape, and TOCTOU.
+- Implement hash-based optimistic edit and atomic write.
+- Add structured results and audit.
 
-Готово, когда модульные security tests на fake filesystem не позволяют выйти за grants, а edit отвергает устаревший hash.
+Done when module-level security tests on a fake filesystem do not allow escaping the grants and edit rejects a stale hash.
 
-## Этап 10. HTTP MCP authorization
+## Stage 10. HTTP MCP authorization
 
-- Реализовать Protected Resource Metadata discovery.
-- Добавить RFC 8414/OIDC discovery, PKCE S256 и Resource Indicators.
-- Добавить progressive scopes и `insufficient_scope` handling.
-- Защитить token storage и redaction.
+- Implement Protected Resource Metadata discovery.
+- Add RFC 8414/OIDC discovery, PKCE S256, and Resource Indicators.
+- Add progressive scopes and `insufficient_scope` handling.
+- Protect token storage and redaction.
 
-Готово, когда удалённый MCP server подключается стандартным OAuth flow без broad scopes.
+Done when a remote MCP server connects through the standard OAuth flow without broad scopes.
 
-## Этап 11. Надёжность и UX
+## Stage 11. Reliability and UX
 
-- Reconnect и interrupted run recovery.
+- Reconnect and interrupted-run recovery.
 - Context compaction.
-- Поиск по проекту.
-- Export/import с schema validation.
+- Project-wide search.
+- Export/import with schema validation.
 - Backup/restore.
-- Diagnostics bundle без secrets.
-- PWA assets для offline UI shell.
+- Diagnostics bundle without secrets.
+- PWA assets for the offline UI shell.
 
-## Этап 12. Release readiness
+## Stage 12. Release readiness
 
-- Полный threat-model review.
-- Dependency и vulnerability scan.
-- Полный быстрый unit-test suite, независимый от Windows и локальной среды.
-- Self-contained publish Host.
-- Документация установки, обновления и восстановления.
+- Full threat-model review.
+- Dependency and vulnerability scan.
+- Full fast unit-test suite independent of Windows and the local environment.
+- Self-contained Host publish.
+- Installation, update, and recovery documentation.
 
-## Порядок разработки внутри этапа
+## Development order within a stage
 
-1. Domain contract и tests.
+1. Domain contract and tests.
 2. Application use case.
 3. Infrastructure adapter.
 4. Pure.DI registration.
 5. UI/API composition.
 6. Security negative tests.
-7. Документация и acceptance check.
+7. Documentation and acceptance check.
 
-## Выполнено: Markdown в чате
+## Completed: Markdown in chat
 
-- Ответы и сохранённые сообщения отображаются как Markdown через Markdig с расширениями.
-- Встроенный HTML Markdown отключён, а полученный HTML дополнительно очищается HtmlSanitizer перед передачей в `MarkupString`.
-- В истории сохраняется исходный текст Markdown, поэтому повторный рендеринг не меняет данные чата.
+- Responses and saved messages are rendered as Markdown through Markdig with extensions.
+- Embedded HTML in Markdown is disabled, and the resulting HTML is additionally sanitized by HtmlSanitizer before being passed to `MarkupString`.
+- The original Markdown text is saved in history, so re-rendering does not change chat data.
 
-## Выполнено: ветвление чатов
+## Completed: chat branching
 
-- Пользователь выбирает любую сохранённую точку через **Branch from this message**.
-- Новая отправка создаёт дочернюю пару user/assistant и не меняет существующее продолжение.
-- В OpenAI-compatible запрос передаётся только путь от корня до выбранной точки плюс новый user message.
+- The user selects any saved point through **Branch from this message**.
+- A new send creates a child user/assistant pair and does not change the existing continuation.
+- Only the path from the root to the selected point plus the new user message is sent to the OpenAI-compatible request.
 
-## Выполнено: workspace UI
+## Completed: workspace UI
 
-- Экран перестроен в трёхпанельный workspace по принятому референсу: проекты и чаты слева, активный диалог и composer в центре, настройки проекта и endpoint profiles справа.
-- Основной сценарий теперь линейный: выбрать проект, создать чат, выбрать endpoint, написать сообщение.
-- Endpoint profile редактируется как отдельная карточка с подписанными полями и явным статусом сохранения.
-- Security и MCP отделены от ежедневного сценария чата и показаны как advanced settings.
+- The screen has been rebuilt as a three-panel workspace following the adopted reference: projects and chats on the left, the active conversation and composer in the center, project settings and endpoint profiles on the right.
+- The main scenario is now linear: select a project, create a chat, select an endpoint, write a message.
+- The endpoint profile is edited as a separate card with labelled fields and explicit save status.
+- Security and MCP are separated from the daily chat scenario and shown as advanced settings.
+

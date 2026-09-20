@@ -1,48 +1,48 @@
-# Инструменты MCP по умолчанию
+# Default MCP tools
 
-## Состав
+## Composition
 
-Встроенный сервер поставляет 16 инструментов. Все они получают политику `Ask` при первом обнаружении, как любой новый инструмент.
+The built-in server ships 16 tools. All of them receive the `Ask` policy on first discovery, like any new tool.
 
-Помимо него Host поставляет второй собственный сервер — [App tools](17-app-tools.md) с пятью инструментами над данными самого приложения.
+In addition, the Host ships a second built-in server — [App tools](17-app-tools.md) with five tools over the application's own data.
 
-| Инструмент | Назначение | Требуемая capability grant |
+| Tool | Purpose | Required capability grant |
 |---|---|---|
-| `process_run` | запуск программы и ожидание завершения | — (не ограничен grants) |
-| `fetch` | загрузка http/https URL как Markdown | — (сеть) |
-| `list_allowed_directories` | перечисление directory grants проекта | — |
-| `read_text_file` | чтение текстового файла, опции `head`/`tail` | `read` |
-| `read_multiple_files` | пакетное чтение до 32 файлов | `read` |
-| `list_directory` | непосредственные элементы каталога | `read` |
-| `directory_tree` | плоский обход дерева | `read` |
-| `search_files` | поиск по glob-шаблону | `read` |
-| `grep_files` | поиск подстроки или регулярного выражения в содержимом файлов | `read` |
-| `get_file_info` | метаданные без чтения содержимого | `read` |
-| `write_file` | создание или полная перезапись файла | `write` |
-| `create_directory` | создание каталога с родителями | `write` |
-| `edit_file` | точечные замены с `dryRun` | `edit` |
-| `move_file` | перемещение и переименование | `delete` для источника, `write` для назначения |
-| `delete_file` | удаление файла | `delete` |
-| `delete_directory` | удаление каталога, непустого — только с `recursive` | `delete` |
+| `process_run` | launch a program and wait for completion | — (not restricted by grants) |
+| `fetch` | download an http/https URL as Markdown | — (network) |
+| `list_allowed_directories` | enumerate project directory grants | — |
+| `read_text_file` | read a text file, `head`/`tail` options | `read` |
+| `read_multiple_files` | batch read up to 32 files | `read` |
+| `list_directory` | direct children of a directory | `read` |
+| `directory_tree` | flat directory tree walk | `read` |
+| `search_files` | glob-pattern search | `read` |
+| `grep_files` | substring or regex search in file contents | `read` |
+| `get_file_info` | metadata without reading the contents | `read` |
+| `write_file` | create or fully overwrite a file | `write` |
+| `create_directory` | create a directory with parents | `write` |
+| `edit_file` | targeted replacements with `dryRun` | `edit` |
+| `move_file` | move and rename | `delete` for source, `write` for destination |
+| `delete_file` | delete a file | `delete` |
+| `delete_directory` | delete a directory; non-empty only with `recursive` | `delete` |
 
-Из референсных серверов `modelcontextprotocol/servers` сознательно не взяты: `git` (12 инструментов покрываются `process_run`), `memory` (9 инструментов — отдельное продуктовое решение об архитектуре памяти), `sequentialthinking`, `time`, deprecated `read_file`, а также `read_media_file` и `list_directory_with_sizes` как избыточные для текущих сценариев.
+The following reference servers from `modelcontextprotocol/servers` are intentionally not adopted: `git` (12 tools are covered by `process_run`), `memory` (9 tools — a separate product decision about memory architecture), `sequentialthinking`, `time`, the deprecated `read_file`, as well as `read_media_file` and `list_directory_with_sizes` as excessive for the current scenarios.
 
-## Использование
+## Usage
 
-Host автоматически регистрирует `Default tools` со стабильным ID. Встроенный сервер поставляется вместе с приложением в каталоге `mcp` и работает через stdio. По умолчанию он включён с политикой `Ask`, но не передаётся модели и не запускается, пока его явно не обнаружат и не включат в настройках конкретного проекта.
+The Host automatically registers `Default tools` with a stable ID. The built-in server ships with the application in the `mcp` directory and runs over stdio. By default it is enabled with the `Ask` policy, but it is not transmitted to the model and is not started until it is explicitly discovered and enabled in a specific project's settings.
 
-1. Выберите connection с поддержкой function calling в Chat Completions.
-2. В чате попросите запустить программу, указав рабочий каталог, например: `Выполни dotnet --info в C:\Projects\DevTeam\AI.Client`.
-3. Проверьте программу, аргументы, каталог и таймаут в карточке подтверждения. Нажмите `Allow once` или `Deny`.
-4. В истории появятся вызов, результат и итоговый ответ модели. Кнопка остановки чата отменяет ожидание подтверждения или выполнение.
+1. Select a connection that supports function calling in Chat Completions.
+2. In the chat, ask the model to run a program with a working directory, for example: `Run dotnet --info in C:\Projects\DevTeam\AI.Client`.
+3. Review the program, arguments, directory, and timeout in the confirmation card. Click `Allow once` or `Deny`.
+4. The call, its result, and the model's final response appear in history. The chat's stop button cancels a pending confirmation or an in-flight execution.
 
-В настройках проекта кнопка `Discover tools` получает описание инструмента через настоящий MCP `tools/list`. После обнаружения доступны `Ask`, `Allow`, `Deny`, число вызовов и таймаут. Сохранение использует существующую ревизию настроек проекта. Смена schema hash возвращает новый инструмент к `Ask`.
+In project settings, the `Discover tools` button retrieves the tool descriptor through a real MCP `tools/list`. After discovery, `Ask`, `Allow`, `Deny`, the call count, and the timeout are available. Saving uses the existing project settings revision. A schema hash change returns a new tool to `Ask`.
 
-Глобальная политика сервера и политика проекта применяются совместно: любой `Deny` запрещает исполнение; автоматический запуск требует `Allow` на обоих уровнях. Отключение сервера также запрещает вызовы. Политика повторно проверяется после подтверждения, непосредственно перед исполнением.
+The global server policy and the project policy apply together: any `Deny` forbids execution; auto-execution requires `Allow` at both levels. Disabling the server also forbids calls. The policy is re-checked after confirmation, immediately before execution.
 
 ## process_run
 
-Вход:
+Input:
 
 ```json
 {
@@ -53,88 +53,88 @@ Host автоматически регистрирует `Default tools` со с
 }
 ```
 
-`workingDirectory` обязателен и должен быть абсолютным. Аргументы передаются отдельными элементами массива; неявной командной оболочки нет. Для скрипта оболочка указывается явно, например `powershell.exe` с `-NoProfile`, `-NonInteractive`, `-Command`. Интерактивный stdin закрыт.
+`workingDirectory` is required and must be absolute. Arguments are passed as separate array elements; there is no implicit command shell. For a script, the shell is specified explicitly, for example `powershell.exe` with `-NoProfile`, `-NonInteractive`, `-Command`. Interactive stdin is closed.
 
-Структурированный результат содержит `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `truncated`, `error`. Ненулевой exit code сохраняется как результат процесса с MCP `isError`, а не теряется в исключении. Каждый поток ограничен 32768 символами; оставшиеся данные продолжают читаться и отбрасываться, чтобы не заблокировать процесс.
+The structured result contains `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `truncated`, `error`. A non-zero exit code is recorded as the process result with MCP `isError` rather than being swallowed by an exception. Each stream is limited to 32768 characters; remaining data continues to be read and discarded so the process does not block.
 
-Ограничения: до 256 аргументов, до 65536 символов JSON аргументов на стороне Host, до 65535 вызовов одного инструмента за запуск по умолчанию, до 120 секунд на процесс и до часа на агентский цикл вместе с подтверждениями. Отдельного лимита итераций модели нет; число параллельных `tool_calls` в одном сообщении ассистента ограничено 1024. Политика проекта может уменьшать лимиты. Таймаут процесса уменьшается до разрешённого политикой и показывается перед подтверждением.
+Limits: up to 256 arguments, up to 65536 characters of arguments JSON on the Host side, up to 65535 calls of a single tool per run by default, up to 120 seconds per process and up to one hour for the agent loop including confirmations. There is no separate model-iteration limit; the number of parallel `tool_calls` in a single assistant message is capped at 1024. The project policy may lower the limits. The process timeout is reduced to what the policy allows and is shown before confirmation.
 
 ## FileSystem tools
 
-Directory grants проекта передаются серверу при открытии сессии через переменную окружения `AI_CLIENT_DIRECTORY_GRANTS` в виде JSON: `[{"root":"C:\\Projects\\Demo","recursive":true,"capabilities":["read","write","edit","delete"]}]`. Названия capability совпадают с `ToolNames` в `DirectoryGrant`, которые пишет UI: `Read only` даёт `read`, `Read/write` — `read, write, edit, delete`.
+Project directory grants are passed to the server when the session is opened through the environment variable `AI_CLIENT_DIRECTORY_GRANTS` as JSON: `[{"root":"C:\\Projects\\Demo","recursive":true,"capabilities":["read","write","edit","delete"]}]`. Capability names match the `ToolNames` in `DirectoryGrant` written by the UI: `Read only` yields `read`, `Read/write` yields `read, write, edit, delete`.
 
-Отсутствие переменной, пустой список и нечитаемый JSON означают отсутствие доступа: все FileSystem tools возвращают ошибку, а `list_allowed_directories` — пустой список. Это fail-closed по умолчанию, в том числе для `GET /api/mcp/default/tools`, где grants не передаются.
+A missing variable, an empty list, and unreadable JSON all mean no access: every FileSystem tool returns an error, and `list_allowed_directories` returns an empty list. This is fail-closed by default, including for `GET /api/mcp/default/tools`, where grants are not passed.
 
-Проверка пути в `PathGuard`:
+Path check in `PathGuard`:
 
-- путь обязан быть абсолютным, иначе Host отклоняет аргументы до подтверждения; свойства `path`, `paths`, `source`, `destination`, `workingDirectory` канонизируются на стороне Host, чтобы пользователь и сервер видели один и тот же путь;
-- `Path.GetFullPath` убирает `..` и `.`;
-- каждый существующий компонент пути проверяется на reparse point и заменяется финальной целью, поэтому symlink или junction внутри grant не выводит за его пределы;
-- сравнение с корнем grant регистронезависимо на Windows; нерекурсивный grant допускает только непосредственных детей;
-- корень grant канонизируется тем же способом при старте сервера.
+- the path must be absolute, otherwise the Host rejects the arguments before confirmation; the `path`, `paths`, `source`, `destination`, and `workingDirectory` properties are canonicalized on the Host side so the user and the server see the same path;
+- `Path.GetFullPath` removes `..` and `.`;
+- every existing component of the path is checked for being a reparse point and replaced with its final target, so a symlink or junction inside a grant does not escape it;
+- comparison against the grant root is case-insensitive on Windows; a non-recursive grant only allows direct children;
+- the grant root is canonicalized the same way when the server starts.
 
-Границы результата: 262144 символа на содержимое файла, 32 файла и 262144 символа на `read_multiple_files`, 5000 элементов на `list_directory`, 20000 элементов и 32 уровня на `directory_tree`, 1000 совпадений и 200000 просмотренных элементов на `search_files`, 1000 совпадений, 5000 прочитанных файлов и 131072 символа на `grep_files`, 64 замены на `edit_file`. Ссылки на каталоги перечисляются, но не раскрываются при обходе. `move_file` не перезаписывает существующее назначение. `delete_file` удаляет только файл, `delete_directory` — только каталог: каждый инструмент отказывает на пути другого вида и называет подходящий. Без `recursive` непустой каталог не удаляется, поэтому вызов, не запросивший рекурсию, не может снести больше, чем указанный каталог. У обоих инструментов `destructive = true` и `idempotent = false`: повторный вызов на уже удалённом пути возвращает `deleted: false` с ошибкой.
+Result limits: 262144 characters per file contents, 32 files and 262144 characters per `read_multiple_files`, 5000 entries per `list_directory`, 20000 entries and 32 levels per `directory_tree`, 1000 matches and 200000 visited entries per `search_files`, 1000 matches, 5000 read files, and 131072 characters per `grep_files`, 64 replacements per `edit_file`. Directory links are enumerated but not expanded during the walk. `move_file` does not overwrite an existing destination. `delete_file` deletes only a file, `delete_directory` only a directory: each tool refuses the other kind of path and names the suitable one. Without `recursive`, a non-empty directory is not removed, so a call that did not request recursion cannot wipe more than the named directory. Both tools declare `destructive = true` and `idempotent = false`: a repeat call on an already removed path returns `deleted: false` with an error.
 
-`read_text_file` без `head`/`tail` возвращает содержимое дословно, включая завершающий перевод строки, поэтому результат можно записать обратно без искажения. `edit_file` сравнивает текст в нормализованном виде LF и сохраняет исходный стиль переводов строк файла; каждый `oldText` должен встречаться ровно один раз, иначе не применяется ни одна замена.
+`read_text_file` without `head`/`tail` returns the contents verbatim, including the trailing newline, so the result can be written back without distortion. `edit_file` compares text in normalized LF form and preserves the file's original newline style; every `oldText` must occur exactly once, otherwise no replacement is applied.
 
-Не реализовано: `IncludePatterns`/`ExcludePatterns` из модели `DirectoryGrant`, чтение медиафайлов.
+Not implemented: `IncludePatterns`/`ExcludePatterns` from the `DirectoryGrant` model, media file reading.
 
 ## grep_files
 
-Поиск по содержимому. `path` указывает на файл или на каталог, который обходится рекурсивно; отбор файлов задают `filePattern` и `excludePatterns`, служебные каталоги пропускаются по умолчанию, как в `search_files`.
+Content search. `path` points to a file or to a directory walked recursively; file selection is governed by `filePattern` and `excludePatterns`; service directories are skipped by default, as in `search_files`.
 
-`query` по умолчанию трактуется как литеральная подстрока и сравнивается с учётом регистра; `ignoreCase` смягчает сравнение, `isRegex` включает регулярное выражение. Регулярные выражения исполняются в режиме `RegexOptions.NonBacktracking`: время работы линейно по длине строки, поэтому патологический шаблон не блокирует сервер, но backreferences и lookaround не поддерживаются и возвращаются как ошибка аргумента, а не как исключение.
+`query` is treated as a literal substring by default and compared case-sensitively; `ignoreCase` relaxes the comparison, `isRegex` switches to a regular expression. Regular expressions run in `RegexOptions.NonBacktracking` mode: runtime is linear in the length of the string, so a pathological pattern does not block the server, but backreferences and lookaround are not supported and are returned as an argument error rather than as an exception.
 
-На строку приходится не более одного совпадения. `contextLines` добавляет соседние строки до и после; у границ файла массивы короче запрошенного, а не дополняются пустыми строками. `maxMatchesPerFile` (по умолчанию 5) ограничивает число процитированных строк, тогда как `matchCount` остаётся полным числом совпавших строк в файле — охват файлов важнее полноты выдачи по одному из них. Поверх этого действует общий бюджет размера; любое срабатывание выставляет `truncated: true`.
+At most one match per line. `contextLines` adds the adjacent lines before and after; at file boundaries the arrays are shorter than requested rather than padded with empty lines. `maxMatchesPerFile` (default 5) caps the number of quoted lines, while `matchCount` stays as the full number of matched lines in the file — file coverage matters more than completeness of output for any single one. A global size budget sits on top; any hit sets `truncated: true`.
 
-Файл, у которого в первых 8192 байтах встречается нулевой байт, считается бинарным и пропускается; то же касается файлов больше 16 MiB и нечитаемых файлов. Их число возвращается в `filesSkipped`, прочитанных — в `filesScanned`. Содержимое декодируется как UTF-8 с распознаванием BOM, поэтому файлы в однобайтовых кодировках читаются с искажениями. Строка длиннее 400 символов возвращается окном вокруг совпадения с маркерами обрезки, при этом `column` остаётся позицией в настоящей строке.
+A file with a zero byte in its first 8192 bytes is treated as binary and skipped; the same goes for files larger than 16 MiB and unreadable files. Their count is returned in `filesSkipped`, the read ones in `filesScanned`. Contents are decoded as UTF-8 with BOM detection, so files in single-byte encodings are read with distortion. A line longer than 400 characters is returned as a window around the match with truncation markers, while `column` remains the position in the real line.
 
 ## fetch
 
-Разрешены только схемы `http` и `https`, credentials в URL отклоняются. До 5 редиректов, таймаут 30 секунд, чтение не более 5 MiB. HTML и XML приводятся к Markdown извлечением заголовков, ссылок, списков и текста; `script`, `style`, `head` и подобные элементы отбрасываются. Это преобразование на уровне тегов, а не DOM. `raw` возвращает тело без преобразования, остальные типы (JSON, plain text) возвращаются как есть. При усечении повторный вызов с `startIndex`, равным полученному `nextIndex`, продолжает чтение.
+Only the `http` and `https` schemes are allowed; credentials in the URL are rejected. Up to 5 redirects, 30-second timeout, no more than 5 MiB read. HTML and XML are converted to Markdown by extracting headings, links, lists, and text; `script`, `style`, `head`, and similar elements are dropped. This is a tag-level transformation, not a DOM one. `raw` returns the body without conversion; other types (JSON, plain text) are returned as is. On truncation, a repeat call with `startIndex` equal to the received `nextIndex` continues reading.
 
-`robots.txt` не запрашивается, поэтому инструмент не предназначен для обхода сайтов. Приватные и loopback адреса не блокируются: `process_run` в той же учётной записи уже даёт полный сетевой доступ, поэтому отдельная защита от SSRF здесь не создавала бы новой границы.
+`robots.txt` is not requested, so the tool is not intended for site crawling. Private and loopback addresses are not blocked: `process_run` under the same account already provides full network access, so a separate SSRF guard here would not create a new boundary.
 
-## Доступ и жизненный цикл
+## Access and lifecycle
 
-Процесс работает с правами учётной записи Host. Рабочий каталог и directory grants не являются песочницей для произвольной программы. Разрешение на процесс может давать ему доступ к файлам и сети этой учётной записи.
+The process runs under the Host account's permissions. Working directory and directory grants are not a sandbox for arbitrary programs. Permission to run a process can grant it access to the files and network of that account.
 
-Host и сервер передают только выбранные системные переменные окружения, необходимые для запуска программ. Произвольные переменные Host и сохранённые API credentials автоматически не передаются. Это не препятствует самой программе читать доступные ей файлы credentials.
+The Host and the server pass only the selected system environment variables required to launch programs. Arbitrary Host variables and saved API credentials are not passed automatically. This does not stop the program itself from reading the credential files available to it.
 
-При отмене или таймауте завершается дерево процессов. На Windows используется Job Object с `KILL_ON_JOB_CLOSE`: дочерние процессы, попавшие в job, завершаются и при закрытии сервера. Это управление временем жизни, а не граница безопасности. Запуск фоновых сессий и PTY не реализован.
+On cancel or timeout, the process tree is terminated. On Windows a Job Object with `KILL_ON_JOB_CLOSE` is used: child processes that joined the job are also terminated when the server closes. This is lifetime management, not a security boundary. Background sessions and PTY are not implemented.
 
-Каждый assistant tool call записывается до исполнения, а tool result — до следующего запроса модели. Узлы истории сохраняют provider call ID. При восстановлении или ответвлении внутри незавершённой пары в контекст добавляется сообщение о неизвестном результате. Прежний вызов автоматически не исполняется повторно. Сетевые ошибки после возможного побочного эффекта останавливают запуск.
+Each assistant tool call is recorded before execution, and the tool result before the next model request. History nodes preserve the provider call ID. When recovering or forking inside an unfinished pair, a message about the unknown result is added to the context. The previous call is not automatically re-executed. Network errors after a possible side effect stop the run.
 
 ## CLI
 
-`session send` возвращает `status: awaiting_approval` и объект `approval`, если нужно решение. Запуск продолжает ждать в Host; подтвердить можно в Web или отдельной командой:
+`session send` returns `status: awaiting_approval` and an `approval` object if a decision is required. The run keeps waiting on the Host; confirmation can be given in the Web or through a separate command:
 
 ```powershell
 dotnet run --project src/AI.Client.Cli -- session approve --session <id> --approval <approval-id> --allow true
 ```
 
-Для отказа передайте `--allow false`. Команда возвращает принятие решения; историю можно прочитать через `session show`. `GET /api/runs` содержит текущее состояние и новые запросы подтверждения.
+To refuse, pass `--allow false`. The command returns the accepted decision; history can be read through `session show`. `GET /api/runs` contains the current state and new confirmation requests.
 
-## Реализация и границы первой версии
+## Implementation and first-version boundaries
 
-- `ModelContextProtocol.Core` 2.2.0 — клиент и сервер, initialization, stdio, discovery и invocation.
-- `JsonSchema.Net` 9.4.0 — проверка входной схемы и структурированного результата. Первая версия получает схемы только от поставляемого сервера.
-- `ProcessRunner` — стандартный Process API и управление деревом процессов на Windows.
-- `ChatAgent` — последовательный агентский цикл в Application; `ChatRunDispatcher` сохраняет управление очередями, отменой, ревизиями и SSE-снимками.
-- `DefaultToolSessionFactory` — сессия встроенного сервера на один агентский цикл; connection повторно создаётся при новом запуске. Передаёт directory grants проекта серверу и канонизирует path-аргументы до подтверждения.
-- `PathGuard` — проверка directory grants на стороне сервера: абсолютный путь, снятие `..`, разрешение reparse point по всей цепочке, containment и capability.
-- `HtmlText` — преобразование HTML в Markdown на регулярных выражениях, без DOM и без внешних зависимостей.
+- `ModelContextProtocol.Core` 2.2.0 — client and server, initialization, stdio, discovery, and invocation.
+- `JsonSchema.Net` 9.4.0 — input schema and structured result validation. The first version receives schemas only from the bundled server.
+- `ProcessRunner` — standard Process API and process tree management on Windows.
+- `ChatAgent` — sequential agent loop in the Application layer; `ChatRunDispatcher` retains control over queues, cancellation, revisions, and SSE snapshots.
+- `DefaultToolSessionFactory` — one built-in server session per agent loop; the connection is recreated for each new run. Passes the project's directory grants to the server and canonicalizes path arguments before confirmation.
+- `PathGuard` — directory grant check on the server side: absolute path, `..` removal, reparse-point resolution along the entire chain, containment, and capability.
+- `HtmlText` — HTML to Markdown conversion using regular expressions, without a DOM and without external dependencies.
 
-Pure.DI сохранён. Microsoft.Extensions.AI и агентский фреймворк не вводятся в Application: текущая интеграция использует существующий потоковый адаптер Chat Completions. Миграция адаптеров на готовые AI abstractions остаётся отдельным решением; live-прототип с внешним платным endpoint не выполнялся.
+Pure.DI is retained. Microsoft.Extensions.AI and an agent framework are not introduced in the Application layer: the current integration uses the existing streaming Chat Completions adapter. Migrating adapters to ready AI abstractions remains a separate decision; a live prototype against an external paid endpoint was not performed.
 
-Исполнение сторонних stdio/HTTP серверов, OAuth, динамические `list_changed`, Responses API, History tools и фоновые процессы остаются следующими этапами. Их существующие настройки не означают, что исполнение уже подключено.
+Third-party stdio/HTTP server execution, OAuth, dynamic `list_changed`, the Responses API, History tools, and background processes remain next stages. Their existing settings do not mean execution is already wired.
 
-## Проверки
+## Verification
 
-Штатная команда: `dotnet run --project build -- verify`.
+The standard command is `dotnet run --project build -- verify`.
 
-Тесты проверяют настоящий stdio MCP с `dotnet --info`, состав из 16 инструментов, фрагментированные вызовы модели, schema validation, подтверждение/отказ/отзыв политики, восстановление истории, оба потока вывода, ненулевой exit code, таймаут, отмену, окружение и завершение потомков.
+Tests cover the real stdio MCP with `dotnet --info`, the 16-tool composition, fragmented model calls, schema validation, confirm/refuse/policy withdrawal, history recovery, both output streams, non-zero exit code, timeout, cancellation, environment, and child termination.
 
-Для FileSystem tools и `fetch` дополнительно проверяются: отказ при отсутствии grants, capability и containment (включая нерекурсивный grant, `..` и относительный путь), разбор и фильтрация `AI_CLIENT_DIRECTORY_GRANTS`, извлечение Markdown из HTML и сквозной сценарий через настоящий stdio — `create_directory`, `write_file`, `read_text_file` с `tail`, `edit_file` с `dryRun` и повторной неудачной заменой, `read_multiple_files`, `search_files`, `list_directory`, `directory_tree`, `get_file_info`, `move_file`, `delete_file` и `delete_directory` вместе с отказом в удалении под grant без capability `delete`, отказ на путь вне grant и отклонение относительного пути до подтверждения.
+For FileSystem tools and `fetch` additional checks cover: refusal when grants are missing, capability and containment (including non-recursive grant, `..`, and relative path), parsing and filtering of `AI_CLIENT_DIRECTORY_GRANTS`, Markdown extraction from HTML, and an end-to-end scenario through a real stdio — `create_directory`, `write_file`, `read_text_file` with `tail`, `edit_file` with `dryRun` and a repeat failed replacement, `read_multiple_files`, `search_files`, `list_directory`, `directory_tree`, `get_file_info`, `move_file`, `delete_file`, and `delete_directory` along with a denial of deletion under a grant without the `delete` capability, refusal of a path outside the grant, and rejection of a relative path before confirmation.
 
-Сборка публикации включает сервер в `mcp`.
+The publish build includes the server under `mcp`.

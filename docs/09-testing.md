@@ -1,46 +1,46 @@
-# Стратегия модульного тестирования
+# Unit testing strategy
 
-Статус: Accepted
+Status: Accepted
 
 ## Markdown renderer
 
 Markdown rendering is isolated behind `IMarkdownRenderer`. The implementation disables source HTML in Markdig and sanitizes generated output before it is rendered as `MarkupString`. Future renderer tests must stay pure and use only string input/output; they must not require a browser runtime.
 
-## Обязательный стек
+## Required stack
 
-- xUnit — test framework и runner.
-- Shouldly — все проверки результата и состояния.
-- Moq — mocks интерфейсных зависимостей.
+- xUnit — test framework and runner.
+- Shouldly — all result and state assertions.
+- Moq — interface dependency mocks.
 
-Другой assertion framework или mocking framework не добавляется без отдельного архитектурного решения.
+No other assertion framework or mocking framework is added without a separate architectural decision.
 
-## Основные правила
+## Core rules
 
-Автоматические тесты должны быть:
+Automated tests must be:
 
-- модульными;
-- быстрыми;
-- детерминированными;
-- независимыми друг от друга;
-- независимыми от порядка запуска и parallelization;
-- независимыми от сети, диска, browser, процессов, credentials, locale, timezone и текущего времени;
-- воспроизводимыми локально и в CI без дополнительной конфигурации.
+- unit;
+- fast;
+- deterministic;
+- independent of each other;
+- independent of run order and parallelization;
+- independent of the network, disk, browser, processes, credentials, locale, timezone, and current time;
+- reproducible locally and in CI without additional configuration.
 
-Не допускаются:
+Not allowed:
 
-- интеграционные и end-to-end тесты;
+- integration and end-to-end tests;
 - live OpenAI/MCP calls;
-- запуск Kestrel, браузера или MCP executable;
-- чтение и запись реальной файловой системы;
-- `Thread.Sleep`, ожидание реального времени и случайные retry delays;
-- зависимость от environment variables или user profile;
-- общий mutable state между тестами.
+- launching Kestrel, a browser, or an MCP executable;
+- reading and writing the real file system;
+- `Thread.Sleep`, waiting on real time, and random retry delays;
+- dependency on environment variables or the user profile;
+- shared mutable state between tests.
 
-Целевой ориентир: основная масса тестов выполняется за миллисекунды, а полный suite — за секунды.
+Target guideline: the bulk of tests run in milliseconds, and the full suite runs in seconds.
 
-## Структура теста
+## Test structure
 
-Используется стиль `Given`–`When`–`Then` из `CSharpInteractive.Tests/CISettingsTests.cs`. Один тест проверяет одно наблюдаемое поведение. Test class является `public`, зависимости создаются как поля через `Mock<T>`, а создание SUT выносится в instance-метод `CreateInstance`. Для набора граничных значений используется `[Theory]` и `[InlineData]`. Название начинается с `Should` и описывает наблюдаемое поведение:
+The `Given`–`When`–`Then` style from `CSharpInteractive.Tests/CISettingsTests.cs` is used. One test verifies one observable behavior. The test class is `public`, dependencies are created as fields via `Mock<T>`, and the SUT is created in the instance method `CreateInstance`. `[Theory]` and `[InlineData]` are used for sets of boundary values. A name starts with `Should` and describes the observable behavior:
 
 ```csharp
 [Fact]
@@ -66,11 +66,11 @@ public async Task ShouldNotCallMcpServerWhenToolIsDenied()
 }
 ```
 
-`CreateInstance` и object mothers/builders могут использоваться для уменьшения шума, но не должны скрывать значимые входные данные теста. Comments in test code are written in English.
+`CreateInstance` and object mothers/builders may be used to reduce noise, but must not hide the meaningful inputs of a test. Comments in test code are written in English.
 
 ## Test seams
 
-Внешние эффекты доступны только через интерфейсы:
+External effects are accessible only through interfaces:
 
 ```text
 IAIEndpoint
@@ -84,7 +84,7 @@ IDelay
 IBrowserStorage
 ```
 
-Domain tests не используют mocks. Application tests используют Moq для портов. Для чистых алгоритмов предпочтительнее простой fake/value object, если он понятнее mock setup.
+Domain tests do not use mocks. Application tests use Moq for ports. For pure algorithms, a simple fake or value object is preferred over mock setup when it is easier to read.
 
 ## Domain tests
 
@@ -93,122 +93,123 @@ Domain tests не используют mocks. Application tests использу
 - Tool policy precedence.
 - Copy/remap between projects.
 - AgentRun state transitions.
-- Построение пути root → branch head.
-- Обнаружение недостижимых nodes как чистая операция над графом.
+- Building the root → branch head path.
+- Detecting unreachable nodes as a pure operation on the graph.
 
-Domain tests создают только in-memory objects и не зависят от Infrastructure.
+Domain tests create only in-memory objects and do not depend on Infrastructure.
 
 ## Storage tests
 
-Storage logic тестируется поверх `IFileSystem`/`IAtomicFileWriter` с in-memory fake или Moq:
+Storage logic is tested on top of `IFileSystem`/`IAtomicFileWriter` with an in-memory fake or Moq:
 
-- сериализация и десериализация schema versions;
-- план атомарного node/ref update;
-- сбой между записью node и перемещением ref;
+- serialization and deserialization of schema versions;
+- plan for atomic node/ref update;
+- failure between writing a node and moving a ref;
 - revision conflict;
 - orphan detection;
-- corrupted JSON и hash mismatch;
-- решение о migration/rollback.
+- corrupted JSON and hash mismatch;
+- migration/rollback decision.
 
-Реальные temporary directories и OS-specific atomic rename в автоматических тестах не используются. Тонкие platform adapters остаются минимальными и проверяются code review, статическим анализом и ручной приёмкой.
+Real temporary directories and OS-specific atomic rename are not used in automated tests. Thin platform adapters stay minimal and are verified through code review, static analysis, and manual acceptance.
 
 ## Application tests
 
-- Agent loop через mocked AI/MCP ports.
-- `Deny`, `Ask` и `Allow`.
+- Agent loop through mocked AI/MCP ports.
+- `Deny`, `Ask`, and `Allow`.
 - Approval lifecycle.
-- Cancellation в каждой state transition.
-- Max iterations, calls и deadline через fake clock/delay.
-- Retry разрешённого idempotent read.
-- Запрет retry завершённого side effect.
+- Cancellation at each state transition.
+- Max iterations, calls, and deadline through a fake clock/delay.
+- Retry of an allowed idempotent read.
+- Forbidding retry of a completed side effect.
 - Fork context construction.
-- Фильтрация системных MCP tools.
-- Сброс policy при изменении schema hash.
+- Filtering of system MCP tools.
+- Reset of the policy on a schema hash change.
 
-Потоковые сценарии представляются заранее подготовленным `IAsyncEnumerable<AgentEvent>` без сети и реальных задержек.
+Streaming scenarios are represented by a pre-built `IAsyncEnumerable<AgentEvent>` without the network and without real delays.
 
 ## MCP tests
 
-MCP orchestration тестируется через mock/fake transport, а не реальный сервер:
+MCP orchestration is tested through a mock/fake transport, not a real server:
 
 - capability negotiation result mapping;
 - paginated `tools/list`;
-- обработка `notifications/tools/list_changed`;
-- одинаковые tool names разных servers;
+- handling of `notifications/tools/list_changed`;
+- identical tool names from different servers;
 - invalid input/output schema;
 - alias mapping;
-- structured и unstructured results;
-- OAuth challenge decision как чистое преобразование response metadata.
+- structured and unstructured results;
+- OAuth challenge decision as a pure transformation of response metadata.
 
-Запуск `stdio` process и Streamable HTTP server в test suite запрещён.
+Launching a `stdio` process and a Streamable HTTP server in the test suite is forbidden.
 
 ## FileSystem security tests
 
-Path и policy logic должны быть отделены от `System.IO` и проверяться модульно:
+Path and policy logic must be isolated from `System.IO` and verified as units:
 
 - `..` traversal;
 - absolute path outside root;
-- symlink/junction metadata, возвращённые fake filesystem;
+- symlink/junction metadata returned by a fake filesystem;
 - case/canonicalization mismatch;
 - UNC path;
-- alternate data streams на Windows;
-- delete при разрешённом только edit;
+- alternate data streams on Windows;
+- delete when only edit is allowed;
 - oversized input/result;
 - stale edit hash;
 - excluded glob;
-- широкая root directory без подтверждения;
-- повторная policy check перед commit.
+- broad root directory without confirmation;
+- re-check of the policy right before commit.
 
-Каждый тест явно задаёт platform/path semantics через mock или value object, поэтому результат не зависит от ОС, где запущен runner.
+Every test explicitly sets platform/path semantics through a mock or value object, so the result does not depend on the OS where the runner is launched.
 
 ## Provider adapter tests
 
-Adapters получают заранее подготовленные JSON/SSE fixtures через mocked `HttpMessageHandler` или собственный transport interface:
+Adapters receive pre-built JSON/SSE fixtures through a mocked `HttpMessageHandler` or a custom transport interface:
 
 - Responses API event mapping;
 - Chat Completions fallback mapping;
 - streaming frame fragmentation;
-- несколько function calls;
-- сохранение call ID и result;
+- multiple function calls;
+- preservation of call ID and result;
 - provider error/rate limit mapping;
-- continuation fallback к полному локальному контексту.
+- continuation fallback to the full local context.
 
-Live API tests отсутствуют.
+Live API tests are absent.
 
 ## UI tests
 
-Razor presentation logic по возможности выносится в обычные view models/presenters и тестируется xUnit. Для изолированной проверки Razor component допускается bUnit как unit-level renderer, при этом:
+Razor presentation logic is, where possible, extracted into plain view models/presenters and tested with xUnit. bUnit is allowed for isolated verification of a Razor component as a unit-level renderer, with the following:
 
-- все services предоставляются через Moq;
-- `IJSRuntime` заменяется mock;
-- browser и Host не запускаются;
-- HTTP и реальные timers не используются;
-- assertions выполняются через Shouldly.
+- all services are provided through Moq;
+- `IJSRuntime` is replaced with a mock;
+- the browser and the Host are not started;
+- HTTP and real timers are not used;
+- assertions are written with Shouldly.
 
-Playwright и другие end-to-end инструменты в test suite не используются.
+Playwright and other end-to-end tools are not used in the test suite.
 
-## Детерминизм
+## Determinism
 
-- `IClock` возвращает фиксированное время.
-- `IIdGenerator` возвращает заранее заданные IDs.
-- `IDelay` завершается немедленно и фиксирует запрос задержки.
-- Cancellation инициируется тестом в точной state transition.
-- Culture и path comparison передаются явно.
-- Коллекции сравниваются без предположения о порядке, если порядок не является контрактом.
+- `IClock` returns a fixed time.
+- `IIdGenerator` returns pre-defined IDs.
+- `IDelay` completes immediately and records the requested delay.
+- Cancellation is initiated by the test at the precise state transition.
+- Culture and path comparison are passed explicitly.
+- Collections are compared without assuming order when order is not part of the contract.
 
 ## Moq verification
 
-Проверять следует значимое взаимодействие на границе модуля: вызван ли MCP tool, сохранён ли node, запрошено ли approval. Не следует проверять каждую внутреннюю операцию или порядок вызовов, если порядок не является частью поведения.
+Verify the meaningful interaction at the module boundary: whether an MCP tool was called, whether a node was saved, whether an approval was requested. Do not verify every internal operation or call order unless the order is part of the behavior.
 
-`VerifyNoOtherCalls` применяется выборочно: чрезмерная проверка делает тесты хрупкими при безопасном рефакторинге.
+`VerifyNoOtherCalls` is applied selectively: excessive verification makes tests brittle during safe refactoring.
 
 ## Quality gates
 
-- Все тесты используют xUnit.
-- Все assertions используют Shouldly.
-- Interface mocks создаются через Moq.
-- В test projects отсутствуют network/process/browser test fixtures.
-- Тесты не требуют credentials или environment configuration.
-- Повторный запуск даёт тот же результат.
-- Полный suite остаётся быстрым; заметное замедление рассматривается как regression.
-- Build и test проходят одинаково локально и в CI.
+- All tests use xUnit.
+- All assertions use Shouldly.
+- Interface mocks are created through Moq.
+- Test projects contain no network/process/browser test fixtures.
+- Tests do not require credentials or environment configuration.
+- A repeated run produces the same result.
+- The full suite stays fast; noticeable slowdown is treated as a regression.
+- Build and test pass identically locally and in CI.
+

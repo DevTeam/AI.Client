@@ -1,51 +1,51 @@
-# Вопрос пользователю (`ask_user`)
+# Asking the user (`ask_user`)
 
-## Назначение
+## Purpose
 
-Инструмент `ask_user` даёт модели один способ остановиться и спросить человека, вместо того чтобы угадывать. Он нужен там, где запрос действительно неоднозначен и неверная догадка стоит большой работы, либо у решения есть видимый компромисс, который принадлежит пользователю: целевая версия, объём рефакторинга, именование, место для нового кода. Если задача конкретна настолько, что её можно выполнить, назвав допущение в ответе, — модель обязана так и сделать, и это записано в описании инструмента.
+The `ask_user` tool gives the model a single way to stop and ask a human instead of guessing. It is needed where the request is genuinely ambiguous and a wrong guess costs a lot of work, or where the decision has a visible trade-off that belongs to the user: target version, refactor scope, naming, where new code goes. If the task is concrete enough to be done by stating an assumption in the answer, the model must do that instead, and this is written into the tool description.
 
-## Механика
+## Mechanics
 
-Инструмент живёт во внутрипроцессном сервере `App tools` и по протоколу ничем не отличается от остальных: обычная схема, обычный `tools/call`. Необычно только то, что вызов блокируется, пока человек не ответит.
+The tool lives in the in-process `App tools` server and is not different from the others by protocol: a regular schema, a regular `tools/call`. The only unusual part is that the call blocks until a person answers.
 
-Ожидание устроено тем же способом, что подтверждение инструмента (`PendingApproval`), потому что для пользователя это один и тот же факт — работа остановилась ради него:
+The wait is organized the same way as a tool confirmation (`PendingApproval`), because for the user it is one and the same fact — work has stopped because of them:
 
 ```
-модель → ask_user → IUserPromptBroker (= ChatRunDispatcher)
+model → ask_user → IUserPromptBroker (= ChatRunDispatcher)
                       ├─ runtime.PendingPrompt + TaskCompletionSource
-                      ├─ снапшот рана → SSE → карточка в ленте
-                      └─ ответ ← POST /prompts/answer ← карточка / композер / CLI
+                      ├─ run snapshot → SSE → card in the feed
+                      └─ answer ← POST /prompts/answer ← card / composer / CLI
 ```
 
-`UserPrompt` — рантайм-состояние рана, а не запись в хранилище: перезагрузка страницы вопрос сохраняет (он в снапшоте), рестарт хоста прерывает ход и вопрос исчезает вместе с ним. Ответ становится обычным результатом tool-вызова и попадает в историю именно так — отдельного сообщения от пользователя не создаётся.
+`UserPrompt` is run-time state, not a storage record: a page reload preserves the question (it is in the snapshot), a host restart interrupts the turn and the question disappears with it. The answer becomes a normal tool-call result and lands in history exactly that way — a separate user message is not created.
 
-### Контекст рана
+### Run context
 
-`IToolSessionFactory.OpenAsync` принимает `ToolRunContext(ProjectId, ChatId, BranchId, Interactive)`. Сессия открывается на один ход, поэтому инструмент узнаёт свой чат из конструкции, а не из аргумента, который называет модель: иначе модель могла бы прервать разговор, к которому не имеет отношения.
+`IToolSessionFactory.OpenAsync` accepts `ToolRunContext(ProjectId, ChatId, BranchId, Interactive)`. The session is opened for one turn, so the tool learns its chat from the construction, not from an argument named by the model: otherwise the model could interrupt a conversation it has nothing to do with.
 
-`IAppTool.Create(ToolRunContext)` вызывается на каждую сессию. `AppAskUserTool` зарегистрирован как singleton, поэтому ран хранится не в нём, а во вложенном `Session`, создаваемом на каждый вызов `Create`: два чата, спрашивающих одновременно, иначе отвечали бы друг за друга.
+`IAppTool.Create(ToolRunContext)` is called for every session. `AppAskUserTool` is registered as a singleton, so the run is not held in it, but in the nested `Session` created on every `Create` call: otherwise two chats asking at the same time would answer for each other.
 
-### Таймауты
+### Timeouts
 
-Три ограничителя пришлось развести явно:
+The three limiters had to be separated explicitly:
 
-| Ограничитель | Что сделано |
+| Limiter | What is done |
 |---|---|
-| `Patience` — молчание инструмента (20–60 с из политики) | для `ask_user` не применяется: ожидающий человека инструмент не «замолчал» |
-| `MaxCallDuration` = 30 мин | не задевает: собственный таймаут вопроса — 15 минут |
-| Дедлайн хода = 60 мин | время ожидания человека возвращается в бюджет (`TurnDeadline`). Исправлено **и для подтверждений**: ход, стоящий на карточке, не «пошёл не так», и чем дольше человек думал, тем вероятнее его убивало |
+| `Patience` — tool silence (20–60 s from policy) | not applied to `ask_user`: a tool waiting on a human has not "gone silent" |
+| `MaxCallDuration` = 30 min | not hit: the question's own timeout is 15 minutes |
+| Turn deadline = 60 min | the time waiting for the human is returned to the budget (`TurnDeadline`). **Fixed for confirmations too**: a turn standing on a card has not "gone wrong", and the longer the human thought, the more likely it was to be killed |
 
-Истечение 15 минут — не ошибка: `outcome: expired`, ход продолжается без ответа. Человек, который отошёл, не отказался.
+The 15-minute expiry is not an error: `outcome: expired`, the turn continues without an answer. A person who stepped away has not refused.
 
-### Политика
+### Policy
 
-`ask_user` не спрашивает подтверждения: политика `Ask` для него пропускается. Подтверждение и сам вопрос ставят одно и то же решение перед одним и тем же человеком дважды, причём первое не сообщает ничего, чего не сообщает второе. `Deny` продолжает работать — тот, кто не хочет, чтобы его спрашивали, отключает инструмент как любой другой. Лимит вызовов — общий `MaxCalls` из настроек, без особого правила.
+`ask_user` does not ask for confirmation: the `Ask` policy is skipped for it. The confirmation and the question itself put the same decision in front of the same person twice, and the first one conveys nothing that the second one does not. `Deny` keeps working — whoever does not want to be asked disables the tool like any other. The call limit is the shared `MaxCalls` from settings, with no special rule.
 
-### Подзадачи
+### Subtasks
 
-В `spawn_subtask` за раном никто не смотрит, и своей карточки у него нет. Инструмент остаётся в списке, но отвечает сам себе `dismissed` с прямым указанием: «ты в фоновой подзадаче, ответить некому; сделай что можешь, а нерешённый выбор назови в итоговом ответе — его задаст вызвавший чат». Это та же линия, что у подтверждений, которые в подзадаче отвечают `Deny`: подзадаче **говорят** «нельзя», чтобы она отчиталась наверх, а не молча урезают ей инструментарий.
+In `spawn_subtask` nobody is watching the run, and it has no card of its own. The tool stays in the list but answers itself with `dismissed` and a direct message: "you are in a background subtask, there is no one to answer; do what you can, and name the unresolved choice in your final answer — the calling chat will ask it." This is the same line as confirmations, which answer `Deny` inside a subtask: the subtask is **told** "you cannot", so that it reports upward, instead of having its toolset silently reduced.
 
-## Схема
+## Schema
 
 ```json
 {
@@ -65,16 +65,16 @@
 }
 ```
 
-| Ограничение | Значение |
+| Constraint | Value |
 |---|---|
-| вопросов в одном вызове | 1–5, `id` уникальны и непусты |
-| опций на вопрос | 0–8; ноль допустим только при `allowOther: true` |
-| длины | `text` ≤ 500, `label` ≤ 24, опция ≤ 80, описание опции ≤ 160 |
-| `allowOther` | по умолчанию `true` |
+| questions per call | 1–5, `id` is unique and non-empty |
+| options per question | 0–8; zero is allowed only when `allowOther: true` |
+| lengths | `text` ≤ 500, `label` ≤ 24, option ≤ 80, option description ≤ 160 |
+| `allowOther` | defaults to `true` |
 
-Нарушение — ошибка инструмента с текстом, по которому модель может исправиться, а не отказ схемы, который она может только повторить. До брокера такой вызов не доходит.
+A violation is a tool error with text the model can correct itself by, not a schema rejection it can only repeat. Such a call does not reach the broker.
 
-Результат:
+Result:
 
 ```json
 {
@@ -84,32 +84,32 @@
 }
 ```
 
-По проводу от UI приходят **позиции** опций, модель получает **тексты**: ответ, прочитанный из истории без вопроса перед глазами, должен всё ещё говорить, что решили. Ответ, называющий опцию, которой нет, отбрасывается, а не додумывается: стороны преобразования разделены процессом, и расхождение означает, что вопрос заменили.
+The wire carries **positions** of the options from the UI; the model receives **texts**: an answer read from history without the question in front of you should still say what was decided. An answer naming an option that does not exist is discarded rather than guessed: the two sides of the transformation are separated by the process, and a mismatch means the question was replaced.
 
-`outcome` — `answered`, `dismissed`, `expired`, `interrupted`, `invalid`. Во всех случаях, кроме первого, `guidance` велит модели решить самой, назвать допущение и **не спрашивать то же самое снова**.
+`outcome` is `answered`, `dismissed`, `expired`, `interrupted`, or `invalid`. In every case except the first, `guidance` tells the model to decide on its own, name the assumption, and **not ask the same thing again**.
 
 ## UX
 
-Карточка стоит в конце ленты, там же, где карточка подтверждения, и по той же причине: это то, что человек должен сделать дальше. Не модальное окно — вопрос принадлежит чату, а в соседнем чате идёт своя работа.
+The card sits at the end of the feed, where the confirmation card sits, and for the same reason: it is what the person should do next. Not a modal — the question belongs to the chat, and a neighboring chat has its own work going on.
 
-| Решение | Поведение |
+| Decision | Behavior |
 |---|---|
-| Несколько вопросов | все сразу в одной карточке, одна кнопка `Answer`: ответы часто взаимосвязаны |
-| Частичный ответ | разрешён. `Answer` активна всегда; вопросы без выбора уходят пустыми, и `guidance` называет их поимённо, чтобы модель не спросила снова |
-| Отказ | кнопка `Decide yourself` → `dismissed`. Пустой «ответ» тоже становится `dismissed`: это то же самое с худшей записью |
-| Композер | пока вопрос открыт, отправленный текст становится свободным ответом на первый вопрос, принимающий его. Плейсхолдер — «Answer the question above…». Очередь означала бы тихий дедлок: человек пишет ответ вниз, а получает его доставку через 15 минут |
-| Клавиатура | стандартная семантика radio/checkbox — Tab, стрелки, Enter. Своих перехватов нет |
-| Markdown | inline-подмножество в тексте вопроса (выделение, код, ссылки). Опции и описания — всегда plain text: это подписи к кнопкам |
-| «Своё» | поле рядом с опцией; ввод текста сам выбирает её. При нуле опций карточка выглядит как обычный ввод с заголовком-вопросом |
-| Внимание | маркер «требуется внимание» в списке чатов, тот же, что у подтверждения. Без системных уведомлений и звука |
-| След | строка tool-вызова через `AskUserPresentationAdapter`: «Scope: Only the changed module», раскрывается в детали. Ответ без выбора — `Warning`: модель решила сама, и это стоит найти потом |
-| Язык | английский, как весь UI. Текст вопросов пишет модель на языке разговора |
+| Multiple questions | all at once in one card, one `Answer` button: answers are often interdependent |
+| Partial answer | allowed. `Answer` is always active; questions with no selection are sent empty, and `guidance` names them one by one, so the model does not ask again |
+| Refusal | `Decide yourself` button → `dismissed`. An empty "answer" also becomes `dismissed`: it is the same thing with a worse record |
+| Composer | while the question is open, sent text becomes a free answer to the first question that accepts it. Placeholder is "Answer the question above…". A queue would mean a quiet deadlock: the person writes an answer at the bottom and gets it delivered after 15 minutes |
+| Keyboard | standard radio/checkbox semantics — Tab, arrows, Enter. No custom hooks |
+| Markdown | inline subset in the question text (emphasis, code, links). Options and descriptions are always plain text: they are button captions |
+| "Other" | a field next to the option; typing text selects it. With zero options, the card looks like a regular input with the question as its heading |
+| Attention | an "attention required" marker in the chat list, the same one a confirmation uses. No system notifications or sound |
+| Trace | a tool-call row through `AskUserPresentationAdapter`: "Scope: Only the changed module", expands to details. An answer with no selection is `Warning`: the model decided on its own, and that is worth finding later |
+| Language | English, like the whole UI. The model writes the question text in the conversation's language |
 
-`RunStateService` не считает время ожидания вопроса временем генерации, поэтому индикатор «модель думает» не врёт, пока человек читает.
+`RunStateService` does not count the time spent waiting for a question as generation time, so the "model is thinking" indicator does not lie while the person is reading.
 
 ## CLI
 
-Отдельного «неинтерактивного» режима агента не существует: CLI — тонкий клиент того же Host и того же рана, поэтому инструмент не скрывается, а человек отвечает командой:
+There is no separate "non-interactive" mode of the agent: the CLI is a thin client of the same Host and the same run, so the tool is not hidden and the human answers with a command:
 
 ```
 session send …                → { "status": "awaiting_answer", "prompt": { … } }
@@ -117,23 +117,23 @@ session answer --session <id> --prompt <id> --question <id> [--select 0,2] [--te
 session answer --session <id> --prompt <id> --dismiss true
 ```
 
-Симметрично `awaiting_approval` / `session approve`.
+Symmetric to `awaiting_approval` / `session approve`.
 
-## Состав изменений
+## Change composition
 
-| Файл | Содержимое |
+| File | Contents |
 |---|---|
 | `Contracts/Runs/UserPrompt.cs` | `UserPrompt`, `UserPromptQuestion`, `UserPromptOption`, `UserPromptAnswer`, `UserPromptResponse`, `UserPromptOutcome` |
 | `Contracts/Runs/ChatRunSnapshot.cs` | `PendingPrompt` |
 | `Application/Runs/IUserPromptBroker.cs` | `AskAsync`, `UserPromptRequest` |
-| `Application/Runs/ChatRunDispatcher.cs` | реализация брокера, `AnswerPromptAsync`, освобождение вопроса вместе с ходом |
-| `Application/Tools/IToolSession.cs` | `ToolRunContext` и его проброс в `OpenAsync` |
-| `Application/Tools/ChatAgent.cs` | `TurnDeadline`, обход `Patience` и подтверждения для `ask_user`, `interactive` |
-| `Infrastructure/Tools/*` | проброс контекста через три фабрики |
-| `Mcp.App/AppAskUserTool.cs` | инструмент, валидация, преобразование позиций в тексты |
-| `Contracts/Tools/AskUserPresentationAdapter.cs` | строка в транскрипте |
+| `Application/Runs/ChatRunDispatcher.cs` | broker implementation, `AnswerPromptAsync`, releasing the question together with the turn |
+| `Application/Tools/IToolSession.cs` | `ToolRunContext` and its pass-through in `OpenAsync` |
+| `Application/Tools/ChatAgent.cs` | `TurnDeadline`, bypassing `Patience` and confirmation for `ask_user`, `interactive` |
+| `Infrastructure/Tools/*` | context pass-through through three factories |
+| `Mcp.App/AppAskUserTool.cs` | tool, validation, position-to-text conversion |
+| `Contracts/Tools/AskUserPresentationAdapter.cs` | transcript row |
 | `Host/Program.cs` | `POST /api/projects/{p}/chats/{c}/prompts/answer?branchId=…` |
-| `Web/Components/UserPromptCard.razor`, `MessageFeed.razor`, `Pages/Home.razor`, `Runs/*`, `Markdown/*`, `css` | карточка, композер, маркер внимания, inline-markdown |
+| `Web/Components/UserPromptCard.razor`, `MessageFeed.razor`, `Pages/Home.razor`, `Runs/*`, `Markdown/*`, `css` | card, composer, attention marker, inline markdown |
 | `Cli/*` | `awaiting_answer`, `session answer` |
 
-Тесты: `ChatExecutionTests` — сквозной сценарий (вопрос останавливает ход, ответ доходит, устаревший ответ отвергается, остановка освобождает вопрос, фоновый ран получает отказ сразу); `AppToolTests` — поведение самого инструмента (тексты вместо позиций, отбрасывание несуществующей опции, свободный текст, валидация, подзадача).
+Tests: `ChatExecutionTests` — end-to-end scenario (a question stops the turn, the answer gets through, a stale answer is rejected, stop releases the question, the background run receives a denial immediately); `AppToolTests` — behavior of the tool itself (texts instead of positions, discarding a non-existent option, free text, validation, subtask).

@@ -1,199 +1,200 @@
-﻿# UX decisions
+# UX decisions
 
-Статус: Accepted baseline
+Status: Accepted baseline
 
-Цель интерфейса — компактный desktop workspace, визуально и поведенчески близкий к Codex. Ранее выбранные варианты являются требованиями к функциям, но не требуют буквально воспроизводить каждый промежуточный диалог. Если решение создаёт лишнее трение, приоритет имеют простой сценарий чата, безопасность и постепенная реализация.
+The goal of the interface is a compact desktop workspace, visually and behaviorally close to Codex. Earlier chosen variants are requirements for features, but do not require literally reproducing every intermediate dialog. If a decision creates unnecessary friction, priority belongs to the simple chat scenario, safety, and incremental implementation.
 
-## Компоновка
+## Layout
 
-- Слева находятся проекты и вложенные чаты.
-- В центре находится активная ветвь чата и закреплённый снизу composer.
-- Справа находится inspector проекта со вкладками General, Endpoints, Security и MCP.
-- Левая и правая панели изменяют ширину, сворачиваются и сохраняют общий layout локально.
-- На узком экране боковые панели открываются как overlay drawers.
-- Используется компактная тёмная тема.
+- Projects and nested chats live on the left.
+- The active chat branch and the composer pinned to the bottom live in the center.
+- The project inspector with General, Endpoints, Security, and MCP tabs lives on the right.
+- The left and right panels are resizable, collapsible, and persist their layout locally.
+- On narrow screens the side panels open as overlay drawers.
+- A compact dark theme is used.
 
 ## Composer
 
-- `Enter` отправляет сообщение; `Shift+Enter` добавляет строку; `Ctrl+Enter` ставит в очередь;
-  `Ctrl+Alt+Enter` форкает ветку и запускает её немедленно; `Ctrl+Shift+Enter` прерывает текущий
-  прогон и отвечает на сообщение первым.
-- Во время IME composition сообщение не отправляется.
-- После отправки composer очищается и сохраняет focus.
-- Streaming и Stop реализуются отдельным этапом.
-- Полные правила «статус ветки × действие» (Send/Queue/Fork, авто-Resume, pre-pause, запрет
-  Edit&Replace во время генерации) — см. [Composer rules](15-composer-rules.md).
+- `Enter` sends the message; `Shift+Enter` adds a line; `Ctrl+Enter` queues it;
+  `Ctrl+Alt+Enter` forks the branch and runs it immediately; `Ctrl+Shift+Enter` interrupts the
+  current run and replies to the message first.
+- During IME composition the message is not sent.
+- After sending the composer is cleared and keeps focus.
+- Streaming and Stop are implemented as a separate stage.
+- The full "branch status × action" rules (Send/Queue/Fork, auto-Resume, pre-pause, prohibition
+  of Edit&Replace during generation) — see [Composer rules](15-composer-rules.md).
 
-## История ввода
+## Input history
 
-- `↑` на первой строке открывает историю отправленных сообщений, `↓` на последней строке
-  возвращает к более новым. Клавиша срабатывает именно на крайней строке, а не на крайнем
-  символе: запись подставляется с кареткой в конце, и требование дойти до позиции 0 съедало бы
-  каждое второе нажатие на однострочной записи. Внутри многострочной записи стрелки по-прежнему
-  ходят по строкам.
-- Набранный текст сохраняется как нулевая позиция: `↓` за самую новую запись возвращает его,
-  `Esc` возвращает его немедленно. Пока идёт листание, черновик в localStorage не переписывается —
-  просмотр истории ничего не должен стоить.
-- Правка подставленного текста отцепляет его от истории: счётчик гаснет, текст снова становится
-  черновиком, а следующее `↑` начинает обход заново с самой новой записи.
-- Счётчик `History N/M` стоит в строке статуса над полем, `1/M` — последнее отправленное. Если
-  строку занимает чип Generating/Forking/Replacing, счётчик становится его приглушённым
-  префиксом. Обычная подсказка при этом не показывается.
-- История принадлежит проекту, а не чату: повторяются формулировки («прогони тесты», «делай
-  рекомендуемое»), и они переезжают между чатами проекта. Попадает туда только принятая отправка
-  (Send, Queue, Fork, Send now); отклонённая и так осталась в поле. Повтор поднимается наверх
-  вместо дубликата, хранится 100 записей в localStorage.
-- Единственная подсказка о клавише — `↑ for history` в строке статуса, когда поле пустое, а
-  история не пуста. Поиска по истории (`Ctrl+R`) пока нет.
+- `↑` on the first line opens the history of sent messages, `↓` on the last line returns to the
+  newer ones. The key fires exactly on the edge line, not on the edge character: the entry is
+  substituted with the caret at the end, and a requirement to reach position 0 would consume
+  every second press on a single-line entry. Inside a multi-line entry the arrows still move
+  between lines.
+- The typed text is saved as position zero: `↓` past the newest entry returns it, `Esc` returns
+  it immediately. While paging, the draft in localStorage is not rewritten — browsing history
+  must cost nothing.
+- Editing the substituted text detaches it from history: the counter goes blank, the text
+  becomes a draft again, and the next `↑` starts the walk over from the newest entry.
+- The `History N/M` counter sits in the status line above the field, `1/M` is the last sent
+  entry. If the line is occupied by a Generating/Forking/Replacing chip, the counter becomes
+  its muted prefix. The regular hint is not shown in that case.
+- History belongs to the project, not the chat: formulations repeat ("run the tests", "do the
+  recommended thing"), and they migrate between chats of the project. Only an accepted send
+  (Send, Queue, Fork, Send now) lands there; a rejected one already stayed in the field.
+  A repeat moves to the top instead of duplicating, 100 entries are stored in localStorage.
+- The only key hint is `↑ for history` in the status line, when the field is empty and the
+  history is non-empty. There is no history search (`Ctrl+R`) yet.
 
-## Очередь сообщений
+## Message queue
 
-- Панель очереди показывает только то, что ещё не отправлено. Отправленная команда живёт в
-  транскрипте, а не в списке, каждая строка которого обещает редактирование и удаление.
-- Остановленный или упавший ход показывается чипом в конце транскрипта, после сводки изменений
-  файлов, вместе с действиями Retry, Continue, From branch head и Discard. Чип оформлен той же
-  карточкой, что и сводка изменений. Для идущей генерации чипа нет: её время и кнопка Stop уже
-  есть у композера, и вторая копия ничего не добавляла.
-- Счётчик `Queued · N` равен числу видимых строк, и `Очистить` удаляет ровно их. Прежнее
-  поведение зависело от того, разматывается ли в этот момент worker, поэтому один и тот же клик
-  давал разный результат. Отдельное действие «остановить и очистить всё» запрашивает
-  подтверждение.
-- Любой отказ сервера показывается пользователю тем текстом, который сервер вернул. Раньше
-  клиент их молча глотал, и отказ был неотличим от бездействия.
-- Прерывание сохраняет уже написанную часть ответа как незавершённое сообщение: и обычный Stop,
-  и `Ctrl+Shift+Enter` ведут себя одинаково. Повтор заменяет этот кусок полным ответом.
-- Ошибка останавливает всю очередь: следующие сообщения обычно опираются на предыдущий ответ.
+- The queue panel shows only what has not been sent yet. A sent command lives in the transcript,
+  not in the list, every line of which would promise edit and delete.
+- A stopped or failed run is shown as a chip at the end of the transcript, after the file-changes
+  summary, together with Retry, Continue, From branch head, and Discard actions. The chip uses
+  the same card as the changes summary. There is no chip for an ongoing generation: its timing
+  and the Stop button already live in the composer, and a second copy added nothing.
+- The `Queued · N` counter equals the number of visible rows, and `Clear` removes exactly those.
+  The previous behavior depended on whether the worker was unwinding at that moment, so the
+  same click produced different results. The separate "stop and clear all" action asks for
+  confirmation.
+- Any server rejection is shown to the user as the text the server returned. Earlier the client
+  silently swallowed them, and the rejection was indistinguishable from inaction.
+- Interruption preserves the already-written part of the answer as an incomplete message: both
+  regular Stop and `Ctrl+Shift+Enter` behave the same way. A retry replaces this fragment with
+  the full answer.
+- An error stops the entire queue: the following messages usually depend on the previous answer.
 
 ## Endpoint profiles
 
-- Проект имеет default endpoint, автоматически используемый новыми чатами.
-- Чат сохраняет собственный EndpointProfileId; смена endpoint влияет на следующие запросы.
-- Редактор Endpoints использует master-detail: список слева, форма выбранного profile справа.
-- Изменения применяются явно через Save; Cancel возвращает последнее сохранённое состояние.
-- Test connection выполняет короткий model request и не создаёт сообщение.
-- Credential хранится только в защищённом Host store.
+- The project has a default endpoint, used automatically by new chats.
+- A chat stores its own EndpointProfileId; changing the endpoint affects the next requests.
+- The Endpoints editor uses master-detail: list on the left, the selected profile form on the right.
+- Changes are applied explicitly through Save; Cancel returns the last saved state.
+- Test connection performs a short model request and does not create a message.
+- The credential is stored only in the protected Host store.
 
 ## Chats and branches
 
-- New chat создаёт UI draft; документ сохраняется после первого сообщения.
-- У чата есть Rename, Duplicate active branch и Delete.
-- В истории показывается только активная ветвь; альтернативы переключаются возле branch point.
-- Edit and branch создаёт новую ветвь, сохраняя исходное сообщение.
-- Copy копирует исходный Markdown.
-- Клик по имени чата в сайдбаре, когда уже открыта одна из ЕГО веток, всегда возвращает на
-  основную/оригинальную ветку — это единственный явный способ вернуться к ней (отдельной строки
-  "основная ветка" в дереве веток нет). Баг: `SelectChatAsync` восстанавливал "последнюю
-  посещённую ветку" для этого чата ДАЖЕ когда чат уже был открыт — `SelectBranchTreeItemAsync`
-  только что записал текущую (не основную) ветку как "последнюю", поэтому восстановление тут же
-  возвращало на неё же, и повторный клик по имени чата переставал что-либо делать. Восстановление
-  "последней ветки" теперь пропускается, если этот чат уже был выбран непосредственно перед
-  кликом — оно предназначено для другого случая (переход в чат ИЗВНЕ: из другого чата или после
-  перезагрузки страницы), а не для повторного клика по уже открытому чату.
+- New chat creates a UI draft; the document is saved after the first message.
+- The chat has Rename, Duplicate active branch, and Delete.
+- Only the active branch is shown in history; alternatives are switched near the branch point.
+- Edit and branch creates a new branch, keeping the original message.
+- Copy copies the source Markdown.
+- Clicking the chat name in the sidebar, when one of ITS branches is already open, always returns
+  to the primary/original branch — this is the only explicit way to get back to it (there is no
+  separate "primary branch" row in the branch tree). Bug: `SelectChatAsync` restored the "last
+  visited branch" for that chat EVEN when the chat was already open — `SelectBranchTreeItemAsync`
+  had just written the current (non-primary) branch as the "last" one, so the restore immediately
+  returned to it, and a repeated click on the chat name stopped doing anything. The "last branch"
+  restore is now skipped if this chat was already selected immediately before the click — it is
+  intended for a different case (entering the chat FROM OUTSIDE: from another chat or after a page
+  reload), not for repeated clicking on an already open chat.
 
 ## Icons and feedback
 
-- Используется локальный минимальный набор Lucide SVG через Blazor component без JavaScript.
-- Icon-only buttons имеют `aria-label`, tooltip и focus state.
-- Основные Save/Delete действия сохраняют текстовую подпись.
-- Общие результаты показываются toast; ошибки формы находятся рядом с полями.
+- A local minimal set of Lucide SVG icons is used through a JavaScript-free Blazor component.
+- Icon-only buttons carry an `aria-label`, tooltip, and focus state.
+- The main Save/Delete actions keep their text label.
+- Common results are shown as toasts; form errors sit next to the fields.
 
 ## Agent and MCP UI
 
-- Tool calls одного agent step группируются в одну сворачиваемую карточку.
-- Ask approval отображается inline с Allow once, Allow for chat и Deny.
-- File changes показываются связанной карточкой Changes с unified diff только для просмотра.
-- Эти элементы реализуются после MCP connection manager и agent loop.
+- Tool calls of one agent step are grouped into a single collapsible card.
+- An Ask approval is displayed inline with Allow once, Allow for chat, and Deny.
+- File changes are shown as a linked Changes card with a unified diff for view only.
+- These elements are implemented after the MCP connection manager and agent loop.
 
-## Отложено
+## Deferred
 
-- Streaming, Stop и incomplete responses.
-- Полный branch switcher и message action toolbar.
-- MCP template library, approvals и grouped tool timeline.
-- FileSystem MCP changes/diff и native folder pickers.
-- Полная ленивая сборка highlight.js.
-- Поиск, экспорт и вложения.
+- Streaming, Stop, and incomplete responses.
+- The full branch switcher and message action toolbar.
+- MCP template library, approvals, and grouped tool timeline.
+- FileSystem MCP changes/diff and native folder pickers.
+- The full lazy build of highlight.js.
+- Search, export, and attachments.
 
-## Порядок реализации
+## Implementation order
 
-1. Workspace foundation: удалить prototype markup, inspector tabs, endpoint master-detail, default endpoint, Save/Cancel, toast и минимальные icons.
+1. Workspace foundation: remove the prototype markup, inspector tabs, endpoint master-detail, default endpoint, Save/Cancel, toasts, and the minimum icons.
 2. Layout and composer: resize/collapse, local layout, Enter/Shift+Enter, drafts, rename/delete.
 3. Streaming.
-4. Полный branch UX.
-5. MCP connection manager и agent loop.
-6. FileSystem MCP, Changes и diff.
+4. Full branch UX.
+5. MCP connection manager and agent loop.
+6. FileSystem MCP, Changes, and diff.
 
-## Состояние реализации на 2026-08-12
+## Implementation state as of 2026-08-12
 
-Реализована первая рабочая часть workspace foundation:
+The first working part of the workspace foundation has been implemented:
 
-- prototype-разметка удалена из DOM; приложение использует один трёхпанельный workspace;
-- inspector разделён на вкладки General, Endpoints, Security и MCP;
-- Endpoints использует master-detail и явные Save/Cancel;
-- проект хранит default endpoint, а каждый чат — выбранный `EndpointProfileId`;
-- новый чат наследует default endpoint проекта;
-- выбор endpoint в composer сохраняется сразу для активного чата;
-- `Enter` отправляет сообщение, `Shift+Enter` добавляет строку, IME composition не перехватывается;
-- ширина левой и правой панелей изменяется drag-разделителями и сохраняется в `localStorage`;
-- начат локальный SVG icon set с `aria-label` и tooltip.
+- the prototype markup has been removed from the DOM; the application uses a single three-panel workspace;
+- the inspector is split into General, Endpoints, Security, and MCP tabs;
+- Endpoints uses master-detail and explicit Save/Cancel;
+- the project stores the default endpoint, and every chat stores the selected `EndpointProfileId`;
+- a new chat inherits the project's default endpoint;
+- the endpoint selection in the composer is saved immediately for the active chat;
+- `Enter` sends the message, `Shift+Enter` adds a line, IME composition is not intercepted;
+- the width of the left and right panels is changed by drag splitters and is persisted in `localStorage`;
+- a local SVG icon set with `aria-label` and tooltip has been started.
 
-Дополнительно реализованы:
+Additionally implemented:
 
-- левая и правая панели сворачиваются icon-only кнопками; состояние сохраняется вместе с шириной layout;
-- в заголовке чата появляются кнопки восстановления скрытых панелей;
-- основные успешные операции и краткие ошибки показываются через автоматически исчезающий toast;
-- `Test connection` выполняет короткий реальный OpenAI-compatible completion через Host gateway, использует сохранённый credential и не создаёт сообщений в истории чата.
+- the left and right panels collapse through icon-only buttons; the state is saved together with the layout width;
+- the chat header gets buttons to restore the hidden panels;
+- main successful operations and brief errors are shown through an auto-dismissing toast;
+- `Test connection` performs a short real OpenAI-compatible completion through the Host gateway, uses the stored credential, and does not create messages in the chat history.
 
-Реализован streaming этап:
+The streaming stage has been implemented:
 
-- Host запрашивает OpenAI-compatible Chat Completions с `stream: true` и читает SSE `data` events до `[DONE]`;
-- credentials разрешаются только на Host и не передаются обратно в WASM;
-- assistant Markdown отображается постепенно, а Send во время генерации заменяется на Stop;
-- user message сохраняется перед запросом; завершённый assistant response сохраняется после `[DONE]`;
-- Stop или разрыв потока сохраняет уже полученный assistant response с признаком `Incomplete`;
-- пустой частичный assistant response не создаётся.
+- the Host requests OpenAI-compatible Chat Completions with `stream: true` and reads SSE `data` events up to `[DONE]`;
+- credentials are resolved only on the Host and are not sent back into WASM;
+- the assistant Markdown is rendered incrementally, and Send during generation is replaced with Stop;
+- the user message is saved before the request; the completed assistant response is saved after `[DONE]`;
+- a Stop or a stream break saves the already-received assistant response with the `Incomplete` flag;
+- an empty partial assistant response is not created.
 
-Ещё не реализованы в этом этапе: полноценный overlay drawer для обеих панелей на мобильной ширине и специализированный health-check, если конкретный endpoint предоставляет такой API.
+Not yet implemented in this stage: a full overlay drawer for both panels on mobile width and a specialized health-check, if a specific endpoint provides such an API.
 
-Реализован базовый chat management этап:
+The basic chat management stage has been implemented:
 
-- New chat создаёт только UI draft; JSON-документ и название из первых 48 символов создаются при первой отправке;
-- чат можно переименовать inline и удалить после двухшагового подтверждения в заголовке;
-- Copy Markdown использует Clipboard API и копирует исходный Markdown;
-- Edit and branch переносит исходный user text в composer и устанавливает branch point на его родителя;
-- возле сообщений с альтернативными siblings появляется компактный branch switcher;
-- switching выбирает sibling и продолжает его наиболее свежий дочерний путь;
-- Rename/Delete используют revision и не перезаписывают конкурентные изменения.
+- New chat creates only a UI draft; the JSON document and the title from the first 48 characters are created on the first send;
+- a chat can be renamed inline and deleted after a two-step confirmation in the header;
+- Copy Markdown uses the Clipboard API and copies the source Markdown;
+- Edit and branch moves the original user text into the composer and sets the branch point to its parent;
+- near messages with alternative siblings a compact branch switcher appears;
+- switching selects a sibling and continues its newest child path;
+- Rename/Delete use revision and do not overwrite concurrent changes.
 
-Не реализован Duplicate active branch: его целесообразно добавлять вместе с export/import после MCP agent loop.
+Duplicate active branch has not been implemented: it makes sense to add it together with export/import after the MCP agent loop.
 
 ## UX refinement: chat workspace
 
-- Sidebar имеет только одну понятную кнопку Hide sidebar; в свёрнутом состоянии остаётся один компактный icon-only control Show sidebar.
-- В заголовке чата endpoint selector расположен рядом с названием чата и не имеет отдельной кнопки Configure. Настройки endpoints доступны в постоянной правой панели на вкладке Endpoints.
-- Draft chat не выводит искусственное название `New chat`; пустой composer показывает disappearing placeholder `Message the assistant...`.
-- Send расположен в нижней панели composer рядом с подсказкой о доступном действии; icon и текст объясняют назначение.
-- Project settings использует фиксированный header и закреплённую снизу danger zone, поэтому Delete project не меняет позицию при переключении вкладок.
-- Endpoints использует picker профиля и одну удобную detail-форму, вместо двух узких одновременно видимых колонок.
-- Верхняя панель центра убрана: название чата видно в sidebar, а выбор и редактирование endpoint находятся на вкладке Endpoints справа.
+- The sidebar has only one clear Hide sidebar button; in the collapsed state only one compact icon-only Show sidebar control remains.
+- In the chat header the endpoint selector sits next to the chat name and does not have a separate Configure button. Endpoint settings are available in the persistent right panel on the Endpoints tab.
+- A draft chat does not show the artificial name `New chat`; the empty composer shows the disappearing placeholder `Message the assistant...`.
+- Send sits in the bottom panel of the composer next to a hint about the available action; the icon and text explain the purpose.
+- Project settings uses a fixed header and a danger zone pinned to the bottom, so Delete project does not change its position when switching tabs.
+- Endpoints uses a profile picker and one convenient detail form, instead of two narrow simultaneously visible columns.
+- The top bar of the center has been removed: the chat name is visible in the sidebar, and endpoint selection and editing are on the Endpoints tab on the right.
 
 ## Project settings placement
 
-- Постоянная правая inspector panel удалена: она отнимала пространство у chat workspace и смешивала навигацию с редактированием.
-- У выбранного проекта в sidebar находится icon-only меню `…` с tooltip `Project menu`.
-- Меню содержит `Project settings`, открывающее модальное вкладочное окно, и `Delete project` с inline подтверждением в этом же меню.
-- В редактируемых вкладках `Save` сохраняет и закрывает окно, `Cancel` откатывает draft и закрывает. Отдельная кнопка `X` удалена как дублирующее действие; клик по затемнённому фону эквивалентен Cancel.
-- Размер Project settings modal фиксирован для всех вкладок; при недостаточной высоте viewport прокручивается только содержимое активной вкладки.
-- `Save` и `Cancel` являются общими для всех вкладок и закреплены в footer диалога; переключение вкладки не меняет их положение. Контекстные действия, например `Test connection`, остаются внутри соответствующей вкладки.
-- Диалог использует увеличенный фиксированный размер `42rem × 52rem`, но всегда ограничивается доступным viewport. Внутренняя прокрутка остаётся запасным поведением только для небольших экранов или более длинного содержимого.
-- Добавление и удаление endpoint выполняются компактными кнопками `+` и `−` рядом с picker профиля; полное назначение кнопок доступно через tooltip и accessibility label.
-- Sidebar не показывает отдельный продуктовый branding: пространство начинается сразу с навигационных секций. Сворачивание всего сайдбара целиком поддерживается **одной** кнопкой-переключателем `.sidebar-toggle`: в развёрнутом состоянии она показывает `chevron-left` с tooltip `Hide sidebar`, в свёрнутом — `chevron-right` с `Show sidebar`. Это буквально «одна кнопка заменяется другой» из решения выше, а не две отдельные кнопки в одной позиции. Свёрнутый sidebar сжимается до `2.8rem` (`--sidebar-track`), его содержимое и левый resizer гасятся через `visibility: hidden; pointer-events: none`. Сворачивание всей панели сосуществует со сворачиванием отдельных секций Settings/Projects — это независимые механики, как и регулировка ширины перетаскиванием `.workspace-resizer[data-side="left"]`.
-- Кнопка `.sidebar-toggle` вынесена из `.workspace-sidebar` и позиционируется абсолютно относительно `.workspace-shell` (которому для этого задан `position: relative`), с горизонтальной привязкой к ширине трека: `left: calc(var(--sidebar-track) - 2.5rem)`. Так одна и та же CSS-декларация даёт корректное место в обоих состояниях (у правого края развёрнутого сайдбара и по центру свёрнутой полосы), и кнопка не резервирует вертикальное место над областью чата. Держать её внутри `.workspace-sidebar` нельзя: у него `overflow-y: auto`, поэтому absolute-потомок у правой границы обрезался бы контейнером прокрутки и уезжал вместе с содержимым при скролле.
-- Состояние сворачивания живёт в C# (`_isSidebarCollapsed`), класс `left-collapsed` вешается биндингом на `<main>`, персистится отдельным ключом `localStorage` (`ai-client.sidebar-collapsed.v1`) и читается один раз на `firstRender`. JS-модуль layout'а классами больше не управляет — он отвечает только за перетаскивание ширины; это убирает двух владельцев одного состояния.
-- Sidebar состоит из двух корневых, независимо сворачиваемых секций — **Settings** (`Connections`/`Security`/`MCP`) и **Projects** (список проектов и их чатов). Каждая секция — это `.sidebar-heading` с кнопкой-заголовком `.sidebar-heading-toggle` (шеврон + подпись), клик по которой переключает `_isSettingsSectionExpanded`/`_isProjectsSectionExpanded` и раскрывает/скрывает содержимое секции; шеврон поворачивается на 90° через `[aria-expanded="true"] .app-icon { transform: rotate(90deg) }`. `New project` (`+`) остаётся отдельной кнопкой рядом с заголовком `Projects` вне сворачиваемой области и **автоматически разворачивает** секцию Projects после создания проекта — иначе новый проект был бы создан и выбран, но невидим в свёрнутом списке.
-- Дефолты сознательно различаются: **Settings всегда свёрнут** по умолчанию (`_isSettingsSectionExpanded` без инициализатора, `false`), **Projects всегда развёрнут** по умолчанию (`_isProjectsSectionExpanded = true`) — Projects это основной рабочий контекст, Settings — второстепенная область. Ни то, ни другое не персистится (нет localStorage) — при каждой перезагрузке приложения состояние возвращается к этим дефолтам.
-- В "телефонном" режиме (`width <= 720px` — тот же breakpoint, что уже используется в `@media (width <= 720px)` для стека sidebar/контента) обе секции автоматически сворачиваются, даже если пользователь их разворачивал. Реализовано через `window.matchMedia('(max-width: 720px)')` в `workspaceLayout.js:watchPhoneMode`, который проверяет `query.matches` сразу при подключении (страница, загруженная уже в узком viewport, сразу получает свёрнутые секции) и слушает `change` для живого ресайза; в обоих случаях вызывает `[JSInvokable] Home.OnEnterPhoneMode()` через `DotNetObjectReference`, которая сбрасывает оба флага в `false` и вызывает `StateHasChanged()`. Переход обратно в desktop-ширину не разворачивает секции автоматически — пользователь возвращается к обычным дефолтам только при следующей полной перезагрузке.
-- В phone-режиме sidebar всегда развёрнут, а кнопка `.sidebar-toggle` скрыта (`display: none` внутри `@media (width <= 720px)`): при вертикальной раскладке панель и так занимает всю ширину над чатом, сворачивать её в полосу `2.8rem` незачем. `OnEnterPhoneMode()` дополнительно сбрасывает `_isSidebarCollapsed` в `false` — состояние приводится в соответствие реальности, а не просто перекрывается стилями, иначе сохранённый с desktop флаг оставил бы содержимое sidebar скрытым (`visibility: hidden` от `.left-collapsed`) при недоступной кнопке разворота. По той же причине `LoadSidebarCollapsedAsync()` вызывается ДО `WatchPhoneModeAsync()`: иначе загрузка сохранённого `true` выполнилась бы после сброса и снова свернула панель на телефоне.
-- Компромисс осознанно принят: при первой загрузке приложения (вне phone-режима) активный проект и его чаты выбираются автоматически (как и раньше) и сразу видны благодаря дефолтно развёрнутому Projects; в phone-режиме тот же выбор происходит, но список визуально скрыт, пока пользователь не развернёт секцию вручную — сворачивание влияет только на видимость списка в sidebar, не на внутренний выбор состояния.
+- The persistent right inspector panel has been removed: it took space from the chat workspace and mixed navigation with editing.
+- The selected project has an icon-only `…` menu with the tooltip `Project menu` in the sidebar.
+- The menu contains `Project settings`, which opens a modal tabbed window, and `Delete project` with an inline confirmation in the same menu.
+- In editable tabs `Save` saves and closes the window, `Cancel` rolls back the draft and closes. The separate `X` button has been removed as a duplicate action; a click on the dimmed background is equivalent to Cancel.
+- The Project settings modal size is fixed for all tabs; when the viewport height is insufficient, only the contents of the active tab scroll.
+- `Save` and `Cancel` are shared across all tabs and pinned to the dialog footer; switching the tab does not change their position. Contextual actions, such as `Test connection`, stay inside the corresponding tab.
+- The dialog uses an enlarged fixed size of `42rem × 52rem`, but is always constrained by the available viewport. Internal scrolling remains a fallback only for small screens or longer content.
+- Adding and removing endpoints is done through compact `+` and `−` buttons next to the profile picker; the full purpose of the buttons is available through tooltip and accessibility label.
+- The sidebar does not show separate product branding: the space starts right away with the navigation sections. Collapsing the entire sidebar at once is supported by **one** toggle button `.sidebar-toggle`: in the expanded state it shows `chevron-left` with the tooltip `Hide sidebar`, in the collapsed state — `chevron-right` with `Show sidebar`. This is literally "one button replaces another" from the decision above, not two separate buttons in the same position. The collapsed sidebar shrinks to `2.8rem` (`--sidebar-track`); its content and the left resizer are muted through `visibility: hidden; pointer-events: none`. Collapsing the entire panel coexists with collapsing the individual Settings/Projects sections — these are independent mechanics, like width adjustment by dragging `.workspace-resizer[data-side="left"]`.
+- The `.sidebar-toggle` button is moved out of `.workspace-sidebar` and positioned absolutely relative to `.workspace-shell` (which gets `position: relative` for this), with horizontal anchoring to the track width: `left: calc(var(--sidebar-track) - 2.5rem)`. This way the same CSS declaration gives the correct place in both states (at the right edge of the expanded sidebar and at the center of the collapsed strip), and the button does not reserve vertical space above the chat area. Keeping it inside `.workspace-sidebar` is not allowed: it has `overflow-y: auto`, so an absolute child at the right edge would be clipped by the scroll container and would scroll away together with the content.
+- The collapse state lives in C# (`_isSidebarCollapsed`); the `left-collapsed` class is bound on `<main>`, is persisted under a separate `localStorage` key (`ai-client.sidebar-collapsed.v1`), and is read once on `firstRender`. The layout JS module no longer manages classes — it is responsible only for width dragging; this removes two owners of one state.
+- The sidebar consists of two root, independently collapsible sections — **Settings** (`Connections`/`Security`/`MCP`) and **Projects** (the list of projects and their chats). Each section is a `.sidebar-heading` with a heading button `.sidebar-heading-toggle` (chevron + label), a click on which toggles `_isSettingsSectionExpanded`/`_isProjectsSectionExpanded` and expands/hides the section content; the chevron rotates 90° through `[aria-expanded="true"] .app-icon { transform: rotate(90deg) }`. `New project` (`+`) remains a separate button next to the `Projects` heading outside the collapsible area and **automatically expands** the Projects section after creating a project — otherwise a new project would be created and selected, but invisible in the collapsed list.
+- The defaults are intentionally different: **Settings is always collapsed** by default (`_isSettingsSectionExpanded` without initializer, `false`), **Projects is always expanded** by default (`_isProjectsSectionExpanded = true`) — Projects is the main working context, Settings is a secondary area. Neither is persisted (no localStorage) — every application reload returns the state to these defaults.
+- In "phone" mode (`width <= 720px` — the same breakpoint already used in `@media (width <= 720px)` for the sidebar/content stack) both sections are automatically collapsed, even if the user expanded them. This is implemented through `window.matchMedia('(max-width: 720px)')` in `workspaceLayout.js:watchPhoneMode`, which checks `query.matches` immediately on attach (a page loaded in a narrow viewport immediately receives collapsed sections) and listens for `change` for live resizing; in both cases it calls `[JSInvokable] Home.OnEnterPhoneMode()` through `DotNetObjectReference`, which resets both flags to `false` and calls `StateHasChanged()`. The transition back to desktop width does not automatically expand the sections — the user returns to the regular defaults only on the next full reload.
+- In phone mode the sidebar is always expanded, and the `.sidebar-toggle` button is hidden (`display: none` inside `@media (width <= 720px)`): in the vertical layout the panel already occupies the full width above the chat, so there is no point in collapsing it to a `2.8rem` strip. `OnEnterPhoneMode()` additionally resets `_isSidebarCollapsed` to `false` — the state is brought into correspondence with reality, not just overridden by styles, otherwise a flag saved from desktop would leave the sidebar contents hidden (`visibility: hidden` from `.left-collapsed`) while the expand button is unavailable. For the same reason, `LoadSidebarCollapsedAsync()` is called BEFORE `WatchPhoneModeAsync()`: otherwise loading a saved `true` would happen after the reset and would collapse the panel again on phone.
+- The tradeoff is consciously accepted: on the first application load (outside phone mode) the active project and its chats are selected automatically (as before) and immediately visible thanks to the default-expanded Projects; in phone mode the same selection happens, but the list is visually hidden until the user expands the section manually — collapsing affects only the visibility of the list in the sidebar, not the internal state selection.
 - Когда навигация не видна (свёрнута секция Projects **или** свёрнут весь sidebar) и выбран проект, над лентой чата показывается компактный `.conversation-context-header` вида `Проект › Ветка` через разделитель-шеврон — иначе пользователь не видит вообще, что сейчас открыто. Условие именно «ИЛИ» по двум независимым механикам сворачивания: свёрнутый sidebar прячет и развёрнутую секцию Projects тоже. Когда навигация видна, заголовок не нужен и не показывается — сайдбар и так показывает выбор через `.selected`.
 - Второй элемент хедера — именно **активная ветка**, а не чат. У главной («корневой») ветки нет собственного имени: `GetBranchTreeItems()` возвращает только ответвления от форков, а роль главной ветки играет сам чат — поэтому `GetContextBranchTitle()` подставляет туда название чата. Так хедер всегда состоит ровно из двух элементов и на любой ветке показывает то же имя, что подсвечено в дереве sidebar. Активная ветка определяется через `GetSelectedBranchItem()` — самое глубокое ответвление, содержащее текущий `_branchLeafId`; ранее эта логика жила внутри `GetSelectedBranchId()`, теперь `GetSelectedBranchId()` выражен через неё, чтобы порядок выбора ветки не дублировался в двух местах.
 - Composer textarea авто-расширяется по высоте по мере ввода (по образцу поведения из Codex): JS `chatComposer.js:attach` слушает `input`, выставляет `height:auto`, затем `height:scrollHeight+px`; CSS `max-height:40vh` + `overflow-y:auto` ограничивают рост и включают внутренний скролл, когда содержимое не помещается. `resize:none` — пользователь не может вручную тянуть за угол (это конфликтовало бы с авто-высотой). Возврат к `min-height:4.5rem` после программной очистки/подстановки `_chat.Message` (отправка сообщения, "Edit and branch", удаление активного чата) — через флаг `_composerNeedsResize`, проверяемый в `OnAfterRenderAsync` (тот же паттерн, что уже применяется для `_scrollMessagesToBottom`): JS `resize()` обязан читать `scrollHeight` уже ОТРЕНДЕРЕННОГО Blazor'ом значения textarea, а не измерять высоту сразу внутри C#-обработчика — вызов сразу после присваивания `_chat.Message` мог бы измерить старое, ещё не обновлённое в DOM содержимое, поскольку JS interop может выполниться до того, как Blazor допишет рендер.
@@ -284,15 +285,15 @@
 
 ## Global settings navigation
 
-- `Connections`, `Security` и `MCP` постоянно видны в верхней части sidebar и заменяют чат в центральной области.
-- Connections используют двухпанельный editor: список слева, форма справа, общие `Save`/`Cancel`.
-- Security пока является информационной страницей.
-- MCP использует двухпанельный editor и является полностью глобальным.
-- Project settings не имеет tabs: Connection выбирается без редактирования, directory grants остаются project-scoped.
-- Composer растёт вместе с текстом до 14 строк и только после этого показывает вертикальный scrollbar.
-- Каждое user и assistant message имеет действие `Fork from here`: оно начинает новую ветвь от выбранного сообщения. `Edit and branch` остаётся отдельным действием только для user message и предварительно переносит его текст в composer.
-- Завершение визуального состояния генерации не зависит от успешности сохранения истории: Stop и `Generating...` всегда убираются в guaranteed cleanup. Ошибка history persistence показывается отдельно и не маскируется как ошибка LLM endpoint.
-- Перерисовка завершённого состояния выполняется до необязательного восстановления focus в composer. JS interop не может удерживать Stop или `Generating...` после завершения HTTP/history pipeline.
+- `Connections`, `Security`, and `MCP` are permanently visible in the upper part of the sidebar and replace the chat in the central area.
+- Connections use a two-pane editor: list on the left, form on the right, with shared `Save`/`Cancel`.
+- Security is currently an informational page.
+- MCP uses a two-pane editor and is fully global.
+- Project settings has no tabs: Connection is selected without editing, directory grants remain project-scoped.
+- The composer grows with the text up to 14 lines and only then shows a vertical scrollbar.
+- Every user and assistant message has the `Fork from here` action: it starts a new branch from the selected message. `Edit and branch` remains a separate action only for user messages and pre-loads its text into the composer.
+- Completion of the visual generation state does not depend on the success of history saving: Stop and `Generating...` are always removed in the guaranteed cleanup. A history persistence error is shown separately and is not masked as an LLM endpoint error.
+- Redrawing the completed state is performed before the optional restoration of focus in the composer. JS interop cannot hold Stop or `Generating...` after the HTTP/history pipeline completes.
 ## Branch tree in the chat list (2026-08-13)
 
 - A chat without alternatives remains one regular row. The selected chat expands its branch rows; other chats remain collapsed.

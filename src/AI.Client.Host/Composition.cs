@@ -47,9 +47,10 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IAppDataChangeSignal>()
             .Singleton<HostDescriptor, PhysicalTextFileSystem, JsonProjectRepository, ProjectDocumentSerializer,
                 Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
-                ProtectedDataUserDataProtector, ChatCompletionSseParser,
+                ProtectedDataUserDataProtector, ChatCompletionSseParser, ContextPlanDiagnostics,
                 ChatEndpoint, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
-                GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ToolPolicyResolver, WorkspaceChangeTracker, LineDiff,
+                GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator, ChatContextPlanner,
+                ToolPolicyResolver, WorkspaceChangeTracker, LineDiff,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ToolPresentations>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
             .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To(([Tag("base")] IChatCompletionClient baseClient, ILogger<RetryingChatCompletionClient> retryLogger) => new RetryingChatCompletionClient(baseClient, retryLogger))

@@ -467,6 +467,19 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task OversizedContextShouldFailBeforeCallingTransport()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(
+            Guid.NewGuid(), Guid.NewGuid(), new string('x', 60_000)));
+
+        var failed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Failed);
+        failed.Error.ShouldNotBeNull().ShouldContain("too large for the model context window");
+        fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task ClearShouldBehaveTheSameWhileAStoppedWorkerIsStillUnwinding()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -1175,7 +1188,8 @@ public sealed class ChatExecutionTests
             return new ChatRunDispatcher(_runs, Chats, Chats, _projectService, _settings,
                 new GlobalSettingsService(_settings, _secrets),
                 new ChatAgent(Completion, () => Tools, _projectService, _settings, policies, Workspace,
-                    ModelProjector, ToolResultCodec),
+                    ModelProjector, ToolResultCodec, new ChatContextPlanner(new ContextTokenEstimator()),
+                    Mock.Of<IContextPlanDiagnostics>()),
                 _secrets, _clock, _ids, _synchronization, Workspace, policies,
                 new ChatContext(ToolResultCodec));
         }

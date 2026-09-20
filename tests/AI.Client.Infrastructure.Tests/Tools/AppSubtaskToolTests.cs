@@ -347,7 +347,8 @@ public sealed class AppSubtaskToolTests
             // No tool servers: a subtask that needs none is enough to prove the plumbing, and it
             // keeps the test from starting child processes.
             var agent = new ChatAgent(Completion, Mock.Of<IToolSessionFactory>, Projects, _settings, policies, workspace,
-                modelProjector, toolResultCodec);
+                modelProjector, toolResultCodec, new ChatContextPlanner(new ContextTokenEstimator()),
+                Mock.Of<IContextPlanDiagnostics>());
             var presentations = new ToolPresentations(
                 new GenericToolPresentationAdapter(),
                 [

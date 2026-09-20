@@ -1,5 +1,6 @@
 namespace AI.Client.Infrastructure.Tests.Tools;
 
+using AI.Client.Application.Chat;
 using AI.Client.Application.Chats;
 using AI.Client.Application.Notifications;
 using AI.Client.Application.Projects;
@@ -410,7 +411,8 @@ public sealed class AppToolTests
             var toolResultCodec = new ToolResultCodec(modelProjector);
             var dispatcher = new ChatRunDispatcher(runRepository, Chats, Chats, Projects, _settings, settingsService,
                 new ChatAgent(Mock.Of<AI.Client.Application.Chat.IChatCompletionClient>(), Mock.Of<IToolSessionFactory>,
-                    Projects, _settings, policies, workspace, modelProjector, toolResultCodec),
+                    Projects, _settings, policies, workspace, modelProjector, toolResultCodec,
+                    new ChatContextPlanner(new ContextTokenEstimator()), Mock.Of<IContextPlanDiagnostics>()),
                 _secrets, _clock, _ids, _synchronization, workspace, policies, new ChatContext(toolResultCodec));
             var writes = new AppWrites(new AppOperationLog(), _signal);
             var presentations = new ToolPresentations(

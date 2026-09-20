@@ -55,6 +55,13 @@ complete the run: the agent adds a transient hidden correction and asks the mode
 consecutive missing or invalid completion decisions fail the run instead of looping indefinitely;
 before that limit, malformed decisions receive a hidden structured rejection and correction request.
 
+An empty provider response does not acknowledge model-only instructions. The agent retains every
+pending correction and adds `response.empty`. When completion is already required, the recovery
+request advertises only `app_finish_run`, forcing an explicit `complete`, `continue`, or `blocked`
+decision before the normal tool catalogue is restored. Diagnostics record the retry number,
+`finish_reason`, chunk count, and whether this restricted recovery mode was active, without logging
+model or instruction content.
+
 For a direct answer which used no tools, the existing plain-text completion remains supported for
 OpenAI-compatible endpoints with incomplete tool-call support.
 

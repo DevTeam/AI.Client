@@ -12,6 +12,7 @@ using AI.Client.Contracts.Projects;
 using AI.Client.Contracts.Settings;
 using AI.Client.Contracts.Tools;
 using AI.Client.Infrastructure.Projects;
+using AI.Client.Infrastructure.Chat;
 using AI.Client.Infrastructure.Settings;
 using AI.Client.Infrastructure.Storage;
 using AI.Client.Infrastructure.Tests.Storage;
@@ -350,7 +351,7 @@ public sealed class AppSubtaskToolTests
                 modelProjector, toolResultCodec,
                 new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
                     new ConnectionContextLimitsResolver()),
-                Mock.Of<IContextPlanDiagnostics>());
+                Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity());
             var presentations = new ToolPresentations(
                 new GenericToolPresentationAdapter(),
                 [

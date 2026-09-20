@@ -1,5 +1,6 @@
 ﻿namespace AI.Client.Infrastructure.Tests.Chat;
 
+using AI.Client.Application.Chat;
 using AI.Client.Contracts.Chat;
 using AI.Client.Infrastructure.Chat;
 using Moq;
@@ -7,6 +8,7 @@ using Moq.Protected;
 using Shouldly;
 using System.Net;
 using System.Text;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 public class OpenAiCompatibleChatCompletionClientTests
@@ -218,9 +220,53 @@ public class OpenAiCompatibleChatCompletionClientTests
         error.Message.ShouldContain("rate limited");
     }
 
-    private OpenAiCompatibleChatCompletionClient CreateInstance() =>
-        new(new HttpClient(_handler.Object), new ChatCompletionSseParser());
+    private OpenAiCompatibleChatCompletionClient CreateInstance(
+        IChatCompletionSseParser? parser = null, IChatTransportPolicy? policy = null) =>
+        new(new HttpClient(_handler.Object), parser ?? new ChatCompletionSseParser(), policy ?? new ChatTransportPolicy());
+
+    private sealed class DelayedParser : IChatCompletionSseParser
+    {
+        public async IAsyncEnumerable<ChatCompletionChunk> ParseAsync(
+            Stream stream, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            yield break;
+        }
+    }
 
     private static HttpResponseMessage CreateResponse(HttpStatusCode statusCode, string content) =>
         new(statusCode) { Content = new StringContent(content, Encoding.UTF8, "application/json") };
+    [Fact]
+    public async Task ShouldFailWhenResponseHeadersDoNotArriveInTime()
+    {
+        _handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>(async (_, token) =>
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return CreateResponse(HttpStatusCode.OK, "");
+            });
+
+        await Should.ThrowAsync<ChatResponseHeadersTimeoutException>(() => CreateInstance(
+            policy: new ChatTransportPolicy(responseHeadersTimeout: TimeSpan.FromMilliseconds(20))).CompleteAsync(
+            new ChatCompletionRequest("https://llm.example/v1", "test-model", null, "Hi"), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ShouldFailWhenFirstTokenDoesNotArriveInTime()
+    {
+        _handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(CreateResponse(HttpStatusCode.OK, ""));
+
+        await Should.ThrowAsync<ChatFirstTokenTimeoutException>(async () =>
+        {
+            await foreach (var _ in CreateInstance(new DelayedParser(),
+                               new ChatTransportPolicy(firstTokenTimeout: TimeSpan.FromMilliseconds(20))).StreamAsync(
+                               new ChatCompletionRequest("https://llm.example/v1", "test-model", null, "Hi"),
+                               CancellationToken.None)) { }
+        });
+    }
 }

@@ -100,8 +100,42 @@ public class RetryingChatCompletionClientTests
         endpoint.Attempts.ShouldBe(2);
     }
 
+    [Fact]
+    public async Task ShouldStopRateLimitRetriesAtTheTotalDeadline()
+    {
+        var endpoint = new Endpoint(new ChatEndpointException("limited", HttpStatusCode.TooManyRequests, TimeSpan.FromSeconds(1)));
+        var client = new RetryingChatCompletionClient(endpoint, NullLogger<RetryingChatCompletionClient>.Instance,
+            new ChatTransportPolicy(retryDeadline: TimeSpan.FromMilliseconds(10)), new ChatTransportActivity());
+
+        await Should.ThrowAsync<ChatRetryDeadlineExceededException>(async () => await CollectAsync(client));
+        endpoint.Attempts.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ShouldPublishAndClearRateLimitWait()
+    {
+        var endpoint = new Endpoint(RateLimit(HttpStatusCode.TooManyRequests), null);
+        var activity = new ChatTransportActivity();
+        var reports = new List<ChatTransportWait?>();
+        using var scope = activity.BeginScope((wait, _) =>
+        {
+            reports.Add(wait);
+            return Task.CompletedTask;
+        });
+        var client = new RetryingChatCompletionClient(endpoint, NullLogger<RetryingChatCompletionClient>.Instance,
+            new ChatTransportPolicy(retryDeadline: TimeSpan.FromMinutes(1)), activity);
+
+        await CollectAsync(client);
+
+        reports.Count.ShouldBe(2);
+        reports[0].ShouldNotBeNull();
+        reports[0]!.Attempt.ShouldBe(1);
+        reports[1].ShouldBeNull();
+    }
+
     private static RetryingChatCompletionClient CreateInstance(IChatCompletionClient endpoint) =>
-        new(endpoint, NullLogger<RetryingChatCompletionClient>.Instance);
+        new(endpoint, NullLogger<RetryingChatCompletionClient>.Instance,
+            new ChatTransportPolicy(retryDeadline: TimeSpan.FromMinutes(1)), new ChatTransportActivity());
 
     // Zero, so the tests measure the decision to retry rather than the wait it schedules.
     private static ChatEndpointException RateLimit(HttpStatusCode status) =>

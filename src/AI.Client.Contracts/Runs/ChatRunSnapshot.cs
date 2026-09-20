@@ -8,4 +8,5 @@ public sealed record ChatRunSnapshot(Guid ProjectId, Guid ChatId, Guid BranchId,
     Workspace.WorkspaceChangeSet? WorkspaceChanges = null,
     Guid? ActiveMessageId = null,
     UserPrompt? PendingPrompt = null,
-    bool StreamingToolCallsStarted = false);
+    bool StreamingToolCallsStarted = false,
+    ChatRunWait? Wait = null);

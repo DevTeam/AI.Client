@@ -279,7 +279,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 {
                     token.ThrowIfCancellationRequested();
                     var tool = selectedTools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name)
-                        ?? throw new ArgumentException("Unknown tool.");
+                        ?? throw new ArgumentException(
+                            $"Tool '{call.Name}' is not available in this turn. Its schema was omitted to fit the model's context budget. "
+                            + "Call tool_search with a short capability description (for example: 'read text file', 'list directory', 'grep in files') "
+                            + "so the matching tools are pinned and become available on the next model step. Do not invent or guess tool names.");
                     var arguments = session!.ValidateArguments(tool, call.Arguments);
                     var policy = await PolicyAsync(projectId, chatId, tool, token);
                     if (tool.OriginalName == "process_run")

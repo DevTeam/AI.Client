@@ -358,6 +358,34 @@ public class WorkspaceStateServiceTests
     }
 
     [Fact]
+    public async Task ShouldPreserveBranchLeafEvenWhenItLiesPastTheMainFork()
+    {
+        // Regression for the project-switch restore path in SelectChatAsync: it remembers the
+        // last (ChatId, BranchLeafId) the user left on and re-applies it when they come back to
+        // the same project. The leaf of a non-main branch is, by construction, a message that
+        // lives past the fork point and is therefore NOT present in the main transcript. The
+        // workspace state service must round-trip that leaf unchanged; otherwise the restore
+        // step loses it before it ever reaches the branch-match check.
+        var (service, js) = CreateService();
+        await service.InitializeAsync();
+
+        var project = Guid.NewGuid();
+        var chat = Guid.NewGuid();
+        var mainLeaf = Guid.NewGuid();
+        var branchLeaf = Guid.NewGuid();
+
+        // First selection lands on main: that's the cheap default and what
+        // GetOriginalBranchLeaf returns on the restore path.
+        await service.SetProjectContextAsync(project, chat, mainLeaf);
+        // Then the user walks into a branch. The leaf is on the branch, not on main.
+        await service.SetProjectContextAsync(project, chat, branchLeaf);
+
+        var reloaded = new WorkspaceStateService(js);
+        await reloaded.InitializeAsync();
+        reloaded.GetProjectContext(project).ShouldBe((chat, branchLeaf));
+    }
+
+    [Fact]
     public async Task ShouldNotWriteProjectContextWhenNothingHasChanged()
     {
         // The post-render settle code calls SetProjectContextAsync on every chat open. A no-op

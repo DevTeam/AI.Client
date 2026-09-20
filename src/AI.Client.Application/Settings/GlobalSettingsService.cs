@@ -6,7 +6,8 @@ using System.Text.Json;
 
 public sealed class GlobalSettingsService(
     IGlobalSettingsRepository repository,
-    IGlobalSecretStore secretStore) : IGlobalSettingsService
+    IGlobalSecretStore secretStore,
+    IConnectionContextLimitsResolver contextLimits) : IGlobalSettingsService
 {
     public async Task<GlobalSettings> GetAsync(CancellationToken cancellationToken)
     {
@@ -115,12 +116,24 @@ public sealed class GlobalSettingsService(
         return await GetAsync(cancellationToken);
     }
 
-    private static ConnectionSettings Normalize(ConnectionSettings item)
+    private ConnectionSettings Normalize(ConnectionSettings item)
     {
         if (string.IsNullOrWhiteSpace(item.Name) || !Uri.TryCreate(item.BaseUrl, UriKind.Absolute, out var uri)
             || uri.Scheme is not ("http" or "https") || string.IsNullOrWhiteSpace(item.Model))
         {
             throw new ArgumentException("Connection name, absolute HTTP base URL, and model are required.");
+        }
+
+        if (item.ContextWindowTokens is < 1_024 or > 4_000_000
+            || item.ReservedOutputTokens is < 256 or > 1_000_000)
+        {
+            throw new ArgumentException("Context window and reserved output overrides are outside supported limits.");
+        }
+
+        var effective = contextLimits.Resolve(item);
+        if (effective.ReservedOutputTokens >= effective.ContextWindowTokens)
+        {
+            throw new ArgumentException("Reserved output tokens must be smaller than the context window.");
         }
 
         return item with

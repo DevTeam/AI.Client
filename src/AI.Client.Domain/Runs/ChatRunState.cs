@@ -22,7 +22,8 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
 
     public RunFailureKind FailureKind { get; private set; }
 
-    public bool CanRetry => FailureKind is RunFailureKind.None or RunFailureKind.Transient or RunFailureKind.Storage;
+    public bool CanRetry => FailureKind is RunFailureKind.None or RunFailureKind.Transient
+        or RunFailureKind.Storage or RunFailureKind.ContextWindow;
 
     public bool HasUnreadResponse { get; private set; }
 

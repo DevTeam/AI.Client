@@ -399,7 +399,8 @@ public sealed class ChatRunDispatcher(
                     }
                     runtime.State.MarkUserCommitted(queued.Id);
                     request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
-                        await secretStore.GetAsync("connection", connection.Id, token), queued.Content, null, contextBuilder.Build(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id)));
+                        await secretStore.GetAsync("connection", connection.Id, token), queued.Content, connection.Id,
+                        contextBuilder.Build(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id)));
                     runtime.ToolHead = ResumeHead(chat, runtime.State.BranchId, queued.Id);
                     await SaveAsync(runtime, chat, token);
                 }
@@ -825,6 +826,7 @@ public sealed class ChatRunDispatcher(
     private static RunFailureKind FailureKind(Exception error) => error switch
     {
         RunDispatchException dispatch => dispatch.FailureKind,
+        ContextWindowExceededException => RunFailureKind.ContextWindow,
         IOException or UnauthorizedAccessException => RunFailureKind.Storage,
         HttpRequestException => RunFailureKind.Transient,
         _ => RunFailureKind.Transient
@@ -1128,6 +1130,7 @@ public sealed class ChatRunDispatcher(
         RunFailureKind.BranchDeleted => RunFailureCode.BranchDeleted,
         RunFailureKind.ParentMissing => RunFailureCode.ParentMissing,
         RunFailureKind.Storage => RunFailureCode.Storage,
+        RunFailureKind.ContextWindow => RunFailureCode.ContextWindow,
         _ => RunFailureCode.Transient
     };
 

@@ -92,6 +92,21 @@ public class GlobalSettingsServiceTests
         connection.GoodFor.ShouldBe("vision");
     }
 
+    [Theory]
+    [InlineData(1023L, null)]
+    [InlineData(32768L, 32768L)]
+    [InlineData(null, 40000L)]
+    public async Task ShouldRejectInvalidContextLimitOverrides(long? contextWindow, long? reservedOutput)
+    {
+        var connection = new ConnectionSettings(Guid.CreateVersion7(), "One", "https://one/v1", "one",
+            true, true, false, ContextWindowTokens: contextWindow, ReservedOutputTokens: reservedOutput);
+
+        var action = () => CreateInstance().SaveAsync(
+            new SaveGlobalSettingsRequest([connection], [], []), CancellationToken.None);
+
+        await action.ShouldThrowAsync<ArgumentException>();
+    }
+
     private async Task<GlobalSettings> SaveAsync(params ConnectionSettings[] connections)
     {
         GlobalSettings? saved = null;
@@ -104,5 +119,6 @@ public class GlobalSettingsServiceTests
         return await CreateInstance().SaveAsync(new SaveGlobalSettingsRequest(connections, [], []), CancellationToken.None);
     }
 
-    private GlobalSettingsService CreateInstance() => new(_repository.Object, _secretStore.Object);
+    private GlobalSettingsService CreateInstance() => new(
+        _repository.Object, _secretStore.Object, new ConnectionContextLimitsResolver());
 }

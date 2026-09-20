@@ -476,7 +476,24 @@ public sealed class ChatExecutionTests
 
         var failed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Failed);
         failed.Error.ShouldNotBeNull().ShouldContain("too large for the model context window");
+        failed.FailureCode.ShouldBe(RunFailureCode.ContextWindow);
+        failed.CanRetry.ShouldBeTrue();
         fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ConnectionContextOverrideShouldReachPlanner()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetConnectionLimitsAsync(65_536, 8_192);
+
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(
+            Guid.NewGuid(), Guid.NewGuid(), new string('x', 60_000)));
+
+        var call = await fixture.NextCallAsync();
+        call.Request.CredentialProfileId.ShouldNotBeNull();
+        call.Answer.SetResult("Fits configured context");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
     }
 
     [Fact]
@@ -1213,10 +1230,11 @@ public sealed class ChatExecutionTests
         {
             var policies = new ToolPolicyResolver(_projectService, Chats, _settings);
             return new ChatRunDispatcher(_runs, Chats, Chats, _projectService, _settings,
-                new GlobalSettingsService(_settings, _secrets),
+                new GlobalSettingsService(_settings, _secrets, new ConnectionContextLimitsResolver()),
                 new ChatAgent(Completion, () => Tools, _projectService, _settings, policies, Workspace,
                     ModelProjector, ToolResultCodec,
-                    new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator())),
+                    new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
+                        new ConnectionContextLimitsResolver()),
                     Mock.Of<IContextPlanDiagnostics>()),
                 _secrets, _clock, _ids, _synchronization, Workspace, policies,
                 new ChatContext(ToolResultCodec));
@@ -1231,6 +1249,18 @@ public sealed class ChatExecutionTests
             return fixture;
         }
         public Task<ChatRunSnapshot> SubmitAsync(SubmitChatMessageRequest request) => Dispatcher.SubmitAsync(ProjectId, ChatId, request, CancellationToken.None);
+        public async Task SetConnectionLimitsAsync(long contextWindowTokens, long reservedOutputTokens)
+        {
+            var current = await _settings.LoadAsync(CancellationToken.None);
+            await _settings.SaveAsync(current with
+            {
+                Connections = current.Connections.Select(connection => connection with
+                {
+                    ContextWindowTokens = contextWindowTokens,
+                    ReservedOutputTokens = reservedOutputTokens
+                }).ToArray()
+            }, CancellationToken.None);
+        }
         public async Task AppendLegacyReplacementAsync(Guid sourceId, Guid replacementId, string content)
         {
             var stored = await _chatRepository.GetAsync(new Domain.Projects.ProjectId(ProjectId),

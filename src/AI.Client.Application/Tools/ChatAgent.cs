@@ -110,7 +110,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     if ((await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") permitted.Add(tool);
             permitted.Add(completionProtocol.Tool);
             toolCatalog.Update(run, permitted);
-            var selection = toolSelector.Choose(configuredConnection, request.Message, modelContext, permitted,
+            var completionToolForced = completionRequired && (empty > 0 || missingCompletion > 0);
+            IReadOnlyList<AgentTool> requestTools = completionToolForced ? [completionProtocol.Tool] : permitted;
+            var selection = toolSelector.Choose(configuredConnection, request.Message, modelContext, requestTools,
                 toolCatalog.GetPinned(run));
             var selectedTools = selection.Tools;
             var available = selectedTools.Select(item => item.ModelDefinition).ToArray();
@@ -119,6 +121,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var calls = new List<ChatToolCall>();
             var content = new StringBuilder();
             string? finish = null;
+            var chunkCount = 0;
             var composition = instructionComposer.Compose(run, modelContext);
             instructionDiagnostics.RecordInstructions(request.Model, composition.Keys, composition.EstimatedTokens);
             var plan = contextPlanner.Plan(configuredConnection, request.Model, composition.Messages, available);
@@ -127,6 +130,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             await foreach (var chunk in completion.StreamAsync(
                                request with { ContextMessages = plan.Messages, Tools = available }, token))
             {
+                chunkCount++;
                 if (chunk.ToolCallsStarted) await toolCallsStarted(token);
                 if (chunk.ToolCalls is { } received) calls.AddRange(received);
                 if (chunk.FinishReason is { Length: > 0 } reason) finish = reason;
@@ -134,21 +138,33 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 content.Append(chunk.Content);
                 await intermediate(continuedAnswer.ToString() + content, token);
             }
-            instructionComposer.Acknowledge(run, composition);
             if (calls.Count == 0 && content.Length == 0)
             {
                 // An endpoint that answers with nothing at all has not decided to stop — it has
                 // failed to answer, and usually only this once. Nothing is persisted for an empty
-                // turn, so asking again sends exactly the same request: the retry is free of any
-                // effect to repeat. Failing on the first one threw away everything the run had
-                // already done, which is a heavy price for a hiccup one more attempt would have
-                // absorbed — mid-way through configuring a project it left the project half made.
-                if (++empty > MaxEmptyTurns)
-                    throw new InvalidOperationException("The model returned an empty response.");
+                // turn. Keep every unacknowledged instruction: an empty provider response did not
+                // act on it. The next request explicitly describes the missing protocol result;
+                // after tools were used it also advertises only app_finish_run, so the endpoint has
+                // one unambiguous way to say complete, continue, or blocked.
+                var attempt = ++empty;
+                instructionDiagnostics.RecordEmptyResponse(request.Model, attempt, finish, chunkCount,
+                    completionRequired, completionToolForced);
+                instructions.Upsert(run, new ModelInstruction("response.empty",
+                    completionRequired
+                        ? $"Your previous response contained neither text nor a tool call and was not accepted. "
+                          + $"Call {completionProtocol.Tool.ModelDefinition.Name} now with status complete, continue, or blocked."
+                        : "Your previous response contained neither text nor a tool call and was not accepted. "
+                          + "Return a non-empty answer or call an available tool.",
+                    980, ModelInstructionLifetime.UntilAcknowledged));
+                if (attempt > MaxEmptyTurns)
+                    throw new InvalidOperationException(
+                        $"The model returned an empty response {attempt} times "
+                        + $"(finish reason: {finish ?? "none"}, chunks: {chunkCount}).");
                 await Task.Delay(TimeSpan.FromSeconds(empty), token);
                 continue;
             }
 
+            instructionComposer.Acknowledge(run, composition);
             empty = 0;
             if (calls.Count == 0 && Truncated(finish))
             {
@@ -197,6 +213,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var completionCalls = calls.Where(call => call.Name == completionProtocol.Tool.ModelDefinition.Name).ToArray();
             if (completionCalls.Length > 0)
             {
+                // Once the model has entered the structured completion protocol, every correction
+                // stays in that protocol even if no ordinary tool preceded it.
+                completionRequired = true;
                 if (completionCalls.Length != 1 || calls.Count != 1)
                     throw new InvalidOperationException(
                         $"{completionProtocol.Tool.ModelDefinition.Name} must be the only call in its tool-call batch.");

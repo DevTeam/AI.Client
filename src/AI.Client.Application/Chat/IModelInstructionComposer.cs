@@ -22,4 +22,7 @@ public interface IModelInstructionComposer
 public interface IModelInstructionDiagnostics
 {
     void RecordInstructions(string model, IReadOnlyList<string> keys, long estimatedTokens);
+
+    void RecordEmptyResponse(string model, int attempt, string? finishReason, int chunkCount,
+        bool completionRequired, bool completionToolForced);
 }

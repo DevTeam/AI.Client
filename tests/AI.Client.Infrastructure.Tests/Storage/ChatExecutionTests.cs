@@ -65,6 +65,46 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task EmptyResponseMustKeepCompletionCorrectionUntilAValidDecision()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Completion.AdaptLegacyFinalAnswers = false;
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Change a file"));
+
+        var work = await fixture.NextCallAsync();
+        work.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        work.Answer.SetResult("");
+
+        var invalid = await fixture.NextCallAsync();
+        invalid.ToolCalls = [new ChatToolCall("finish-invalid", RunCompletionProtocol.Name, """
+            {"status":"complete","finalAnswer":"Done","completed":[],"evidence":[],"remaining":[]}
+            """)];
+        invalid.Answer.SetResult("");
+
+        var empty = await fixture.NextCallAsync();
+        empty.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
+        empty.FinishReason = "stop";
+        empty.Answer.SetResult("");
+
+        var corrected = await fixture.NextCallAsync();
+        corrected.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
+        var hidden = corrected.Request.ContextMessages!.Where(message => message.Role == "system")
+            .Select(message => message.Content).ToArray();
+        hidden.ShouldContain(message => message.Contains("decision was rejected", StringComparison.Ordinal));
+        hidden.ShouldContain(message => message.Contains("neither text nor a tool call", StringComparison.Ordinal));
+        corrected.ToolCalls = [new ChatToolCall("finish-valid", RunCompletionProtocol.Name, """
+            {"status":"complete","finalAnswer":"Done and verified.","completed":["Changed the file"],"evidence":[],"remaining":[]}
+            """)];
+        corrected.Answer.SetResult("");
+
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
+            .ShouldHaveSingleItem().Content.ShouldBe("Done and verified.");
+    }
+
+    [Fact]
     public async Task WorkspaceChangesShouldBeLiveBeforeBecomingPartOfTheFinalReply()
     {
         var workspace = new TestWorkspaceChangeTracker();

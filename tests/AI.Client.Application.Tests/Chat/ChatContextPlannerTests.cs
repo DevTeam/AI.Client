@@ -124,6 +124,27 @@ public sealed class ChatContextPlannerTests
     }
 
     [Fact]
+    public void ShouldTightenCurrentTurnToolProjectionsUntilTheyFit()
+    {
+        var stored = new string('x', 50_000);
+        ChatCompletionMessage[] messages =
+        [
+            new("user", "Inspect the result"),
+            new("assistant", "", [new ChatToolCall("call-1", "read", "{}")]),
+            new("tool", stored, ToolCallId: "call-1")
+        ];
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator),
+            new FixedLimitsResolver(2_200, 256));
+
+        var plan = planner.Plan(null, "small-model", messages, []);
+
+        plan.Fits.ShouldBeTrue();
+        plan.Messages[2].Content.ShouldBeSameAs(stored);
+        plan.Messages[2].ForModel.Length.ShouldBeLessThan(1_000);
+        messages[2].ModelContent.ShouldBeNull();
+    }
+
+    [Fact]
     public void ShouldReplaceOldCompleteTurnsWithDeterministicSummary()
     {
         var messages = Enumerable.Range(1, 6).SelectMany(index => new ChatCompletionMessage[]
@@ -209,5 +230,11 @@ public sealed class ChatContextPlannerTests
         public long EstimateMessages(IReadOnlyList<ChatCompletionMessage> messages) => long.MaxValue;
 
         public long EstimateTools(IReadOnlyList<ChatToolDefinition> tools) => long.MaxValue;
+    }
+
+    private sealed class FixedLimitsResolver(long contextWindow, long reservedOutput) : IConnectionContextLimitsResolver
+    {
+        public ResolvedConnectionContextLimits Resolve(ConnectionSettings? connection) =>
+            new(contextWindow, ContextLimitSource.Override, reservedOutput, ContextLimitSource.Override);
     }
 }

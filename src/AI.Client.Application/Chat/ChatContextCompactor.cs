@@ -10,8 +10,8 @@ using Contracts.Chat;
 public sealed class ChatContextCompactor(IContextTokenEstimator estimator) : IChatContextCompactor
 {
     private const int RecentTurnsToKeep = 2;
-    private const int ToolHeadCharacters = 3_000;
-    private const int ToolTailCharacters = 1_000;
+    private static readonly (int Head, int Tail)[] ToolProjectionLimits =
+        [(3_000, 1_000), (1_500, 500), (750, 250), (384, 128)];
     private const int SummaryUserCharacters = 600;
     private const int SummaryAssistantCharacters = 800;
     private const int SummaryLimitCharacters = 6_000;
@@ -20,7 +20,21 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator) : ICh
     public ContextCompactionResult Compact(IReadOnlyList<ChatCompletionMessage> messages, long inputLimit)
     {
         ArgumentNullException.ThrowIfNull(messages);
-        var projected = ProjectLargeToolResults(messages);
+        ContextCompactionResult? smallest = null;
+        foreach (var (head, tail) in ToolProjectionLimits)
+        {
+            var result = CompactOnce(messages, inputLimit, head, tail);
+            smallest = result;
+            if (estimator.EstimateMessages(result.Messages) <= inputLimit) return result;
+        }
+
+        return smallest!;
+    }
+
+    private ContextCompactionResult CompactOnce(IReadOnlyList<ChatCompletionMessage> messages, long inputLimit,
+        int toolHeadCharacters, int toolTailCharacters)
+    {
+        var projected = ProjectLargeToolResults(messages, toolHeadCharacters, toolTailCharacters);
         var changedProjection = !ReferenceEquals(projected, messages);
         if (estimator.EstimateMessages(projected) <= inputLimit)
             return new ContextCompactionResult(projected, 0, changedProjection);
@@ -48,7 +62,9 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator) : ICh
     }
 
     private static IReadOnlyList<ChatCompletionMessage> ProjectLargeToolResults(
-        IReadOnlyList<ChatCompletionMessage> messages)
+        IReadOnlyList<ChatCompletionMessage> messages,
+        int toolHeadCharacters,
+        int toolTailCharacters)
     {
         List<ChatCompletionMessage>? projected = null;
         var toolNames = messages.SelectMany(message => message.ToolCalls ?? [])
@@ -59,7 +75,7 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator) : ICh
         {
             var message = messages[index];
             var modelContent = message.ForModel;
-            if (message.Role != "tool" || modelContent.Length <= ToolHeadCharacters + ToolTailCharacters
+            if (message.Role != "tool" || modelContent.Length <= toolHeadCharacters + toolTailCharacters
                 || modelContent.StartsWith(ToolCompactionMarker, StringComparison.Ordinal))
             {
                 projected?.Add(message);
@@ -72,9 +88,9 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator) : ICh
                 : "unknown";
             var compacted = $"{ToolCompactionMarker} Tool: {toolName}. Original characters: {modelContent.Length}. "
                 + "The beginning and end are retained. Re-run the tool or read the resource again if details are needed.]\n"
-                + modelContent[..ToolHeadCharacters]
+                + modelContent[..toolHeadCharacters]
                 + "\n[...omitted...]\n"
-                + modelContent[^ToolTailCharacters..];
+                + modelContent[^toolTailCharacters..];
             projected.Add(message with { ModelContent = compacted });
         }
 

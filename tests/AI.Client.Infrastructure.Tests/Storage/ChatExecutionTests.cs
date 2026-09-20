@@ -1236,7 +1236,9 @@ public sealed class ChatExecutionTests
                     ModelProjector, ToolResultCodec,
                     new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
                         new ConnectionContextLimitsResolver()),
-                    Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity()),
+                    Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity(),
+                    new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()),
+                    new ToolCatalogRegistry()),
                 _secrets, _clock, _ids, _synchronization, Workspace, policies,
                 new ChatContext(ToolResultCodec));
         }

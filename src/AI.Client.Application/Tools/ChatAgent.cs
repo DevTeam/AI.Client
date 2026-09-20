@@ -24,7 +24,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IProjectService projects, IGlobalSettingsRepository settings, IToolPolicyResolver policies,
     IWorkspaceChangeTracker workspace, IToolResultModelProjector modelProjector,
     IToolResultCodec toolResultCodec, IChatContextPlanner contextPlanner,
-    IContextPlanDiagnostics contextDiagnostics, IChatTransportActivity transport) : IChatAgent
+    IContextPlanDiagnostics contextDiagnostics, IChatTransportActivity transport,
+    IToolDefinitionSelector toolSelector, IToolCatalogRegistry toolCatalog) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -57,6 +58,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var grants = project.DirectoryGrants
             .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
         var run = new ToolRunContext(projectId, chatId, branchId, interactive);
+        using var catalogScope = toolCatalog.Begin(run);
         await using var session = servers.Count > 0 ? await sessions().OpenAsync(grants, servers, run, token) : null;
         var runKey = new WorkspaceRunKey(projectId, chatId, branchId);
         await workspace.BeginRunAsync(runKey, grants,
@@ -83,15 +85,20 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var truncated = 0;
         while (true)
         {
-            var available = new List<ChatToolDefinition>();
+            var permitted = new List<AgentTool>();
             if (session is not null)
                 foreach (var tool in session.Tools)
-                    if ((await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") available.Add(tool.ModelDefinition);
+                    if ((await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") permitted.Add(tool);
+            toolCatalog.Update(run, permitted);
+            var selection = toolSelector.Choose(configuredConnection, request.Message, context, permitted,
+                toolCatalog.GetPinned(run));
+            var selectedTools = selection.Tools;
+            var available = selectedTools.Select(item => item.ModelDefinition).ToArray();
             var calls = new List<ChatToolCall>();
             var content = new StringBuilder();
             string? finish = null;
             var plan = contextPlanner.Plan(configuredConnection, request.Model, context, available);
-            contextDiagnostics.Record(request.Model, plan, context.Count, available.Count);
+            contextDiagnostics.Record(request.Model, plan, context.Count, available.Length);
             if (!plan.Fits) throw new ContextWindowExceededException(plan);
             await foreach (var chunk in completion.StreamAsync(
                                request with { ContextMessages = plan.Messages, Tools = available }, token))
@@ -153,7 +160,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 try
                 {
                     token.ThrowIfCancellationRequested();
-                    var tool = session?.Tools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name)
+                    var tool = selectedTools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name)
                         ?? throw new ArgumentException("Unknown tool.");
                     var arguments = session!.ValidateArguments(tool, call.Arguments);
                     var policy = await PolicyAsync(projectId, chatId, tool, token);

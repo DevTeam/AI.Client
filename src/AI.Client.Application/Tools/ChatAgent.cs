@@ -1,4 +1,4 @@
-﻿namespace AI.Client.Application.Tools;
+namespace AI.Client.Application.Tools;
 
 using Chat;
 using Chats;
@@ -124,7 +124,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var chunkCount = 0;
             var composition = instructionComposer.Compose(run, modelContext);
             instructionDiagnostics.RecordInstructions(request.Model, composition.Keys, composition.EstimatedTokens);
-            var plan = contextPlanner.Plan(configuredConnection, request.Model, composition.Messages, available);
+            var plan = await contextPlanner.PlanAsync(configuredConnection, request.Model, composition.Messages, available,
+                new CompletionClientSummarizer(completion, request), SummaryTargetTokens, token);
             contextDiagnostics.Record(request.Model, plan, composition.Messages.Count, available.Length);
             if (!plan.Fits) throw new ContextWindowExceededException(plan);
             await foreach (var chunk in completion.StreamAsync(
@@ -385,6 +386,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     private const int MaxEmptyTurns = 2;
 
     /// <summary>
+    /// Token budget for the LLM-generated summary used as a last-resort compaction step. Small
+    /// enough to leave room for instructions, tools and the recent turn in the same window, large
+    /// enough to keep enough decisions to continue the work.
+    /// </summary>
+    private const int SummaryTargetTokens = 1500;
+
+    /// <summary>
     /// How many times in a row an answer may be cut off at the token ceiling and asked to continue.
     /// Each continuation is progress — a truncated turn always produced a ceiling's worth of text —
     /// so this is not a budget for patience but a stop for the pathological case: a model that has
@@ -546,5 +554,23 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     {
         var content = new[] { ToolContent.OfText(message) };
         return new ToolCallResult(content, null, null, true, modelProjector.Project(content, null, true));
+    }
+
+    /// <summary>
+    /// Isolated, tool-free summarizer that reuses the same chat completion client as the run.
+    /// The same model is asked to compress earlier turns so the planner can fall back without
+    /// waiting on the model to be told to call <c>context_compact</c>; a tool list is never
+    /// sent, so the summary cannot recurse into more tool calls.
+    /// </summary>
+    private sealed class CompletionClientSummarizer(IChatCompletionClient completion,
+        ChatCompletionRequest originalRequest) : IContextSummarizer
+    {
+        public async Task<string> SummarizeAsync(string prompt, CancellationToken cancellationToken) =>
+            (await completion.CompleteAsync(originalRequest with
+            {
+                Message = prompt,
+                ContextMessages = [new ChatCompletionMessage("user", prompt)],
+                Tools = []
+            }, cancellationToken)).Content;
     }
 }

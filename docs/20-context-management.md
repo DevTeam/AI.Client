@@ -43,8 +43,20 @@ Deterministic compaction of the old part of context
         +-- fits --> send
         |
         v
+Automatic LLM summary of older turns (tool-free, user-role, run-only)
+        |
+        +-- fits --> send
+        |
+        v
 Clear local error before the HTTP request
 ```
+
+The automatic LLM summary is the last step before failing the request. It exists so a runaway
+history does not need a human to call `app_context_compact` manually: the planner reuses the same
+endpoint as the run, sends one user message with the older turns and no tool list, and replaces
+the covered turns with the reply in the model-only projection. The full history shown to the
+user is unchanged. See `21-tool-selection-and-adaptive-compaction.md` for the diagnostics contract
+and how to surface the event to the user.
 
 ## 1. Input context budget
 
@@ -196,7 +208,9 @@ When the connection has no explicit override, the connection card shows `Context
 - the tool-call protocol remains valid after reduction;
 - the user receives a clear error instead of a long unexplained `Generating`;
 - logs allow distinguishing context compaction, rate limit, header timeout, and first-token timeout without recording prompt/tool content;
-- existing chat and settings documents continue to load.
+- existing chat and settings documents continue to load;
+- when the automatic LLM fallback fits the request, no HTTP error is returned for context size and the run continues without the model being told to call `app_context_compact`;
+- when the automatic LLM fallback still does not fit, the run ends with `ContextWindowExceededException` carrying the post-fallback estimate, the model's limit and the omitted count.
 
 ## Not in the first release
 

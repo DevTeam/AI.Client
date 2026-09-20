@@ -1,0 +1,49 @@
+@implements IDisposable
+@inject INotificationService Notifications
+
+@* Renders the single, fixed-position toast region for the whole app. Sits in App.razor so it shows
+   above any page (Home.razor, GlobalSettingsPanel, ToolPermissionsDrawer — anywhere a save might
+   happen). Subscribes to NotificationService.Changed and re-renders only when the visible message
+   changes, which is rare (one Show() per save), so the lack of fine-grained diffing is fine here. *@
+
+<div class="toast-region" aria-live="polite" aria-atomic="true">
+    @if (_current is not null)
+    {
+        <div class="toast @KindClass(_current.Kind)" role="status">
+            <AppIcon Name="@(_current.Kind == NotificationKind.Error ? "error" : _current.Kind == NotificationKind.Success ? "check" : "info")" />
+            <span>@_current.Message</span>
+            <button class="icon-action" type="button" title="Dismiss notification" aria-label="Dismiss notification" @onclick="Notifications.Dismiss"><AppIcon Name="x" /></button>
+        </div>
+    }
+</div>
+
+@code {
+    private NotificationMessage? _current;
+
+    protected override void OnInitialized()
+    {
+        _current = Notifications.Current;
+        Notifications.Changed += OnNotificationsChanged;
+    }
+
+    private void OnNotificationsChanged()
+    {
+        _current = Notifications.Current;
+        // InvokeAsync is overkill here: the event is raised on whatever thread the caller used,
+        // which is always the Blazor synchronization context (every caller is a Razor event handler
+        // or a service method invoked from one), so a direct StateHasChanged would also be safe.
+        // Kept as InvokeAsync for the same reason WorkspaceLayoutService.AttachAsync is — so the
+        // component still re-renders correctly if a future caller fires the event off-thread.
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Notifications.Changed -= OnNotificationsChanged;
+
+    private static string KindClass(NotificationKind kind) => kind switch
+    {
+        NotificationKind.Success => "success",
+        NotificationKind.Error => "error",
+        NotificationKind.Info => "info",
+        _ => string.Empty
+    };
+}

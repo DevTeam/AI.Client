@@ -13,6 +13,7 @@
 @inject IChatRunsApi ChatRunsApi
 @inject IRunStateService RunState
 @inject IChatComposerService Composer
+@inject INotificationService Notifications
 @implements IAsyncDisposable
 
 <PageTitle>@ClientMetadata.ProductName</PageTitle>
@@ -415,12 +416,13 @@
         Close="ClosePermissions" Changed="RefreshAfterPermissionChangeAsync" />
 }
 
-<div class="toast-region" aria-live="polite" aria-atomic="true">
-    @if (_toast is not null)
-    {
-        <div class="toast @_toast.Kind" role="status"><AppIcon Name="@(_toast.Kind == "success" ? "check" : "x")" /><span>@_toast.Message</span><button class="icon-action" type="button" title="Dismiss notification" aria-label="Dismiss notification" @onclick="DismissToast"><AppIcon Name="x" /></button></div>
-    }
-</div>
+@* The corner toast used to live here as a private field + ShowToast helper. It was inlined into
+   this page because at the time every operation that showed one (project create/save/delete,
+   chat delete, pin toggle, …) happened on this page. After the global settings panel and the
+   tool permissions drawer started saving on their own, that arrangement stopped scaling: every
+   new panel would have had to either duplicate the region or call back into Home.razor to show
+   a toast. The single ToastRegion rendered by App.razor now owns that corner, and every panel
+   just calls Notifications.ShowSuccess / ShowError / ShowInfo. *@
 
 @code {
     private sealed record BranchTreeItem(Guid RootId, string Title, int Depth, Guid LeafId);
@@ -515,8 +517,6 @@
     private string? _chatError;
 
     private string? _pendingScrollRestoreKey;
-    private ToastMessage? _toast;
-    private CancellationTokenSource? _toastCancellation;
     private Guid? _defaultConnectionId;
     private ElementReference _composer;
     private MessageFeed? _messageFeed;
@@ -932,7 +932,7 @@
         {
             var project = await ProjectApi.CreateAsync(new CreateProjectRequest(name, string.Empty), CancellationToken.None);
             await LoadProjectsAsync(project.Id);
-            ShowToast("Project created.", "success");
+            Notifications.ShowSuccess("Project created.");
         }
         catch (HttpRequestException)
         {
@@ -1043,7 +1043,7 @@
         if (result is { Status: ProjectUpdateStatus.Updated, Project: not null })
         {
             await LoadProjectsAsync(result.Project.Id);
-            ShowToast("Project saved.", "success");
+            Notifications.ShowSuccess("Project saved.");
             await CloseProjectSettingsAsync();
             return;
         }
@@ -1082,7 +1082,7 @@
             _isProjectMenuOpen = false;
             _isProjectSettingsOpen = false;
             _isConfirmingProjectDelete = false;
-            ShowToast("Project deleted.", "success");
+            Notifications.ShowSuccess("Project deleted.");
             return;
         }
 
@@ -1480,12 +1480,16 @@
         if (result.Status != ProjectUpdateStatus.Updated || result.Project is null)
         {
             await LoadSecurityAsync(_selectedProject.Id);
-            ShowToast("Directory changes were not saved. Reload the project and try again.", "error");
+            Notifications.ShowError("Directory changes were not saved. Reload the project and try again.");
             return false;
         }
 
         _security = ProjectSecurityEditor.From(result.Project);
         _editor.Revision = result.Project.Revision;
+        // SaveSecurityAsync is the "Save" of the project settings panel, so it gets the same toast
+        // as the project form itself — otherwise the one panel with a dozen fields is the one that
+        // stays silent about whether the write landed.
+        Notifications.ShowSuccess("Project settings saved.");
         return true;
     }
 
@@ -1955,7 +1959,7 @@
         }
         catch (Exception error) when (error is InvalidOperationException or HttpRequestException)
         {
-            ShowToast(error.Message, "error");
+            Notifications.ShowError(error.Message);
         }
     }
     private Task ResumeQueueAsync() => _selectedProject is null || _selectedChat is null ? Task.CompletedTask
@@ -2037,7 +2041,7 @@
         if (_composerModule is not null)
         {
             await _composerModule.InvokeVoidAsync("copyText", markdown);
-            ShowToast("Markdown copied.", "success");
+            Notifications.ShowSuccess("Markdown copied.");
         }
     }
 
@@ -2336,7 +2340,7 @@
     {
         if (_selectedProject is null || _selectedChat is null) return;
         var result = await ChatHistoryApi.DeleteBranchAsync(_selectedProject.Id, _selectedChat.Id, branch.RootId, _selectedChat.Revision, CancellationToken.None);
-        if (!result.IsDeleted) { ShowToast("Branch was not deleted. Reload the chat and try again.", "error"); return; }
+        if (!result.IsDeleted) { Notifications.ShowError("Branch was not deleted. Reload the chat and try again."); return; }
         _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, _selectedChat.Id, CancellationToken.None);
         _selectedBranchId = result.ParentBranchId ?? _selectedChat?.Id;
         _branchLeafId = result.ParentHeadMessageId
@@ -2590,7 +2594,7 @@
         var updated = await ChatHistoryApi.PinAsync(_selectedProject.Id, chat.Id, new PinChatRequest(!chat.IsPinned, chat.Revision), CancellationToken.None);
         if (updated is null)
         {
-            ShowToast("Chat pin state was not saved. Reload and try again.", "error");
+            Notifications.ShowError("Chat pin state was not saved. Reload and try again.");
             return;
         }
 
@@ -2641,7 +2645,7 @@
         var updated = await ChatHistoryApi.PinAsync(_selectedProject.Id, dragged.Id, new PinChatRequest(targetChat.IsPinned, dragged.Revision), CancellationToken.None);
         if (updated is null)
         {
-            ShowToast("Chat pin state was not saved. Reload and try again.", "error");
+            Notifications.ShowError("Chat pin state was not saved. Reload and try again.");
             return;
         }
 
@@ -2740,9 +2744,11 @@
         {
             CancelBranchOperation();
         }
-        else if (_toast is not null)
+        else if (Notifications.Current is not null)
         {
-            DismissToast();
+            // Escape first dismisses the corner toast — pressing Escape a second time then falls
+            // through to the rest of the handlers (close context menus, cancel branch op).
+            Notifications.Dismiss();
             return;
         }
         else
@@ -2805,7 +2811,7 @@
 
         CloseContextMenus();
         await LoadChatsAsync(_selectedProject.Id);
-        ShowToast("Chat deleted.", "success");
+        Notifications.ShowSuccess("Chat deleted.");
     }
 
     private void OpenProjectSettings()
@@ -2853,7 +2859,7 @@
         await LoadSecurityAsync(_selectedProject.Id);
         if (_permissionsChatId is { } chatId && _selectedChat?.Id == chatId)
             _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, chatId, CancellationToken.None);
-        ShowToast("Tool permission reset.", "success");
+        Notifications.ShowSuccess("Tool permission reset.");
     }
 
     private void CloseProjectSettings() => _isProjectSettingsOpen = false;
@@ -2901,7 +2907,7 @@
                 _selectedChat.Id,
                 new UpdateChatEndpointRequest(_chat.CredentialProfileId, _selectedChat.Revision),
                 CancellationToken.None);
-            ShowToast("Chat endpoint updated.", "success");
+            Notifications.ShowSuccess("Chat endpoint updated.");
         }
     }
 
@@ -2950,33 +2956,6 @@
         {
             await _messageFeed.SaveScrollPositionAsync(key);
         }
-    }
-
-    private void ShowToast(string message, string kind)
-    {
-        _toastCancellation?.Cancel();
-        _toastCancellation?.Dispose();
-        _toastCancellation = new CancellationTokenSource();
-        _toast = new ToastMessage(message, kind);
-        _ = DismissToastLaterAsync(_toastCancellation.Token);
-    }
-
-    private async Task DismissToastLaterAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(TimeSpan.FromSeconds(4), cancellationToken);
-            await InvokeAsync(DismissToast);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    private void DismissToast()
-    {
-        _toast = null;
-        StateHasChanged();
     }
 
     private void OpenGlobalSection(string section)
@@ -3164,8 +3143,6 @@
         public string Message { get; set; } = string.Empty;
     }
 
-    private sealed record ToastMessage(string Message, string Kind);
-
     public async ValueTask DisposeAsync()
     {
         CancelChatSelection();
@@ -3173,12 +3150,6 @@
         _chatsBusy?.Dispose();
         await _generatingTickerCancellation.CancelAsync();
         _generatingTickerCancellation.Dispose();
-
-        if (_toastCancellation is not null)
-        {
-            await _toastCancellation.CancelAsync();
-            _toastCancellation.Dispose();
-        }
 
         if (_justArrivedLeafCancellation is not null)
         {

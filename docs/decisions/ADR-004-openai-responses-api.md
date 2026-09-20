@@ -1,33 +1,33 @@
-# ADR-004: Responses API как основной OpenAI-протокол
+# ADR-004: Responses API as the primary OpenAI protocol
 
-Статус: Accepted
+Status: Accepted
 
-Дата: 2026-08-11
+Date: 2026-08-11
 
-## Контекст
+## Context
 
-Клиент должен поддерживать agentic tool calling, streaming, multi-turn history и несколько OpenAI-compatible endpoints. Совместимость провайдеров неоднородна.
+The client must support agentic tool calling, streaming, multi-turn history, and multiple OpenAI-compatible endpoints. Provider compatibility is uneven.
 
-## Решение
+## Decision
 
-Для OpenAI основным адаптером является Responses API. Chat Completions остаётся fallback для endpoints без Responses. Application layer использует provider-neutral `IAIEndpoint` и `AgentEvent`; типы OpenAI SDK остаются в Infrastructure.
+For OpenAI, the Responses API is the primary adapter. Chat Completions remains a fallback for endpoints without Responses. The application layer uses the provider-neutral `IAIEndpoint` and `AgentEvent`; the OpenAI SDK types remain in Infrastructure.
 
-## Последствия
+## Consequences
 
-Положительные:
+Positive:
 
-- современная item-модель для messages и tool calls;
-- естественная поддержка агентского цикла;
-- streaming и continuation;
-- provider details изолированы адаптером.
+- a modern item model for messages and tool calls;
+- natural support for the agent loop;
+- streaming and continuation;
+- provider details are isolated by the adapter.
 
-Отрицательные:
+Negative:
 
-- нужны два адаптера;
-- feature parity совместимых providers нельзя предполагать;
-- local history должна уметь восстановить полный контекст без provider state.
+- two adapters are required;
+- feature parity across compatible providers cannot be assumed;
+- local history must be able to restore the full context without provider state.
 
-## Источники
+## Sources
 
 - [Migrate to the Responses API](https://developers.openai.com/api/docs/guides/migrate-to-responses)
 - [Function calling](https://developers.openai.com/api/docs/guides/function-calling)

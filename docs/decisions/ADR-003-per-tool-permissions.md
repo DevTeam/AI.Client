@@ -1,33 +1,33 @@
-# ADR-003: Права отдельно для каждого MCP-инструмента
+# ADR-003: Per-tool MCP permissions
 
-Статус: Accepted
+Status: Accepted
 
-Дата: 2026-08-11
+Date: 2026-08-11
 
-## Контекст
+## Context
 
-MCP ToolAnnotations сообщают risk hints, но спецификация требует считать их недоверенными для неизвестных servers. Универсальные категории `read/write/delete` не описывают произвольные инструменты достаточно точно.
+MCP ToolAnnotations convey risk hints, but the specification requires treating them as untrusted for unknown servers. Generic `read/write/delete` categories do not describe arbitrary tools accurately enough.
 
-## Решение
+## Decision
 
-Каждый project хранит `Allow`, `Ask` или `Deny` отдельно для ToolIdentity, включающей configured server ID, tool name и schema hash. Новый или изменившийся инструмент получает `Ask`. Directory grants, OAuth scopes и server-side ACL дополнительно ограничивают вызов.
+Each project stores `Allow`, `Ask`, or `Deny` separately for a ToolIdentity that combines the configured server ID, the tool name, and the schema hash. A new or changed tool receives `Ask`. Directory grants, OAuth scopes, and server-side ACLs further restrict the call.
 
-## Последствия
+## Consequences
 
-Положительные:
+Positive:
 
-- явный контроль пользователя;
-- schema change инвалидирует старое разрешение;
-- одинаковые tool names разных servers не смешиваются;
-- модель не может расширить права через annotations.
+- explicit user control;
+- a schema change invalidates the previous approval;
+- identical tool names from different servers are not mixed up;
+- the model cannot expand its permissions through annotations.
 
-Отрицательные:
+Negative:
 
-- требуется больше initial approvals;
-- нужен удобный policy UI;
-- большое число инструментов требует фильтрации и bulk operations, которые не должны ослаблять default `Ask` незаметно.
+- more initial approvals are required;
+- a convenient policy UI is needed;
+- a large number of tools requires filtering and bulk operations that must not silently weaken the default `Ask`.
 
-## Примечание
+## Note
 
-Annotations используются для объяснения риска и безопасного планирования, но не являются авторизацией. HTTP MCP authorization реализуется стандартным OAuth 2.1 flow; локальный `stdio` использует process/environment security.
+Annotations are used to explain the risk and to support safe planning, but they are not an authorization. HTTP MCP authorization is implemented through the standard OAuth 2.1 flow; local `stdio` relies on process and environment security.
 

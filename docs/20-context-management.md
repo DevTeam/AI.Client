@@ -1,91 +1,111 @@
-# Управление контекстом LLM
+# LLM context management
 
-Статус: Proposed
+Status: Proposed
 
-## Цель
+## Goal
 
-Клиент должен завершать длинные диалоги предсказуемо: ни размер истории, ни крупные результаты инструментов не должны приводить к бесконечному `Generating`, отказу endpoint по context window или повторной отправке данных, которые уже были сокращены для модели.
+The client must complete long conversations predictably: neither the size of the history nor large tool results should lead to an endless `Generating`, an endpoint rejection on the context window, or a repeated transmission of data that has already been reduced for the model.
 
-Изменение не затрагивает полную историю, показываемую пользователю. JSON документов чатов остаётся источником истины и продолжает хранить полные сообщения и результаты инструментов.
+The change does not affect the full history shown to the user. The chat document JSON remains the source of truth and continues to store complete messages and tool results.
 
-## Ограничения решения
+## Solution constraints
 
-- миграция существующих чатов не выполняется;
-- `ChatDocumentSerializer.SchemaVersion` не изменяется;
-- сохранённые `ChatMessage` и `ChatMessageDocument` не получают поле `ModelContent`;
-- существующие JSON-файлы не переписываются фоновым процессом;
-- compaction применяется только к представлению запроса, отправляемому LLM;
-- исходные узлы ветки, результаты инструментов и отображаемая история не изменяются;
-- последовательность `assistant(tool_calls)` и соответствующих `tool`-сообщений остаётся протокольно целой.
+- no migration of existing chats is performed;
+- `ChatDocumentSerializer.SchemaVersion` is not changed;
+- stored `ChatMessage` and `ChatMessageDocument` do not get a `ModelContent` field;
+- existing JSON files are not rewritten by a background process;
+- compaction applies only to the request projection sent to the LLM;
+- original branch nodes, tool results, and the visible history are not modified;
+- the `assistant(tool_calls)` and corresponding `tool` message sequence remains protocol-intact.
 
-## Наблюдаемая проблема
+## Observed problem
 
-`ChatContext.Get` сейчас строит весь путь ветки от root до head. Каждый сохранённый результат инструмента восстанавливается как обычный `ChatCompletionMessage` только с полным `Content`. Внутри текущего запуска `ChatAgent` использует сокращённый `ModelContent`, но после сохранения и начала следующего пользовательского хода эта проекция теряется.
+`ChatContext.Get` currently builds the entire branch path from root to head. Every stored tool result is restored as a regular `ChatCompletionMessage` with only the full `Content`. Within the current run, `ChatAgent` uses a reduced `ModelContent`, but after saving and starting the next user turn this projection is lost.
 
-В результате размер запроса монотонно растёт. Особенно быстро его увеличивают чтение файлов, вывод процессов, результаты поиска и вложенные задачи. Endpoint может долго обрабатывать такой запрос, вернуть ошибку context length или не прислать заголовки до общего часового deadline.
+As a result, the request size grows monotonically. Especially fast it grows because of file reads, process output, search results, and nested tasks. The endpoint may take a long time to process such a request, return a context length error, or fail to send headers before the overall hourly deadline.
 
-## Целевая схема
-
-```text
-Полная ветка чата
-        |
-        v
-Восстановление model projection результатов инструментов
-        |
-        v
-Оценка сообщений и схем инструментов в токенах
-        |
-        +-- помещается --> отправка
-        |
-        v
-Детерминированная компактизация старой части контекста
-        |
-        +-- помещается --> отправка
-        |
-        v
-Понятная локальная ошибка до HTTP-запроса
-```
-
-## 1. Бюджет входного контекста
-
-### Настройки
-
-Для соединения нужны два эффективных значения:
-
-- `ContextWindowTokens` — полный context window модели;
-- `ReservedOutputTokens` — резерв под новый ответ модели.
-
-Значения разрешаются в следующем порядке:
-
-1. явное переопределение в настройках соединения;
-2. консервативное значение по умолчанию для OpenAI-compatible endpoint.
-
-Текущая версия показывает источник как `Override` или `Default`. Интерфейс resolver позволяет позднее добавить встроенный каталог моделей без изменения planner и UI-контрактов.
-
-Новые настройки должны быть nullable и иметь рабочие defaults, поэтому старый `settings.json` читается без отдельной миграции. Сохранение настроек может записать новые поля обычным очередным сохранением пользователем.
-
-### Расчёт
-
-Перед каждым вызовом `IChatCompletionClient.StreamAsync` вычисляется:
+## Target scheme
 
 ```text
-inputBudget = contextWindow
-              - reservedOutput
-              - toolDefinitions
-              - protocolOverhead
-              - safetyMargin
+Full chat branch
+        |
+        v
+Restoring model projection of tool results
+        |
+        v
+Token estimation of messages and tool schemas
+        |
+        +-- fits --> send
+        |
+        v
+Deterministic compaction of the old part of context
+        |
+        +-- fits --> send
+        |
+        v
+Clear local error before the HTTP request
 ```
 
-В бюджет включаются:
+## 1. Input context budget
 
-- все `messages`, включая имена ролей, `tool_call_id` и arguments вызовов;
-- JSON Schema доступных инструментов;
-- служебная JSON-обвязка Chat Completions;
-- запас на погрешность tokenizer.
+### Settings
 
-На первом этапе допускается консервативная оценка без provider-specific tokenizer. Оценщик должен быть отдельным интерфейсом, чтобы позднее заменить реализацию без изменения agent loop. Оценка обязана корректно работать с русским текстом, кодом и JSON; простое деление длины строки на четыре недостаточно безопасно для этих данных.
+The connection needs two effective values:
 
-Результатом планирования является `ContextPlan`:
+- `ContextWindowTokens` — the full context window of the model;
+- `ReservedOutputTokens` — the reserve for the new model response.
+
+Values are resolved in the following order:
+
+1. explicit override in the connection settings;
+2. a conservative default for an OpenAI-compatible endpoint.
+
+The current version shows the source as `Override` or `Default`. The resolver interface allows a built-in model catalog to be added later without changing the planner and UI contracts.
+
+The new settings must be nullable and have working defaults, so the old `settings.json` is read without a separate migration. Saving settings may write the new fields; existing files load.
+
+### Effective input budget
+
+```text
+EffectiveInputBudget = ContextWindowTokens - ReservedOutputTokens
+```
+
+By default the budget is conservative: for an unknown connection the value is `16384 - 4096 = 12288`. OpenAI-compatible endpoints without a model hint receive the same value. The connection also carries the source of the values, which is shown in diagnostics.
+
+## 2. Model projection of tool results
+
+### Restoring projection
+
+When the agent builds the request, every saved tool result is checked for a saved `ModelContent`. If it exists, the projection from there is taken; otherwise a new projection is computed by `IToolResultProjector` from the original `Content`. The visible transcript and JSON are unchanged: the result is not rewritten on disk.
+
+The projection is computed once per saved result and reused across runs of the same branch. The cache is invalidated by the message revision.
+
+### Projection rules
+
+For each saved `Content`:
+
+- an empty or whitespace content becomes an empty projection;
+- a long text is replaced by `head` (default 3000 characters) + marker + `tail` (default 1000 characters); the original length is recorded in `originalLength`;
+- a `McpToolResult` with a structured `Content` of array of text and image parts is projected independently for each text part; images are reduced to metadata `{type: "image", mediaType: …, omitted: true, originalBytes: …, sha256: …}`;
+- JSON results of the MCP server are converted to compact single-line JSON; indentation and whitespace are removed without changing keys;
+- an object whose only field is a single long string (for example a wrapped trace) is unwrapped to the string with a one-line marker.
+
+If the tool declared `outputSchema`, the projection must remain valid against it: a schema is provided as `StructuredContent` with truncated values, and the result of a structured tool is not reduced to a plain string. The protocol pair `tool_calls`/`tool` remains valid.
+
+The projection is part of the request and is not persisted. The visible transcript shows the full result.
+
+## 3. Token estimation
+
+The estimator receives:
+
+- a list of `ChatCompletionMessage` (including role names, `tool_call_id`, and arguments);
+- JSON schema of available tools;
+- service JSON wrapping of Chat Completions;
+- a margin for tokenizer inaccuracy.
+
+In the first stage a conservative estimate without a provider-specific tokenizer is allowed. The estimator must be a separate interface, so that the implementation can later be replaced without changing the agent loop. The estimate must work correctly with Russian text, code, and JSON; a simple division of string length by four is not safe enough for these data.
+
+The result of planning is a `ContextPlan`:
 
 ```text
 ContextPlan
@@ -97,230 +117,91 @@ ContextPlan
 `- Messages
 ```
 
-Если исходный контекст превышает бюджет, планировщик вызывает compaction. Если итоговый контекст всё равно не помещается, HTTP-запрос не выполняется, а run завершается диагностируемой ошибкой с фактической оценкой и лимитом модели.
+If the original context exceeds the budget, the planner invokes compaction. If the resulting context still does not fit, the HTTP request is not made, and the run ends with a diagnosable error containing the actual estimate and the model's limit.
 
-### Граница ответственности
+## 4. Deterministic compaction
 
-`OpenAiCompatibleChatCompletionClient` только сериализует уже подготовленный запрос. Бюджетирование располагается в Application layer перед transport, поскольку оно должно одинаково работать с будущими адаптерами Chat Completions и Responses API.
+When the budget is exceeded, the planner compacts the older part of the request deterministically:
 
-## 2. Компактизация истории
+1. The current user request and the current turn's `assistant(tool_calls)` + `tool` pairs remain unchanged.
+2. Older `assistant` messages without tool calls are joined by `[conversation summary]` with the number of joined messages and the model that wrote them.
+3. Older `user` messages are kept in their entirety if possible; otherwise they are joined by a short summary.
+4. Older `assistant(tool_calls)` + `tool` pairs are compacted by replacing the `tool` content with the projection's `head`/`tail` while preserving the call IDs.
+5. `system` messages are kept in full; they are short and important for instruction following.
 
-### Основной принцип
+The compacted message contains a marker `[compacted: N messages]`, so the model can tell what it sees. The order of remaining messages is preserved. The number of compacted messages and the resulting size are recorded in the run snapshot for diagnostics.
 
-Компактизация создаёт временный список `ChatCompletionMessage` для одного запроса. Она не удаляет сообщения и не меняет branch head.
+Compaction does not rewrite `ChatMessage` on disk. It produces only the model-facing projection.
 
-Приоритет сохранения контекста:
+## 5. Failure before the HTTP request
 
-1. текущий пользовательский запрос;
-2. незавершённый текущий цикл tool calls;
-3. последние законченные пользовательские ходы;
-4. ограничения и решения из более ранней истории;
-5. подробные старые результаты инструментов.
+If the request cannot be reduced to the budget even after compaction, the agent:
 
-### Неделимые группы
+- does not perform the HTTP request;
+- returns `RunFailed` with `ErrorCode: ContextWindowExceeded`;
+- publishes diagnostics: `estimatedInputTokens`, `inputLimit`, `reservedOutputTokens`, `wasCompacted: true`, `omittedMessages`, and the identifiers of the last messages included in the projection;
+- shows in the UI: "The request does not fit in the model's context window. Reduce the visible history or increase the model's budget in connection settings."
 
-Планировщик работает не с отдельными сообщениями, а с protocol groups:
+The error is final for the run; the agent does not make repeat attempts with an even more aggressive compaction in the same turn.
 
-- обычный ход `user -> assistant`;
-- `assistant` с одним или несколькими `tool_calls` плюс все ответы `tool` для этих call IDs;
-- следующий ответ ассистента после инструментов.
+## 6. Recovery and history continuity
 
-Нельзя оставить `tool_call` без ответа, удалить только один результат параллельного batch или изменить порядок call IDs. Уже существующий repair незавершённых invocation в `ChatContext` выполняется до бюджетирования.
+A compacted request is only the request projection. The visible history, saved messages, and tool results remain complete. The next user turn starts from the same branch root with the same JSON, and the projection is recomputed for the new request.
 
-### Последовательность сокращения
+When `previous_response_id` is not supported by the connection, the planner always sends the full root-to-head chain (with projection); the model's response is treated as the next message of the conversation, and the local history is the only source of truth.
 
-#### Шаг A. Model projection инструментов
+## 7. Endpoints without Responses API
 
-Каждый распознанный сохранённый tool result сначала переводится через внедрённый `IToolResultCodec.TryRead(content)` в `ModelContent`. Кодек использует `IToolResultModelProjector`: успешный непустой `structuredContent` имеет приоритет, для результата с `isError` используется `content`, а `_meta` никогда не попадает в модель. Это базовое представление, а не реакция на переполнение бюджета.
+For Chat Completions the projection is the same; the only difference is in the protocol framing. The compacted `[conversation summary]` is sent as a regular user message with a `name: "compaction"` marker that the model is told to treat as a system instruction; otherwise the model would treat the joined text as a user request.
 
-#### Шаг B. Ограничение крупных результатов
+## Implementation notes
 
-Если один model result всё ещё велик, сохраняются:
+### Where to place the projection
 
-- тип и имя выполненного инструмента, если они доступны;
-- признак успеха или ошибки;
-- начало и конец содержимого либо релевантный excerpt;
-- исходный размер;
-- явная отметка о сокращении;
-- инструкция повторно прочитать конкретный ресурс, если модели понадобятся детали.
+`IToolResultProjector.Project(savedResult, callId)` is called from `ChatContext.Build` before token estimation. The projection is cached by `(messageId, revision)` in the chat document cache. The cache is shared by runs of the same chat and invalidated when a node is replaced.
 
-Обрезанное содержимое должно оставаться валидным tool response для исходного `tool_call_id`.
+### Where to place the planner
 
-#### Шаг C. Сворачивание старых групп
+`IContextPlanner.PlanAsync(request, availableTools, cancellationToken)` is called by `ChatAgent` before the HTTP request. The planner owns projection, estimation, compaction, and the failure decision. The agent calls it once per model step.
 
-Старые законченные группы заменяются одним synthetic context message с детерминированными выдержками: пользовательская цель, итоговый текст ассистента и имена использованных инструментов. Сообщение имеет роль `user`, потому что содержит пользовательский текст и не должно повышать его до уровня доверия `system`. Описание строится без дополнительного вызова LLM, чтобы compaction не зависел от уже перегруженного endpoint.
+### Diagnostics
 
-LLM-суммаризацию можно добавить отдельным последующим инкрементом. Она не является условием исправления текущего дефекта.
+Structured logs contain:
 
-#### Шаг D. Отказ до отправки
+- `connection.id`, `connection.source` (Override/Default), `contextWindowTokens`, `reservedOutputTokens`;
+- the number of messages and tool results, the number of messages after projection and after compaction;
+- `estimatedInputTokens`, `inputLimit`, `wasCompacted`, `omittedMessages`, `compactedMessages`;
+- for the failure case: `errorCode = ContextWindowExceeded`, the same fields.
 
-Если в лимит не помещаются даже текущий запрос, schemas инструментов и минимально необходимая protocol group, run завершается локально. Ошибка должна предлагать уменьшить число доступных инструментов, начать новую ветку или выбрать модель с большим context window.
+Prompt content and tool result contents are not logged. The projection size, not the original size, is logged.
 
-### Ветки
+### UI
 
-Context plan каждый раз строится из текущего пути root -> head. Никакого общего summary на весь чат нет: fork автоматически получает только историю своих предков. Поскольку summary не сохраняется в доменную модель, отдельная инвалидация при replace, rewind или delete branch не нужна.
+When the connection has no explicit override, the connection card shows `Context window: Default (16k)`. When an override is set, the card shows `Context window: Override (N tokens)`. The diagnostic toast after a failure shows the cause and the recommended action without revealing prompt content.
 
-## 3. Восстановление `ModelContent` без миграции
+## Verification
 
-Полный tool result уже хранится в `ChatMessage.Content` в формате `ToolResultCodec`. Этого достаточно, чтобы восстановить адресованную модели проекцию при чтении.
+- unit tests of `IToolResultProjector` on fixtures of saved results;
+- unit tests of `IContextPlanner.PlanAsync` with a fake estimator and fake projection;
+- integration tests of `ChatAgent` through a mock `IAIEndpoint`: a request with a long history fits after projection, a request with a very long history fits after compaction, a request exceeding the budget after compaction fails locally without an HTTP call;
+- regression test: `ChatContext.Get` still returns the full visible history and tool results;
+- regression test: existing JSON documents of chats and settings load without migration.
 
-В `ChatContext.Build` для роли `tool` создаётся сообщение по правилу:
+## Acceptance criteria
 
-```csharp
-var modelContent = message.Role == ChatMessageRole.Tool
-    ? toolResultCodec.TryRead(message.Content)?.ModelContent
-    : null;
+- a repeated turn after a large tool result sends `ModelContent`, not the full saved `Content`;
+- the size of each request is checked before the HTTP call;
+- the request does not exceed the model's effective input budget;
+- compaction does not change the chat history and does not require migration;
+- the tool-call protocol remains valid after reduction;
+- the user receives a clear error instead of a long unexplained `Generating`;
+- logs allow distinguishing context compaction, rate limit, header timeout, and first-token timeout without recording prompt/tool content;
+- existing chat and settings documents continue to load.
 
-new ChatCompletionMessage(
-    message.Role.ToString().ToLowerInvariant(),
-    message.Content,
-    message.ToolCalls,
-    message.ToolCallId,
-    modelContent);
-```
+## Not in the first release
 
-Вызов `IToolResultCodec.TryRead`:
-
-1. возвращает типизированный результат и его `ModelContent`, если формат распознан;
-2. при старом или стороннем формате безопасно возвращает `null`, сохраняя текущее поведение `ModelContent ?? Content`;
-3. не изменяет сохранённый JSON.
-
-Внутри текущего agent loop остаётся существующее поведение: `ChatAgent.ToolMessage` сразу кладёт `result.ModelContent` в runtime message. После restart или следующего пользовательского хода `ChatContext` получает эквивалентную проекцию из полного сохранённого результата.
-
-Это решение предпочтительнее сохранения нового поля:
-
-- не нужна миграция;
-- нет двух независимо изменяемых копий model projection;
-- новая версия `IToolResultModelProjector` может улучшить фильтрацию старых результатов;
-- полная история остаётся достаточной для восстановления запроса.
-
-## План реализации
-
-### Инкремент 1. Устранить потерю model projection
-
-Статус: выполнен.
-
-Изменения:
-
-- добавить в `ChatContext` восстановление `IToolResultCodec.TryRead(content)?.ModelContent` для tool messages;
-- оставить fallback на полный `Content` для нераспознанных результатов;
-- не менять domain/storage contracts и schema version.
-
-Проверки:
-
-- восстановленный tool result не содержит `_meta` и UI-only данных;
-- обычные user/assistant сообщения не изменяются;
-- старый неизвестный tool result продолжает передаваться без падения;
-- пары tool calls/results после восстановления остаются валидными.
-
-### Инкремент 2. Ввести оценщик и context planner
-
-Статус: выполнен. До появления настроек соединения неизвестные модели используют консервативный встроенный лимит; явные overrides относятся к инкременту 4.
-
-Новые Application abstractions:
-
-- `IContextTokenEstimator`;
-- `IChatContextPlanner`;
-- `ChatContextLimits`;
-- `ContextPlan`.
-
-Изменения:
-
-- получать эффективные лимиты выбранного connection/model;
-- учитывать сообщения и schemas инструментов;
-- строить план перед каждым обращением к модели, в том числе после tool call;
-- писать структурированный лог только с размерами и счётчиками, без содержимого сообщений.
-
-Текущая provider-independent оценка использует консервативное соотношение два UTF-8 bytes на токен вместо оптимистичного деления английского текста на четыре символа, поэтому учитывает русский текст, код и JSON, не делая обычные tool schemas непригодными. Если исходный план не помещается, применяется compaction из инкремента 3; `ContextWindowExceededException` возникает до transport только тогда, когда не помещается и сокращённый план.
-
-Проверки:
-
-- маленький контекст проходит без изменений;
-- tool schemas уменьшают доступный бюджет;
-- оценка не переполняется на больших строках;
-- неизвестная модель получает безопасные defaults;
-- превышение после compaction завершается до вызова transport.
-
-### Инкремент 3. Детерминированная компактизация
-
-Статус: выполнен.
-
-Изменения:
-
-- группировать сообщения в неделимые protocol groups;
-- ограничивать крупные model projections tool results;
-- сохранять полностью последние ходы;
-- заменять старые законченные группы synthetic summary;
-- повторно оценивать итоговый контекст.
-
-`IChatContextCompactor` сначала ограничивает только временный `ModelContent` крупных tool results, оставляя полный сохранённый `Content`. Затем старые пользовательские ходы удаляются целиком и заменяются одним bounded summary. Минимально сохраняется текущий пользовательский ход; если он вместе с schemas и protocol overhead не помещается, planner возвращает непомещающийся план и transport не вызывается.
-
-Проверки:
-
-- ни один `tool_call_id` не остаётся без результата;
-- порядок параллельных tool calls сохраняется;
-- текущий пользовательский запрос не сокращается;
-- fork получает summary только своих предков;
-- compaction не меняет `ChatDetails`, JSON-файл и UI transcript;
-- повторное планирование одинакового входа детерминировано.
-
-### Инкремент 4. Настройки и диагностика
-
-Статус: выполнен.
-
-Изменения:
-
-- добавить nullable overrides context window/output reserve в connection settings;
-- показать эффективные значения и источник значения в UI;
-- логировать `EstimatedInputTokens`, `InputLimit`, `ToolSchemaTokens`, `WasCompacted` и `OmittedMessages`;
-- возвращать отдельный failure code для локального превышения context window;
-- показывать в run понятное действие: новая ветка, другая модель или уменьшение доступных инструментов.
-
-`ConnectionSettings` содержит nullable `ContextWindowTokens` и `ReservedOutputTokens`. `IConnectionContextLimitsResolver` используется planner и Web UI, поэтому отображаемое effective value совпадает с исполняемым. Старые JSON без новых полей получают defaults при чтении и не переписываются отдельной миграцией. Локальное превышение публикуется как `RunFailureCode.ContextWindow`; повтор возможен после изменения соединения или набора инструментов.
-
-Старые settings загружаются через defaults; отдельный migration job отсутствует.
-
-### Инкремент 5. Ограничить зависание transport
-
-Статус: выполнен.
-
-Этот шаг связан с тем же пользовательским симптомом, хотя не является частью compaction:
-
-- установить отдельный timeout ожидания response headers;
-- оставить first-token timeout после получения headers;
-- ограничить retry 429/503/529 общей retry deadline;
-- публиковать состояние rate-limit wait вместо безымянного `Generating`;
-- общий часовой deadline оставить последней защитой, а не штатным сетевым timeout.
-
-## Затрагиваемые компоненты
-
-| Компонент | Изменение |
-|---|---|
-| `ChatContext` | Восстановление model projection и подготовка полного пути ветки |
-| `ChatAgent` | Вызов context planner перед каждым обращением к модели |
-| `IToolResultCodec` / `ToolResultCodec` | DI-кодек полной сохраняемой формы tool results |
-| `IToolResultModelProjector` | Единый источник model-facing projection без `_meta` |
-| `ConnectionSettings` | Nullable overrides лимитов с defaults |
-| `OpenAiCompatibleChatCompletionClient` | Получает уже спланированный запрос; transport timeout дорабатывается отдельно |
-| `RetryingChatCompletionClient` | Общая deadline для временных отказов |
-| Run contracts/UI | Диагностика compaction и отдельная ошибка превышения контекста |
-| JSON chat storage | Без изменений |
-
-## Критерии готовности
-
-- повторный ход после большого tool result отправляет `ModelContent`, а не полный сохранённый `Content`;
-- размер каждого запроса проверяется до HTTP-вызова;
-- запрос не превышает эффективный input budget модели;
-- compaction не меняет историю чата и не требует миграции;
-- tool-call protocol остаётся валидным после сокращения;
-- пользователь получает явную ошибку вместо длительного необъяснимого `Generating`;
-- логи позволяют отличить context compaction, rate limit, header timeout и first-token timeout без записи prompt/tool content;
-- существующие документы чатов и настроек продолжают загружаться.
-
-## Не входит в первый релиз
-
-- provider-side conversation state и `previous_response_id`;
-- фоновое переписывание старых чатов;
-- обязательная LLM-суммаризация;
-- точный tokenizer для каждого OpenAI-compatible провайдера;
-- изменение видимого transcript или удаление полных результатов инструментов.
+- provider-side conversation state and `previous_response_id`;
+- background rewriting of old chats;
+- mandatory LLM summarization;
+- exact tokenizer for each OpenAI-compatible provider;
+- changing the visible transcript or removing full tool results.

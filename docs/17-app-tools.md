@@ -1,189 +1,189 @@
-# Инструменты управления приложением (App tools)
+# Application management tools (App tools)
 
-## Назначение
+## Purpose
 
-Встроенный MCP-сервер `App tools` даёт модели CRUD над собственными данными приложения: проектами, чатами, ветками, сообщениями, очередями, глобальными настройками, directory grants и tool policies. Это открывает сценарии «создать чат из чата», «настроить проект под репозиторий», «объяснить, почему инструмент отказал», обслуживание истории.
+The built-in `App tools` MCP server gives the model CRUD over the application's own data: projects, chats, branches, messages, queues, global settings, directory grants, and tool policies. This enables scenarios like "create a chat from a chat", "set up a project for a repository", "explain why a tool refused", and history maintenance.
 
-## Архитектура
+## Architecture
 
-Сервер построен на стандартной библиотеке `ModelContextProtocol` и говорит по обычному протоколу MCP: те же `tools/list` и `tools/call`, те же JSON-схемы, та же валидация результата по output schema. От прочих серверов он отличается только транспортом.
+The server is built on the standard `ModelContextProtocol` library and speaks the regular MCP protocol: the same `tools/list` and `tools/call`, the same JSON schemas, the same result validation against the output schema. It differs from other servers only in its transport.
 
-Транспорт — пара in-memory каналов `System.IO.Pipelines` внутри процесса Host: `StreamServerTransport` на стороне сервера и `StreamClientTransport` на стороне клиента вместо стандартных потоков дочернего процесса. Клиентом остаётся обычный `McpClient`, поэтому сессия обрабатывается тем же кодом, что и stdio-сервер.
+The transport is a pair of in-memory `System.IO.Pipelines` channels inside the Host process: `StreamServerTransport` on the server side and `StreamClientTransport` on the client side instead of the standard child-process streams. The client is a regular `McpClient`, so the session is handled by the same code as a stdio server.
 
-Схемы инструментов генерирует сама библиотека из сигнатур методов: перечисления становятся строковыми `enum` в схеме, параметры со значением по умолчанию — необязательными. Отдельного описания схем не существует.
+The library itself generates tool schemas from method signatures: enums become string `enum` in the schema, parameters with default values become optional. There is no separate schema description.
 
-Код разложен так:
+The code is laid out as follows:
 
-| Проект | Содержимое |
+| Project | Contents |
 |---|---|
-| `AI.Client.Mcp.App` | пять инструментов, `AppMcpServerHost`, общая обвязка мутаций и пагинации |
-| `AI.Client.Infrastructure/Tools` | `McpToolSession` (общая для всех серверов), `DefaultToolSessionFactory`, `AppToolSessionFactory`, `CompositeToolSessionFactory` |
+| `AI.Client.Mcp.App` | five tools, `AppMcpServerHost`, shared mutation and pagination plumbing |
+| `AI.Client.Infrastructure/Tools` | `McpToolSession` (shared by all servers), `DefaultToolSessionFactory`, `AppToolSessionFactory`, `CompositeToolSessionFactory` |
 
-`IToolSessionFactory.OpenAsync` принимает набор идентификаторов серверов. `ChatAgent` вычисляет его по одному правилу для всех серверов — включён глобально, политика не `Deny`, не выключен в проекте — поэтому выключенный сервер не запускается вовсе, а не запускается и отфильтровывается.
+`IToolSessionFactory.OpenAsync` accepts a set of server IDs. `ChatAgent` computes it by the same rule for all servers — enabled globally, policy not `Deny`, not disabled in the project — so a disabled server is not started at all rather than started and filtered out.
 
-Инструменты получают `IChatRunDispatcher` как `Func<IChatRunDispatcher>`: диспетчер владеет агентом, агент — сессией инструментов, сессия — этими инструментами. Ленивое разрешение разрывает цикл построения.
+The tools receive `IChatRunDispatcher` as `Func<IChatRunDispatcher>`: the dispatcher owns the agent, the agent owns the tool session, the session owns these tools. Lazy resolution breaks the construction cycle.
 
-`App tools` зарегистрирован как отдельный MCP-сервер со стабильным ID, транспортом `InProcess`, отображается в настройках рядом с `Default tools` и **включён по умолчанию**. Все инструменты при первом обнаружении получают политику `Ask`.
+`App tools` is registered as a separate MCP server with a stable ID, the `InProcess` transport, appears in settings next to `Default tools`, and is **enabled by default**. All tools receive the `Ask` policy on first discovery.
 
-`InProcess` — полноценное значение доменного перечисления `McpTransportKind`, а не только строка в настройках: сохранение политики уровня проекта привязывает сервер к проекту и записывает его транспорт. Оба поставляемых Host сервера показываются в настройках одинаково — имя и транспорт только для чтения, вместо командной строки список политик инструментов, удалить их нельзя.
+`InProcess` is a full value of the domain enum `McpTransportKind`, not just a string in settings: saving a project-level policy binds the server to the project and records its transport. Both servers bundled with the Host appear in settings identically — name and transport are read-only; instead of a command line, the list of tool policies is shown, and they cannot be removed.
 
-## Состав инструментов
+## Tool composition
 
-Семь инструментов. Пять сгруппированы по уровню риска: граница инструмента совпадает с границей того, что пользователь разрешает одной кнопкой `Allow`. Модели они видны с префиксом `mcp_app__`.
+Seven tools. Five are grouped by risk level: the tool boundary matches the boundary of what the user allows with a single `Allow` button. The model sees them with the `mcp_app__` prefix.
 
-| Инструмент | Операции |
+| Tool | Operations |
 |---|---|
-| `app_read` | чтение любого ресурса приложения и поиск по сообщениям |
+| `app_read` | read any application resource and search messages |
 | `app_chats` | `Create`, `Rename`, `Pin`, `SetEndpoint`, `RenameBranch`, `Delete`, `DeleteBranch` |
 | `app_runs` | `Submit`, `Stop`, `UpdateQueued`, `RemoveQueued`, `ClearQueue`, `Resume`, `SkipFailed`, `Rebase`, `MarkRead` |
 | `app_projects` | `Create`, `Update`, `Delete` |
-| `app_security` | политики и grants проекта, чата и глобальные; глобальные настройки; запись учётных данных |
-| `spawn_subtask` | выполнить задачу в отдельном разговоре и вернуть только её итог |
-| `ask_user` | задать пользователю вопрос и дождаться ответа — см. [19-ask-user.md](19-ask-user.md) |
+| `app_security` | policies and grants for the project, chat, and globally; global settings; write credentials |
+| `spawn_subtask` | run a task in a separate conversation and return only its result |
+| `ask_user` | ask the user a question and wait for an answer — see [19-ask-user.md](19-ask-user.md) |
 
 ### app_read
 
-Ресурсы: `Projects`, `Project`, `Chats`, `Chat`, `Messages`, `Runs`, `Settings`, `Search`. Ответ всегда одной формы — страница элементов, поэтому одиночный документ является страницей из одного элемента.
+Resources: `Projects`, `Project`, `Chats`, `Chat`, `Messages`, `Runs`, `Settings`, `Search`. The response always has one shape — a page of items — so a single document is a page of one item.
 
-`Chat` возвращается без сообщений: они отдельный ресурс, иначе чтение заголовка тянуло бы всю историю. `Messages` с указанием `branchId` возвращает цепочку от головы ветки к корню — ровно тот контекст, который видит модель.
+`Chat` is returned without messages: they are a separate resource, otherwise reading a heading would drag the entire history in. `Messages` with `branchId` returns the chain from the branch head to the root — exactly the context the model sees.
 
-Страница ограничена одновременно числом элементов (`limit`, по умолчанию 100, максимум 1000) и бюджетом в 262144 символа — тем же, что у файловых инструментов. Курсор — десятичное смещение следующего элемента, непрозрачное по договору: вызывающий возвращает то, что получил, и никогда не вычисляет его сам. Первый элемент страницы включается всегда, иначе документ крупнее бюджета стал бы недостижим.
+A page is bounded simultaneously by the number of items (`limit`, default 100, max 1000) and by a budget of 262144 characters — the same as for the file tools. The cursor is the decimal offset of the next item, opaque by contract: the caller returns what it received and never computes it on its own. The first item of the page is always included, otherwise a document larger than the budget would become unreachable.
 
-### Поиск по сообщениям
+### Message search
 
-Ресурс `Search` ищет текст по сообщениям всех чатов сразу. Раньше такой возможности в приложении не было вовсе — ни в инструментах, ни в API, ни в UI; единственным способом был перебор чатов по одному, который упирался в бюджет символов задолго до конца.
+The `Search` resource searches text across messages of all chats at once. Previously this capability did not exist in the application at all — not in tools, not in the API, not in the UI; the only way was iterating chats one by one, which hit the character budget long before the end.
 
-`projectId`, `chatId` и `branchId` необязательны и сужают область; без них ищется всё приложение. Сопоставление устроено как в `grep_files`, чтобы не заводить второй диалект: по умолчанию литеральная подстрока, `ignoreCase` включён, `isRegex` переключает на регулярное выражение в режиме `NonBacktracking` — время линейно по длине строки, поэтому шаблон, придуманный моделью, не подвесит Host, но backreferences и lookaround отвергаются с внятной ошибкой.
+`projectId`, `chatId`, and `branchId` are optional and narrow the scope; without them, the whole application is searched. Matching works like in `grep_files`, to avoid a second dialect: literal substring by default, `ignoreCase` enabled, `isRegex` switches to a regular expression in `NonBacktracking` mode — runtime is linear in string length, so a pattern the model comes up with does not hang the Host, but backreferences and lookaround are rejected with a clear error.
 
-`roles` по умолчанию ограничены `User` и `Assistant`: сообщения роли `Tool` — это сериализованные результаты вызовов, часто десятки килобайт JSON, и они утопили бы выдачу.
+`roles` defaults to `User` and `Assistant`: messages with the `Tool` role are serialized call results, often tens of kilobytes of JSON, and would drown the output.
 
-Результат — по элементу на совпавшее сообщение: идентификаторы и названия проекта и чата, идентификатор сообщения, роль, время, фрагмент вокруг первого совпадения и `matchCount` по всему сообщению. Сообщение целиком не возвращается.
+The result is one element per matched message: project and chat IDs and names, message ID, role, time, a fragment around the first match, and `matchCount` for the whole message. The full message is not returned.
 
-Индекса нет: чаты читаются в неизменном порядке (по идентификатору проекта, затем чата) и сканируются. Это честно по стоимости и нечего перестраивать, а работоспособным это делают явные пределы — число совпадений, бюджет символов и потолок просмотренных сообщений. Достигнув любого из них, поиск сообщает `truncated` и возвращает курсор. Порядок сканирования намеренно не совпадает с порядком боковой панели: та сортирует по активности, и под постраничным поиском курсор указывал бы каждый раз на другой чат.
+There is no index: chats are read in immutable order (by project ID, then chat ID) and scanned. This is honest about cost and there is nothing to rebuild; the explicit limits keep it usable — match count, character budget, and a cap on scanned messages. When any of them is reached, the search reports `truncated` and returns a cursor. The scan order intentionally does not match the sidebar order: that one sorts by activity, and under paged search the cursor would point to a different chat every time.
 
-Тот же поиск доступен как `GET /api/chats/search` и как строка поиска в боковой панели: пока запрос активен, результаты заменяют дерево проектов, а выбор результата открывает нужный чат.
+The same search is available as `GET /api/chats/search` and as the search string in the sidebar: while the query is active, the results replace the project tree, and selecting a result opens the right chat.
 
 ### app_runs
 
-Флаг `wait`:
+The `wait` flag:
 
-- `false` — возвращает управление сразу после приёма сообщения;
-- `true` — следит за прогоном, пока тот не остановится сам, не потребует человека или не истечёт `waitTimeoutMs` (от 1 с до 10 мин). Учитываются только состояния, в которые прогон пришёл после отправки: снимок со статусом от предыдущего прогона распознаётся по ревизии и пропускается, иначе чат, ответивший минуту назад, немедленно сообщал бы вымышленное `Completed`.
+- `false` — returns control immediately after accepting the message;
+- `true` — watches the run until it stops on its own, requires a person, or `waitTimeoutMs` (1 s to 10 min) expires. Only the states the run reached after the send count: a snapshot with a status from the previous run is recognized by its revision and skipped, otherwise a chat that answered a minute ago would immediately report a fictional `Completed`.
 
-Истечение тайм-аута не ошибка: сообщение принято в любом случае, поэтому возвращается последний известный статус. Ожидание дополнительно ограничено политикой самого инструмента, так что затянувшийся вызов обрывается снаружи.
+The timeout expiring is not an error: the message is accepted either way, so the last known status is returned. The wait is also bounded by the tool's own policy, so a lingering call is killed from the outside.
 
-`branchId` по умолчанию равен `chatId`: идентификатор основной ветки совпадает с идентификатором чата.
+`branchId` defaults to `chatId`: the original branch ID matches the chat ID.
 
 ### spawn_subtask
 
-Делегирует работу отдельному разговору и возвращает только ответ. Смысл — в разделении аудиторий, которое уже заложено в `ToolCallResult`: `ModelContent` — единственное, что попадает в контекст модели, а `_meta` из этой проекции исключена по контракту. Поэтому итог подзадачи уходит вызывающей модели, а вся её переписка — рассуждения, каждый вызов инструмента и каждый результат — кладётся в `_meta` и видна только в интерфейсе, свёрнутым блоком в карточке вызова.
+Delegates work to a separate conversation and returns only the answer. The point is the audience split already built into `ToolCallResult`: `ModelContent` is the only thing that enters the model context, and `_meta` is excluded from that projection by contract. Therefore the subtask's result goes to the calling model, while its entire conversation — reasoning, every tool call, every result — is placed into `_meta` and is visible only in the UI, as a folded block inside the call card.
 
-Это принципиально дешевле, чем поручить работу второму чату и потом прочитать его через `app_read`: чтение втянуло бы в контекст ровно тот текст, ради отсутствия которого работа и делегировалась.
+This is fundamentally cheaper than having a second chat do the work and then reading it through `app_read`: reading would pull into context exactly the text whose absence the work was delegated for.
 
-Ничего не сохраняется. Сообщения подзадачи живут в списке на время вызова; чата, который можно потом открыть, не возникает — это плата за то, что и убирать потом нечего. Запись о вызове с полной перепиской при этом остаётся в истории родительского чата как обычное tool-сообщение.
+Nothing is saved. The subtask's messages live in the list for the duration of the call; there is no chat that can be opened afterwards — the price of also having nothing to clean up afterwards. The call record with the full conversation stays in the parent chat's history as a regular tool message.
 
-`projectId` и `chatId` передаются явно: ambient-контекст не пересекает границу MCP — сервер обрабатывает вызов в собственном цикле сообщений, — поэтому вызывающая модель называет проект и чат, в которых работает. От них подзадача наследует directory grants и политики инструментов, а по умолчанию — и соединение. Произвольный эндпоинт задать нельзя: выбирать можно только из настроенных пользователем.
+`projectId` and `chatId` are passed explicitly: ambient context does not cross the MCP boundary — the server handles the call in its own message loop — so the calling model names the project and chat it is working in. The subtask inherits directory grants and tool policies from them, and by default the connection too. An arbitrary endpoint cannot be set: only what the user has configured can be chosen.
 
-**Подтверждения подзадаче недоступны.** За фоновым прогоном никто не наблюдает, поэтому любой инструмент с действующей политикой `Ask` ему отказывают, а подзадача сообщает, чего не смогла сделать. Нужные инструменты разрешают заранее.
+**Confirmations are not available to the subtask.** Nobody is watching the background run, so any tool whose policy is `Ask` is refused, and the subtask reports what it could not do. The necessary tools should be allowed in advance.
 
-**Модель.** Каждая задача — объект с текстом и необязательным `connectionId`. Соединение выбирается по цепочке: своё у задачи, иначе общее у вызова, иначе одно из помеченных в настройках как соединения для подзадач, иначе соединение вызывающего чата. Названное соединение должно существовать и быть включённым; произвольный эндпоинт задать нельзя — выбирается из настроенных пользователем. Использованное соединение возвращается в результате и видно в карточке.
+**Model.** Each task is an object with text and an optional `connectionId`. The connection is selected by chain: the task's own, otherwise the call's common one, otherwise one of those marked in settings as connections for subtasks, otherwise the calling chat's connection. The named connection must exist and be enabled; an arbitrary endpoint cannot be set — it is chosen from what the user has configured. The used connection is returned in the result and visible in the card.
 
-Соединения всех задач разрешаются до начала работы: пакет, который всё равно упадёт на эндпоинте последней задачи, не должен сперва потратить минуту на остальные.
+Connections for all tasks are resolved before work begins: a batch that would fail on the last task's endpoint anyway should not first spend a minute on the rest.
 
-**Признак «для подзадач» и оценки соединения.** В настройках соединение можно пометить как то, на которое уходит делегированная работа, когда её никто не адресовал явно, — обычно это дешёвая быстрая модель. Признак, в отличие от признака «по умолчанию», может стоять на нескольких соединениях сразу: задачи, не назвавшие соединение, раздаются помеченным по кругу, и веер подзадач отвечается несколькими провайдерами, а не выстраивается в очередь к одному. Очередь считается только по неадресованным задачам, поэтому одна закреплённая задача не смещает остальные. Признак снимается вместе с `Enabled`: выключенное соединение подзадач не получает.
+**"For subtasks" flag and connection ratings.** In settings, a connection can be marked as the one delegated work goes to when nobody addressed it explicitly — usually a cheap fast model. Unlike the "default" flag, this one can be set on multiple connections at once: tasks that did not name a connection are distributed among marked connections in round-robin, so a fan of subtasks is answered by several providers rather than queued to one. The queue is counted only by unaddressed tasks, so one pinned task does not shift the rest. The flag is removed together with `Enabled`: a disabled connection receives no subtasks.
 
-Признак не запрещает ничего. Явный `connectionId` работает для любого включённого соединения, иначе стал бы невозможен сценарий, ради которого этот аргумент и появился, — проверить все соединения сразу.
+The flag forbids nothing. An explicit `connectionId` works for any enabled connection, otherwise the scenario this argument was introduced for — checking all connections at once — would become impossible.
 
-Рядом с признаком соединение несёт две грубые оценки от 1 до 5 — `capability` и `cost` — и строку `goodFor` о том, чего оценки не выражают: длинный контекст, зрение, локальность. Это мнение пользователя, а не факт о модели, поэтому шкала намеренно короткая, а неоценённое соединение отдаёт `null`, а не середину: «никто не оценивал» модель должна отличать от «средняя». Всё это приезжает в `app_read` с ресурсом `Settings` — отдельного механизма не нужно, — и модель выбирает сама, чем платить за задачу.
+Next to the flag, the connection carries two coarse ratings from 1 to 5 — `capability` and `cost` — and a `goodFor` string about what the ratings do not express: long context, vision, locality. This is the user's opinion, not a fact about the model, so the scale is deliberately short, and an unrated connection returns `null` rather than the middle: "nobody rated it" must be distinguishable by the model from "average". All of this arrives through `app_read` with the `Settings` resource — no separate mechanism is needed — and the model chooses what to pay for a task.
 
-В описание самого `spawn_subtask` значения оценок не кладут. Описание входит в схему инструмента, от схемы считается хеш, к которому привязаны разрешения, — правка ползунка сбрасывала бы разрешение инструмента в `Ask`.
+The ratings are not placed in the description of `spawn_subtask` itself. The description is part of the tool schema, and the hash is computed from the schema, to which permissions are tied — moving a slider would reset the tool's permission to `Ask`.
 
-Задача с собственным соединением существует ради параллельности. Инструменты одного ответа модели выполняются последовательно, поэтому «одна задача — один вызов» выстраивает проверку соединений в очередь: четырнадцать соединений по таймауту каждое — это четырнадцать ожиданий подряд. Задачи же одного вызова идут одновременно, так что те же четырнадцать проверяются двумя вызовами.
+A task with its own connection exists for parallelism. Tools in a single model response run sequentially, so "one task — one call" queues the connection checks: fourteen connections at one timeout each are fourteen waits in a row. Tasks in one call, however, run in parallel, so the same fourteen are checked by two calls.
 
-**Живой ход работы.** Подзадача сообщает, чем занята, через `notifications/progress` MCP: «thinking», «writing» или имя инструмента, который она сейчас вызывает. Сообщение доходит до строки активного вызова в карточке родителя тем же путём, что и прогресс любого другого сервера. При нескольких задачах строка нумерует их и показывает, сколько уже завершено. Иначе подзадача, которая молчит, неотличима от зависшей.
+**Live progress.** The subtask reports what it is doing via MCP `notifications/progress`: "thinking", "writing", or the name of the tool it is currently calling. The message reaches the active call row in the parent card through the same path as progress for any other server. With multiple tasks, the row numbers them and shows how many have already finished. Otherwise a subtask that goes silent is indistinguishable from a stuck one.
 
-**Пределы.** До 8 задач в одном вызове, они выполняются одновременно; не более 8 прогонов подзадач одновременно на весь Host. Вложенная подзадача удерживает родительскую открытой, поэтому один и тот же счётчик ограничивает и ширину, и глубину: разбежавшаяся рекурсия упирается в него, а не в память машины. Сбой одной задачи не отменяет соседние.
+**Limits.** Up to 8 tasks per call; they run in parallel; no more than 8 subtask runs simultaneously across the entire Host. A nested subtask keeps its parent open, so the same counter limits both width and depth: runaway recursion hits it, not machine memory. One task failing does not cancel its neighbors.
 
-Таймаут политики инструмента отмеряет молчание вызова, а не его длительность. Иначе одно число должно было бы подойти сразу двум адресатам — чтению файла и вееру подзадач, — и веер проигрывал: он погибал на середине вместе со всей уже начатой работой, хотя его уведомления о прогрессе прямо говорили, что он работает. MCP разрешает сбрасывать таймаут по уведомлению о прогрессе именно поэтому. Сверху действует общий потолок в 30 минут на один вызов, чтобы зациклившийся инструмент, исправно сообщающий о себе, не выполнялся вечно.
+The tool's policy timeout measures the call's silence, not its duration. Otherwise a single number would have to suit two addressees at once — reading a file and a fan of subtasks — and the fan would lose: it would die halfway through with all work already started, even though its progress notifications were saying it was working. MCP allows resetting the timeout on a progress notification for exactly this reason. On top sits a hard ceiling of 30 minutes per call, so a looping tool that faithfully reports on itself does not run forever.
 
-У подзадачи своя ветка для учёта изменений в рабочем каталоге, поэтому её правки файлов приписываются ей, а не сводке родителя; число изменённых файлов возвращается в результате.
+The subtask has its own branch for tracking changes in the working directory, so its file edits are attributed to it, not to the parent's summary; the number of changed files is returned in the result.
 
-Чего нет: подзадача не переживает перезапуск, её нельзя продолжить или дописать. Это одиночный ограниченный вызов, а не место, куда можно вернуться.
+What is not there: a subtask does not survive a restart; it cannot be resumed or extended. It is a single bounded call, not a place to return to.
 
-## Область видимости
+## Scope
 
-Инструменты работают над **всем приложением**: агент читает и меняет любые проекты, чаты и глобальные настройки, а не только проект текущего чата.
+The tools work over **the entire application**: the agent reads and changes any projects, chats, and global settings, not just the current chat's project.
 
-## Границы
+## Boundaries
 
-### Секреты
+### Secrets
 
-API-ключи endpoint-профилей, защищённые DPAPI, **доступны на запись, но не на чтение**. `app_read` возвращает только флаг `HasCredential`. При замене глобальных настроек флаги наличия секретов пересчитываются из защищённого хранилища, а не берутся из присланного документа.
+DPAPI-protected endpoint profile API keys are **writable but not readable**. `app_read` returns only the `HasCredential` flag. When global settings are replaced, the secret presence flags are recalculated from the protected store, not taken from the supplied document.
 
-### Самоповышение привилегий
+### Privilege escalation
 
-Специальных ограничений **нет**: агент может делать всё, что доступно пользователю через UI, включая расширение directory grants своего проекта, смену политик инструментов `app_*` и включение MCP-серверов. Осознанное решение для локального однопользовательского приложения; зафиксировано в [ADR-007](decisions/ADR-007-in-process-app-tools.md).
+There are **no special restrictions**: the agent can do everything the user can do through the UI, including extending its project's directory grants, changing `app_*` tool policies, and enabling MCP servers. A deliberate decision for a local single-user application; recorded in [ADR-007](decisions/ADR-007-in-process-app-tools.md).
 
-### Рекурсия
+### Recursion
 
-Ограничений на глубину порождения чатов, бюджет дочерних прогонов и запись в чат-предок **нет**. Контролем остаются лимиты агентского цикла и кнопка остановки.
+There are **no restrictions** on chat spawning depth, child run budget, or writes to the parent chat. The agent loop's limits and the stop button remain the controls.
 
-## Поведение мутаций
+## Mutation behavior
 
-- **Одна операция на вызов.** Пакетных мутаций нет.
-- **`dryRun` по умолчанию** для разрушающих операций — удаления чата, ветки и проекта. Остальные операции флаг игнорируют. Планируемый вызов описывает эффект и не пишет ничего.
-- **Ревизии обязательны.** При несовпадении возвращается `isError` со статусом `Conflict`, текущей ревизией и текущим документом; решение о повторе принимает модель. Автоматического повтора нет. Мутации чата не различают «нет чата» и «кто-то записал раньше», поэтому чат перечитывается, чтобы отличить одно от другого.
-- **Идемпотентность по `operationId`.** Повторный вызов с тем же идентификатором возвращает прежний результат с флагом `replayed` и ничего не пишет. Запоминаются только применённые мутации: сухой прогон и отклонённый вызов ничего не изменили. Журнал живёт в пределах процесса Host — он закрывает повтор внутри прогона и сознательно не переживает перезапуск.
-- `app_runs Submit` передаёт `operationId` ещё и диспетчеру как идентификатор сообщения, поэтому повтор не создаёт второе сообщение с другой идентичностью.
+- **One operation per call.** No batched mutations.
+- **`dryRun` by default** for destructive operations — chat, branch, and project deletion. Other operations ignore the flag. The planned call describes the effect and writes nothing.
+- **Revisions are required.** On a mismatch, an `isError` is returned with the `Conflict` status, the current revision, and the current document; the model decides whether to retry. There is no automatic retry. Chat mutations do not distinguish "no chat" from "someone wrote earlier", so the chat is re-read to tell them apart.
+- **Idempotency by `operationId`.** A repeat call with the same identifier returns the previous result with the `replayed` flag and writes nothing. Only applied mutations are remembered: a dry run and a rejected call did not change anything. The journal lives within the Host process — it closes the loop inside a run and deliberately does not survive a restart.
+- `app_runs Submit` passes `operationId` to the dispatcher as the message ID, so a repeat does not create a second message with a different identity.
 
-Снапшоты с откатом, diff в карточке подтверждения и audit с before/after hash в объём не входят.
+Snapshots with rollback, diff in the confirmation card, and an audit with before/after hash are not in scope.
 
-`dryRun` понимают только разрушающие операции, и для них он включён по умолчанию. Остальные операции отклоняют явный `dryRun: true`, а не игнорируют его: молча применить изменение, которое вызывающий считал репетицией, — худший из возможных исходов.
+`dryRun` is understood only by destructive operations, and for those it is on by default. Other operations reject an explicit `dryRun: true` rather than ignoring it: silently applying a change the caller thought was a rehearsal is the worst possible outcome.
 
-## Права на каталог агент выдаёт себе сам
+## The agent grants itself directory access
 
-Запрета на это нет: `SetProjectSecurity` принимает любой корень, а домен проверяет только непустое имя, непустой путь и хотя бы один инструмент в списке. Ни списка запрещённых путей, ни требования вложенности. Между агентом и любым каталогом машины стоит одна карточка подтверждения — по решению пользователя единственным ограничением она и осталась.
+There is no prohibition: `SetProjectSecurity` accepts any root, and the domain only checks that the name is non-empty, the path is non-empty, and the tool list is non-empty. No list of forbidden paths, no nesting requirement. Between the agent and any directory on the machine stands one confirmation card — by the user's decision, it remains the only limit.
 
-Настоящая проверка живёт в другом месте и работает независимо: `PathGuard` внутри процесса встроенного сервера отказывает по умолчанию, требует полностью квалифицированный путь, канонизирует его, разворачивает reparse point по всей цепочке существующих компонентов и только потом сверяет вложенность в грант с нужной capability. Пустой набор грантов означает отказ, а не полный доступ.
+The real check lives elsewhere and works independently: `PathGuard` inside the built-in server's process refuses by default, requires a fully qualified path, canonicalizes it, resolves reparse points along the entire chain of existing components, and only then checks containment in the grant with the required capability. An empty grant set means refusal, not full access.
 
-**Грант действует со следующего прогона.** Сессия инструментов открывается один раз за прогон, и гранты уезжают встроенному серверу переменной окружения при старте его процесса — процесс уже запущен, переменная уже прочитана. Поэтому агент, выдавший грант себе, в этом же прогоне им не воспользуется.
+**The grant takes effect from the next run.** The tool session is opened once per run, and the grants are sent to the built-in server as an environment variable when its process starts — the process is already running, the variable has already been read. Therefore an agent that has granted itself access cannot use it in the same run.
 
-Это сказано в описании `app_security`, потому что иначе модель читает отказ `PathGuard` как стену и просит пользователя сходить в настройки — совет практически верный, но описывающий стену там, где дверь с задержкой. Ей нужно знать и про дверь, и про задержку: без второго она выдаст грант и тут же попробует им воспользоваться, получит тот же отказ и решит, что грант не сработал.
+This is stated in the `app_security` description, because otherwise the model reads a `PathGuard` refusal as a wall and asks the user to go to settings — advice that is practically correct, but describes the wall where there is a door with a delay. It needs to know about both the door and the delay: without the second, it grants access and immediately tries to use it, gets the same refusal, and decides the grant did not work.
 
-## Подтверждения и пакеты вызовов
+## Confirmations and call batches
 
-Пока висит карточка подтверждения, Host каждые две секунды перечитывает действующую политику. Разрешение, выданное в настройках или инструментом `app_security`, освобождает ожидающий вызов так же, как кнопка в карточке, а запрет — отклоняет его. Без этого пользователь, пошедший менять настройки вместо нажатия кнопки, дожидался только таймаута.
+While a confirmation card is up, the Host re-reads the effective policy every two seconds. Permission granted in settings or through the `app_security` tool releases the waiting call in the same way as the button on the card, and prohibition rejects it. Without this, a user who went to change settings instead of clicking the button would only wait for the timeout.
 
-Подтверждения запрашиваются по одному: разрешение на один вызов не должно распространяться на соседний. Карточка при этом сообщает, какой это вызов из скольких в пакете.
+Confirmations are requested one at a time: permission for one call must not extend to its neighbor. The card reports which call this is out of how many in the batch.
 
-Если пакет оборван — остановкой или сбоем транспорта, — ответ записывается не только отказавшему вызову, но и всем следующим за ним. Сообщение модели с `tool_calls` считается валидным только когда отвечен каждый из них; без этого история становится такой, которую эндпоинт отвергает, и прогон невозможно ни продолжить, ни повторить. Состояние `Paused` публикуется раньше, чем агент дописывает эти ответы, поэтому клиент, прочитавший историю сразу после остановки, может застать её на середине — продолжение прогона идёт через тот же замок и такую историю уже не увидит.
+If a batch is aborted — by stop or by transport failure — the response is recorded not only for the refusing call, but for every call after it. The model's message with `tool_calls` is considered valid only when every one of them has a response; otherwise the history becomes one that the endpoint rejects, and the run cannot be continued or repeated. The `Paused` state is published before the agent finishes writing these responses, so a client that read the history immediately after the stop may catch it halfway — the run's continuation goes through the same lock and will not see such history.
 
-Команды `app_runs` дописывают в свой `effect`, что прогон ждёт подтверждения человека. Раньше `Resume` рапортовал об успехе, будучи внешне неотличимым от настоящего возобновления.
+`app_runs` commands add to their `effect` that the run is waiting on human confirmation. Previously, `Resume` reported success while being outwardly indistinguishable from a real resumption.
 
-## Уведомление UI об изменениях
+## UI notification of changes
 
-Поток `GET /api/runs/events` передаёт два вида кадров. К прежнему `snapshot` добавлен **общий сигнал `data-changed` без полезной нагрузки**: он не говорит, что именно изменилось.
+The `GET /api/runs/events` stream carries two kinds of frames. In addition to the previous `snapshot`, a **shared `data-changed` signal with no payload** has been added: it does not say what exactly changed.
 
-Публикуется после успешной фиксации любой мутации `app_*`. Подписчик получает не более одного пробуждения на серию изменений: у каждого слушателя канал на один элемент с вытеснением старого значения, а сервер дополнительно выдерживает 250 мс перед отправкой кадра. Подписка регистрируется в момент вызова, а не в момент начала перечисления, иначе изменение в этом промежутке терялось бы.
+It is published after any `app_*` mutation is committed. A subscriber receives at most one wake-up per series of changes: each listener has a one-element channel with eviction of the old value, and the server additionally waits 250 ms before sending the frame. The subscription is registered at the moment of the call, not at the moment the enumeration begins — otherwise a change in that interval would be lost.
 
-Получив сигнал, Web UI перечитывает то, что показывает: список проектов, чаты выбранного проекта, открытый чат. Выбор сохраняется, если выбранный объект ещё существует. Оба кадра идут через один канал, поэтому в тело ответа пишет только один цикл.
+On receiving the signal, the Web UI re-reads what it shows: the project list, the selected project's chats, and the open chat. The selection is preserved if the selected object still exists. Both frames go through the same channel, so only one loop writes to the response body.
 
-Изменения, сделанные через собственный HTTP API из UI, сигнал не публикуют: клиент, который их сделал, уже знает о них.
+Changes made through the UI's own HTTP API do not publish a signal: the client that made them already knows.
 
-## Представление в UI
+## Presentation in the UI
 
-Для вызовов `app_*` реализованы собственные `IToolPresentationAdapter`. Чтение показывается как «Read messages» с объёмом страницы и курсором; изменение — фразой, которую вернул сам инструмент («Created chat 'Notes'»). Конфликт ревизии и сухой прогон показываются предупреждением, а не ошибкой: данные не пострадали, но пользователю стоит это заметить. Адаптер сопоставляется по префиксу сервера, а не только по имени инструмента: имена уникальны лишь внутри одного сервера.
+For `app_*` calls, dedicated `IToolPresentationAdapter` implementations exist. Reads are shown as "Read messages" with the page size and cursor; a change is the phrase returned by the tool itself ("Created chat 'Notes'"). A revision conflict and a dry run are shown as a warning, not an error: the data was not harmed, but the user should notice it. The adapter is matched by server prefix, not just tool name: names are unique only within one server.
 
-## Лимиты агентского цикла
+## Agent loop limits
 
-Лимиты не ужесточаются: значение меняется только если новое больше действующего.
+Limits are not tightened: a value changes only if the new one is larger than the current one.
 
-- `ToolPolicy.MaxCallsPerRun` по умолчанию `65535` — **оставлено как есть**; 1024 было бы понижением.
-- Потолок параллельных `tool_calls` в одном сообщении ассистента поднят с `20` до `1024` (`ChatCompletionSseParser`). Это защита от некорректного потока, а не ограничение прогона.
-- Отдельного лимита итераций модели нет и он не вводится: любой конечный лимит был бы ужесточением.
+- `ToolPolicy.MaxCallsPerRun` defaults to `65535` — **left as is**; 1024 would be a tightening.
+- The cap on parallel `tool_calls` in a single assistant message has been raised from `20` to `1024` (`ChatCompletionSseParser`). This is protection against a malformed stream, not a run limit.
+- There is no separate model iteration limit and none is being introduced: any finite limit would be a tightening.
 
-## Проверка
+## Verification
 
-- юнит-тесты `AppDataChangeSignalTests` и `AppToolPresentationTests`;
-- `AppToolTests` — обнаружение и вызовы через настоящую MCP-сессию поверх in-process транспорта, против настоящих прикладных сервисов: пагинация с курсором, отсутствие секретов, повтор операции, сухой прогон, конфликт ревизии, замена настроек безопасности, отклонение аргументов вне схемы;
-- смоук через реальный Host: `GET /api/mcp/default/tools` отдаёт 21 инструмент (16 встроенных и 5 прикладных), а чат под управлением модели создал другой чат через `app_chats` и поставил в него сообщение через `app_runs`; список чатов в открытом UI обновился по сигналу `data-changed` без перезагрузки страницы.
+- `AppDataChangeSignalTests` and `AppToolPresentationTests` unit tests;
+- `AppToolTests` — discovery and calls through a real MCP session over the in-process transport, against real application services: cursor-based pagination, absence of secrets, operation replay, dry run, revision conflict, security settings replacement, rejection of out-of-schema arguments;
+- smoke test through the real Host: `GET /api/mcp/default/tools` returns 21 tools (16 built-in and 5 application), and a chat under the model's control created another chat through `app_chats` and put a message in it through `app_runs`; the chat list in the open UI updated on the `data-changed` signal without reloading the page.

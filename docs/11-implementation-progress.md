@@ -1,93 +1,93 @@
-# Ход реализации
+# Implementation progress
 
-Статус: Active
+Status: Active
 
-Этот документ является журналом фактически выполненных работ. Он обновляется после каждого завершённого инкремента вместе с соответствующими архитектурными и эксплуатационными документами.
+This document is the log of actually completed work. It is updated after each finished increment together with the corresponding architecture and operations documents.
 
-## Правила ведения
+## Recording rules
 
-- Фиксировать только реализованные и проверенные изменения.
-- Для каждого инкремента указывать результат, затронутые этапы плана и выполненные проверки.
-- Незавершённую функциональность явно отделять от готовой.
-- Существенное изменение принятого решения сначала оформлять отдельным ADR.
-- Не считать этап завершённым, пока не выполнены его exit criteria из плана реализации.
+- Record only implemented and verified changes.
+- For each increment, state the result, the affected plan stages, and the performed checks.
+- Clearly separate unfinished functionality from finished.
+- A significant change to an adopted decision is first formalized as a separate ADR.
+- Do not consider a stage complete until its exit criteria from the implementation plan are satisfied.
 
-## Текущее состояние этапов
+## Current state of stages
 
-| Этап | Состояние | Выполнено | Осталось |
+| Stage | State | Done | Remaining |
 |---|---|---|---|
-| 0. Foundation | В работе | Solution, проекты, `net10.0`, analyzers, central package management, Pure.DI, тестовые проекты | Общие clock/result contracts, CI |
-| 1. Projects и storage | В работе | Project aggregate, versioned JSON project document, revision, atomic write/recovery, project and security settings CRUD | Separate documents/index, import/export and stronger recovery diagnostics |
-| 2. Hosted WASM shell | В работе | Host, Web, same-origin WASM, Pure.DI composition roots, health endpoint, project and security settings UI/API | CSP, session and CSRF protection |
-| 3–12 | Не начаты | — | Реализация согласно плану |
+| 0. Foundation | In progress | Solution, projects, `net10.0`, analyzers, central package management, Pure.DI, test projects | Shared clock/result contracts, CI |
+| 1. Projects and storage | In progress | Project aggregate, versioned JSON project document, revision, atomic write/recovery, project and security settings CRUD | Separate documents/index, import/export and stronger recovery diagnostics |
+| 2. Hosted WASM shell | In progress | Host, Web, same-origin WASM, Pure.DI composition roots, health endpoint, project and security settings UI/API | CSP, session and CSRF protection |
+| 3–12 | Not started | — | Implementation per the plan |
 
-## Инкремент 001 — каркас приложения и доменная модель проектов
+## Increment 001 — application skeleton and project domain model
 
-Дата: 2026-08-11
+Date: 2026-08-11
 
-Состояние: завершён
+State: completed
 
-### Реализовано
+### Implemented
 
-- Создано решение `AI.Client.slnx` и проекты Domain, Contracts, Application, Infrastructure, Host, Web, History MCP и FileSystem MCP.
-- Настроены .NET 10, nullable reference types, latest recommended analyzers, warnings as errors и central package management.
-- Подключены Pure.DI и Pure.DI.MS; для Host и Web созданы отдельные composition roots.
-- Реализован Project aggregate с идентификатором, названием, временными метками, разрешёнными директориями и подключениями MCP-серверов.
-- Реализованы отдельные политики `Allow`, `Ask`, `Deny` для каждого MCP-инструмента.
-- Идентичность инструмента включает MCP server id и имя инструмента; schema hash участвует в политике и сбрасывает устаревшее разрешение при изменении схемы.
-- Добавлены application-контракты репозитория и сценарий чтения проекта.
-- Создан минимальный Hosted Blazor WebAssembly shell и gateway health endpoint `/api/health`.
-- Настроена публикация и маршрутизация static web assets для Development и Production.
-- Созданы заготовки отдельных процессов History MCP и FileSystem MCP. Реальные MCP-инструменты в этом инкременте ещё не реализованы.
+- Created the `AI.Client.slnx` solution and the Domain, Contracts, Application, Infrastructure, Host, Web, History MCP, and FileSystem MCP projects.
+- Configured .NET 10, nullable reference types, latest recommended analyzers, warnings as errors, and central package management.
+- Connected Pure.DI and Pure.DI.MS; separate composition roots were created for Host and Web.
+- Implemented the Project aggregate with ID, name, timestamps, allowed directories, and MCP server bindings.
+- Implemented separate `Allow`, `Ask`, `Deny` policies for each MCP tool.
+- Tool identity includes the MCP server ID and the tool name; the schema hash participates in the policy and invalidates a stale approval when the schema changes.
+- Added application repository contracts and the project read scenario.
+- Created a minimal Hosted Blazor WebAssembly shell and gateway health endpoint `/api/health`.
+- Configured publishing and routing of static web assets for Development and Production.
+- Created stubs for separate History MCP and FileSystem MCP processes. The real MCP tools have not been implemented in this increment.
 
-### Тесты
+### Tests
 
-- Используются только быстрые модульные тесты на xUnit v3, Shouldly и Moq.
-- Добавлено 6 тестов Domain и 2 теста Application.
-- Тесты не используют сеть, файловую систему, процессы или внешнее окружение.
+- Only fast unit tests on xUnit v3, Shouldly, and Moq are used.
+- Added 6 Domain tests and 2 Application tests.
+- The tests use no network, file system, processes, or external environment.
 
-### Проверки
+### Checks
 
-| Проверка | Результат |
+| Check | Result |
 |---|---|
-| `dotnet build AI.Client.slnx --nologo` | Успешно, 0 warnings, 0 errors |
-| `dotnet test AI.Client.slnx --no-build --nologo` | Успешно, 8 из 8 тестов |
+| `dotnet build AI.Client.slnx --nologo` | Success, 0 warnings, 0 errors |
+| `dotnet test AI.Client.slnx --no-build --nologo` | Success, 8 of 8 tests |
 | Development: `/api/health` | HTTP 200 |
-| Development: `/` и `/_framework/blazor.webassembly.js` | HTTP 200 |
+| Development: `/` and `/_framework/blazor.webassembly.js` | HTTP 200 |
 | Published Production: `/api/health` | HTTP 200 |
-| Published Production: `/` и `/_framework/blazor.webassembly.js` | HTTP 200 |
+| Published Production: `/` and `/_framework/blazor.webassembly.js` | HTTP 200 |
 
-### Следующий инкремент
+### Next increment
 
-Локальное JSON-хранилище проектов:
+Local JSON project storage:
 
 - versioned JSON envelope;
-- repository через интерфейс;
-- optimistic concurrency по revision;
-- атомарная запись и восстановление после незавершённой записи;
-- абстракция файловой системы;
-- быстрые модульные тесты без обращения к реальной файловой системе.
+- repository through an interface;
+- optimistic concurrency by revision;
+- atomic write and recovery after an unfinished write;
+- file system abstraction;
+- fast unit tests without touching the real file system.
 
-## Журнал изменений
+## Change log
 
-| Дата | Изменение |
+| Date | Change |
 |---|---|
-| 2026-08-11 | Создан журнал. Зафиксирован инкремент 001 и фактическое состояние этапов 0–2. |
-| 2026-08-12 | Зафиксировано языковое правило: UI и комментарии в исходном коде ведутся на английском; существующие строки Web shell переведены. |
-| 2026-08-12 | Добавлено build-приложение по подходу `dotnet-matrix/build`: Pure.DI composition root, интерфейсные targets и команды `build`, `test`, `verify`, `publish`; `verify` успешно выполнен. |
-| 2026-08-12 | Добавлены versioned-конфигурации Rider для запуска Host, проверки и публикации. |
-| 2026-08-12 | Тестовая стратегия дополнена стилем `CSharpInteractive.Tests/CISettingsTests.cs`; реализован JSON storage slice проектов с in-memory unit tests, optimistic concurrency, temporary-file recovery и Pure.DI registration в Host. |
-| 2026-08-12 | Реализован CRUD метаданных проекта: Application service, same-origin `/api/projects`, revision conflicts, Web UI для списка, создания, выбора, редактирования и удаления; `verify` и локальная smoke-проверка API пройдены. |
-| 2026-08-12 | Реализован CRUD security settings: directory grants, MCP bindings и tool policies передаются и сохраняются как единый revisioned document; UI поддерживает добавление, удаление и редактирование, а Application tests проверяют связность policy с MCP server. |
-| 2026-08-12 | Добавлен Live chat preview для OpenAI-compatible `chat/completions`: Host adapter, временный API key без сохранения, Web form и unit tests mapping HTTP request/response. Локальная проверка невалидного запроса вернула ожидаемый HTTP 400. |
-| 2026-08-12 | Исправлена WASM DI-конфигурация `HttpClient`: base address теперь берётся из `NavigationManager.BaseUri`, поэтому relative same-origin API requests допустимы в browser runtime. |
-| 2026-08-12 | Добавлены endpoint profiles в составе проекта: имя, OpenAI-compatible base URL и model сохраняются в versioned project JSON. API key хранится отдельно от project document: в локальном файле, защищённом Windows DPAPI для текущего пользователя. Web UI позволяет создать профиль, задать или заменить ключ и выбрать профиль для live chat; сохранённый ключ разрешается только на Host gateway и не возвращается в WASM. Добавлены unit tests защищённого credential store на in-memory file system и тестовом protector. |
-| 2026-08-12 | Реализована локальная история чатов в составе проекта: domain model дерева сообщений, JSON documents с revision, Host/Web API, создание и выбор чатов в UI. После live-chat completion сохраняется пара user/assistant; parent message определяет активную ветку контекста. Добавлены unit tests ветвления и JSON round-trip. |
-| 2026-08-12 | Добавлен безопасный Markdown UI: Markdig рендерит сохранённый исходный Markdown, source HTML отключён, а итоговый HTML очищается HtmlSanitizer перед выводом через `MarkupString`. Обновлена документация плана и правил тестирования; Web build успешно выполнен без warnings/errors. |
+| 2026-08-11 | Log created. Increment 001 and the actual state of stages 0–2 are recorded. |
+| 2026-08-12 | Recorded the language rule: UI and source code comments are kept in English; existing Web shell strings were translated. |
+| 2026-08-12 | Added the build application following the `dotnet-matrix/build` approach: Pure.DI composition root, interface targets, and `build`, `test`, `verify`, `publish` commands; `verify` ran successfully. |
+| 2026-08-12 | Added versioned Rider configurations to run Host, verify, and publish. |
+| 2026-08-12 | Test strategy extended with the `CSharpInteractive.Tests/CISettingsTests.cs` style; implemented the project JSON storage slice with in-memory unit tests, optimistic concurrency, temporary-file recovery, and Pure.DI registration in Host. |
+| 2026-08-12 | Implemented project metadata CRUD: Application service, same-origin `/api/projects`, revision conflicts, Web UI for list, create, select, edit, and delete; `verify` and local API smoke checks passed. |
+| 2026-08-12 | Implemented security settings CRUD: directory grants, MCP bindings, and tool policies are passed and saved as a single revisioned document; the UI supports add, remove, and edit, and Application tests verify policy-to-MCP-server consistency. |
+| 2026-08-12 | Added the Live chat preview for OpenAI-compatible `chat/completions`: Host adapter, temporary unsaved API key, Web form, and unit tests for HTTP request/response mapping. A local check of an invalid request returned the expected HTTP 400. |
+| 2026-08-12 | Fixed the WASM DI configuration of `HttpClient`: the base address is now taken from `NavigationManager.BaseUri`, so relative same-origin API requests work in the browser runtime. |
+| 2026-08-12 | Added endpoint profiles inside the project: name, OpenAI-compatible base URL, and model are saved in the versioned project JSON. The API key is stored separately from the project document: in a local file protected by Windows DPAPI for the current user. The Web UI lets you create a profile, set or replace the key, and select the profile for live chat; the saved key is resolved only on the Host gateway and is never returned to WASM. Added unit tests of the protected credential store against an in-memory file system and a test protector. |
+| 2026-08-12 | Implemented local chat history inside the project: message tree domain model, JSON documents with revision, Host/Web API, and chat create/select in the UI. After a live-chat completion a user/assistant pair is saved; the parent message defines the active context branch. Added branching unit tests and JSON round-trip tests. |
+| 2026-08-12 | Added safe Markdown UI: Markdig renders the saved raw Markdown, source HTML is disabled, and the resulting HTML is sanitized by HtmlSanitizer before being emitted through `MarkupString`. Updated the plan and testing-rules documentation; the Web build succeeded with no warnings or errors. |
 | 2026-08-12 | Реализовано ветвление чатов: UI позволяет выбрать любое сообщение как branch point; последующая отправка сохраняет отдельную дочернюю user/assistant пару и сохраняет прежнее продолжение. OpenAI-compatible adapter получает только выбранный путь сообщений и новый запрос; добавлен unit test сериализации completion context. |
-| 2026-08-12 | UI переработан по workspace-референсу: sidebar содержит проекты и вложенные чаты, центральная область показывает выбранную ветку и composer, правая панель содержит project settings и AI endpoints. Добавлены явные состояния пустого проекта/чата, подсказка причины недоступности Send, карточки endpoint profile и подтверждение сохранения. |
-| 2026-08-12 | Исправлена доступность endpoint settings на узких окнах: рядом с endpoint selector всегда показана кнопка `Add endpoint` или `Configure`; она открывает settings panel как overlay, автоматически создаёт первую карточку endpoint и после сохранения закрывает панель. |
-| 2026-08-12 | Исправлен transitional UI defect: прежний prototype screen оставался в DOM и становился видимым из-за CSS cascade (`.shell` переопределял `.legacy-shell`). Legacy screen теперь принудительно исключён из layout; пользователю показывается только workspace UI. |
+| 2026-08-12 | UI was reworked using the workspace reference: the sidebar contains projects and nested chats, the central area shows the selected branch and composer, and the right panel holds project settings and AI endpoints. Added explicit empty-project/empty-chat states, a tooltip explaining why Send is unavailable, endpoint profile cards, and a save confirmation. |
+| 2026-08-12 | Fixed endpoint settings accessibility on narrow windows: next to the endpoint selector an `Add endpoint` or `Configure` button is always shown; it opens the settings panel as an overlay, automatically creates the first endpoint card, and closes the panel after saving. |
+| 2026-08-12 | Fixed a transitional UI defect: the previous prototype screen remained in the DOM and became visible due to a CSS cascade (`.shell` overrode `.legacy-shell`). The legacy screen is now forcibly excluded from the layout; only the workspace UI is shown to the user. |
 | 2026-08-12 | После UX-сверки принят Codex-like desktop workspace baseline и создан `12-ux-decisions.md`. Решения разделены на ближайший workspace foundation и отложенные streaming/MCP/FileSystem этапы; визуальная простота Codex имеет приоритет над буквальным воспроизведением избыточных промежуточных диалогов. |
 | 2026-08-12 | Начат workspace foundation: project inspector разделён на вкладки General/Endpoints/Security/MCP, endpoint editor переведён на master-detail, добавлены Save/Cancel и минимальный локальный Lucide-like SVG component для icon-only actions. Host/Web build выполнен в изолированный output без warnings/errors. |
 | 2026-08-12 | Workspace foundation продолжен: старая prototype-разметка физически удалена, проект получил сохраняемый default endpoint, чат — собственный сохраняемый `EndpointProfileId`, а новый чат наследует проектный default. Добавлены resize-разделители панелей с сохранением layout в `localStorage`, клавиатурный контракт composer (`Enter`, `Shift+Enter`, IME-safe), очистка и возврат focus после отправки. Pure.DI получает `IJSRuntime` как внешнюю Blazor dependency; статические application services не добавлялись. |
@@ -97,48 +97,48 @@
 | 2026-08-12 | Реализован OpenAI-compatible streaming: Infrastructure отправляет `stream: true`, отдельный SSE parser извлекает `choices[0].delta.content` до `[DONE]`, Host проксирует безопасные chunks в WASM. Composer отображает постепенный Markdown и кнопку Stop. User message сохраняется перед генерацией; завершённый, остановленный или оборванный assistant response сохраняется после неё, для последних двух выставляется `Incomplete`. JSON schema остаётся backward-compatible за счёт optional поля. Изолированная сборка — 0 warnings/errors; Domain 10/10, Application 8/8, Infrastructure 16/16. |
 | 2026-08-12 | Завершён базовый chat management UX: New chat стал несохранённым draft до первой отправки; добавлены revision-safe Rename/Delete API и inline подтверждение удаления, Copy Markdown, Edit and branch и sibling branch switcher. Выбор sibling разворачивается до наиболее свежего leaf. UI actions используют локальные SVG icons и английские tooltip/aria-label. Изолированная сборка — 0 warnings/errors; Domain 12/12, Application 10/10, Infrastructure 16/16. |
 | 2026-08-12 | Переработан chat workspace по UX feedback: устранены дублирующие collapse controls, compact sidebar сохраняет только Show sidebar, endpoint selector встроен в chat header, а draft больше не показывает `New chat` или тестовый текст. Composer получил исчезающий hint и явную Send button в своей нижней панели. Project settings стал устойчивой колонкой с закреплённой danger zone; Endpoints заменён на picker профиля и detail-форму. Изолированная Host/Web сборка прошла с 0 warnings/errors. |
-| 2026-08-12 | По уточнённому UX решению удалён заголовок центральной chat области: имя чата остаётся в левой навигации, endpoint настраивается исключительно в правом inspector. Центральная область содержит только историю и composer. |
-| 2026-08-12 | По следующему UX решению правая Project settings panel полностью удалена из workspace. У выбранного проекта добавлено меню `…`: Project settings открывает вкладочное modal dialog, Delete project находится в том же меню и требует inline подтверждения. Центральная часть остаётся пространством истории и composer. |
-| 2026-08-12 | Размер Project settings modal стабилизирован: ширина и высота не зависят от активной вкладки, а на небольшом viewport прокручивается только внутреннее содержимое. |
-| 2026-08-12 | Из Project settings modal удалена дублирующая кнопка `X`: Save сохраняет и закрывает, Cancel восстанавливает сохранённое состояние и закрывает; MCP без редактирования использует Close. |
-| 2026-08-12 | Действия Project settings унифицированы: один закреплённый footer с `Save` и `Cancel` используется всеми вкладками. Специфичное для endpoint действие `Test connection` остаётся рядом с редактируемым профилем. |
-| 2026-08-12 | Project settings увеличен до `42rem × 52rem` с ограничением по viewport, чтобы форма endpoint помещалась без лишней вертикальной прокрутки на стандартном экране. Кнопка добавления endpoint выровнена по высоте поля выбора профиля. |
-| 2026-08-12 | Удаление endpoint перенесено к выбору профиля: компактная кнопка `−` расположена рядом с `+`, имеет tooltip и недоступна, когда профиль не выбран. Нижняя текстовая кнопка удаления убрана. |
-| 2026-08-12 | Из sidebar удалён декоративный блок `AI.Client / Foundation`. Кнопки скрытия и восстановления sidebar получили одинаковую высоту управляющей строки и одинаковую вертикальную позицию в обоих состояниях. |
-| 2026-08-12 | По визуальной проверке уточнено позиционирование sidebar toggle: кнопка восстановления закреплена абсолютно на том же верхнем отступе `0.45rem`, что и кнопка скрытия, и центрируется внутри свёрнутой колонки. |
-| 2026-08-12 | Реализован lazy chat creation: пользователь может написать сообщение сразу после выбора или создания проекта, а чат создаётся при первой отправке и получает заголовок из текста сообщения. Пустой экран объясняет это поведение. Если endpoint не настроен, отправка больше не завершается молча — composer показывает конкретную ошибку. |
-| 2026-08-12 | Действия выбранного проекта переведены на компактные SVG-кнопки: `+` создаёт новый чат, sliders открывает меню настроек. Глобальная текстовая кнопка `New chat` удалена. Send заменён на круглую светлую кнопку со стрелкой вверх. `Test connection` сокращён до `Test` с сохранением полного tooltip. |
-| 2026-08-12 | Контекстные меню закрываются кликом вне меню, при смене проекта или чата и после выполнения команды. К строкам чатов добавлено меню с `Delete chat`, inline-подтверждением и optimistic revision check существующего History API. |
-| 2026-08-12 | Улучшена видимость фокуса composer: textarea использует белую каретку и контрастный цвет текста, а контейнер получает заметную границу через `focus-within`. |
-| 2026-08-12 | Все кнопки приведены к общей визуальной системе кнопки настроек: тёмный нейтральный фон, серая рамка, одинаковые hover, keyboard focus и disabled states. Icon-only, круглые и текстовые варианты сохраняют свою форму, опасные действия — приглушённый красный семантический акцент. |
-| 2026-08-12 | Текстовая кнопка `Stop` в composer заменена круглой icon-only кнопкой с квадратным stop glyph, tooltip `Stop generation` и accessibility label. |
-| 2026-08-12 | После аудита button states активная Send снова получила контрастный светлый фон и тёмную иконку; hover осветляет и слегка поднимает кнопку, active возвращает её на место, disabled использует отдельный тёмный вид без общей opacity. Для остальных кнопок добавлено единое active-состояние. |
+| 2026-08-12 | Per a refined UX decision the central chat area title was removed: the chat name stays in the left navigation, and the endpoint is configured exclusively in the right inspector. The central area contains only history and composer. |
+| 2026-08-12 | Per the next UX decision the right Project settings panel was completely removed from the workspace. The selected project got a `…` menu: Project settings opens a tabbed modal dialog, Delete project lives in the same menu and requires inline confirmation. The central part remains the space for history and composer. |
+| 2026-08-12 | Project settings modal size was stabilized: width and height do not depend on the active tab, and on a small viewport only the inner content scrolls. |
+| 2026-08-12 | The duplicate `X` button was removed from the Project settings modal: Save saves and closes, Cancel restores the saved state and closes; MCP without editing uses Close. |
+| 2026-08-12 | Project settings actions were unified: a single fixed footer with `Save` and `Cancel` is used by all tabs. The endpoint-specific `Test connection` action stays next to the editable profile. |
+| 2026-08-12 | Project settings was enlarged to `42rem × 52rem` with viewport clamping, so the endpoint form fits without unnecessary vertical scrolling on a standard screen. The add-endpoint button is aligned in height with the profile selector. |
+| 2026-08-12 | Endpoint removal was moved next to the profile selector: a compact `−` button sits beside `+`, has a tooltip, and is disabled when no profile is selected. The bottom text remove button was removed. |
+| 2026-08-12 | The decorative `AI.Client / Foundation` block was removed from the sidebar. The sidebar hide/restore buttons got the same control row height and the same vertical position in both states. |
+| 2026-08-12 | After a visual review the sidebar toggle positioning was refined: the restore button is positioned absolutely with the same top offset `0.45rem` as the hide button, and is centered inside the collapsed column. |
+| 2026-08-12 | Lazy chat creation was implemented: the user can type a message right after selecting or creating a project, and the chat is created on first send and gets its title from the message text. The empty screen explains this behavior. If no endpoint is configured, sending no longer fails silently — the composer shows a specific error. |
+| 2026-08-12 | The actions of the selected project were moved to compact SVG buttons: `+` creates a new chat, sliders opens the settings menu. The global text button `New chat` was removed. Send was replaced with a round light button with an up arrow. `Test connection` was shortened to `Test` while preserving the full tooltip. |
+| 2026-08-12 | Context menus close on click outside the menu, when switching project or chat, and after the command runs. Chat rows got a menu with `Delete chat`, inline confirmation, and an optimistic revision check against the existing History API. |
+| 2026-08-12 | Improved composer focus visibility: the textarea uses a white caret and a high-contrast text color, while the container gets a noticeable border via `focus-within`. |
+| 2026-08-12 | All buttons were aligned to the shared settings-button visual system: dark neutral background, gray border, identical hover, keyboard focus, and disabled states. Icon-only, round, and text variants keep their shape; dangerous actions use a muted red semantic accent. |
+| 2026-08-12 | The text `Stop` button in the composer was replaced with a round icon-only button with a square stop glyph, the tooltip `Stop generation`, and an accessibility label. |
+| 2026-08-12 | After a button states audit the active Send again received a contrasting light background and a dark icon; hover lightens and slightly raises the button, active puts it back in place, disabled usesьзует отдельный тёмный вид без общей opacity. Для остальных кнопок добавлено единое active-состояние. |
 | 2026-08-12 | Composer теперь синхронизирует текст по событию `input`, а не только по стандартному для `InputTextArea` событию `change`. Поэтому доступность Send пересчитывается во время набора, без потери фокуса textarea. |
 | 2026-08-12 | Завершение OpenAI-compatible streaming больше не зависит исключительно от SSE marker `[DONE]`: parser завершает перечисление также при непустом стандартном `choices[0].finish_reason`. Это убирает зависание UI в `Assistant · Generating` на endpoint, которые сообщают `stop`, но удерживают HTTP stream открытым. Добавлен быстрый модульный тест. |
 | 2026-08-12 | Role labels `Assistant` и `User` удалены из сообщений. Состояние генерации вынесено в отдельную live status строку непосредственно над composer и исчезает после завершения потока. Текст состояния продолжения изменён на `Continuing selected chat`; у частично сохранённого ответа остаётся только метка `Incomplete`. |
 | 2026-08-12 | Устранён startup render failure после live-binding изменения composer: `InputTextArea` с конкурирующими `change` и ручным `input` handlers заменён на native `textarea` с единым `@bind:event="oninput"`. JS keyboard attachment теперь получает `ElementReference` напрямую. |
-| 2026-08-12 | Добавлен chat autoscroll после завершения DOM render: при выборе чата, сохранении user message и каждом streaming chunk компонент ставит pending scroll, а `OnAfterRenderAsync` прокручивает history container к `scrollHeight`. |
-| 2026-08-12 | Для OpenAI-compatible endpoint с некорректно незакрытым SSE добавлен fallback idle timeout: если после последнего события 10 секунд нет данных, parser завершает поток как полный ответ. Стандартные `[DONE]` и `finish_reason` остаются приоритетными; пользовательская Stop продолжает сохранять partial response как `Incomplete`. |
-| 2026-08-12 | Исправлена семантика streaming idle timeout: deadline теперь отсчитывается от последнего содержательного token chunk. Пустые SSE-строки, comments и keep-alive больше не сбрасывают таймер и не могут бесконечно удерживать UI в состоянии `Generating...`. |
-| 2026-08-12 | Кнопка контекстного меню чата переведена с glyph `…` на общую SVG-иконку sliders, используемую для настроек и контекстных действий. Tooltip и accessibility label `Chat menu` сохранены. |
-| 2026-08-13 | Реализована глобальная конфигурация приложения: постоянные sidebar-разделы `Connections`, `Security`, `MCP` открываются в центральной области. Connections и MCP сохраняются в отдельных JSON; secrets остаются write-only на Host. Project settings сведён к одной странице с Name, Description, выбором Connection и project-only directory grants (`Read only`/`Read/write`, всегда recursive). MCP UI сохраняет Streamable HTTP и stdio definitions без подключения и tools discovery. Текущий Qwen вручную перенесён в глобальный default Connection с сохранением GUID существующих чатов. |
-| 2026-08-13 | Исправлены регрессии после глобальной навигации: keyboard handler composer повторно подключается к новому textarea DOM element при возврате из глобального раздела, поэтому Enter снова отправляет сообщение. Project settings переведён на трёхстрочную grid-схему без удалённого tabs-row, получил content-sized высоту, меньшую ширину и компактный Description; footer больше не растягивает Save/Cancel. |
-| 2026-08-13 | Composer автоматически увеличивает высоту до 14 строк. До достижения порога вертикальный scrollbar принудительно скрыт; после порога высота фиксируется и включается внутренняя прокрутка. Пересчёт выполняется при вводе, первоначальном подключении, фокусировке и программной подстановке текста. |
-| 2026-08-13 | Исправлено падение WebAssembly при пустом или устаревшем static asset `chatComposer.js`: JS enhancement больше не является критической зависимостью первого рендера, ошибки import/attach перехватываются. Enter обрабатывается непосредственно Blazor, а CSS `field-sizing: content` сохраняет базовый auto-grow без JS. |
-| 2026-08-13 | Для сообщений пользователя и ассистента добавлено действие `Fork from here` с отдельной SVG-иконкой. Оно выбирает сообщение как leaf новой ветви, очищает и фокусирует composer; следующая отправка создаёт дочернюю ветвь, не изменяя исходную историю. |
+| 2026-08-12 | Added chat autoscroll after DOM render completes: when selecting a chat, saving a user message, and on every streaming chunk the component sets a pending scroll, and `OnAfterRenderAsync` scrolls the history container to `scrollHeight`. |
+| 2026-08-12 | For an OpenAI-compatible endpoint with an improperly closed SSE a fallback idle timeout was added: if 10 seconds pass after the last event without data, the parser finishes the stream as a complete response. Standard `[DONE]` and `finish_reason` remain priority; the user-initiated Stop continues to save the partial response as `Incomplete`. |
+| 2026-08-12 | Fixed the semantics of the streaming idle timeout: the deadline is now counted from the last meaningful token chunk. Empty SSE lines, comments, and keep-alive no longer reset the timer and cannot keep the UI in the `Generating...` state indefinitely. |
+| 2026-08-12 | The chat context menu button was changed from the `…` glyph to the shared sliders SVG icon used for settings and contextual actions. The tooltip and accessibility label `Chat menu` were preserved. |
+| 2026-08-13 | Implemented global application configuration: persistent sidebar sections `Connections`, `Security`, `MCP` open in the central area. Connections and MCP are saved in separate JSONs; secrets stay write-only on Host. Project settings was reduced to a single page with Name, Description, Connection selection, and project-only directory grants (`Read only`/`Read/write`, всегда recursive). MCP UI сохраняет Streamable HTTP и stdio definitions без подключения и tools discovery. Текущий Qwen вручную перенесён в глобальный default Connection с сохранением GUID существующих чатов. |
+| 2026-08-13 | Fixed regressions after global navigation: the composer's keyboard handler re-attaches to the new textarea DOM element when returning from a global section, so Enter again sends a message. Project settings was moved to a three-row grid layout without the removed tabs row, got a content-sized height, smaller width, and compact Description; the footer no longer stretches Save/Cancel. |
+| 2026-08-13 | The composer auto-grows up to 14 rows. Before reaching the threshold the vertical scrollbar is forcibly hidden; after the threshold the height is fixed and inner scrolling is enabled. Recalculation runs on input, initial attach, focus, and programmatic text insertion. |
+| 2026-08-13 | Fixed a WebAssembly crash on an empty or stale `chatComposer.js` static asset: JS enhancement is no longer a critical dependency of the first render, and import/attach errors are caught. Enter is handled directly by Blazor, while CSS `field-sizing: content` preserves the basic auto-grow without JS. |
+| 2026-08-13 | For user and assistant messages the `Fork from here` action was added with a separate SVG icon. It selects the message as the leaf of a new branch, clears and focuses the composer; the next send creates a child branch without modifying the original history. |
 | 2026-08-12 | Добавлено постоянное структурированное логирование Host на `Microsoft.Extensions.Logging`: Console и ежедневные JSONL в `%LocalAppData%\AI.Client\logs`, retention 14 дней, streaming event IDs `1001–1005`, без prompt/token content и credentials. |
-| 2026-08-12 | Добавлен `AI.Client.Cli` для headless LLM testing: отдельные многошаговые sessions, реальный Host SSE route, project endpoint/protected credential, JSON stdout, `session.json` и append-only `transcript.jsonl`. MCP/security snapshot фиксируется, но `agent` честно возвращает `not_supported` до реализации общего Agent Runtime. Build automation получила команду `chat`. |
-| 2026-08-12 | Headless CLI расширен воспроизводимой проверкой Stop через `session send --cancel-after-ms`: отменяется тот же downstream HTTP streaming request, результат возвращается как `cancelled`, partial text фиксируется только в transcript и не загрязняет дальнейший session context. |
-| 2026-08-12 | Реальный smoke-test выявил, что ASP.NET logging state может содержать несериализуемый `RuntimeMethodInfo`. JSONL provider сделан fail-safe: property values нормализуются в primitives/strings, а исключения provider не могут вернуть HTTP 500 приложению. |
-| 2026-08-12 | Реальная проверка Qwen3-Coder-480B подтвердила end-to-end Stop: Host получил 135 chunks и записал `ChatStreamCancelled` через 2898 ms. В headless CLI найдено буферизующее поведение `PostAsJsonAsync`; streaming переведён на `SendAsync(..., ResponseHeadersRead)`, чтобы transcript видел chunks и partial response до отмены. |
+| 2026-08-12 | Added `AI.Client.Cli` for headless LLM testing: separate multi-step sessions, real Host SSE route, project endpoint/protected credential, JSON stdout, `session.json`, and append-only `transcript.jsonl`. MCP/security snapshot is recorded, but `agent` honestly returns `not_supported` until the general Agent Runtime is implemented. Build automation received the `chat` command. |
+| 2026-08-12 | The headless CLI was extended with a reproducible Stop check via `session send --cancel-after-ms`: the same downstream HTTP streaming request is cancelled, the result is returned as `cancelled`, and partial text is recorded only in the transcript without polluting further session context. |
+| 2026-08-12 | A real smoke test revealed that the ASP.NET logging state can contain a non-serializable `RuntimeMethodInfo`. The JSONL provider was made fail-safe: property values are normalized to primitives/strings, and provider exceptions cannot return HTTP 500 to the application. |
+| 2026-08-12 | A real check with Qwen3-Coder-480B confirmed end-to-end Stop: Host received 135 chunks and recorded `ChatStreamCancelled` after 2898 ms. Buffering behavior of `PostAsJsonAsync` was found in the headless CLI; streaming was switched to `SendAsync(..., ResponseHeadersRead)` so the transcript sees chunks and the partial response before cancellation. |
 | 2026-08-12 | По серверному логу UI-зависания установлено: Host штатно завершил 26 chunks за 850 ms, значит Web застревал после SSE при сохранении истории. Cleanup `_isSending`, cancellation source и streaming buffer вынесен во вложенный `finally`; ошибка append/reload истории больше не оставляет `Generating...` и Stop, а показывается отдельным сообщением. |
-| 2026-08-12 | Повторная трассировка подтвердила полный успешный цикл Host + history (30 chunks, POST/GET 200), но UI не перерисовывался до завершения последнего JS focus interop. После сброса `_isSending` теперь немедленно вызывается `StateHasChanged`; восстановление focus выполняется вторично и `JSException` не влияет на completion state. |
-| 2026-09-15 | Живой прогон «проверь все соединения подзадачами» показал, что таймаут политики отмерял длительность вызова: веер из восьми подзадач гибнул на 120-й секунде вместе со всей начатой работой, а занятые им слоты не давали повторить попытку. Таймаут переведён на отсчёт молчания — уведомление о прогрессе продлевает терпение, как и разрешает MCP, — с общим потолком в 30 минут на вызов. |
-| 2026-09-15 | Пустой ответ endpoint'а (ни текста, ни вызовов) убивал прогон целиком: настройка проекта оборвалась на середине, проект остался недоделанным. Для такого хода ничего не сохраняется, поэтому повтор отправляет ровно тот же запрос и не может продублировать ни одного эффекта — ход повторяется до двух раз с задержкой 1 и 2 секунды, и только потом прогон падает. |
-| 2026-09-15 | Отказ файловой системы приходил пользователю как «UnauthorizedAccessException: Access to the path is denied» со стеком и без пути: .NET не кладёт имя файла в это сообщение, и понять, какому каталогу не хватает прав, было не по чему. `PhysicalTextFileSystem` теперь называет путь при записи, переименовании и удалении, сохраняя тип исключения — по нему диспетчер классифицирует сбой как `Storage`. |
+| 2026-08-12 | A repeat trace confirmed a fully successful Host + history cycle (30 chunks, POST/GET 200), but the UI did not redraw until the last JS focus interop finished. After resetting `_isSending`, `StateHasChanged` is now called immediately; focus restoration runs as a secondary step and `JSException` does not affect the completion state. |
+| 2026-09-15 | A live run of "check all connections with subtasks" showed that the policy timeout measured the call duration: a fan of eight subtasks died at the 120th second along with all started work, and the slots it occupied prevented any retry. The timeout was switched to count silence — a progress notification extends patience, as does an MCP resolution — with a hard ceiling of 30 minutes per call. |
+| 2026-09-15 | An empty endpoint response (no text, no calls) killed the whole run: project setup broke off in the middle and the project was left half-finished. Nothing is persisted for such a turn, so the retry sends exactly the same request and cannot duplicate any side effect — the turn retries up to two times with 1- and 2-second delays, and only then the run fails. |
+| 2026-09-15 | A file system failure reached the user as "UnauthorizedAccessException: Access to the path is denied" with a stack trace but no path: .NET does not put the file name into this message, and there was no way to tell which directory was missing permissions. `PhysicalTextFileSystem` now namesт путь при записи, переименовании и удалении, сохраняя тип исключения — по нему диспетчер классифицирует сбой как `Storage`. |
 | 2026-09-15 | Названный путь сразу показал, что дело не в правах: отказ приходил на файле чата в собственном каталоге данных. Сохранение завершается переименованием временного файла поверх хранимого, а Windows отказывает переименовать файл, который кто-то держит открытым, — общий доступ на чтение не спасает. Четыре параллельные подзадачи, читающие чат, в который пишет их родитель, воспроизводили это надёжно. Замена идёт через `File.Replace` — операцию платформы ровно для этого случая, — а чтение открывает файл с `FileShare.ReadWrite | Delete`. |
-| 2026-09-15 | Живая нагрузка показала, что `File.Replace` переносит отказ с писателя на читателей: пока документ подменяется, он на долю миллисекунды не открывается и даже не существует, и читатель получает «файл занят» или 404. Чтение повторяет попытку до пяти раз с задержками 1–4 мс, и только пережившая их всех неудача сообщается; отсутствующий файл читается как отсутствующий после того же бюджета. Проверено: 7326 параллельных чтений против 250 записей одного файла — ноль ошибок. |
-| 2026-09-16 | Признак «для подзадач» стал множественным. Ограничение «только одно соединение» снято; неадресованные задачи раздаются помеченным соединениям по кругу, поэтому веер подзадач делится между провайдерами вместо очереди к одному. Очередь считается только по задачам без явного `connectionId`. |
+| 2026-09-15 | Live load showed that `File.Replace` shifts the failure from the writer to the readers: while the document is being swapped, it is unopenable for a fraction of a millisecond and even does not exist, so the reader gets "file in use" or a 404. The read retries up to five times with 1–4 ms delays, and only a failure that survives them all is reported; a missing file is read as missing after the same budget. Verified: 7326 parallel reads against 250 writes of a single file — zero errors. |
+| 2026-09-16 | The "for subtasks" flag became multi-valued. The "only one connection" restriction was removed; untargeted tasks are distributed round-robin among marked connections, so a fan of subtasks is split between providers instead of queuing at a single one. The queue is counted only for tasks without an explicit `connectionId`. |
 # 2026-08-13: branch tree and inline rename
 
 - Accepted sidebar design variant 2: root chats with nested branch conversations.
@@ -222,28 +222,28 @@ Status: completed
 - Added run lifecycle cleanup and graph reconciliation. Project and chat deletion remove their persisted and in-memory runs. After branch deletion, message append, replacement, or worker completion, valid runs are recalculated as `ChatId` plus current alternative user-message roots; obsolete files and runtimes are cancelled and removed. This also handles a node that ceases to be a branch root when its sibling is deleted.
 - Cancelling project or chat deletion now closes the entire context menu instead of returning to its initial menu state.
 
-## 2026-09-07 — встроенный MCP process_run
+## 2026-09-07 — built-in MCP process_run
 
-Реализованы stdio-сервер инструментов по умолчанию, schema validation, цикл tool calls в Chat Completions, подтверждения конкретного вызова, повторная проверка политик и сохранение пар вызов–результат. Web показывает вызовы и результаты; CLI поддерживает отдельное решение по approval. Сервер включён в build/publish, зависимости подключены через central package management.
+Implemented the stdio server of default tools, schema validation, the tool calls loop in Chat Completions, per-call confirmations, policy re-checks, and persistence of call–result pairs. The Web shows calls and results; the CLI supports a separate approval decision. The server is included in build/publish; dependencies are wired through central package management.
 
-Проверены настоящий MCP-вызов `dotnet --info`, продолжение генерации и восстановление истории после перезапуска Host с локальным тестовым endpoint. Визуальная проверка не выполнена: браузерный инструмент заблокировал локальный URL. Подробнее о границах и проверках: [инструменты по умолчанию](16-default-mcp-tools.md).
+A real MCP call of `dotnet --info` was checked, as well as generation continuation and history recovery after restarting Host with the local test endpoint. Visual check was not performed: the browser tool blocked the local URL. See [default tools](16-default-mcp-tools.md) for boundaries and verifications.
 
-Итоговая проверка: `dotnet run --project build -- verify` — 80 тестов, сборка без предупреждений и ошибок. `publish --output artifacts/publish-mcp-final` завершён; сквозной сценарий повторён на опубликованном Host и поставляемом MCP-сервере.
+Final check: `dotnet run --project build -- verify` — 80 tests, build without warnings or errors. `publish --output artifacts/publish-mcp-final` finished; the end-to-end scenario was repeated on the published Host and the bundled MCP server.
 
-## 2026-09-10 — FileSystem tools и fetch во встроенном MCP
+## 2026-09-10 — FileSystem tools and fetch in the built-in MCP
 
-Состав встроенного сервера доведён до 13 инструментов: к `process_run` добавлены `fetch` и одиннадцать FileSystem tools (`list_allowed_directories`, `read_text_file`, `read_multiple_files`, `list_directory`, `directory_tree`, `search_files`, `get_file_info`, `write_file`, `edit_file`, `create_directory`, `move_file`). Набор выбран по референсным серверам `modelcontextprotocol/servers`: `git` не дублируется, поскольку покрывается `process_run`; `memory`, `sequentialthinking` и `time` оставлены за границей встроенного набора.
+The built-in server now ships 13 tools: in addition to `process_run`, it includes `fetch` and eleven FileSystem tools (`list_allowed_directories`, `read_text_file`, `read_multiple_files`, `list_directory`, `directory_tree`, `search_files`, `get_file_info`, `write_file`, `edit_file`, `create_directory`, `move_file`). The set is selected based on the `modelcontextprotocol/servers` reference servers: `git` is not duplicated because it is already covered by `process_run`; `memory`, `sequentialthinking`, and `time` are left outside the built-in set.
 
-Directory grants проекта впервые получили исполняемый смысл. `IToolSessionFactory.OpenAsync` принимает grants, `DefaultToolSessionFactory` передаёт их серверу через `AI_CLIENT_DIRECTORY_GRANTS`, а `PathGuard` на стороне сервера проверяет абсолютность пути, снимает `..`, разрешает reparse point по всей цепочке существующих компонентов, сверяет containment и требуемую capability. Отсутствие grants означает отказ, а не полный доступ. Host канонизирует path-аргументы до подтверждения, поэтому пользователь и сервер оценивают один и тот же путь.
+The project's directory grants have gained executable meaning for the first time. `IToolSessionFactory.OpenAsync` accepts grants; `DefaultToolSessionFactory` passes them to the server via `AI_CLIENT_DIRECTORY_GRANTS`; the server-side `PathGuard` checks path absoluteness, strips `..`, resolves reparse points across the entire chain of existing components, verifies containment, and enforces the required capability. No grants mean denial, not full access. Host canonicalizes path arguments before confirmation, so user and server evaluate the same path.
 
-Проверка: 93 теста в четырёх тестовых проектах, компиляция solution без предупреждений. Полный `verify` с копированием выходных файлов Host не выполнялся — запущенный экземпляр `AI.Client.Host` удерживал свои сборки.
+Check: 93 tests in four test projects, solution compilation without warnings. A full `verify` that copies Host output files was not run — the running `AI.Client.Host` instance was holding its own assemblies.
 
-## 2026-09-17 — удаление файлов и каталогов во встроенном MCP
+## 2026-09-17 — file and directory deletion in the built-in MCP
 
-Состав встроенного сервера доведён до 16 инструментов: к прежним добавлены `delete_file` и `delete_directory`. До этого удаление оставалось единственной capability grant, не имевшей ни одного инструмента: `delete` уже выдавался вместе с `Read/write`, а `move_file` уже требовал его для источника, но снести файл было нечем.
+The built-in server now ships 16 tools: in addition to the previous ones, `delete_file` and `delete_directory` were added. Until now, deletion was the only capability grant with no corresponding tool: `delete` was already issued together with `Read/write`, and `move_file` already required it for its source, but there was no way to actually delete a file.
 
-Инструменты разделены по виду пути. `delete_file` удаляет только файл, `delete_directory` — только каталог; каждый отказывает на пути другого вида и называет подходящий инструмент вместо того, чтобы угадывать. `delete_directory` без `recursive` удаляет лишь пустой каталог, а на непустом возвращает ошибку с указанием флага — вызов, не запросивший рекурсию, не может снести больше, чем названный каталог. Оба требуют capability `delete` на путь, объявлены `destructive = true` и `idempotent = false` и возвращают `deleted: false` с ошибкой на уже удалённом пути. `delete_file` сообщает `bytes` — размер, который файл имел до удаления.
+The tools are split by path kind. `delete_file` deletes only a file, `delete_directory` only a directory; each refuses paths of the other kind and names the appropriate tool instead of guessing. `delete_directory` without `recursive` removes only an empty directory; for a non-empty one it returns an error that points to the flag — a call that did not request recursion cannot remove more than the named directory. Both require the `delete` capability on the path, are declared `destructive = true` and `idempotent = false`, and return `deleted: false` with an error when the path is already gone. `delete_file` reports `bytes` — the size the file had before deletion.
 
-Презентация вызовов отмечает рекурсию прямо в заголовке строки («Delete directory (recursive)»), а результат — размер удалённого файла. `WorkspaceChangeTracker` следит за обоими инструментами: удалённый файл попадает в изменения запуска как `Deleted` с числом строк, взятым из содержимого до запуска.
+The call presentation marks recursion directly in the row title ("Delete directory (recursive)"), and the result — the deleted file size. `WorkspaceChangeTracker` watches both tools: a deleted file appears in the run changes as `Deleted` with the line count taken from the content captured before the run.
 
-Проверка: 395 тестов в четырёх тестовых проектах — 120 Application, 178 Infrastructure, 67 Web, 30 Domain — без падений, компиляция solution и тестовых проектов без предупреждений. Полный `dotnet run --project build -- verify` не выполнялся: запущенный экземпляр `AI.Client.Host` удерживал сборки в своём `bin`, поэтому тестовые сборки прогнаны напрямую.
+Check: 395 tests in four test projects — 120 Application, 178 Infrastructure, 67 Web, 30 Domain — with no failures, solution and test projects compilation without warnings. The full `dotnet run --project build -- verify` was not run: the running `AI.Client.Host` instance was holding the assemblies in its `bin`, so the test assemblies were run directly.

@@ -1,11 +1,12 @@
-# ADR-006: Упрощение архитектуры
+# ADR-006: Architecture simplification
 
-Дата: 2026-09-06. Статус: принято.
+Date: 2026-09-06. Status: accepted.
 
-Дублирование подключений, клиентская координация запуска и восстановление веток по истории усложняли изменения и создавали гонки.
+Duplicate connections, client-side coordination of runs, and branch recovery from history made changes harder and introduced race conditions.
 
-Принято: единый каталог Connections и секретов; ChatRunDispatcher в Application; одна команда Submit для Web и CLI; явные ветки; неизменяемые узлы сообщений; сериализация изменений; снимки SSE с ревизиями; отдельные GlobalSettingsPanel и RunStateService.
+Adopted: a single catalog of Connections and secrets; `ChatRunDispatcher` in the Application layer; one Submit command for Web and CLI; explicit branches; immutable message nodes; serialized mutations; SSE snapshots with revisions; separate `GlobalSettingsPanel` and `RunStateService`.
 
-DI остаётся на Pure.DI. Удалены интерфейсы чистых сериализаторов и простых путей. Дополнительный контейнер, mediator и отдельный фреймворк клиентского состояния не вводятся.
+DI stays on Pure.DI. Interfaces for pure serializers and simple paths were removed. An additional container, a mediator, and a separate client-side state framework are not introduced.
 
-По решению пользователя совместимость API, старых профилей и файлов не сохраняется. Требуется новый каталог данных. JSON рассчитан на один Host; сборщик неиспользуемых узлов и MCP-исполнение остаются отдельными задачами.
+By user decision, backward compatibility of APIs, old profiles, and files is not preserved. A new data directory is required. JSON is sized for a single Host; the unused-node collector and MCP execution remain separate tasks.
+

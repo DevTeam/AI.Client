@@ -1,34 +1,34 @@
 # ADR-001: Hosted Blazor WebAssembly
 
-Статус: Accepted
+Status: Accepted
 
-Дата: 2026-08-11
+Date: 2026-08-11
 
-## Контекст
+## Context
 
-Client-Side WebAssembly нужен как UI-платформа, но browser sandbox не может безопасно хранить AI credentials, запускать `stdio` MCP processes или получать произвольный доступ к локальной файловой системе.
+Client-Side WebAssembly is needed as the UI platform, but the browser sandbox cannot safely store AI credentials, launch `stdio` MCP processes, or gain arbitrary access to the local file system.
 
-## Решение
+## Decision
 
-Использовать локальный ASP.NET Core `AI.Client.Host`, который раздаёт `AI.Client.Web` и предоставляет same-origin API. UI продолжает выполняться в browser WASM. Host хранит credentials, вызывает AI endpoints и управляет MCP transports/processes.
+Use a local ASP.NET Core `AI.Client.Host` that serves `AI.Client.Web` and exposes a same-origin API. The UI continues to run in the browser WASM. The Host stores credentials, calls AI endpoints, and manages MCP transports and processes.
 
-## Последствия
+## Consequences
 
-Положительные:
+Positive:
 
-- secrets отсутствуют в WASM;
-- доступен `stdio`;
-- нет внутреннего CORS;
-- один self-contained executable запускает систему;
-- privileged operations централизованно контролируются.
+- secrets never leave the Host;
+- `stdio` is available;
+- no internal CORS;
+- one self-contained executable launches the system;
+- privileged operations are controlled centrally.
 
-Отрицательные:
+Negative:
 
-- PWA не выполняет agent operations без Host;
-- Host становится security boundary;
-- требуются CSP, origin protection и жёсткий registry MCP executables.
+- the PWA cannot perform agent operations without the Host;
+- the Host becomes a security boundary;
+- CSP, origin protection, and a strict MCP executable registry are required.
 
-## Отклонённая альтернатива
+## Rejected alternative
 
-Standalone static WASM с BYOK отклонён как основной режим из-за утечки ключей, CORS и отсутствия `stdio`/filesystem access.
+Standalone static WASM with BYOK is rejected as the primary mode because of credential leakage, CORS, and the absence of `stdio`/filesystem access.
 

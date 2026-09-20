@@ -1,37 +1,37 @@
-# ADR-002: JSON-граф из неизменяемых узлов
+# ADR-002: JSON graph of immutable nodes
 
-Статус: Accepted
+Status: Accepted
 
-Дата: 2026-08-11
+Date: 2026-08-11
 
-## Контекст
+## Context
 
-История должна быть локальной, переносимой, читаемой и поддерживать Git-подобные ветки без копирования общей части. Пользователь выбрал несколько JSON-файлов вместо базы данных.
+History must be local, portable, human-readable, and support Git-like branches without copying the shared part. The user has chosen several JSON files instead of a database.
 
-## Решение
+## Decision
 
-Каждое сообщение хранится отдельным immutable JSON node с `ParentId`. `chat.json` хранит metadata, revision и branch refs. Большие результаты сохраняются content-addressed. Новая запись сначала создаёт node, затем атомарно перемещает branch head.
+Each message is stored as a separate immutable JSON node with a `ParentId`. `chat.json` holds metadata, revision, and branch refs. Large results are stored content-addressed. A new write first creates the node, then atomically moves the branch head.
 
-## Последствия
+## Consequences
 
-Положительные:
+Positive:
 
-- ветки не дублируют историю;
-- append почти не переписывает данные;
-- частичный сбой оставляет безопасный orphan;
-- формат легко экспортировать и диагностировать;
-- возможна проверка целостности по hash.
+- branches do not duplicate history;
+- appending rewrites almost no data;
+- a partial failure leaves a safe orphan;
+- the format is easy to export and diagnose;
+- integrity can be verified by hash.
 
-Отрицательные:
+Negative:
 
-- для построения пути нужны обход и индекс;
-- требуется garbage collector;
-- multi-writer updates требуют revision check;
-- поиск без дополнительного индекса медленнее базы данных.
+- building a path requires a walk and an index;
+- a garbage collector is required;
+- multi-writer updates require a revision check;
+- search without an additional index is slower than a database.
 
-## Отклонённые альтернативы
+## Rejected alternatives
 
-- Один вложенный JSON на чат: слишком много перезаписи и большой blast radius повреждения.
-- Event sourcing: полезен, но избыточен для первого релиза.
-- SQLite: надёжен, но не соответствует принятому требованию переносимого JSON-дерева.
+- A single nested JSON per chat: too much rewriting and a large blast radius on corruption.
+- Event sourcing: useful, but excessive for the first release.
+- SQLite: reliable, but does not match the adopted requirement of a portable JSON tree.
 

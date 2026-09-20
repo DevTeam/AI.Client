@@ -1,38 +1,38 @@
-# ADR-005: Быстрые модульные тесты на xUnit
+# ADR-005: Fast unit tests on xUnit
 
-Статус: Accepted
+Status: Accepted
 
-Дата: 2026-08-11
+Date: 2026-08-11
 
-## Контекст
+## Context
 
-AI.Client имеет много внешних границ: OpenAI endpoints, MCP transports, процессы, файловая система, browser APIs и защищённое хранилище. Тесты, использующие эти ресурсы напрямую, будут медленными, нестабильными и зависимыми от среды.
+AI.Client has many external boundaries: OpenAI endpoints, MCP transports, processes, the file system, browser APIs, and the protected credential store. Tests that use these resources directly will be slow, flaky, and dependent on the environment.
 
-## Решение
+## Decision
 
-Автоматический test suite состоит только из быстрых модульных тестов. Используются xUnit, Shouldly и Moq. Любая внешняя зависимость доступна через интерфейс и заменяется mock/fake/fixture. Интеграционные, end-to-end и live tests не создаются.
+The automated test suite consists only of fast unit tests. It uses xUnit, Shouldly, and Moq. Every external dependency is exposed through an interface and replaced with a mock, fake, or fixture. Integration, end-to-end, and live tests are not created.
 
-## Последствия
+## Consequences
 
-Положительные:
+Positive:
 
-- быстрый feedback loop;
-- стабильный CI;
-- отсутствие credentials и внешних сервисов;
-- точная проверка domain/application behavior;
-- ошибки легко локализуются до одного модуля.
+- fast feedback loop;
+- stable CI;
+- no credentials or external services required;
+- precise verification of domain and application behavior;
+- failures are easy to localize to a single module.
 
-Отрицательные:
+Negative:
 
-- wiring и реальные transport/OS adapters не проверяются автоматическим test suite;
-- адаптеры должны оставаться тонкими;
-- необходимы строгий code review, статический анализ и ручная приёмка опубликованного приложения.
+- wiring and real transport/OS adapters are not verified by the automated test suite;
+- adapters must stay thin;
+- strict code review, static analysis, and manual acceptance of the published application are required.
 
-## Правила
+## Rules
 
-- Domain tests не используют mocks.
-- Application tests используют Moq для портов.
-- Assertions выполняются Shouldly.
-- Время, IDs, delay, filesystem, HTTP, MCP и browser abstractions контролируются тестом.
-- `Thread.Sleep`, сеть, реальные процессы и реальный диск запрещены.
+- Domain tests do not use mocks.
+- Application tests use Moq for ports.
+- Assertions are written with Shouldly.
+- Time, IDs, delay, filesystem, HTTP, MCP, and browser abstractions are controlled by the test.
+- `Thread.Sleep`, the network, real processes, and the real disk are forbidden.
 

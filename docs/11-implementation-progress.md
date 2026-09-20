@@ -4,6 +4,18 @@ Status: Active
 
 This document is the log of actually completed work. It is updated after each finished increment together with the corresponding architecture and operations documents.
 
+## Open TODOs
+
+Cross-cutting items that are not yet increments but must be picked up before they become silent behaviour gaps.
+
+- **Surface automatic LLM context fallback to the user.** Today the planner silently replaces old
+  turns with an LLM summary when deterministic compaction does not fit; the chat feed, run status
+  and persisted history show nothing. Three layered options are documented in
+  `21-tool-selection-and-adaptive-compaction.md` ("Making the fallback visible to the user"):
+  log + run journal first, transport-side notification second, chat feed item last. Until at
+  least the first option is implemented, neither users nor post-mortem log readers can tell that
+  a compaction happened, which makes the recovery invisible.
+
 ## Recording rules
 
 - Record only implemented and verified changes.

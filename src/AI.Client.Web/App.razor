@@ -10,3 +10,10 @@
         </main>
     </NotFound>
 </Router>
+
+@* Global toast region: lives at the app shell so any page (Home, GlobalSettingsPanel,
+   ToolPermissionsDrawer, anything that saves settings) can pop a notification and have it
+   appear in the same place. Subscription to NotificationService.Changed is set up inside the
+   component, not here, so disposing/recreating it on navigation does not happen — the router
+   only swaps the RouteView, this fragment is rendered once. *@
+<ToastRegion />

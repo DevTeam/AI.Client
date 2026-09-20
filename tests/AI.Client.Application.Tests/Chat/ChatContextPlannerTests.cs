@@ -2,6 +2,7 @@ namespace AI.Client.Application.Tests.Chat;
 
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using AI.Client.Application.Chat;
 using AI.Client.Contracts.Chat;
 using AI.Client.Contracts.Settings;
@@ -201,6 +202,72 @@ public sealed class ChatContextPlannerTests
         plan.OmittedMessages.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task PlanAsyncShouldFallBackToLlmSummaryWhenDeterministicCompactionCannotFit()
+    {
+        // A history that the deterministic compactor still leaves larger than the window: even
+        // after projecting tool results and omitting older turns, the projected size is greater
+        // than the budget, so the LLM summarizer has to run.
+        var messages = Enumerable.Range(1, 8).SelectMany(index => new ChatCompletionMessage[]
+        {
+            new("user", $"request-{index} " + new string('a', 800)),
+            new("assistant", $"outcome-{index} " + new string('b', 800)),
+            new("tool", new string('c', 2_000), ToolCallId: $"call-{index}")
+        }).ToArray();
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator),
+            new FixedLimitsResolver(3_200, 256));
+        var summarizer = new RecordingSummarizer("Compacted earlier work.");
+
+        var plan = await planner.PlanAsync(null, "small-model", messages, [], summarizer, 800,
+            CancellationToken.None);
+
+        summarizer.Calls.ShouldBe(1);
+        plan.WasCompacted.ShouldBeTrue();
+        plan.Messages.ShouldContain(message => message.Content.StartsWith(
+            "Earlier conversation summary (LLM-generated"));
+    }
+
+    [Fact]
+    public async Task PlanAsyncShouldSkipLlmSummaryWhenDeterministicCompactionAlreadyFits()
+    {
+        var messages = Enumerable.Range(1, 3).SelectMany(index => new ChatCompletionMessage[]
+        {
+            new("user", $"request-{index} " + new string('a', 50)),
+            new("assistant", $"outcome-{index} " + new string('b', 50))
+        }).ToArray();
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator),
+            new ConnectionContextLimitsResolver());
+        var summarizer = new RecordingSummarizer("should not run");
+
+        var plan = await planner.PlanAsync(null, "unknown-model", messages, [], summarizer, 800,
+            CancellationToken.None);
+
+        plan.Fits.ShouldBeTrue();
+        summarizer.Calls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task PlanAsyncShouldReturnDeterministicResultWhenLlmSummarizerReturnsEmpty()
+    {
+        var messages = Enumerable.Range(1, 8).SelectMany(index => new ChatCompletionMessage[]
+        {
+            new("user", $"request-{index} " + new string('a', 800)),
+            new("assistant", $"outcome-{index} " + new string('b', 800)),
+            new("tool", new string('c', 2_000), ToolCallId: $"call-{index}")
+        }).ToArray();
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator),
+            new FixedLimitsResolver(3_200, 256));
+        var summarizer = new RecordingSummarizer(string.Empty);
+
+        var plan = await planner.PlanAsync(null, "small-model", messages, [], summarizer, 800,
+            CancellationToken.None);
+
+        summarizer.Calls.ShouldBe(1);
+        plan.Fits.ShouldBeFalse();
+        plan.Messages.ShouldNotContain(message => message.Content.StartsWith(
+            "Earlier conversation summary (LLM-generated"));
+    }
+
     private ChatContextPlanner Planner() => new(_estimator, new ChatContextCompactor(_estimator),
         new ConnectionContextLimitsResolver());
 
@@ -236,5 +303,17 @@ public sealed class ChatContextPlannerTests
     {
         public ResolvedConnectionContextLimits Resolve(ConnectionSettings? connection) =>
             new(contextWindow, ContextLimitSource.Override, reservedOutput, ContextLimitSource.Override);
+    }
+
+    private sealed class RecordingSummarizer(string reply) : IContextSummarizer
+    {
+        private int _calls;
+        public int Calls => _calls;
+
+        public Task<string> SummarizeAsync(string prompt, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _calls);
+            return Task.FromResult(reply);
+        }
     }
 }

@@ -34,7 +34,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
         Func<string, CancellationToken, Task> text,
         Func<string?, CancellationToken, Task> intermediate,
-        Func<CancellationToken, Task> toolCallsStarted,
+        Func<bool, CancellationToken, Task> toolCallStreaming,
         Func<ToolActivity?, CancellationToken, Task> activity,
         Func<ChatTransportWait?, CancellationToken, Task> transportActivity,
         Func<AgentTool, string, long, ToolCallPosition, CancellationToken, Task<ToolApprovalAction>> approve,
@@ -131,7 +131,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                                request with { ContextMessages = plan.Messages, Tools = available }, token))
             {
                 chunkCount++;
-                if (chunk.ToolCallsStarted) await toolCallsStarted(token);
+                if (chunk.ToolCallsStarted) await toolCallStreaming(true, token);
                 if (chunk.ToolCalls is { } received) calls.AddRange(received);
                 if (chunk.FinishReason is { Length: > 0 } reason) finish = reason;
                 if (chunk.Content.Length == 0) continue;
@@ -213,6 +213,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var completionCalls = calls.Where(call => call.Name == completionProtocol.Tool.ModelDefinition.Name).ToArray();
             if (completionCalls.Length > 0)
             {
+                // app_finish_run is a control boundary, not an intermediate tool step. The stream
+                // announces it like any other tool call, so clear the presentation phase before a
+                // complete/blocked decision publishes finalAnswer (and before a rejected decision
+                // starts another model step).
+                await toolCallStreaming(false, token);
                 // Once the model has entered the structured completion protocol, every correction
                 // stays in that protocol even if no ordinary tool preceded it.
                 completionRequired = true;

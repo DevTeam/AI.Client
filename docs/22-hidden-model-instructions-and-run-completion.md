@@ -72,6 +72,10 @@ The compact turn summary can be expanded to inspect it while the run is active. 
 to a final dialogue message. If the run is interrupted or fails, the latest provisional text is
 preserved as an incomplete assistant message, matching the existing recovery behavior.
 
+The tool-call streaming phase is explicitly closed before `app_finish_run.finalAnswer` is streamed
+and on every terminal run path. A completed, stopped, or failed run therefore never retains the
+presentation-only `StreamingToolCallsStarted` flag from its last protocol event.
+
 ## Verification
 
 Tests cover instruction ordering and lifetime, completion-decision validation, hidden-message

@@ -24,19 +24,21 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IProjectService projects, IGlobalSettingsRepository settings, IToolPolicyResolver policies,
     IWorkspaceChangeTracker workspace, IToolResultModelProjector modelProjector,
     IToolResultCodec toolResultCodec, IChatContextPlanner contextPlanner,
-    IContextPlanDiagnostics contextDiagnostics) : IChatAgent
+    IContextPlanDiagnostics contextDiagnostics, IChatTransportActivity transport) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
         Func<string, CancellationToken, Task> text,
         Func<CancellationToken, Task> toolCallsStarted,
         Func<ToolActivity?, CancellationToken, Task> activity,
+        Func<ChatTransportWait?, CancellationToken, Task> transportActivity,
         Func<AgentTool, string, long, ToolCallPosition, CancellationToken, Task<ToolApprovalAction>> approve,
         CancellationToken cancellationToken,
         bool interactive = true,
         Guid? parentBranchId = null)
     {
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var transportScope = transport.BeginScope(transportActivity);
         var deadline = new TurnDeadline(source, TimeSpan.FromMinutes(60));
         var token = source.Token;
         var global = await settings.LoadAsync(token);

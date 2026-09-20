@@ -225,6 +225,7 @@ public sealed class AppSubtaskTool(
                     board.Set(index, activity is { } running ? ToolRef.Parse(running.Name).Name : "thinking");
                     return Task.CompletedTask;
                 },
+                (_, _) => Task.CompletedTask,
                 // Nobody is watching a background run, so anything that would stop to ask is refused.
                 // The subtask is told as much and can report what it could not do.
                 (_, _, _, _, _) => Task.FromResult(ToolApprovalAction.Deny),

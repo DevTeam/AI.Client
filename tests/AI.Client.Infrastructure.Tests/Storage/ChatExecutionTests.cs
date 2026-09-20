@@ -13,6 +13,7 @@ using AI.Client.Contracts.Settings;
 using Projects;
 using Settings;
 using AI.Client.Infrastructure.Storage;
+using AI.Client.Infrastructure.Chat;
 using Moq;
 using Shouldly;
 using Xunit;
@@ -1235,7 +1236,7 @@ public sealed class ChatExecutionTests
                     ModelProjector, ToolResultCodec,
                     new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
                         new ConnectionContextLimitsResolver()),
-                    Mock.Of<IContextPlanDiagnostics>()),
+                    Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity()),
                 _secrets, _clock, _ids, _synchronization, Workspace, policies,
                 new ChatContext(ToolResultCodec));
         }

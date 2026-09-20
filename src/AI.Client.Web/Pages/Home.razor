@@ -588,9 +588,14 @@
 
     private string GetGeneratingStatusText()
     {
+        var run = GetSelectedRun();
+        if (run?.Wait is { Kind: ChatRunWaitKind.RateLimit } wait)
+        {
+            var seconds = Math.Max(0, (int)Math.Ceiling((wait.RetryAt - DateTimeOffset.UtcNow).TotalSeconds));
+            return $"Rate limited · retrying in {seconds}s (attempt {wait.Attempt})" + GetGeneratingEnterHint();
+        }
         var elapsed = GetGeneratingElapsed();
         var fallback = $"Generating{(elapsed is { } value ? $"... {FormatElapsed(value)}" : "...")}";
-        var run = GetSelectedRun();
         var activeMessageId = run?.ActiveMessageId
             ?? run?.Queue.FirstOrDefault(item => item.Stage == QueuedMessageStage.UserCommitted)?.Id;
         if (_selectedChat is null || elapsed is null || activeMessageId is null)

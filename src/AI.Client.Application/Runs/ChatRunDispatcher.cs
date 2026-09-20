@@ -431,6 +431,7 @@ public sealed class ChatRunDispatcher(
                         await SaveAsync(runtime, null, ct);
                     },
                     (activity, ct) => ReportToolActivityAsync(runtime, activity, ct),
+                    (wait, ct) => ReportTransportActivityAsync(runtime, wait, ct),
                     (tool, arguments, timeout, position, ct) => ApproveAsync(runtime, tool, arguments, timeout, position, ct), token);
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
                 {
@@ -702,6 +703,14 @@ public sealed class ChatRunDispatcher(
 
     private static readonly TimeSpan ProgressPublishInterval = TimeSpan.FromMilliseconds(150);
 
+    private async Task ReportTransportActivityAsync(Runtime runtime, ChatTransportWait? wait, CancellationToken token)
+    {
+        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
+        runtime.Wait = wait is null ? null : new ChatRunWait(ChatRunWaitKind.RateLimit, wait.RetryAt, wait.Attempt);
+        runtime.State.Append("");
+        await SaveAsync(runtime, null, token);
+    }
+
     private static WorkspaceRunKey WorkspaceKey(Runtime runtime) =>
         new(runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId);
 
@@ -896,7 +905,8 @@ public sealed class ChatRunDispatcher(
             PendingPrompt = runtime.PendingPrompt,
             ActiveTools = runtime.ActiveTools.Values.ToArray(),
             WorkspaceChanges = runtime.WorkspaceChanges,
-            StreamingToolCallsStarted = runtime.StreamingToolCallsStarted
+            StreamingToolCallsStarted = runtime.StreamingToolCallsStarted,
+            Wait = runtime.Wait
         };
         if (chat is not null)
             foreach (var other in _runtimes.Values.Where(item => item.State.ChatId == chat.Id && item != runtime))
@@ -1185,6 +1195,7 @@ public sealed class ChatRunDispatcher(
         public bool ResumeRequested { get; set; }
         public DateTimeOffset LastPublished { get; set; }
         public bool StreamingToolCallsStarted { get; set; }
+        public ChatRunWait? Wait { get; set; }
     }
 
     private readonly record struct RunKey(Guid ProjectId, Guid ChatId, Guid BranchId);

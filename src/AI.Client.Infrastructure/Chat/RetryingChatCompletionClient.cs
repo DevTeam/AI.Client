@@ -17,7 +17,9 @@ using System.Runtime.ExceptionServices;
 /// </summary>
 public sealed class RetryingChatCompletionClient(
     IChatCompletionClient inner,
-    ILogger<RetryingChatCompletionClient> logger) : IChatCompletionClient
+    ILogger<RetryingChatCompletionClient> logger,
+    IChatTransportPolicy policy,
+    IChatTransportActivity activity) : IChatCompletionClient
 {
     /// <summary>
     /// Anthropic's code for "overloaded", absent from <see cref="HttpStatusCode"/> because it is
@@ -40,8 +42,13 @@ public sealed class RetryingChatCompletionClient(
         LoggerMessage.Define<string, int, int, double>(LogLevel.Warning, new EventId(1101, "ChatEndpointRetrying"),
             "ChatEndpointRetrying Operation={Operation} Status={Status} Attempt={Attempt} DelaySeconds={DelaySeconds}");
 
+    private static readonly Action<ILogger, string, int, int, double, Exception?> RetryDeadlineExceeded =
+        LoggerMessage.Define<string, int, int, double>(LogLevel.Error, new EventId(1102, "ChatEndpointRetryDeadlineExceeded"),
+            "ChatEndpointRetryDeadlineExceeded Operation={Operation} Status={Status} Attempt={Attempt} DeadlineSeconds={DeadlineSeconds}");
+
     public async Task<ChatCompletionResponse> CompleteAsync(ChatCompletionRequest request, CancellationToken cancellationToken)
     {
+        var startedAt = DateTimeOffset.UtcNow;
         for (var attempt = 1; ; attempt++)
         {
             try
@@ -50,7 +57,7 @@ public sealed class RetryingChatCompletionClient(
             }
             catch (Exception error) when (Delay(error, attempt) is { } wait)
             {
-                await WaitAsync("Complete", error, attempt, wait, cancellationToken);
+                await WaitAsync("Complete", error, attempt, wait, startedAt, cancellationToken);
             }
         }
     }
@@ -59,6 +66,7 @@ public sealed class RetryingChatCompletionClient(
         ChatCompletionRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        var startedAt = DateTimeOffset.UtcNow;
         for (var attempt = 1; ; attempt++)
         {
             // Only a stream that has not yielded anything yet may be started over. Once a chunk has
@@ -101,14 +109,30 @@ public sealed class RetryingChatCompletionClient(
                 yield break;
             }
 
-            await WaitAsync("Stream", failure!, attempt, delay, cancellationToken);
+            await WaitAsync("Stream", failure!, attempt, delay, startedAt, cancellationToken);
         }
     }
 
-    private async Task WaitAsync(string operation, Exception error, int attempt, TimeSpan delay, CancellationToken cancellationToken)
+    private async Task WaitAsync(string operation, Exception error, int attempt, TimeSpan delay,
+        DateTimeOffset startedAt, CancellationToken cancellationToken)
     {
+        var remaining = policy.RetryDeadline - (DateTimeOffset.UtcNow - startedAt);
+        if (RateLimited(error) && (remaining <= TimeSpan.Zero || delay > remaining))
+        {
+            RetryDeadlineExceeded(logger, operation, Status(error) ?? 0, attempt, policy.RetryDeadline.TotalSeconds, error);
+            throw new ChatRetryDeadlineExceededException(policy.RetryDeadline, error);
+        }
         Retrying(logger, operation, Status(error) ?? 0, attempt, delay.TotalSeconds, error);
-        await Task.Delay(delay, cancellationToken);
+        if (RateLimited(error))
+            await activity.ReportAsync(new ChatTransportWait(DateTimeOffset.UtcNow + delay, attempt), cancellationToken);
+        try
+        {
+            await Task.Delay(delay, cancellationToken);
+        }
+        finally
+        {
+            if (RateLimited(error)) await activity.ReportAsync(null, CancellationToken.None);
+        }
     }
 
     /// <summary>
@@ -138,6 +162,8 @@ public sealed class RetryingChatCompletionClient(
     private static bool RateLimited(ChatEndpointException error) =>
         error.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable
         || (int?)error.StatusCode == Overloaded;
+
+    private static bool RateLimited(Exception error) => error is ChatEndpointException endpoint && RateLimited(endpoint);
 
     /// <summary>
     /// The endpoint broke. Usually once; occasionally forever, which is why these attempts are counted.

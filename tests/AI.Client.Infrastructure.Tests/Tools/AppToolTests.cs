@@ -14,6 +14,7 @@ using AI.Client.Contracts.Runs;
 using AI.Client.Contracts.Settings;
 using AI.Client.Contracts.Tools;
 using AI.Client.Infrastructure.Projects;
+using AI.Client.Infrastructure.Chat;
 using AI.Client.Infrastructure.Settings;
 using AI.Client.Infrastructure.Storage;
 using AI.Client.Infrastructure.Tests.Storage;
@@ -414,7 +415,7 @@ public sealed class AppToolTests
                     Projects, _settings, policies, workspace, modelProjector, toolResultCodec,
                     new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
                         new ConnectionContextLimitsResolver()),
-                    Mock.Of<IContextPlanDiagnostics>()),
+                    Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity()),
                 _secrets, _clock, _ids, _synchronization, workspace, policies, new ChatContext(toolResultCodec));
             var writes = new AppWrites(new AppOperationLog(), _signal);
             var presentations = new ToolPresentations(

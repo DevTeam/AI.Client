@@ -1,5 +1,6 @@
 namespace AI.Client.Application.Tools;
 
+using AI.Client.Application.Chat;
 using Contracts.Chat;
 using Contracts.Runs;
 using Contracts.Workspace;
@@ -19,6 +20,7 @@ public interface IChatAgent
         Func<string, CancellationToken, Task> text,
         Func<CancellationToken, Task> toolCallsStarted,
         Func<ToolActivity?, CancellationToken, Task> activity,
+        Func<ChatTransportWait?, CancellationToken, Task> transportActivity,
         Func<AgentTool, string, long, ToolCallPosition, CancellationToken, Task<ToolApprovalAction>> approve,
         CancellationToken cancellationToken,
         // Whether a person can be reached from this run. A background run says so once here rather

@@ -8,7 +8,8 @@ using System.Text.Json;
 
 public sealed class OpenAiCompatibleChatCompletionClient(
     HttpClient httpClient,
-    IChatCompletionSseParser sseParser) : IChatCompletionClient
+    IChatCompletionSseParser sseParser,
+    IChatTransportPolicy policy) : IChatCompletionClient
 {
     // Providers routinely put the actual reason (e.g. "context length exceeded", a validation
     // complaint about a malformed tool_calls entry) in the response body, not the status line —
@@ -55,8 +56,8 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", request.ApiKey.Trim());
         }
 
-        using var response = await httpClient.SendAsync(message, cancellationToken);
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var response = await SendAsync(message, cancellationToken);
+        var body = await ReadBodyAsync(response, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             throw Failure(response, body);
@@ -81,20 +82,78 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using var message = CreateRequest(request, true);
-        using var response = await httpClient.SendAsync(
-            message,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
+        using var response = await SendAsync(message, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var errorBody = await ReadBodyAsync(response, cancellationToken);
             throw Failure(response, errorBody);
         }
 
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await foreach (var chunk in sseParser.ParseAsync(stream, cancellationToken))
+        using var firstToken = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        firstToken.CancelAfter(policy.FirstTokenTimeout);
+        var started = false;
+        await using var stream = await ReadStreamAsync(response, firstToken.Token, cancellationToken);
+        await using var chunks = sseParser.ParseAsync(stream, firstToken.Token).GetAsyncEnumerator(firstToken.Token);
+        while (true)
         {
+            ChatCompletionChunk chunk;
+            try
+            {
+                if (!await chunks.MoveNextAsync()) yield break;
+                chunk = chunks.Current;
+            }
+            catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested && !started)
+            {
+                throw new ChatFirstTokenTimeoutException(policy.FirstTokenTimeout, error);
+            }
+
+            if (!started)
+            {
+                started = true;
+                firstToken.CancelAfter(Timeout.InfiniteTimeSpan);
+            }
             yield return chunk;
+        }
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage message, CancellationToken cancellationToken)
+    {
+        using var headers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        headers.CancelAfter(policy.ResponseHeadersTimeout);
+        try
+        {
+            return await httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, headers.Token);
+        }
+        catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new ChatResponseHeadersTimeoutException(policy.ResponseHeadersTimeout, error);
+        }
+    }
+
+    private async Task<string> ReadBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        using var body = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        body.CancelAfter(policy.FirstTokenTimeout);
+        try
+        {
+            return await response.Content.ReadAsStringAsync(body.Token);
+        }
+        catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new ChatFirstTokenTimeoutException(policy.FirstTokenTimeout, error);
+        }
+    }
+
+    private async Task<Stream> ReadStreamAsync(HttpResponseMessage response, CancellationToken firstToken,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await response.Content.ReadAsStreamAsync(firstToken);
+        }
+        catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new ChatFirstTokenTimeoutException(policy.FirstTokenTimeout, error);
         }
     }
 

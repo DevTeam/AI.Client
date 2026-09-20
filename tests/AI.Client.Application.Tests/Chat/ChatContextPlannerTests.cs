@@ -15,7 +15,7 @@ public sealed class ChatContextPlannerTests
     public void ShouldPassSmallContextWithoutChangingMessages()
     {
         ChatCompletionMessage[] messages = [new("user", "Hello")];
-        var planner = new ChatContextPlanner(_estimator);
+        var planner = Planner();
 
         var plan = planner.Plan("unknown-model", messages, []);
 
@@ -28,7 +28,7 @@ public sealed class ChatContextPlannerTests
     [Fact]
     public void ShouldSubtractToolDefinitionsFromInputLimit()
     {
-        var planner = new ChatContextPlanner(_estimator);
+        var planner = Planner();
         var withoutTools = planner.Plan("unknown-model", [], []);
         ChatToolDefinition[] tools =
         [
@@ -55,7 +55,8 @@ public sealed class ChatContextPlannerTests
     [Fact]
     public void ShouldNotOverflowWhenAnEstimateSaturates()
     {
-        var planner = new ChatContextPlanner(new SaturatedEstimator());
+        var saturated = new SaturatedEstimator();
+        var planner = new ChatContextPlanner(saturated, new ChatContextCompactor(saturated));
 
         var plan = planner.Plan("unknown-model", [new ChatCompletionMessage("user", "large")],
             [new ChatToolDefinition("tool", "large", JsonDocument.Parse("{}").RootElement.Clone())]);
@@ -69,10 +70,118 @@ public sealed class ChatContextPlannerTests
     [Fact]
     public void ShouldGiveUnknownModelsConservativeDefaults()
     {
-        var plan = new ChatContextPlanner(_estimator).Plan("vendor-specific-model", [], []);
+        var plan = Planner().Plan("vendor-specific-model", [], []);
 
         plan.InputLimit.ShouldBe(27_392);
         plan.ReservedOutputTokens.ShouldBe(4_096);
+    }
+
+    [Fact]
+    public void ShouldCompactLargeToolProjectionsWithoutChangingStoredContentOrCallOrder()
+    {
+        var firstStored = new string('a', 30_000);
+        var secondStored = new string('b', 30_000);
+        ChatCompletionMessage[] messages =
+        [
+            new("user", "Inspect both"),
+            new("assistant", "", [new ChatToolCall("call-1", "first", "{}"), new ChatToolCall("call-2", "second", "{}")]),
+            new("tool", firstStored, ToolCallId: "call-1"),
+            new("tool", secondStored, ToolCallId: "call-2")
+        ];
+
+        var plan = Planner().Plan("unknown-model", messages, []);
+
+        plan.Fits.ShouldBeTrue();
+        plan.WasCompacted.ShouldBeTrue();
+        plan.OmittedMessages.ShouldBe(0);
+        plan.Messages.Where(message => message.Role == "tool").Select(message => message.ToolCallId)
+            .ShouldBe(["call-1", "call-2"]);
+        plan.Messages[2].Content.ShouldBeSameAs(firstStored);
+        plan.Messages[3].Content.ShouldBeSameAs(secondStored);
+        plan.Messages[2].ModelContent.ShouldNotBeNull().ShouldContain("Tool: first");
+        plan.Messages[3].ModelContent.ShouldNotBeNull().ShouldContain("Tool: second");
+        messages[2].ModelContent.ShouldBeNull();
+        messages[3].ModelContent.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ShouldReplaceOldCompleteTurnsWithDeterministicSummary()
+    {
+        var messages = Enumerable.Range(1, 6).SelectMany(index => new ChatCompletionMessage[]
+        {
+            new("user", $"request-{index} " + new string((char)('a' + index), 10_000)),
+            new("assistant", $"outcome-{index}")
+        }).ToArray();
+
+        var first = Planner().Plan("unknown-model", messages, []);
+        var second = Planner().Plan("unknown-model", messages, []);
+
+        first.Fits.ShouldBeTrue();
+        first.WasCompacted.ShouldBeTrue();
+        first.OmittedMessages.ShouldBe(8);
+        first.Messages[0].Role.ShouldBe("user");
+        first.Messages[0].Content.ShouldContain("request-1");
+        first.Messages[0].Content.ShouldContain("outcome-4");
+        first.Messages[^2].Content.ShouldStartWith("request-6");
+        first.Messages[^2].Content.ShouldBe(messages[^2].Content);
+        first.EstimatedInputTokens.ShouldBe(second.EstimatedInputTokens);
+        first.OmittedMessages.ShouldBe(second.OmittedMessages);
+        first.Messages.ShouldBe(second.Messages);
+    }
+
+    [Fact]
+    public void ShouldNeverSplitToolCallProtocolGroupsWhenOmittingHistory()
+    {
+        var messages = new List<ChatCompletionMessage>();
+        for (var turn = 1; turn <= 5; turn++)
+        {
+            messages.Add(new ChatCompletionMessage("user", $"request-{turn} " + new string('x', 12_000)));
+            messages.Add(new ChatCompletionMessage("assistant", "",
+                [new ChatToolCall($"call-{turn}-1", "read", "{}"), new ChatToolCall($"call-{turn}-2", "read", "{}") ]));
+            messages.Add(new ChatCompletionMessage("tool", "ok", ToolCallId: $"call-{turn}-1"));
+            messages.Add(new ChatCompletionMessage("tool", "ok", ToolCallId: $"call-{turn}-2"));
+            messages.Add(new ChatCompletionMessage("assistant", $"done-{turn}"));
+        }
+
+        var plan = Planner().Plan("unknown-model", messages, []);
+
+        plan.WasCompacted.ShouldBeTrue();
+        AssertValidToolProtocol(plan.Messages);
+    }
+
+    [Fact]
+    public void ShouldNotTruncateCurrentUserRequestWhenItCannotFit()
+    {
+        var request = new string('x', 60_000);
+
+        var plan = Planner().Plan("unknown-model", [new ChatCompletionMessage("user", request)], []);
+
+        plan.Fits.ShouldBeFalse();
+        plan.Messages.ShouldHaveSingleItem().Content.ShouldBeSameAs(request);
+        plan.OmittedMessages.ShouldBe(0);
+    }
+
+    private ChatContextPlanner Planner() => new(_estimator, new ChatContextCompactor(_estimator));
+
+    private static void AssertValidToolProtocol(IReadOnlyList<ChatCompletionMessage> messages)
+    {
+        var pending = new Queue<string>();
+        foreach (var message in messages)
+        {
+            if (pending.Count > 0)
+            {
+                message.Role.ShouldBe("tool");
+                message.ToolCallId.ShouldBe(pending.Dequeue());
+            }
+            else
+            {
+                message.Role.ShouldNotBe("tool");
+            }
+
+            foreach (var call in message.ToolCalls ?? []) pending.Enqueue(call.Id);
+        }
+
+        pending.ShouldBeEmpty();
     }
 
     private sealed class SaturatedEstimator : IContextTokenEstimator

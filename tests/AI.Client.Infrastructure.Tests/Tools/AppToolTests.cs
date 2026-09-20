@@ -412,7 +412,8 @@ public sealed class AppToolTests
             var dispatcher = new ChatRunDispatcher(runRepository, Chats, Chats, Projects, _settings, settingsService,
                 new ChatAgent(Mock.Of<AI.Client.Application.Chat.IChatCompletionClient>(), Mock.Of<IToolSessionFactory>,
                     Projects, _settings, policies, workspace, modelProjector, toolResultCodec,
-                    new ChatContextPlanner(new ContextTokenEstimator()), Mock.Of<IContextPlanDiagnostics>()),
+                    new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator())),
+                    Mock.Of<IContextPlanDiagnostics>()),
                 _secrets, _clock, _ids, _synchronization, workspace, policies, new ChatContext(toolResultCodec));
             var writes = new AppWrites(new AppOperationLog(), _signal);
             var presentations = new ToolPresentations(

@@ -49,7 +49,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
                 ProtectedDataUserDataProtector, ChatCompletionSseParser, ContextPlanDiagnostics,
                 ChatEndpoint, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
-                GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator, ChatContextPlanner,
+                GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
+                ChatContextCompactor, ChatContextPlanner,
                 ToolPolicyResolver, WorkspaceChangeTracker, LineDiff,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ToolPresentations>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")

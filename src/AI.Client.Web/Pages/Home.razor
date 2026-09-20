@@ -1672,11 +1672,18 @@
             // Prefer the branch this chat was last left on, within this project, if it's still
             // part of the chat (a branch can be deleted independently of the chat itself).
             var context = WorkspaceStateService.GetProjectContext(_selectedProject.Id);
+            // A remembered leaf can sit on a branch whose transcript is NOT the one currently in
+            // _selectedChat.Messages — at this point _branchLeafId has just been reset to main
+            // via GetOriginalBranchLeaf, so Messages reflects the main transcript and any leaf
+            // that lives past the fork point is invisible to a Messages-based check. Match
+            // against the chat's branch heads instead: that's what "is this still a valid leaf
+            // for this chat?" actually means, and it's stable across which branch is currently
+            // expanded.
             if (!wasAlreadyOnThisChat
                 && _selectedChat is not null
                 && context.ChatId == chatId
                 && context.BranchLeafId is { } rememberedBranchLeafId
-                && _selectedChat.Messages.Any(message => message.Id == rememberedBranchLeafId))
+                && _selectedChat.Branches?.Any(branch => branch.HeadMessageId == rememberedBranchLeafId) == true)
             {
                 _branchLeafId = rememberedBranchLeafId;
             }

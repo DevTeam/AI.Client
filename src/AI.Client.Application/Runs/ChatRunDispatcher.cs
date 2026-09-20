@@ -421,11 +421,11 @@ public sealed class ChatRunDispatcher(
                         }
                     },
                     (content, ct) => ReportIntermediateContentAsync(runtime, content, ct),
-                    async ct =>
+                    async (started, ct) =>
                     {
                         using var lease = await synchronization.EnterAsync(runtime.State.ChatId, ct);
-                        if (runtime.StreamingToolCallsStarted) return;
-                        runtime.StreamingToolCallsStarted = true;
+                        if (runtime.StreamingToolCallsStarted == started) return;
+                        runtime.StreamingToolCallsStarted = started;
                         // The presentation-only phase change still needs its own revision so the
                         // snapshot is not discarded as an already-applied streaming update.
                         runtime.State.Append("");
@@ -448,6 +448,7 @@ public sealed class ChatRunDispatcher(
                             RetainedMessageIds(chat.Id), token)
                             ?? throw new InvalidOperationException("Response conflict.");
                     runtime.State.Remove(queued.Id);
+                    runtime.StreamingToolCallsStarted = false;
                     runtime.State.Complete(true);
                     // The persisted reply now owns the final copy; keeping the live copy would
                     // duplicate it if the branch is later paused with another queued message.
@@ -464,6 +465,10 @@ public sealed class ChatRunDispatcher(
         catch (Exception error)
         {
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
+            // Do not publish a terminal snapshot that still advertises the protocol phase
+            // opened by a tool-call delta. This also covers failures before a tool message
+            // could be persisted (where the normal reset in PersistToolMessageAsync never runs).
+            runtime.StreamingToolCallsStarted = false;
             await CommitPartialAnswerAsync(runtime);
             // Clear can empty the queue while a cancelled worker is still unwinding. Keep the
             // Idle state established by Clear instead of changing the empty queue back to Paused.
@@ -505,11 +510,13 @@ public sealed class ChatRunDispatcher(
             runtime.Prompt = null;
             runtime.PendingPrompt = null;
             runtime.ActiveTools.Clear();
+            runtime.StreamingToolCallsStarted = false;
             runtime.Snapshot = runtime.Snapshot with
             {
                 PendingApproval = null,
                 PendingPrompt = null,
                 ActiveTools = [],
+                StreamingToolCallsStarted = false,
                 // This block patches the last published snapshot instead of rebuilding it, so
                 // every field the worker just released has to be named here. Leaving this one out
                 // left the run advertising an active command it had already finished with.

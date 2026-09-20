@@ -56,7 +56,8 @@ public sealed class ChatExecutionTests
             """)];
         corrective.Answer.SetResult("");
 
-        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        completed.StreamingToolCallsStarted.ShouldBeFalse();
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
             .ShouldHaveSingleItem().Content.ShouldBe("Done and verified.");
@@ -1281,6 +1282,8 @@ public sealed class ChatExecutionTests
                     }))];
                 content = "";
             }
+            if (toolCalls is { Count: > 0 })
+                yield return new ChatCompletionChunk("", ToolCallsStarted: true);
             yield return new ChatCompletionChunk(content, ToolCalls: toolCalls, FinishReason: call.FinishReason);
         }
 

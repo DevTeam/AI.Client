@@ -19,7 +19,7 @@ public interface IChatAgent
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
         Func<string, CancellationToken, Task> text,
         Func<string?, CancellationToken, Task> intermediate,
-        Func<CancellationToken, Task> toolCallsStarted,
+        Func<bool, CancellationToken, Task> toolCallStreaming,
         Func<ToolActivity?, CancellationToken, Task> activity,
         Func<ChatTransportWait?, CancellationToken, Task> transportActivity,
         Func<AgentTool, string, long, ToolCallPosition, CancellationToken, Task<ToolApprovalAction>> approve,

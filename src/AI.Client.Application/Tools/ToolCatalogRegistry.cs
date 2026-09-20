@@ -20,7 +20,7 @@ public sealed class ToolCatalogRegistry : IToolCatalogRegistry
 
     public IReadOnlySet<string> GetPinned(ToolRunContext run) =>
         _entries.TryGetValue(Key.Of(run), out var entry)
-            ? entry.Pinned.ToHashSet(StringComparer.Ordinal)
+            ? entry.Pinned.Keys.ToHashSet(StringComparer.Ordinal)
             : new HashSet<string>(StringComparer.Ordinal);
 
     public IReadOnlyList<ToolCatalogMatch> SearchAndPin(ToolRunContext run, string query, int limit)

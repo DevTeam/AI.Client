@@ -51,13 +51,13 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 ProtectedDataUserDataProtector, ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
                 ChatEndpoint, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
                 GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
-                ChatContextCompactor, ChatContextPlanner, ConnectionContextLimitsResolver, ToolDefinitionSelector,
+                ChatContextCompactor, ChatContextPlanner, ConnectionContextLimitsResolver, ModelContentCheckpointService, ToolDefinitionSelector,
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ToolPresentations>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
             .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To(([Tag("base")] IChatCompletionClient baseClient, ILogger<RetryingChatCompletionClient> retryLogger, IChatTransportPolicy transportPolicy, IChatTransportActivity transportActivity) => new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity))
             .Singleton<ToolResultModelProjector, ToolResultCodec, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()
-            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool>(Tag.Unique)
+            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool, AppContextCompactTool>(Tag.Unique)
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<FileToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<ProcessToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<WebToolPresentationAdapter>()

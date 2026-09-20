@@ -11,6 +11,10 @@ public sealed partial class ContextPlanDiagnostics(ILogger<ContextPlanDiagnostic
             plan.ContextWindowSource.ToString(), plan.ReservedOutputTokens, plan.ReservedOutputSource.ToString(),
             plan.ToolDefinitionTokens, messageCount, toolCount, plan.WasCompacted, plan.OmittedMessages);
 
+    public void RecordToolSelection(string model, int availableCount, int selectedCount,
+        long availableTokens, long selectedTokens, long budgetTokens) =>
+        ToolsSelected(logger, model, availableCount, selectedCount, availableTokens, selectedTokens, budgetTokens);
+
     [LoggerMessage(1001, LogLevel.Information,
         "LLM context plan for {Model}: {EstimatedInputTokens}/{InputLimit} input tokens, "
         + "context window {ContextWindowTokens} ({ContextWindowSource}), "
@@ -20,4 +24,10 @@ public sealed partial class ContextPlanDiagnostics(ILogger<ContextPlanDiagnostic
         long inputLimit, long contextWindowTokens, string contextWindowSource, long reservedOutputTokens,
         string reservedOutputSource, long toolDefinitionTokens, int messageCount, int toolCount,
         bool wasCompacted, int omittedMessages);
+
+    [LoggerMessage(1002, LogLevel.Information,
+        "LLM tool selection for {Model}: {SelectedCount}/{AvailableCount} tools, "
+        + "{SelectedTokens}/{BudgetTokens} selected schema tokens from {AvailableTokens} available tokens")]
+    private static partial void ToolsSelected(ILogger logger, string model, int availableCount, int selectedCount,
+        long availableTokens, long selectedTokens, long budgetTokens);
 }

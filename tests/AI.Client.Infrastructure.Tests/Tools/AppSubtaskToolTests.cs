@@ -353,7 +353,7 @@ public sealed class AppSubtaskToolTests
                     new ConnectionContextLimitsResolver()),
                 Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity(),
                 new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()),
-                new ToolCatalogRegistry());
+                new ToolCatalogRegistry(), new ModelContentCheckpointService());
             var presentations = new ToolPresentations(
                 new GenericToolPresentationAdapter(),
                 [

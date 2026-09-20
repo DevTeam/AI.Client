@@ -351,7 +351,9 @@ public sealed class AppSubtaskToolTests
                 modelProjector, toolResultCodec,
                 new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
                     new ConnectionContextLimitsResolver()),
-                Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity());
+                Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity(),
+                new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()),
+                new ToolCatalogRegistry());
             var presentations = new ToolPresentations(
                 new GenericToolPresentationAdapter(),
                 [

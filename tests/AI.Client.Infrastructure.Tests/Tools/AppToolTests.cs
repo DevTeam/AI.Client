@@ -415,7 +415,9 @@ public sealed class AppToolTests
                     Projects, _settings, policies, workspace, modelProjector, toolResultCodec,
                     new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
                         new ConnectionContextLimitsResolver()),
-                    Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity()),
+                    Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity(),
+                    new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()),
+                    new ToolCatalogRegistry()),
                 _secrets, _clock, _ids, _synchronization, workspace, policies, new ChatContext(toolResultCodec));
             var writes = new AppWrites(new AppOperationLog(), _signal);
             var presentations = new ToolPresentations(

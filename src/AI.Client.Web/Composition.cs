@@ -14,6 +14,7 @@ using Settings;
 using State;
 using Microsoft.AspNetCore.Components;
 using AI.Client.Contracts.Tools;
+using AI.Client.Contracts.Settings;
 using Pure.DI;
 using Pure.DI.MS;
 using System.Diagnostics;
@@ -45,6 +46,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IToolPresentations>().To<ToolPresentations>()
             .RootBind<IToolResultModelProjector>().To<ToolResultModelProjector>()
             .RootBind<IToolResultCodec>().To<ToolResultCodec>()
+            .RootBind<IConnectionContextLimitsResolver>().To<ConnectionContextLimitsResolver>()
             .RootBind<IUnifiedDiffParser>().As(Lifetime.Singleton).To<UnifiedDiff>()
             // `ApiBaseUrl(string)` matches the constructor generated for the `Arg` above, so
             // Pure.DI wires it in automatically. Same as how `Host/Composition.cs` registers

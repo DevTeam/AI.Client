@@ -71,7 +71,9 @@ public sealed record ConnectionPayload(
     bool ForSubtasks = false,
     int? Capability = null,
     int? Cost = null,
-    string? GoodFor = null);
+    string? GoodFor = null,
+    long? ContextWindowTokens = null,
+    long? ReservedOutputTokens = null);
 
 public sealed record McpEnvironmentVariablePayload(string Name, string? Value, bool IsSecret);
 

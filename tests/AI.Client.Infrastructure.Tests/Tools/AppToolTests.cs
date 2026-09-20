@@ -404,7 +404,7 @@ public sealed class AppToolTests
             var runRepository = new JsonChatRunRepository(_fileSystem, new ChatRunStoragePaths("data"));
             Projects = new ProjectService(projectRepository, _ids, _clock, _settings);
             Chats = new ChatService(chatRepository, _ids, _clock, _synchronization);
-            var settingsService = new GlobalSettingsService(_settings, _secrets);
+            var settingsService = new GlobalSettingsService(_settings, _secrets, new ConnectionContextLimitsResolver());
             IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker();
             var policies = new ToolPolicyResolver(Projects, Chats, _settings);
             var modelProjector = new ToolResultModelProjector();
@@ -412,7 +412,8 @@ public sealed class AppToolTests
             var dispatcher = new ChatRunDispatcher(runRepository, Chats, Chats, Projects, _settings, settingsService,
                 new ChatAgent(Mock.Of<AI.Client.Application.Chat.IChatCompletionClient>(), Mock.Of<IToolSessionFactory>,
                     Projects, _settings, policies, workspace, modelProjector, toolResultCodec,
-                    new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator())),
+                    new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
+                        new ConnectionContextLimitsResolver()),
                     Mock.Of<IContextPlanDiagnostics>()),
                 _secrets, _clock, _ids, _synchronization, workspace, policies, new ChatContext(toolResultCodec));
             var writes = new AppWrites(new AppOperationLog(), _signal);

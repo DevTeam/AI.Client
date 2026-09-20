@@ -1,5 +1,6 @@
 @using System.Diagnostics.CodeAnalysis
 @inject IGlobalSettingsApi GlobalSettingsApi
+@inject IConnectionContextLimitsResolver ContextLimits
 
         <section class="global-workspace" aria-label="@Section">
             @switch (Section)
@@ -14,7 +15,7 @@
                         </div>
                         @if (GetSelectedConnection() is { } connection)
                         {
-                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label><label class="checkbox"><input type="checkbox" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" /> For subtasks</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<InputText autocomplete="url" @bind-Value="connection.BaseUrl" /></label><label>Model<InputText autocomplete="off" @bind-Value="connection.Model" /></label><div class="connection-ratings"><label>Capability<input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><small>@RatingLabel(connection.Capability, Capabilities)</small></label><label>Cost<input type="range" min="0" max="5" step="1" @bind="connection.Cost" @bind:event="oninput" /><small>@RatingLabel(connection.Cost, Costs)</small></label></div><label>Good for<InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="What the ratings cannot say: vision, long context, local" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></form>
+                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label><label class="checkbox"><input type="checkbox" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" /> For subtasks</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<InputText autocomplete="url" @bind-Value="connection.BaseUrl" /></label><label>Model<InputText autocomplete="off" @bind-Value="connection.Model" /></label><div class="connection-ratings"><label>Context window tokens<input type="number" min="1024" max="4000000" step="1" @bind="connection.ContextWindowTokens" /><small>Effective: @EffectiveLimits(connection).ContextWindowTokens (@SourceLabel(EffectiveLimits(connection).ContextWindowSource))</small></label><label>Reserved output tokens<input type="number" min="256" max="1000000" step="1" @bind="connection.ReservedOutputTokens" /><small>Effective: @EffectiveLimits(connection).ReservedOutputTokens (@SourceLabel(EffectiveLimits(connection).ReservedOutputSource))</small></label></div><div class="connection-ratings"><label>Capability<input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><small>@RatingLabel(connection.Capability, Capabilities)</small></label><label>Cost<input type="range" min="0" max="5" step="1" @bind="connection.Cost" @bind:event="oninput" /><small>@RatingLabel(connection.Cost, Costs)</small></label></div><label>Good for<InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="What the ratings cannot say: vision, long context, local" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></form>
                         }
                     </div>
                     <footer class="global-actions">@if (_feedback is not null) { <span class="global-feedback" role="status">@_feedback</span> }<button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
@@ -150,6 +151,15 @@
     private static string RatingLabel(int value, string[] words) =>
         value is >= 1 && value <= words.Length ? words[value - 1] : "not rated";
 
+    private ResolvedConnectionContextLimits EffectiveLimits(ConnectionEditor connection) =>
+        ContextLimits.Resolve(connection.ToSettings());
+
+    private static string SourceLabel(ContextLimitSource source) => source switch
+    {
+        ContextLimitSource.Override => "override",
+        _ => "default"
+    };
+
     private void AddGlobalMcpServer()
     {
         var server = new GlobalMcpServerEditor();
@@ -234,6 +244,8 @@
         public int Capability { get; set; }
         public int Cost { get; set; }
         public string GoodFor { get; set; } = string.Empty;
+        public long? ContextWindowTokens { get; set; }
+        public long? ReservedOutputTokens { get; set; }
         public bool HasCredential { get; set; }
         public string? Secret { get; set; }
 
@@ -242,14 +254,17 @@
             Id = item.Id, Name = item.Name, BaseUrl = item.BaseUrl, Model = item.Model,
             Enabled = item.Enabled, IsDefault = item.IsDefault, HasCredential = item.HasCredential,
             ForSubtasks = item.ForSubtasks, Capability = item.Capability ?? 0, Cost = item.Cost ?? 0,
-            GoodFor = item.GoodFor ?? string.Empty
+            GoodFor = item.GoodFor ?? string.Empty,
+            ContextWindowTokens = item.ContextWindowTokens,
+            ReservedOutputTokens = item.ReservedOutputTokens
         };
 
         public ConnectionSettings ToSettings() =>
             // Zero is how a range input says "nobody has rated this"; it travels as absence.
             new(Id, Name, BaseUrl, Model, Enabled, IsDefault, HasCredential, ForSubtasks,
                 Capability == 0 ? null : Capability, Cost == 0 ? null : Cost,
-                string.IsNullOrWhiteSpace(GoodFor) ? null : GoodFor);
+                string.IsNullOrWhiteSpace(GoodFor) ? null : GoodFor,
+                ContextWindowTokens, ReservedOutputTokens);
     }
 
     [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]

@@ -1,6 +1,7 @@
 namespace AI.Client.Application.Chat;
 
 using Contracts.Chat;
+using Contracts.Settings;
 
 /// <summary>
 /// Measures a request against conservative OpenAI-compatible defaults. Model-specific and
@@ -8,15 +9,11 @@ using Contracts.Chat;
 /// </summary>
 public sealed class ChatContextPlanner(
     IContextTokenEstimator estimator,
-    IChatContextCompactor compactor) : IChatContextPlanner
+    IChatContextCompactor compactor,
+    IConnectionContextLimitsResolver limitsResolver) : IChatContextPlanner
 {
-    private readonly ChatContextLimits _unknownModelLimits = new(
-        ContextWindowTokens: 32_768,
-        ReservedOutputTokens: 4_096,
-        ProtocolOverheadTokens: 256,
-        SafetyMarginTokens: 1_024);
-
     public ContextPlan Plan(
+        ConnectionSettings? connection,
         string model,
         IReadOnlyList<ChatCompletionMessage> messages,
         IReadOnlyList<ChatToolDefinition> tools)
@@ -25,7 +22,12 @@ public sealed class ChatContextPlanner(
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(tools);
 
-        var limits = ResolveLimits(model);
+        var effective = limitsResolver.Resolve(connection);
+        var limits = new ChatContextLimits(
+            effective.ContextWindowTokens,
+            effective.ReservedOutputTokens,
+            ProtocolOverheadTokens: 256,
+            SafetyMarginTokens: 1_024);
         var toolTokens = estimator.EstimateTools(tools);
         var fixedCost = Add(limits.ReservedOutputTokens, toolTokens,
             limits.ProtocolOverheadTokens, limits.SafetyMarginTokens);
@@ -39,15 +41,12 @@ public sealed class ChatContextPlanner(
             estimator.EstimateMessages(compaction.Messages),
             limits.ReservedOutputTokens,
             toolTokens,
+            limits.ContextWindowTokens,
+            effective.ContextWindowSource,
+            effective.ReservedOutputSource,
             compaction.WasCompacted,
             compaction.OmittedMessages,
             compaction.Messages);
-    }
-
-    private ChatContextLimits ResolveLimits(string model)
-    {
-        _ = model;
-        return _unknownModelLimits;
     }
 
     private static long Add(params long[] values)

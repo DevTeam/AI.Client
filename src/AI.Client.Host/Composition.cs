@@ -15,6 +15,7 @@ using AI.Client.Infrastructure.Storage;
 using AI.Client.Infrastructure.Settings;
 using AI.Client.Infrastructure.Workspace;
 using AI.Client.Contracts.Tools;
+using AI.Client.Contracts.Settings;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Pure.DI;
@@ -50,7 +51,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 ProtectedDataUserDataProtector, ChatCompletionSseParser, ContextPlanDiagnostics,
                 ChatEndpoint, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
                 GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
-                ChatContextCompactor, ChatContextPlanner,
+                ChatContextCompactor, ChatContextPlanner, ConnectionContextLimitsResolver,
                 ToolPolicyResolver, WorkspaceChangeTracker, LineDiff,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ToolPresentations>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")

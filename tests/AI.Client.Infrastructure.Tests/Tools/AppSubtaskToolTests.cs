@@ -348,7 +348,8 @@ public sealed class AppSubtaskToolTests
             // keeps the test from starting child processes.
             var agent = new ChatAgent(Completion, Mock.Of<IToolSessionFactory>, Projects, _settings, policies, workspace,
                 modelProjector, toolResultCodec,
-                new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator())),
+                new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
+                    new ConnectionContextLimitsResolver()),
                 Mock.Of<IContextPlanDiagnostics>());
             var presentations = new ToolPresentations(
                 new GenericToolPresentationAdapter(),

@@ -40,6 +40,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var deadline = new TurnDeadline(source, TimeSpan.FromMinutes(60));
         var token = source.Token;
         var global = await settings.LoadAsync(token);
+        var configuredConnection = request.CredentialProfileId is { } connectionId
+            ? global.Connections.SingleOrDefault(item => item.Id == connectionId)
+            : global.Connections.SingleOrDefault(item => item.Model == request.Model
+                && item.BaseUrl.TrimEnd('/') == request.BaseUrl.TrimEnd('/'));
         var project = await projects.GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
         // Every server is gated the same way: enabled and not denied globally, and not switched off
         // for this project. A server that fails the test is never started, so nothing it could
@@ -84,7 +88,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var calls = new List<ChatToolCall>();
             var content = new StringBuilder();
             string? finish = null;
-            var plan = contextPlanner.Plan(request.Model, context, available);
+            var plan = contextPlanner.Plan(configuredConnection, request.Model, context, available);
             contextDiagnostics.Record(request.Model, plan, context.Count, available.Count);
             if (!plan.Fits) throw new ContextWindowExceededException(plan);
             await foreach (var chunk in completion.StreamAsync(

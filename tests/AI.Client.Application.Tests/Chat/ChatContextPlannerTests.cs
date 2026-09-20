@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using AI.Client.Application.Chat;
 using AI.Client.Contracts.Chat;
+using AI.Client.Contracts.Settings;
 using Shouldly;
 using Xunit;
 
@@ -17,7 +18,7 @@ public sealed class ChatContextPlannerTests
         ChatCompletionMessage[] messages = [new("user", "Hello")];
         var planner = Planner();
 
-        var plan = planner.Plan("unknown-model", messages, []);
+        var plan = planner.Plan(null, "unknown-model", messages, []);
 
         plan.Fits.ShouldBeTrue();
         plan.Messages.ShouldBeSameAs(messages);
@@ -29,14 +30,14 @@ public sealed class ChatContextPlannerTests
     public void ShouldSubtractToolDefinitionsFromInputLimit()
     {
         var planner = Planner();
-        var withoutTools = planner.Plan("unknown-model", [], []);
+        var withoutTools = planner.Plan(null, "unknown-model", [], []);
         ChatToolDefinition[] tools =
         [
             new("read_file", new string('d', 2_000),
                 JsonDocument.Parse("""{"type":"object","properties":{"path":{"type":"string"}}}""").RootElement.Clone())
         ];
 
-        var withTools = planner.Plan("unknown-model", [], tools);
+        var withTools = planner.Plan(null, "unknown-model", [], tools);
 
         withTools.ToolDefinitionTokens.ShouldBeGreaterThan(0);
         withTools.InputLimit.ShouldBe(withoutTools.InputLimit - withTools.ToolDefinitionTokens);
@@ -56,9 +57,10 @@ public sealed class ChatContextPlannerTests
     public void ShouldNotOverflowWhenAnEstimateSaturates()
     {
         var saturated = new SaturatedEstimator();
-        var planner = new ChatContextPlanner(saturated, new ChatContextCompactor(saturated));
+        var planner = new ChatContextPlanner(saturated, new ChatContextCompactor(saturated),
+            new ConnectionContextLimitsResolver());
 
-        var plan = planner.Plan("unknown-model", [new ChatCompletionMessage("user", "large")],
+        var plan = planner.Plan(null, "unknown-model", [new ChatCompletionMessage("user", "large")],
             [new ChatToolDefinition("tool", "large", JsonDocument.Parse("{}").RootElement.Clone())]);
 
         plan.EstimatedInputTokens.ShouldBe(long.MaxValue);
@@ -70,10 +72,27 @@ public sealed class ChatContextPlannerTests
     [Fact]
     public void ShouldGiveUnknownModelsConservativeDefaults()
     {
-        var plan = Planner().Plan("vendor-specific-model", [], []);
+        var plan = Planner().Plan(null, "vendor-specific-model", [], []);
 
         plan.InputLimit.ShouldBe(27_392);
         plan.ReservedOutputTokens.ShouldBe(4_096);
+        plan.ContextWindowSource.ShouldBe(ContextLimitSource.Default);
+        plan.ReservedOutputSource.ShouldBe(ContextLimitSource.Default);
+    }
+
+    [Fact]
+    public void ShouldUseConnectionLimitOverridesAndExposeTheirSource()
+    {
+        var connection = new ConnectionSettings(Guid.NewGuid(), "Large", "https://example.test/v1", "model",
+            true, true, false, ContextWindowTokens: 65_536, ReservedOutputTokens: 8_192);
+
+        var plan = Planner().Plan(connection, connection.Model, [], []);
+
+        plan.ContextWindowTokens.ShouldBe(65_536);
+        plan.ReservedOutputTokens.ShouldBe(8_192);
+        plan.InputLimit.ShouldBe(56_064);
+        plan.ContextWindowSource.ShouldBe(ContextLimitSource.Override);
+        plan.ReservedOutputSource.ShouldBe(ContextLimitSource.Override);
     }
 
     [Fact]
@@ -89,7 +108,7 @@ public sealed class ChatContextPlannerTests
             new("tool", secondStored, ToolCallId: "call-2")
         ];
 
-        var plan = Planner().Plan("unknown-model", messages, []);
+        var plan = Planner().Plan(null, "unknown-model", messages, []);
 
         plan.Fits.ShouldBeTrue();
         plan.WasCompacted.ShouldBeTrue();
@@ -113,8 +132,8 @@ public sealed class ChatContextPlannerTests
             new("assistant", $"outcome-{index}")
         }).ToArray();
 
-        var first = Planner().Plan("unknown-model", messages, []);
-        var second = Planner().Plan("unknown-model", messages, []);
+        var first = Planner().Plan(null, "unknown-model", messages, []);
+        var second = Planner().Plan(null, "unknown-model", messages, []);
 
         first.Fits.ShouldBeTrue();
         first.WasCompacted.ShouldBeTrue();
@@ -143,7 +162,7 @@ public sealed class ChatContextPlannerTests
             messages.Add(new ChatCompletionMessage("assistant", $"done-{turn}"));
         }
 
-        var plan = Planner().Plan("unknown-model", messages, []);
+        var plan = Planner().Plan(null, "unknown-model", messages, []);
 
         plan.WasCompacted.ShouldBeTrue();
         AssertValidToolProtocol(plan.Messages);
@@ -154,14 +173,15 @@ public sealed class ChatContextPlannerTests
     {
         var request = new string('x', 60_000);
 
-        var plan = Planner().Plan("unknown-model", [new ChatCompletionMessage("user", request)], []);
+        var plan = Planner().Plan(null, "unknown-model", [new ChatCompletionMessage("user", request)], []);
 
         plan.Fits.ShouldBeFalse();
         plan.Messages.ShouldHaveSingleItem().Content.ShouldBeSameAs(request);
         plan.OmittedMessages.ShouldBe(0);
     }
 
-    private ChatContextPlanner Planner() => new(_estimator, new ChatContextCompactor(_estimator));
+    private ChatContextPlanner Planner() => new(_estimator, new ChatContextCompactor(_estimator),
+        new ConnectionContextLimitsResolver());
 
     private static void AssertValidToolProtocol(IReadOnlyList<ChatCompletionMessage> messages)
     {

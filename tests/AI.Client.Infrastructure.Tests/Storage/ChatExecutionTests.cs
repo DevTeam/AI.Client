@@ -32,6 +32,39 @@ public sealed class ChatExecutionTests
     private static readonly ToolResultCodec ToolResultCodec = new(ModelProjector);
 
     [Fact]
+    public async Task ProvisionalTextAfterAToolMustNotBecomeTheFinalAnswer()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Completion.AdaptLegacyFinalAnswers = false;
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Change a file"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+        var premature = await fixture.NextCallAsync();
+        premature.Answer.SetResult("I will now verify the result.");
+
+        var corrective = await fixture.NextCallAsync();
+        var generating = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Generating
+            && run.IntermediateContent == "I will now verify the result.");
+        generating.StreamingContent.ShouldBeEmpty();
+        corrective.Request.ContextMessages!.Where(message => message.Role == "system")
+            .ShouldContain(message => message.Content.Contains("was not published", StringComparison.Ordinal));
+        corrective.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
+            {"status":"complete","finalAnswer":"Done and verified.","completed":["Changed and verified the file"],"evidence":["Command succeeded"],"remaining":[]}
+            """)];
+        corrective.Answer.SetResult("");
+
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
+            .ShouldHaveSingleItem().Content.ShouldBe("Done and verified.");
+        chat.Messages.ShouldNotContain(message => message.Content.Contains("was not published", StringComparison.Ordinal));
+        chat.Messages.ShouldNotContain(message => message.Content == "I will now verify the result.");
+    }
+
+    [Fact]
     public async Task WorkspaceChangesShouldBeLiveBeforeBecomingPartOfTheFinalReply()
     {
         var workspace = new TestWorkspaceChangeTracker();
@@ -206,7 +239,7 @@ public sealed class ChatExecutionTests
         await fixture.SetGlobalPolicyAsync("Allow");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.Request.Tools!.Count.ShouldBe(1);
+        first.Request.Tools!.Count.ShouldBe(2);
         first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         var second = await fixture.NextCallAsync();
@@ -224,7 +257,7 @@ public sealed class ChatExecutionTests
         await fixture.SetPolicyAsync(decision);
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.Request.Tools!.Count.ShouldBe(decision == "Deny" ? 0 : 1);
+        first.Request.Tools!.Count.ShouldBe(decision == "Deny" ? 1 : 2);
         first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         var second = await fixture.NextCallAsync();
@@ -458,7 +491,7 @@ public sealed class ChatExecutionTests
         fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
         await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
         var call = await fixture.NextCallAsync();
-        call.Request.Tools.ShouldHaveSingleItem();
+        call.Request.Tools!.Count.ShouldBe(2);
         fixture.Tools.OpenCount.ShouldBe(1);
         call.Answer.SetResult("Reply");
         var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
@@ -514,9 +547,10 @@ public sealed class ChatExecutionTests
         }
 
         last.ShouldNotBeNull();
-        last.Request.ContextMessages![0].Role.ShouldBe("user");
-        last.Request.ContextMessages[0].Content.ShouldStartWith("Earlier conversation summary");
-        last.Request.ContextMessages[^1].Content.ShouldBe(requests[^1]);
+        var visibleContext = last.Request.ContextMessages!.Where(message => message.Role != "system").ToArray();
+        visibleContext[0].Role.ShouldBe("user");
+        visibleContext[0].Content.ShouldStartWith("Earlier conversation summary");
+        visibleContext[^1].Content.ShouldBe(requests[^1]);
 
         var stored = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         stored.ShouldNotBeNull();
@@ -573,7 +607,8 @@ public sealed class ChatExecutionTests
         var forkId = Guid.NewGuid();
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), forkId, "Alternative", ChatSubmitMode.Fork, ParentMessageId: message));
         var fork = await fixture.NextCallAsync();
-        fork.Request.ContextMessages!.Select(item => item.Content).ShouldBe(["Original", "Alternative"]);
+        fork.Request.ContextMessages!.Where(item => item.Role != "system").Select(item => item.Content)
+            .ShouldBe(["Original", "Alternative"]);
         fork.Answer.SetResult("Alternative reply");
         await fixture.WaitAsync(run => run.BranchId == forkId && run.Status == ChatRunStatus.Completed);
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
@@ -593,7 +628,8 @@ public sealed class ChatExecutionTests
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), forkId, "Alternative root",
             ChatSubmitMode.Fork, BranchId: fixture.ChatId, ParentMode: MessageParentMode.Root));
         var fork = await fixture.NextCallAsync();
-        fork.Request.ContextMessages!.Select(message => message.Content).ShouldBe(["Alternative root"]);
+        fork.Request.ContextMessages!.Where(message => message.Role != "system").Select(message => message.Content)
+            .ShouldBe(["Alternative root"]);
         fork.Answer.SetResult("Alternative reply");
         await fixture.WaitAsync(run => run.BranchId == forkId && run.Status == ChatRunStatus.Completed);
 
@@ -642,7 +678,8 @@ public sealed class ChatExecutionTests
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), replacement, "Replacement",
             ChatSubmitMode.Replace, BranchId: fixture.ChatId, ReplaceSourceId: original));
         var call = await fixture.NextCallAsync();
-        call.Request.ContextMessages!.Select(message => message.Content).ShouldBe(["Replacement"]);
+        call.Request.ContextMessages!.Where(message => message.Role != "system").Select(message => message.Content)
+            .ShouldBe(["Replacement"]);
         call.Answer.SetResult("Replacement reply");
         await fixture.WaitAsync(run => run.BranchId == fixture.ChatId && run.Status == ChatRunStatus.Completed);
 
@@ -740,7 +777,7 @@ public sealed class ChatExecutionTests
         childRun.Queue.ShouldHaveSingleItem().Id.ShouldBe(queuedId);
         await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, childId, CancellationToken.None);
         var resumed = await fixture.NextCallAsync();
-        resumed.Request.ContextMessages!.Select(message => message.Content)
+        resumed.Request.ContextMessages!.Where(message => message.Role != "system").Select(message => message.Content)
             .ShouldBe(["Root", "Parent", "Child", "Child reply", "Queued child"]);
         resumed.Answer.SetResult("Queued reply");
         await fixture.WaitAsync(run => run.BranchId == childId && run.Status == ChatRunStatus.Completed);
@@ -1121,7 +1158,8 @@ public sealed class ChatExecutionTests
 
         // The model was told to carry on, and the person was not: the instruction exists only in
         // the context the agent assembles, never in the chat it stores.
-        rest.Request.ContextMessages![^1].Content.ShouldContain("cut off at the output token limit");
+        rest.Request.ContextMessages!.Where(message => message.Role == "system")
+            .ShouldContain(message => message.Content.Contains("cut off at the output token limit", StringComparison.Ordinal));
         chat.Messages.ShouldAllBe(message => !message.Content.Contains("cut off at the output token limit"));
     }
 
@@ -1156,12 +1194,14 @@ public sealed class ChatExecutionTests
     }
     private sealed class Completion : IChatCompletionClient
     {
+        private static readonly string[] TestCompleted = ["Completed the test scenario"];
         private TaskCompletionSource<bool>? _cancellationObserved;
         private TaskCompletionSource<bool>? _cancellationRelease;
         public Channel<Call> Calls { get; } = Channel.CreateUnbounded<Call>();
 
         /// <summary>Text the next call streams before it is answered; consumed once.</summary>
         public string? NextPrelude { get; set; }
+        public bool AdaptLegacyFinalAnswers { get; set; } = true;
         public Task<ChatCompletionResponse> CompleteAsync(ChatCompletionRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
         public async IAsyncEnumerable<ChatCompletionChunk> StreamAsync(ChatCompletionRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
@@ -1185,7 +1225,23 @@ public sealed class ChatExecutionTests
                 await release.Task;
                 throw;
             }
-            yield return new ChatCompletionChunk(content, ToolCalls: call.ToolCalls, FinishReason: call.FinishReason);
+            var toolCalls = call.ToolCalls;
+            if (AdaptLegacyFinalAnswers && toolCalls is null && !string.IsNullOrWhiteSpace(content)
+                && request.ContextMessages?.Any(message => message.Role == "tool") == true
+                && request.Tools?.Any(tool => tool.Name == RunCompletionProtocol.Name) == true)
+            {
+                toolCalls = [new ChatToolCall($"finish-{Guid.NewGuid():N}", RunCompletionProtocol.Name,
+                    JsonSerializer.Serialize(new
+                    {
+                        status = "complete",
+                        finalAnswer = content,
+                        completed = TestCompleted,
+                        evidence = Array.Empty<string>(),
+                        remaining = Array.Empty<string>()
+                    }))];
+                content = "";
+            }
+            yield return new ChatCompletionChunk(content, ToolCalls: toolCalls, FinishReason: call.FinishReason);
         }
 
         public Task<bool> DelayCancellation()
@@ -1230,6 +1286,7 @@ public sealed class ChatExecutionTests
         private ChatRunDispatcher NewDispatcher()
         {
             var policies = new ToolPolicyResolver(_projectService, Chats, _settings);
+            var instructionRegistry = new ModelInstructionRegistry();
             return new ChatRunDispatcher(_runs, Chats, Chats, _projectService, _settings,
                 new GlobalSettingsService(_settings, _secrets, new ConnectionContextLimitsResolver()),
                 new ChatAgent(Completion, () => Tools, _projectService, _settings, policies, Workspace,
@@ -1238,7 +1295,9 @@ public sealed class ChatExecutionTests
                         new ConnectionContextLimitsResolver()),
                     Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity(),
                     new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()),
-                    new ToolCatalogRegistry(), new ModelContentCheckpointService()),
+                    new ToolCatalogRegistry(), new ModelContentCheckpointService(), instructionRegistry,
+                    new ModelInstructionComposer(instructionRegistry, new ContextTokenEstimator()),
+                    Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol()),
                 _secrets, _clock, _ids, _synchronization, Workspace, policies,
                 new ChatContext(ToolResultCodec));
         }
@@ -1323,7 +1382,7 @@ public sealed class ChatExecutionTests
             await SubmitAsync(request);
             var call = await NextCallAsync();
             await call.PreludeStreamed.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await WaitAsync(run => run.StreamingContent.Contains(text, StringComparison.Ordinal));
+            await WaitAsync(run => run.IntermediateContent?.Contains(text, StringComparison.Ordinal) == true);
             return call;
         }
 

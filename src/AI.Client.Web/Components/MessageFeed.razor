@@ -169,10 +169,19 @@
                     <AppIcon Name="chevron-up" />
                 </button>
             }
+            else if (entry.IntermediateContent is { } intermediateContent)
+            {
+                @* Provisional model prose belongs to the current turn's expandable detail. It is
+                   deliberately never rendered as the dialogue's final assistant answer. *@
+                <article class="workspace-message assistant turn-live-intermediate" aria-live="polite">
+                    <span class="message-status">Intermediate</span>
+                    <div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(intermediateContent))</div>
+                </article>
+            }
             else if (entry.StreamingRun is { } streamingRun)
             {
-                @* Until the provider returns tool calls, this can still be the final answer. Keep
-                   it in the dialogue so the user sees that answer being written live. *@
+                @* StreamingContent is reserved for the publishable final answer. Provisional
+                   model prose uses IntermediateContent inside the compact turn instead. *@
                 <article id="message-streaming" class="workspace-message assistant @(streamingRun.Status == ChatRunStatus.Generating ? "streaming" : string.Empty)">
                     @if (streamingRun.Status != ChatRunStatus.Generating) { <span class="message-status">Incomplete</span> }
                     <div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(streamingRun.StreamingContent))</div>
@@ -939,6 +948,7 @@
         Guid? TurnId = null,
         Guid? CollapseTurnId = null,
         ChatRunSnapshot? StreamingRun = null,
+        string? IntermediateContent = null,
         string? AbsorbingContent = null,
         int TransitionId = 0);
 
@@ -1013,6 +1023,12 @@
                     entries.Add(new RenderedFeedEntry(ActiveTools: activeTools, TurnId: turn.Id));
                 }
 
+                if (IsCurrentTurn(turn) && IsTurnExpanded(turn)
+                    && SelectedRun?.IntermediateContent is { Length: > 0 } intermediateContent)
+                {
+                    entries.Add(new RenderedFeedEntry(IntermediateContent: intermediateContent, TurnId: turn.Id));
+                }
+
                 // Once every progressively mounted intermediate block is present, close the
                 // expanded region with a second affordance. A long turn can put its summary far
                 // above the viewport, so requiring the user to find that first button again
@@ -1070,7 +1086,8 @@
 
     private bool CanExpandTurn(ChatFeed.FeedTurn turn) =>
         turn.IntermediateItems.Count > 0
-        || IsCurrentTurn(turn) && SelectedRun?.ActiveTools is { Count: > 0 };
+        || IsCurrentTurn(turn) && (SelectedRun?.ActiveTools is { Count: > 0 }
+            || !string.IsNullOrWhiteSpace(SelectedRun?.IntermediateContent));
 
     private async Task ToggleTurnAsync(Guid turnId)
     {

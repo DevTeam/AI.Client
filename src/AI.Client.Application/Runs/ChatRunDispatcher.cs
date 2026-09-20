@@ -420,6 +420,7 @@ public sealed class ChatRunDispatcher(
                             await SaveAsync(runtime, null, ct);
                         }
                     },
+                    (content, ct) => ReportIntermediateContentAsync(runtime, content, ct),
                     async ct =>
                     {
                         using var lease = await synchronization.EnterAsync(runtime.State.ChatId, ct);
@@ -703,6 +704,20 @@ public sealed class ChatRunDispatcher(
 
     private static readonly TimeSpan ProgressPublishInterval = TimeSpan.FromMilliseconds(150);
 
+    private async Task ReportIntermediateContentAsync(Runtime runtime, string? content, CancellationToken token)
+    {
+        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
+        if (string.Equals(runtime.IntermediateContent, content, StringComparison.Ordinal)) return;
+        runtime.IntermediateContent = string.IsNullOrWhiteSpace(content) ? null : content;
+        runtime.State.Append("");
+        if (runtime.IntermediateContent is null
+            || clock.UtcNow - runtime.LastIntermediatePublished >= TimeSpan.FromMilliseconds(150))
+        {
+            runtime.LastIntermediatePublished = clock.UtcNow;
+            await SaveAsync(runtime, null, token);
+        }
+    }
+
     private async Task ReportTransportActivityAsync(Runtime runtime, ChatTransportWait? wait, CancellationToken token)
     {
         using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
@@ -868,7 +883,11 @@ public sealed class ChatRunDispatcher(
     {
         // Whitespace is not an answer: a message made of it is refused by the domain, so there is
         // nothing to keep and nothing to report.
-        if (runtime.ActiveMessageId is not { } active || string.IsNullOrWhiteSpace(runtime.State.StreamingContent)) return;
+        if (runtime.ActiveMessageId is not { } active) return;
+        var partialContent = string.IsNullOrWhiteSpace(runtime.State.StreamingContent)
+            ? runtime.IntermediateContent
+            : runtime.State.StreamingContent;
+        if (string.IsNullOrWhiteSpace(partialContent)) return;
         if (_maintenance.ContainsKey(runtime.State.ChatId) || _deletingProjects.ContainsKey(runtime.State.ProjectId)) return;
         try
         {
@@ -882,9 +901,13 @@ public sealed class ChatRunDispatcher(
             }
             var appended = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
                 new AppendChatMessageRequest(partialId, runtime.ToolHead ?? active, "Assistant",
-                    runtime.State.StreamingContent, chat.Revision, IsIncomplete: true,
+                    partialContent, chat.Revision, IsIncomplete: true,
                     BranchId: runtime.State.BranchId), RetainedMessageIds(chat.Id), CancellationToken.None);
-            if (appended is not null) runtime.State.ClearStreaming();
+            if (appended is not null)
+            {
+                runtime.State.ClearStreaming();
+                runtime.IntermediateContent = null;
+            }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException
             or InvalidOperationException or ArgumentException or Domain.Common.DomainException) { }
@@ -906,7 +929,8 @@ public sealed class ChatRunDispatcher(
             ActiveTools = runtime.ActiveTools.Values.ToArray(),
             WorkspaceChanges = runtime.WorkspaceChanges,
             StreamingToolCallsStarted = runtime.StreamingToolCallsStarted,
-            Wait = runtime.Wait
+            Wait = runtime.Wait,
+            IntermediateContent = runtime.IntermediateContent
         };
         if (chat is not null)
             foreach (var other in _runtimes.Values.Where(item => item.State.ChatId == chat.Id && item != runtime))
@@ -1196,6 +1220,8 @@ public sealed class ChatRunDispatcher(
         public DateTimeOffset LastPublished { get; set; }
         public bool StreamingToolCallsStarted { get; set; }
         public ChatRunWait? Wait { get; set; }
+        public string? IntermediateContent { get; set; }
+        public DateTimeOffset LastIntermediatePublished { get; set; }
     }
 
     private readonly record struct RunKey(Guid ProjectId, Guid ChatId, Guid BranchId);

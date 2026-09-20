@@ -26,11 +26,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IToolResultCodec toolResultCodec, IChatContextPlanner contextPlanner,
     IContextPlanDiagnostics contextDiagnostics, IChatTransportActivity transport,
     IToolDefinitionSelector toolSelector, IToolCatalogRegistry toolCatalog,
-    IModelContentCheckpointService checkpoints) : IChatAgent
+    IModelContentCheckpointService checkpoints, IModelInstructionRegistry instructions,
+    IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
+    IRunCompletionProtocol completionProtocol) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
         Func<string, CancellationToken, Task> text,
+        Func<string?, CancellationToken, Task> intermediate,
         Func<CancellationToken, Task> toolCallsStarted,
         Func<ToolActivity?, CancellationToken, Task> activity,
         Func<ChatTransportWait?, CancellationToken, Task> transportActivity,
@@ -60,6 +63,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
         var run = new ToolRunContext(projectId, chatId, branchId, interactive);
         using var catalogScope = toolCatalog.Begin(run);
+        using var instructionScope = instructions.Begin(run);
+        instructions.Upsert(run, new ModelInstruction("run.completion-protocol", CompletionInstruction,
+            1_000, ModelInstructionLifetime.Run));
         using var checkpointScope = checkpoints.Begin(run, async (prompt, ct) =>
             (await completion.CompleteAsync(request with
             {
@@ -91,6 +97,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
 
         var empty = 0;
         var truncated = 0;
+        var continuedAnswer = new StringBuilder();
+        var missingCompletion = 0;
+        var completionRequired = counts.Count > 0;
         while (true)
         {
             checkpoints.Update(run, context);
@@ -99,6 +108,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             if (session is not null)
                 foreach (var tool in session.Tools)
                     if ((await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") permitted.Add(tool);
+            permitted.Add(completionProtocol.Tool);
             toolCatalog.Update(run, permitted);
             var selection = toolSelector.Choose(configuredConnection, request.Message, modelContext, permitted,
                 toolCatalog.GetPinned(run));
@@ -109,8 +119,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var calls = new List<ChatToolCall>();
             var content = new StringBuilder();
             string? finish = null;
-            var plan = contextPlanner.Plan(configuredConnection, request.Model, modelContext, available);
-            contextDiagnostics.Record(request.Model, plan, context.Count, available.Length);
+            var composition = instructionComposer.Compose(run, modelContext);
+            instructionDiagnostics.RecordInstructions(request.Model, composition.Keys, composition.EstimatedTokens);
+            var plan = contextPlanner.Plan(configuredConnection, request.Model, composition.Messages, available);
+            contextDiagnostics.Record(request.Model, plan, composition.Messages.Count, available.Length);
             if (!plan.Fits) throw new ContextWindowExceededException(plan);
             await foreach (var chunk in completion.StreamAsync(
                                request with { ContextMessages = plan.Messages, Tools = available }, token))
@@ -120,8 +132,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 if (chunk.FinishReason is { Length: > 0 } reason) finish = reason;
                 if (chunk.Content.Length == 0) continue;
                 content.Append(chunk.Content);
-                await text(chunk.Content, token);
+                await intermediate(continuedAnswer.ToString() + content, token);
             }
+            instructionComposer.Acknowledge(run, composition);
             if (calls.Count == 0 && content.Length == 0)
             {
                 // An endpoint that answers with nothing at all has not decided to stop — it has
@@ -149,22 +162,89 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     throw new InvalidOperationException(
                         $"The model's answer was cut off at the token limit {MaxTruncatedTurns} times in a row.");
                 context.Add(new ChatCompletionMessage("assistant", content.ToString()));
-                context.Add(new ChatCompletionMessage("user", ContinueAfterTruncation));
+                continuedAnswer.Append(content);
+                instructions.Upsert(run, new ModelInstruction("response.continue-after-truncation",
+                    ContinueAfterTruncation, 900, ModelInstructionLifetime.UntilAcknowledged));
                 continue;
             }
 
             truncated = 0;
             if (calls.Count == 0)
             {
+                if (completionRequired)
+                {
+                    if (++missingCompletion > MaxMissingCompletionTurns)
+                        throw new InvalidOperationException(
+                            $"The model did not call {completionProtocol.Tool.ModelDefinition.Name} after using tools.");
+                    context.Add(new ChatCompletionMessage("assistant", continuedAnswer.ToString() + content));
+                    continuedAnswer.Clear();
+                    instructions.Upsert(run, new ModelInstruction("run.completion-required",
+                        $"Your previous response was provisional and was not published. Work is not finished until you call "
+                        + $"{completionProtocol.Tool.ModelDefinition.Name}. Continue the work, or call it now with status complete, "
+                        + "continue, or blocked. Do not repeat the provisional response.",
+                        950, ModelInstructionLifetime.UntilAcknowledged));
+                    continue;
+                }
+
+                await intermediate(null, token);
+                await text(continuedAnswer.ToString() + content, token);
+                continuedAnswer.Clear();
                 var changes = await workspace.SnapshotAsync(runKey, token);
                 await workspace.CompleteRunAsync(runKey, CancellationToken.None);
                 return changes;
             }
+
+            var completionCalls = calls.Where(call => call.Name == completionProtocol.Tool.ModelDefinition.Name).ToArray();
+            if (completionCalls.Length > 0)
+            {
+                if (completionCalls.Length != 1 || calls.Count != 1)
+                    throw new InvalidOperationException(
+                        $"{completionProtocol.Tool.ModelDefinition.Name} must be the only call in its tool-call batch.");
+                RunCompletionDecision decision;
+                try
+                {
+                    decision = completionProtocol.Parse(completionCalls[0].Arguments);
+                }
+                catch (Exception error) when (error is ArgumentException or JsonException)
+                {
+                    if (++missingCompletion > MaxMissingCompletionTurns)
+                        throw new InvalidOperationException(
+                            $"The model repeatedly returned an invalid {completionProtocol.Tool.ModelDefinition.Name} decision.", error);
+                    context.Add(new ChatCompletionMessage("assistant", content.ToString(), calls.ToArray()));
+                    context.Add(new ChatCompletionMessage("tool", completionProtocol.RejectResult(error.Message),
+                        ToolCallId: completionCalls[0].Id));
+                    instructions.Upsert(run, new ModelInstruction("run.completion-invalid",
+                        $"The previous {completionProtocol.Tool.ModelDefinition.Name} decision was rejected. "
+                        + "Correct its structured arguments using the tool result; do not replace it with ordinary prose.",
+                        960, ModelInstructionLifetime.UntilAcknowledged));
+                    continue;
+                }
+                missingCompletion = 0;
+                if (decision.Status is RunCompletionStatus.Complete or RunCompletionStatus.Blocked)
+                {
+                    await intermediate(null, token);
+                    await text(decision.FinalAnswer!, token);
+                    var changes = await workspace.SnapshotAsync(runKey, token);
+                    await workspace.CompleteRunAsync(runKey, CancellationToken.None);
+                    return changes;
+                }
+
+                var assistantDecision = new ChatCompletionMessage("assistant", content.ToString(), calls.ToArray());
+                context.Add(assistantDecision);
+                context.Add(new ChatCompletionMessage("tool", completionProtocol.ContinueResult(decision),
+                    ToolCallId: completionCalls[0].Id));
+                continue;
+            }
+
+            completionRequired = true;
+            missingCompletion = 0;
+            continuedAnswer.Clear();
             if (calls.Any(call => !seenIds.Add(call.Id)))
                 throw new InvalidOperationException("Duplicate tool call IDs or excessive calls.");
             var assistant = new ChatCompletionMessage("assistant", content.ToString(), calls.ToArray());
             await persist(assistant, token); // Durable intent before any side effect.
             context.Add(assistant);
+            await intermediate(null, token);
             checkpoints.Update(run, context);
             for (var index = 0; index < calls.Count; index++)
             {
@@ -290,14 +370,34 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     private const int MaxTruncatedTurns = 5;
 
     /// <summary>
-    /// Sent as the user so every endpoint honours it — a trailing assistant message is a prefix to
-    /// complete on some and a protocol error on others. It never reaches the transcript: the caller
-    /// stores the streamed answer, not the context this loop assembles to obtain it.
+    /// A compatible model should follow the control protocol immediately. A few corrective turns
+    /// tolerate providers which initially emit prose, while still preventing an endless private
+    /// conversation whose result can never be published.
+    /// </summary>
+    private const int MaxMissingCompletionTurns = 3;
+
+    /// <summary>
+    /// Registered as a model-only system instruction after a truncated response. It never reaches
+    /// persistence or the transcript and is removed after the next provider response is accepted.
     /// </summary>
     private const string ContinueAfterTruncation =
         "Your previous message was cut off at the output token limit. Continue it from exactly where "
         + "it stopped, in the middle of the word or line if that is where the cut fell. Do not repeat "
         + "any text you have already sent, do not restate what you were doing, and do not apologise.";
+
+    /// <summary>
+    /// The stable run-wide protocol. Ordinary text before a tool call remains a compact
+    /// intermediate note; only finalAnswer from this control tool can become the durable final
+    /// answer once the run has used a side-effect or information-gathering tool.
+    /// </summary>
+    private const string CompletionInstruction =
+        "The application provides app_finish_run as a control tool. After you use any other tool, "
+        + "ordinary assistant text is provisional and is not the final answer. Use app_finish_run "
+        + "with status=continue when work remains and give remaining plus one concrete nextAction. "
+        + "Use status=complete only after checking the user's request and definition of done: include "
+        + "a concise finalAnswer, at least one completed item, relevant evidence, and an empty remaining list. "
+        + "Use status=blocked only when progress requires user input or an external state change, and explain "
+        + "that requirement in finalAnswer. Never call app_finish_run in the same batch as another tool.";
 
     /// <summary>
     /// OpenAI-compatible endpoints report the ceiling as "length"; several report the Anthropic

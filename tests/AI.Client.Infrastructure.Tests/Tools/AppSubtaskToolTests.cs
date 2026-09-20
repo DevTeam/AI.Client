@@ -345,6 +345,7 @@ public sealed class AppSubtaskToolTests
             IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker();
             var modelProjector = new ToolResultModelProjector();
             var toolResultCodec = new ToolResultCodec(modelProjector);
+            var instructionRegistry = new ModelInstructionRegistry();
             // No tool servers: a subtask that needs none is enough to prove the plumbing, and it
             // keeps the test from starting child processes.
             var agent = new ChatAgent(Completion, Mock.Of<IToolSessionFactory>, Projects, _settings, policies, workspace,
@@ -353,7 +354,9 @@ public sealed class AppSubtaskToolTests
                     new ConnectionContextLimitsResolver()),
                 Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity(),
                 new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()),
-                new ToolCatalogRegistry(), new ModelContentCheckpointService());
+                new ToolCatalogRegistry(), new ModelContentCheckpointService(), instructionRegistry,
+                new ModelInstructionComposer(instructionRegistry, new ContextTokenEstimator()),
+                Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol());
             var presentations = new ToolPresentations(
                 new GenericToolPresentationAdapter(),
                 [

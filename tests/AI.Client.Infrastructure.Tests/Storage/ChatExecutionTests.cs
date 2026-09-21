@@ -186,6 +186,41 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task ToolLimitShouldIdentifyTheToolPolicyScopeAndKeepOtherToolsAvailable()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow", maxCalls: 1);
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run twice"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls =
+        [
+            new ChatToolCall("call-1", "mcp_built_in__process_run", "{}"),
+            new ChatToolCall("call-2", "mcp_built_in__process_run", "{}")
+        ];
+        first.Answer.SetResult("");
+
+        var next = await fixture.NextCallAsync();
+        fixture.Tools.CallCount.ShouldBe(1);
+        var limited = next.Request.ContextMessages!.Where(message => message.Role == "tool").Last();
+        limited.ModelContent.ShouldNotBeNull();
+        limited.ModelContent!.ShouldContain("Only this tool is limited for the current run");
+        limited.ModelContent.ShouldContain("other available tools remain usable");
+        var result = ToolResultCodec.Read(limited.Content);
+        result.IsError.ShouldBeTrue();
+        result.StructuredContent!.Value.GetProperty("code").GetString().ShouldBe("tool_call_limit_reached");
+        result.StructuredContent.Value.GetProperty("tool").GetString().ShouldBe("mcp_built_in__process_run");
+        result.StructuredContent.Value.GetProperty("count").GetInt32().ShouldBe(2);
+        result.StructuredContent.Value.GetProperty("limit").GetInt32().ShouldBe(1);
+        result.StructuredContent.Value.GetProperty("scope").GetString().ShouldBe("project");
+        result.StructuredContent.Value.GetProperty("limitedToolOnly").GetBoolean().ShouldBeTrue();
+        result.StructuredContent.Value.GetProperty("otherToolsAvailable").GetBoolean().ShouldBeTrue();
+
+        next.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task QuestionShouldStopTheRunAndCarryTheAnswerBack()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -1399,14 +1434,14 @@ public sealed class ChatExecutionTests
             }, CancellationToken.None);
         }
 
-        public async Task SetPolicyAsync(string decision, long timeoutSeconds = 120)
+        public async Task SetPolicyAsync(string decision, long timeoutSeconds = 120, int maxCalls = 20)
         {
             var global = await _settings.LoadAsync(CancellationToken.None);
             await _settings.SaveAsync(global with { McpServers = [DefaultMcpServer.Settings with { Policy = "Allow" }] }, CancellationToken.None);
             var project = await _projectService.GetAsync(ProjectId, CancellationToken.None);
             await _projectService.UpdateSecurityAsync(ProjectId, new UpdateProjectSecurityRequest(project!.Revision, [],
                 [new Contracts.Projects.McpServerSettings(DefaultMcpServer.Id, "Default", "Stdio", true)],
-                [new ToolPolicySettings(DefaultMcpServer.Id, "process_run", "schema", decision, 20, timeoutSeconds)]), CancellationToken.None);
+                [new ToolPolicySettings(DefaultMcpServer.Id, "process_run", "schema", decision, maxCalls, timeoutSeconds)]), CancellationToken.None);
         }
         public async Task<Call> NextCallAsync() => await Completion.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
 

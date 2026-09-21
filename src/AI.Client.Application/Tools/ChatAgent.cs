@@ -282,7 +282,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     var count = counts.GetValueOrDefault(call.Name) + 1;
                     counts[call.Name] = count;
                     if (policy.Decision == "Deny") result = Error("Tool denied by current policy.");
-                    else if (count > policy.MaxCalls) result = Error("Tool call limit reached.");
+                    else if (count > policy.MaxCalls) result = ToolCallLimitError(call.Name, count, policy);
                     // Asking to be allowed to ask is one prompt too many: the confirmation and the
                     // question put the same decision to the same person twice, and the first one
                     // tells them nothing the second does not. Deny still applies, above, so someone
@@ -545,6 +545,27 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     {
         var content = new[] { ToolContent.OfText(message) };
         return new ToolCallResult(content, null, null, true, modelProjector.Project(content, null, true));
+    }
+
+    private ToolCallResult ToolCallLimitError(string tool, int count, EffectiveToolPolicy policy)
+    {
+        var message = $"Tool call limit reached for '{tool}': call {count} exceeds the limit of {policy.MaxCalls} "
+            + $"from the {policy.MaxCallsScope} policy. Only this tool is limited for the current run; "
+            + "other available tools remain usable. Do not ask the user to continue solely because of this limit. "
+            + "Continue with other tools or finish using the information already available.";
+        var content = new[] { ToolContent.OfText(message) };
+        var structured = JsonSerializer.SerializeToElement(new
+        {
+            code = "tool_call_limit_reached",
+            tool,
+            count,
+            limit = policy.MaxCalls,
+            scope = policy.MaxCallsScope,
+            limitedToolOnly = true,
+            otherToolsAvailable = true
+        });
+        return new ToolCallResult(content, structured, null, true,
+            modelProjector.Project(content, structured, true));
     }
 
     /// <summary>

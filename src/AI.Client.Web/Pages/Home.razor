@@ -3134,9 +3134,9 @@
 
         public string Decision { get; set; } = "Ask";
 
-        public int MaxCallsPerRun { get; set; } = 65535;
+        public int? MaxCallsPerRun { get; set; }
 
-        public long TimeoutSeconds { get; set; } = 120;
+        public long? TimeoutSeconds { get; set; }
     }
 
     private sealed class ChatEditor

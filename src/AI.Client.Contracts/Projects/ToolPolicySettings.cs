@@ -5,5 +5,5 @@ public sealed record ToolPolicySettings(
     string Name,
     string SchemaHash,
     string Decision,
-    int MaxCallsPerRun,
-    long TimeoutSeconds);
+    int? MaxCallsPerRun,
+    long? TimeoutSeconds);

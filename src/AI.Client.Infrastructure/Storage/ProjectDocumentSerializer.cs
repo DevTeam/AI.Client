@@ -40,7 +40,7 @@ public sealed class ProjectDocumentSerializer : IProjectDocumentSerializer
                 policy.Tool.SchemaHash,
                 policy.Decision,
                 policy.MaxCallsPerRun,
-                policy.Timeout.Ticks)).ToArray(),
+                policy.Timeout?.Ticks)).ToArray(),
             project.ConnectionId?.Value),
             Options);
     }
@@ -100,7 +100,7 @@ public sealed class ProjectDocumentSerializer : IProjectDocumentSerializer
                     new ToolIdentity(new McpServerId(policy.ServerId), policy.Name, policy.SchemaHash),
                     policy.Decision,
                     policy.MaxCallsPerRun,
-                    TimeSpan.FromTicks(policy.TimeoutTicks)),
+                    policy.TimeoutTicks is { } ticks ? TimeSpan.FromTicks(ticks) : null),
                 document.UpdatedAt);
         }
 
@@ -139,7 +139,7 @@ public sealed class ProjectDocumentSerializer : IProjectDocumentSerializer
         string Name,
         string SchemaHash,
         ToolPolicyDecision Decision,
-        int MaxCallsPerRun,
-        long TimeoutTicks);
+        int? MaxCallsPerRun,
+        long? TimeoutTicks);
 
 }

@@ -7,7 +7,7 @@ public sealed record ToolPolicy
     public ToolPolicy(
         ToolIdentity tool,
         ToolPolicyDecision decision,
-        int maxCallsPerRun = 65535,
+        int? maxCallsPerRun = null,
         TimeSpan? timeout = null)
     {
         ArgumentNullException.ThrowIfNull(tool);
@@ -17,8 +17,7 @@ public sealed record ToolPolicy
             throw new DomainException("Tool call limit must be greater than zero.");
         }
 
-        var actualTimeout = timeout ?? TimeSpan.FromMinutes(2);
-        if (actualTimeout <= TimeSpan.Zero)
+        if (timeout <= TimeSpan.Zero)
         {
             throw new DomainException("Tool timeout must be greater than zero.");
         }
@@ -26,14 +25,14 @@ public sealed record ToolPolicy
         Tool = tool;
         Decision = decision;
         MaxCallsPerRun = maxCallsPerRun;
-        Timeout = actualTimeout;
+        Timeout = timeout;
     }
 
     public ToolIdentity Tool { get; }
 
     public ToolPolicyDecision Decision { get; }
 
-    public int MaxCallsPerRun { get; }
+    public int? MaxCallsPerRun { get; }
 
-    public TimeSpan Timeout { get; }
+    public TimeSpan? Timeout { get; }
 }

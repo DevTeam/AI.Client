@@ -145,7 +145,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         int? BranchCount = null);
 
     private sealed record ToolPolicyDocument(Guid ServerId, string Name, string SchemaHash,
-        ToolPolicyDecision Decision, int MaxCallsPerRun, TimeSpan Timeout);
+        ToolPolicyDecision Decision, int? MaxCallsPerRun, TimeSpan? Timeout);
 
     private sealed record BranchDocument(Guid Id, Guid? HeadMessageId, string Title, Guid? ParentBranchId,
         Guid? RootMessageId, long Revision);

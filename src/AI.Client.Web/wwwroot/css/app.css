@@ -3711,6 +3711,45 @@ textarea {
     .workspace-change-summary { flex-wrap: wrap; }
 }
 
+/* Highlighted match inside a message, driven by the sidebar search. The fill is a warm amber
+   rather than the workspace accent so a match reads as "highlighted" the way it does in every
+   other app, while the inset ring keeps a single character from disappearing against a coloured
+   token (a link, a code span). Decoration-break: clone is load-bearing here: a query that wraps
+   onto a new line still reads as one continuous match, not two pale half-strips at the line
+   ends. The text is darkened on top of the amber so the match is unambiguous in assistant prose,
+   in headings, and inside user-message bubbles alike. */
+.search-highlight {
+    background: rgb(255 226 117 / 70%);
+    color: #1a1a1a;
+    border-radius: 0.2rem;
+    padding: 0.05em 0.25em;
+    font-weight: 600;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    box-shadow: 0 0 0 1px rgb(255 226 117 / 90%);
+}
+
+/* Inside a code block the body is already a coloured panel (#0c1017) and monospace runs are
+   tracked with their own colours. The full amber swap above would clash with both: soften the
+   fill, drop the bold, and keep the existing token colour so a match inside a `code` span still
+   reads as "the bit you searched for in this expression". The ring does the work of saying
+   "highlighted" without forcing a colour flip that the eye has to re-read. */
+.markdown-content pre .search-highlight,
+.markdown-content code .search-highlight {
+    background: rgb(255 226 117 / 45%);
+    color: inherit;
+    font-weight: inherit;
+    box-shadow: 0 0 0 1px rgb(255 226 117 / 75%);
+}
+
+/* On the user-message bubble the dark-on-amber contrast is fine, but a single-letter match at
+   0.05em vertical padding collapses to almost nothing. A little more vertical air keeps the
+   marker legible without making prose look like it has been coloured in by a marker pen. */
+.workspace-message.user .search-highlight {
+    padding: 0.1em 0.3em;
+}
+
+
 /* Sidebar search. While a query is running these results stand in for the project tree, so they
    match its rhythm rather than introducing a panel of their own. */
 .sidebar-search { display: flex; align-items: center; gap: .25rem; padding: .5rem .5rem .25rem; }

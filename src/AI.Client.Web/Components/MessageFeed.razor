@@ -380,6 +380,14 @@
     }
     [Parameter] public bool HasSelectedProject { get; set; }
     [Parameter] public string? SelectedProjectName { get; set; }
+
+    /// <summary>
+    /// Current search query from the sidebar search box, used to highlight matching text inside
+    /// rendered messages. An empty/short value clears any existing highlight; the same minimum
+    /// length the sidebar enforces (2 characters) is mirrored on the JS side so a render pass
+    /// never wastes a DOM walk on something the sidebar would not even send to the server.
+    /// </summary>
+    [Parameter] public string? SearchQuery { get; set; }
     [Parameter] public ChatDetails? SelectedChat { get; set; }
     /// <summary>
     /// Stable identity of the selected main/fork transcript. Unlike <see cref="BranchLeafId"/>,
@@ -492,6 +500,7 @@
     private bool _renderedHasSelectedProject;
     private string? _renderedSelectedProjectName;
     private bool _renderedPinned = true;
+    private string? _renderedSearchQuery;
     private bool _renderedNewBelow;
     private bool _expandRenderRequested;
 
@@ -509,6 +518,7 @@
             || _renderedExpandedTurnsVersion != _expandedTurnsVersion
             || _renderedHasSelectedProject != HasSelectedProject
             || _renderedSelectedProjectName != SelectedProjectName
+            || !string.Equals(_renderedSearchQuery ?? string.Empty, SearchQuery ?? string.Empty, StringComparison.Ordinal)
             // The jump affordance lives entirely in this component's own state, and ShouldRender
             // is what decides whether its StateHasChanged reaches the DOM at all.
             || _renderedPinned != _pinned
@@ -530,6 +540,7 @@
         _renderedExpandedTurnsVersion = _expandedTurnsVersion;
         _renderedHasSelectedProject = HasSelectedProject;
         _renderedSelectedProjectName = SelectedProjectName;
+        _renderedSearchQuery = SearchQuery;
         _renderedPinned = _pinned;
         _renderedNewBelow = _newBelow;
         _expandRenderRequested = false;
@@ -585,6 +596,7 @@
 
         await ApplyDeferredScrollAsync();
         await SyncHistoryMarkersAsync();
+        await ApplySearchHighlightAsync();
     }
 
     private string? _watchedTurnSummaryElementId;
@@ -611,6 +623,29 @@
     public Task OnTurnSummaryVisibilityChanged(bool visible) =>
         OnCurrentTurnSummaryVisibilityChanged.InvokeAsync(visible);
 
+    /// <summary>
+    /// Pushes the current SearchQuery to the JS side. Called from OnAfterRenderAsync on every
+    /// render that touched the transcript, so a streaming token that diffs in new text also
+    /// re-walks it for highlights — the wrappers themselves died with whatever Blazor rebuilt.
+    /// The DOM walk is skipped when the query did not change since the last render, which is by
+    /// far the common case.
+    /// </summary>
+    private async Task ApplySearchHighlightAsync()
+    {
+        if (_disposed || _messageScrollHandle is not { } handle) return;
+        var chatId = SelectedChat?.Id;
+        var normalized = (SearchQuery ?? string.Empty).Trim();
+        if (_appliedSearchChatId == chatId
+            && string.Equals(_appliedSearchQuery, normalized, StringComparison.Ordinal)) return;
+        _appliedSearchChatId = chatId;
+        _appliedSearchQuery = normalized;
+        try
+        {
+            await handle.InvokeVoidAsync("applySearchHighlight", normalized);
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+    }
+
     // The tail is rendered bottom-anchored, so a scroll request made against it is either already
     // right (the bottom) or aimed at a message that does not exist yet. Either way it is replayed
     // here, once the whole chain is in the DOM.
@@ -629,6 +664,41 @@
             _deferredScrollToBottom = false;
             await ScrollToBottomAsync();
         }
+
+        if (_pendingScrollToMessageId is { } targetId && _messageScrollHandle is { } handle
+            && _renderedItemLimit == int.MaxValue)
+        {
+            _pendingScrollToMessageId = null;
+            try
+            {
+                if (await handle.InvokeAsync<bool>("scrollMessageIntoView", targetId)) return;
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+        }
+    }
+
+
+    /// <summary>
+    /// Scrolls the feed to a specific message — the one the user picked from a search result.
+    /// If the target message is not in the DOM yet (the transcript is rendered as a tail while it
+    /// expands), the request is replayed once the full chain is in place, mirroring how
+    /// <see cref="RestoreScrollPositionAsync"/> defers for the same reason.
+    /// </summary>
+    public async Task ScrollToMessageAsync(Guid messageId)
+    {
+        if (_disposed || messageId == Guid.Empty) return;
+        if (_messageScrollHandle is { } handle && _renderedItemLimit == int.MaxValue)
+        {
+            try
+            {
+                if (await handle.InvokeAsync<bool>("scrollMessageIntoView", messageId)) return;
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+        }
+        // Target not in DOM (tail-only render, or the JS side failed): queue and retry on the
+        // next render that paints the whole chain.
+        _pendingScrollToMessageId = messageId;
+        await ApplyDeferredScrollAsync();
     }
 
     /// <summary>
@@ -902,6 +972,23 @@
     private Guid? _progressiveChatId;
     private Guid? _progressiveTranscriptId;
     private int _renderedItemLimit = int.MaxValue;
+
+    // The last query that has been pushed to JS. The transcript re-renders on a stream token or a
+    // branch switch and our <mark> wrappers die with it; remembering what is already in the DOM
+    // means a follow-up render only re-walks when the query itself actually changed.
+    private string? _appliedSearchQuery;
+
+    // A scroll target that arrived while only the tail of the transcript was rendered. A message
+    // outside the tail is not in the DOM yet, so the first scroll attempt is replayed once the
+    // full chain lands - the same loop used for the saved-position restore.
+    private Guid? _pendingScrollToMessageId;
+
+    // Chat whose messages the last applySearchHighlight walked. Blazor drops our <mark> wrappers
+    // when it rebuilds the transcript for a chat/branch switch, so a "nothing changed, skip the
+    // JS call" optimisation keyed on the query alone would silently leave the new chat with no
+    // highlights. Resetting on chat id forces a re-walk the first time OnAfterRenderAsync runs
+    // after the switch.
+    private Guid? _appliedSearchChatId;
     private bool _expandPending;
 
     // Position requests that arrive while only the tail exists. Restoring to a message that is not

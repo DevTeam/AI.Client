@@ -3328,13 +3328,6 @@ textarea {
     font-size: 0.72rem;
 }
 
-/* Live calls stay inside their expanded turn and use the same column as the settled groups they
-   will become. */
-.turn-active-tools {
-    max-width: 48rem;
-    margin: 0 auto 0.75rem;
-}
-
 /* Every group is one collapsed line; opening it reveals its rows, indented. */
 .tool-activity-batch > .tool-activity-rows {
     margin-left: 1.35rem;

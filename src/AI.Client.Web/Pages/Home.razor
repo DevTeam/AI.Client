@@ -6,6 +6,7 @@
 @inject IApiBaseUrl _apiBaseUrl
 @inject IProjectApi ProjectApi
 @inject IChatHistoryApi ChatHistoryApi
+@inject IChatMessageDeltaMerger ChatMessageDeltaMerger
 @inject IJSRuntime JsRuntime
 @inject IWorkspaceLayoutService WorkspaceLayoutService
 @inject IWorkspaceStateService WorkspaceStateService
@@ -840,8 +841,17 @@
                 if (isSelectedRun || isPendingBranchRun) _followNewMessages = true;
                 if (snapshot.ChatRevision > _selectedChat.Revision && _selectedProject is not null)
                 {
-                    _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, snapshot.ChatId, CancellationToken.None);
-                    await LoadChatsAsync(_selectedProject.Id, refreshSelected: false);
+                    if (ChatMessageDeltaMerger.TryApply(_selectedChat, snapshot, out var updatedChat))
+                    {
+                        _selectedChat = updatedChat;
+                        CacheChatDetails(updatedChat);
+                    }
+                    else
+                    {
+                        _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, snapshot.ChatId, CancellationToken.None);
+                        if (_selectedChat is not null) CacheChatDetails(_selectedChat);
+                        await LoadChatsAsync(_selectedProject.Id, refreshSelected: false);
+                    }
                 }
                 if ((isSelectedRun || isPendingBranchRun) && _selectedChat?.Branches?.SingleOrDefault(branch => branch.Id == snapshot.BranchId)?.HeadMessageId is { } head)
                     _branchLeafId = head;

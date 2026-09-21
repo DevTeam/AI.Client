@@ -24,13 +24,15 @@
             ? invocations.Count(item => item.Result is not null && Describe(item).Severity == ToolResultSeverity.Error)
             : 0;
         var unfinished = invocations.Count(item => item.Result is null);
-        var pending = IsLive ? unfinished : 0;
+        var pending = invocations.Count(item => item.Result is null
+            && (IsLive || _activeByCallId.ContainsKey(item.Call.Id)));
     }
-    @* Always one summary line, always collapsed — including for a single call. Folding used to
-       depend on how many calls there were and whether any failed, which made the transcript's
-       shape unpredictable: one failure expanded seven unrelated successes alongside it. The
-       structure is now fixed and the outcome shows in the summary instead. *@
-    <details class="tool-activity-batch @(failed > 0 ? "tool-row-failed" : string.Empty)" open="@_batchExpanded">
+    @* Always one summary line. Settled history stays collapsed, including for a single call;
+       only the currently running row is exposed automatically. Folding used to depend on how
+       many calls there were and whether any failed, which made the transcript's shape
+       unpredictable: one failure expanded seven unrelated successes alongside it. *@
+    <details class="tool-activity-batch @(failed > 0 ? "tool-row-failed" : string.Empty)"
+             open="@(_batchExpanded || _activeByCallId.Count > 0)">
         <summary class="tool-row" @onclick="ToggleBatch" @onclick:preventDefault="true">
             <span class="tool-row-glyph" aria-hidden="true">
                 @if (pending > 0) { <AppIcon Name="spinner" Class="tool-row-spinner" /> }
@@ -54,6 +56,18 @@
                 @foreach (var invocation in invocations.Take(_visibleRowCount)) { @RenderRow(invocation) }
             </div>
         }
+        else if (_activeByCallId.Count > 0)
+        {
+            @* A running call is useful without another click. Keep it under the very same batch
+               header that will represent it after completion; settled historical rows remain
+               lazy and appear only when the user explicitly opens the batch. *@
+            <div class="tool-activity-rows" role="status" aria-live="polite">
+                @foreach (var invocation in invocations.Where(item => _activeByCallId.ContainsKey(item.Call.Id)))
+                {
+                    @RenderRow(invocation)
+                }
+            </div>
+        }
     </details>
 </div>
 
@@ -67,6 +81,8 @@
     /// </summary>
     [Parameter] public bool IsLive { get; set; }
 
+    [Parameter] public IReadOnlyList<ActiveToolInvocation>? ActiveTools { get; set; }
+
     private const int RowRenderBatchSize = 5;
     private bool _batchExpanded;
     private int _visibleRowCount;
@@ -74,22 +90,39 @@
     private bool _disposed;
     private bool _allResultsDescribed;
     private IReadOnlyList<ChatFeed.ToolInvocation> _invocations = [];
+    private readonly Dictionary<string, ActiveToolInvocation> _activeByCallId = new(StringComparer.Ordinal);
     private GroupVersion _groupVersion;
 
     private readonly record struct GroupVersion(int Count, Guid FirstId, Guid LastId);
 
     protected override void OnParametersSet()
     {
+        _activeByCallId.Clear();
+        foreach (var active in ActiveTools ?? []) _activeByCallId[active.CallId] = active;
+
         var version = Group.Count == 0
             ? default
             : new GroupVersion(Group.Count, Group[0].Id, Group[^1].Id);
-        if (version == _groupVersion) return;
+        var invocations = ChatFeed.BuildInvocations(Group);
+        var knownCallIds = invocations.Select(item => item.Call.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var active in _activeByCallId.Values)
+        {
+            if (!knownCallIds.Add(active.CallId)) continue;
+            invocations.Add(new ChatFeed.ToolInvocation(
+                new ChatToolCall(active.CallId, active.Name, active.Arguments),
+                null,
+                active.StartedAt,
+                null));
+        }
+        _invocations = invocations;
 
-        _groupVersion = version;
-        _invocations = ChatFeed.BuildInvocations(Group);
-        _allResultsDescribed = false;
-        if (_batchExpanded)
-            _visibleRowCount = Math.Min(_visibleRowCount, _invocations.Count);
+        if (version != _groupVersion)
+        {
+            _groupVersion = version;
+            _allResultsDescribed = false;
+            if (_batchExpanded)
+                _visibleRowCount = Math.Min(_visibleRowCount, _invocations.Count);
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -114,8 +147,9 @@
     private RenderFragment RenderRow(ChatFeed.ToolInvocation invocation) => @<text>
         @{
             var call = Presentations.DescribeCall(invocation.Call.Name, invocation.Call.Arguments);
-            var running = invocation.Result is null && IsLive;
-            var abandoned = invocation.Result is null && !IsLive;
+            var active = _activeByCallId.GetValueOrDefault(invocation.Call.Id);
+            var running = invocation.Result is null && (active is not null || IsLive);
+            var abandoned = invocation.Result is null && active is null && !IsLive;
             var result = invocation.Result is null ? null : Describe(invocation);
             var severity = abandoned
                 ? ToolResultSeverity.Warning
@@ -150,6 +184,7 @@
                 }
                 <span class="tool-row-meta">
                     @if (result is not null) { @result.Summary }
+                    else if (active is not null) { <span>@(FormatProgress(active) ?? "Running…")</span> }
                     else if (abandoned) { <span>No result recorded</span> }
                     @if (FormatDuration(invocation.Duration) is { } elapsed) { <span class="tool-row-elapsed">@elapsed</span> }
                 </span>
@@ -279,6 +314,17 @@
         { TotalSeconds: < 60 } value => $"{value.TotalSeconds:F1} s",
         { } value => $"{(int)value.TotalMinutes}m {value.Seconds}s",
     };
+
+    // Progress is whatever the tool server reported: a message, a fraction when a total exists,
+    // or a bare count. Do not invent a percentage when the server supplied no denominator.
+    private static string? FormatProgress(ActiveToolInvocation active)
+    {
+        if (active.Message is { Length: > 0 } message) return message;
+        if (active.Progress is not { } progress) return null;
+        return active.Total is { } total and > 0
+            ? $"{progress / total:P0}"
+            : progress.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    }
 
     // Only the two states worth a badge. "Mutating" is the unremarkable default for anything that
     // writes, and Unknown means the server said nothing — neither earns visual weight.

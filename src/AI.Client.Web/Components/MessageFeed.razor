@@ -8,7 +8,6 @@
 @inject IChatRunsApi RunsApi
 @implements IAsyncDisposable
 @using AI.Client.Contracts.Tools
-@inject IToolPresentations Presentations
 
 <div class="messages-area">
 @if (SelectedChat is not null)
@@ -140,21 +139,12 @@
             else if (entry.ActiveTools is { Count: > 0 } activeTools)
             {
                 var activeToolsKey = (entry.TurnId, "active-tools");
-                @* Live calls belong to the turn that announced them. They are deliberately
-                   mounted only while that turn is open, rather than floating below the compact
-                   transcript when its context is hidden. *@
-                <div @key="activeToolsKey" class="tool-activity turn-active-tools" role="status" aria-live="polite">
-                    @foreach (var active in activeTools)
-                    {
-                        var call = Presentations.DescribeCall(active.Name, active.Arguments);
-                        <div class="tool-row" @key="active.CallId">
-                            <span class="tool-row-glyph" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
-                            <span class="tool-row-title">@call.Title</span>
-                            @if (call.Detail is { Length: > 0 } detail) { <span class="tool-row-detail" title="@detail">@detail</span> }
-                            <span class="tool-row-meta">@(FormatProgress(active) ?? "Running…")</span>
-                        </div>
-                    }
-                </div>
+                @* The assistant/tool-call message can trail the run snapshot by one event. Use
+                   the same component and visual position meanwhile; once persistence catches up,
+                   the matching call moves into the durable group instead of changing UI shape. *@
+                <article @key="activeToolsKey" class="workspace-message tool-group" role="status" aria-live="polite">
+                    <ToolActivityGroup Group="@(Array.Empty<ChatMessageView>())" ActiveTools="activeTools" IsLive="true" />
+                </article>
             }
             else if (entry.CollapseTurnId is { } collapseTurnId)
             {
@@ -221,7 +211,9 @@
                         @if (preamble.IsIncomplete) { <span class="message-status">Incomplete</span> }
                         <div class="markdown-content preamble-content">@((MarkupString)RenderMarkdownCached(preamble.Id, preamble.Content))</div>
                     }
-                    <ToolActivityGroup Group="group" IsLive="@(IsBranchGenerating() && anchor.Id == BranchLeafId)" />
+                    <ToolActivityGroup Group="group"
+                                       ActiveTools="@GetActiveToolsForGroup(group)"
+                                       IsLive="@(IsBranchGenerating() && anchor.Id == BranchLeafId)" />
                     <div class="message-actions">
                         <button class="icon-action" type="button" title="Copy" aria-label="Copy" @onclick="() => OnCopyMessage.InvokeAsync(BuildToolGroupSummaryText(group))"><AppIcon Name="copy" /></button>
                         <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(anchor) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(anchor)" @onclick="() => OnForkFromMessage.InvokeAsync(anchor)"><AppIcon Name="fork" /></button>
@@ -320,18 +312,6 @@
 </div>
 
 @code {
-    // Progress is whatever the server chose to report, verbatim: a fraction when it gave a total,
-    // a bare count when it did not, and nothing at all when it said nothing — never an invented
-    // percentage.
-    private static string? FormatProgress(ActiveToolInvocation active)
-    {
-        if (active.Message is { Length: > 0 } message) return message;
-        if (active.Progress is not { } progress) return null;
-        return active.Total is { } total and > 0
-            ? $"{progress / total:P0}"
-            : progress.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
-    }
-
     // Copy yields the raw calls and results, not the rendered summaries: someone copying tool
     // activity wants the payload to paste into a bug report, not the UI's wording of it. The
     // preamble leads, because the block is one thing on screen and should be one thing on the
@@ -1020,6 +1000,7 @@
         var entries = new List<RenderedFeedEntry>();
         foreach (var turn in ChatFeed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer()))
         {
+            IReadOnlyList<ChatFeed.FeedItem> visibleIntermediateItems = [];
             if (turn.UserMessage is { } user)
             {
                 entries.Add(new RenderedFeedEntry(Item: new ChatFeed.FeedItem(user, null)));
@@ -1039,7 +1020,8 @@
                 if (IsTurnExpanded(turn))
                 {
                     var visibleCount = Math.Min(GetExpandedTurnItemLimit(turn.Id!.Value), turn.IntermediateItems.Count);
-                    entries.AddRange(turn.IntermediateItems.Take(visibleCount)
+                    visibleIntermediateItems = turn.IntermediateItems.Take(visibleCount).ToArray();
+                    entries.AddRange(visibleIntermediateItems
                         .Select((item, index) => new RenderedFeedEntry(
                             Item: item,
                             RevealIndex: index % ExpandedTurnBatchSize)));
@@ -1061,7 +1043,17 @@
                 if (IsRunningTurn(turn) && IsTurnExpanded(turn)
                     && SelectedRun?.ActiveTools is { Count: > 0 } activeTools)
                 {
-                    entries.Add(new RenderedFeedEntry(ActiveTools: activeTools, TurnId: turn.Id));
+                    var representedCallIds = visibleIntermediateItems
+                        .Where(item => item.ToolGroup is not null)
+                        .SelectMany(item => item.ToolGroup!)
+                        .SelectMany(message => message.ToolCalls ?? [])
+                        .Select(call => call.Id)
+                        .ToHashSet(StringComparer.Ordinal);
+                    var unrepresented = activeTools
+                        .Where(active => !representedCallIds.Contains(active.CallId))
+                        .ToArray();
+                    if (unrepresented.Length > 0)
+                        entries.Add(new RenderedFeedEntry(ActiveTools: unrepresented, TurnId: turn.Id));
                 }
 
                 // Once every progressively mounted intermediate block is present, close the
@@ -1410,6 +1402,16 @@
     // Every message rendered here is an ancestor of BranchLeafId, i.e. part of the same branch
     // SelectedRun tracks — so "is this branch generating" is a single check, not per-message.
     private bool IsBranchGenerating() => SelectedRun?.Status == ChatRunStatus.Generating;
+
+    private IReadOnlyList<ActiveToolInvocation> GetActiveToolsForGroup(IReadOnlyList<ChatMessageView> group)
+    {
+        if (SelectedRun?.ActiveTools is not { Count: > 0 } activeTools) return [];
+        var callIds = group
+            .SelectMany(message => message.ToolCalls ?? [])
+            .Select(call => call.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        return activeTools.Where(active => callIds.Contains(active.CallId)).ToArray();
+    }
 
     // Matches the chat-details LRU in Home: the same five transcripts stay instant to switch
     // between, and the rendered HTML for the rest is dropped rather than accumulated.

@@ -95,7 +95,7 @@ public sealed class ProjectService(
                 new ToolIdentity(new McpServerId(item.ServerId), item.Name, item.SchemaHash),
                 ParseDecision(item.Decision),
                 item.MaxCallsPerRun,
-                TimeSpan.FromSeconds(item.TimeoutSeconds))),
+                item.TimeoutSeconds is { } timeout ? TimeSpan.FromSeconds(timeout) : null)),
             clock.UtcNow);
         var result = await repository.SaveAsync(project, request.Revision, cancellationToken);
         return result.IsSaved
@@ -116,7 +116,7 @@ public sealed class ProjectService(
         }
         stored.Project.SetToolPolicy(new ToolPolicy(new ToolIdentity(new McpServerId(policy.ServerId), policy.Name,
             policy.SchemaHash), ParseDecision(policy.Decision), policy.MaxCallsPerRun,
-            TimeSpan.FromSeconds(policy.TimeoutSeconds)), clock.UtcNow);
+            policy.TimeoutSeconds is { } timeout ? TimeSpan.FromSeconds(timeout) : null), clock.UtcNow);
         var result = await repository.SaveAsync(stored.Project, stored.Revision, cancellationToken);
         return result.IsSaved ? ToDetails(stored.Project, result.Revision) : null;
     }
@@ -159,7 +159,7 @@ public sealed class ProjectService(
                 item.Tool.SchemaHash,
                 item.Decision.ToString(),
                 item.MaxCallsPerRun,
-                checked((long)item.Timeout.TotalSeconds))).ToArray(),
+                item.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
             project.ConnectionId?.Value);
 
     private static McpTransportKind ParseTransport(string value) =>

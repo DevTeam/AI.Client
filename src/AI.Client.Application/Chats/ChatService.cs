@@ -270,7 +270,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
         chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
             policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
-            checked((long)policy.Timeout.TotalSeconds))).ToArray());
+            policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray());
 
     private static ChatWorkspaceChangeSet? ToDomain(WorkspaceChangeSet? changes) => changes is null
         ? null
@@ -307,5 +307,5 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         Enum.TryParse<ToolPolicyDecision>(policy.Decision, true, out var decision)
             ? decision : throw new ArgumentException($"Unsupported tool policy '{policy.Decision}'."),
         policy.MaxCallsPerRun,
-        TimeSpan.FromSeconds(policy.TimeoutSeconds));
+        policy.TimeoutSeconds is { } timeout ? TimeSpan.FromSeconds(timeout) : null);
 }

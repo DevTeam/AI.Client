@@ -43,18 +43,17 @@ public sealed class ToolPolicyResolver(IProjectService projects, IChatService ch
         var policyDecision = chatPolicy?.Decision ?? projectPolicy?.Decision ?? globalPolicy?.Decision ?? "Ask";
         var decision = server is not { Enabled: true } || server.Policy == "Deny" || binding is { Enabled: false } || policyDecision == "Deny"
             ? "Deny" : policyDecision == "Allow" ? "Allow" : "Ask";
-        var maxCalls = chatPolicy?.MaxCallsPerRun
-            ?? projectPolicy?.MaxCallsPerRun
-            ?? globalPolicy?.MaxCallsPerRun
-            ?? 65535;
-        var maxCallsScope = chatPolicy is not null ? "chat"
-            : projectPolicy is not null ? "project"
-            : globalPolicy is not null ? "global"
-            : "default";
+        var maxCalls = chatPolicy?.MaxCallsPerRun ?? projectPolicy?.MaxCallsPerRun
+            ?? globalPolicy?.MaxCallsPerRun ?? 65535;
+        var maxCallsScope = chatPolicy?.MaxCallsPerRun is not null ? "chat"
+            : projectPolicy?.MaxCallsPerRun is not null ? "project"
+            : globalPolicy?.MaxCallsPerRun is not null ? "global" : "default";
+        var timeout = chatPolicy?.TimeoutSeconds ?? projectPolicy?.TimeoutSeconds
+            ?? globalPolicy?.TimeoutSeconds ?? 120;
         return new EffectiveToolPolicy(
             decision,
             Math.Clamp(maxCalls, 1, int.MaxValue),
             maxCallsScope,
-            Math.Clamp(chatPolicy?.TimeoutSeconds ?? projectPolicy?.TimeoutSeconds ?? globalPolicy?.TimeoutSeconds ?? 120, 1, 600));
+            Math.Clamp(timeout, 1, 600));
     }
 }

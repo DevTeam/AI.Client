@@ -524,22 +524,34 @@ public sealed class ChatRunDispatcher(
             approval = runtime.PendingApproval;
         }
 
-        var policy = new ToolPolicySettings(approval.ServerId, approval.Name, approval.SchemaHash,
-            "Allow", 20, approval.TimeoutSeconds);
         switch (decision.Action)
         {
             case ToolApprovalAction.Allow:
             case ToolApprovalAction.Deny:
                 break;
             case ToolApprovalAction.AllowForChat:
-                if (await chats.SetToolPolicyAsync(projectId, chatId, policy, token) is null) return false;
+                var chat = await chats.GetAsync(projectId, chatId, token);
+                var chatExisting = chat?.ToolPolicies?.SingleOrDefault(item => item.ServerId == approval.ServerId
+                    && item.Name == approval.Name && item.SchemaHash == approval.SchemaHash);
+                var chatPolicy = new ToolPolicySettings(approval.ServerId, approval.Name, approval.SchemaHash,
+                    "Allow", chatExisting?.MaxCallsPerRun, chatExisting?.TimeoutSeconds);
+                if (await chats.SetToolPolicyAsync(projectId, chatId, chatPolicy, token) is null) return false;
                 break;
             case ToolApprovalAction.AllowForProject:
-                if (await projects.SetToolPolicyAsync(projectId, policy, token) is null) return false;
+                var project = await projects.GetAsync(projectId, token);
+                var projectExisting = project?.ToolPolicies.SingleOrDefault(item => item.ServerId == approval.ServerId
+                    && item.Name == approval.Name && item.SchemaHash == approval.SchemaHash);
+                var projectPolicy = new ToolPolicySettings(approval.ServerId, approval.Name, approval.SchemaHash,
+                    "Allow", projectExisting?.MaxCallsPerRun, projectExisting?.TimeoutSeconds);
+                if (await projects.SetToolPolicyAsync(projectId, projectPolicy, token) is null) return false;
                 break;
             case ToolApprovalAction.AllowGlobally:
+                var global = await settings.LoadAsync(token);
+                var globalExisting = global.ToolPolicies.SingleOrDefault(item => item.ServerId == approval.ServerId
+                    && item.Name == approval.Name && item.SchemaHash == approval.SchemaHash);
                 await globalSettings.SetToolPolicyAsync(new McpToolPolicySettings(approval.ServerId,
-                    approval.Name, approval.SchemaHash, "Allow", 20, approval.TimeoutSeconds), token);
+                    approval.Name, approval.SchemaHash, "Allow", globalExisting?.MaxCallsPerRun ?? 65535,
+                    globalExisting?.TimeoutSeconds ?? approval.TimeoutSeconds), token);
                 break;
             default:
                 return false;

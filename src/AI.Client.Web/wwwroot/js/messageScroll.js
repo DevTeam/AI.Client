@@ -229,6 +229,10 @@ export function attach(scroller, owner) {
     };
 
     // Content can change without any scroll event, which is exactly the case worth correcting.
+    // There are two symmetric rules: a reader above the tail keeps their current anchor, while a
+    // reader already at the tail keeps following it. The latter matters for content that grows in
+    // place (lazy tool rows, expanded details, rendered diagrams), because it does not travel
+    // through MessageFeed.FollowNewContentAsync like a newly published chat message does.
     // Run straight from the observer, NOT via requestAnimationFrame: rAF does not reliably tick
     // when the window is unfocused or the app is in the background, and a correction that only
     // sometimes happens is worse than one that costs a layout read (the same conclusion the
@@ -243,7 +247,8 @@ export function attach(scroller, owner) {
     // is self-correcting: while content is only being appended below, the drift is zero and this
     // does nothing.
     const observer = new MutationObserver(() => {
-        restoreAnchor();
+        if (pinned) scroller.scrollTop = scroller.scrollHeight;
+        else restoreAnchor();
         bindWatchedElement();
     });
     observer.observe(scroller, { childList: true, subtree: true, characterData: true });

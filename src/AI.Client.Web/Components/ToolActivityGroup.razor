@@ -7,12 +7,22 @@
 @using AI.Client.Contracts.Tools
 @inject IToolPresentations Presentations
 @inject IToolResultCodec ToolResultCodec
+@implements IDisposable
 
 <div class="tool-activity">
     @{
-        var invocations = ChatFeed.BuildInvocations(Group);
+        var invocations = _invocations;
         TrackArrivals(invocations);
-        var failed = invocations.Count(item => item.Result is not null && Describe(item).Severity == ToolResultSeverity.Error);
+        // Result presentation can parse megabytes of stored output. Do not inspect any result
+        // merely to mount this collapsed summary. The exact count becomes known once the user
+        // opens the batch and its rows have been materialised in small chunks; afterwards the
+        // presentations are cached and the count remains available when the batch is collapsed.
+        var hasCompleteFailureCount = _allResultsDescribed
+            || (_batchExpanded && _visibleRowCount >= invocations.Count);
+        if (hasCompleteFailureCount) _allResultsDescribed = true;
+        var failed = hasCompleteFailureCount
+            ? invocations.Count(item => item.Result is not null && Describe(item).Severity == ToolResultSeverity.Error)
+            : 0;
         var unfinished = invocations.Count(item => item.Result is null);
         var pending = IsLive ? unfinished : 0;
     }
@@ -41,7 +51,7 @@
         @if (_batchExpanded)
         {
             <div class="tool-activity-rows">
-                @foreach (var invocation in invocations) { @RenderRow(invocation) }
+                @foreach (var invocation in invocations.Take(_visibleRowCount)) { @RenderRow(invocation) }
             </div>
         }
     </details>
@@ -57,8 +67,49 @@
     /// </summary>
     [Parameter] public bool IsLive { get; set; }
 
+    private const int RowRenderBatchSize = 5;
     private bool _batchExpanded;
-    private void ToggleBatch() => _batchExpanded = !_batchExpanded;
+    private int _visibleRowCount;
+    private bool _rowExpansionPending;
+    private bool _disposed;
+    private bool _allResultsDescribed;
+    private IReadOnlyList<ChatFeed.ToolInvocation> _invocations = [];
+    private GroupVersion _groupVersion;
+
+    private readonly record struct GroupVersion(int Count, Guid FirstId, Guid LastId);
+
+    protected override void OnParametersSet()
+    {
+        var version = Group.Count == 0
+            ? default
+            : new GroupVersion(Group.Count, Group[0].Id, Group[^1].Id);
+        if (version == _groupVersion) return;
+
+        _groupVersion = version;
+        _invocations = ChatFeed.BuildInvocations(Group);
+        _allResultsDescribed = false;
+        if (_batchExpanded)
+            _visibleRowCount = Math.Min(_visibleRowCount, _invocations.Count);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed) return;
+
+        if (!_batchExpanded || _visibleRowCount >= _invocations.Count || _rowExpansionPending) return;
+        _rowExpansionPending = true;
+        await Task.Delay(TimeSpan.FromMilliseconds(16));
+        _rowExpansionPending = false;
+        if (_disposed || !_batchExpanded) return;
+        _visibleRowCount = Math.Min(_visibleRowCount + RowRenderBatchSize, _invocations.Count);
+        StateHasChanged();
+    }
+
+    private void ToggleBatch()
+    {
+        _batchExpanded = !_batchExpanded;
+        _visibleRowCount = _batchExpanded ? Math.Min(RowRenderBatchSize, _invocations.Count) : 0;
+    }
 
     private RenderFragment RenderRow(ChatFeed.ToolInvocation invocation) => @<text>
         @{
@@ -261,4 +312,9 @@
         System.Text.Json.JsonValueKind.Null => "null",
         _ => value.GetRawText(),
     };
+
+    public void Dispose()
+    {
+        _disposed = true;
+    }
 }

@@ -37,6 +37,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IClientMetadata>()
             .Root<IProjectApi>()
             .Root<IChatHistoryApi>()
+            .Root<IChatMessageDeltaMerger>()
             .Root<IMarkdownRenderer>()
             .Root<IWorkspaceLayoutService>()
             .Root<IWorkspaceStateService>()
@@ -53,7 +54,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             // `ApiBaseUrl(string)` matches the constructor generated for the `Arg` above, so
             // Pure.DI wires it in automatically. Same as how `Host/Composition.cs` registers
             // its `IChatCompletionClient` lambda in `Bind<>().To(...)`.
-            .Singleton<ApiBaseUrl, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService, WorkspaceStateService, ChatComposerService, RunStateService, NotificationService>()
+            .Singleton<ApiBaseUrl, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService, WorkspaceStateService, ChatComposerService, RunStateService, NotificationService, ChatMessageDeltaMerger>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<FileToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<ProcessToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<WebToolPresentationAdapter>()

@@ -32,6 +32,28 @@ public sealed class ChatExecutionTests
     private static readonly ToolResultCodec ToolResultCodec = new(ModelProjector);
 
     [Fact]
+    public async Task ToolMessagesShouldBePublishedAsAContiguousChatDelta()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+
+        var published = await fixture.WaitAsync(run => run.MessageDelta?.Appends.Count >= 2);
+        var appends = published.MessageDelta!.Appends;
+        appends[^2].Revision.ShouldBe(appends[^1].BaseRevision);
+        appends[^2].Message.ToolCalls.ShouldHaveSingleItem().Name.ShouldBe("mcp_built_in__process_run");
+        appends[^1].Message.ToolCallId.ShouldBe("call-1");
+        published.ChatRevision.ShouldBe(appends[^1].Revision);
+
+        (await fixture.NextCallAsync()).Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task ProvisionalTextAfterAToolMustNotBecomeTheFinalAnswer()
     {
         await using var fixture = await Fixture.CreateAsync();

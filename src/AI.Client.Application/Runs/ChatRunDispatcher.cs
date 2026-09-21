@@ -24,6 +24,7 @@ public sealed class ChatRunDispatcher(
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies,
     IChatContextBuilder contextBuilder) : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
+    private const int RecentMessageCapacity = 8;
     /// <summary>
     /// How often a waiting confirmation re-reads the standing policy. Human-scale waiting, so the
     /// cost is negligible and it catches a grant made anywhere — the card, the settings screen, or
@@ -708,12 +709,15 @@ public sealed class ChatRunDispatcher(
         using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
         var chat = await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token)
             ?? throw new InvalidOperationException("Chat not found.");
+        var baseRevision = chat.Revision;
         var id = ids.Create();
         chat = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
             new AppendChatMessageRequest(id, runtime.ToolHead, message.Role, message.Content, chat.Revision,
                 BranchId: runtime.State.BranchId, ToolCalls: message.ToolCalls, ToolCallId: message.ToolCallId),
             RetainedMessageIds(chat.Id), token)
             ?? throw new InvalidOperationException("Tool history conflict.");
+        runtime.TrackMessage(baseRevision, chat.Revision,
+            chat.Messages.Single(item => item.Id == id), RecentMessageCapacity);
         runtime.ToolHead = id;
         if (runtime.State.Status == RunStatus.Generating)
         {
@@ -898,7 +902,8 @@ public sealed class ChatRunDispatcher(
             PendingPrompt = runtime.PendingPrompt,
             ActiveTools = runtime.ActiveTools.Values.ToArray(),
             WorkspaceChanges = runtime.WorkspaceChanges,
-            Wait = runtime.Wait
+            Wait = runtime.Wait,
+            MessageDelta = runtime.MessageDelta
         };
         if (chat is not null)
             foreach (var other in _runtimes.Values.Where(item => item.State.ChatId == chat.Id && item != runtime))
@@ -1165,6 +1170,7 @@ public sealed class ChatRunDispatcher(
 
     private sealed class Runtime(ChatRunState state)
     {
+        private readonly Queue<ChatMessageAppend> _recentMessages = new();
         public ChatRunState State { get; set; } = state;
         // ReSharper disable once MemberHidesStaticFromOuterClass
         public ChatRunSnapshot Snapshot { get; set; } = ChatRunDispatcher.Snapshot(state, null);
@@ -1187,6 +1193,18 @@ public sealed class ChatRunDispatcher(
         public bool ResumeRequested { get; set; }
         public DateTimeOffset LastPublished { get; set; }
         public ChatRunWait? Wait { get; set; }
+
+        public ChatMessageDelta? MessageDelta => _recentMessages.Count == 0
+            ? null
+            : new ChatMessageDelta(_recentMessages.ToArray());
+
+        public void TrackMessage(long baseRevision, long revision, ChatMessageView message, int capacity)
+        {
+            if (_recentMessages.TryPeek(out _) && _recentMessages.Last().Revision != baseRevision)
+                _recentMessages.Clear();
+            _recentMessages.Enqueue(new ChatMessageAppend(baseRevision, revision, message));
+            while (_recentMessages.Count > capacity) _recentMessages.Dequeue();
+        }
     }
 
     private readonly record struct RunKey(Guid ProjectId, Guid ChatId, Guid BranchId);

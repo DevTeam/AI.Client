@@ -92,8 +92,7 @@
                                   BranchMenuId="@MessageBranchMenuId"
                                   RunPresentationVersion="@TranscriptRunPresentationVersion"
                                   ExpandedTurnsVersion="@_expandedTurnsVersion"
-                                  TurnElapsedSeconds="@GetGeneratingElapsedSeconds()"
-                                  ItemLimit="@_renderedItemLimit">
+                                  TurnElapsedSeconds="@GetGeneratingElapsedSeconds()">
         @foreach (var entry in GetRenderedFeedItems())
         {
             var item = entry.Item;
@@ -482,7 +481,6 @@
     private bool _renderedPinned = true;
     private string? _renderedSearchQuery;
     private bool _renderedNewBelow;
-    private bool _expandRenderRequested;
 
     protected override bool ShouldRender()
     {
@@ -502,11 +500,7 @@
             // The jump affordance lives entirely in this component's own state, and ShouldRender
             // is what decides whether its StateHasChanged reaches the DOM at all.
             || _renderedPinned != _pinned
-            || _renderedNewBelow != _newBelow
-            // The expansion render changes no parameter at all — only how much of the chain this
-            // component draws — so without this it would never reach the DOM. It cannot be
-            // expressed as a comparison: ShouldRender runs before the render that sets the limit.
-            || _expandRenderRequested;
+            || _renderedNewBelow != _newBelow;
 
         _renderedSelectedChat = SelectedChat;
         _renderedTranscriptId = TranscriptId;
@@ -523,7 +517,6 @@
         _renderedSearchQuery = SearchQuery;
         _renderedPinned = _pinned;
         _renderedNewBelow = _newBelow;
-        _expandRenderRequested = false;
 
         return changed;
     }
@@ -557,20 +550,6 @@
         }
 
         await SyncCurrentTurnSummaryVisibilityAsync();
-
-        if (_expandPending)
-        {
-            _expandPending = false;
-            // One frame for the browser to paint the tail before the rest of the chain is parsed:
-            // the point of the split is that the user sees something, not that the work is
-            // reordered behind an unchanged blank screen.
-            await Task.Delay(TimeSpan.FromMilliseconds(16));
-            if (_disposed) return;
-            _renderedItemLimit = int.MaxValue;
-            _expandRenderRequested = true;
-            StateHasChanged();
-            return;
-        }
 
         if (await AdvanceTurnExpansionAsync()) return;
 
@@ -626,27 +605,9 @@
         catch (Exception error) when (error is JSException or ObjectDisposedException) { }
     }
 
-    // The tail is rendered bottom-anchored, so a scroll request made against it is either already
-    // right (the bottom) or aimed at a message that does not exist yet. Either way it is replayed
-    // here, once the whole chain is in the DOM.
     private async Task ApplyDeferredScrollAsync()
     {
-        if (_deferredRestoreKey is { } key)
-        {
-            _deferredRestoreKey = null;
-            _deferredScrollToBottom = false;
-            await RestoreScrollPositionAsync(key);
-            return;
-        }
-
-        if (_deferredScrollToBottom)
-        {
-            _deferredScrollToBottom = false;
-            await ScrollToBottomAsync();
-        }
-
-        if (_pendingScrollToMessageId is { } targetId && _messageScrollHandle is { } handle
-            && _renderedItemLimit == int.MaxValue)
+        if (_pendingScrollToMessageId is { } targetId && _messageScrollHandle is { } handle)
         {
             _pendingScrollToMessageId = null;
             try
@@ -660,14 +621,12 @@
 
     /// <summary>
     /// Scrolls the feed to a specific message — the one the user picked from a search result.
-    /// If the target message is not in the DOM yet (the transcript is rendered as a tail while it
-    /// expands), the request is replayed once the full chain is in place, mirroring how
-    /// <see cref="RestoreScrollPositionAsync"/> defers for the same reason.
+    /// If the target message is not in the DOM yet, the request is replayed after the next render.
     /// </summary>
     public async Task ScrollToMessageAsync(Guid messageId)
     {
         if (_disposed || messageId == Guid.Empty) return;
-        if (_messageScrollHandle is { } handle && _renderedItemLimit == int.MaxValue)
+        if (_messageScrollHandle is { } handle)
         {
             try
             {
@@ -675,8 +634,8 @@
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException) { }
         }
-        // Target not in DOM (tail-only render, or the JS side failed): queue and retry on the
-        // next render that paints the whole chain.
+        // The JS side can run before a just-selected transcript reaches the DOM. Queue one retry
+        // for the next render in that case.
         _pendingScrollToMessageId = messageId;
         await ApplyDeferredScrollAsync();
     }
@@ -690,11 +649,6 @@
     public async Task ScrollToBottomAsync()
     {
         if (_disposed) return;
-        // While only the tail is rendered the bottom is real but provisional: the rest of the
-        // chain lands above it and the scroller grows, so go there now (the first paint should
-        // show the newest message, not the middle of the transcript) and again afterwards.
-        if (_renderedItemLimit != int.MaxValue) _deferredScrollToBottom = true;
-
         ClearNewBelow();
         if (_messageScrollHandle is { } handle)
         {
@@ -783,21 +737,6 @@
             }
         }
 
-        // The tail limit has to be decided here rather than while rendering: it is handed to
-        // TranscriptRenderBoundary as a parameter, and a parameter is read before the boundary
-        // runs the child content that would otherwise compute it — so a limit set during the
-        // render reaches the boundary one render too late and its content stays truncated.
-        // A new revision of the same transcript is not a new transcript: streaming must not send
-        // the feed back to its tail on every token.
-        if (_progressiveChatId != SelectedChat?.Id || _progressiveTranscriptId != TranscriptId)
-        {
-            _progressiveChatId = SelectedChat?.Id;
-            _progressiveTranscriptId = TranscriptId;
-            var isLongTranscript = (SelectedChat?.Messages.Count ?? 0) > InitialRenderedItemCount;
-            _renderedItemLimit = isLongTranscript ? InitialRenderedItemCount : int.MaxValue;
-            _expandPending = isLongTranscript;
-        }
-
         if (_scrollResetChatId == SelectedChat?.Id && _scrollResetTranscriptId == TranscriptId) return;
         _scrollResetChatId = SelectedChat?.Id;
         _scrollResetTranscriptId = TranscriptId;
@@ -812,17 +751,6 @@
     {
         var module = _historyMarkersModule;
         if (_disposed) return;
-        // A remembered position points at a message that the tail does not contain yet. Show the
-        // end of the transcript meanwhile — the same thing a chat with nothing remembered shows —
-        // and put the feed where the user left it once there is something to put it against.
-        if (_renderedItemLimit != int.MaxValue)
-        {
-            _deferredRestoreKey = key;
-            await ScrollToBottomAsync();
-            return;
-        }
-
-
         if (module is null)
         {
             await ScrollToBottomAsync();
@@ -886,10 +814,6 @@
     private async Task SyncHistoryMarkersAsync()
     {
         if (_disposed || _historyMarkersModule is null) return;
-        // The strip measures the position of every message element it points at, so measuring it
-        // against a half-rendered chain would place every marker wrong.
-        if (_renderedItemLimit != int.MaxValue) return;
-
         if (SelectedChat is null)
         {
             await DisposeHistoryMarkersAsync();
@@ -943,16 +867,6 @@
     private Dictionary<Guid, List<ChatMessageView>> _branchCacheChildrenByParent = [];
     private HashSet<Guid> _branchCacheForkPoints = [];
 
-    // Opening a transcript renders its tail first — the part that is actually on screen — and the
-    // rest one frame later. Markdig plus the sanitizer cost hundreds of milliseconds on a long
-    // chat (and several times that in the browser's interpreter), all of it on the one thread that
-    // also has to paint, so rendering the whole chain up front is the freeze the user feels on
-    // every switch. The tail is what the eye lands on, so it is what the first frame owes them.
-    private const int InitialRenderedItemCount = 10;
-    private Guid? _progressiveChatId;
-    private Guid? _progressiveTranscriptId;
-    private int _renderedItemLimit = int.MaxValue;
-
     // The last query that has been pushed to JS. The transcript re-renders on a stream token or a
     // branch switch and our <mark> wrappers die with it; remembering what is already in the DOM
     // means a follow-up render only re-walks when the query itself actually changed.
@@ -969,14 +883,6 @@
     // highlights. Resetting on chat id forces a re-walk the first time OnAfterRenderAsync runs
     // after the switch.
     private Guid? _appliedSearchChatId;
-    private bool _expandPending;
-
-    // Position requests that arrive while only the tail exists. Restoring to a message that is not
-    // in the DOM yet would silently fall back to the bottom, and a bottom that is about to grow
-    // upwards is not the same bottom — so both are re-applied once the full chain is rendered.
-    private string? _deferredRestoreKey;
-    private bool _deferredScrollToBottom;
-
     private readonly record struct RenderedFeedEntry(
         ChatFeed.FeedItem? Item = null,
         ChatFeed.FeedTurn? Summary = null,
@@ -1079,7 +985,7 @@
             }
         }
 
-        return ChatFeed.TakeTail(entries, _renderedItemLimit);
+        return entries;
     }
 
     private bool LastTurnEndedWithoutFinalAnswer()

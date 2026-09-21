@@ -498,6 +498,10 @@
     // _selectedChat in whatever order their responses happened to arrive, so the slower one could
     // land last and leave the wrong transcript open.
     private CancellationTokenSource? _chatSelectionCancellation;
+    // Project selection has several independent reads (settings, chat summaries, remembered
+    // transcript). Keep them cancellable as one operation so a quick second click cannot let the
+    // slower first project overwrite the workspace after its requests eventually finish.
+    private CancellationTokenSource? _projectSelectionCancellation;
     // The chat the user has just asked for, before its transcript exists. The sidebar highlights
     // it immediately: the click IS the selection, loading is only how long the content takes.
     private Guid? _pendingChatId;
@@ -981,17 +985,27 @@
 
     private async Task SelectProjectAsync(ProjectSummary project, bool restoreLastChat = true)
     {
+        _projectSelectionCancellation?.Cancel();
+        _projectSelectionCancellation?.Dispose();
+        var projectSelection = new CancellationTokenSource();
+        _projectSelectionCancellation = projectSelection;
+        var cancellation = projectSelection.Token;
+
+        // Start every independent I/O operation before changing the selection. Saving the old
+        // viewport and draft no longer holds up reading the destination, and the remembered chat
+        // no longer waits for both project settings and the chat-summary list to arrive first.
+        var context = restoreLastChat ? WorkspaceStateService.GetProjectContext(project.Id) : default;
+        var saveScrollTask = SaveCurrentScrollPositionAsync();
+        var flushDraftTask = WorkspaceStateService.FlushPendingComposerDraftAsync();
+        var projectDetailsTask = ProjectApi.GetAsync(project.Id, cancellation);
+        var chatsTask = ChatHistoryApi.ListAsync(project.Id, cancellation);
+        var rememberedChatTask = context.ChatId is { } rememberedChatId
+            ? ChatHistoryApi.GetAsync(project.Id, rememberedChatId, cancellation)
+            : null;
+
         _globalSection = null;
         _attachComposer = true;
         ResetBranchOperationState();
-        await SaveCurrentScrollPositionAsync();
-        // Flush any unsent composer text for the project we're leaving BEFORE we reset
-        // _selectedProject/_selectedChat. Without this, a draft typed up to 500ms ago can be
-        // cancelled by the very next keystroke in the new project (the debouncer is shared),
-        // which used to silently drop the previous project's draft. The flush forces it into
-        // localStorage synchronously so the next time the user comes back to this project,
-        // RestoreComposerDraft below actually has something to find.
-        await WorkspaceStateService.FlushPendingComposerDraftAsync();
         _selectedProject = project;
         CancelChatSelection();
         // The previous project's chats are still in _chats at this point, and the list re-renders
@@ -1014,19 +1028,51 @@
         _wasGeneratingByBranch.Clear();
         _editor = new ProjectEditor(project.Name, project.Description, project.Revision);
         _error = null;
-        await LoadSecurityAsync(project.Id);
-        await WorkspaceStateService.SetLastProjectIdAsync(project.Id);
 
-        // LoadChatsAsync ends this in the normal case; here it covers the paths where the
-        // security round-trip returned a different project (or nothing) and never reached it.
+        try
+        {
+            var reads = rememberedChatTask is null
+                ? new Task[] { saveScrollTask, flushDraftTask, projectDetailsTask, chatsTask }
+                : [saveScrollTask, flushDraftTask, projectDetailsTask, chatsTask, rememberedChatTask];
+            await Task.WhenAll(reads);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (cancellation.IsCancellationRequested || _selectedProject?.Id != project.Id) return;
+
+        var details = await projectDetailsTask;
+        if (details is null)
+        {
+            ChatsBusy.End();
+            return;
+        }
+
+        _security = ProjectSecurityEditor.From(details);
+        _editor.ConnectionId = details.ConnectionId ?? GetDefaultConnection()?.Id;
+        _defaultConnectionId = _editor.ConnectionId;
+        if (_defaultConnectionId is { } defaultId) SelectGlobalConnection(defaultId);
+        else if (GetDefaultConnection() is { } defaultConnection) SelectGlobalConnection(defaultConnection.Id);
+
+        _chatPagingProjectId = project.Id;
+        _visibleChatCount = ChatPageSize;
+        _chats.Clear();
+        _chats.AddRange(await chatsTask);
         ChatsBusy.End();
+
+        if (rememberedChatTask is not null && await rememberedChatTask is { } rememberedChat)
+            CacheChatDetails(rememberedChat);
+
+        await WorkspaceStateService.SetLastProjectIdAsync(project.Id);
+        if (cancellation.IsCancellationRequested || _selectedProject?.Id != project.Id) return;
 
         // restoreLastChat is true everywhere a user switches projects (sidebar click, initial
         // load, right-click menu). The narrow paths that pass false are the ones that
         // immediately follow up with a different selection — BeginProjectRenameAsync,
         // ToggleProjectMenuAsync, CreateChatForProjectAsync, OpenSearchMatchAsync — and so
         // would just throw away the restore work they asked for.
-        var context = restoreLastChat ? WorkspaceStateService.GetProjectContext(project.Id) : default;
         if (context.ChatId is { } chatId && _chats.Any(chat => chat.Id == chatId))
         {
             await SelectChatAsync(chatId);
@@ -1656,10 +1702,9 @@
         ResetBranchOperationState();
         CloseContextMenus();
         var cancellation = BeginChatSelection(chatId);
-        await SaveCurrentScrollPositionAsync();
-        if (cancellation.IsCancellationRequested) return;
         if (_selectedProject is not null)
         {
+            var projectId = _selectedProject.Id;
             if (_selectedChat is { } currentChat) CacheChatDetails(currentChat);
             // Clicking the chat's own sidebar entry while a DIFFERENT one of its branches is
             // already open is the only explicit way back to the main branch (there's no separate
@@ -1674,7 +1719,13 @@
             ChatDetails? details;
             try
             {
-                details = await GetChatForSelectionAsync(_selectedProject.Id, chatId, cancellation);
+                // Reading the destination and recording the old scroll position are independent.
+                // Running them together removes a full JS round-trip from the user's wait while
+                // still letting the old DOM be measured before the new transcript is rendered.
+                var detailsTask = GetChatForSelectionAsync(projectId, chatId, cancellation);
+                var saveScrollTask = SaveCurrentScrollPositionAsync();
+                await Task.WhenAll(detailsTask, saveScrollTask);
+                details = await detailsTask;
             }
             catch (OperationCanceledException)
             {
@@ -1718,7 +1769,7 @@
             // Whether to jump to the bottom or restore the last-viewed message is decided in
             // MessageFeed (it knows whether a saved position exists) — see OnAfterRenderAsync.
             _pendingScrollRestoreKey = GetScrollPositionKey();
-            _openedChatToSettle = (_selectedProject.Id, _selectedChat?.Id, _branchLeafId);
+            _openedChatToSettle = (projectId, _selectedChat?.Id, _branchLeafId);
         }
         else
         {
@@ -3162,6 +3213,12 @@
     public async ValueTask DisposeAsync()
     {
         CancelChatSelection();
+        if (_projectSelectionCancellation is not null)
+        {
+            await _projectSelectionCancellation.CancelAsync();
+            _projectSelectionCancellation.Dispose();
+            _projectSelectionCancellation = null;
+        }
         _projectsBusy?.Dispose();
         _chatsBusy?.Dispose();
         await _generatingTickerCancellation.CancelAsync();

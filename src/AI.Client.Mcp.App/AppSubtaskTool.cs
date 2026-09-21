@@ -216,8 +216,6 @@ public sealed class AppSubtaskTool(
                     answer.Append(content);
                     return Task.CompletedTask;
                 },
-                (_, _) => Task.CompletedTask,
-                (_, _) => Task.CompletedTask,
                 // A subtask that reports nothing looks identical to one that has hung, so what it is
                 // doing right now is forwarded to the caller's own progress channel and lands in the
                 // live row of the tool card that started it.

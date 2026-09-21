@@ -1,5 +1,6 @@
 using AI.Client.Contracts.Chat;
 using AI.Client.Contracts.Chats;
+using AI.Client.Contracts.Workspace;
 using AI.Client.Web.Components;
 using Shouldly;
 using Xunit;
@@ -301,6 +302,27 @@ public sealed class ChatFeedTests
         var turn = ChatFeed.BuildTurns([User("do it")]).ShouldHaveSingleItem();
 
         ChatFeed.RunningTitleOf(turn, TimeSpan.FromSeconds(2)).ShouldBeNull();
+    }
+
+    [Fact]
+    public void ShouldSuppressLiveWorkspaceStatisticsOnceTheLastTurnHasADurableReceipt()
+    {
+        var oldAnswer = Assistant("old") with
+        {
+            WorkspaceChanges = new WorkspaceChangeSet(
+                [new FileChange("old.cs", FileChangeKind.Modified, 1, 0)], 1, 0)
+        };
+        var question = User("new work");
+        var finalAnswer = Assistant("done") with
+        {
+            WorkspaceChanges = new WorkspaceChangeSet(
+                [new FileChange("new.cs", FileChangeKind.Modified, 2, 1)], 2, 1)
+        };
+
+        ChatFeed.LastTurnHasWorkspaceReceipt([oldAnswer, question]).ShouldBeFalse();
+        ChatFeed.LastTurnHasWorkspaceReceipt([oldAnswer, question, finalAnswer]).ShouldBeTrue();
+        ChatFeed.LastTurnHasCompleteAnswer([oldAnswer, question]).ShouldBeFalse();
+        ChatFeed.LastTurnHasCompleteAnswer([oldAnswer, question, finalAnswer]).ShouldBeTrue();
     }
 
     [Fact]

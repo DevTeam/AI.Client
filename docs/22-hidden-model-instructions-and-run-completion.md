@@ -67,17 +67,20 @@ OpenAI-compatible endpoints with incomplete tool-call support.
 
 ## Presentation
 
-Provisional text travels separately from `StreamingContent` as `ChatRunSnapshot.IntermediateContent`.
-The compact turn summary can be expanded to inspect it while the run is active. It is never promoted
-to a final dialogue message. If the run is interrupted or fails, the latest provisional text is
-preserved as an incomplete assistant message, matching the existing recovery behavior.
+Provisional provider text is buffered only inside `ChatAgent`. It is not copied into a run snapshot,
+rendered as a second live response, or persisted as an incomplete answer when interrupted. Text
+becomes visible only when it is durable tool intent (an assistant message carrying tool calls) or a
+publishable final answer. `StreamingContent` therefore has one meaning and needs no separate
+intermediate/tool-call placement state.
 
-The tool-call streaming phase is explicitly closed before `app_finish_run.finalAnswer` is streamed
-and on every terminal run path. A completed, stopped, or failed run therefore never retains the
-presentation-only `StreamingToolCallsStarted` flag from its last protocol event.
+Chat and run events can arrive in either order during completion. Once the newest turn contains a
+durable workspace-change receipt, the Web client suppresses the live run copy so that the same edit
+statistics are never rendered twice. A complete plain assistant message likewise wins over a stale
+`Generating` snapshot during that transition.
 
 ## Verification
 
 Tests cover instruction ordering and lifetime, completion-decision validation, hidden-message
-non-persistence, rejection of a premature final response after a tool call, compact intermediate
-state, truncated-answer continuation, and the existing chat/tool execution suite.
+non-persistence, rejection and non-publication of a premature final response after a tool call,
+workspace-receipt deduplication, truncated-answer continuation, and the existing chat/tool execution
+suite.

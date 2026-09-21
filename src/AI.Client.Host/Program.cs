@@ -199,8 +199,7 @@ static bool IsStreamingAppend(ChatRunSnapshot old, ChatRunSnapshot current) =>
     && current.BranchRevision == old.BranchRevision
     && (current.RecoveryActions ?? []).SequenceEqual(old.RecoveryActions ?? [])
     && current.ActiveMessageId == old.ActiveMessageId
-    && Equals(current.WorkspaceChanges, old.WorkspaceChanges)
-    && current.StreamingToolCallsStarted == old.StreamingToolCallsStarted;
+    && Equals(current.WorkspaceChanges, old.WorkspaceChanges);
 
 app.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/stop",
     (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.StopAsync(projectId, chatId, branchId, cancellationToken, operationId));

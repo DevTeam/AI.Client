@@ -198,6 +198,35 @@ public static class ChatFeed
     }
 
     /// <summary>
+    /// Whether the newest user turn already contains the durable workspace-change receipt. Chat
+    /// and run events are published independently, so the receipt can arrive in the transcript
+    /// before the run snapshot drops its live copy. Rendering both would show two statistics for
+    /// the same edits during that transition.
+    /// </summary>
+    public static bool LastTurnHasWorkspaceReceipt(IReadOnlyList<ChatMessageView> chain)
+    {
+        for (var index = chain.Count - 1; index >= 0; index--)
+        {
+            var message = chain[index];
+            if (message.Role == "User") return false;
+            if (message.WorkspaceChanges is { IsEmpty: false }) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Whether the transcript already ends in a complete final answer. This durable fact takes
+    /// precedence over a slightly older Generating snapshot during completion publication.
+    /// </summary>
+    public static bool LastTurnHasCompleteAnswer(IReadOnlyList<ChatMessageView> chain) =>
+        chain.Count > 0 && chain[^1] is
+        {
+            Role: "Assistant",
+            IsIncomplete: false,
+            ToolCalls: not { Count: > 0 }
+        };
+
+    /// <summary>
     /// The live compact title, when the model has supplied one. Kept here so the transcript row
     /// and composer status cannot disagree about which progress note is current.
     /// </summary>

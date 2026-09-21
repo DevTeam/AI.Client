@@ -33,8 +33,6 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
         Func<string, CancellationToken, Task> text,
-        Func<string?, CancellationToken, Task> intermediate,
-        Func<bool, CancellationToken, Task> toolCallStreaming,
         Func<ToolActivity?, CancellationToken, Task> activity,
         Func<ChatTransportWait?, CancellationToken, Task> transportActivity,
         Func<AgentTool, string, long, ToolCallPosition, CancellationToken, Task<ToolApprovalAction>> approve,
@@ -132,12 +130,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                                request with { ContextMessages = plan.Messages, Tools = available }, token))
             {
                 chunkCount++;
-                if (chunk.ToolCallsStarted) await toolCallStreaming(true, token);
                 if (chunk.ToolCalls is { } received) calls.AddRange(received);
                 if (chunk.FinishReason is { Length: > 0 } reason) finish = reason;
                 if (chunk.Content.Length == 0) continue;
                 content.Append(chunk.Content);
-                await intermediate(continuedAnswer.ToString() + content, token);
             }
             if (calls.Count == 0 && content.Length == 0)
             {
@@ -203,7 +199,6 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     continue;
                 }
 
-                await intermediate(null, token);
                 await text(continuedAnswer.ToString() + content, token);
                 continuedAnswer.Clear();
                 var changes = await workspace.SnapshotAsync(runKey, token);
@@ -214,11 +209,6 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var completionCalls = calls.Where(call => call.Name == completionProtocol.Tool.ModelDefinition.Name).ToArray();
             if (completionCalls.Length > 0)
             {
-                // app_finish_run is a control boundary, not an intermediate tool step. The stream
-                // announces it like any other tool call, so clear the presentation phase before a
-                // complete/blocked decision publishes finalAnswer (and before a rejected decision
-                // starts another model step).
-                await toolCallStreaming(false, token);
                 // Once the model has entered the structured completion protocol, every correction
                 // stays in that protocol even if no ordinary tool preceded it.
                 completionRequired = true;
@@ -247,7 +237,6 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 missingCompletion = 0;
                 if (decision.Status is RunCompletionStatus.Complete or RunCompletionStatus.Blocked)
                 {
-                    await intermediate(null, token);
                     await text(decision.FinalAnswer!, token);
                     var changes = await workspace.SnapshotAsync(runKey, token);
                     await workspace.CompleteRunAsync(runKey, CancellationToken.None);
@@ -269,7 +258,6 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var assistant = new ChatCompletionMessage("assistant", content.ToString(), calls.ToArray());
             await persist(assistant, token); // Durable intent before any side effect.
             context.Add(assistant);
-            await intermediate(null, token);
             checkpoints.Update(run, context);
             for (var index = 0; index < calls.Count; index++)
             {

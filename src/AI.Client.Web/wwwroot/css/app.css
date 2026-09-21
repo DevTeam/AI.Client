@@ -3117,46 +3117,6 @@ textarea {
     height: 0.9rem;
 }
 
-/* When a live response turns out to be a tool preamble, the closed heading briefly acknowledges
-   receiving it. The pulse is intentionally quieter than the unread/branch accent. */
-.turn-summary.is-receiving .turn-summary-text {
-    animation: turn-summary-receive 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-@keyframes turn-summary-receive {
-    45% { color: #b4b4b4; }
-}
-
-/* The last streamed frame remains in the dialogue while its box folds upward. CSS grid gives us
-   an intrinsic-height collapse, so this works for one-line and multi-paragraph preambles alike. */
-.turn-stream-absorption {
-    display: grid;
-    grid-template-rows: 1fr;
-    animation: turn-stream-collapse 240ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-}
-
-.turn-live-intermediate {
-    margin-inline-start: 1.5rem;
-    opacity: .82;
-}
-
-.turn-stream-absorption-clip {
-    min-height: 0;
-    overflow: hidden;
-    animation: turn-stream-fade 240ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-    will-change: opacity, transform;
-}
-
-@keyframes turn-stream-collapse {
-    to { grid-template-rows: 0fr; }
-}
-
-@keyframes turn-stream-fade {
-    to {
-        opacity: 0;
-        transform: translateY(-0.4rem);
-    }
-}
 
 .turn-summary.fork-source {
     border-radius: 0.6rem;
@@ -3313,13 +3273,6 @@ textarea {
             calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
     }
     .workspace-message.turn-message-arriving { animation: none; }
-    .turn-summary.is-receiving .turn-summary-text { animation: none; }
-    .turn-stream-absorption { animation-duration: 80ms; }
-    .turn-stream-absorption-clip {
-        animation-duration: 80ms;
-        transform: none;
-    }
-
     .tool-row-arriving,
     .tool-row-resolved > .tool-row > .tool-row-glyph,
     .tool-row-resolved > .tool-row > .tool-row-meta {

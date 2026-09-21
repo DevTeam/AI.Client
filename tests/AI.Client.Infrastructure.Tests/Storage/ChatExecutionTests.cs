@@ -46,8 +46,7 @@ public sealed class ChatExecutionTests
         premature.Answer.SetResult("I will now verify the result.");
 
         var corrective = await fixture.NextCallAsync();
-        var generating = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Generating
-            && run.IntermediateContent == "I will now verify the result.");
+        var generating = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Generating);
         generating.StreamingContent.ShouldBeEmpty();
         corrective.Request.ContextMessages!.Where(message => message.Role == "system")
             .ShouldContain(message => message.Content.Contains("was not published", StringComparison.Ordinal));
@@ -56,8 +55,7 @@ public sealed class ChatExecutionTests
             """)];
         corrective.Answer.SetResult("");
 
-        var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
-        completed.StreamingToolCallsStarted.ShouldBeFalse();
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
             .ShouldHaveSingleItem().Content.ShouldBe("Done and verified.");
@@ -888,7 +886,7 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
-    public async Task StoppingShouldKeepWhatTheModelHadAlreadyWritten()
+    public async Task StoppingShouldNotPublishProvisionalModelText()
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.StreamPreludeAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"), "Half an");
@@ -896,11 +894,11 @@ public sealed class ChatExecutionTests
         await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused);
 
-        // The user message keeps its answer instead of being left alone in the transcript, and
-        // the answer says for itself that it is unfinished.
-        var truncated = await fixture.WaitForMessageAsync(message => message.Role == "Assistant");
-        truncated.Content.ShouldBe("Half an");
-        truncated.IsIncomplete.ShouldBeTrue();
+        // Text is not user-visible until the provider has completed a publishable answer. A
+        // fragment interrupted mid-stream must not become either an ordinary or an incomplete
+        // assistant message.
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.ShouldNotContain(message => message.Role == "Assistant");
 
         // The command is still queued, because Resume is expected to rebuild it - but it is no
         // longer the active one, so nothing is left claiming to be running.
@@ -909,13 +907,12 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
-    public async Task ResumingShouldReplaceTheTruncatedAnswerRatherThanAddToIt()
+    public async Task ResumingAfterAnUnpublishedFragmentShouldProduceOneAnswer()
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.StreamPreludeAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"), "Half an");
         await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused);
-        await fixture.WaitForMessageAsync(message => message.Role == "Assistant");
 
         await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
         (await fixture.NextCallAsync()).Answer.SetResult("A whole answer");
@@ -946,7 +943,7 @@ public sealed class ChatExecutionTests
         urgent.Answer.SetResult("Right away");
         await fixture.WaitAsync(run => run.Queue.Count == 1);
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
-        chat!.Messages.ShouldContain(message => message.Content == "Thinking" && message.IsIncomplete);
+        chat!.Messages.ShouldNotContain(message => message.Content == "Thinking");
     }
 
     [Fact]
@@ -968,7 +965,7 @@ public sealed class ChatExecutionTests
         selected.Answer.SetResult("Sent first");
         await fixture.WaitAsync(run => run.Queue.Count == 1);
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
-        chat!.Messages.ShouldContain(message => message.Content == "Thinking" && message.IsIncomplete);
+        chat!.Messages.ShouldNotContain(message => message.Content == "Thinking");
     }
 
     [Fact]
@@ -1159,17 +1156,16 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
-    public async Task InterruptedRunShouldKeepItsPartialAnswerAcrossRestart()
+    public async Task InterruptedRunShouldResumeCleanlyAcrossRestart()
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.StreamPreludeAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"), "Half an");
         await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused);
-        await fixture.WaitForMessageAsync(message => message.Role == "Assistant");
         await fixture.RestartAsync();
 
-        // A partial answer must never satisfy the "this command already has its reply" check, or
-        // resuming after a restart would quietly close the command without generating anything.
+        // The unpublished provider fragment must not satisfy the "this command already has its
+        // reply" check, or resuming would quietly close the command without generating anything.
         await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
         (await fixture.NextCallAsync()).Answer.SetResult("A whole answer");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
@@ -1425,21 +1421,9 @@ public sealed class ChatExecutionTests
             await SubmitAsync(request);
             var call = await NextCallAsync();
             await call.PreludeStreamed.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await WaitAsync(run => run.IntermediateContent?.Contains(text, StringComparison.Ordinal) == true);
             return call;
         }
 
-        public async Task<ChatMessageView> WaitForMessageAsync(Func<ChatMessageView, bool> predicate)
-        {
-            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
-            while (true)
-            {
-                var chat = await Chats.GetAsync(ProjectId, ChatId, CancellationToken.None);
-                if (chat!.Messages.FirstOrDefault(predicate) is { } message) return message;
-                if (DateTimeOffset.UtcNow > deadline) throw new InvalidOperationException("No matching message.");
-                await Task.Delay(20, TestContext.Current.CancellationToken);
-            }
-        }
         public async Task<ChatRunSnapshot> WaitAsync(Func<ChatRunSnapshot, bool> predicate)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));

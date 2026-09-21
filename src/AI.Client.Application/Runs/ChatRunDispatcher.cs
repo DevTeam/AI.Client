@@ -355,7 +355,6 @@ public sealed class ChatRunDispatcher(
                     runtime.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
                     token = runtime.Cancellation.Token;
                     runtime.State.Start();
-                    runtime.StreamingToolCallsStarted = false;
                     runtime.WorkspaceChanges = null;
                     // A previous attempt at this same command may have been cut short, leaving a
                     // truncated answer and its tool messages on the branch. Retrying replaces that
@@ -420,17 +419,6 @@ public sealed class ChatRunDispatcher(
                             await SaveAsync(runtime, null, ct);
                         }
                     },
-                    (content, ct) => ReportIntermediateContentAsync(runtime, content, ct),
-                    async (started, ct) =>
-                    {
-                        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, ct);
-                        if (runtime.StreamingToolCallsStarted == started) return;
-                        runtime.StreamingToolCallsStarted = started;
-                        // The presentation-only phase change still needs its own revision so the
-                        // snapshot is not discarded as an already-applied streaming update.
-                        runtime.State.Append("");
-                        await SaveAsync(runtime, null, ct);
-                    },
                     (activity, ct) => ReportToolActivityAsync(runtime, activity, ct),
                     (wait, ct) => ReportTransportActivityAsync(runtime, wait, ct),
                     (tool, arguments, timeout, position, ct) => ApproveAsync(runtime, tool, arguments, timeout, position, ct), token);
@@ -448,7 +436,6 @@ public sealed class ChatRunDispatcher(
                             RetainedMessageIds(chat.Id), token)
                             ?? throw new InvalidOperationException("Response conflict.");
                     runtime.State.Remove(queued.Id);
-                    runtime.StreamingToolCallsStarted = false;
                     runtime.State.Complete(true);
                     // The persisted reply now owns the final copy; keeping the live copy would
                     // duplicate it if the branch is later paused with another queued message.
@@ -465,10 +452,6 @@ public sealed class ChatRunDispatcher(
         catch (Exception error)
         {
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
-            // Do not publish a terminal snapshot that still advertises the protocol phase
-            // opened by a tool-call delta. This also covers failures before a tool message
-            // could be persisted (where the normal reset in PersistToolMessageAsync never runs).
-            runtime.StreamingToolCallsStarted = false;
             await CommitPartialAnswerAsync(runtime);
             // Clear can empty the queue while a cancelled worker is still unwinding. Keep the
             // Idle state established by Clear instead of changing the empty queue back to Paused.
@@ -510,13 +493,11 @@ public sealed class ChatRunDispatcher(
             runtime.Prompt = null;
             runtime.PendingPrompt = null;
             runtime.ActiveTools.Clear();
-            runtime.StreamingToolCallsStarted = false;
             runtime.Snapshot = runtime.Snapshot with
             {
                 PendingApproval = null,
                 PendingPrompt = null,
                 ActiveTools = [],
-                StreamingToolCallsStarted = false,
                 // This block patches the last published snapshot instead of rebuilding it, so
                 // every field the worker just released has to be named here. Leaving this one out
                 // left the run advertising an active command it had already finished with.
@@ -711,20 +692,6 @@ public sealed class ChatRunDispatcher(
 
     private static readonly TimeSpan ProgressPublishInterval = TimeSpan.FromMilliseconds(150);
 
-    private async Task ReportIntermediateContentAsync(Runtime runtime, string? content, CancellationToken token)
-    {
-        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
-        if (string.Equals(runtime.IntermediateContent, content, StringComparison.Ordinal)) return;
-        runtime.IntermediateContent = string.IsNullOrWhiteSpace(content) ? null : content;
-        runtime.State.Append("");
-        if (runtime.IntermediateContent is null
-            || clock.UtcNow - runtime.LastIntermediatePublished >= TimeSpan.FromMilliseconds(150))
-        {
-            runtime.LastIntermediatePublished = clock.UtcNow;
-            await SaveAsync(runtime, null, token);
-        }
-    }
-
     private async Task ReportTransportActivityAsync(Runtime runtime, ChatTransportWait? wait, CancellationToken token)
     {
         using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
@@ -751,7 +718,6 @@ public sealed class ChatRunDispatcher(
         if (runtime.State.Status == RunStatus.Generating)
         {
             runtime.State.Start();
-            runtime.StreamingToolCallsStarted = false;
         }
         await SaveAsync(runtime, chat, token);
     }
@@ -891,9 +857,7 @@ public sealed class ChatRunDispatcher(
         // Whitespace is not an answer: a message made of it is refused by the domain, so there is
         // nothing to keep and nothing to report.
         if (runtime.ActiveMessageId is not { } active) return;
-        var partialContent = string.IsNullOrWhiteSpace(runtime.State.StreamingContent)
-            ? runtime.IntermediateContent
-            : runtime.State.StreamingContent;
+        var partialContent = runtime.State.StreamingContent;
         if (string.IsNullOrWhiteSpace(partialContent)) return;
         if (_maintenance.ContainsKey(runtime.State.ChatId) || _deletingProjects.ContainsKey(runtime.State.ProjectId)) return;
         try
@@ -913,7 +877,6 @@ public sealed class ChatRunDispatcher(
             if (appended is not null)
             {
                 runtime.State.ClearStreaming();
-                runtime.IntermediateContent = null;
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException
@@ -935,9 +898,7 @@ public sealed class ChatRunDispatcher(
             PendingPrompt = runtime.PendingPrompt,
             ActiveTools = runtime.ActiveTools.Values.ToArray(),
             WorkspaceChanges = runtime.WorkspaceChanges,
-            StreamingToolCallsStarted = runtime.StreamingToolCallsStarted,
-            Wait = runtime.Wait,
-            IntermediateContent = runtime.IntermediateContent
+            Wait = runtime.Wait
         };
         if (chat is not null)
             foreach (var other in _runtimes.Values.Where(item => item.State.ChatId == chat.Id && item != runtime))
@@ -1225,10 +1186,7 @@ public sealed class ChatRunDispatcher(
         public Guid? ActiveMessageId { get; set; }
         public bool ResumeRequested { get; set; }
         public DateTimeOffset LastPublished { get; set; }
-        public bool StreamingToolCallsStarted { get; set; }
         public ChatRunWait? Wait { get; set; }
-        public string? IntermediateContent { get; set; }
-        public DateTimeOffset LastIntermediatePublished { get; set; }
     }
 
     private readonly record struct RunKey(Guid ProjectId, Guid ChatId, Guid BranchId);

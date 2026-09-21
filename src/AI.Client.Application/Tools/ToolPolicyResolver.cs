@@ -5,7 +5,11 @@ using Projects;
 using Settings;
 
 /// <summary>What the layered policies add up to for one tool in one chat.</summary>
-public sealed record EffectiveToolPolicy(string Decision, int MaxCalls, long TimeoutSeconds);
+public sealed record EffectiveToolPolicy(
+    string Decision,
+    int MaxCalls,
+    string MaxCallsScope,
+    long TimeoutSeconds);
 
 /// <summary>
 /// Works out whether a tool may run, asks first, or is refused. Chat overrides project, project
@@ -39,9 +43,18 @@ public sealed class ToolPolicyResolver(IProjectService projects, IChatService ch
         var policyDecision = chatPolicy?.Decision ?? projectPolicy?.Decision ?? globalPolicy?.Decision ?? "Ask";
         var decision = server is not { Enabled: true } || server.Policy == "Deny" || binding is { Enabled: false } || policyDecision == "Deny"
             ? "Deny" : policyDecision == "Allow" ? "Allow" : "Ask";
+        var maxCalls = chatPolicy?.MaxCallsPerRun
+            ?? projectPolicy?.MaxCallsPerRun
+            ?? globalPolicy?.MaxCallsPerRun
+            ?? 65535;
+        var maxCallsScope = chatPolicy is not null ? "chat"
+            : projectPolicy is not null ? "project"
+            : globalPolicy is not null ? "global"
+            : "default";
         return new EffectiveToolPolicy(
             decision,
-            Math.Clamp(chatPolicy?.MaxCallsPerRun ?? projectPolicy?.MaxCallsPerRun ?? globalPolicy?.MaxCallsPerRun ?? 65535, 1, int.MaxValue),
+            Math.Clamp(maxCalls, 1, int.MaxValue),
+            maxCallsScope,
             Math.Clamp(chatPolicy?.TimeoutSeconds ?? projectPolicy?.TimeoutSeconds ?? globalPolicy?.TimeoutSeconds ?? 120, 1, 600));
     }
 }

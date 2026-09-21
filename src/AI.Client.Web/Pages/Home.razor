@@ -470,12 +470,17 @@
     private string? _error;
     private readonly List<ChatSummary> _chats = [];
     private ChatDetails? _selectedChat;
-    // One page of the sidebar is ten chats, and moving between a handful of them is the normal
-    // working pattern; retaining five keeps that instant without pinning a whole project's
-    // transcripts in memory (a long chat deserialises into several megabytes).
-    private const int RetainedChatDetailsCount = 5;
+    // A fixed five-entry cache punished projects with many small chats and still had no useful
+    // memory bound when those five happened to be huge. Keep a wider recent working set, but evict
+    // by an estimate of the managed string memory it owns. Two entries are always retained so the
+    // common A ↔ B switch stays instant even when both transcripts are unusually large.
+    private const int MaxRetainedChatDetailsCount = 24;
+    private const int MinRetainedChatDetailsCount = 2;
+    private const long RetainedChatDetailsBudgetBytes = 128L * 1024 * 1024;
     private readonly Dictionary<Guid, ChatDetails> _chatDetailsCache = [];
+    private readonly Dictionary<Guid, long> _chatDetailsCacheSizes = [];
     private readonly LinkedList<Guid> _chatDetailsLru = [];
+    private long _chatDetailsCacheBytes;
     private Guid? _branchLeafId;
     // Set only for the single OnRunSnapshot transition that produced a new leaf (Generating → Completed/Paused),
     // then cleared once the accent line has played out, so the animation fires once and only once per arrival.
@@ -1795,17 +1800,44 @@
 
     private void CacheChatDetails(ChatDetails chat)
     {
+        if (_chatDetailsCacheSizes.TryGetValue(chat.Id, out var previousSize))
+            _chatDetailsCacheBytes -= previousSize;
+        var size = EstimateChatDetailsSize(chat);
         _chatDetailsCache[chat.Id] = chat;
+        _chatDetailsCacheSizes[chat.Id] = size;
+        _chatDetailsCacheBytes += size;
         var existing = _chatDetailsLru.Find(chat.Id);
         if (existing is not null) _chatDetailsLru.Remove(existing);
         _chatDetailsLru.AddFirst(chat.Id);
 
-        while (_chatDetailsLru.Count > RetainedChatDetailsCount)
+        while (_chatDetailsLru.Count > MinRetainedChatDetailsCount
+               && (_chatDetailsLru.Count > MaxRetainedChatDetailsCount
+                   || _chatDetailsCacheBytes > RetainedChatDetailsBudgetBytes))
         {
             var expiredChatId = _chatDetailsLru.Last!.Value;
             _chatDetailsLru.RemoveLast();
             _chatDetailsCache.Remove(expiredChatId);
+            if (_chatDetailsCacheSizes.Remove(expiredChatId, out var expiredSize))
+                _chatDetailsCacheBytes -= expiredSize;
         }
+    }
+
+    private static long EstimateChatDetailsSize(ChatDetails chat)
+    {
+        // Strings dominate these objects (especially tool output). Two bytes per character is the
+        // useful lower-bound for their managed representation; object/list overhead is covered by
+        // the conservative budget rather than paying for a full graph walk or re-serialization.
+        long characters = chat.Title.Length;
+        foreach (var message in chat.Messages)
+        {
+            characters += message.Role.Length + message.Content.Length;
+            foreach (var call in message.ToolCalls ?? [])
+                characters += call.Id.Length + call.Name.Length + call.Arguments.Length;
+            if (message.WorkspaceChanges is { } changes)
+                foreach (var file in changes.Files)
+                    characters += file.Path.Length + (file.PreviousPath?.Length ?? 0) + (file.Diff?.Length ?? 0);
+        }
+        return Math.Max(4096, characters * sizeof(char));
     }
 
     private ChatRunSnapshot? GetRun(Guid chatId, Guid branchId) => RunState.Runs.GetValueOrDefault(new RunKey(chatId, branchId));

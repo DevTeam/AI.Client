@@ -11,8 +11,10 @@ using AI.Client.Application.Runs;
 using AI.Client.Application.Notifications;
 using System.Threading.Channels;
 using System.Text.Json;
+using System.IO.Compression;
 using AI.Client.Infrastructure.Logging;
 using AI.Client.Infrastructure.Storage;
+using Microsoft.AspNetCore.ResponseCompression;
 
 var builder = WebApplication.CreateBuilder(args);
 // One value decides both where logs go and where the container writes its data, so the two can
@@ -20,6 +22,17 @@ var builder = WebApplication.CreateBuilder(args);
 var storageLocation = new ProjectStorageLocation();
 builder.Logging.AddProvider(new JsonLineFileLoggerProvider(storageLocation.RootDirectory));
 builder.Services.AddHostedService<ChatRunHostedService>();
+// Chat documents can contain many megabytes of tool output. Compress JSON on the wire so the
+// browser process does not receive 5-31 MB over loopback for every cache miss. Restricting MIME
+// types keeps both SSE endpoints (`text/event-stream`) streaming and unbuffered.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ["application/json", "application/problem+json"];
+});
+builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+    options.Level = CompressionLevel.Fastest);
 var composition = new Composition(storageLocation.RootDirectory);
 builder.Host.UseServiceProviderFactory(composition);
 
@@ -40,6 +53,8 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+app.UseResponseCompression();
 
 app.Use(async (context, next) =>
 {

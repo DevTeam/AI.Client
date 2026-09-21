@@ -275,6 +275,7 @@
         <MessageFeed @ref="_messageFeed"
             HasSelectedProject="@(_selectedProject is not null)"
             SelectedProjectName="@_selectedProject?.Name"
+            SearchQuery="@_searchQuery"
             SelectedChat="@_selectedChat"
             TranscriptId="@_selectedBranchId"
             BranchLeafId="@_branchLeafId"
@@ -1617,7 +1618,12 @@
             await SelectChatAsync(match.ChatId);
         }
 
-        await ClearSearch();
+        // Keep the sidebar showing the matching list while the feed scrolls: clearing first would
+        // dismiss the results panel, and dismissing the results panel also drops the highlight
+        // (the highlight is driven by SearchQuery, which ClearSearch resets). The "close search"
+        // rule therefore kicks in only once the user dismisses the results themselves — typing a
+        // new query, hitting Escape, or clicking the input built-in clear button.
+        if (_messageFeed is not null) await _messageFeed.ScrollToMessageAsync(match.MessageId);
     }
 
     // The chat the sidebar should show as selected: what the user just clicked, if its transcript

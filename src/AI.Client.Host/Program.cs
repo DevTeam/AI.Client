@@ -193,6 +193,7 @@ static bool IsStreamingAppend(ChatRunSnapshot old, ChatRunSnapshot current) =>
     && current.ChatRevision == old.ChatRevision
     && current.HeadMessageId == old.HeadMessageId
     && Equals(current.PendingApproval, old.PendingApproval)
+    && Equals(current.PendingPrompt, old.PendingPrompt)
     && (current.ActiveTools ?? []).SequenceEqual(old.ActiveTools ?? [])
     && current.FailureCode == old.FailureCode
     && current.CanRetry == old.CanRetry

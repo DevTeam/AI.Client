@@ -19,6 +19,102 @@ const isTextEntry = target =>
     target instanceof HTMLElement
     && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName));
 
+// Search highlighting. Walks every text node inside the scroller, wraps occurrences of the
+// current query in <mark class="search-highlight"> and unwraps them when the query changes or
+// the search closes. Applied again from Blazor after every render that touches the transcript,
+// because Blazor's diff drops our <mark> wrappers along with everything else in the subtree.
+const SearchHighlightClass = "search-highlight";
+
+// The minimum length the sidebar applies before it sends anything to the server; mirroring it
+// here means an empty/short query never wastes a DOM pass. The Blazor side does the same check
+// before assigning the parameter, but doing it again on the JS side keeps this module honest on
+// its own — a unit test that imports it directly does not have to know the sidebar's policy.
+const MinSearchQueryLength = 2;
+
+const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Re-merge adjacent text nodes after unwrapping <mark>, otherwise a sequence like
+// "foo<mark>bar</mark>baz" becomes three text nodes that a later TreeWalker sees separately and
+// fragments further. normalize() restores the original single node so a re-apply starts clean.
+const unwrapMark = mark => {
+    const parent = mark.parentNode;
+    if (parent === null) return;
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+    parent.removeChild(mark);
+    parent.normalize();
+};
+
+const clearSearchHighlight = root => {
+    const marks = root.querySelectorAll(`mark.${SearchHighlightClass}`);
+    // A static NodeList is fine, but converting once avoids any surprises if the DOM mutates
+    // while we iterate; clearSearchHighlight is rare enough that the allocation is cheaper than
+    // reasoning about it.
+    Array.from(marks).forEach(unwrapMark);
+};
+
+const shouldSkipTextNode = node => {
+    let parent = node.parentElement;
+    while (parent !== null) {
+        if (parent.tagName === "SCRIPT" || parent.tagName === "STYLE"
+            || parent.tagName === "MARK") return true;
+        parent = parent.parentElement;
+    }
+    return false;
+};
+
+const applySearchHighlight = (root, query) => {
+    clearSearchHighlight(root);
+    const trimmed = (query ?? "").trim();
+    if (trimmed.length < MinSearchQueryLength) return 0;
+    const regex = new RegExp(escapeRegExp(trimmed), "gi");
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            if (node.nodeValue === null || node.nodeValue.length === 0) return NodeFilter.FILTER_REJECT;
+            if (shouldSkipTextNode(node)) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+        }
+    });
+    const textNodes = [];
+    let current;
+    while ((current = walker.nextNode())) textNodes.push(current);
+
+    let highlightCount = 0;
+    textNodes.forEach(node => {
+        const text = node.nodeValue;
+        regex.lastIndex = 0;
+        if (!regex.test(text)) return;
+        regex.lastIndex = 0;
+        const fragment = document.createDocumentFragment();
+        let cursor = 0;
+        let match;
+        while ((match = regex.exec(text)) !== null) {
+            if (match.index > cursor) fragment.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+            const mark = document.createElement("mark");
+            mark.className = SearchHighlightClass;
+            mark.textContent = match[0];
+            fragment.appendChild(mark);
+            cursor = match.index + match[0].length;
+            highlightCount++;
+            // A zero-width match (only possible via quantifier tricks) would loop forever.
+            if (match[0].length === 0) regex.lastIndex++;
+        }
+        if (cursor < text.length) fragment.appendChild(document.createTextNode(text.slice(cursor)));
+        node.parentNode.replaceChild(fragment, node);
+    });
+    return highlightCount;
+};
+
+// Scrolls a specific message into view. Returns true when the target was in the DOM and the
+// scroll was issued, false when the caller still needs to expand the transcript and try again.
+// "center" puts the message in the middle of the visible area: the user can see a bit of context
+// above and below without it looking like the feed teleported.
+const scrollMessageIntoView = (scroller, messageId) => {
+    const element = document.getElementById(`message-${messageId}`);
+    if (element === null || !scroller.contains(element)) return false;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    return true;
+};
+
 export function attach(scroller, owner) {
     let pinned = distanceFromBottom(scroller) <= PinThresholdPx;
     let notified = null;
@@ -225,6 +321,9 @@ export function attach(scroller, owner) {
             watchedElementId = id;
             bindWatchedElement();
         },
+        applySearchHighlight: query => applySearchHighlight(scroller, query ?? ""),
+        clearSearchHighlight: () => clearSearchHighlight(scroller),
+        scrollMessageIntoView: id => scrollMessageIntoView(scroller, id),
         jumpToBottom: () => toBottom(true),
         dispose: () => {
             observer.disconnect();

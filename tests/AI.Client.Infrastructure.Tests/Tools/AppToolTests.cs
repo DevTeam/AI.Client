@@ -420,7 +420,8 @@ public sealed class AppToolTests
                     new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()),
                     new ToolCatalogRegistry(), new ModelContentCheckpointService(), instructionRegistry,
                     new ModelInstructionComposer(instructionRegistry, new ContextTokenEstimator()),
-                    Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol()),
+                    Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol(),
+                    new ToolSearchDefinitionEnricher(new ContextTokenEstimator())),
                 _secrets, _clock, _ids, _synchronization, workspace, policies, new ChatContext(toolResultCodec), new ChatBranchIds());
             var writes = new AppWrites(new AppOperationLog(), _signal, new AppToolReply());
             var presentations = new ToolPresentations(

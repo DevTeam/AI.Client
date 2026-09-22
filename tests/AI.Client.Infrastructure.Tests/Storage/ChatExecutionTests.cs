@@ -1393,7 +1393,8 @@ public sealed class ChatExecutionTests
                     new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()),
                     new ToolCatalogRegistry(), new ModelContentCheckpointService(), instructionRegistry,
                     new ModelInstructionComposer(instructionRegistry, new ContextTokenEstimator()),
-                    Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol()),
+                    Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol(),
+                    new ToolSearchDefinitionEnricher(new ContextTokenEstimator())),
                 _secrets, _clock, _ids, _synchronization, Workspace, policies,
                 new ChatContext(ToolResultCodec), new ChatBranchIds());
         }

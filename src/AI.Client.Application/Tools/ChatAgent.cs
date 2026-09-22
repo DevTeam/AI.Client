@@ -28,7 +28,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IToolDefinitionSelector toolSelector, IToolCatalogRegistry toolCatalog,
     IModelContentCheckpointService checkpoints, IModelInstructionRegistry instructions,
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
-    IRunCompletionProtocol completionProtocol) : IChatAgent
+    IRunCompletionProtocol completionProtocol, IToolSearchDefinitionEnricher toolSearchEnricher) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -112,10 +112,15 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             IReadOnlyList<AgentTool> requestTools = completionToolForced ? [completionProtocol.Tool] : permitted;
             var selection = toolSelector.Choose(configuredConnection, request.Message, modelContext, requestTools,
                 toolCatalog.GetPinned(run));
-            var selectedTools = selection.Tools;
+            var selectedTools = toolSearchEnricher.Enrich(selection.Tools, permitted, selection.BudgetTokens);
             var available = selectedTools.Select(item => item.ModelDefinition).ToArray();
             contextDiagnostics.RecordToolSelection(request.Model, selection.AvailableCount, selectedTools.Count,
                 selection.AvailableTokens, selection.SelectedTokens, selection.BudgetTokens);
+            if (!completionToolForced && selection.AvailableCount > selectedTools.Count)
+                instructions.Upsert(run, new ModelInstruction("run.tool-discovery",
+                    ToolDiscoveryInstruction(selection.AvailableCount, selectedTools.Count),
+                    990, ModelInstructionLifetime.Request));
+            else instructions.Remove(run, "run.tool-discovery");
             var calls = new List<ChatToolCall>();
             var content = new StringBuilder();
             string? finish = null;
@@ -269,7 +274,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     var tool = selectedTools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name)
                         ?? throw new ArgumentException(
                             $"Tool '{call.Name}' is not available in this turn. Its schema was omitted to fit the model's context budget. "
-                            + "Call tool_search with a short capability description (for example: 'read text file', 'list directory', 'grep in files') "
+                            + "Call app_tool_search with a short English capability description (for example: 'read text file', 'list directory', 'grep in files') "
                             + "so the matching tools are pinned and become available on the next model step. Do not invent or guess tool names.");
                     var arguments = session!.ValidateArguments(tool, call.Arguments);
                     var policy = await PolicyAsync(projectId, chatId, tool, token);
@@ -421,6 +426,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         + "a concise finalAnswer, at least one completed item, relevant evidence, and an empty remaining list. "
         + "Use status=blocked only when progress requires user input or an external state change, and explain "
         + "that requirement in finalAnswer. Never call app_finish_run in the same batch as another tool.";
+
+    private static string ToolDiscoveryInstruction(int availableCount, int selectedCount) =>
+        $"The application has {availableCount} permitted tools, but only {selectedCount} definitions fit in this request. "
+        + "The visible tool list is incomplete. If the capability needed for the user's task is absent, call app_tool_search "
+        + "with a short English capability description before concluding that the operation is unavailable or cannot be done. "
+        + "Examples: 'read text file', 'list directory', 'search text in files', 'fetch web page'. "
+        + "Do not invent tool names. Tools returned by app_tool_search become available on the next model step.";
 
     /// <summary>
     /// OpenAI-compatible endpoints report the ceiling as "length"; several report the Anthropic

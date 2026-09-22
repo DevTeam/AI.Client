@@ -25,7 +25,8 @@ public sealed class AppMcpServerHost(IEnumerable<IAppTool> tools, IAppToolReply 
                                  + "branches, message queues and settings. Read before you write, pass the revision you read, and use a "
                                  + "fresh operationId for each distinct change. When a job would fill your context with detail you do not need to keep, "
                                  + "delegate it with spawn_subtask and keep only the answer. When a choice is genuinely the user's to make and "
-                                 + "guessing wrong would waste real work, ask them with ask_user instead of guessing.",
+                                 + "guessing wrong would waste real work, ask them with ask_user instead of guessing. The visible tool list may be "
+                                 + "a budgeted subset; when a required capability is absent, call app_tool_search before concluding it is unavailable.",
             ToolCollection = collection
         });
     }

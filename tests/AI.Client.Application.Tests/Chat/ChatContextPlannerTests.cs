@@ -225,6 +225,37 @@ public sealed class ChatContextPlannerTests
         plan.WasCompacted.ShouldBeTrue();
         plan.Messages.ShouldContain(message => message.Content.StartsWith(
             "Earlier conversation summary (LLM-generated"));
+        // The result is assembled from the deterministic projection, so the full tool results must
+        // not reappear, and the assembled size is re-verified against the limit before returning.
+        plan.Messages.ShouldNotContain(message => message.Role == "tool" && message.ForModel.Length >= 2_000);
+        plan.Fits.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task PlanAsyncShouldCompactTheCurrentTurnWhenOneTurnAloneExceedsTheWindow()
+    {
+        // A single enormous turn: there are no older turns to summarize, so the completed head of
+        // the current turn has to be replaced by a deterministic digest.
+        var messages = new List<ChatCompletionMessage> { new("user", "request " + new string('a', 400)) };
+        for (var index = 1; index <= 20; index++)
+        {
+            messages.Add(new ChatCompletionMessage("assistant", $"step-{index}",
+                ToolCalls: [new ChatToolCall($"call-{index}", "read_file", "{}")]));
+            messages.Add(new ChatCompletionMessage("tool", new string('c', 4_000), ToolCallId: $"call-{index}"));
+        }
+
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator),
+            new FixedLimitsResolver(3_200, 256));
+        var summarizer = new RecordingSummarizer("unused");
+
+        var plan = await planner.PlanAsync(null, "small-model", messages, [], summarizer, 800,
+            CancellationToken.None);
+
+        plan.Fits.ShouldBeTrue();
+        plan.WasCompacted.ShouldBeTrue();
+        plan.OmittedMessages.ShouldBeGreaterThan(0);
+        plan.Messages.ShouldContain(message => message.Content.StartsWith("Current turn progress summary"));
+        AssertValidToolProtocol(plan.Messages);
     }
 
     [Fact]
@@ -263,9 +294,13 @@ public sealed class ChatContextPlannerTests
             CancellationToken.None);
 
         summarizer.Calls.ShouldBe(1);
-        plan.Fits.ShouldBeFalse();
         plan.Messages.ShouldNotContain(message => message.Content.StartsWith(
             "Earlier conversation summary (LLM-generated"));
+        // Without a usable summary the deterministic path still has to bring the request under the
+        // limit rather than return an oversized context.
+        plan.Fits.ShouldBeTrue();
+        plan.Messages.ShouldContain(message => message.Content.StartsWith(
+            "Earlier conversation summary (deterministic"));
     }
 
     private ChatContextPlanner Planner() => new(_estimator, new ChatContextCompactor(_estimator),

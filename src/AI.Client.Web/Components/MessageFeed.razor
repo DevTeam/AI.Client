@@ -7,6 +7,7 @@
 @inject IChatFeedProjection Feed
 @inject IJSRuntime JsRuntime
 @inject IChatRunsApi RunsApi
+@inject IChatHistoryApi ChatHistoryApi
 @inject IRunStatusPresentation StatusPresentation
 @implements IAsyncDisposable
 @using AI.Client.Contracts.Tools
@@ -105,11 +106,11 @@
                 var canExpand = CanExpandTurn(summary);
                 var summaryKey = (turnId, "turn-summary");
                 RenderFragment summaryContent = @<text>
-                    @if (IsRunningTurn(summary))
+                    @if (IsRunningTurn(summary) || _loadingTurnIds.Contains(turnId))
                     {
                         <span class="turn-summary-spinner" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
                     }
-                    <span class="turn-summary-text">@GetTurnSummaryText(summary)</span>
+                    <span class="turn-summary-text">@(_loadingTurnIds.Contains(turnId) ? "Loading details…" : GetTurnSummaryText(summary))</span>
                     @if (canExpand)
                     {
                         <span class="turn-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-right" /></span>
@@ -213,6 +214,9 @@
                         <div class="markdown-content preamble-content">@((MarkupString)RenderMarkdownCached(preamble.Id, preamble.Content))</div>
                     }
                     <ToolActivityGroup Group="group"
+                                       ProjectId="@SelectedChat.ProjectId"
+                                       ChatId="@SelectedChat.Id"
+                                       ChatRevision="@SelectedChat.Revision"
                                        ActiveTools="@GetActiveToolsForGroup(group)"
                                        IsLive="@(IsBranchGenerating() && anchor.Id == BranchLeafId)" />
                     <div class="message-actions">
@@ -636,10 +640,27 @@
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException) { }
         }
+
+        // Search can land on a progress note or tool result. Compact transcripts contain its
+        // lightweight message shell, but the corresponding DOM node intentionally does not exist
+        // until that turn is expanded. Load the one owning turn before scheduling the scroll.
+        var owner = Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer())
+            .FirstOrDefault(turn => turn.Id is not null
+                && turn.IntermediateMessages.Any(message => message.Id == messageId));
+        if (owner?.Id is { } turnId && !_expandedTurns.Contains(turnId))
+            await ToggleTurnAsync(turnId);
+
+        var targetItem = owner?.IntermediateItems
+            .FirstOrDefault(item => ChatFeed.MessagesOf(item).Any(message => message.Id == messageId));
+        var renderedTargetId = targetItem is { ToolGroup: { Count: > 0 } group }
+            ? group[^1].Id
+            : messageId;
+
         // The JS side can run before a just-selected transcript reaches the DOM. Queue one retry
         // for the next render in that case.
-        _pendingScrollToMessageId = messageId;
-        await ApplyDeferredScrollAsync();
+        _pendingScrollToMessageId = renderedTargetId;
+        _expandedTurnsVersion++;
+        StateHasChanged();
     }
 
     /// <summary>
@@ -727,6 +748,17 @@
     // from the position this feed is restored to.
     protected override void OnParametersSet()
     {
+        if (_activityChatId != SelectedChat?.Id)
+        {
+            _activityCancellation?.Cancel();
+            _activityCancellation?.Dispose();
+            _activityCancellation = null;
+            _activityChatId = SelectedChat?.Id;
+            _activityMessages.Clear();
+            _loadingTurnIds.Clear();
+            _activityVersion++;
+        }
+
         if (_expandedTurnsChatId != SelectedChat?.Id)
         {
             _expandedTurnsChatId = SelectedChat?.Id;
@@ -864,6 +896,7 @@
     // fork-point set, and the per-message sibling lookup used by the branch picker.
     private object? _branchCacheChat;
     private Guid? _branchCacheBranchLeafId;
+    private int _branchCacheActivityVersion = -1;
     private IReadOnlyList<ChatMessageView> _branchCacheMessages = [];
     private HashSet<Guid> _branchCacheMessageIds = [];
     private Dictionary<Guid, List<ChatMessageView>> _branchCacheChildrenByParent = [];
@@ -902,6 +935,11 @@
     private Guid? _expandedTurnsChatId;
     private const int InitialExpandedTurnItemCount = 0;
     private const int ExpandedTurnBatchSize = 2;
+    private readonly Dictionary<Guid, ChatMessageView> _activityMessages = [];
+    private readonly HashSet<Guid> _loadingTurnIds = [];
+    private CancellationTokenSource? _activityCancellation;
+    private Guid? _activityChatId;
+    private int _activityVersion;
 
     private List<RenderedFeedEntry> GetRenderedFeedItems()
     {
@@ -1037,9 +1075,64 @@
         {
             _expandedTurns.Add(turnId);
             _expandedTurnItemLimits[turnId] = InitialExpandedTurnItemCount;
-            _turnExpansionsPending.Add(turnId);
+            var turn = Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer())
+                .FirstOrDefault(item => item.Id == turnId);
+            if (turn is not null && NeedsActivity(turn))
+            {
+                _loadingTurnIds.Add(turnId);
+                _expandedTurnsVersion++;
+                StateHasChanged();
+                if (!await LoadTurnActivityAsync(turnId))
+                {
+                    _expandedTurns.Remove(turnId);
+                    _expandedTurnItemLimits.Remove(turnId);
+                }
+            }
+            if (_expandedTurns.Contains(turnId)) _turnExpansionsPending.Add(turnId);
         }
         _expandedTurnsVersion++;
+    }
+
+    private static bool NeedsActivity(FeedTurn turn) => turn.IntermediateMessages.Any(message =>
+        message.ContentOmitted
+        || message.ToolCalls?.Any(call => call.Arguments.Length == 0) == true);
+
+    private async Task<bool> LoadTurnActivityAsync(Guid turnId)
+    {
+        if (SelectedChat is not { } chat || BranchLeafId is not { } branchLeafId) return false;
+        _activityCancellation?.Cancel();
+        _activityCancellation?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        _activityCancellation = cancellation;
+        try
+        {
+            var activity = await ChatHistoryApi.GetTurnActivityAsync(
+                chat.ProjectId,
+                chat.Id,
+                turnId,
+                branchLeafId,
+                cancellation.Token);
+            if (activity is null || cancellation.IsCancellationRequested
+                || SelectedChat?.Id != chat.Id || BranchLeafId != branchLeafId
+                || activity.Revision != SelectedChat.Revision) return false;
+            foreach (var message in activity.Messages) _activityMessages[message.Id] = message;
+            _activityVersion++;
+            _appliedSearchChatId = null;
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (ReferenceEquals(_activityCancellation, cancellation))
+            {
+                _activityCancellation.Dispose();
+                _activityCancellation = null;
+            }
+            _loadingTurnIds.Remove(turnId);
+        }
     }
 
     private async Task CollapseTurnFromEndAsync(Guid turnId)
@@ -1174,7 +1267,9 @@
 
     private void EnsureBranchCache()
     {
-        if (ReferenceEquals(_branchCacheChat, SelectedChat) && _branchCacheBranchLeafId == BranchLeafId)
+        if (ReferenceEquals(_branchCacheChat, SelectedChat)
+            && _branchCacheBranchLeafId == BranchLeafId
+            && _branchCacheActivityVersion == _activityVersion)
         {
             return;
         }
@@ -1190,6 +1285,7 @@
 
         _branchCacheChat = SelectedChat;
         _branchCacheBranchLeafId = BranchLeafId;
+        _branchCacheActivityVersion = _activityVersion;
         _branchCacheMessages = ComputeVisibleBranchMessages();
         _branchCacheMessageIds = BranchLeafId is null
             ? []
@@ -1198,8 +1294,9 @@
         var childrenByParent = new Dictionary<Guid, List<ChatMessageView>>();
         if (SelectedChat is not null)
         {
-            foreach (var item in SelectedChat.Messages)
+            foreach (var stored in SelectedChat.Messages)
             {
+                var item = _activityMessages.GetValueOrDefault(stored.Id, stored);
                 if (item.ParentId is not { } parentId) continue;
                 if (!childrenByParent.TryGetValue(parentId, out var siblings))
                 {
@@ -1229,7 +1326,11 @@
 
     private IReadOnlyList<ChatMessageView> ComputeVisibleBranchMessages()
     {
-        return SelectedChat is null ? [] : Feed.BuildBranch(SelectedChat.Messages, BranchLeafId);
+        if (SelectedChat is null) return [];
+        var messages = SelectedChat.Messages
+            .Select(message => _activityMessages.GetValueOrDefault(message.Id, message))
+            .ToArray();
+        return Feed.BuildBranch(messages, BranchLeafId);
     }
 
     private HashSet<Guid> GetForkPointIds()
@@ -1444,6 +1545,9 @@
     {
         if (_disposed) return;
         _disposed = true;
+        _activityCancellation?.Cancel();
+        _activityCancellation?.Dispose();
+        _activityCancellation = null;
         await DisposeHistoryMarkersAsync();
         var historyMarkersModule = _historyMarkersModule;
         var scrollModule = _scrollModule;

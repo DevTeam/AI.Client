@@ -77,5 +77,57 @@ public class ChatServiceTests
         _idGenerator.Verify(i => i.Create(), Times.Never);
     }
 
+    [Fact]
+    public async Task ShouldLoadTranscriptActivityAndToolResultInLayers()
+    {
+        var userId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000010"));
+        var callId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000011"));
+        var resultId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000012"));
+        var progressId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000013"));
+        var answerId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000014"));
+        var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
+        chat.AddMessage(new ChatMessage(userId, null, ChatMessageRole.User, "Question", _now), _now);
+        chat.AddMessage(new ChatMessage(callId, userId, ChatMessageRole.Assistant, "Checking", _now.AddSeconds(1),
+            toolCalls: [new ChatToolCall("call-1", "process_run", "{\"command\":\"large\"}")]), _now.AddSeconds(1));
+        chat.AddMessage(new ChatMessage(resultId, callId, ChatMessageRole.Tool, "very large result", _now.AddSeconds(2),
+            toolCallId: "call-1"), _now.AddSeconds(2));
+        chat.AddMessage(new ChatMessage(progressId, resultId, ChatMessageRole.Assistant, "Preparing answer", _now.AddSeconds(3)),
+            _now.AddSeconds(3));
+        chat.AddMessage(new ChatMessage(answerId, progressId, ChatMessageRole.Assistant, "Final answer", _now.AddSeconds(4)),
+            _now.AddSeconds(4));
+        _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None))
+            .ReturnsAsync(new StoredChat(chat, 7));
+
+        var service = CreateInstance();
+        var transcript = await service.GetTranscriptAsync(_projectId.Value, _chatId.Value, CancellationToken.None);
+
+        transcript.ShouldNotBeNull();
+        transcript.Messages.Single(message => message.Id == userId.Value).Content.ShouldBe("Question");
+        transcript.Messages.Single(message => message.Id == answerId.Value).Content.ShouldBe("Final answer");
+        transcript.Messages.Single(message => message.Id == callId.Value).ContentOmitted.ShouldBeTrue();
+        transcript.Messages.Single(message => message.Id == callId.Value).ToolCalls!.Single().Arguments.ShouldBeEmpty();
+        transcript.Messages.Single(message => message.Id == resultId.Value).ContentOmitted.ShouldBeTrue();
+        transcript.Messages.Single(message => message.Id == progressId.Value).ContentOmitted.ShouldBeTrue();
+
+        var activity = await service.GetTurnActivityAsync(
+            _projectId.Value, _chatId.Value, userId.Value, answerId.Value, CancellationToken.None);
+
+        activity.ShouldNotBeNull();
+        activity.Revision.ShouldBe(7);
+        activity.Messages.Count.ShouldBe(3);
+        activity.Messages.Single(message => message.Id == callId.Value).Content.ShouldBe("Checking");
+        activity.Messages.Single(message => message.Id == callId.Value).ToolCalls!.Single().Arguments
+            .ShouldBe("{\"command\":\"large\"}");
+        activity.Messages.Single(message => message.Id == resultId.Value).Content.ShouldBeEmpty();
+        activity.Messages.Single(message => message.Id == resultId.Value).ContentOmitted.ShouldBeTrue();
+        activity.Messages.Single(message => message.Id == progressId.Value).Content.ShouldBe("Preparing answer");
+
+        var content = await service.GetMessageContentAsync(
+            _projectId.Value, _chatId.Value, resultId.Value, CancellationToken.None);
+        content.ShouldNotBeNull();
+        content.Revision.ShouldBe(7);
+        content.Content.ShouldBe("very large result");
+    }
+
     private ChatService CreateInstance() => new(_repository.Object, _idGenerator.Object, _clock.Object, new ChatSynchronization());
 }

@@ -863,7 +863,7 @@
                     }
                     else
                     {
-                        _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, snapshot.ChatId, CancellationToken.None);
+                        _selectedChat = await ChatHistoryApi.GetTranscriptAsync(_selectedProject.Id, snapshot.ChatId, CancellationToken.None);
                         if (_selectedChat is not null) CacheChatDetails(_selectedChat);
                         await LoadChatsAsync(_selectedProject.Id, refreshSelected: false);
                     }
@@ -1010,7 +1010,7 @@
         var projectDetailsTask = ProjectApi.GetAsync(project.Id, cancellation);
         var chatsTask = ChatHistoryApi.ListAsync(project.Id, cancellation);
         var rememberedChatTask = context.ChatId is { } rememberedChatId
-            ? ChatHistoryApi.GetAsync(project.Id, rememberedChatId, cancellation)
+            ? ChatHistoryApi.GetTranscriptAsync(project.Id, rememberedChatId, cancellation)
             : null;
 
         try
@@ -1851,7 +1851,7 @@
             return cached;
         }
 
-        var loaded = await ChatHistoryApi.GetAsync(projectId, chatId, cancellationToken);
+        var loaded = await ChatHistoryApi.GetTranscriptAsync(projectId, chatId, cancellationToken);
         if (loaded is not null) CacheChatDetails(loaded);
         return loaded;
     }
@@ -2187,7 +2187,7 @@
 
         if (refreshSelected && _selectedChat is { } selected)
         {
-            var refreshed = await ChatHistoryApi.GetAsync(projectId, selected.Id, CancellationToken.None);
+            var refreshed = await ChatHistoryApi.GetTranscriptAsync(projectId, selected.Id, CancellationToken.None);
             if (_selectedChat?.Id == selected.Id && refreshed is not null && refreshed.Revision >= _selectedChat.Revision)
                 _selectedChat = refreshed;
         }
@@ -2462,7 +2462,7 @@
         if (_selectedProject is null || _selectedChat is null) return;
         var result = await ChatHistoryApi.DeleteBranchAsync(_selectedProject.Id, _selectedChat.Id, branch.RootId, _selectedChat.Revision, CancellationToken.None);
         if (!result.IsDeleted) { Notifications.ShowError("Branch was not deleted. Reload the chat and try again."); return; }
-        _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, _selectedChat.Id, CancellationToken.None);
+        _selectedChat = await ChatHistoryApi.GetTranscriptAsync(_selectedProject.Id, _selectedChat.Id, CancellationToken.None);
         _selectedBranchId = result.ParentBranchId ?? _selectedChat?.Id;
         _branchLeafId = result.ParentHeadMessageId
             ?? _selectedChat?.Branches?.SingleOrDefault(item => item.Id == _selectedBranchId)?.HeadMessageId;
@@ -2524,7 +2524,7 @@
         ChatDetails? refreshedChat;
         try
         {
-            refreshedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, chatId, cancellation);
+            refreshedChat = await ChatHistoryApi.GetTranscriptAsync(_selectedProject.Id, chatId, cancellation);
         }
         catch (OperationCanceledException)
         {
@@ -2903,7 +2903,7 @@
             await ChatRunsApi.ClearAllAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
         }
 
-        var current = await ChatHistoryApi.GetAsync(_selectedProject.Id, chat.Id, CancellationToken.None);
+        var current = await ChatHistoryApi.GetTranscriptAsync(_selectedProject.Id, chat.Id, CancellationToken.None);
         if (current is null)
         {
             CloseContextMenus();
@@ -2979,7 +2979,7 @@
         if (_selectedProject is null) return;
         await LoadSecurityAsync(_selectedProject.Id);
         if (_permissionsChatId is { } chatId && _selectedChat?.Id == chatId)
-            _selectedChat = await ChatHistoryApi.GetAsync(_selectedProject.Id, chatId, CancellationToken.None);
+            _selectedChat = await ChatHistoryApi.GetTranscriptAsync(_selectedProject.Id, chatId, CancellationToken.None);
         Notifications.ShowSuccess("Tool permission reset.");
     }
 

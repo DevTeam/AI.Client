@@ -25,6 +25,43 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
         return await response.Content.ReadFromJsonAsync<ChatDetails>(cancellationToken);
     }
 
+    public async Task<ChatDetails?> GetTranscriptAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync($"api/projects/{projectId}/chats/{chatId}/transcript", cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ChatDetails>(cancellationToken);
+    }
+
+    public async Task<ChatTurnActivity?> GetTurnActivityAsync(
+        Guid projectId,
+        Guid chatId,
+        Guid turnId,
+        Guid branchLeafId,
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync(
+            $"api/projects/{projectId}/chats/{chatId}/turns/{turnId}/activity?branchLeafId={branchLeafId}",
+            cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ChatTurnActivity>(cancellationToken);
+    }
+
+    public async Task<ChatMessageContent?> GetMessageContentAsync(
+        Guid projectId,
+        Guid chatId,
+        Guid messageId,
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync(
+            $"api/projects/{projectId}/chats/{chatId}/messages/{messageId}/content",
+            cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ChatMessageContent>(cancellationToken);
+    }
+
     public async Task<ChatDetails> CreateAsync(Guid projectId, CreateChatRequest request, CancellationToken cancellationToken)
     {
         using var response = await httpClient.PostAsJsonAsync($"api/projects/{projectId}/chats", request, cancellationToken);

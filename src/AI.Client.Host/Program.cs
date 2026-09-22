@@ -282,6 +282,30 @@ app.MapGet(
         return chat is null ? Results.NotFound() : Results.Ok(chat);
     });
 
+app.MapGet(
+    "/api/projects/{projectId:guid}/chats/{chatId:guid}/transcript",
+    async (Guid projectId, Guid chatId, IChatService service, CancellationToken cancellationToken) =>
+    {
+        var chat = await service.GetTranscriptAsync(projectId, chatId, cancellationToken);
+        return chat is null ? Results.NotFound() : Results.Ok(chat);
+    });
+
+app.MapGet(
+    "/api/projects/{projectId:guid}/chats/{chatId:guid}/turns/{turnId:guid}/activity",
+    async (Guid projectId, Guid chatId, Guid turnId, Guid branchLeafId, IChatService service, CancellationToken cancellationToken) =>
+    {
+        var activity = await service.GetTurnActivityAsync(projectId, chatId, turnId, branchLeafId, cancellationToken);
+        return activity is null ? Results.NotFound() : Results.Ok(activity);
+    });
+
+app.MapGet(
+    "/api/projects/{projectId:guid}/chats/{chatId:guid}/messages/{messageId:guid}/content",
+    async (Guid projectId, Guid chatId, Guid messageId, IChatService service, CancellationToken cancellationToken) =>
+    {
+        var content = await service.GetMessageContentAsync(projectId, chatId, messageId, cancellationToken);
+        return content is null ? Results.NotFound() : Results.Ok(content);
+    });
+
 app.MapPost(
     "/api/projects/{projectId:guid}/chats",
     async (Guid projectId, CreateChatRequest request, IChatService service, CancellationToken cancellationToken) =>

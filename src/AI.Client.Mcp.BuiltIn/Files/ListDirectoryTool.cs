@@ -7,7 +7,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class ListDirectoryTool(IPathGuard guard) : IToolFactory
+public sealed class ListDirectoryTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     // Approximate JSON overhead per entry beyond its own name — quotes/keys/commas for
     // `{"name":"...","kind":"file","size":123,"modifiedAt":"..."}`, inflated to account for the
@@ -38,12 +38,12 @@ public sealed class ListDirectoryTool(IPathGuard guard) : IToolFactory
         }
         catch (GrantException error)
         {
-            return Task.FromResult(ToolReply.Of(new DirectoryListResult(path, [], false, error.Message), true));
+            return Task.FromResult(reply.Reply(new DirectoryListResult(path, [], false, error.Message), true));
         }
 
         if (!Directory.Exists(resolved))
         {
-            return Task.FromResult(ToolReply.Of(new DirectoryListResult(resolved, [], false, "Directory does not exist."), true));
+            return Task.FromResult(reply.Reply(new DirectoryListResult(resolved, [], false, "Directory does not exist."), true));
         }
 
         try
@@ -69,11 +69,11 @@ public sealed class ListDirectoryTool(IPathGuard guard) : IToolFactory
             }
 
             entries.Sort((left, right) => string.CompareOrdinal(left.Name, right.Name));
-            return Task.FromResult(ToolReply.Of(new DirectoryListResult(resolved, entries.ToArray(), truncated, null)));
+            return Task.FromResult(reply.Reply(new DirectoryListResult(resolved, entries.ToArray(), truncated, null)));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return Task.FromResult(ToolReply.Of(new DirectoryListResult(resolved, [], false, error.Message), true));
+            return Task.FromResult(reply.Reply(new DirectoryListResult(resolved, [], false, error.Message), true));
         }
     }
 }

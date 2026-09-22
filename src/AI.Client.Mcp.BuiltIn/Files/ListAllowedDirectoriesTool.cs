@@ -5,7 +5,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class ListAllowedDirectoriesTool(IPathGuard guard) : IToolFactory
+public sealed class ListAllowedDirectoriesTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         List,
@@ -18,7 +18,7 @@ public sealed class ListAllowedDirectoriesTool(IPathGuard guard) : IToolFactory
 
     [McpServerTool(Name = "list_allowed_directories", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(AllowedDirectoriesResult))]
-    private CallToolResult List() => ToolReply.Of(new AllowedDirectoriesResult(
+    private CallToolResult List() => reply.Reply(new AllowedDirectoriesResult(
         guard.Grants.Select(grant => new AllowedDirectory(
             grant.Root,
             grant.Recursive,

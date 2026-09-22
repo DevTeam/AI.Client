@@ -6,7 +6,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class FetchTool(IWebFetcher fetcher, IHtmlText htmlText) : IToolFactory
+public sealed class FetchTool(IWebFetcher fetcher, IHtmlText htmlText, IBuiltInToolReply reply) : IToolFactory
 {
     private const int MaxLengthLimit = 1000000;
 
@@ -33,18 +33,18 @@ public sealed class FetchTool(IWebFetcher fetcher, IHtmlText htmlText) : IToolFa
         if (!Uri.TryCreate(url, UriKind.Absolute, out var target)
             || (target.Scheme != Uri.UriSchemeHttp && target.Scheme != Uri.UriSchemeHttps))
         {
-            return ToolReply.Of(new FetchResult(url, 0, "", "", startIndex, startIndex, false, "URL must be an absolute http or https URL."), true);
+            return reply.Reply(new FetchResult(url, 0, "", "", startIndex, startIndex, false, "URL must be an absolute http or https URL."), true);
         }
 
         if (!string.IsNullOrEmpty(target.UserInfo))
         {
-            return ToolReply.Of(new FetchResult(url, 0, "", "", startIndex, startIndex, false, "URL must not carry credentials."), true);
+            return reply.Reply(new FetchResult(url, 0, "", "", startIndex, startIndex, false, "URL must not carry credentials."), true);
         }
 
         var response = await fetcher.GetAsync(target, cancellationToken);
         if (response.Error is not null && response.Body.Length == 0)
         {
-            return ToolReply.Of(new FetchResult(response.FinalUrl, response.Status, response.ContentType, "", startIndex, startIndex, false, response.Error), true);
+            return reply.Reply(new FetchResult(response.FinalUrl, response.Status, response.ContentType, "", startIndex, startIndex, false, response.Error), true);
         }
 
         var html = response.ContentType.Contains("html", StringComparison.OrdinalIgnoreCase)
@@ -58,7 +58,7 @@ public sealed class FetchTool(IWebFetcher fetcher, IHtmlText htmlText) : IToolFa
             window = window[..maxLength];
         }
 
-        return ToolReply.Of(new FetchResult(
+        return reply.Reply(new FetchResult(
             response.FinalUrl,
             response.Status,
             response.ContentType,

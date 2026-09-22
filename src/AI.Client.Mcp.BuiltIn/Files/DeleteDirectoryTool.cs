@@ -7,7 +7,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class DeleteDirectoryTool(IPathGuard guard) : IToolFactory
+public sealed class DeleteDirectoryTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         DeleteAsync,
@@ -35,18 +35,18 @@ public sealed class DeleteDirectoryTool(IPathGuard guard) : IToolFactory
         }
         catch (GrantException error)
         {
-            return Task.FromResult(ToolReply.Of(new DeleteDirectoryResult(path, false, recursive, error.Message), true));
+            return Task.FromResult(reply.Reply(new DeleteDirectoryResult(path, false, recursive, error.Message), true));
         }
 
         if (File.Exists(resolved))
         {
-            return Task.FromResult(ToolReply.Of(
+            return Task.FromResult(reply.Reply(
                 new DeleteDirectoryResult(resolved, false, recursive, "Path is a file. Use delete_file."), true));
         }
 
         if (!Directory.Exists(resolved))
         {
-            return Task.FromResult(ToolReply.Of(
+            return Task.FromResult(reply.Reply(
                 new DeleteDirectoryResult(resolved, false, recursive, "Directory does not exist."), true));
         }
 
@@ -56,16 +56,16 @@ public sealed class DeleteDirectoryTool(IPathGuard guard) : IToolFactory
             // `recursive` can never turn out to have removed more than the directory it named.
             if (!recursive && Directory.EnumerateFileSystemEntries(resolved).Any())
             {
-                return Task.FromResult(ToolReply.Of(new DeleteDirectoryResult(resolved, false, recursive,
+                return Task.FromResult(reply.Reply(new DeleteDirectoryResult(resolved, false, recursive,
                     "Directory is not empty. Pass recursive: true to delete it and its contents."), true));
             }
 
             Directory.Delete(resolved, recursive);
-            return Task.FromResult(ToolReply.Of(new DeleteDirectoryResult(resolved, true, recursive, null)));
+            return Task.FromResult(reply.Reply(new DeleteDirectoryResult(resolved, true, recursive, null)));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return Task.FromResult(ToolReply.Of(new DeleteDirectoryResult(resolved, false, recursive, error.Message), true));
+            return Task.FromResult(reply.Reply(new DeleteDirectoryResult(resolved, false, recursive, error.Message), true));
         }
     }
 }

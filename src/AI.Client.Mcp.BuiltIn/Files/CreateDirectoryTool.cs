@@ -7,7 +7,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class CreateDirectoryTool(IPathGuard guard) : IToolFactory
+public sealed class CreateDirectoryTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         CreateAsync,
@@ -31,22 +31,22 @@ public sealed class CreateDirectoryTool(IPathGuard guard) : IToolFactory
         }
         catch (GrantException error)
         {
-            return Task.FromResult(ToolReply.Of(new CreateDirectoryResult(path, false, error.Message), true));
+            return Task.FromResult(reply.Reply(new CreateDirectoryResult(path, false, error.Message), true));
         }
 
         if (Directory.Exists(resolved))
         {
-            return Task.FromResult(ToolReply.Of(new CreateDirectoryResult(resolved, false, null)));
+            return Task.FromResult(reply.Reply(new CreateDirectoryResult(resolved, false, null)));
         }
 
         try
         {
             Directory.CreateDirectory(resolved);
-            return Task.FromResult(ToolReply.Of(new CreateDirectoryResult(resolved, true, null)));
+            return Task.FromResult(reply.Reply(new CreateDirectoryResult(resolved, true, null)));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return Task.FromResult(ToolReply.Of(new CreateDirectoryResult(resolved, false, error.Message), true));
+            return Task.FromResult(reply.Reply(new CreateDirectoryResult(resolved, false, error.Message), true));
         }
     }
 }

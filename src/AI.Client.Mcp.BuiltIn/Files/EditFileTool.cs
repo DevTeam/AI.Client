@@ -8,7 +8,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class EditFileTool(IPathGuard guard) : IToolFactory
+public sealed class EditFileTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
@@ -39,7 +39,7 @@ public sealed class EditFileTool(IPathGuard guard) : IToolFactory
         }
         catch (GrantException error)
         {
-            return ToolReply.Of(new EditFileResult(path, 0, "", dryRun, error.Message), true);
+            return reply.Reply(new EditFileResult(path, 0, "", dryRun, error.Message), true);
         }
 
         string original;
@@ -49,7 +49,7 @@ public sealed class EditFileTool(IPathGuard guard) : IToolFactory
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return ToolReply.Of(new EditFileResult(resolved, 0, "", dryRun, error.Message), true);
+            return reply.Reply(new EditFileResult(resolved, 0, "", dryRun, error.Message), true);
         }
 
         var crlf = original.Contains("\r\n", StringComparison.Ordinal);
@@ -61,14 +61,14 @@ public sealed class EditFileTool(IPathGuard guard) : IToolFactory
             var newText = Normalize(edits[index].NewText ?? "");
             if (oldText.Length == 0)
             {
-                return ToolReply.Of(new EditFileResult(resolved, 0, "", dryRun, $"Edit {index + 1} has empty 'oldText'."), true);
+                return reply.Reply(new EditFileResult(resolved, 0, "", dryRun, $"Edit {index + 1} has empty 'oldText'."), true);
             }
 
             var occurrences = Occurrences(content, oldText);
             if (occurrences != 1)
             {
                 var reason = occurrences == 0 ? "was not found" : $"matches {occurrences} times";
-                return ToolReply.Of(new EditFileResult(resolved, 0, "", dryRun,
+                return reply.Reply(new EditFileResult(resolved, 0, "", dryRun,
                     $"Edit {index + 1} {reason}. Include more surrounding context to make it unique."), true);
             }
 
@@ -87,11 +87,11 @@ public sealed class EditFileTool(IPathGuard guard) : IToolFactory
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
             {
-                return ToolReply.Of(new EditFileResult(resolved, 0, "", dryRun, error.Message), true);
+                return reply.Reply(new EditFileResult(resolved, 0, "", dryRun, error.Message), true);
             }
         }
 
-        return ToolReply.Of(new EditFileResult(resolved, edits.Length, diff.ToString(), dryRun, null));
+        return reply.Reply(new EditFileResult(resolved, edits.Length, diff.ToString(), dryRun, null));
     }
 
     private static string Normalize(string value) =>

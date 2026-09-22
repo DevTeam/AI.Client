@@ -9,7 +9,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class GrepFilesTool(IPathGuard guard) : IToolFactory
+public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     // Approximate JSON overhead per reported match and per reported file, inflated the same way
     // SearchFilesTool inflates its own — the result is serialized a second time when it is stored
@@ -58,7 +58,7 @@ public sealed class GrepFilesTool(IPathGuard guard) : IToolFactory
     {
         var result = await ExecuteAsync(path, query, isRegex, ignoreCase, filePattern, excludePatterns, excludeDefaults,
             contextLines, maxMatchesPerFile, cancellationToken);
-        return ToolReply.Of(result, result.Error is not null);
+        return reply.Reply(result, result.Error is not null);
     }
 
     private async Task<GrepFilesResult> ExecuteAsync(

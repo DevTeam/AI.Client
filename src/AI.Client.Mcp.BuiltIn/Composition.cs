@@ -22,7 +22,7 @@ internal sealed partial class Composition
             .Transient<ProcessRunTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,
                 DeleteFileTool, DeleteDirectoryTool>(Tag.Unique)
-            .Singleton<ProcessRunner, EnvironmentGrantSource, PathGuard, WebFetcher, HtmlText>()
+            .Singleton<ProcessRunner, EnvironmentGrantSource, PathGuard, WebFetcher, HtmlText, BuiltInToolReply>()
             .Singleton((IEnumerable<IToolFactory> toolFactories) =>
             {
                 var tools = new McpServerPrimitiveCollection<McpServerTool>();

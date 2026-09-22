@@ -18,13 +18,19 @@ public sealed record AskUserOption(string Label, string? Description = null);
 /// <param name="Label">A short chip beside the question � "Scope", "Naming" � or nothing.</param>
 /// <param name="MultiSelect">True only when the choices genuinely combine.</param>
 /// <param name="AllowOther">Whether the person may type an answer of their own instead of choosing.</param>
+/// <param name="PathKind">
+/// Set to "directory" or "file" when the answer is a path on the user's machine. They then get a
+/// browser over the real file system instead of a text box, and the path comes back in 'other'.
+/// Leave it out for every other kind of question.
+/// </param>
 public sealed record AskUserQuestion(
     string Id,
     string Text,
     AskUserOption[] Options,
     string? Label = null,
     bool MultiSelect = false,
-    bool AllowOther = true);
+    bool AllowOther = true,
+    string? PathKind = null);
 
 /// <param name="Selected">
 /// The labels the person chose, not their positions: what is stored in the transcript should still
@@ -83,6 +89,9 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
         private const int MaxOptionLength = 80;
         private const int MaxDescriptionLength = 160;
 
+        private const string DirectoryPath = "directory";
+        private const string FilePath = "file";
+
         private const string DecideYourself =
             "There is no answer. Continue with the option you judge best and state the assumption you made "
             + "in your reply. Do not ask the same question again.";
@@ -101,7 +110,11 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                         + "assumption in the reply instead of asking. Put the option you recommend first and append "
                         + "' (Recommended)' to its label. Prefer one question; up to five may be asked in one call, and asking "
                         + "them together is better than one call after another. Keep option labels short and concrete, and put "
-                        + "nuance in 'description'. Use 'multiSelect' only when the choices genuinely combine. The user may "
+                        + "nuance in 'description'. When the answer is a path on the user's machine, set 'pathKind' to "
+                        + "'directory' or 'file': the user then picks it out of their own file system and it comes back in "
+                        + "'other', which is far more reliable than asking them to type it. Options may still be offered "
+                        + "alongside — list the paths you already consider likely. Use 'multiSelect' only when the choices "
+                        + "genuinely combine. The user may "
                         + "answer some questions and not others, or none at all: an absent answer means the choice is yours to "
                         + "make, never an invitation to ask again."
                 });
@@ -162,7 +175,8 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
             question.Label,
             question.Options.Select(option => new UserPromptOption(option.Label, option.Description)).ToArray(),
             question.MultiSelect,
-            question.AllowOther);
+            question.AllowOther,
+            question.PathKind?.Trim().ToLowerInvariant());
 
         /// <summary>
         /// Turns positions back into labels. An answer naming an option that no longer exists is
@@ -198,9 +212,14 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                 if (string.IsNullOrWhiteSpace(question.Text)) return $"Question '{question.Id}' has no text.";
                 if (question.Text.Length > MaxTextLength) return $"Question '{question.Id}' is longer than {MaxTextLength} characters.";
                 if (question.Label is { Length: > MaxLabelLength }) return $"The label of '{question.Id}' is longer than {MaxLabelLength} characters.";
+                var path = question.PathKind?.Trim().ToLowerInvariant();
+                if (path is { Length: > 0 } and not (DirectoryPath or FilePath))
+                    return $"The 'pathKind' of '{question.Id}' must be '{DirectoryPath}' or '{FilePath}'.";
                 var options = question.Options ?? [];
                 if (options.Length > MaxOptions) return $"Question '{question.Id}' offers more than {MaxOptions} options.";
-                if (options.Length == 0 && !question.AllowOther)
+                // A path question is answerable through its picker, so it needs neither options nor
+                // the free-text box the other kinds fall back on.
+                if (options.Length == 0 && !question.AllowOther && path is not { Length: > 0 })
                     return $"Question '{question.Id}' offers no options and no free-text answer, so it cannot be answered.";
                 foreach (var option in options)
                 {

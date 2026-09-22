@@ -25,13 +25,21 @@ public sealed record UserPrompt(
 /// </param>
 /// <param name="Label">A short chip shown beside the question, or null.</param>
 /// <param name="AllowOther">Whether a free-text answer is offered alongside the options.</param>
+/// <param name="PathKind">
+/// "directory" or "file" when the answer is a path on this machine, and null when it is not. The
+/// free-text answer then becomes a path box with a picker behind it: the person browses the host's
+/// own file system, because a path typed from memory is the thing they get wrong. Options may still
+/// be offered alongside it — likely paths are worth one click — and the chosen path comes back in
+/// <see cref="UserPromptAnswer.Other"/> like any other typed answer.
+/// </param>
 public sealed record UserPromptQuestion(
     string Id,
     string Text,
     string? Label,
     IReadOnlyList<UserPromptOption> Options,
     bool MultiSelect,
-    bool AllowOther);
+    bool AllowOther,
+    string? PathKind = null);
 
 /// <summary>One choice. Plain text in both fields: these are captions on controls, never markup.</summary>
 public sealed record UserPromptOption(string Label, string? Description);

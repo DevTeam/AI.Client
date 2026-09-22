@@ -9,8 +9,10 @@ public sealed class FileSystemApi(HttpClient httpClient) : IFileSystemApi
     public Task<DirectoryListing?> ListRootsAsync(CancellationToken cancellationToken) =>
         GetAsync<DirectoryListing>("api/filesystem/roots", cancellationToken);
 
-    public Task<DirectoryListing?> ListAsync(string path, CancellationToken cancellationToken) =>
-        GetAsync<DirectoryListing>($"api/filesystem/directories?path={Uri.EscapeDataString(path)}", cancellationToken);
+    public Task<DirectoryListing?> ListAsync(string path, bool includeFiles, CancellationToken cancellationToken) =>
+        GetAsync<DirectoryListing>(
+            $"api/filesystem/directories?path={Uri.EscapeDataString(path)}&includeFiles={(includeFiles ? "true" : "false")}",
+            cancellationToken);
 
     public Task<DirectoryProbe?> ResolveAsync(string path, CancellationToken cancellationToken) =>
         GetAsync<DirectoryProbe>($"api/filesystem/resolve?path={Uri.EscapeDataString(path)}", cancellationToken);

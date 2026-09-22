@@ -12,16 +12,16 @@ public sealed class PhysicalDirectoryBrowser : IDirectoryBrowser
     public Task<DirectoryListing> ListRootsAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(new DirectoryListing(string.Empty, null, true, Roots()));
+        return Task.FromResult(new DirectoryListing(string.Empty, null, true, Roots(), []));
     }
 
-    public Task<DirectoryListing?> ListAsync(string path, CancellationToken cancellationToken)
+    public Task<DirectoryListing?> ListAsync(string path, bool includeFiles, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var canonical = Canonicalize(path);
         if (canonical.Length == 0)
         {
-            return Task.FromResult<DirectoryListing?>(new DirectoryListing(string.Empty, null, true, Roots()));
+            return Task.FromResult<DirectoryListing?>(new DirectoryListing(string.Empty, null, true, Roots(), []));
         }
 
         if (!Directory.Exists(canonical))
@@ -32,20 +32,29 @@ public sealed class PhysicalDirectoryBrowser : IDirectoryBrowser
         var parent = ParentOf(canonical);
         try
         {
-            var children = new DirectoryInfo(canonical)
+            var directory = new DirectoryInfo(canonical);
+            var children = directory
                 .EnumerateDirectories()
                 .Where(item => !IsHiddenSystem(item))
                 .Select(item => new DirectoryEntry(item.Name, item.FullName))
                 .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-            return Task.FromResult<DirectoryListing?>(new DirectoryListing(canonical, parent, true, children));
+            var files = includeFiles
+                ? directory
+                    .EnumerateFiles()
+                    .Where(item => !IsHiddenSystem(item))
+                    .Select(item => new DirectoryEntry(item.Name, item.FullName))
+                    .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+                : [];
+            return Task.FromResult<DirectoryListing?>(new DirectoryListing(canonical, parent, true, children, files));
         }
         catch (Exception error) when (error is UnauthorizedAccessException or IOException)
         {
             // The directory is there, it just will not open for this account — a removed medium,
             // a dropped network share and a denied ACL all land here. Reporting it as missing
             // would send the user hunting for a folder they are looking straight at.
-            return Task.FromResult<DirectoryListing?>(new DirectoryListing(canonical, parent, false, []));
+            return Task.FromResult<DirectoryListing?>(new DirectoryListing(canonical, parent, false, [], []));
         }
     }
 
@@ -55,8 +64,9 @@ public sealed class PhysicalDirectoryBrowser : IDirectoryBrowser
         var canonical = Canonicalize(path);
         return Task.FromResult(new DirectoryProbe(
             canonical,
+            canonical.Length > 0 && Path.IsPathFullyQualified(canonical),
             canonical.Length > 0 && Directory.Exists(canonical),
-            canonical.Length > 0 && Path.IsPathFullyQualified(canonical)));
+            canonical.Length > 0 && File.Exists(canonical)));
     }
 
     /// <summary>
@@ -163,12 +173,12 @@ public sealed class PhysicalDirectoryBrowser : IDirectoryBrowser
     /// their kind. A merely hidden directory stays: AppData is hidden, and it is exactly the sort
     /// of place a grant gets pointed at.
     /// </summary>
-    private static bool IsHiddenSystem(DirectoryInfo directory)
+    private static bool IsHiddenSystem(FileSystemInfo entry)
     {
         try
         {
-            return directory.Attributes.HasFlag(FileAttributes.Hidden)
-                && directory.Attributes.HasFlag(FileAttributes.System);
+            return entry.Attributes.HasFlag(FileAttributes.Hidden)
+                && entry.Attributes.HasFlag(FileAttributes.System);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

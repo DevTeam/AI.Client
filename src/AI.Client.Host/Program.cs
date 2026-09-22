@@ -371,8 +371,8 @@ if (app.Configuration.GetValue("FileSystem:BrowseEnabled", true))
 
     app.MapGet(
         "/api/filesystem/directories",
-        async (string path, IDirectoryBrowser browser, CancellationToken cancellationToken) =>
-            await browser.ListAsync(path, cancellationToken) is { } listing
+        async (string path, bool? includeFiles, IDirectoryBrowser browser, CancellationToken cancellationToken) =>
+            await browser.ListAsync(path, includeFiles ?? false, cancellationToken) is { } listing
                 ? Results.Ok(listing)
                 : Results.NotFound());
 

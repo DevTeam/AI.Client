@@ -4007,3 +4007,30 @@ textarea {
 }
 
 .directory-picker-empty p { margin: 0; font-size: 0.8rem; }
+
+/* A file is a destination, not a doorway: it gets its own mark and stays lit once picked, because
+   nothing else on screen changes when you click one. */
+.directory-picker-item.selected {
+    background: #2f3d4f;
+    color: #cfe3ff;
+}
+
+.directory-picker-item.selected:hover { background: #35465b; }
+
+.directory-picker-file svg { opacity: 0.75; }
+
+/* The path a question was answered with, with the picker one click away. */
+.user-prompt-path-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.user-prompt-path-row .user-prompt-other-input {
+    flex: 1;
+    min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8rem;
+}
+
+.user-prompt-path-row button { flex: none; }

@@ -4,10 +4,22 @@ using AI.Client.Contracts.FileSystem;
 
 public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerState
 {
+    /// <summary>Both are separators here: the host decides which, and it may not be this one.</summary>
+    private static readonly char[] Separators = ['\\', '/'];
+
     // Clicks arrive faster than a slow share answers, and the answers come back out of order.
     // Only the newest navigation may write to the state; an older one that finishes late is
     // dropped, so the list never jumps back to a folder the user already left.
     private int _operation;
+
+    /// <summary>
+    /// A path the user typed that resolves fine but is not there. Granting a directory that does
+    /// not exist yet is legitimate — the project may be cloned after the grant — and so is naming
+    /// a file that is about to be written, so this is offered with a warning rather than refused.
+    /// </summary>
+    private string? _missingPath;
+
+    public DirectoryPickerMode Mode { get; private set; }
 
     public DirectoryListing? Listing { get; private set; }
 
@@ -23,39 +35,44 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
 
     public string? WarningMessage { get; private set; }
 
-    /// <summary>
-    /// A path the user typed that resolves fine but is not there. Granting a directory that does
-    /// not exist yet is legitimate — the project it belongs to may be cloned after the grant — so
-    /// this is offered with a warning rather than refused.
-    /// </summary>
-    private string? _missingPath;
+    public string? SelectedFile { get; private set; }
 
-    public string? Selection => _missingPath ?? (Listing is { CurrentPath.Length: > 0 } listing ? listing.CurrentPath : null);
+    /// <summary>
+    /// In directory mode the folder you are standing in is the answer. In file mode standing in a
+    /// folder is not an answer at all — a file has to be named — so the selection stays empty until
+    /// one is clicked or typed.
+    /// </summary>
+    public string? Selection => Mode == DirectoryPickerMode.File
+        ? SelectedFile ?? _missingPath
+        : _missingPath ?? (Listing is { CurrentPath.Length: > 0 } listing ? listing.CurrentPath : null);
 
     public bool PathTextNamesSelection =>
         Selection is { } selection && string.Equals(PathText.Trim(), selection, StringComparison.OrdinalIgnoreCase);
 
     public bool CanGoUp => Listing?.ParentPath is not null;
 
-    public IReadOnlyList<DirectoryEntry> VisibleDirectories =>
-        Listing is not { } listing ? []
-        : Filter.Length == 0 ? listing.Directories
-        : listing.Directories.Where(item => item.Name.Contains(Filter, StringComparison.OrdinalIgnoreCase)).ToArray();
+    public IReadOnlyList<DirectoryEntry> VisibleDirectories => Visible(Listing?.Directories);
 
-    public async Task OpenAsync(string? startPath, CancellationToken cancellationToken)
+    // Directory mode does not ask for files, and does not show them if a host sends some anyway:
+    // what is on screen is what can be picked, and there a file cannot be.
+    public IReadOnlyList<DirectoryEntry> VisibleFiles =>
+        Mode == DirectoryPickerMode.File ? Visible(Listing?.Files) : [];
+
+    public async Task OpenAsync(string? startPath, DirectoryPickerMode mode, CancellationToken cancellationToken)
     {
+        Mode = mode;
         Listing = null;
         PathText = string.Empty;
         Filter = string.Empty;
         ErrorMessage = null;
         WarningMessage = null;
+        SelectedFile = null;
         _missingPath = null;
         IsUnavailable = false;
 
-        // A remembered starting directory can have been deleted since the last time. That is not
-        // worth an error — the picker opens at the drives instead, which is where it would have
-        // opened had nothing been remembered.
-        if (!string.IsNullOrWhiteSpace(startPath) && await LoadAsync(startPath, cancellationToken))
+        // Being handed a file to start from is the normal way to reopen a question already answered:
+        // the folder it lives in is where the walk resumes, with the file still picked.
+        if (!string.IsNullOrWhiteSpace(startPath) && await StartAtAsync(startPath, cancellationToken))
         {
             return;
         }
@@ -77,6 +94,16 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
         }
     }
 
+    public void SelectFile(string path)
+    {
+        if (Mode != DirectoryPickerMode.File || string.IsNullOrEmpty(path)) return;
+        SelectedFile = path;
+        PathText = path;
+        _missingPath = null;
+        ErrorMessage = null;
+        WarningMessage = null;
+    }
+
     public Task GoUpAsync(CancellationToken cancellationToken) =>
         Listing?.ParentPath is { } parent ? NavigateAsync(parent, cancellationToken) : Task.CompletedTask;
 
@@ -89,6 +116,7 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
             return;
         }
 
+        // A directory answers for itself: going there is what was meant, in either mode.
         if (await LoadAsync(typed, cancellationToken))
         {
             return;
@@ -109,15 +137,66 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
             return;
         }
 
+        if (probe.FileExists)
+        {
+            if (Mode == DirectoryPickerMode.Directory)
+            {
+                ErrorMessage = $"'{probe.CanonicalPath}' is a file, not a directory.";
+                return;
+            }
+
+            // Opening the folder around it is what makes the pick visible: a file named into the
+            // box and then shown nowhere looks like nothing happened.
+            await OpenParentOfAsync(probe.CanonicalPath, cancellationToken);
+            SelectFile(probe.CanonicalPath);
+            return;
+        }
+
         _missingPath = probe.CanonicalPath;
+        SelectedFile = null;
         PathText = probe.CanonicalPath;
         ErrorMessage = null;
-        WarningMessage = $"'{probe.CanonicalPath}' does not exist yet. It can still be granted.";
+        WarningMessage = Mode == DirectoryPickerMode.File
+            ? $"'{probe.CanonicalPath}' does not exist yet. It can still be named."
+            : $"'{probe.CanonicalPath}' does not exist yet. It can still be granted.";
     }
 
     public void SetPathText(string value) => PathText = value;
 
     public void SetFilter(string value) => Filter = value;
+
+    private IReadOnlyList<DirectoryEntry> Visible(IReadOnlyList<DirectoryEntry>? entries) =>
+        entries is null ? []
+        : Filter.Length == 0 ? entries
+        : entries.Where(item => item.Name.Contains(Filter, StringComparison.OrdinalIgnoreCase)).ToArray();
+
+    /// <summary>
+    /// Opens the place a remembered path points at. A directory is opened; a file opens the folder
+    /// around it and is picked. Anything else is a path that has gone, which is not worth an error:
+    /// the picker falls back to the roots, where it would have opened had nothing been remembered.
+    /// </summary>
+    private async Task<bool> StartAtAsync(string startPath, CancellationToken cancellationToken)
+    {
+        if (await LoadAsync(startPath, cancellationToken))
+        {
+            return true;
+        }
+
+        if (Mode != DirectoryPickerMode.File) return false;
+
+        var probe = await api.ResolveAsync(startPath, cancellationToken);
+        if (probe is not { FileExists: true }) return false;
+        if (!await OpenParentOfAsync(probe.CanonicalPath, cancellationToken)) return false;
+
+        SelectFile(probe.CanonicalPath);
+        return true;
+    }
+
+    private async Task<bool> OpenParentOfAsync(string path, CancellationToken cancellationToken)
+    {
+        var separator = path.LastIndexOfAny(Separators);
+        return separator > 0 && await LoadAsync(path[..separator], cancellationToken);
+    }
 
     private async Task LoadRootsAsync(CancellationToken cancellationToken)
     {
@@ -151,7 +230,7 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
         IsLoading = true;
         try
         {
-            var listing = await api.ListAsync(path, cancellationToken);
+            var listing = await api.ListAsync(path, Mode == DirectoryPickerMode.File, cancellationToken);
             // A newer navigation already owns the state; this answer is reported as handled so the
             // caller does not start a third one on top of the two already in flight.
             if (operation != _operation) return true;
@@ -175,6 +254,7 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
         Listing = listing;
         PathText = listing.CurrentPath;
         Filter = string.Empty;
+        SelectedFile = null;
         _missingPath = null;
         ErrorMessage = null;
         WarningMessage = listing.IsAccessible ? null : $"'{listing.CurrentPath}' cannot be opened, so its contents are not shown.";

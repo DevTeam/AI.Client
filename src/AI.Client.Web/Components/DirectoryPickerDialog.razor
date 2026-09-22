@@ -4,17 +4,17 @@
 
 @* Picking, not typing: the host walks its own file system for us because the browser cannot name
    an absolute path. The path box stays anyway — pasting a path is faster than clicking down to it,
-   and it is the only way in when the list is long or the directory is not there yet. *@
+   and it is the only way in when the list is long or the thing is not there yet. *@
 <div class="modal-backdrop" @onclick="CancelAsync">
     <section class="directory-picker-modal" role="dialog" aria-modal="true" aria-labelledby="directory-picker-title"
              @onclick:stopPropagation="true" @onkeydown="OnKeyDownAsync">
         <header>
-            <div><strong id="directory-picker-title">Select directory</strong><span>@Subtitle</span></div>
-            <button class="icon-action" type="button" title="Close" aria-label="Close directory picker" @onclick="CancelAsync"><AppIcon Name="x" /></button>
+            <div><strong id="directory-picker-title">@Title</strong><span>@Subtitle</span></div>
+            <button class="icon-action" type="button" title="Close" aria-label="Close picker" @onclick="CancelAsync"><AppIcon Name="x" /></button>
         </header>
         <div class="directory-picker-toolbar">
             <button class="icon-action" type="button" title="Up one level" aria-label="Up one level" disabled="@(!Picker.CanGoUp || Picker.IsLoading)" @onclick="GoUpAsync"><AppIcon Name="arrow-up" /></button>
-            <input class="directory-picker-path" @ref="_pathInput" value="@Picker.PathText" aria-label="Directory path" placeholder="Type or paste a path"
+            <input class="directory-picker-path" @ref="_pathInput" value="@Picker.PathText" aria-label="@PathLabel" placeholder="Type or paste a path"
                    @oninput="e => Picker.SetPathText(e.Value?.ToString() ?? string.Empty)" @onkeydown="OnPathKeyDownAsync" />
             <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" @onclick="GoToTypedPathAsync">Go</button>
         </div>
@@ -29,15 +29,15 @@
             }
             else
             {
-                <input class="directory-picker-filter" type="search" value="@Picker.Filter" aria-label="Filter directories" placeholder="Filter"
+                <input class="directory-picker-filter" type="search" value="@Picker.Filter" aria-label="@FilterLabel" placeholder="Filter"
                        @oninput="e => Picker.SetFilter(e.Value?.ToString() ?? string.Empty)" @onkeydown="OnFilterKeyDownAsync" />
                 @if (Picker.IsLoading && Picker.Listing is null)
                 {
                     <p class="empty-hint">Loading…</p>
                 }
-                else if (Picker.VisibleDirectories.Count == 0)
+                else if (Picker.VisibleDirectories.Count == 0 && Picker.VisibleFiles.Count == 0)
                 {
-                    <p class="empty-hint">@(Picker.Filter.Length > 0 ? "Nothing matches the filter." : "No subdirectories here.")</p>
+                    <p class="empty-hint">@EmptyText</p>
                 }
                 else
                 {
@@ -50,6 +50,17 @@
                                 </button>
                             </li>
                         }
+                        @* Files come after the folders and do not open: clicking one is the answer,
+                           which is the whole difference between the two modes. *@
+                        @foreach (var entry in Picker.VisibleFiles)
+                        {
+                            <li>
+                                <button type="button" class="directory-picker-item directory-picker-file @(Picker.SelectedFile == entry.FullPath ? "selected" : null)"
+                                        title="@entry.FullPath" aria-pressed="@(Picker.SelectedFile == entry.FullPath)" @onclick="() => SelectFile(entry.FullPath)">
+                                    <AppIcon Name="file" /><span>@entry.Name</span>
+                                </button>
+                            </li>
+                        }
                     </ul>
                 }
             }
@@ -57,7 +68,7 @@
             @if (Picker.ErrorMessage is { } error) { <p class="error" role="alert">@error</p> }
         </div>
         <footer class="settings-modal-actions directory-picker-actions">
-            <span class="directory-picker-selection" title="@Picker.Selection">@(Picker.Selection ?? "No directory selected")</span>
+            <span class="directory-picker-selection" title="@Picker.Selection">@(Picker.Selection ?? NothingSelectedText)</span>
             <button type="button" disabled="@(Picker.Selection is null)" @onclick="SelectAsync">Select</button>
             <button type="button" class="secondary-action" @onclick="CancelAsync">Cancel</button>
         </footer>
@@ -65,10 +76,13 @@
 </div>
 
 @code {
-    /// <summary>Where the picker opens. The last directory browsed, or the grant being edited.</summary>
+    /// <summary>Whether a directory or a file is being asked for.</summary>
+    [Parameter] public DirectoryPickerMode Mode { get; set; } = DirectoryPickerMode.Directory;
+
+    /// <summary>Where the picker opens. The last path browsed, or the one being changed.</summary>
     [Parameter] public string? StartPath { get; set; }
 
-    /// <summary>What the picked directory is for, shown under the title.</summary>
+    /// <summary>What the picked path is for, shown under the title.</summary>
     [Parameter] public string Subtitle { get; set; } = string.Empty;
 
     [Parameter] public EventCallback<string> Selected { get; set; }
@@ -79,7 +93,17 @@
     private ElementReference _pathInput;
     private bool _focusPending = true;
 
-    protected override Task OnInitializedAsync() => Picker.OpenAsync(StartPath, _cancellation.Token);
+    private bool IsFileMode => Mode == DirectoryPickerMode.File;
+    private string Title => IsFileMode ? "Select file" : "Select directory";
+    private string PathLabel => IsFileMode ? "File path" : "Directory path";
+    private string FilterLabel => IsFileMode ? "Filter files and directories" : "Filter directories";
+    private string NothingSelectedText => IsFileMode ? "No file selected" : "No directory selected";
+
+    private string EmptyText => Picker.Filter.Length > 0
+        ? "Nothing matches the filter."
+        : IsFileMode ? "This folder is empty." : "No subdirectories here.";
+
+    protected override Task OnInitializedAsync() => Picker.OpenAsync(StartPath, Mode, _cancellation.Token);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -96,6 +120,8 @@
         await Picker.NavigateAsync(path, _cancellation.Token);
         StateHasChanged();
     }
+
+    private void SelectFile(string path) => Picker.SelectFile(path);
 
     private async Task GoUpAsync()
     {
@@ -114,9 +140,9 @@
     private Task CancelAsync() => Cancelled.InvokeAsync();
 
     /// <summary>
-    /// Enter takes the directory; Escape drops the whole thing. In the path box Enter first has to
+    /// Enter takes the path; Escape drops the whole thing. In the path box Enter first has to
     /// honour what was typed there — a pasted path is a destination, not a choice — so it goes
-    /// there, and the Enter after that, with the box now naming where you are, selects it.
+    /// there, and the Enter after that, with the box now naming what is picked, selects it.
     /// </summary>
     private async Task OnPathKeyDownAsync(KeyboardEventArgs args)
     {
@@ -130,9 +156,9 @@
         if (args.Key == "Enter") await SelectAsync();
     }
 
-    // Enter on a directory in the list is that button's own click — it opens the folder, which is
-    // what a focused row means by Enter. Only Escape is handled for the dialog as a whole, so the
-    // two never fire for one keystroke.
+    // Enter on a row in the list is that button's own click — it opens the folder, or picks the
+    // file. Only Escape is handled for the dialog as a whole, so the two never fire for one
+    // keystroke.
     private async Task OnKeyDownAsync(KeyboardEventArgs args)
     {
         if (args.Key == "Escape") await CancelAsync();

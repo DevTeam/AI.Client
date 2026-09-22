@@ -2,6 +2,7 @@
    inline at the end of the transcript rather than over it: the question belongs to this chat, and
    the other chats in the window are still working. *@
 @using AI.Client.Contracts.Runs
+@using AI.Client.Web.FileSystem
 @using AI.Client.Web.Markdown
 @inject IMarkdownRenderer MarkdownRenderer
 
@@ -38,7 +39,32 @@
                     </span>
                 </label>
             }
-            @if (question.AllowOther)
+            @if (PathMode(question) is { } mode)
+            {
+                @* A path is the one answer nobody should be typing from memory, so the free-text
+                   slot becomes a box with the host's own file browser behind it. It still travels
+                   as free text, which is why the model needs no new answer shape to read it. *@
+                <label class="user-prompt-option user-prompt-other user-prompt-path">
+                    <input type="@(question.MultiSelect ? "checkbox" : "radio")"
+                           name="@($"{Prompt.Id}-{question.Id}")"
+                           checked="@(_other[questionIndex] is { Length: > 0 })"
+                           disabled="@_sending"
+                           @onchange="args => SelectOther(questionIndex, question.MultiSelect, args)" />
+                    <span>
+                        <span class="user-prompt-option-label">@(mode == DirectoryPickerMode.File ? "File" : "Directory")</span>
+                        <span class="user-prompt-path-row">
+                            <input class="user-prompt-other-input" type="text" disabled="@_sending"
+                                   placeholder="@(mode == DirectoryPickerMode.File ? "Path to a file" : "Path to a directory")"
+                                   aria-label="@(mode == DirectoryPickerMode.File ? "File path" : "Directory path")"
+                                   value="@_other[questionIndex]"
+                                   @oninput="args => TypeOther(questionIndex, args)" />
+                            <button class="secondary-action compact-action" type="button" disabled="@_sending"
+                                    @onclick="() => OpenPicker(questionIndex, mode)" @onkeydown:stopPropagation="true">Browse…</button>
+                        </span>
+                    </span>
+                </label>
+            }
+            else if (question.AllowOther)
             {
                 <label class="user-prompt-option user-prompt-other">
                     <input type="@(question.MultiSelect ? "checkbox" : "radio")"
@@ -87,6 +113,13 @@
     @if (_error is not null) { <p class="user-prompt-error" role="alert">@_error</p> }
 </section>
 
+@if (_pickerQuestion is { } picking)
+{
+    <DirectoryPickerDialog Mode="_pickerMode" StartPath="@_other.GetValueOrDefault(picking)"
+                           Subtitle="@Prompt.Questions[picking].Label"
+                           Selected="path => PickedAsync(picking, path)" Cancelled="ClosePicker" />
+}
+
 @code {
     [Parameter, EditorRequired] public UserPrompt Prompt { get; set; } = default!;
 
@@ -98,6 +131,35 @@
     private bool _sending;
     private string? _error;
     private Guid _rendered;
+    private int? _pickerQuestion;
+    private DirectoryPickerMode _pickerMode;
+
+    /// <summary>Which picker a question wants, or null for a question that is not about a path.</summary>
+    private static DirectoryPickerMode? PathMode(UserPromptQuestion question) => question.PathKind switch
+    {
+        "directory" => DirectoryPickerMode.Directory,
+        "file" => DirectoryPickerMode.File,
+        _ => null
+    };
+
+    private void OpenPicker(int question, DirectoryPickerMode mode)
+    {
+        _pickerQuestion = question;
+        _pickerMode = mode;
+    }
+
+    private void ClosePicker() => _pickerQuestion = null;
+
+    /// <summary>
+    /// A picked path is an answer, not just text in a box: it goes in through the same door typing
+    /// does, so choosing it also ticks the question the way typing would.
+    /// </summary>
+    private Task PickedAsync(int question, string path)
+    {
+        _pickerQuestion = null;
+        TypeOther(question, new ChangeEventArgs { Value = path });
+        return Task.CompletedTask;
+    }
 
     private bool IsReady => Prompt.Questions
         .Select((_, index) => _selected.GetValueOrDefault(index)?.Count > 0
@@ -120,6 +182,7 @@
 
         _sending = false;
         _error = null;
+        _pickerQuestion = null;
     }
 
     private bool IsSelected(int question, int option) => _selected[question].Contains(option);

@@ -12,10 +12,16 @@ using Xunit;
 public class DirectoryPickerStateTests
 {
     private static readonly DirectoryListing Roots = new(
-        string.Empty, null, true, [new DirectoryEntry("/", "/")]);
+        string.Empty, null, true, [new DirectoryEntry("/", "/")], []);
 
     private static readonly DirectoryListing Projects = new(
-        "/projects", "/", true, [new DirectoryEntry("Alpha", "/projects/Alpha"), new DirectoryEntry("beta", "/projects/beta")]);
+        "/projects", "/", true,
+        [new DirectoryEntry("Alpha", "/projects/Alpha"), new DirectoryEntry("beta", "/projects/beta")],
+        []);
+
+    private static readonly DirectoryListing Alpha = new(
+        "/projects/Alpha", "/projects", true, [],
+        [new DirectoryEntry("one.txt", "/projects/Alpha/one.txt"), new DirectoryEntry("two.md", "/projects/Alpha/two.md")]);
 
     private readonly Mock<IFileSystemApi> _api = new(MockBehavior.Strict);
 
@@ -26,7 +32,7 @@ public class DirectoryPickerStateTests
         .ReturnsAsync(Roots);
 
     private void SetupListing(string path, DirectoryListing? listing) => _api
-        .Setup(api => api.ListAsync(path, It.IsAny<CancellationToken>()))
+        .Setup(api => api.ListAsync(path, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
         .ReturnsAsync(listing);
 
     [Fact]
@@ -35,7 +41,7 @@ public class DirectoryPickerStateTests
         SetupListing("/projects", Projects);
         var state = CreateState();
 
-        await state.OpenAsync("/projects", TestContext.Current.CancellationToken);
+        await state.OpenAsync("/projects", DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         state.Listing.ShouldBe(Projects);
         state.PathText.ShouldBe("/projects");
@@ -51,7 +57,7 @@ public class DirectoryPickerStateTests
         SetupRoots();
         var state = CreateState();
 
-        await state.OpenAsync("/gone", TestContext.Current.CancellationToken);
+        await state.OpenAsync("/gone", DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         state.Listing.ShouldBe(Roots);
         state.ErrorMessage.ShouldBeNull();
@@ -63,7 +69,7 @@ public class DirectoryPickerStateTests
         SetupRoots();
         var state = CreateState();
 
-        await state.OpenAsync(null, TestContext.Current.CancellationToken);
+        await state.OpenAsync(null, DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         state.Selection.ShouldBeNull();
         state.CanGoUp.ShouldBeFalse();
@@ -75,7 +81,7 @@ public class DirectoryPickerStateTests
         _api.Setup(api => api.ListRootsAsync(It.IsAny<CancellationToken>())).ReturnsAsync((DirectoryListing?)null);
         var state = CreateState();
 
-        await state.OpenAsync(null, TestContext.Current.CancellationToken);
+        await state.OpenAsync(null, DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         state.IsUnavailable.ShouldBeTrue();
         state.Listing.ShouldBeNull();
@@ -85,10 +91,10 @@ public class DirectoryPickerStateTests
     public async Task GoingUpFromARootReachesTheRootsLevel()
     {
         SetupListing("/projects", Projects);
-        SetupListing("/", new DirectoryListing("/", string.Empty, true, []));
+        SetupListing("/", new DirectoryListing("/", string.Empty, true, [], []));
         SetupRoots();
         var state = CreateState();
-        await state.OpenAsync("/projects", TestContext.Current.CancellationToken);
+        await state.OpenAsync("/projects", DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         await state.GoUpAsync(TestContext.Current.CancellationToken);
         await state.GoUpAsync(TestContext.Current.CancellationToken);
@@ -101,7 +107,7 @@ public class DirectoryPickerStateTests
     {
         SetupListing("/projects", Projects);
         var state = CreateState();
-        await state.OpenAsync("/projects", TestContext.Current.CancellationToken);
+        await state.OpenAsync("/projects", DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         state.SetFilter("B");
 
@@ -112,9 +118,9 @@ public class DirectoryPickerStateTests
     public async Task ClearsTheFilterOnNavigationSoTheNextFolderIsNotSilentlyEmpty()
     {
         SetupListing("/projects", Projects);
-        SetupListing("/projects/Alpha", new DirectoryListing("/projects/Alpha", "/projects", true, []));
+        SetupListing("/projects/Alpha", new DirectoryListing("/projects/Alpha", "/projects", true, [], []));
         var state = CreateState();
-        await state.OpenAsync("/projects", TestContext.Current.CancellationToken);
+        await state.OpenAsync("/projects", DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
         state.SetFilter("zzz");
 
         await state.NavigateAsync("/projects/Alpha", TestContext.Current.CancellationToken);
@@ -130,9 +136,9 @@ public class DirectoryPickerStateTests
         SetupRoots();
         SetupListing("/later", null);
         _api.Setup(api => api.ResolveAsync("/later", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new DirectoryProbe("/later", false, true));
+            .ReturnsAsync(new DirectoryProbe("/later", true, false, false));
         var state = CreateState();
-        await state.OpenAsync(null, TestContext.Current.CancellationToken);
+        await state.OpenAsync(null, DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         state.SetPathText("/later");
         await state.GoToTypedPathAsync(TestContext.Current.CancellationToken);
@@ -149,9 +155,9 @@ public class DirectoryPickerStateTests
         SetupListing("/later", null);
         SetupListing("/projects", Projects);
         _api.Setup(api => api.ResolveAsync("/later", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new DirectoryProbe("/later", false, true));
+            .ReturnsAsync(new DirectoryProbe("/later", true, false, false));
         var state = CreateState();
-        await state.OpenAsync(null, TestContext.Current.CancellationToken);
+        await state.OpenAsync(null, DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
         state.SetPathText("/later");
         await state.GoToTypedPathAsync(TestContext.Current.CancellationToken);
 
@@ -166,10 +172,10 @@ public class DirectoryPickerStateTests
     [Fact]
     public async Task SaysSoWhenADirectoryRefusesToOpenButStillLetsItBeGranted()
     {
-        SetupListing("/locked", new DirectoryListing("/locked", "/", false, []));
+        SetupListing("/locked", new DirectoryListing("/locked", "/", false, [], []));
         var state = CreateState();
 
-        await state.OpenAsync("/locked", TestContext.Current.CancellationToken);
+        await state.OpenAsync("/locked", DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         state.WarningMessage.ShouldNotBeNull();
         state.ErrorMessage.ShouldBeNull();
@@ -184,7 +190,7 @@ public class DirectoryPickerStateTests
         SetupListing("/projects", Projects);
         var state = CreateState();
 
-        await state.OpenAsync("/projects", TestContext.Current.CancellationToken);
+        await state.OpenAsync("/projects", DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         state.PathTextNamesSelection.ShouldBeTrue();
     }
@@ -194,7 +200,7 @@ public class DirectoryPickerStateTests
     {
         SetupListing("/projects", Projects);
         var state = CreateState();
-        await state.OpenAsync("/projects", TestContext.Current.CancellationToken);
+        await state.OpenAsync("/projects", DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         state.SetPathText("/projects/Alpha");
 
@@ -209,9 +215,9 @@ public class DirectoryPickerStateTests
         SetupRoots();
         SetupListing("/later", null);
         _api.Setup(api => api.ResolveAsync("/later", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new DirectoryProbe("/later", false, true));
+            .ReturnsAsync(new DirectoryProbe("/later", true, false, false));
         var state = CreateState();
-        await state.OpenAsync(null, TestContext.Current.CancellationToken);
+        await state.OpenAsync(null, DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
         state.SetPathText("/later");
 
         await state.GoToTypedPathAsync(TestContext.Current.CancellationToken);
@@ -225,9 +231,138 @@ public class DirectoryPickerStateTests
         SetupRoots();
         var state = CreateState();
 
-        await state.OpenAsync(null, TestContext.Current.CancellationToken);
+        await state.OpenAsync(null, DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         state.PathTextNamesSelection.ShouldBeFalse();
+    }
+
+    // File mode -----------------------------------------------------------------------------
+
+    // Standing in a folder is an answer when a directory was asked for, and is not one when a file
+    // was: there, the folder is only how you got to the file.
+    [Fact]
+    public async Task OffersNothingUntilAFileIsPickedInFileMode()
+    {
+        SetupListing("/projects/Alpha", Alpha);
+        var state = CreateState();
+
+        await state.OpenAsync("/projects/Alpha", DirectoryPickerMode.File, TestContext.Current.CancellationToken);
+
+        state.Selection.ShouldBeNull();
+        state.VisibleFiles.Select(item => item.Name).ShouldBe(["one.txt", "two.md"]);
+    }
+
+    [Fact]
+    public async Task TakesTheFileThatWasClicked()
+    {
+        SetupListing("/projects/Alpha", Alpha);
+        var state = CreateState();
+        await state.OpenAsync("/projects/Alpha", DirectoryPickerMode.File, TestContext.Current.CancellationToken);
+
+        state.SelectFile("/projects/Alpha/two.md");
+
+        state.Selection.ShouldBe("/projects/Alpha/two.md");
+        state.PathText.ShouldBe("/projects/Alpha/two.md");
+    }
+
+    [Fact]
+    public async Task DropsThePickedFileOnceTheFolderChanges()
+    {
+        SetupListing("/projects/Alpha", Alpha);
+        SetupListing("/projects", Projects);
+        var state = CreateState();
+        await state.OpenAsync("/projects/Alpha", DirectoryPickerMode.File, TestContext.Current.CancellationToken);
+        state.SelectFile("/projects/Alpha/one.txt");
+
+        await state.GoUpAsync(TestContext.Current.CancellationToken);
+
+        state.SelectedFile.ShouldBeNull();
+        state.Selection.ShouldBeNull();
+    }
+
+    // Asking for files is what makes them arrive: a directory-mode listing must not pay for them.
+    [Fact]
+    public async Task AsksForFilesOnlyInFileMode()
+    {
+        SetupListing("/projects/Alpha", Alpha);
+        var state = CreateState();
+
+        await state.OpenAsync("/projects/Alpha", DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
+
+        state.VisibleFiles.ShouldBeEmpty();
+        _api.Verify(api => api.ListAsync("/projects/Alpha", false, It.IsAny<CancellationToken>()));
+    }
+
+    // A pasted file path should show where it lives, not just sit in the box: the folder around it
+    // opens and the file comes back picked.
+    [Fact]
+    public async Task OpensTheFolderAroundATypedFileAndPicksIt()
+    {
+        SetupRoots();
+        SetupListing("/projects/Alpha", Alpha);
+        SetupListing("/projects/Alpha/two.md", null);
+        _api.Setup(api => api.ResolveAsync("/projects/Alpha/two.md", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DirectoryProbe("/projects/Alpha/two.md", true, false, true));
+        var state = CreateState();
+        await state.OpenAsync(null, DirectoryPickerMode.File, TestContext.Current.CancellationToken);
+
+        state.SetPathText("/projects/Alpha/two.md");
+        await state.GoToTypedPathAsync(TestContext.Current.CancellationToken);
+
+        state.Listing!.CurrentPath.ShouldBe("/projects/Alpha");
+        state.Selection.ShouldBe("/projects/Alpha/two.md");
+    }
+
+    [Fact]
+    public async Task ReopensAtTheFolderOfTheFileItWasGiven()
+    {
+        SetupListing("/projects/Alpha", Alpha);
+        SetupListing("/projects/Alpha/one.txt", null);
+        _api.Setup(api => api.ResolveAsync("/projects/Alpha/one.txt", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DirectoryProbe("/projects/Alpha/one.txt", true, false, true));
+        var state = CreateState();
+
+        await state.OpenAsync("/projects/Alpha/one.txt", DirectoryPickerMode.File, TestContext.Current.CancellationToken);
+
+        state.Listing!.CurrentPath.ShouldBe("/projects/Alpha");
+        state.Selection.ShouldBe("/projects/Alpha/one.txt");
+    }
+
+    // Handing back a file where a directory was asked for would be answering a different question.
+    [Fact]
+    public async Task RefusesAFileWhenADirectoryWasAskedFor()
+    {
+        SetupRoots();
+        SetupListing("/projects/Alpha/two.md", null);
+        _api.Setup(api => api.ResolveAsync("/projects/Alpha/two.md", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DirectoryProbe("/projects/Alpha/two.md", true, false, true));
+        var state = CreateState();
+        await state.OpenAsync(null, DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
+
+        state.SetPathText("/projects/Alpha/two.md");
+        await state.GoToTypedPathAsync(TestContext.Current.CancellationToken);
+
+        state.ErrorMessage.ShouldNotBeNull();
+        state.Selection.ShouldBeNull();
+    }
+
+    // Naming a file that is about to be written is a real answer, same as granting a directory that
+    // does not exist yet.
+    [Fact]
+    public async Task OffersAFileThatIsNotThereYet()
+    {
+        SetupRoots();
+        SetupListing("/projects/Alpha/new.txt", null);
+        _api.Setup(api => api.ResolveAsync("/projects/Alpha/new.txt", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DirectoryProbe("/projects/Alpha/new.txt", true, false, false));
+        var state = CreateState();
+        await state.OpenAsync(null, DirectoryPickerMode.File, TestContext.Current.CancellationToken);
+
+        state.SetPathText("/projects/Alpha/new.txt");
+        await state.GoToTypedPathAsync(TestContext.Current.CancellationToken);
+
+        state.Selection.ShouldBe("/projects/Alpha/new.txt");
+        state.WarningMessage.ShouldNotBeNull();
     }
 
     // The tool server drops a grant whose root is relative without a word, so the picker has to
@@ -238,9 +373,9 @@ public class DirectoryPickerStateTests
         SetupRoots();
         SetupListing("some/relative/path", null);
         _api.Setup(api => api.ResolveAsync("some/relative/path", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new DirectoryProbe("some/relative/path", false, false));
+            .ReturnsAsync(new DirectoryProbe("some/relative/path", false, false, false));
         var state = CreateState();
-        await state.OpenAsync(null, TestContext.Current.CancellationToken);
+        await state.OpenAsync(null, DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         state.SetPathText("some/relative/path");
         await state.GoToTypedPathAsync(TestContext.Current.CancellationToken);
@@ -255,7 +390,7 @@ public class DirectoryPickerStateTests
         SetupListing("/projects", Projects);
         SetupListing("/projects/Alpha", null);
         var state = CreateState();
-        await state.OpenAsync("/projects", TestContext.Current.CancellationToken);
+        await state.OpenAsync("/projects", DirectoryPickerMode.Directory, TestContext.Current.CancellationToken);
 
         await state.NavigateAsync("/projects/Alpha", TestContext.Current.CancellationToken);
 

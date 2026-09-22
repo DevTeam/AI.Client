@@ -356,7 +356,8 @@ public sealed class AppSubtaskToolTests
                 new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()),
                 new ToolCatalogRegistry(), new ModelContentCheckpointService(), instructionRegistry,
                 new ModelInstructionComposer(instructionRegistry, new ContextTokenEstimator()),
-                Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol());
+                Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol(),
+                new ToolSearchDefinitionEnricher(new ContextTokenEstimator()));
             var presentations = new ToolPresentations(
                 new GenericToolPresentationAdapter(),
                 [

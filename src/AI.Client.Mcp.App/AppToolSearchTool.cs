@@ -17,8 +17,9 @@ public sealed class AppToolSearchTool(IToolCatalogRegistry catalog) : IAppTool
             new McpServerToolCreateOptions
             {
                 SerializerOptions = reply.Json,
-                Description = "Find tools that were omitted from this turn's schema budget. Search by the capability you need. "
-                              + "The matching tools become available on the next model step; do not guess an omitted tool name."
+                Description = "Call app_tool_search when the capability needed for the user's task is absent from the visible tool list. "
+                              + "Search with a short English capability description. Tools may have been omitted from this turn's schema "
+                              + "budget; matching permitted tools become available on the next model step. Do not guess an omitted tool name."
             });
 
         [McpServerTool(Name = "tool_search", ReadOnly = true, Destructive = false, Idempotent = true,

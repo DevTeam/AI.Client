@@ -1,4 +1,4 @@
-﻿namespace AI.Client.Mcp.App;
+namespace AI.Client.Mcp.App;
 
 using AI.Client.Application.Tools;
 using ModelContextProtocol.Protocol;
@@ -10,14 +10,14 @@ using ModelContextProtocol.Server;
 /// in its transport, which the caller supplies. Running it inside the Host is what gives it access
 /// to the application services; nothing about the protocol is shortcut to achieve that.
 /// </summary>
-public sealed class AppMcpServerHost(IEnumerable<IAppTool> tools) : IAppMcpServerHost
+public sealed class AppMcpServerHost(IEnumerable<IAppTool> tools, IAppToolReply reply) : IAppMcpServerHost
 {
     public const string Name = "App tools";
 
     public McpServer Create(ITransport transport, ToolRunContext run)
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
-        foreach (var tool in tools) collection.Add(tool.Create(run));
+        foreach (var tool in tools) collection.Add(tool.Create(run, reply));
         return McpServer.Create(transport, new McpServerOptions
         {
             ServerInfo = new Implementation { Name = Name, Version = "1.0.0" },

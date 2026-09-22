@@ -364,8 +364,8 @@ public sealed class AppSubtaskToolTests
                     new AppReadPresentationAdapter(), new AppWritePresentationAdapter(), new AppSubtaskPresentationAdapter(),
                 ]);
             IEnumerable<IAppTool> tools =
-                [new AppSubtaskTool(() => agent, Projects, Chats, _settings, _secrets, presentations, toolResultCodec)];
-            _sessions = new AppToolSessionFactory(new AppMcpServerHost(tools), modelProjector);
+                [new AppSubtaskTool(() => agent, Projects, Chats, _settings, _secrets, presentations, toolResultCodec, new AppToolReply())];
+            _sessions = new AppToolSessionFactory(new AppMcpServerHost(tools, new AppToolReply()), modelProjector);
         }
 
         public static async Task<SubtaskFixture> CreateAsync(bool withConnection = true)

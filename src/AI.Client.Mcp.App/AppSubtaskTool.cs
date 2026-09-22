@@ -1,4 +1,4 @@
-﻿namespace AI.Client.Mcp.App;
+namespace AI.Client.Mcp.App;
 
 using AI.Client.Application.Chat;
 using AI.Client.Application.Chats;
@@ -45,8 +45,8 @@ public sealed record SubtaskTranscript(IReadOnlyList<SubtaskTranscriptEntry> Tra
 /// Runs a task in a conversation of its own and hands back only its conclusion.
 /// </summary>
 /// <remarks>
-/// The point is the split between audiences. The subtask's whole exchange — its reasoning, every
-/// tool call and every tool result — goes into <c>_meta</c>, which the contract keeps out of the
+/// The point is the split between audiences. The subtask's whole exchange � its reasoning, every
+/// tool call and every tool result � goes into <c>_meta</c>, which the contract keeps out of the
 /// model-facing projection, so the user can open and read it while the caller pays context for the
 /// answer alone. Delegating work this way is cheaper than reading a second chat back, which would
 /// import exactly the text the delegation was meant to avoid.
@@ -62,7 +62,8 @@ public sealed class AppSubtaskTool(
     IGlobalSettingsRepository settings,
     IGlobalSecretStore secrets,
     IToolPresentations presentations,
-    IToolResultCodec toolResultCodec) : IAppTool
+    IToolResultCodec toolResultCodec,
+    IAppToolReply reply) : IAppTool
 {
     /// <summary>
     /// How many subtask runs may be in flight across the Host at once. A nested subtask holds its
@@ -81,20 +82,21 @@ public sealed class AppSubtaskTool(
 
     private static int _running;
 
-    public McpServerTool Create(ToolRunContext run) => new Session(this, run).Create();
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(this, run, reply).Create();
+    private CallToolResult Failed(string error) => reply.Reply(new SubtaskResult([], error), true);
 
     /// <summary>
     /// Binds the tool to the run that opened the session. The tool itself is shared by every
     /// session, so the calling run cannot be held on it; the call needs it because a subtask is
     /// tracked as a child of whoever delegated it, and what identifies that parent is its branch.
     /// </summary>
-    private sealed class Session(AppSubtaskTool tool, ToolRunContext run)
+    private sealed class Session(AppSubtaskTool tool, ToolRunContext run, IAppToolReply reply)
     {
         public McpServerTool Create() => McpServerTool.Create(
             RunAsync,
             new McpServerToolCreateOptions
             {
-                SerializerOptions = ToolReply.Json,
+                SerializerOptions = reply.Json,
                 Description = "Delegate work to a separate conversation and get back only its answer, so the details never enter your own "
                               + "context. Pass the project and chat you are running in: the subtask inherits their directory grants and tool "
                               + "policies. Each task answers through its own 'connectionId' if it names an enabled one, else the call's "
@@ -165,7 +167,7 @@ public sealed class AppSubtaskTool(
             var runs = tasks.Select((item, index) => RunOneAsync(run, projectId, chatId,
                 endpoints[index].Template, endpoints[index].Name, item.Task, index, board, cancellationToken)).ToArray();
             var completed = await Task.WhenAll(runs);
-            return ToolReply.Of(
+            return reply.Reply(
                 new SubtaskResult(completed.Select(item => item.Outcome).ToArray(), null),
                 new SubtaskTranscript(completed.SelectMany(item => item.Transcript).ToArray()),
                 completed.Any(item => item.Outcome.Error is not null));
@@ -183,7 +185,7 @@ public sealed class AppSubtaskTool(
         var transcript = new List<SubtaskTranscriptEntry>();
         var answer = new System.Text.StringBuilder();
         // A tool message names only the call it answers, so what that call was has to be remembered
-        // from the message before it — without it a result cannot be described, only dumped.
+        // from the message before it � without it a result cannot be described, only dumped.
         var made = new Dictionary<string, (string Name, string Arguments)>(StringComparer.Ordinal);
         var toolCalls = 0;
         board.Set(index, "starting");
@@ -250,7 +252,7 @@ public sealed class AppSubtaskTool(
     /// <summary>
     /// Turns one message of a subtask into a line a person can read. A tool result is stored as the
     /// protocol's own JSON, and dropping that into the transcript verbatim produces escaped JSON
-    /// inside escaped JSON — technically complete and practically unreadable. It is described by the
+    /// inside escaped JSON � technically complete and practically unreadable. It is described by the
     /// same adapters that describe every other tool result instead.
     /// </summary>
     private SubtaskTranscriptEntry Entry(
@@ -271,7 +273,7 @@ public sealed class AppSubtaskTool(
     /// the transcript is stored in the parent's history, where that cost is paid on every read.
     /// </summary>
     private static string Clamp(string? text) =>
-        text is null ? string.Empty : text.Length <= MaxEntryLength ? text : text[..MaxEntryLength] + "…";
+        text is null ? string.Empty : text.Length <= MaxEntryLength ? text : text[..MaxEntryLength] + "�";
 
     /// <summary>
     /// The connection the subtask speaks through: the one it was given, else one of those marked
@@ -293,8 +295,8 @@ public sealed class AppSubtaskTool(
             ?? throw new InvalidOperationException("Project not found.");
         var global = await settings.LoadAsync(cancellationToken);
         // Naming a connection is exact and fails loudly. Naming none falls back to the ones marked
-        // for subtasks — the whole point of that mark is that delegated work need not cost what the
-        // conversation costs — and only then to whatever the conversation itself runs on.
+        // for subtasks � the whole point of that mark is that delegated work need not cost what the
+        // conversation costs � and only then to whatever the conversation itself runs on.
         var marked = global.Connections.Where(item => item.ForSubtasks && item.Enabled).ToArray();
         var connection = requested is { } named
             ? global.Connections.SingleOrDefault(item => item.Id == named && item.Enabled)
@@ -308,7 +310,7 @@ public sealed class AppSubtaskTool(
             connection.Name);
     }
 
-    private static CallToolResult Failed(string error) => ToolReply.Of(new SubtaskResult([], error), true);
+
 
     /// <summary>
     /// What every subtask is doing right now, collapsed into one line for the caller's progress
@@ -348,13 +350,13 @@ public sealed class AppSubtaskTool(
                 finished = _finished;
                 // One subtask needs no numbering; several do, or the line says nothing about which
                 // of them is where.
-                message = string.Join(" · ", _state
+                message = string.Join(" � ", _state
                     .Select((what, index) => what is null ? null : total == 1 ? what : $"{index + 1}: {what}")
                     .OfType<string>());
             }
 
             if (finished > 0 && total > 1)
-                message = message.Length == 0 ? $"{finished}/{total} done" : $"{finished}/{total} done · {message}";
+                message = message.Length == 0 ? $"{finished}/{total} done" : $"{finished}/{total} done � {message}";
             sink.Report(new ProgressNotificationValue { Progress = finished, Total = total, Message = message });
         }
     }

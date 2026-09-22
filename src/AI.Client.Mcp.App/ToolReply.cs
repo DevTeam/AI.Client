@@ -2,23 +2,12 @@ namespace AI.Client.Mcp.App;
 
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Protocol;
 
-/// <summary>
-/// Builds MCP results whose structured content always matches the declared output schema,
-/// including failures: the Host validates every result against that schema.
-/// </summary>
-internal static class ToolReply
+public sealed class AppToolReply : IAppToolReply
 {
-    /// <summary>
-    /// The one serializer the server uses for arguments, results and schema generation alike, so
-    /// an enum is spelled the same way in the tool's schema and in the value it reads back.
-    /// Relaxed escaping keeps non-ASCII chat content from inflating roughly sixfold on its way to
-    /// the model, exactly as the built-in server does.
-    /// </summary>
-    public static readonly JsonSerializerOptions Json = Configure();
+    public JsonSerializerOptions Json { get; } = Configure();
 
     private static JsonSerializerOptions Configure()
     {
@@ -33,7 +22,7 @@ internal static class ToolReply
         return options;
     }
 
-    public static CallToolResult Of<T>(T value, bool isError = false)
+    public CallToolResult Reply<T>(T value, bool isError = false)
     {
         var structured = JsonSerializer.SerializeToElement(value, Json);
         return new CallToolResult
@@ -44,15 +33,9 @@ internal static class ToolReply
         };
     }
 
-    /// <summary>
-    /// A result with a second half addressed to the Host and the UI rather than to the model.
-    /// <c>_meta</c> is excluded from the model-facing projection by contract, which is what lets a
-    /// tool hand back something large for a person to read without spending the model's context on
-    /// it.
-    /// </summary>
-    public static CallToolResult Of<T, TMeta>(T value, TMeta meta, bool isError = false)
+    public CallToolResult Reply<T, TMeta>(T value, TMeta meta, bool isError = false)
     {
-        var result = Of(value, isError);
+        var result = Reply(value, isError);
         result.Meta = JsonSerializer.SerializeToNode(meta, Json)?.AsObject();
         return result;
     }

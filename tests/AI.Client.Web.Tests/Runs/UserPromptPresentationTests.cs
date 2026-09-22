@@ -12,6 +12,7 @@ using Xunit;
 /// </summary>
 public sealed class UserPromptPresentationTests
 {
+    private readonly RunStatusPresentation _status = new();
     private static ChatRunSnapshot Run(UserPrompt? prompt) => new(
         Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), ChatRunStatus.Generating, string.Empty, [], false, null, 1,
         PendingPrompt: prompt);
@@ -25,11 +26,11 @@ public sealed class UserPromptPresentationTests
         var waiting = Run(Prompt());
 
         // Someone looking at another chat has to be able to see that this one stopped for them.
-        RunStatusPresentation.HasVisibleAttention(waiting).ShouldBeTrue();
-        RunStatusPresentation.GetStatusClass(waiting).ShouldBe("run-status-attention");
-        RunStatusPresentation.GetStatusTooltip(waiting).ShouldBe("Waiting for your answer");
+        _status.HasVisibleAttention(waiting).ShouldBeTrue();
+        _status.GetStatusClass(waiting).ShouldBe("run-status-attention");
+        _status.GetStatusTooltip(waiting).ShouldBe("Waiting for your answer");
 
-        RunStatusPresentation.HasVisibleAttention(Run(null)).ShouldBeFalse();
+        _status.HasVisibleAttention(Run(null)).ShouldBeFalse();
     }
 
     [Fact]

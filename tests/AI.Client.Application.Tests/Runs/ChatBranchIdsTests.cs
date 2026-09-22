@@ -16,7 +16,7 @@ public sealed class ChatBranchIdsTests
         var chat = new ChatDetails(chatId, Guid.NewGuid(), "Chat", DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch, 1, null, [],
             [new ChatBranchView(chatId, null, "Main"), new ChatBranchView(branchId, null, "Alternative", chatId)]);
-        ChatBranchIds.Get(chat).ShouldBe(new HashSet<Guid> { chatId, branchId }, ignoreOrder: true);
+        new ChatBranchIds().Collect(chat).ShouldBe(new HashSet<Guid> { chatId, branchId }, ignoreOrder: true);
     }
 
     [Fact]

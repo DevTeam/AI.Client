@@ -98,7 +98,7 @@ The card sits at the end of the feed, where the confirmation card sits, and for 
 | Partial answer | allowed. `Answer` is always active; questions with no selection are sent empty, and `guidance` names them one by one, so the model does not ask again |
 | Refusal | `Decide yourself` button → `dismissed`. An empty "answer" also becomes `dismissed`: it is the same thing with a worse record |
 | Composer | while the question is open, sent text becomes a free answer to the first question that accepts it. Placeholder is "Answer the question above…". A queue would mean a quiet deadlock: the person writes an answer at the bottom and gets it delivered after 15 minutes |
-| Keyboard | standard radio/checkbox semantics — Tab, arrows, Enter. No custom hooks |
+| Keyboard | standard radio/checkbox semantics. Once every question has an answer, the card says so and Enter submits the answers and continues the chat; action buttons keep their native Enter behavior |
 | Markdown | inline subset in the question text (emphasis, code, links). Options and descriptions are always plain text: they are button captions |
 | "Other" | a field next to the option; typing text selects it. With zero options, the card looks like a regular input with the question as its heading |
 | Attention | an "attention required" marker in the chat list, the same one a confirmation uses. No system notifications or sound |

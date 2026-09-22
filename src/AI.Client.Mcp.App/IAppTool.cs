@@ -1,4 +1,4 @@
-﻿namespace AI.Client.Mcp.App;
+namespace AI.Client.Mcp.App;
 
 using AI.Client.Application.Tools;
 using ModelContextProtocol.Server;
@@ -10,5 +10,5 @@ using ModelContextProtocol.Server;
 /// </summary>
 public interface IAppTool
 {
-    McpServerTool Create(ToolRunContext run);
+    McpServerTool Create(ToolRunContext run, IAppToolReply reply);
 }

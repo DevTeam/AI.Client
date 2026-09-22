@@ -8,6 +8,8 @@ using Xunit;
 
 public class ToolUserInterfaceTests
 {
+    private readonly ToolUserInterface _ui = new();
+
     private static ToolDescriptor WithMeta(string? meta) => new(
         "mcp_other__edit_files", "edit_files", null, null,
         JsonDocument.Parse("{}").RootElement.Clone(), null, null, [],
@@ -18,8 +20,8 @@ public class ToolUserInterfaceTests
     {
         var tool = WithMeta("""{"ui":{"resourceUri":"ui://filesystem/changes"}}""");
 
-        ToolUserInterface.ResourceUri(tool).ShouldBe("ui://filesystem/changes");
-        ToolUserInterface.DeclaresApp(tool).ShouldBeTrue();
+        _ui.ResourceUri(tool).ShouldBe("ui://filesystem/changes");
+        _ui.DeclaresApp(tool).ShouldBeTrue();
     }
 
     [Theory]
@@ -31,7 +33,7 @@ public class ToolUserInterfaceTests
     [InlineData("""{"ui":{"resourceUri":"  "}}""")]
     public void ShouldTreatAnythingElseAsNoDeclaration(string? meta)
     {
-        ToolUserInterface.DeclaresApp(WithMeta(meta)).ShouldBeFalse();
+        _ui.DeclaresApp(WithMeta(meta)).ShouldBeFalse();
     }
 
     [Theory]
@@ -45,7 +47,7 @@ public class ToolUserInterfaceTests
         // server that puts something else there gets nothing, not a navigation.
         var tool = WithMeta(JsonSerializer.Serialize(new { ui = new { resourceUri = uri } }));
 
-        ToolUserInterface.ResourceUri(tool).ShouldBeNull();
+        _ui.ResourceUri(tool).ShouldBeNull();
     }
 
     [Fact]
@@ -54,7 +56,7 @@ public class ToolUserInterfaceTests
         // Rendering a server-supplied view is only safe with the extension's full contract —
         // sandboxed frame, deny-by-default CSP, AppBridge, size lifecycle — which the current MCP
         // SDK does not provide. Declaring support without it would be the security hole.
-        ToolUserInterface.IsEnabled.ShouldBeFalse();
+        _ui.IsEnabled.ShouldBeFalse();
     }
 
     [Fact]

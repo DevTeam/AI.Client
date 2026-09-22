@@ -9,6 +9,8 @@ namespace AI.Client.Web.Tests.Components;
 
 public sealed class ChatFeedTests
 {
+    private readonly ChatFeed _feed = new();
+
     private static DateTimeOffset _clock = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     private static ChatMessageView Message(
@@ -37,14 +39,14 @@ public sealed class ChatFeedTests
 
         var question = User("Разберись");
 
-        var items = ChatFeed.BuildFeedItems([question, preamble, result]);
+        var items = _feed.BuildFeedItems([question, preamble, result]);
 
         // The explanation and the calls it announced are one block: the group carries both, and
         // the markup renders the text above the tool rows.
         items.Count.ShouldBe(2);
         items[0].Message.ShouldBe(question);
         items[1].ToolGroup.ShouldBe(new[] { preamble, result });
-        ChatFeed.PreambleOf(items[1].ToolGroup!).ShouldBe(preamble);
+        _feed.PreambleOf(items[1].ToolGroup!).ShouldBe(preamble);
     }
 
     [Fact]
@@ -52,10 +54,10 @@ public sealed class ChatFeedTests
     {
         var silent = Assistant(string.Empty, "call-1");
 
-        var items = ChatFeed.BuildFeedItems([silent, ToolResult("call-1")]);
+        var items = _feed.BuildFeedItems([silent, ToolResult("call-1")]);
 
         items.Count.ShouldBe(1);
-        ChatFeed.PreambleOf(items[0].ToolGroup!).ShouldBeNull();
+        _feed.PreambleOf(items[0].ToolGroup!).ShouldBeNull();
     }
 
     [Fact]
@@ -63,10 +65,10 @@ public sealed class ChatFeedTests
     {
         var blank = Assistant("   \n  ", "call-1");
 
-        var items = ChatFeed.BuildFeedItems([blank, ToolResult("call-1")]);
+        var items = _feed.BuildFeedItems([blank, ToolResult("call-1")]);
 
         items.Count.ShouldBe(1);
-        ChatFeed.PreambleOf(items[0].ToolGroup!).ShouldBeNull();
+        _feed.PreambleOf(items[0].ToolGroup!).ShouldBeNull();
     }
 
     [Fact]
@@ -79,7 +81,7 @@ public sealed class ChatFeedTests
         var secondResult = ToolResult("call-2");
         var answer = Assistant("Причина в условии группировки.");
 
-        var items = ChatFeed.BuildFeedItems([question, first, firstResult, second, secondResult, answer]);
+        var items = _feed.BuildFeedItems([question, first, firstResult, second, secondResult, answer]);
 
         items.Select(item => item.ToolGroup is null ? "message" : "cycle")
             .ShouldBe(["message", "cycle", "cycle", "message"]);
@@ -88,8 +90,8 @@ public sealed class ChatFeedTests
         // results, and vice versa.
         items[1].ToolGroup.ShouldBe(new[] { first, firstResult });
         items[2].ToolGroup.ShouldBe(new[] { second, secondResult });
-        ChatFeed.PreambleOf(items[1].ToolGroup!).ShouldBe(first);
-        ChatFeed.PreambleOf(items[2].ToolGroup!).ShouldBe(second);
+        _feed.PreambleOf(items[1].ToolGroup!).ShouldBe(first);
+        _feed.PreambleOf(items[2].ToolGroup!).ShouldBe(second);
     }
 
     [Fact]
@@ -97,7 +99,7 @@ public sealed class ChatFeedTests
     {
         var answer = Assistant("Готово.");
 
-        var items = ChatFeed.BuildFeedItems([answer]);
+        var items = _feed.BuildFeedItems([answer]);
 
         items.ShouldHaveSingleItem();
         items[0].Message.ShouldBe(answer);
@@ -111,11 +113,11 @@ public sealed class ChatFeedTests
         // explanation is on screen before its result exists.
         var preamble = Assistant("Читаю файл.", "call-1");
 
-        var items = ChatFeed.BuildFeedItems([preamble]);
+        var items = _feed.BuildFeedItems([preamble]);
 
         items.ShouldHaveSingleItem();
         items[0].ToolGroup.ShouldBe(new[] { preamble });
-        ChatFeed.PreambleOf(items[0].ToolGroup!).ShouldBe(preamble);
+        _feed.PreambleOf(items[0].ToolGroup!).ShouldBe(preamble);
     }
 
     [Fact]
@@ -126,11 +128,11 @@ public sealed class ChatFeedTests
         var second = Assistant(string.Empty, "call-2");
         var secondResult = ToolResult("call-2");
 
-        var items = ChatFeed.BuildFeedItems([first, firstResult, second, secondResult]);
+        var items = _feed.BuildFeedItems([first, firstResult, second, secondResult]);
 
         items.ShouldHaveSingleItem();
         items[0].ToolGroup!.Count.ShouldBe(4);
-        ChatFeed.PreambleOf(items[0].ToolGroup!).ShouldBeNull();
+        _feed.PreambleOf(items[0].ToolGroup!).ShouldBeNull();
     }
 
     [Fact]
@@ -139,7 +141,7 @@ public sealed class ChatFeedTests
         var preamble = Assistant("Читаю файлы.", "call-1", "call-2");
         var onlyResult = ToolResult("call-2", "second");
 
-        var invocations = ChatFeed.BuildInvocations([preamble, onlyResult]);
+        var invocations = _feed.BuildInvocations([preamble, onlyResult]);
 
         invocations.Count.ShouldBe(2);
         invocations[0].Call.Id.ShouldBe("call-1");
@@ -158,7 +160,7 @@ public sealed class ChatFeedTests
         var first = ToolResult("call-1");
         var second = ToolResult("call-2");
 
-        var invocations = ChatFeed.BuildInvocations([batch, first, second]);
+        var invocations = _feed.BuildInvocations([batch, first, second]);
 
         invocations[0].StartedAt.ShouldBe(batch.CreatedAt);
         invocations[0].CompletedAt.ShouldBe(first.CreatedAt);
@@ -176,8 +178,8 @@ public sealed class ChatFeedTests
             .SelectMany(index => new[] { User($"question {index}"), Assistant($"answer {index}") })
             .ToArray();
 
-        var items = ChatFeed.BuildFeedItems(chain);
-        var tail = ChatFeed.TakeTail(items, 10);
+        var items = _feed.BuildFeedItems(chain);
+        var tail = _feed.TakeTail(items, 10);
 
         // The end of the transcript, in order — this is what the feed opens at.
         tail.Count.ShouldBe(10);
@@ -187,10 +189,10 @@ public sealed class ChatFeedTests
     [Fact]
     public void ShouldKeepEveryItemWhenTheTranscriptIsShorterThanTheLimit()
     {
-        var items = ChatFeed.BuildFeedItems([User("one"), Assistant("two")]);
+        var items = _feed.BuildFeedItems([User("one"), Assistant("two")]);
 
-        ChatFeed.TakeTail(items, 10).ShouldBeSameAs(items);
-        ChatFeed.TakeTail(items, int.MaxValue).ShouldBeSameAs(items);
+        _feed.TakeTail(items, 10).ShouldBeSameAs(items);
+        _feed.TakeTail(items, int.MaxValue).ShouldBeSameAs(items);
     }
 
     [Fact]
@@ -201,8 +203,8 @@ public sealed class ChatFeedTests
         var result = ToolResult("call-1");
         var answer = Assistant("done");
 
-        var items = ChatFeed.BuildFeedItems([question, call, result, answer]);
-        var tail = ChatFeed.TakeTail(items, 2);
+        var items = _feed.BuildFeedItems([question, call, result, answer]);
+        var tail = _feed.TakeTail(items, 2);
 
         // The group is indivisible: a tail of two is "the tool block, then the answer", never
         // half a block.
@@ -221,7 +223,7 @@ public sealed class ChatFeedTests
         var secondQuestion = User("second");
         var secondAnswer = Assistant("also done");
 
-        var turns = ChatFeed.BuildTurns([
+        var turns = _feed.BuildTurns([
             firstQuestion, preamble, result, firstAnswer, secondQuestion, secondAnswer
         ]);
 
@@ -242,7 +244,7 @@ public sealed class ChatFeedTests
         var progress = Assistant("still working");
         var answer = Assistant("finished");
 
-        var turn = ChatFeed.BuildTurns([question, progress, answer]).ShouldHaveSingleItem();
+        var turn = _feed.BuildTurns([question, progress, answer]).ShouldHaveSingleItem();
 
         turn.IntermediateItems.ShouldHaveSingleItem();
         turn.IntermediateItems[0].Message.ShouldBe(progress);
@@ -256,7 +258,7 @@ public sealed class ChatFeedTests
         var preamble = Assistant("working", "call-1");
         var result = ToolResult("call-1");
 
-        var turn = ChatFeed.BuildTurns([question, preamble, result]).ShouldHaveSingleItem();
+        var turn = _feed.BuildTurns([question, preamble, result]).ShouldHaveSingleItem();
 
         turn.IntermediateItems.ShouldHaveSingleItem();
         turn.FinalAnswer.ShouldBeNull();
@@ -271,7 +273,7 @@ public sealed class ChatFeedTests
         var result = ToolResult("call-1");
         var latestProgress = Assistant("now checking usages");
 
-        var turn = ChatFeed.BuildTurns(
+        var turn = _feed.BuildTurns(
             [question, firstProgress, result, latestProgress],
             lastTurnEndedWithoutFinalAnswer: true).ShouldHaveSingleItem();
 
@@ -288,20 +290,20 @@ public sealed class ChatFeedTests
         var firstProgress = Assistant("checking files", "call-1");
         var result = ToolResult("call-1");
         var latestProgress = Assistant("  now\nchecking   usages  ");
-        var turn = ChatFeed.BuildTurns(
+        var turn = _feed.BuildTurns(
             [question, firstProgress, result, latestProgress],
             lastTurnEndedWithoutFinalAnswer: true).ShouldHaveSingleItem();
 
-        ChatFeed.RunningTitleOf(turn, TimeSpan.FromSeconds(63))
+        _feed.RunningTitleOf(turn, TimeSpan.FromSeconds(63))
             .ShouldBe("now checking usages · 1m 3s");
     }
 
     [Fact]
     public void ShouldReturnNoRunningTitleBeforeTheModelReportsAnAction()
     {
-        var turn = ChatFeed.BuildTurns([User("do it")]).ShouldHaveSingleItem();
+        var turn = _feed.BuildTurns([User("do it")]).ShouldHaveSingleItem();
 
-        ChatFeed.RunningTitleOf(turn, TimeSpan.FromSeconds(2)).ShouldBeNull();
+        _feed.RunningTitleOf(turn, TimeSpan.FromSeconds(2)).ShouldBeNull();
     }
 
     [Fact]
@@ -319,16 +321,16 @@ public sealed class ChatFeedTests
                 [new FileChange("new.cs", FileChangeKind.Modified, 2, 1)], 2, 1)
         };
 
-        ChatFeed.LastTurnHasWorkspaceReceipt([oldAnswer, question]).ShouldBeFalse();
-        ChatFeed.LastTurnHasWorkspaceReceipt([oldAnswer, question, finalAnswer]).ShouldBeTrue();
-        ChatFeed.LastTurnHasCompleteAnswer([oldAnswer, question]).ShouldBeFalse();
-        ChatFeed.LastTurnHasCompleteAnswer([oldAnswer, question, finalAnswer]).ShouldBeTrue();
+        _feed.LastTurnHasWorkspaceReceipt([oldAnswer, question]).ShouldBeFalse();
+        _feed.LastTurnHasWorkspaceReceipt([oldAnswer, question, finalAnswer]).ShouldBeTrue();
+        _feed.LastTurnHasCompleteAnswer([oldAnswer, question]).ShouldBeFalse();
+        _feed.LastTurnHasCompleteAnswer([oldAnswer, question, finalAnswer]).ShouldBeTrue();
     }
 
     [Fact]
     public void ShouldFormatCompactTurnTimeWithoutFractionalSeconds()
     {
-        ChatFeed.FormatDuration(TimeSpan.FromSeconds(14.9)).ShouldBe("14s");
-        ChatFeed.FormatDuration(TimeSpan.FromSeconds(63.8)).ShouldBe("1m 3s");
+        _feed.FormatDuration(TimeSpan.FromSeconds(14.9)).ShouldBe("14s");
+        _feed.FormatDuration(TimeSpan.FromSeconds(63.8)).ShouldBe("1m 3s");
     }
 }

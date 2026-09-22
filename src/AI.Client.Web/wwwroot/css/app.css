@@ -2956,7 +2956,7 @@ textarea {
 .user-prompt-actions { display: flex; align-items: center; justify-content: flex-end; gap: .45rem; }
 .user-prompt-actions > button { display: inline-flex; align-items: center; justify-content: center; margin: 0; }
 .user-prompt-actions > button > span { display: inline-flex; align-items: center; line-height: 1.25; }
-.user-prompt-actions > button:not(.secondary-action) kbd { display: inline-flex; align-items: center; justify-content: center; margin-left: .35rem; border-color: rgb(255 255 255 / 28%); background: rgb(0 0 0 / 14%); }
+.user-prompt-actions > button:not(.secondary-action) kbd { display: inline-flex; align-items: center; justify-content: center; margin-left: .35rem; border-color: rgb(255 255 255 / 28%); background: rgb(0 0 0 / 14%); transform: translateY(1px); }
 .user-prompt-error { margin: 0; color: #ff8f8f; font-size: .8rem; }
 
 .permissions-drawer-backdrop { position: fixed; z-index: 44; inset: 0; background: rgb(0 0 0 / 12%); }

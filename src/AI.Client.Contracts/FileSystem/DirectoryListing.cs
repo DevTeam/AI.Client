@@ -16,8 +16,13 @@ namespace AI.Client.Contracts.FileSystem;
 /// listing is then empty for a reason worth saying out loud, rather than looking like an empty
 /// folder.
 /// </param>
+/// <param name="Files">
+/// Empty unless files were asked for. Picking a directory and picking a file are the same walk
+/// through the same tree, so they are one listing — only the last click differs.
+/// </param>
 public sealed record DirectoryListing(
     string CurrentPath,
     string? ParentPath,
     bool IsAccessible,
-    IReadOnlyList<DirectoryEntry> Directories);
+    IReadOnlyList<DirectoryEntry> Directories,
+    IReadOnlyList<DirectoryEntry> Files);

@@ -18,11 +18,39 @@ public sealed class PhysicalDirectoryBrowserTests : IDisposable
         Directory.CreateDirectory(Path.Combine(_root, "Alpha"));
         await File.WriteAllTextAsync(Path.Combine(_root, "notes.txt"), "x", TestContext.Current.CancellationToken);
 
-        var listing = await _browser.ListAsync(_root, TestContext.Current.CancellationToken);
+        var listing = await _browser.ListAsync(_root, false, TestContext.Current.CancellationToken);
 
         listing.ShouldNotBeNull();
         listing.IsAccessible.ShouldBeTrue();
         listing.Directories.Select(item => item.Name).ShouldBe(["Alpha", "beta"]);
+    }
+
+    // Files cost an extra enumeration and are noise between the caller and the folder they are
+    // heading for, so they arrive only when asked for.
+    [Fact]
+    public async Task ListsFilesOnlyWhenTheyAreAskedFor()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "child"));
+        await File.WriteAllTextAsync(Path.Combine(_root, "notes.txt"), "x", TestContext.Current.CancellationToken);
+
+        var without = await _browser.ListAsync(_root, false, TestContext.Current.CancellationToken);
+        var with = await _browser.ListAsync(_root, true, TestContext.Current.CancellationToken);
+
+        without!.Files.ShouldBeEmpty();
+        with!.Files.ShouldHaveSingleItem().Name.ShouldBe("notes.txt");
+        with.Directories.ShouldHaveSingleItem().Name.ShouldBe("child");
+    }
+
+    [Fact]
+    public async Task TellsAFileApartFromADirectory()
+    {
+        var file = Path.Combine(_root, "notes.txt");
+        await File.WriteAllTextAsync(file, "x", TestContext.Current.CancellationToken);
+
+        var probe = await _browser.ResolveAsync(file, TestContext.Current.CancellationToken);
+
+        probe.FileExists.ShouldBeTrue();
+        probe.DirectoryExists.ShouldBeFalse();
     }
 
     [Fact]
@@ -31,8 +59,8 @@ public sealed class PhysicalDirectoryBrowserTests : IDisposable
         var file = Path.Combine(_root, "notes.txt");
         await File.WriteAllTextAsync(file, "x", TestContext.Current.CancellationToken);
 
-        (await _browser.ListAsync(file, TestContext.Current.CancellationToken)).ShouldBeNull();
-        (await _browser.ListAsync(Path.Combine(_root, "absent"), TestContext.Current.CancellationToken)).ShouldBeNull();
+        (await _browser.ListAsync(file, false, TestContext.Current.CancellationToken)).ShouldBeNull();
+        (await _browser.ListAsync(Path.Combine(_root, "absent"), false, TestContext.Current.CancellationToken)).ShouldBeNull();
     }
 
     [Fact]
@@ -40,7 +68,7 @@ public sealed class PhysicalDirectoryBrowserTests : IDisposable
     {
         var child = Directory.CreateDirectory(Path.Combine(_root, "child")).FullName;
 
-        var listing = await _browser.ListAsync(child, TestContext.Current.CancellationToken);
+        var listing = await _browser.ListAsync(child, false, TestContext.Current.CancellationToken);
 
         listing!.ParentPath.ShouldBe(_root);
     }
@@ -59,7 +87,7 @@ public sealed class PhysicalDirectoryBrowserTests : IDisposable
     [Fact]
     public async Task TreatsTheEmptyPathAsTheRootsLevel()
     {
-        var listing = await _browser.ListAsync(string.Empty, TestContext.Current.CancellationToken);
+        var listing = await _browser.ListAsync(string.Empty, false, TestContext.Current.CancellationToken);
 
         listing!.CurrentPath.ShouldBeEmpty();
         listing.ParentPath.ShouldBeNull();
@@ -102,7 +130,7 @@ public sealed class PhysicalDirectoryBrowserTests : IDisposable
         var probe = await _browser.ResolveAsync(absent, TestContext.Current.CancellationToken);
 
         probe.CanonicalPath.ShouldBe(absent);
-        probe.Exists.ShouldBeFalse();
+        probe.DirectoryExists.ShouldBeFalse();
         probe.IsFullyQualified.ShouldBeTrue();
     }
 
@@ -120,7 +148,8 @@ public sealed class PhysicalDirectoryBrowserTests : IDisposable
         var probe = await _browser.ResolveAsync(_root, TestContext.Current.CancellationToken);
 
         probe.CanonicalPath.ShouldBe(_root);
-        probe.Exists.ShouldBeTrue();
+        probe.DirectoryExists.ShouldBeTrue();
+        probe.FileExists.ShouldBeFalse();
     }
 
     [Fact]

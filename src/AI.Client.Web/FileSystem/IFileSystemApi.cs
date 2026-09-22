@@ -11,7 +11,7 @@ public interface IFileSystemApi
 {
     Task<DirectoryListing?> ListRootsAsync(CancellationToken cancellationToken);
 
-    Task<DirectoryListing?> ListAsync(string path, CancellationToken cancellationToken);
+    Task<DirectoryListing?> ListAsync(string path, bool includeFiles, CancellationToken cancellationToken);
 
     Task<DirectoryProbe?> ResolveAsync(string path, CancellationToken cancellationToken);
 }

@@ -3,18 +3,26 @@ namespace AI.Client.Web.FileSystem;
 using AI.Client.Contracts.FileSystem;
 
 /// <summary>
-/// Everything the directory picker knows: where it is, what it can show, and what pressing
-/// "Select" would hand back. It is a plain object rather than fields on the dialog component so
-/// the navigation rules — which are the part with corners in them — can be tested without a
-/// renderer.
+/// Everything the picker knows: where it is, what it can show, and what pressing "Select" would
+/// hand back. It is a plain object rather than fields on the dialog component so the navigation
+/// rules — which are the part with corners in them — can be tested without a renderer.
 /// </summary>
 public interface IDirectoryPickerState
 {
+    /// <summary>Whether a directory or a file is being asked for.</summary>
+    DirectoryPickerMode Mode { get; }
+
     /// <summary>The level currently shown, or null before the first load finishes.</summary>
     DirectoryListing? Listing { get; }
 
-    /// <summary>The contents of <see cref="Listing"/> narrowed by <see cref="Filter"/>.</summary>
+    /// <summary>The directories of <see cref="Listing"/> narrowed by <see cref="Filter"/>.</summary>
     IReadOnlyList<DirectoryEntry> VisibleDirectories { get; }
+
+    /// <summary>The files of <see cref="Listing"/> narrowed by <see cref="Filter"/>. Empty in directory mode.</summary>
+    IReadOnlyList<DirectoryEntry> VisibleFiles { get; }
+
+    /// <summary>The file clicked in the list, so it can be shown as picked out. Null in directory mode.</summary>
+    string? SelectedFile { get; }
 
     /// <summary>What the path box holds. Follows navigation, and can be typed into.</summary>
     string PathText { get; }
@@ -43,9 +51,12 @@ public interface IDirectoryPickerState
 
     bool CanGoUp { get; }
 
-    Task OpenAsync(string? startPath, CancellationToken cancellationToken);
+    Task OpenAsync(string? startPath, DirectoryPickerMode mode, CancellationToken cancellationToken);
 
     Task NavigateAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>Takes a file from the list. Directory mode has no use for it.</summary>
+    void SelectFile(string path);
 
     Task GoUpAsync(CancellationToken cancellationToken);
 

@@ -9,14 +9,14 @@ public sealed record ToolSearchResult(IReadOnlyList<ToolCatalogMatch> Tools, str
 [McpServerToolType]
 public sealed class AppToolSearchTool(IToolCatalogRegistry catalog) : IAppTool
 {
-    public McpServerTool Create(ToolRunContext run) => new Session(catalog, run).Create();
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(catalog, run, reply).Create();
 
-    private sealed class Session(IToolCatalogRegistry catalog, ToolRunContext run)
+    private sealed class Session(IToolCatalogRegistry catalog, ToolRunContext run, IAppToolReply reply)
     {
         public McpServerTool Create() => McpServerTool.Create(Search,
             new McpServerToolCreateOptions
             {
-                SerializerOptions = ToolReply.Json,
+                SerializerOptions = reply.Json,
                 Description = "Find tools that were omitted from this turn's schema budget. Search by the capability you need. "
                               + "The matching tools become available on the next model step; do not guess an omitted tool name."
             });
@@ -28,14 +28,14 @@ public sealed class AppToolSearchTool(IToolCatalogRegistry catalog) : IAppTool
             try
             {
                 var matches = catalog.SearchAndPin(run, query, limit);
-                return ToolReply.Of(new ToolSearchResult(matches,
+                return reply.Reply(new ToolSearchResult(matches,
                     matches.Count == 0
                         ? "No matching permitted tools were found. Continue with the tools already available."
                         : "The listed tools are pinned and will be available on the next model step."));
             }
             catch (ArgumentException error)
             {
-                return ToolReply.Of(new ToolSearchResult([], "Use a short capability description and search again.", error.Message), true);
+                return reply.Reply(new ToolSearchResult([], "Use a short capability description and search again.", error.Message), true);
             }
         }
     }

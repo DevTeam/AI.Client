@@ -48,13 +48,14 @@ public sealed class AppSecurityTool(
     IProjectService projects,
     IChatService chats,
     IGlobalSettingsService settings,
-    IAppWrites writes) : IAppTool
+    IAppWrites writes,
+    IAppToolReply reply) : IAppTool
 {
-    public McpServerTool Create(ToolRunContext run) => McpServerTool.Create(
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => McpServerTool.Create(
         SecurityAsync,
         new McpServerToolCreateOptions
         {
-            SerializerOptions = ToolReply.Json,
+            SerializerOptions = reply.Json,
             Description = "Change this application's access settings: directory grants, MCP server bindings, per-tool policies and "
                           + "connection credentials. 'SetProjectSecurity' and 'SaveGlobalSettings' replace the whole state they cover, so "
                           + "read it with 'app_read' first and send it back with your change applied — anything you leave out is removed. "
@@ -111,7 +112,7 @@ public sealed class AppSecurityTool(
             payload.ToolPolicies.Select(Policy).ToArray()), cancellationToken);
         return AppProjectsTool.Describe(builder, result, id,
             project => $"Replaced the access settings of '{project.Name}': {project.DirectoryGrants.Count} grant(s), "
-                       + $"{project.McpServers.Count} server binding(s), {project.ToolPolicies.Count} tool policy(ies).", current);
+                       + $"{project.McpServers.Count} server binding(s), {project.ToolPolicies.Count} tool policy(ies).", current, reply.Json);
     }
 
     private async Task<AppWriteResult> SetProjectToolPolicyAsync(
@@ -123,7 +124,7 @@ public sealed class AppSecurityTool(
         return project is null
             ? builder.Failed("Project not found.", id)
             : builder.Applied($"Set '{policy.Name}' to {policy.Decision} for this project.", id,
-                revision: project.Revision, current: Element(project));
+                revision: project.Revision, current: Element(project, reply.Json));
     }
 
     private async Task<AppWriteResult> RemoveProjectToolPolicyAsync(
@@ -134,7 +135,7 @@ public sealed class AppSecurityTool(
             Text(name, nameof(name)), Text(schemaHash, nameof(schemaHash)), cancellationToken);
         return project is null
             ? builder.Failed("Project not found.", id)
-            : builder.Applied($"Removed the project policy for '{name}'.", id, revision: project.Revision, current: Element(project));
+            : builder.Applied($"Removed the project policy for '{name}'.", id, revision: project.Revision, current: Element(project, reply.Json));
     }
 
     private async Task<AppWriteResult> SetChatToolPolicyAsync(
@@ -147,7 +148,7 @@ public sealed class AppSecurityTool(
         return updated is null
             ? builder.Failed("Chat not found.", project, chat)
             : builder.Applied($"Set '{policy.Name}' to {policy.Decision} for this chat.", project, chat,
-                revision: updated.Revision, current: Element(updated with { Messages = [] }));
+                revision: updated.Revision, current: Element(updated with { Messages = [] }, reply.Json));
     }
 
     private async Task<AppWriteResult> RemoveChatToolPolicyAsync(
@@ -161,7 +162,7 @@ public sealed class AppSecurityTool(
         return updated is null
             ? builder.Failed("Chat not found.", project, chat)
             : builder.Applied($"Removed the chat policy for '{name}'.", project, chat,
-                revision: updated.Revision, current: Element(updated with { Messages = [] }));
+                revision: updated.Revision, current: Element(updated with { Messages = [] }, reply.Json));
     }
 
     private async Task<AppWriteResult> SaveGlobalSettingsAsync(
@@ -186,7 +187,7 @@ public sealed class AppSecurityTool(
             value.ToolPolicies.Select(GlobalPolicy).ToArray()), cancellationToken);
         return builder.Applied(
             $"Replaced global settings: {saved.Connections.Count} connection(s), {saved.McpServers.Count} MCP server(s), "
-            + $"{saved.ToolPolicies.Count} tool policy(ies).", current: Element(saved));
+            + $"{saved.ToolPolicies.Count} tool policy(ies).", current: Element(saved, reply.Json));
     }
 
     private async Task<AppWriteResult> SetGlobalToolPolicyAsync(
@@ -194,7 +195,7 @@ public sealed class AppSecurityTool(
     {
         var policy = GlobalPolicy(Required(toolPolicy, nameof(toolPolicy)));
         var saved = await settings.SetToolPolicyAsync(policy, cancellationToken);
-        return builder.Applied($"Set '{policy.Name}' to {policy.Decision} globally.", current: Element(saved));
+        return builder.Applied($"Set '{policy.Name}' to {policy.Decision} globally.", current: Element(saved, reply.Json));
     }
 
     private async Task<AppWriteResult> RemoveGlobalToolPolicyAsync(
@@ -202,7 +203,7 @@ public sealed class AppSecurityTool(
     {
         var saved = await settings.RemoveToolPolicyAsync(Required(serverId, nameof(serverId)),
             Text(name, nameof(name)), Text(schemaHash, nameof(schemaHash)), cancellationToken);
-        return builder.Applied($"Removed the global policy for '{name}'.", current: Element(saved));
+        return builder.Applied($"Removed the global policy for '{name}'.", current: Element(saved, reply.Json));
     }
 
     /// <summary>
@@ -228,7 +229,7 @@ public sealed class AppSecurityTool(
     private static McpToolPolicySettings GlobalPolicy(ToolPolicyPayload payload) => new(
         payload.ServerId, payload.Name, payload.SchemaHash, payload.Decision, payload.MaxCallsPerRun, payload.TimeoutSeconds);
 
-    private static JsonElement Element<T>(T value) => JsonSerializer.SerializeToElement(value, ToolReply.Json);
+    private static JsonElement Element<T>(T value, JsonSerializerOptions options) => JsonSerializer.SerializeToElement(value, options);
 
     private static Guid Required(Guid? value, string name) =>
         value ?? throw new ArgumentException($"'{name}' is required for this operation.", name);

@@ -421,8 +421,8 @@ public sealed class AppToolTests
                     new ToolCatalogRegistry(), new ModelContentCheckpointService(), instructionRegistry,
                     new ModelInstructionComposer(instructionRegistry, new ContextTokenEstimator()),
                     Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol()),
-                _secrets, _clock, _ids, _synchronization, workspace, policies, new ChatContext(toolResultCodec));
-            var writes = new AppWrites(new AppOperationLog(), _signal);
+                _secrets, _clock, _ids, _synchronization, workspace, policies, new ChatContext(toolResultCodec), new ChatBranchIds());
+            var writes = new AppWrites(new AppOperationLog(), _signal, new AppToolReply());
             var presentations = new ToolPresentations(
                 new GenericToolPresentationAdapter(),
                 [
@@ -431,16 +431,16 @@ public sealed class AppToolTests
                 ]);
             IEnumerable<IAppTool> tools =
             [
-                new AppReadTool(Projects, Chats, settingsService, new ChatSearchService(Projects, Chats), () => dispatcher),
-                new AppChatsTool(Chats, () => dispatcher, writes),
-                new AppRunsTool(() => dispatcher, writes),
-                new AppProjectsTool(Projects, Chats, () => dispatcher, writes),
-                new AppSecurityTool(Projects, Chats, settingsService, writes),
+                new AppReadTool(Projects, Chats, settingsService, new ChatSearchService(Projects, Chats), () => dispatcher, new AppToolReply()),
+                new AppChatsTool(Chats, () => dispatcher, writes, new AppToolReply()),
+                new AppRunsTool(() => dispatcher, writes, new AppToolReply()),
+                new AppProjectsTool(Projects, Chats, () => dispatcher, writes, new AppToolReply()),
+                new AppSecurityTool(Projects, Chats, settingsService, writes, new AppToolReply()),
                 new AppSubtaskTool(() => throw new InvalidOperationException("not used"), Projects, Chats, _settings, _secrets,
-                    presentations, toolResultCodec),
+                    presentations, toolResultCodec, new AppToolReply()),
                 new AppAskUserTool(() => Broker),
             ];
-            IMcpServerConnection connection = new AppToolSessionFactory(new AppMcpServerHost(tools), modelProjector);
+            IMcpServerConnection connection = new AppToolSessionFactory(new AppMcpServerHost(tools, new AppToolReply()), modelProjector);
             _sessions = new CompositeToolSessionFactory([connection]);
         }
 

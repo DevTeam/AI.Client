@@ -54,18 +54,18 @@ public enum SubmitMode
 }
 
 [McpServerToolType]
-public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes) : IAppTool
+public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes, IAppToolReply reply) : IAppTool
 {
     /// <summary>Anything longer than this belongs in the chat, not in a wait inside one tool call.</summary>
     private const int MaxWaitMs = 600_000;
 
     private const int MinWaitMs = 1_000;
 
-    public McpServerTool Create(ToolRunContext run) => McpServerTool.Create(
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => McpServerTool.Create(
         RunsAsync,
         new McpServerToolCreateOptions
         {
-            SerializerOptions = ToolReply.Json,
+            SerializerOptions = reply.Json,
             Description = "Drive this application's chat runs: put a message into any chat — including one you just created — and manage "
                           + "its queue. 'branchId' defaults to the chat's main branch, whose id equals the chat's. With 'wait' false the "
                           + "call returns as soon as the message is accepted and the answer is read later with 'app_read'; with 'wait' "
@@ -137,7 +137,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         var snapshot = await runs().SubmitAsync(projectId, chatId, request, cancellationToken);
         if (wait) snapshot = await AwaitStopAsync(snapshot, waitTimeoutMs, cancellationToken);
         return builder.Applied(Effect(snapshot, wait), projectId, chatId, snapshot.BranchId, operationId,
-            snapshot.ChatRevision, snapshot.Status.ToString(), Element(snapshot));
+            snapshot.ChatRevision, snapshot.Status.ToString(), Element(snapshot, reply.Json));
     }
 
     private static string Effect(ChatRunSnapshot snapshot, bool waited)
@@ -169,7 +169,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
                 latest = run;
                 // A status carried over from before this message was submitted says nothing about
                 // it. Only a state the run reached afterwards counts, and the run's own revision is
-                // what distinguishes the two — without this a chat that answered a minute ago
+                // what distinguishes the two � without this a chat that answered a minute ago
                 // reports an immediate, entirely fictional "Completed".
                 if (run.Revision <= start.Revision) continue;
                 if (run.Status == ChatRunStatus.Generating) { started = true; continue; }
@@ -186,7 +186,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         return latest;
     }
 
-    private static async Task<AppWriteResult> CommandAsync(
+    private async Task<AppWriteResult> CommandAsync(
         AppWriteBuilder builder, Guid projectId, Guid chatId, Guid branchId, string effect, Func<Task<ChatRunSnapshot?>> command)
     {
         var snapshot = await command();
@@ -197,10 +197,10 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             ? $" The run is still waiting for a person to confirm '{approval.Name}'."
             : string.Empty;
         return builder.Applied(effect + blocked, projectId, chatId, snapshot.BranchId, revision: snapshot.ChatRevision,
-            status: snapshot.Status.ToString(), current: Element(snapshot));
+            status: snapshot.Status.ToString(), current: Element(snapshot, reply.Json));
     }
 
-    private static JsonElement Element<T>(T value) => JsonSerializer.SerializeToElement(value, ToolReply.Json);
+    private static JsonElement Element<T>(T value, JsonSerializerOptions options) => JsonSerializer.SerializeToElement(value, options);
 
     private static Guid Required(Guid? value, string name) =>
         value ?? throw new ArgumentException($"'{name}' is required for this operation.", name);

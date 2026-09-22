@@ -2,8 +2,8 @@ namespace AI.Client.Application.Runs;
 
 using Contracts.Chats;
 
-public static class ChatBranchIds
+public sealed class ChatBranchIds : IChatBranchIds
 {
-    public static IReadOnlySet<Guid> Get(ChatDetails chat) =>
+    public IReadOnlySet<Guid> Collect(ChatDetails chat) =>
         (chat.Branches ?? []).Select(branch => branch.Id).ToHashSet();
 }

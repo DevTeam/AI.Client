@@ -28,7 +28,7 @@ internal static class Paging
         return offset;
     }
 
-    public static AppReadResult Page<T>(string resource, IReadOnlyList<T> source, string? cursor, int limit)
+    public static AppReadResult Page<T>(string resource, IReadOnlyList<T> source, string? cursor, int limit, JsonSerializerOptions options)
     {
         ArgumentNullException.ThrowIfNull(source);
         var offset = Math.Min(Offset(cursor), source.Count);
@@ -39,7 +39,7 @@ internal static class Paging
         var index = offset;
         while (index < source.Count && items.Count < take)
         {
-            var element = JsonSerializer.SerializeToElement(source[index], ToolReply.Json);
+            var element = JsonSerializer.SerializeToElement(source[index], options);
             var cost = element.GetRawText().Length;
             // The first item always goes in: a single document larger than the whole budget must
             // still be readable, or the resource would be permanently unreachable.

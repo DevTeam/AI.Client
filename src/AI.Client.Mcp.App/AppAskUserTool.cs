@@ -1,4 +1,4 @@
-﻿namespace AI.Client.Mcp.App;
+namespace AI.Client.Mcp.App;
 
 using AI.Client.Application.Runs;
 using AI.Client.Application.Tools;
@@ -15,7 +15,7 @@ public sealed record AskUserOption(string Label, string? Description = null);
 /// What is being asked. Emphasis, code spans and links are rendered; anything larger is not, because
 /// a question is a label on a decision and the decision is what the person should be reading.
 /// </param>
-/// <param name="Label">A short chip beside the question — "Scope", "Naming" — or nothing.</param>
+/// <param name="Label">A short chip beside the question � "Scope", "Naming" � or nothing.</param>
 /// <param name="MultiSelect">True only when the choices genuinely combine.</param>
 /// <param name="AllowOther">Whether the person may type an answer of their own instead of choosing.</param>
 public sealed record AskUserQuestion(
@@ -66,9 +66,9 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
     /// Each session gets its own <see cref="Session"/> holding its own run, and the shared instance
     /// holds nothing but the way to reach the broker.
     /// </summary>
-    public McpServerTool Create(ToolRunContext run) => new Session(broker, run).Create();
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(broker, run, reply).Create();
 
-    private sealed class Session(Func<IUserPromptBroker> broker, ToolRunContext run)
+    private sealed class Session(Func<IUserPromptBroker> broker, ToolRunContext run, IAppToolReply reply)
     {
         /// <summary>
         /// How long a question waits. Long enough to fetch a coffee and come back, short enough that a
@@ -92,7 +92,7 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                 AskAsync,
                 new McpServerToolCreateOptions
                 {
-                    SerializerOptions = ToolReply.Json,
+                    SerializerOptions = reply.Json,
                     Description =
                         "Ask the user a multiple-choice question and wait for their answer. Use it only when the request is "
                         + "genuinely ambiguous and guessing wrong would waste real work, when a decision has visible trade-offs "
@@ -111,12 +111,12 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
         private async Task<CallToolResult> AskAsync(AskUserQuestion[] questions, CancellationToken cancellationToken)
         {
             if (Validate(questions) is { } invalid)
-                return ToolReply.Of(new AskUserResult([], "invalid", "Fix the call and ask again.", invalid), isError: true);
+                return reply.Reply(new AskUserResult([], "invalid", "Fix the call and ask again.", invalid), isError: true);
 
             // A background run has nobody watching it, so it is told so at once rather than made to wait
             // out a timeout no one will interrupt. The caller that started it is the one with a user.
             if (!run.Interactive)
-                return ToolReply.Of(new AskUserResult([], "dismissed",
+                return reply.Reply(new AskUserResult([], "dismissed",
                     "You are running as a background subtask; there is no user to answer you and there will not be one. "
                     + "Do what you can without this decision, and name the unresolved choice in your final answer so the "
                     + "conversation that started you can put it to the user."));
@@ -130,7 +130,7 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                 .Where(reply => reply.Selected.Length > 0 || !string.IsNullOrWhiteSpace(reply.Other))
                 .ToArray();
 
-            return ToolReply.Of(new AskUserResult(answers, Outcome(response.Outcome), Guidance(response.Outcome, answers, questions)));
+            return reply.Reply(new AskUserResult(answers, Outcome(response.Outcome), Guidance(response.Outcome, answers, questions)));
         }
 
         private static string Outcome(UserPromptOutcome outcome) => outcome switch

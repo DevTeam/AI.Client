@@ -22,7 +22,7 @@ public sealed class ChatRunDispatcher(
     IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, IChatAgent agent,
     IGlobalSecretStore secretStore, IClock clock, IIdGenerator ids, IChatSynchronization synchronization,
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies,
-    IChatContextBuilder contextBuilder) : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
+    IChatContextBuilder contextBuilder, IChatBranchIds branchIds) : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
     /// <summary>
@@ -968,7 +968,7 @@ public sealed class ChatRunDispatcher(
             }
 
             var latest = await chats.GetAsync(projectId, chatId, CancellationToken.None);
-            var retained = ChatBranchIds.Get(latest!);
+            var retained = branchIds.Collect(latest!);
             foreach (var runtime in _runtimes.Values.Where(item => item.State.ChatId == chatId && !retained.Contains(item.State.BranchId)))
                 runtime.State.Clear();
             await RemoveAsync(projectId, chatId, retained, CancellationToken.None);

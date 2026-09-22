@@ -14,7 +14,9 @@
 @inject IChatRunsApi ChatRunsApi
 @inject IRunStateService RunState
 @inject IChatComposerService Composer
+@inject IChatFeedProjection Feed
 @inject INotificationService Notifications
+@inject IRunStatusPresentation StatusPresentation
 @implements IAsyncDisposable
 
 <PageTitle>@ClientMetadata.ProductName</PageTitle>
@@ -612,12 +614,12 @@
         if (_selectedChat is null || elapsed is null || activeMessageId is null)
             return fallback + GetGeneratingEnterHint();
 
-        var branch = ChatFeed.BuildBranch(_selectedChat.Messages, _branchLeafId);
+        var branch = Feed.BuildBranch(_selectedChat.Messages, _branchLeafId);
         // A run snapshot can reach the browser before the matching chat revision. Do not borrow
         // the previous turn's final answer as the new run's progress title during that window.
-        var turn = ChatFeed.BuildTurns(branch, lastTurnEndedWithoutFinalAnswer: true)
+        var turn = Feed.BuildTurns(branch, lastTurnEndedWithoutFinalAnswer: true)
             .LastOrDefault(item => item.UserMessage?.Id == activeMessageId);
-        var title = turn is null ? null : ChatFeed.RunningTitleOf(turn, elapsed.Value);
+        var title = turn is null ? null : Feed.RunningTitleOf(turn, elapsed.Value);
         if (title is not null && _currentTurnSummaryVisible)
             return GetGeneratingEnterHint().TrimStart(' ', '·');
         return (title ?? fallback) + GetGeneratingEnterHint();
@@ -1880,8 +1882,8 @@
         return hash.ToHashCode();
     }
     private void StoreRun(ChatRunSnapshot run) => RunState.Store(run);
-    private static bool IsVisibleRun(ChatRunSnapshot run) =>
-        RunStatusPresentation.HasVisibleAttention(run) || run.Status == ChatRunStatus.Generating || run.HasUnreadResponse;
+    private bool IsVisibleRun(ChatRunSnapshot run) =>
+        StatusPresentation.HasVisibleAttention(run) || run.Status == ChatRunStatus.Generating || run.HasUnreadResponse;
     private BranchTreeItem? GetSelectedBranchItem() =>
         GetBranchTreeItems().FirstOrDefault(branch => branch.RootId == _selectedBranchId);
 
@@ -1892,10 +1894,10 @@
     // chats disagree: an outright failure always wins, then anything else needing user action,
     // then an unread completion, then an in-progress run — matching how urgently each state
     // deserves the user's attention rather than e.g. insertion order.
-    private static int GetProjectRunPriority(ChatRunSnapshot run) => run switch
+    private int GetProjectRunPriority(ChatRunSnapshot run) => run switch
     {
         { Status: ChatRunStatus.Failed } => 0,
-        _ when RunStatusPresentation.HasVisibleAttention(run) => 1,
+        _ when StatusPresentation.HasVisibleAttention(run) => 1,
         { HasUnreadResponse: true } => 2,
         { Status: ChatRunStatus.Generating } => 3,
         _ => 4
@@ -1922,7 +1924,7 @@
     {
         var countTitle = GetBranchCountTitle(branchCount);
         return GetChatBranchRun(chat.Id) is { } run
-            ? $"{countTitle} · {RunStatusPresentation.GetStatusTooltip(run)}"
+            ? $"{countTitle} · {StatusPresentation.GetStatusTooltip(run)}"
             : countTitle;
     }
     private string GetProjectRunTooltip(Guid projectId) { var runs = GetProjectRuns(projectId).ToArray(); return $"{runs.Count(item => item.Status == ChatRunStatus.Generating)} generating · {runs.Count(item => item.HasUnreadResponse)} unread · {runs.Count(item => item.Status == ChatRunStatus.Failed)} failed"; }
@@ -1945,10 +1947,10 @@
     private bool ShouldHideCurrentRunStatus(Guid chatId, Guid branchId, ChatRunSnapshot? run) =>
         IsCurrentRun(chatId, branchId) && run?.Status != ChatRunStatus.Generating;
     private string? GetRunTitle(Guid chatId, Guid branchId, ChatRunSnapshot? run) =>
-        ShouldHideCurrentRunStatus(chatId, branchId, run) || run is null || !IsVisibleRun(run) ? null : RunStatusPresentation.GetStatusTooltip(run);
+        ShouldHideCurrentRunStatus(chatId, branchId, run) || run is null || !IsVisibleRun(run) ? null : StatusPresentation.GetStatusTooltip(run);
     private string GetRunStatusClass(Guid chatId, Guid branchId, ChatRunSnapshot? run) =>
         ShouldHideCurrentRunStatus(chatId, branchId, run) ? string.Empty : GetRunStatusClass(run);
-    private static string GetRunStatusClass(ChatRunSnapshot? run) => RunStatusPresentation.GetStatusClass(run);
+    private string GetRunStatusClass(ChatRunSnapshot? run) => StatusPresentation.GetStatusClass(run);
 
     // Captures the currently selected chat/branch synchronously (before any await), then hands
     // off to MarkChatReadAsync. This must NOT read _selectedChat/_selectedBranchId again after

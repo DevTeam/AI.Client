@@ -47,13 +47,14 @@ public sealed class AppReadTool(
     IChatService chats,
     IGlobalSettingsService settings,
     IChatSearchService search,
-    Func<IChatRunDispatcher> runs) : IAppTool
+    Func<IChatRunDispatcher> runs,
+    IAppToolReply reply) : IAppTool
 {
-    public McpServerTool Create(ToolRunContext run) => McpServerTool.Create(
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => McpServerTool.Create(
         ReadAsync,
         new McpServerToolCreateOptions
         {
-            SerializerOptions = ToolReply.Json,
+            SerializerOptions = reply.Json,
             Description = "Read this application's own data: projects, chats, messages, runs and global settings. "
                           + "'Project', 'Chat' and 'Messages' need the ids named in their description; the others ignore them. "
                           + "'Search' finds text in messages across every chat at once and needs 'query'; use it instead of reading "
@@ -81,19 +82,19 @@ public sealed class AppReadTool(
         try
         {
             if (resource == AppResource.Search)
-                return ToolReply.Of(await SearchAsync(projectId, chatId, branchId, cursor, limit, query, isRegex, ignoreCase,
+                return reply.Reply(await SearchAsync(projectId, chatId, branchId, cursor, limit, query, isRegex, ignoreCase,
                     roles, cancellationToken));
-            return ToolReply.Of(await PageAsync(resource, projectId, chatId, branchId, cursor, limit, cancellationToken));
+            return reply.Reply(await PageAsync(resource, projectId, chatId, branchId, cursor, limit, cancellationToken));
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
-            return ToolReply.Of(new AppReadResult(resource.ToString(), [], null, false, 0, 0, error.Message), true);
+            return reply.Reply(new AppReadResult(resource.ToString(), [], null, false, 0, 0, error.Message), true);
         }
     }
 
     /// <summary>
     /// Search answers in the same page shape as every other resource, so one tool keeps one result
-    /// contract. Its own limits — matches, characters, messages examined — live with the search.
+    /// contract. Its own limits � matches, characters, messages examined � live with the search.
     /// </summary>
     private async Task<AppReadResult> SearchAsync(
         Guid? projectId, Guid? chatId, Guid? branchId, string? cursor, int limit, string? query,
@@ -105,7 +106,7 @@ public sealed class AppReadTool(
             isRegex, ignoreCase, roles, null, null, limit, cursor), cancellationToken);
         if (found.Error is { } error) throw new ArgumentException(error, nameof(query));
         var items = found.Matches
-            .Select(match => JsonSerializer.SerializeToElement(match, ToolReply.Json))
+            .Select(match => JsonSerializer.SerializeToElement(match, reply.Json))
             .ToArray();
         // 'total' is how many matches this page holds, not how many exist: counting the rest would
         // mean scanning everything, which is the cost the limits exist to avoid.
@@ -119,26 +120,26 @@ public sealed class AppReadTool(
         switch (resource)
         {
             case AppResource.Projects:
-                return Paging.Page("Projects", await projects.ListAsync(cancellationToken), cursor, limit);
+                return Paging.Page("Projects", await projects.ListAsync(cancellationToken), cursor, limit, reply.Json);
             case AppResource.Project:
             {
                 var project = await projects.GetAsync(Required(projectId, nameof(projectId)), cancellationToken)
                     ?? throw new InvalidOperationException("Project not found.");
-                return Paging.Page("Project", [project], cursor, limit);
+                return Paging.Page("Project", [project], cursor, limit, reply.Json);
             }
             case AppResource.Chats:
-                return Paging.Page("Chats", await chats.ListAsync(Required(projectId, nameof(projectId)), cancellationToken), cursor, limit);
+                return Paging.Page("Chats", await chats.ListAsync(Required(projectId, nameof(projectId)), cancellationToken), cursor, limit, reply.Json);
             case AppResource.Chat:
             {
                 var chat = await LoadChatAsync(projectId, chatId, cancellationToken);
                 // Messages are their own resource: a chat read would otherwise always drag the
                 // whole transcript along, and no caller asking for a title wants that.
-                return Paging.Page("Chat", [chat with { Messages = [] }], cursor, limit);
+                return Paging.Page("Chat", [chat with { Messages = [] }], cursor, limit, reply.Json);
             }
             case AppResource.Messages:
             {
                 var chat = await LoadChatAsync(projectId, chatId, cancellationToken);
-                return Paging.Page("Messages", Branch(chat, branchId), cursor, limit);
+                return Paging.Page("Messages", Branch(chat, branchId), cursor, limit, reply.Json);
             }
             case AppResource.Runs:
             {
@@ -148,10 +149,10 @@ public sealed class AppReadTool(
                     .Where(run => chatId is not { } chat || run.ChatId == chat)
                     .Where(run => branchId is not { } branch || run.BranchId == branch)
                     .ToArray();
-                return Paging.Page("Runs", filtered, cursor, limit);
+                return Paging.Page("Runs", filtered, cursor, limit, reply.Json);
             }
             case AppResource.Settings:
-                return Paging.Page("Settings", [await settings.GetAsync(cancellationToken)], cursor, limit);
+                return Paging.Page("Settings", [await settings.GetAsync(cancellationToken)], cursor, limit, reply.Json);
             default:
                 throw new ArgumentException("Unknown resource.", nameof(resource));
         }

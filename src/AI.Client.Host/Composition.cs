@@ -44,6 +44,9 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatEndpoint>()
             .Root<IChatRunRepository>()
             .Root<IChatRunDispatcher>()
+            .Root<IChatBranchIds>()
+            .Root<IToolUserInterface>()
+            .RootBind<IAppToolReply>().To<AppToolReply>()
             .Root<IToolSessionFactory>()
             .Root<IAppDataChangeSignal>()
             .Singleton<HostDescriptor, PhysicalTextFileSystem, JsonProjectRepository, ProjectDocumentSerializer,
@@ -54,7 +57,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 ChatContextCompactor, ChatContextPlanner, ConnectionContextLimitsResolver, ModelContentCheckpointService,
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, RunCompletionProtocol,
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff,
-                AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ToolPresentations>()
+                AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ToolPresentations, ChatBranchIds, ToolUserInterface>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
             .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To(([Tag("base")] IChatCompletionClient baseClient, ILogger<RetryingChatCompletionClient> retryLogger, IChatTransportPolicy transportPolicy, IChatTransportActivity transportActivity) => new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity))
             .Singleton<ToolResultModelProjector, ToolResultCodec, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()

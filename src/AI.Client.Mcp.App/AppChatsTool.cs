@@ -1,4 +1,4 @@
-﻿namespace AI.Client.Mcp.App;
+namespace AI.Client.Mcp.App;
 
 using AI.Client.Application.Chats;
 using AI.Client.Application.Runs;
@@ -35,16 +35,16 @@ public enum ChatOperation
 /// <remarks>
 /// The dispatcher arrives as a factory rather than an instance: it owns the agent, the agent owns
 /// the tool session, and the session owns this tool. Resolving it on use instead of on construction
-/// is what keeps that loop from having to be built all at once — every tool here does the same.
+/// is what keeps that loop from having to be built all at once � every tool here does the same.
 /// </remarks>
 [McpServerToolType]
-public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> runs, IAppWrites writes) : IAppTool
+public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> runs, IAppWrites writes, IAppToolReply reply) : IAppTool
 {
-    public McpServerTool Create(ToolRunContext run) => McpServerTool.Create(
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => McpServerTool.Create(
         ChatsAsync,
         new McpServerToolCreateOptions
         {
-            SerializerOptions = ToolReply.Json,
+            SerializerOptions = reply.Json,
             Description = "Create and change this application's chats and branches. Read the chat with 'app_read' first and pass the "
                           + "'revision' you saw: a stale revision changes nothing and reports the current one back. 'operationId' must "
                           + "be a fresh UUID per distinct change, and the same UUID when repeating one that may already have landed. "
@@ -91,7 +91,7 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
     {
         var chat = await chats.CreateAsync(projectId, new CreateChatRequest(Text(title, nameof(title)), connectionId), cancellationToken);
         return builder.Applied($"Created chat '{chat.Title}'.", projectId, chat.Id, revision: chat.Revision,
-            current: Element(chat with { Messages = [] }));
+            current: Element(chat with { Messages = [] }, reply.Json));
     }
 
     private Task<AppWriteResult> RenameAsync(
@@ -133,11 +133,11 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
         if (dryRun)
             return builder.Planned(
                 $"Would delete chat '{chat.Title}' with {chat.Messages.Count} message(s) and {chat.Branches?.Count ?? 0} branch(es).",
-                projectId, id, revision: chat.Revision, current: Element(chat with { Messages = [] }));
+                projectId, id, revision: chat.Revision, current: Element(chat with { Messages = [] }, reply.Json));
         var result = await runs().DeleteChatAsync(projectId, id, revision, cancellationToken);
         return result.IsDeleted
             ? builder.Applied($"Deleted chat '{chat.Title}'.", projectId, id, revision: result.Revision)
-            : builder.Conflict(result.Revision, Element(chat with { Messages = [] }), projectId, id);
+            : builder.Conflict(result.Revision, Element(chat with { Messages = [] }, reply.Json), projectId, id);
     }
 
     private async Task<AppWriteResult> DeleteBranchAsync(
@@ -152,11 +152,11 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
             ?? throw new InvalidOperationException("Branch not found.");
         if (dryRun)
             return builder.Planned($"Would delete branch '{title}' and every message only it reaches.",
-                projectId, id, branch, chat.Revision, Element(chat with { Messages = [] }));
+                projectId, id, branch, chat.Revision, Element(chat with { Messages = [] }, reply.Json));
         var result = await runs().DeleteBranchAsync(projectId, id, branch, revision, cancellationToken);
         return result.IsDeleted
             ? builder.Applied($"Deleted branch '{title}'.", projectId, id, branch, revision: result.Revision)
-            : builder.Conflict(result.Revision, Element(chat with { Messages = [] }), projectId, id);
+            : builder.Conflict(result.Revision, Element(chat with { Messages = [] }, reply.Json), projectId, id);
     }
 
     /// <summary>
@@ -171,14 +171,14 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
         var updated = await change(id);
         if (updated is not null)
             return builder.Applied(effect(updated), projectId, id, revision: updated.Revision,
-                current: Element(updated with { Messages = [] }));
+                current: Element(updated with { Messages = [] }, reply.Json));
         var current = await chats.GetAsync(projectId, id, cancellationToken);
         return current is null
             ? builder.Failed("Chat not found.", projectId, id)
-            : builder.Conflict(current.Revision, Element(current with { Messages = [] }), projectId, id);
+            : builder.Conflict(current.Revision, Element(current with { Messages = [] }, reply.Json), projectId, id);
     }
 
-    private static JsonElement Element<T>(T value) => JsonSerializer.SerializeToElement(value, ToolReply.Json);
+    private static JsonElement Element<T>(T value, JsonSerializerOptions options) => JsonSerializer.SerializeToElement(value, options);
 
     private static Guid Required(Guid? value, string name) =>
         value ?? throw new ArgumentException($"'{name}' is required for this operation.", name);

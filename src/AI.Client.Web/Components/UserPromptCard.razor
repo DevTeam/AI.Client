@@ -5,7 +5,7 @@
 @using AI.Client.Web.Markdown
 @inject IMarkdownRenderer MarkdownRenderer
 
-<section class="user-prompt" role="region" aria-label="Question from the assistant">
+<section class="user-prompt" role="region" aria-label="Question from the assistant" @onkeydown="HandleKeyDownAsync">
     <strong class="user-prompt-title">@(Prompt.Questions.Count > 1 ? $"Questions ({Prompt.Questions.Count})" : "Question")</strong>
     @for (var index = 0; index < Prompt.Questions.Count; index++)
     {
@@ -57,12 +57,32 @@
             }
         </fieldset>
     }
-    <p class="user-prompt-note">
-        Answer what matters to you — anything you leave blank is left to the assistant to decide.
+    <p class="user-prompt-note @(IsReady ? "ready" : null)" role="status" aria-live="polite">
+        @if (IsReady)
+        {
+            <span>All questions answered. Press <kbd>Enter</kbd> to continue.</span>
+        }
+        else
+        {
+            <span>Answer what matters to you — anything you leave blank is left to the assistant to decide.</span>
+        }
     </p>
     <div class="user-prompt-actions">
-        <button class="secondary-action" type="button" disabled="@_sending" @onclick="DismissAsync">Decide yourself</button>
-        <button type="button" disabled="@_sending" @onclick="AnswerAsync">Answer</button>
+        <button class="secondary-action" type="button" disabled="@_sending" @onclick="DismissAsync" @onkeydown:stopPropagation="true">Decide yourself</button>
+        <button type="button" disabled="@_sending" @onclick="AnswerAsync" @onkeydown:stopPropagation="true">
+            @if (_sending)
+            {
+                <span>Continuing…</span>
+            }
+            else if (IsReady)
+            {
+                <span>Continue <kbd aria-hidden="true">Enter ↵</kbd></span>
+            }
+            else
+            {
+                <span>Answer</span>
+            }
+        </button>
     </div>
     @if (_error is not null) { <p class="user-prompt-error" role="alert">@_error</p> }
 </section>
@@ -78,6 +98,11 @@
     private bool _sending;
     private string? _error;
     private Guid _rendered;
+
+    private bool IsReady => Prompt.Questions
+        .Select((_, index) => _selected.GetValueOrDefault(index)?.Count > 0
+            || !string.IsNullOrWhiteSpace(_other.GetValueOrDefault(index)))
+        .All(answered => answered);
 
     protected override void OnParametersSet()
     {
@@ -131,6 +156,12 @@
     private Task AnswerAsync() => SendAsync(UserPromptOutcome.Answered);
 
     private Task DismissAsync() => SendAsync(UserPromptOutcome.Dismissed);
+
+    private Task HandleKeyDownAsync(KeyboardEventArgs args) =>
+        args.Key == "Enter" && !args.AltKey && !args.CtrlKey && !args.MetaKey && !args.ShiftKey
+            && !args.IsComposing && IsReady && !_sending
+                ? AnswerAsync()
+                : Task.CompletedTask;
 
     private async Task SendAsync(UserPromptOutcome outcome)
     {

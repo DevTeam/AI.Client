@@ -292,10 +292,10 @@ app.MapPost(
 
 app.MapPost(
     "/api/projects/{projectId:guid}/chats/{chatId:guid}/messages",
-    async (Guid projectId, Guid chatId, AppendChatMessageRequest request, IChatService service, IChatRunDispatcher runs, CancellationToken cancellationToken) =>
+    async (Guid projectId, Guid chatId, AppendChatMessageRequest request, IChatService service, IChatRunDispatcher runs, IChatBranchIds branchIds, CancellationToken cancellationToken) =>
     {
         var chat = await service.AppendMessageAsync(projectId, chatId, request, cancellationToken);
-        if (chat is not null) await runs.ReconcileChatAsync(projectId, chatId, ChatBranchIds.Get(chat), cancellationToken);
+        if (chat is not null) await runs.ReconcileChatAsync(projectId, chatId, branchIds.Collect(chat), cancellationToken);
         return chat is null ? Results.NotFound() : Results.Ok(chat);
     });
 

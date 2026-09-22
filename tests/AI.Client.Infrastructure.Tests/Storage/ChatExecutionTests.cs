@@ -1395,7 +1395,7 @@ public sealed class ChatExecutionTests
                     new ModelInstructionComposer(instructionRegistry, new ContextTokenEstimator()),
                     Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol()),
                 _secrets, _clock, _ids, _synchronization, Workspace, policies,
-                new ChatContext(ToolResultCodec));
+                new ChatContext(ToolResultCodec), new ChatBranchIds());
         }
         public static async Task<Fixture> CreateAsync(IWorkspaceChangeTracker? workspace = null)
         {

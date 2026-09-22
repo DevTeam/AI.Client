@@ -8,7 +8,7 @@ using System.Text.Json;
 /// The parts every mutating tool shares: replay protection, the change signal, and turning an
 /// outcome into a result whose shape does not depend on whether it succeeded.
 /// </summary>
-public sealed class AppWrites(IAppOperationLog log, IAppDataChangeSignal signal) : IAppWrites
+public sealed class AppWrites(IAppOperationLog log, IAppDataChangeSignal signal, IAppToolReply reply) : IAppWrites
 {
     public async Task<CallToolResult> RunAsync(
         string operation,
@@ -17,13 +17,13 @@ public sealed class AppWrites(IAppOperationLog log, IAppDataChangeSignal signal)
     {
         ArgumentNullException.ThrowIfNull(body);
         if (operationId == Guid.Empty)
-            return ToolReply.Of(AppWriteBuilder.For(operation).Failed("'operationId' must be a fresh UUID."), true);
+            return reply.Reply(AppWriteBuilder.For(operation).Failed("'operationId' must be a fresh UUID."), true);
 
         // A repeat of an operation that already landed answers with what it did the first time.
         // Only applied mutations are remembered: a dry run and a rejected call changed nothing,
         // so there is nothing to protect against repeating.
         if (log.TryGet(operationId, out var previous) && previous is not null)
-            return ToolReply.Of(previous with { Replayed = true }, previous.Error is not null);
+            return reply.Reply(previous with { Replayed = true }, previous.Error is not null);
 
         AppWriteResult result;
         try
@@ -41,7 +41,7 @@ public sealed class AppWrites(IAppOperationLog log, IAppDataChangeSignal signal)
             signal.Notify();
         }
 
-        return ToolReply.Of(result, result.Error is not null);
+        return reply.Reply(result, result.Error is not null);
     }
 }
 

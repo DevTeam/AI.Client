@@ -13,6 +13,7 @@ using Runs;
 using Settings;
 using State;
 using Notifications;
+using AI.Client.Web.Components;
 using Microsoft.AspNetCore.Components;
 using AI.Client.Contracts.Tools;
 using AI.Client.Contracts.Settings;
@@ -51,6 +52,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IToolResultCodec>().To<ToolResultCodec>()
             .RootBind<IConnectionContextLimitsResolver>().To<ConnectionContextLimitsResolver>()
             .RootBind<IUnifiedDiffParser>().As(Lifetime.Singleton).To<UnifiedDiff>()
+            .RootBind<IChatFeedProjection>().To<ChatFeed>()
+            .RootBind<IRunStatusPresentation>().To<RunStatusPresentation>()
             // `ApiBaseUrl(string)` matches the constructor generated for the `Arg` above, so
             // Pure.DI wires it in automatically. Same as how `Host/Composition.cs` registers
             // its `IChatCompletionClient` lambda in `Bind<>().To(...)`.

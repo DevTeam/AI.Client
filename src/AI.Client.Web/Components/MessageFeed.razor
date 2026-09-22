@@ -4,8 +4,10 @@
    ShouldRender below). Without this boundary, every keystroke in the composer (which lives in
    Home and calls StateHasChanged on the whole page) also rebuilt and diffed this list. *@
 @inject IMarkdownRenderer MarkdownRenderer
+@inject IChatFeedProjection Feed
 @inject IJSRuntime JsRuntime
 @inject IChatRunsApi RunsApi
+@inject IRunStatusPresentation StatusPresentation
 @implements IAsyncDisposable
 @using AI.Client.Contracts.Tools
 
@@ -191,7 +193,7 @@
             else if (item?.ToolGroup is { } group)
             {
                 var anchor = group[^1];
-                var preamble = ChatFeed.PreambleOf(group);
+                var preamble = Feed.PreambleOf(group);
                 @* One block per cycle: the assistant's explanation, then the tools it announced.
                    They were two articles with a boundary between them, which read as unrelated
                    cards; together they read as intent followed by actions. The preamble needs no
@@ -223,7 +225,7 @@
         }
         </TranscriptRenderBoundary>
         @if (SelectedRun is { Status: not ChatRunStatus.Completed, WorkspaceChanges: { IsEmpty: false } liveChanges }
-            && !ChatFeed.LastTurnHasWorkspaceReceipt(GetVisibleBranchMessages()))
+            && !Feed.LastTurnHasWorkspaceReceipt(GetVisibleBranchMessages()))
         {
             <WorkspaceChanges Changes="@liveChanges" />
         }
@@ -315,12 +317,12 @@
     // activity wants the payload to paste into a bug report, not the UI's wording of it. The
     // preamble leads, because the block is one thing on screen and should be one thing on the
     // clipboard.
-    private static string BuildToolGroupSummaryText(IReadOnlyList<ChatMessageView> group)
+    private string BuildToolGroupSummaryText(IReadOnlyList<ChatMessageView> group)
     {
-        var parts = ChatFeed.BuildInvocations(group).Select(invocation =>
+        var parts = Feed.BuildInvocations(group).Select(invocation =>
             $"{invocation.Call.Name}({invocation.Call.Arguments})"
             + (invocation.Result is { } result ? $"\n=> {result.Content}" : string.Empty));
-        if (ChatFeed.PreambleOf(group) is { } preamble) parts = parts.Prepend(preamble.Content);
+        if (Feed.PreambleOf(group) is { } preamble) parts = parts.Prepend(preamble.Content);
         return string.Join("\n\n", parts);
     }
 
@@ -884,8 +886,8 @@
     // after the switch.
     private Guid? _appliedSearchChatId;
     private readonly record struct RenderedFeedEntry(
-        ChatFeed.FeedItem? Item = null,
-        ChatFeed.FeedTurn? Summary = null,
+        FeedItem? Item = null,
+        FeedTurn? Summary = null,
         ChatMessageView? ChangesMessage = null,
         int? RevealIndex = null,
         IReadOnlyList<ActiveToolInvocation>? ActiveTools = null,
@@ -904,12 +906,12 @@
     private List<RenderedFeedEntry> GetRenderedFeedItems()
     {
         var entries = new List<RenderedFeedEntry>();
-        foreach (var turn in ChatFeed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer()))
+        foreach (var turn in Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer()))
         {
-            IReadOnlyList<ChatFeed.FeedItem> visibleIntermediateItems = [];
+            IReadOnlyList<FeedItem> visibleIntermediateItems = [];
             if (turn.UserMessage is { } user)
             {
-                entries.Add(new RenderedFeedEntry(Item: new ChatFeed.FeedItem(user, null)));
+                entries.Add(new RenderedFeedEntry(Item: new FeedItem(user, null)));
             }
 
             // Orphaned legacy messages have no stable turn id and therefore keep their existing
@@ -1002,19 +1004,19 @@
         // assistant message can therefore reach the UI one frame before the Completed snapshot.
         // A complete plain assistant message is authoritative: keeping it "intermediate" during
         // that frame makes the UI claim that an already answered turn is still working.
-        if (ChatFeed.LastTurnHasCompleteAnswer(GetVisibleBranchMessages())) return false;
+        if (Feed.LastTurnHasCompleteAnswer(GetVisibleBranchMessages())) return false;
 
         return GetVisibleBranchMessages().LastOrDefault(message => message.Role == "User")?.Id
             == activeMessageId;
     }
 
-    private bool IsTurnExpanded(ChatFeed.FeedTurn turn) =>
+    private bool IsTurnExpanded(FeedTurn turn) =>
         turn.Id is { } id
         && (_expandedTurns.Contains(id)
             || (ForkSourceId is { } forkSource
                 && turn.IntermediateMessages.Any(message => message.Id == forkSource)));
 
-    private bool CanExpandTurn(ChatFeed.FeedTurn turn) =>
+    private bool CanExpandTurn(FeedTurn turn) =>
         turn.IntermediateItems.Count > 0
         || IsCurrentTurn(turn) && SelectedRun?.ActiveTools is { Count: > 0 };
 
@@ -1076,7 +1078,7 @@
         await Task.Delay(TimeSpan.FromMilliseconds(16));
         if (_disposed) return true;
 
-        var turns = ChatFeed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer())
+        var turns = Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer())
             .Where(turn => turn.Id is not null)
             .ToDictionary(turn => turn.Id!.Value);
         foreach (var turnId in _turnExpansionsPending.ToArray())
@@ -1105,17 +1107,17 @@
         return true;
     }
 
-    private bool IsCurrentTurn(ChatFeed.FeedTurn turn)
+    private bool IsCurrentTurn(FeedTurn turn)
     {
         if (turn.Id is not { } id) return false;
         return GetVisibleBranchMessages().LastOrDefault(message => message.Role == "User")?.Id == id;
     }
 
-    private bool IsRunningTurn(ChatFeed.FeedTurn turn) =>
+    private bool IsRunningTurn(FeedTurn turn) =>
         IsCurrentTurn(turn) && turn.FinalAnswer is null
         && SelectedRun?.Status == ChatRunStatus.Generating;
 
-    private bool IsCurrentUnfinishedTurn(ChatFeed.FeedTurn turn) =>
+    private bool IsCurrentUnfinishedTurn(FeedTurn turn) =>
         IsCurrentTurn(turn) && LastTurnEndedWithoutFinalAnswer();
 
     private string GetGeneratingMarkerTarget()
@@ -1126,13 +1128,13 @@
         return turnId is { } id ? $"turn-summary-{id}" : "message-streaming";
     }
 
-    private string GetTurnSummaryText(ChatFeed.FeedTurn turn)
+    private string GetTurnSummaryText(FeedTurn turn)
     {
         var elapsed = GetTurnDuration(turn);
-        var duration = ChatFeed.FormatDuration(elapsed);
+        var duration = Feed.FormatDuration(elapsed);
         if (IsRunningTurn(turn))
         {
-            return ChatFeed.RunningTitleOf(turn, elapsed) ?? $"Working for {duration}";
+            return Feed.RunningTitleOf(turn, elapsed) ?? $"Working for {duration}";
         }
 
         if (IsCurrentTurn(turn))
@@ -1148,7 +1150,7 @@
         return $"Worked for {duration}";
     }
 
-    private TimeSpan GetTurnDuration(ChatFeed.FeedTurn turn)
+    private TimeSpan GetTurnDuration(FeedTurn turn)
     {
         if (IsRunningTurn(turn) && GeneratingElapsed is { } generating) return generating;
         if (turn.UserMessage is not { } user || turn.LastMessage is not { } last) return TimeSpan.Zero;
@@ -1159,7 +1161,7 @@
         ? Math.Max(0, (int)elapsed.TotalSeconds)
         : null;
 
-    private string GetTurnSummaryStateClasses(ChatFeed.FeedTurn turn)
+    private string GetTurnSummaryStateClasses(FeedTurn turn)
     {
         var messages = turn.IntermediateMessages.ToArray();
         return string.Join(' ', new[]
@@ -1227,7 +1229,7 @@
 
     private IReadOnlyList<ChatMessageView> ComputeVisibleBranchMessages()
     {
-        return SelectedChat is null ? [] : ChatFeed.BuildBranch(SelectedChat.Messages, BranchLeafId);
+        return SelectedChat is null ? [] : Feed.BuildBranch(SelectedChat.Messages, BranchLeafId);
     }
 
     private HashSet<Guid> GetForkPointIds()
@@ -1412,7 +1414,7 @@
         var run = GetOptionRun(option);
         return IsMessageInActiveBranch(option.Id) && run?.Status != ChatRunStatus.Generating
             ? string.Empty
-            : RunStatusPresentation.GetStatusClass(run);
+            : StatusPresentation.GetStatusClass(run);
     }
 
     private string? GetOptionStatusTooltip(ChatMessageView option)
@@ -1420,7 +1422,7 @@
         var run = GetOptionRun(option);
         if (run is null) return null;
         if (IsMessageInActiveBranch(option.Id) && run.Status != ChatRunStatus.Generating) return null;
-        return RunStatusPresentation.GetStatusTooltip(run);
+        return StatusPresentation.GetStatusTooltip(run);
     }
 
     private bool IsMessageInActiveBranch(Guid messageId)

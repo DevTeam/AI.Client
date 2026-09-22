@@ -6,6 +6,7 @@
    row is expanded, so a 10MB stdout costs nothing to scroll past. *@
 @using AI.Client.Contracts.Tools
 @inject IToolPresentations Presentations
+@inject IChatFeedProjection Feed
 @inject IToolResultCodec ToolResultCodec
 @implements IDisposable
 
@@ -89,7 +90,7 @@
     private bool _rowExpansionPending;
     private bool _disposed;
     private bool _allResultsDescribed;
-    private IReadOnlyList<ChatFeed.ToolInvocation> _invocations = [];
+    private IReadOnlyList<ToolInvocation> _invocations = [];
     private readonly Dictionary<string, ActiveToolInvocation> _activeByCallId = new(StringComparer.Ordinal);
     private GroupVersion _groupVersion;
 
@@ -103,12 +104,12 @@
         var version = Group.Count == 0
             ? default
             : new GroupVersion(Group.Count, Group[0].Id, Group[^1].Id);
-        var invocations = ChatFeed.BuildInvocations(Group);
+        var invocations = Feed.BuildInvocations(Group);
         var knownCallIds = invocations.Select(item => item.Call.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var active in _activeByCallId.Values)
         {
             if (!knownCallIds.Add(active.CallId)) continue;
-            invocations.Add(new ChatFeed.ToolInvocation(
+            invocations.Add(new ToolInvocation(
                 new ChatToolCall(active.CallId, active.Name, active.Arguments),
                 null,
                 active.StartedAt,
@@ -144,7 +145,7 @@
         _visibleRowCount = _batchExpanded ? Math.Min(RowRenderBatchSize, _invocations.Count) : 0;
     }
 
-    private RenderFragment RenderRow(ChatFeed.ToolInvocation invocation) => @<text>
+    private RenderFragment RenderRow(ToolInvocation invocation) => @<text>
         @{
             var call = Presentations.DescribeCall(invocation.Call.Name, invocation.Call.Arguments);
             var active = _activeByCallId.GetValueOrDefault(invocation.Call.Id);
@@ -255,7 +256,7 @@
     /// included: a call that lands while the group is folded is absorbed silently, so unfolding it
     /// later shows a settled list instead of replaying a cascade the user never watched happen.
     /// </summary>
-    private void TrackArrivals(IReadOnlyList<ChatFeed.ToolInvocation> invocations)
+    private void TrackArrivals(IReadOnlyList<ToolInvocation> invocations)
     {
         var batch = 0;
         foreach (var invocation in invocations)
@@ -281,7 +282,7 @@
     // immutable once written, so the message id is a sound cache key.
     private readonly Dictionary<Guid, ToolResultPresentation> _described = [];
 
-    private ToolResultPresentation Describe(ChatFeed.ToolInvocation invocation)
+    private ToolResultPresentation Describe(ToolInvocation invocation)
     {
         if (invocation.Result is not { } message) return EmptyResult;
         if (_described.TryGetValue(message.Id, out var cached)) return cached;
@@ -294,7 +295,7 @@
     private static readonly ToolResultPresentation EmptyResult = new("", ToolResultSeverity.Ok, [], null);
 
     /// <summary>Sums only what was actually observed; an unfinished call contributes nothing.</summary>
-    private static TimeSpan? TotalDuration(IReadOnlyList<ChatFeed.ToolInvocation> invocations)
+    private static TimeSpan? TotalDuration(IReadOnlyList<ToolInvocation> invocations)
     {
         var total = TimeSpan.Zero;
         var any = false;

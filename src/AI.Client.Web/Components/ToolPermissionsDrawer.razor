@@ -103,7 +103,7 @@
             _global = await GlobalSettingsApi.GetAsync(CancellationToken.None);
             _project = await ProjectApi.GetAsync(ProjectId, CancellationToken.None);
             _chat = ChatId is { } chatId
-                ? await ChatHistoryApi.GetAsync(ProjectId, chatId, CancellationToken.None) : null;
+                ? await ChatHistoryApi.GetTranscriptAsync(ProjectId, chatId, CancellationToken.None) : null;
         }
         catch (HttpRequestException) { _error = "Permissions could not be loaded."; }
         finally { _loading = false; }

@@ -8,6 +8,7 @@
 @inject IToolPresentations Presentations
 @inject IChatFeedProjection Feed
 @inject IToolResultCodec ToolResultCodec
+@inject IChatHistoryApi ChatHistoryApi
 @implements IDisposable
 
 <div class="tool-activity">
@@ -74,6 +75,9 @@
 
 @code {
     [Parameter] [EditorRequired] public IReadOnlyList<ChatMessageView> Group { get; set; } = [];
+    [Parameter] public Guid ProjectId { get; set; }
+    [Parameter] public Guid ChatId { get; set; }
+    [Parameter] public long ChatRevision { get; set; }
 
     /// <summary>
     /// Whether this group belongs to a run that is still going. A call with no result is only
@@ -90,7 +94,7 @@
     private bool _rowExpansionPending;
     private bool _disposed;
     private bool _allResultsDescribed;
-    private IReadOnlyList<ToolInvocation> _invocations = [];
+    private List<ToolInvocation> _invocations = [];
     private readonly Dictionary<string, ActiveToolInvocation> _activeByCallId = new(StringComparer.Ordinal);
     private GroupVersion _groupVersion;
 
@@ -105,6 +109,15 @@
             ? default
             : new GroupVersion(Group.Count, Group[0].Id, Group[^1].Id);
         var invocations = Feed.BuildInvocations(Group);
+        for (var index = 0; index < invocations.Count; index++)
+        {
+            if (invocations[index].Result is not { ContentOmitted: true } result
+                || !_loadedResultContent.TryGetValue(result.Id, out var content)) continue;
+            invocations[index] = invocations[index] with
+            {
+                Result = result with { Content = content, ContentOmitted = false }
+            };
+        }
         var knownCallIds = invocations.Select(item => item.Call.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var active in _activeByCallId.Values)
         {
@@ -167,7 +180,7 @@
         <details class="tool-row-item @SeverityClass(severity) @(arriving is null ? string.Empty : "tool-row-arriving") @(_resolved.Contains(invocation.Call.Id) ? "tool-row-resolved" : string.Empty)"
                  style="@(arriving is { } order ? $"--arrive-index: {order}" : null)"
                  open="@open">
-            <summary class="tool-row" @onclick="() => Toggle(invocation.Call.Id)" @onclick:preventDefault="true">
+            <summary class="tool-row" @onclick="() => ToggleAsync(invocation)" @onclick:preventDefault="true">
                 <span class="tool-row-glyph" aria-hidden="true">
                     @if (running) { <AppIcon Name="spinner" Class="tool-row-spinner" /> }
                     else if (severity == ToolResultSeverity.Error) { <AppIcon Name="error" /> }
@@ -211,6 +224,10 @@
                 {
                     <pre class="tool-row-output @(result.BodyFormat == ToolBodyFormat.Diff ? "tool-row-diff" : string.Empty)">@body</pre>
                 }
+                else if (_loadingResults.Contains(invocation.Call.Id))
+                {
+                    <p class="tool-row-running">Loading result…</p>
+                }
                 else if (running)
                 {
                     <p class="tool-row-running">Waiting for the result…</p>
@@ -227,10 +244,39 @@
     // Which rows the user opened, by call id. Nothing else opens a row, so one set is enough —
     // there is no default-open state left to remember an override for.
     private readonly HashSet<string> _expanded = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _loadingResults = new(StringComparer.Ordinal);
+    private readonly Dictionary<Guid, string> _loadedResultContent = [];
 
-    private void Toggle(string id)
+    private async Task ToggleAsync(ToolInvocation invocation)
     {
-        if (!_expanded.Remove(id)) _expanded.Add(id);
+        var id = invocation.Call.Id;
+        if (_expanded.Remove(id)) return;
+        _expanded.Add(id);
+        if (invocation.Result is not { ContentOmitted: true } result
+            || ProjectId == Guid.Empty || ChatId == Guid.Empty) return;
+
+        _loadingResults.Add(id);
+        try
+        {
+            var content = await ChatHistoryApi.GetMessageContentAsync(
+                ProjectId,
+                ChatId,
+                result.Id,
+                CancellationToken.None);
+            if (_disposed || content is null || content.Revision < ChatRevision) return;
+            _loadedResultContent[result.Id] = content.Content;
+            var loadedResult = result with { Content = content.Content, ContentOmitted = false };
+            var index = _invocations.FindIndex(item => item.Call.Id == id);
+            if (index >= 0) _invocations[index] = _invocations[index] with { Result = loadedResult };
+            _described.Remove(result.Id);
+        }
+        catch (HttpRequestException)
+        {
+        }
+        finally
+        {
+            _loadingResults.Remove(id);
+        }
     }
 
     // Calls this group has rendered at least once, so a row can tell "just arrived" from "was
@@ -285,6 +331,7 @@
     private ToolResultPresentation Describe(ToolInvocation invocation)
     {
         if (invocation.Result is not { } message) return EmptyResult;
+        if (message.ContentOmitted) return CompletedResult;
         if (_described.TryGetValue(message.Id, out var cached)) return cached;
         var described = Presentations.DescribeResult(
             invocation.Call.Name, invocation.Call.Arguments, ToolResultCodec.Read(message.Content));
@@ -293,6 +340,7 @@
     }
 
     private static readonly ToolResultPresentation EmptyResult = new("", ToolResultSeverity.Ok, [], null);
+    private static readonly ToolResultPresentation CompletedResult = new("Completed", ToolResultSeverity.Ok, [], null);
 
     /// <summary>Sums only what was actually observed; an unfinished call contributes nothing.</summary>
     private static TimeSpan? TotalDuration(IReadOnlyList<ToolInvocation> invocations)

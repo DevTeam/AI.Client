@@ -9,4 +9,5 @@ public sealed record ChatMessageView(
     bool IsIncomplete = false,
     IReadOnlyList<Chat.ChatToolCall>? ToolCalls = null,
     string? ToolCallId = null,
-    Workspace.WorkspaceChangeSet? WorkspaceChanges = null);
+    Workspace.WorkspaceChangeSet? WorkspaceChanges = null,
+    bool ContentOmitted = false);

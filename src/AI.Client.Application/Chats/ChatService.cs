@@ -32,6 +32,70 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         return stored is null ? null : ToDetails(stored.Chat, stored.Revision);
     }
 
+    public async Task<ChatDetails?> GetTranscriptAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        return stored is null ? null : ToTranscript(stored.Chat, stored.Revision);
+    }
+
+    public async Task<ChatTurnActivity?> GetTurnActivityAsync(
+        Guid projectId,
+        Guid chatId,
+        Guid turnId,
+        Guid branchLeafId,
+        CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+
+        IReadOnlyList<ChatMessage> branch;
+        try
+        {
+            branch = stored.Chat.GetBranch(new ChatMessageId(branchLeafId));
+        }
+        catch (AI.Client.Domain.Common.DomainException)
+        {
+            return null;
+        }
+
+        var start = -1;
+        for (var index = 0; index < branch.Count; index++)
+        {
+            if (branch[index].Id.Value == turnId && branch[index].Role == ChatMessageRole.User)
+            {
+                start = index;
+                break;
+            }
+        }
+        if (start < 0) return null;
+
+        var end = start + 1;
+        while (end < branch.Count && branch[end].Role != ChatMessageRole.User) end++;
+        // A completed turn's last plain assistant message is already present in the compact
+        // transcript as the final answer. Everything before it is expandable activity.
+        if (end > start + 1 && IsPlainAssistant(branch[end - 1])) end--;
+
+        var messages = branch
+            .Skip(start + 1)
+            .Take(end - start - 1)
+            .Select(message => ToView(message, omitToolResultContent: true))
+            .ToArray();
+        return new ChatTurnActivity(stored.Revision, turnId, messages);
+    }
+
+    public async Task<ChatMessageContent?> GetMessageContentAsync(
+        Guid projectId,
+        Guid chatId,
+        Guid messageId,
+        CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        var message = stored?.Chat.Messages.SingleOrDefault(item => item.Id.Value == messageId);
+        return message is null || message.Role != ChatMessageRole.Tool
+            ? null
+            : new ChatMessageContent(stored!.Revision, messageId, message.Content);
+    }
+
     public async Task<ChatDetails> CreateAsync(Guid projectId, CreateChatRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -253,24 +317,76 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         chat.UpdatedAt,
         revision,
         chat.ConnectionId?.Value,
-        chat.Messages
-            .OrderBy(item => item.CreatedAt)
-            .Select(item => new ChatMessageView(
-                item.Id.Value,
-                item.ParentId?.Value,
-                item.Role.ToString(),
-                item.Content,
-                item.CreatedAt,
-                item.IsIncomplete,
-                item.ToolCalls?.Select(call => new Contracts.Chat.ChatToolCall(call.Id, call.Name, call.Arguments)).ToArray(),
-                item.ToolCallId,
-                ToContract(item.WorkspaceChanges)))
-            .ToArray(),
+        chat.Messages.OrderBy(item => item.CreatedAt).Select(message => ToView(message)).ToArray(),
         chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
             branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
         chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
             policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
             policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray());
+
+    private static ChatDetails ToTranscript(ChatThread chat, long revision)
+    {
+        var messages = chat.Messages.OrderBy(item => item.CreatedAt).ToArray();
+        var branchHeads = chat.Branches
+            .Select(branch => branch.HeadMessageId)
+            .OfType<ChatMessageId>()
+            .ToHashSet();
+        var followedByUser = messages
+            .Where(message => message.Role == ChatMessageRole.User && message.ParentId is not null)
+            .Select(message => message.ParentId!.Value)
+            .ToHashSet();
+
+        var projected = messages.Select(message =>
+        {
+            var keepContent = message.Role == ChatMessageRole.User
+                || IsPlainAssistant(message)
+                && (branchHeads.Contains(message.Id) || followedByUser.Contains(message.Id));
+            return ToView(message, omitContent: !keepContent, omitToolArguments: true, omitWorkspaceChanges: true);
+        }).ToArray();
+
+        return new ChatDetails(
+            chat.Id.Value,
+            chat.ProjectId.Value,
+            chat.Title,
+            chat.CreatedAt,
+            chat.UpdatedAt,
+            revision,
+            chat.ConnectionId?.Value,
+            projected,
+            chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
+                branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
+            chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
+                policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
+                policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray());
+    }
+
+    private static bool IsPlainAssistant(ChatMessage message) =>
+        message.Role == ChatMessageRole.Assistant && message.ToolCalls is not { Count: > 0 };
+
+    private static ChatMessageView ToView(
+        ChatMessage message,
+        bool omitContent = false,
+        bool omitToolArguments = false,
+        bool omitToolResultContent = false,
+        bool omitWorkspaceChanges = false)
+    {
+        var contentOmitted = (omitContent || omitToolResultContent && message.Role == ChatMessageRole.Tool)
+            && message.Content.Length > 0;
+        return new ChatMessageView(
+            message.Id.Value,
+            message.ParentId?.Value,
+            message.Role.ToString(),
+            contentOmitted ? string.Empty : message.Content,
+            message.CreatedAt,
+            message.IsIncomplete,
+            message.ToolCalls?.Select(call => new Contracts.Chat.ChatToolCall(
+                call.Id,
+                call.Name,
+                omitToolArguments ? string.Empty : call.Arguments)).ToArray(),
+            message.ToolCallId,
+            omitWorkspaceChanges ? null : ToContract(message.WorkspaceChanges),
+            contentOmitted);
+    }
 
     private static ChatWorkspaceChangeSet? ToDomain(WorkspaceChangeSet? changes) => changes is null
         ? null

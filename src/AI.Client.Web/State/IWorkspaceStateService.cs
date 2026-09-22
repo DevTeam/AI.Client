@@ -17,6 +17,16 @@ public interface IWorkspaceStateService : IAsyncDisposable
     /// <summary>Records the given project as the last one selected. No-op (no write) if it's already the current value.</summary>
     Task SetLastProjectIdAsync(Guid projectId);
 
+    /// <summary>
+    /// The directory the picker was last looking at, so it reopens where it was left instead of at
+    /// the drive list. Machine-wide rather than per project: it is where the user keeps their code,
+    /// and that does not change when they switch project.
+    /// </summary>
+    string? LastBrowsedDirectory { get; }
+
+    /// <summary>Records where the picker ended up. No-op for an empty or unchanged path.</summary>
+    Task SetLastBrowsedDirectoryAsync(string path);
+
     /// <summary>The chat/branch last selected within the given project, if any.</summary>
     (Guid? ChatId, Guid? BranchLeafId) GetProjectContext(Guid projectId);
 

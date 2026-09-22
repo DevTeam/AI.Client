@@ -202,7 +202,7 @@
                 <div class="directory-nav-group">
                     @if (_security.DirectoryGrants.Count == 0)
                     {
-                        <button class="workspace-nav-item directory-empty-action" type="button" @onclick="BeginDirectoryCreation">
+                        <button class="workspace-nav-item directory-empty-action" type="button" @onclick="OpenDirectoryPickerForNewGrant">
                             <AppIcon Name="folder-plus" />
                             <span class="nav-item-label">Add directory</span>
                         </button>
@@ -216,25 +216,18 @@
                                 <span class="nav-item-label directory-label">Directories</span>
                                 <span class="directory-count">@_security.DirectoryGrants.Count</span>
                             </span>
-                            <button class="icon-action directory-row-action directory-add-button" type="button" title="Add directory" aria-label="Add directory" @onclick="BeginDirectoryCreation"><AppIcon Name="plus" /></button>
+                            <button class="icon-action directory-row-action directory-add-button" type="button" title="Add directory" aria-label="Add directory" @onclick="OpenDirectoryPickerForNewGrant"><AppIcon Name="plus" /></button>
                         </div>
                         @if (_directoriesExpanded)
                         {
                             @foreach (var directory in _security.DirectoryGrants)
                             {
                                 <div class="directory-nav-row directory-nav-row-child">
-                                    @if (_editingDirectoryId == directory.Id)
-                                    {
-                                        <input class="sidebar-inline-editor directory-path-editor" @ref="_editingInput" value="@_editingDirectoryPath" @oninput="e => _editingDirectoryPath = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveDirectoryPathAsync(directory))" @onblur="() => SaveDirectoryPathAsync(directory)" aria-label="Directory path" />
-                                    }
-                                    else
-                                    {
-                                        <span class="directory-row-main">
-                                            <span class="nav-item-label directory-name" title="@directory.CanonicalRoot">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
-                                        </span>
-                                    }
+                                    <span class="directory-row-main">
+                                        <span class="nav-item-label directory-name" title="@directory.CanonicalRoot">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
+                                    </span>
                                     <button class="directory-lock-indicator @(directory.Mode == "Read/write" ? "directory-lock-rw" : "directory-lock-ro")" type="button" title="@(directory.Mode == "Read/write" ? "Read/write — click to make read only" : "Read only — click to allow write")" aria-label="Toggle directory access mode" @onclick="() => ToggleDirectoryModeAsync(directory)"><AppIcon Name="@(directory.Mode == "Read/write" ? "unlock" : "lock")" /></button>
-                                    <button class="icon-action directory-row-action directory-edit-button" type="button" title="Edit directory path" aria-label="Edit directory path" @onclick="() => BeginDirectoryPathEdit(directory)"><AppIcon Name="edit" /></button>
+                                    <button class="icon-action directory-row-action directory-edit-button" type="button" title="Change directory" aria-label="Change directory" @onclick="() => OpenDirectoryPicker(directory)"><AppIcon Name="edit" /></button>
                                     <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == directory.Id ? "menu-open" : string.Empty)" type="button" title="Directory menu" aria-label="Directory menu" @onclick="() => ToggleDirectoryMenu(directory.Id)"><AppIcon Name="more" /></button>
                                     @if (_directoryMenuId == directory.Id)
                                     {
@@ -411,6 +404,13 @@
             </section>
         </div>
     }
+
+    @if (_isDirectoryPickerOpen && _selectedProject is not null)
+    {
+        <DirectoryPickerDialog StartPath="@_directoryPickerStartPath"
+                               Subtitle="@(_directoryPickerGrantId is null ? "New directory grant" : "Change directory grant")"
+                               Selected="OnDirectoryPickedAsync" Cancelled="CloseDirectoryPicker" />
+    }
 </main>
 
 @if (_permissionsScope is not null && _selectedProject is not null)
@@ -464,9 +464,12 @@
     private ProjectEditor _editor = new();
     private ProjectSecurityEditor _security = new();
     private bool _directoriesExpanded;
-    private Guid? _editingDirectoryId;
-    private Guid? _creatingDirectoryId;
-    private string _editingDirectoryPath = string.Empty;
+    // The picker owns directory paths now, both for a new grant (null) and for changing an existing
+    // one (its id). A grant is only added once a directory comes back, so cancelling leaves nothing
+    // half-made in the sidebar.
+    private bool _isDirectoryPickerOpen;
+    private Guid? _directoryPickerGrantId;
+    private string? _directoryPickerStartPath;
     private Guid? _directoryMenuId;
     private bool _isConfirmingDirectoryDelete;
     private string? _error;
@@ -1495,30 +1498,62 @@
 
     private void ToggleDirectoriesExpanded() => _directoriesExpanded = !_directoriesExpanded;
 
-    private void BeginDirectoryCreation()
+    private void OpenDirectoryPickerForNewGrant() => OpenDirectoryPicker(null, WorkspaceStateService.LastBrowsedDirectory);
+
+    private void OpenDirectoryPicker(DirectoryGrantEditor grant) =>
+        OpenDirectoryPicker(
+            grant.Id,
+            grant.CanonicalRoot.Length > 0 ? grant.CanonicalRoot : WorkspaceStateService.LastBrowsedDirectory);
+
+    private void OpenDirectoryPicker(Guid? grantId, string? startPath)
     {
         CancelInlineEdit();
-        var directory = new DirectoryGrantEditor
-        {
-            DisplayName = "Directory",
-            ToolNames = "read"
-        };
-        _security.DirectoryGrants.Add(directory);
-        _creatingDirectoryId = directory.Id;
-        _editingDirectoryId = directory.Id;
-        _editingDirectoryPath = string.Empty;
-        _directoriesExpanded = true;
-        _focusEditingInputPending = true;
         CloseContextMenus();
+        _directoryPickerGrantId = grantId;
+        _directoryPickerStartPath = startPath;
+        _isDirectoryPickerOpen = true;
     }
 
-    private void BeginDirectoryPathEdit(DirectoryGrantEditor grant)
+    private void CloseDirectoryPicker()
     {
-        CancelInlineEdit();
-        _editingDirectoryId = grant.Id;
-        _editingDirectoryPath = grant.CanonicalRoot;
-        _focusEditingInputPending = true;
-        CloseContextMenus();
+        _isDirectoryPickerOpen = false;
+        _directoryPickerGrantId = null;
+        _directoryPickerStartPath = null;
+    }
+
+    /// <summary>
+    /// Takes the directory the picker came back with. A new grant is created here rather than when
+    /// the picker opened, so nothing is left behind if it is closed without choosing anything.
+    /// </summary>
+    private async Task OnDirectoryPickedAsync(string path)
+    {
+        var grantId = _directoryPickerGrantId;
+        CloseDirectoryPicker();
+        await WorkspaceStateService.SetLastBrowsedDirectoryAsync(path);
+
+        var grant = grantId is { } id ? _security.DirectoryGrants.SingleOrDefault(item => item.Id == id) : null;
+        if (grant is null)
+        {
+            // Paths are canonicalised by the host, so two grants over one directory would be two
+            // identical rows — and revoking the one you can see would leave the other in force.
+            if (_security.DirectoryGrants.Exists(item => string.Equals(item.CanonicalRoot, path, StringComparison.OrdinalIgnoreCase)))
+            {
+                Notifications.ShowInfo("That directory is already granted.");
+                return;
+            }
+
+            grant = new DirectoryGrantEditor { ToolNames = "read" };
+            _security.DirectoryGrants.Add(grant);
+            _directoriesExpanded = true;
+        }
+        else if (string.Equals(grant.CanonicalRoot, path, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        grant.CanonicalRoot = path;
+        grant.DisplayName = GetDirectoryDisplayNameSuggestion(path);
+        await PersistDirectoryGrantsAsync();
     }
 
     private static string GetDirectoryDisplayNameSuggestion(string path)
@@ -2373,48 +2408,12 @@
 
     private void CancelInlineEdit()
     {
-        if (_creatingDirectoryId is { } directoryId)
-        {
-            _security.DirectoryGrants.RemoveAll(item => item.Id == directoryId);
-        }
-
         _editingProjectId = null;
         _editingChatId = null;
         _editingBranchId = null;
-        _editingDirectoryId = null;
-        _creatingDirectoryId = null;
         _isCreatingProject = false;
         _editingTitle = string.Empty;
-        _editingDirectoryPath = string.Empty;
         _newProjectName = string.Empty;
-    }
-
-    private async Task SaveDirectoryPathAsync(DirectoryGrantEditor directory)
-    {
-        if (_editingDirectoryId != directory.Id || _isCompletingInlineEdit) return;
-        var path = _editingDirectoryPath.Trim();
-        var isCreating = _creatingDirectoryId == directory.Id;
-        if (string.IsNullOrEmpty(path) || (!isCreating && string.Equals(path, directory.CanonicalRoot, StringComparison.Ordinal)))
-        {
-            CancelInlineEdit();
-            return;
-        }
-
-        _isCompletingInlineEdit = true;
-        try
-        {
-            directory.CanonicalRoot = path;
-            directory.DisplayName = GetDirectoryDisplayNameSuggestion(path);
-            if (await PersistDirectoryGrantsAsync())
-            {
-                _creatingDirectoryId = null;
-            }
-        }
-        finally
-        {
-            _isCompletingInlineEdit = false;
-            CancelInlineEdit();
-        }
     }
 
     private async Task SaveProjectTitleAsync(ProjectSummary project)

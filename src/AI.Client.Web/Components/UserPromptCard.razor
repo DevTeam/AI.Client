@@ -94,7 +94,7 @@
         }
     </p>
     <div class="user-prompt-actions">
-        <button class="secondary-action" type="button" disabled="@_sending" @onclick="DismissAsync" @onkeydown:stopPropagation="true">Decide yourself</button>
+        <button class="secondary-action" type="button" disabled="@_sending" @onclick="DismissAsync" @onkeydown:stopPropagation="true"><span>Decide yourself</span></button>
         <button type="button" disabled="@_sending" @onclick="AnswerAsync" @onkeydown:stopPropagation="true">
             @if (_sending)
             {

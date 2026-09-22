@@ -2953,10 +2953,10 @@ textarea {
 .user-prompt-note { margin: 0; color: #8d8d8d; font-size: .75rem; }
 .user-prompt-note.ready { color: #b8c9e4; }
 .user-prompt kbd { display: inline-block; padding: .08rem .3rem; border: 1px solid #4a4a4a; border-bottom-width: 2px; border-radius: .25rem; background: #2c2c2c; color: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .7rem; line-height: 1.1; }
-.user-prompt-actions { display: flex; justify-content: flex-end; gap: .45rem; }
+.user-prompt-actions { display: flex; align-items: center; justify-content: flex-end; gap: .45rem; }
 .user-prompt-actions > button { display: inline-flex; align-items: center; justify-content: center; margin: 0; }
-.user-prompt-actions > button > span { display: inline-flex; align-items: center; }
-.user-prompt-actions > button:not(.secondary-action) kbd { margin-left: .35rem; border-color: rgb(255 255 255 / 28%); background: rgb(0 0 0 / 14%); }
+.user-prompt-actions > button > span { display: inline-flex; align-items: center; line-height: 1.25; }
+.user-prompt-actions > button:not(.secondary-action) kbd { display: inline-flex; align-items: center; justify-content: center; margin-left: .35rem; border-color: rgb(255 255 255 / 28%); background: rgb(0 0 0 / 14%); }
 .user-prompt-error { margin: 0; color: #ff8f8f; font-size: .8rem; }
 
 .permissions-drawer-backdrop { position: fixed; z-index: 44; inset: 0; background: rgb(0 0 0 / 12%); }

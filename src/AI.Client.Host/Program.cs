@@ -357,6 +357,31 @@ app.MapDelete(
             : result.Revision == 0 ? Results.NotFound() : Results.Conflict(result);
     });
 
+// A directory grant names a path on this machine, and the browser the UI runs in cannot name one:
+// a folder chosen through `webkitdirectory` or `showDirectoryPicker()` arrives without its absolute
+// path, which is the one thing a grant is made of. So the host does the browsing and the UI walks
+// it. That makes these endpoints a read-only window onto the local file system for anyone who can
+// reach the API — today only the origins in `Cors:AllowedOrigins`, all of them loopback. The switch
+// is here so a deployment that stops being local can close the window without a code change.
+if (app.Configuration.GetValue("FileSystem:BrowseEnabled", true))
+{
+    app.MapGet(
+        "/api/filesystem/roots",
+        (IDirectoryBrowser browser, CancellationToken cancellationToken) => browser.ListRootsAsync(cancellationToken));
+
+    app.MapGet(
+        "/api/filesystem/directories",
+        async (string path, IDirectoryBrowser browser, CancellationToken cancellationToken) =>
+            await browser.ListAsync(path, cancellationToken) is { } listing
+                ? Results.Ok(listing)
+                : Results.NotFound());
+
+    app.MapGet(
+        "/api/filesystem/resolve",
+        (string path, IDirectoryBrowser browser, CancellationToken cancellationToken) =>
+            browser.ResolveAsync(path, cancellationToken));
+}
+
 app.MapGet(
     "/api/projects",
     (IProjectService service, CancellationToken cancellationToken) =>
@@ -393,8 +418,17 @@ app.MapPut(
 
 app.MapPut(
     "/api/projects/{id:guid}/security",
-    async (Guid id, UpdateProjectSecurityRequest request, IProjectService service, CancellationToken cancellationToken) =>
+    async (Guid id, UpdateProjectSecurityRequest request, IProjectService service, IDirectoryBrowser browser, CancellationToken cancellationToken) =>
     {
+        // Grants are canonicalised on the way in, not on the way out of the picker, because a path
+        // can also be typed or pasted. Without this, "C:\Proj\x", "c:\proj\x" and "C:\Proj\..\Proj\x"
+        // become three grants over one directory, and revoking the one you can see leaves two.
+        request = request with
+        {
+            DirectoryGrants = request.DirectoryGrants
+                .Select(item => item with { CanonicalRoot = browser.Canonicalize(item.CanonicalRoot) })
+                .ToArray()
+        };
         var result = await service.UpdateSecurityAsync(id, request, cancellationToken);
         return result.Status switch
         {

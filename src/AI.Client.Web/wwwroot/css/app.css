@@ -3855,3 +3855,155 @@ textarea {
     line-height: 1.45;
     overflow-x: auto;
 }
+
+/* Directory picker ------------------------------------------------------- */
+
+/* A fixed height, not one that follows the listing: a folder with three subdirectories and one
+   with three hundred are two steps of the same walk, and a dialog that resized under every step
+   moved its own Select button out from under the pointer. The list scrolls inside instead. */
+.directory-picker-modal {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    width: min(34rem, calc(100vw - 3rem));
+    height: min(34rem, calc(100vh - 3rem));
+    box-sizing: border-box;
+    padding: 1.1rem;
+    overflow: hidden;
+    border: 1px solid #454545;
+    border-radius: 1rem;
+    background: #1d1d1d;
+    box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 60%);
+}
+
+@media (height <= 36rem) {
+    .directory-picker-modal {
+        width: min(34rem, calc(100vw - 1.5rem));
+        height: calc(100vh - 1.5rem);
+    }
+}
+
+.directory-picker-modal > header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    margin-bottom: 0.8rem;
+    padding-bottom: 0.7rem;
+    border-bottom: 1px solid #383838;
+}
+
+.directory-picker-modal > header div {
+    display: grid;
+    gap: 0.2rem;
+}
+
+.directory-picker-modal > header span { color: #858585; font-size: 0.8rem; }
+
+.directory-picker-toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+}
+
+.directory-picker-path,
+.directory-picker-filter {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #454545;
+    border-radius: 0.4rem;
+    background: #141414;
+    color: inherit;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8rem;
+}
+
+.directory-picker-filter {
+    margin-bottom: 0.4rem;
+    font-family: inherit;
+}
+
+.directory-picker-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.directory-picker-body > .empty-hint {
+    display: grid;
+    flex: 1;
+    place-content: center;
+    margin: 0;
+}
+
+.directory-picker-list {
+    flex: 1;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    border: 1px solid #383838;
+    border-radius: 0.5rem;
+    list-style: none;
+}
+
+.directory-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    width: 100%;
+    padding: 0.3rem 0.55rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.directory-picker-item:hover,
+.directory-picker-item:focus-visible { background: #2a2a2a; }
+
+.directory-picker-item span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.directory-picker-warning {
+    margin: 0.5rem 0 0;
+    color: #e0c07a;
+    font-size: 0.8rem;
+}
+
+.directory-picker-actions {
+    align-items: center;
+}
+
+/* The chosen path is the one thing worth reading twice before pressing Select, so it sits in the
+   footer next to the button rather than only in the box above, where a long path scrolls out.
+   Left-to-right even though the end of a path is the informative part: `direction: rtl` would
+   keep the tail in view but reorder the punctuation, printing "C:\" as "\:C". */
+.directory-picker-selection {
+    margin-right: auto;
+    overflow: hidden;
+    color: #858585;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.directory-picker-empty {
+    display: grid;
+    flex: 1;
+    align-content: center;
+    justify-items: center;
+    gap: 0.35rem;
+    padding: 1.5rem 1rem;
+    color: #858585;
+    text-align: center;
+}
+
+.directory-picker-empty p { margin: 0; font-size: 0.8rem; }

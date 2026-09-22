@@ -5,6 +5,7 @@ namespace AI.Client.Web;
 
 using Chats;
 using Composer;
+using FileSystem;
 using AI.Client.Contracts.Workspace;
 using Layout;
 using Markdown;
@@ -37,6 +38,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IApiBaseUrl>()
             .Root<IClientMetadata>()
             .Root<IProjectApi>()
+            .Root<IFileSystemApi>()
             .Root<IChatHistoryApi>()
             .Root<IChatMessageDeltaMerger>()
             .Root<IMarkdownRenderer>()
@@ -53,6 +55,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IConnectionContextLimitsResolver>().To<ConnectionContextLimitsResolver>()
             .RootBind<IUnifiedDiffParser>().As(Lifetime.Singleton).To<UnifiedDiff>()
             .RootBind<IChatFeedProjection>().To<ChatFeed>()
+            .RootBind<IDirectoryPickerState>().To<DirectoryPickerState>()
             .RootBind<IRunStatusPresentation>().To<RunStatusPresentation>()
             // `ApiBaseUrl(string)` matches the constructor generated for the `Arg` above, so
             // Pure.DI wires it in automatically. Same as how `Host/Composition.cs` registers
@@ -66,6 +69,6 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppSubtaskPresentationAdapter>()
             // Should be last
             .Bind<IToolPresentationAdapter>().As(Lifetime.Singleton).To<GenericToolPresentationAdapter>()
-            .Transient<ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi>()
+            .Transient<ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi>()
             .Transient((IApiBaseUrl arg) => new HttpClient { BaseAddress = arg.Value });
 }

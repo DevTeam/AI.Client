@@ -9,6 +9,7 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
     private const string ProjectContextKey = "ai-client.project-context.v1";
     private const string ComposerDraftKey = "ai-client.composer-drafts.v1";
     private const string ComposerHistoryKey = "ai-client.composer-history.v1";
+    private const string LastBrowsedDirectoryKey = "ai-client.last-browsed-directory.v1";
 
     // Enough to reach anything a user would still recognise, small enough that the whole blob
     // stays cheap to serialize on every send.
@@ -45,6 +46,8 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
 
     public Guid? LastProjectId { get; private set; }
 
+    public string? LastBrowsedDirectory { get; private set; }
+
     public async Task InitializeAsync()
     {
         if (_initialized) return;
@@ -56,6 +59,7 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
         _projectContexts = await LoadDictionaryAsync<Guid, ProjectContextEntry>(ProjectContextKey);
         _composerDrafts = await LoadDictionaryAsync<string, string>(ComposerDraftKey);
         _composerHistory = await LoadDictionaryAsync<Guid, List<string>>(ComposerHistoryKey);
+        LastBrowsedDirectory = await jsRuntime.InvokeAsync<string?>("localStorage.getItem", LastBrowsedDirectoryKey);
     }
 
     private async Task<Dictionary<TKey, TValue>> LoadDictionaryAsync<TKey, TValue>(string key) where TKey : notnull
@@ -79,6 +83,13 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
         if (LastProjectId == projectId) return;
         LastProjectId = projectId;
         await jsRuntime.InvokeVoidAsync("localStorage.setItem", LastProjectKey, projectId.ToString());
+    }
+
+    public async Task SetLastBrowsedDirectoryAsync(string path)
+    {
+        if (path.Length == 0 || LastBrowsedDirectory == path) return;
+        LastBrowsedDirectory = path;
+        await jsRuntime.InvokeVoidAsync("localStorage.setItem", LastBrowsedDirectoryKey, path);
     }
 
     public (Guid? ChatId, Guid? BranchLeafId) GetProjectContext(Guid projectId) =>

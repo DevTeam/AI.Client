@@ -36,6 +36,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Arg<string>("rootDirectory")
             .Root<IHostDescriptor>()
             .Root<IProjectRepository>()
+            .Root<IDirectoryBrowser>()
             .Root<IProjectService>()
             .Root<IChatService>()
             .Root<IChatSearchService>()
@@ -49,7 +50,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IAppToolReply>().To<AppToolReply>()
             .Root<IToolSessionFactory>()
             .Root<IAppDataChangeSignal>()
-            .Singleton<HostDescriptor, PhysicalTextFileSystem, JsonProjectRepository, ProjectDocumentSerializer,
+            .Singleton<HostDescriptor, PhysicalTextFileSystem, PhysicalDirectoryBrowser, JsonProjectRepository, ProjectDocumentSerializer,
                 Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
                 ProtectedDataUserDataProtector, ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
                 ChatEndpoint, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,

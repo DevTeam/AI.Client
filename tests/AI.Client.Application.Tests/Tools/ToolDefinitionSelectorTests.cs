@@ -12,7 +12,7 @@ using Xunit;
 public sealed class ToolDefinitionSelectorTests
 {
     private static readonly string[] RequiredAppTools =
-        ["ask_user", "tool_search", "context_compact", "finish_run", "app_read", "app_projects", "spawn_subtask"];
+        ["ask_user", "tool_search", "context_compact", "finish_run", "app_read", "app_projects", "app_security", "spawn_subtask"];
     private readonly ContextTokenEstimator _estimator = new();
 
     [Fact]
@@ -63,6 +63,7 @@ public sealed class ToolDefinitionSelectorTests
         var selection = Selector().Choose(null, "unrelated request", [], [.. required, .. smaller]);
 
         selection.Tools.Select(item => item.OriginalName).ShouldContain("app_projects");
+        selection.Tools.Select(item => item.OriginalName).ShouldContain("app_security");
         selection.Tools.Select(item => item.OriginalName).ShouldContain("spawn_subtask");
         selection.Tools.Select(item => item.OriginalName).ShouldContain("app_read");
         selection.Tools.Select(item => item.OriginalName).ShouldContain("ask_user");
@@ -74,7 +75,6 @@ public sealed class ToolDefinitionSelectorTests
     [Theory]
     [InlineData("app_chats")]
     [InlineData("app_runs")]
-    [InlineData("app_security")]
     public void ShouldPreferRemainingAppCapabilitiesWhenRelevanceIsEqual(string name)
     {
         var preferred = Tool(name, new string('x', 2_000), ToolRef.AppPrefix + name);

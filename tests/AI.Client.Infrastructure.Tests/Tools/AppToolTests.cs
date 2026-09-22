@@ -331,6 +331,29 @@ public sealed class AppToolTests
         result.GetProperty("answers")[0].GetProperty("other").GetString().ShouldBe("Контрагенты");
     }
 
+    [Fact]
+    public async Task AskUserShouldReturnSeveralSelectedDirectories()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        fixture.Broker.Answer = _ => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Answered,
+            [new UserPromptAnswer("directories", [], null,
+                [@" C:\Projects\One ", @"C:\Projects\Two", @"c:\projects\one"])]);
+
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[]
+            {
+                new { id = "directories", text = "Select project directories", options = Array.Empty<object>(), pathKind = "directories" }
+            }
+        });
+
+        var answer = result.GetProperty("answers")[0];
+        answer.GetProperty("paths").EnumerateArray().Select(item => item.GetString())
+            .ShouldBe([@"C:\Projects\One", @"C:\Projects\Two"]);
+        fixture.Broker.LastRequest!.Questions[0].PathKind.ShouldBe("directories");
+    }
+
     [Theory]
     // Every limit here is about the card staying readable, and each one is reported in words the
     // model can act on rather than as a schema failure it can only repeat.

@@ -26,11 +26,12 @@ public sealed record UserPrompt(
 /// <param name="Label">A short chip shown beside the question, or null.</param>
 /// <param name="AllowOther">Whether a free-text answer is offered alongside the options.</param>
 /// <param name="PathKind">
-/// "directory" or "file" when the answer is a path on this machine, and null when it is not. The
+/// "directory", "directories" or "file" when the answer is a path on this machine, and null when it is not. The
 /// free-text answer then becomes a path box with a picker behind it: the person browses the host's
 /// own file system, because a path typed from memory is the thing they get wrong. Options may still
 /// be offered alongside it — likely paths are worth one click — and the chosen path comes back in
-/// <see cref="UserPromptAnswer.Other"/> like any other typed answer.
+/// <see cref="UserPromptAnswer.Other"/> like any other typed answer. The "directories" mode allows
+/// several selections and returns them in <see cref="UserPromptAnswer.Paths"/>.
 /// </param>
 public sealed record UserPromptQuestion(
     string Id,
@@ -50,8 +51,13 @@ public sealed record UserPromptOption(string Label, string? Description);
 /// model sees them, which is what leaves a readable trace in the transcript.
 /// </summary>
 /// <param name="Selected">Indices into the question's options. Empty means the question was left to the model.</param>
-/// <param name="Other">Free text, when the question allowed it and the person typed some.</param>
-public sealed record UserPromptAnswer(string QuestionId, IReadOnlyList<int> Selected, string? Other);
+/// <param name="Other">Free text, or one selected path.</param>
+/// <param name="Paths">Several selected directory paths for a "directories" question.</param>
+public sealed record UserPromptAnswer(
+    string QuestionId,
+    IReadOnlyList<int> Selected,
+    string? Other,
+    IReadOnlyList<string>? Paths = null);
 
 public enum UserPromptOutcome
 {

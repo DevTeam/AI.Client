@@ -7,7 +7,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class ReadMultipleFilesTool(IPathGuard guard) : IToolFactory
+public sealed class ReadMultipleFilesTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         ReadAsync,
@@ -65,6 +65,6 @@ public sealed class ReadMultipleFilesTool(IPathGuard guard) : IToolFactory
             }
         }
 
-        return ToolReply.Of(new MultipleFilesResult(files.ToArray(), null), files.All(file => file.Error is not null));
+        return reply.Reply(new MultipleFilesResult(files.ToArray(), null), files.All(file => file.Error is not null));
     }
 }

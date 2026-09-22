@@ -7,7 +7,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class DirectoryTreeTool(IPathGuard guard) : IToolFactory
+public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     // Approximate JSON overhead per entry beyond its own path string — quotes/keys/commas for
     // `{"path":"...","kind":"directory","depth":1}`, inflated to account for the result being
@@ -42,18 +42,18 @@ public sealed class DirectoryTreeTool(IPathGuard guard) : IToolFactory
         }
         catch (GrantException error)
         {
-            return Task.FromResult(ToolReply.Of(new DirectoryTreeResult(path, [], false, error.Message), true));
+            return Task.FromResult(reply.Reply(new DirectoryTreeResult(path, [], false, error.Message), true));
         }
 
         if (!Directory.Exists(resolved))
         {
-            return Task.FromResult(ToolReply.Of(new DirectoryTreeResult(resolved, [], false, "Directory does not exist."), true));
+            return Task.FromResult(reply.Reply(new DirectoryTreeResult(resolved, [], false, "Directory does not exist."), true));
         }
 
         var entries = new List<TreeEntry>();
         var budget = new ResultBudget(FileLimits.TreeCharacters);
         var truncated = Walk(resolved, resolved, 1, Math.Min(maxDepth, FileLimits.TreeDepth), excludeDefaults, entries, budget, cancellationToken);
-        return Task.FromResult(ToolReply.Of(new DirectoryTreeResult(resolved, entries.ToArray(), truncated, null)));
+        return Task.FromResult(reply.Reply(new DirectoryTreeResult(resolved, entries.ToArray(), truncated, null)));
     }
 
     private static bool Walk(

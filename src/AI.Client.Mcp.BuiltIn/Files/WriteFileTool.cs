@@ -8,7 +8,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class WriteFileTool(IPathGuard guard) : IToolFactory
+public sealed class WriteFileTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
@@ -36,23 +36,23 @@ public sealed class WriteFileTool(IPathGuard guard) : IToolFactory
         }
         catch (GrantException error)
         {
-            return ToolReply.Of(new WriteFileResult(path, 0, false, error.Message), true);
+            return reply.Reply(new WriteFileResult(path, 0, false, error.Message), true);
         }
 
         if (Directory.Exists(resolved))
         {
-            return ToolReply.Of(new WriteFileResult(resolved, 0, false, "Path is a directory."), true);
+            return reply.Reply(new WriteFileResult(resolved, 0, false, "Path is a directory."), true);
         }
 
         var existed = File.Exists(resolved);
         try
         {
             await File.WriteAllTextAsync(resolved, content, Utf8, cancellationToken);
-            return ToolReply.Of(new WriteFileResult(resolved, Utf8.GetByteCount(content), !existed, null));
+            return reply.Reply(new WriteFileResult(resolved, Utf8.GetByteCount(content), !existed, null));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return ToolReply.Of(new WriteFileResult(resolved, 0, false, error.Message), true);
+            return reply.Reply(new WriteFileResult(resolved, 0, false, error.Message), true);
         }
     }
 }

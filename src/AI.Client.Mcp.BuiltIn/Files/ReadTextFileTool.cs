@@ -7,7 +7,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class ReadTextFileTool(IPathGuard guard) : IToolFactory
+public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         ReadAsync,
@@ -29,7 +29,7 @@ public sealed class ReadTextFileTool(IPathGuard guard) : IToolFactory
     {
         if (head is not null && tail is not null)
         {
-            return ToolReply.Of(new TextFileResult(path, "", 0, 0, false, "Specify either 'head' or 'tail', not both."), true);
+            return reply.Reply(new TextFileResult(path, "", 0, 0, false, "Specify either 'head' or 'tail', not both."), true);
         }
 
         string resolved;
@@ -39,23 +39,23 @@ public sealed class ReadTextFileTool(IPathGuard guard) : IToolFactory
         }
         catch (GrantException error)
         {
-            return ToolReply.Of(new TextFileResult(path, "", 0, 0, false, error.Message), true);
+            return reply.Reply(new TextFileResult(path, "", 0, 0, false, error.Message), true);
         }
 
         if (Directory.Exists(resolved))
         {
-            return ToolReply.Of(new TextFileResult(resolved, "", 0, 0, false, "Path is a directory. Use list_directory."), true);
+            return reply.Reply(new TextFileResult(resolved, "", 0, 0, false, "Path is a directory. Use list_directory."), true);
         }
 
         try
         {
-            return ToolReply.Of(head is null && tail is null
+            return reply.Reply(head is null && tail is null
                 ? await WholeAsync(resolved, cancellationToken)
                 : await LinesAsync(resolved, head, tail, cancellationToken));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return ToolReply.Of(new TextFileResult(resolved, "", 0, 0, false, error.Message), true);
+            return reply.Reply(new TextFileResult(resolved, "", 0, 0, false, error.Message), true);
         }
     }
 

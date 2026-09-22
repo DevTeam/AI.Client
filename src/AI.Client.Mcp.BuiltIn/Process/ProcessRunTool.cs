@@ -7,7 +7,7 @@ using ModelContextProtocol.Server;
 namespace AI.Client.Mcp.BuiltIn.Process;
 
 [McpServerToolType]
-public sealed class ProcessRunTool(IProcessRunner processRunner) : IToolFactory
+public sealed class ProcessRunTool(IProcessRunner processRunner, IBuiltInToolReply reply) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         RunAsync,
@@ -40,7 +40,7 @@ public sealed class ProcessRunTool(IProcessRunner processRunner) : IToolFactory
             result = new ProcessResult(null, "", "", 0, false, false, error.Message);
         }
 
-        return ToolReply.Of(
+        return reply.Reply(
             result,
             isError: result.Error is not null || result.TimedOut || result.ExitCode != 0);
     }

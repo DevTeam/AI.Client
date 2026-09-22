@@ -7,7 +7,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class SearchFilesTool(IPathGuard guard) : IToolFactory
+public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     // Approximate JSON overhead per match beyond its own path string — quotes and a comma in the
     // `matches` string array, inflated to account for the result being serialized a second time
@@ -44,12 +44,12 @@ public sealed class SearchFilesTool(IPathGuard guard) : IToolFactory
         }
         catch (GrantException error)
         {
-            return Task.FromResult(ToolReply.Of(new SearchFilesResult(path, [], false, error.Message), true));
+            return Task.FromResult(reply.Reply(new SearchFilesResult(path, [], false, error.Message), true));
         }
 
         if (!Directory.Exists(resolved))
         {
-            return Task.FromResult(ToolReply.Of(new SearchFilesResult(resolved, [], false, "Directory does not exist."), true));
+            return Task.FromResult(reply.Reply(new SearchFilesResult(resolved, [], false, "Directory does not exist."), true));
         }
 
         GlobPattern include;
@@ -61,7 +61,7 @@ public sealed class SearchFilesTool(IPathGuard guard) : IToolFactory
         }
         catch (ArgumentException error)
         {
-            return Task.FromResult(ToolReply.Of(new SearchFilesResult(resolved, [], false, error.Message), true));
+            return Task.FromResult(reply.Reply(new SearchFilesResult(resolved, [], false, error.Message), true));
         }
 
         var matches = new List<string>();
@@ -123,6 +123,6 @@ public sealed class SearchFilesTool(IPathGuard guard) : IToolFactory
         }
 
         matches.Sort(StringComparer.OrdinalIgnoreCase);
-        return Task.FromResult(ToolReply.Of(new SearchFilesResult(resolved, matches.ToArray(), truncated, null)));
+        return Task.FromResult(reply.Reply(new SearchFilesResult(resolved, matches.ToArray(), truncated, null)));
     }
 }

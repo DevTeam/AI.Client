@@ -7,7 +7,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class MoveFileTool(IPathGuard guard) : IToolFactory
+public sealed class MoveFileTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         MoveAsync,
@@ -35,18 +35,18 @@ public sealed class MoveFileTool(IPathGuard guard) : IToolFactory
         }
         catch (GrantException error)
         {
-            return Task.FromResult(ToolReply.Of(new MoveFileResult(source, destination, error.Message), true));
+            return Task.FromResult(reply.Reply(new MoveFileResult(source, destination, error.Message), true));
         }
 
         var directory = Directory.Exists(resolvedSource);
         if (!directory && !File.Exists(resolvedSource))
         {
-            return Task.FromResult(ToolReply.Of(new MoveFileResult(resolvedSource, resolvedDestination, "Source does not exist."), true));
+            return Task.FromResult(reply.Reply(new MoveFileResult(resolvedSource, resolvedDestination, "Source does not exist."), true));
         }
 
         if (File.Exists(resolvedDestination) || Directory.Exists(resolvedDestination))
         {
-            return Task.FromResult(ToolReply.Of(new MoveFileResult(resolvedSource, resolvedDestination, "Destination already exists."), true));
+            return Task.FromResult(reply.Reply(new MoveFileResult(resolvedSource, resolvedDestination, "Destination already exists."), true));
         }
 
         try
@@ -60,11 +60,11 @@ public sealed class MoveFileTool(IPathGuard guard) : IToolFactory
                 File.Move(resolvedSource, resolvedDestination, overwrite: false);
             }
 
-            return Task.FromResult(ToolReply.Of(new MoveFileResult(resolvedSource, resolvedDestination, null)));
+            return Task.FromResult(reply.Reply(new MoveFileResult(resolvedSource, resolvedDestination, null)));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return Task.FromResult(ToolReply.Of(new MoveFileResult(resolvedSource, resolvedDestination, error.Message), true));
+            return Task.FromResult(reply.Reply(new MoveFileResult(resolvedSource, resolvedDestination, error.Message), true));
         }
     }
 }

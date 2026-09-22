@@ -7,7 +7,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class GetFileInfoTool(IPathGuard guard) : IToolFactory
+public sealed class GetFileInfoTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         InfoAsync,
@@ -43,7 +43,7 @@ public sealed class GetFileInfoTool(IPathGuard guard) : IToolFactory
                 return Task.FromResult(Failure(resolved, "Path does not exist."));
             }
 
-            return Task.FromResult(ToolReply.Of(new FileInfoResult(
+            return Task.FromResult(reply.Reply(new FileInfoResult(
                 resolved,
                 directory ? "directory" : "file",
                 directory ? 0 : ((FileInfo)info).Length,
@@ -59,7 +59,7 @@ public sealed class GetFileInfoTool(IPathGuard guard) : IToolFactory
         }
     }
 
-    private static CallToolResult Failure(string path, string message) => ToolReply.Of(
+    private CallToolResult Failure(string path, string message) => reply.Reply(
         new FileInfoResult(path, "unknown", 0, default, default, false, null, message),
         true);
 }

@@ -4051,3 +4051,35 @@ textarea {
 }
 
 .user-prompt-path-row button { flex: none; }
+
+.user-prompt-paths {
+    display: grid;
+    gap: .55rem;
+    padding: .65rem .75rem;
+    border: 1px solid #3a3a3a;
+    border-radius: .65rem;
+}
+
+.user-prompt-paths ul {
+    display: grid;
+    gap: .35rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.user-prompt-paths li {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    min-width: 0;
+}
+
+.user-prompt-paths li > span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.user-prompt-paths > button { justify-self: start; }

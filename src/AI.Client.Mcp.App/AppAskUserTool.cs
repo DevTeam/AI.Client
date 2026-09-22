@@ -19,8 +19,9 @@ public sealed record AskUserOption(string Label, string? Description = null);
 /// <param name="MultiSelect">True only when the choices genuinely combine.</param>
 /// <param name="AllowOther">Whether the person may type an answer of their own instead of choosing.</param>
 /// <param name="PathKind">
-/// Set to "directory" or "file" when the answer is a path on the user's machine. They then get a
+/// Set to "directory", "directories" or "file" when the answer is a path on the user's machine. They then get a
 /// browser over the real file system instead of a text box, and the path comes back in 'other'.
+/// "directories" permits several choices, which come back in 'paths'.
 /// Leave it out for every other kind of question.
 /// </param>
 public sealed record AskUserQuestion(
@@ -37,7 +38,7 @@ public sealed record AskUserQuestion(
 /// say what was decided when it is read back without the question in front of it.
 /// </param>
 /// <param name="Other">What they typed, when they typed something instead of choosing.</param>
-public sealed record AskUserReply(string Id, string[] Selected, string? Other);
+public sealed record AskUserReply(string Id, string[] Selected, string? Other, IReadOnlyList<string>? Paths = null);
 
 /// <param name="Outcome">
 /// <c>answered</c>, <c>dismissed</c> (they told you to decide), <c>expired</c> (nobody was there)
@@ -90,6 +91,7 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
         private const int MaxDescriptionLength = 160;
 
         private const string DirectoryPath = "directory";
+        private const string DirectoriesPath = "directories";
         private const string FilePath = "file";
 
         private const string DecideYourself =
@@ -111,8 +113,8 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                         + "' (Recommended)' to its label. Prefer one question; up to five may be asked in one call, and asking "
                         + "them together is better than one call after another. Keep option labels short and concrete, and put "
                         + "nuance in 'description'. When the answer is a path on the user's machine, set 'pathKind' to "
-                        + "'directory' or 'file': the user then picks it out of their own file system and it comes back in "
-                        + "'other', which is far more reliable than asking them to type it. Options may still be offered "
+                        + "'directory', 'directories' or 'file': the user then picks it out of their own file system. A single path comes back in "
+                        + "'other'; 'directories' allows several selections and returns them in 'paths'. This is far more reliable than asking them to type paths. Options may still be offered "
                         + "alongside — list the paths you already consider likely. Use 'multiSelect' only when the choices "
                         + "genuinely combine. The user may "
                         + "answer some questions and not others, or none at all: an absent answer means the choice is yours to "
@@ -140,7 +142,7 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
             var answers = response.Answers
                 .Select(answer => Reply(questions, answer))
                 .OfType<AskUserReply>()
-                .Where(reply => reply.Selected.Length > 0 || !string.IsNullOrWhiteSpace(reply.Other))
+                .Where(reply => reply.Selected.Length > 0 || !string.IsNullOrWhiteSpace(reply.Other) || reply.Paths is { Count: > 0 })
                 .ToArray();
 
             return reply.Reply(new AskUserResult(answers, Outcome(response.Outcome), Guidance(response.Outcome, answers, questions)));
@@ -191,8 +193,13 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                 .Where(index => index >= 0 && index < question.Options.Length)
                 .Select(index => question.Options[index].Label)
                 .ToArray();
+            var paths = question.PathKind?.Trim().Equals(DirectoriesPath, StringComparison.OrdinalIgnoreCase) == true
+                ? answer.Paths?.Where(path => !string.IsNullOrWhiteSpace(path))
+                    .Select(path => path.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+                : null;
             return new AskUserReply(question.Id, selected,
-                string.IsNullOrWhiteSpace(answer.Other) ? null : answer.Other.Trim());
+                string.IsNullOrWhiteSpace(answer.Other) ? null : answer.Other.Trim(),
+                paths is { Length: > 0 } ? paths : null);
         }
 
         /// <summary>
@@ -213,8 +220,8 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                 if (question.Text.Length > MaxTextLength) return $"Question '{question.Id}' is longer than {MaxTextLength} characters.";
                 if (question.Label is { Length: > MaxLabelLength }) return $"The label of '{question.Id}' is longer than {MaxLabelLength} characters.";
                 var path = question.PathKind?.Trim().ToLowerInvariant();
-                if (path is { Length: > 0 } and not (DirectoryPath or FilePath))
-                    return $"The 'pathKind' of '{question.Id}' must be '{DirectoryPath}' or '{FilePath}'.";
+                if (path is { Length: > 0 } and not (DirectoryPath or DirectoriesPath or FilePath))
+                    return $"The 'pathKind' of '{question.Id}' must be '{DirectoryPath}', '{DirectoriesPath}' or '{FilePath}'.";
                 var options = question.Options ?? [];
                 if (options.Length > MaxOptions) return $"Question '{question.Id}' offers more than {MaxOptions} options.";
                 // A path question is answerable through its picker, so it needs neither options nor

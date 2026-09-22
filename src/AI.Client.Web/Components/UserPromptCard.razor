@@ -41,6 +41,31 @@
             }
             @if (PathMode(question) is { } mode)
             {
+                @if (IsMultiplePaths(question))
+                {
+                    <div class="user-prompt-paths">
+                        @if (_paths[questionIndex].Count > 0)
+                        {
+                            <ul>
+                                @foreach (var path in _paths[questionIndex])
+                                {
+                                    <li>
+                                        <span title="@path">@path</span>
+                                        <button class="icon-action" type="button" title="Remove directory"
+                                                aria-label="Remove directory @path" disabled="@_sending"
+                                                @onclick="() => RemovePath(questionIndex, path)"><AppIcon Name="x" /></button>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        <button class="secondary-action compact-action" type="button" disabled="@_sending"
+                                @onclick="() => OpenPicker(questionIndex, mode)" @onkeydown:stopPropagation="true">
+                            <AppIcon Name="folder-plus" /> Add directory
+                        </button>
+                    </div>
+                }
+                else
+                {
                 @* A path is the one answer nobody should be typing from memory, so the free-text
                    slot becomes a box with the host's own file browser behind it. It still travels
                    as free text, which is why the model needs no new answer shape to read it. *@
@@ -63,6 +88,7 @@
                         </span>
                     </span>
                 </label>
+                }
             }
             else if (question.AllowOther)
             {
@@ -115,7 +141,7 @@
 
 @if (_pickerQuestion is { } picking)
 {
-    <DirectoryPickerDialog Mode="_pickerMode" StartPath="@_other.GetValueOrDefault(picking)"
+    <DirectoryPickerDialog Mode="_pickerMode" StartPath="@PickerStartPath(picking)"
                            Subtitle="@Prompt.Questions[picking].Label"
                            Selected="path => PickedAsync(picking, path)" Cancelled="ClosePicker" />
 }
@@ -128,6 +154,7 @@
 
     private readonly Dictionary<int, HashSet<int>> _selected = [];
     private readonly Dictionary<int, string> _other = [];
+    private readonly Dictionary<int, List<string>> _paths = [];
     private bool _sending;
     private string? _error;
     private Guid _rendered;
@@ -137,10 +164,15 @@
     /// <summary>Which picker a question wants, or null for a question that is not about a path.</summary>
     private static DirectoryPickerMode? PathMode(UserPromptQuestion question) => question.PathKind switch
     {
-        "directory" => DirectoryPickerMode.Directory,
+        "directory" or "directories" => DirectoryPickerMode.Directory,
         "file" => DirectoryPickerMode.File,
         _ => null
     };
+
+    private static bool IsMultiplePaths(UserPromptQuestion question) => question.PathKind == "directories";
+
+    private string? PickerStartPath(int question) => _paths.GetValueOrDefault(question)?.LastOrDefault()
+        ?? _other.GetValueOrDefault(question);
 
     private void OpenPicker(int question, DirectoryPickerMode mode)
     {
@@ -157,13 +189,23 @@
     private Task PickedAsync(int question, string path)
     {
         _pickerQuestion = null;
+        if (IsMultiplePaths(Prompt.Questions[question]))
+        {
+            if (!_paths[question].Contains(path, StringComparer.OrdinalIgnoreCase)) _paths[question].Add(path);
+            return Task.CompletedTask;
+        }
+
         TypeOther(question, new ChangeEventArgs { Value = path });
         return Task.CompletedTask;
     }
 
+    private void RemovePath(int question, string path) =>
+        _paths[question].RemoveAll(item => string.Equals(item, path, StringComparison.OrdinalIgnoreCase));
+
     private bool IsReady => Prompt.Questions
         .Select((_, index) => _selected.GetValueOrDefault(index)?.Count > 0
-            || !string.IsNullOrWhiteSpace(_other.GetValueOrDefault(index)))
+            || !string.IsNullOrWhiteSpace(_other.GetValueOrDefault(index))
+            || _paths.GetValueOrDefault(index)?.Count > 0)
         .All(answered => answered);
 
     protected override void OnParametersSet()
@@ -174,10 +216,12 @@
         _rendered = Prompt.Id;
         _selected.Clear();
         _other.Clear();
+        _paths.Clear();
         for (var index = 0; index < Prompt.Questions.Count; index++)
         {
             _selected[index] = [];
             _other[index] = string.Empty;
+            _paths[index] = [];
         }
 
         _sending = false;
@@ -236,8 +280,9 @@
                 ? Prompt.Questions
                     .Select((question, index) => new UserPromptAnswer(question.Id,
                         _selected[index].Order().ToArray(),
-                        string.IsNullOrWhiteSpace(_other[index]) ? null : _other[index].Trim()))
-                    .Where(answer => answer.Selected.Count > 0 || answer.Other is not null)
+                        string.IsNullOrWhiteSpace(_other[index]) ? null : _other[index].Trim(),
+                        _paths[index].Count == 0 ? null : _paths[index].ToArray()))
+                    .Where(answer => answer.Selected.Count > 0 || answer.Other is not null || answer.Paths is { Count: > 0 })
                     .ToArray()
                 : [];
             // Answering nothing at all is telling the assistant to decide, which is what the other

@@ -5,11 +5,14 @@ using AI.Client.Application.Chat;
 using AI.Client.Application.Tools;
 using AI.Client.Contracts.Chat;
 using AI.Client.Contracts.Settings;
+using AI.Client.Contracts.Tools;
 using Shouldly;
 using Xunit;
 
 public sealed class ToolDefinitionSelectorTests
 {
+    private static readonly string[] RequiredAppTools =
+        ["ask_user", "tool_search", "context_compact", "finish_run", "app_read", "app_projects", "spawn_subtask"];
     private readonly ContextTokenEstimator _estimator = new();
 
     [Fact]
@@ -32,7 +35,7 @@ public sealed class ToolDefinitionSelectorTests
     public void ShouldKeepToolsAlreadyUsedByTheCurrentTurnAndAskUser()
     {
         var used = Tool("large_previous_tool", new string('x', 14_000));
-        var ask = Tool("ask_user", new string('x', 2_000));
+        var ask = Tool("ask_user", new string('x', 2_000), ToolRef.AppPrefix + "ask_user");
         var others = Enumerable.Range(0, 20).Select(index => Tool($"other_{index}", new string('x', 1_000)));
         var context = new ChatCompletionMessage[]
         {
@@ -47,12 +50,47 @@ public sealed class ToolDefinitionSelectorTests
         selection.Tools.ShouldContain(item => item.OriginalName == "ask_user");
     }
 
-    private ToolDefinitionSelector Selector() => new(_estimator, new ConnectionContextLimitsResolver());
+    private ToolDefinitionSelector Selector() => new(_estimator, new ConnectionContextLimitsResolver(), new ToolSelectionPriorityPolicy());
 
-    private static AgentTool Tool(string name, string description)
+    [Fact]
+    public void ShouldAlwaysIncludePrimaryAppCapabilities()
+    {
+        var required = RequiredAppTools.Select(name => Tool(name, new string('x', 200),
+            name == "finish_run" ? "app_finish_run" : ToolRef.AppPrefix + name));
+        var smaller = Enumerable.Range(0, 30).Select(index =>
+            Tool($"small_{index}", new string('x', 2_000), ToolRef.BuiltInPrefix + $"small_{index}"));
+
+        var selection = Selector().Choose(null, "unrelated request", [], [.. required, .. smaller]);
+
+        selection.Tools.Select(item => item.OriginalName).ShouldContain("app_projects");
+        selection.Tools.Select(item => item.OriginalName).ShouldContain("spawn_subtask");
+        selection.Tools.Select(item => item.OriginalName).ShouldContain("app_read");
+        selection.Tools.Select(item => item.OriginalName).ShouldContain("ask_user");
+        selection.Tools.Select(item => item.OriginalName).ShouldContain("tool_search");
+        selection.Tools.Select(item => item.OriginalName).ShouldContain("context_compact");
+        selection.Tools.Select(item => item.OriginalName).ShouldContain("finish_run");
+    }
+
+    [Theory]
+    [InlineData("app_chats")]
+    [InlineData("app_runs")]
+    [InlineData("app_security")]
+    public void ShouldPreferRemainingAppCapabilitiesWhenRelevanceIsEqual(string name)
+    {
+        var preferred = Tool(name, new string('x', 2_000), ToolRef.AppPrefix + name);
+        var ordinary = Enumerable.Range(0, 20).Select(index =>
+            Tool($"ordinary_{index}", new string('x', 2_000), ToolRef.BuiltInPrefix + $"ordinary_{index}"));
+
+        var selection = Selector().Choose(null, "unrelated request", [],
+            [.. ordinary, preferred]);
+
+        selection.Tools.ShouldContain(item => item.OriginalName == name);
+    }
+
+    private static AgentTool Tool(string name, string description, string? providerName = null)
     {
         var schema = JsonDocument.Parse("""{"type":"object","properties":{}}""").RootElement.Clone();
-        var definition = new ChatToolDefinition(name, description, schema);
+        var definition = new ChatToolDefinition(providerName ?? name, description, schema);
         return new AgentTool(definition, ToolDescriptor.Basic(name, name, description, schema),
             Guid.NewGuid(), name, name);
     }

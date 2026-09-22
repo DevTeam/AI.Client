@@ -56,7 +56,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 ChatEndpoint, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
                 GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, ConnectionContextLimitsResolver, ModelContentCheckpointService,
-                ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSearchDefinitionEnricher, RunCompletionProtocol,
+                ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ToolPresentations, ChatBranchIds, ToolUserInterface>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")

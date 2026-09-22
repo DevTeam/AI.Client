@@ -417,7 +417,7 @@ public sealed class AppToolTests
                     new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
                         new ConnectionContextLimitsResolver()),
                     Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity(),
-                    new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()),
+                    new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver(), new ToolSelectionPriorityPolicy()),
                     new ToolCatalogRegistry(), new ModelContentCheckpointService(), instructionRegistry,
                     new ModelInstructionComposer(instructionRegistry, new ContextTokenEstimator()),
                     Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol(),

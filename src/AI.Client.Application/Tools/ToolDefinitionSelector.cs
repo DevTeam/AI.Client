@@ -12,7 +12,8 @@ using Contracts.Settings;
 /// </summary>
 public sealed partial class ToolDefinitionSelector(
     IContextTokenEstimator estimator,
-    IConnectionContextLimitsResolver limitsResolver) : IToolDefinitionSelector
+    IConnectionContextLimitsResolver limitsResolver,
+    IToolSelectionPriorityPolicy priorityPolicy) : IToolDefinitionSelector
 {
     private const long AbsoluteBudget = 6_000;
     private const int MaximumTools = 16;
@@ -39,11 +40,12 @@ public sealed partial class ToolDefinitionSelector(
             var words = Words(definition.Name).Concat(Words(definition.Description)).Distinct(StringComparer.OrdinalIgnoreCase);
             var relevance = words.Count(query.Contains);
             var pinned = used.Contains(definition.Name) || pinnedTools?.Contains(definition.Name) == true
-                || tool.OriginalName is "ask_user" or "tool_search" or "context_compact" or "finish_run";
+                || priorityPolicy.IsRequired(tool);
             var tokens = estimator.EstimateTools([definition]);
-            return new Candidate(tool, tokens, relevance, pinned);
+            return new Candidate(tool, tokens, relevance, pinned, priorityPolicy.IsPreferred(tool));
         }).OrderByDescending(item => item.Pinned)
           .ThenByDescending(item => item.Relevance)
+          .ThenByDescending(item => item.Preferred)
           .ThenBy(item => item.Tokens)
           .ThenBy(item => item.Tool.ModelDefinition.Name, StringComparer.Ordinal)
           .ToArray();
@@ -71,5 +73,5 @@ public sealed partial class ToolDefinitionSelector(
     [GeneratedRegex("[\\p{L}\\p{N}_-]+", RegexOptions.CultureInvariant)]
     private static partial Regex WordPattern();
 
-    private sealed record Candidate(AgentTool Tool, long Tokens, int Relevance, bool Pinned);
+    private sealed record Candidate(AgentTool Tool, long Tokens, int Relevance, bool Pinned, bool Preferred);
 }

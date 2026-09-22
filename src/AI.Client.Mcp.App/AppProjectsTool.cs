@@ -29,11 +29,14 @@ public sealed class AppProjectsTool(IProjectService projects, IChatService chats
         new McpServerToolCreateOptions
         {
             SerializerOptions = reply.Json,
-            Description = "Create and change this application's projects. Security settings are not here: directory grants, MCP server "
-                          + "bindings and tool policies belong to 'app_security'. Read the project with 'app_read' first and pass the "
-                          + "'revision' you saw. 'operationId' must be a fresh UUID per distinct change. Only 'Delete' understands 'dryRun', and it rehearses by default: it "
-                          + "removes every chat in the project, and until 'dryRun' is false it only describes that. Other operations "
-                          + "apply straight away and reject 'dryRun: true' rather than quietly ignoring it."
+            Description = "Manage projects shown in this application. An application project is a top-level container for chats and project settings. "
+                          + "When the user asks to create, rename, update or delete a project without explicitly mentioning a directory, repository, "
+                          + "source-code project or issue tracker, use this tool; do not substitute filesystem tools such as 'create_directory'. "
+                          + "Create requires 'name' and does not require 'projectId', 'revision', 'app_read' or 'dryRun'. Update requires 'projectId' "
+                          + "and 'revision'; read the current project with 'app_read' first. Delete requires 'projectId' and 'revision', removes every "
+                          + "chat in the project, and uses 'dryRun: true' by default; pass 'dryRun: false' only to apply the deletion. Directory grants, "
+                          + "MCP server bindings and tool policies belong to 'app_security'. 'operationId' must be a fresh UUID per distinct change. "
+                          + "Create and Update apply immediately and reject 'dryRun: true'."
         });
 
     [McpServerTool(Name = "app_projects", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false,

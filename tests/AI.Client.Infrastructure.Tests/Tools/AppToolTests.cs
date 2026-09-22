@@ -50,6 +50,20 @@ public sealed class AppToolTests
     }
 
     [Fact]
+    public async Task ProjectToolShouldDescribeDirectoryBasedNameSuggestion()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var description = session.Tools.Single(tool => tool.OriginalName == "app_projects").ModelDefinition.Description;
+
+        description.ShouldContain("derive a suggested project name");
+        description.ShouldContain("final segment");
+        description.ShouldContain("(Recommended)");
+        description.ShouldContain("allow a custom name");
+    }
+
+    [Fact]
     public async Task ShouldReadProjectsAndChats()
     {
         await using var fixture = await AppFixture.CreateAsync();

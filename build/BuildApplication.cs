@@ -9,7 +9,6 @@ internal sealed class BuildApplication(
     ITestSolutionTarget testSolutionTarget,
     IVerifyTarget verifyTarget,
     IPublishTarget publishTarget,
-    IChatSessionTarget chatSessionTarget,
     IRunTarget runTarget,
     IRunBothTarget runBothTarget,
     CancellationToken cancellationToken)
@@ -21,18 +20,8 @@ internal sealed class BuildApplication(
         RegisterTest(root);
         RegisterVerify(root);
         RegisterPublish(root);
-        RegisterChat(root);
         RegisterHost(root);
         return root.Parse(args).InvokeAsync();
-    }
-
-    private void RegisterChat(RootCommand root)
-    {
-        var arguments = new Argument<string[]>("arguments") { Arity = ArgumentArity.ZeroOrMore };
-        var command = new Command("chat", "Run the headless chat session CLI.");
-        command.Arguments.Add(arguments);
-        command.SetAction(parseResult => chatSessionTarget.RunAsync(parseResult.GetValue(arguments) ?? [], cancellationToken));
-        root.Subcommands.Add(command);
     }
 
     private void RegisterBuild(RootCommand root)

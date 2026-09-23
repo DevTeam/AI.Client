@@ -7,6 +7,7 @@
     <ProjectReference Include="..\AI.Client.Mcp.App\AI.Client.Mcp.App.csproj" />
     <ProjectReference Include="..\AI.Client.Web\AI.Client.Web.csproj"
                       Aliases="AIClientWeb" />
+    <Compile Include="..\AI.Client.Contracts\Composition.cs" Link="Contracts\Composition.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" />

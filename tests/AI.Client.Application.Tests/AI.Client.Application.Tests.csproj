@@ -6,10 +6,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\AI.Client.Application\AI.Client.Application.csproj" />
     <ProjectReference Include="..\..\src\AI.Client.Domain\AI.Client.Domain.csproj" />
+    <Compile Include="..\..\src\AI.Client.Contracts\Composition.cs" Link="Contracts\Composition.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Moq" />
+    <PackageReference Include="Pure.DI" PrivateAssets="all" />
     <PackageReference Include="Shouldly" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <PackageReference Include="xunit.v3" />

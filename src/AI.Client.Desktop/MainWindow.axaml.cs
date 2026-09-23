@@ -4,7 +4,6 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
 using Avalonia.Threading;
-using System.Runtime.InteropServices;
 
 internal sealed partial class MainWindow : Window
 {
@@ -31,7 +30,6 @@ internal sealed partial class MainWindow : Window
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
-        MatchWindowsTitleBar();
         if (_start.Address is null)
         {
             ShowProblem("The AI Client server did not start.", _start.Error, canRetry: false);
@@ -153,31 +151,4 @@ internal sealed partial class MainWindow : Window
             : OperatingSystem.IsLinux()
                 ? "Install WebKitGTK (for example libwebkit2gtk-4.1-0) or WPE WebKit and start AI Client again."
                 : "The system web view did not start. Restart AI Client; if it happens again, report it.";
-
-    private void MatchWindowsTitleBar()
-    {
-        if (!OperatingSystem.IsWindows() || TryGetPlatformHandle()?.Handle is not { } handle)
-        {
-            return;
-        }
-
-        // Keep system caption buttons and their hover behavior. Windows 10 can only use the dark
-        // caption when the OS is in dark mode; Windows 11 also accepts the app's exact colors.
-        var dark = 1;
-        _ = DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int));
-        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
-        {
-            return;
-        }
-
-        var background = 0x00171717;
-        var foreground = 0x00F7F2ED; // COLORREF is BGR for the web UI's #EDF2F7.
-        var border = 0x00292929;
-        _ = DwmSetWindowAttribute(handle, 35, ref background, sizeof(int));
-        _ = DwmSetWindowAttribute(handle, 36, ref foreground, sizeof(int));
-        _ = DwmSetWindowAttribute(handle, 34, ref border, sizeof(int));
-    }
-
-    [DllImport("dwmapi.dll", ExactSpelling = true)]
-    private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
 }

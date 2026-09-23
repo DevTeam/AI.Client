@@ -5,7 +5,11 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 
-internal sealed partial class App(MainWindow mainWindow, IProcessSignals processSignals) : Application
+/// <remarks>
+/// The window comes as a factory: a window built before <see cref="Initialize"/> loads the theme
+/// never gets its drawn titlebar template, so the titlebar neither drags nor clicks.
+/// </remarks>
+internal sealed partial class App(Func<MainWindow> mainWindow, IProcessSignals processSignals) : Application
 {
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -13,7 +17,7 @@ internal sealed partial class App(MainWindow mainWindow, IProcessSignals process
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = mainWindow;
+            desktop.MainWindow = mainWindow();
             // A signal is a request to quit like any other: the window closes normally, so the
             // server behind it stops and the data directory is released.
             var signals = processSignals.OnTermination(() => Dispatcher.UIThread.Post(() => desktop.Shutdown()));

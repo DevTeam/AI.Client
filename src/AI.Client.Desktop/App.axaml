@@ -7,7 +7,7 @@
         Window.Resources. Names are the ones Fluent's WindowDrawnDecorations theme looks up.
     -->
     <Application.Resources>
-        <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#171717" />
+        <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#202020" />
         <SolidColorBrush x:Key="CaptionButtonForeground" Color="#EDF2F7" />
         <SolidColorBrush x:Key="CaptionButtonBackground" Color="#2B2B2B" />
         <SolidColorBrush x:Key="CaptionButtonBorderBrush" Color="#454545" />

@@ -32,6 +32,14 @@ internal sealed partial class MainWindow : Window
         WebView.NewWindowRequested += (_, args) => OpenNewWindowOutside(args);
         WebView.NavigationCompleted += (_, args) => OnNavigationCompleted(args);
         Retry.Click += (_, _) => Load();
+        PropertyChanged += (_, args) =>
+        {
+            if (args.Property == WindowStateProperty)
+            {
+                UpdateFrame();
+            }
+        };
+        UpdateFrame();
     }
 
     protected override void OnOpened(EventArgs e)
@@ -220,4 +228,12 @@ internal sealed partial class MainWindow : Window
             : OperatingSystem.IsLinux()
                 ? "Install WebKitGTK (for example libwebkit2gtk-4.1-0) or WPE WebKit and start AI Client again."
                 : "The system web view did not start. Restart AI Client; if it happens again, report it.";
+
+    /// <summary>A maximized or full-screen window has no edge to outline.</summary>
+    private void UpdateFrame()
+    {
+        var edge = WindowState is WindowState.Maximized or WindowState.FullScreen ? 0 : 1;
+        Frame.BorderThickness = new Thickness(edge);
+        Chrome.Margin = new Thickness(edge);
+    }
 }

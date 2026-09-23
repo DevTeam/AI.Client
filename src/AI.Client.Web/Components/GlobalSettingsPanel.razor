@@ -1,8 +1,10 @@
 @using System.Diagnostics.CodeAnalysis
 @using System.Text.Json
+@using AI.Client.Contracts.Settings
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject IConnectionContextLimitsResolver ContextLimits
 @inject INotificationService Notifications
+@implements IAsyncDisposable
 
 <div class="permissions-drawer-backdrop"></div>
 <aside class="permissions-drawer settings-drawer" aria-label="@Section" @onclick:stopPropagation="true">
@@ -22,7 +24,7 @@
                         </div>
                         @if (GetSelectedConnection() is { } connection)
                         {
-                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label><label class="checkbox"><input type="checkbox" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" /> For subtasks</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<InputText autocomplete="url" @bind-Value="connection.BaseUrl" /></label><label>Model<InputText autocomplete="off" @bind-Value="connection.Model" /></label><div class="connection-ratings"><label>Context window tokens<input type="number" min="1024" max="4000000" step="1" @bind="connection.ContextWindowTokens" /><small>Effective: @EffectiveLimits(connection).ContextWindowTokens (@SourceLabel(EffectiveLimits(connection).ContextWindowSource))</small></label><label>Reserved output tokens<input type="number" min="256" max="1000000" step="1" @bind="connection.ReservedOutputTokens" /><small>Effective: @EffectiveLimits(connection).ReservedOutputTokens (@SourceLabel(EffectiveLimits(connection).ReservedOutputSource))</small></label></div><div class="connection-ratings"><label>Capability<input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><small>@RatingLabel(connection.Capability, Capabilities)</small></label><label>Cost<input type="range" min="0" max="5" step="1" @bind="connection.Cost" @bind:event="oninput" /><small>@RatingLabel(connection.Cost, Costs)</small></label></div><label>Good for<InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="What the ratings cannot say: vision, long context, local" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></form>
+                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label><label class="checkbox"><input type="checkbox" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" /> For subtasks</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<input type="url" autocomplete="url" class="text-input" placeholder="https://api.openai.com/v1" @bind="connection.BaseUrl" @bind:event="oninput" @bind:after="() => OnEndpointChanged(connection.Id)" /></label><div class="model-field-row"><div class="model-field"><span>Model</span><ModelPicker @bind-Value="connection.Model" AriaLabel="Model" Models="@(_resolvedModels.TryGetValue(connection.Id, out var list) ? list : null)" Loading="@(_resolvingModelsForId == connection.Id)" Error="@(_resolvedErrors.TryGetValue(connection.Id, out var err) ? err : null)" OnRetry="@(() => LoadModelsIfStaleAsync(connection.Id, force: true))" Placeholder="@ModelPickerPlaceholder(connection)" EmptyHint="@ModelPickerEmptyHint(connection)" /></div>@if (_resolvingModelsForId == connection.Id) { <span class="model-loading" aria-label="Loading models" role="status"><AppIcon Name="spinner" Class="tool-row-spinner" /></span> }</div><div class="connection-ratings"><label>Context window tokens<input type="number" min="1024" max="4000000" step="1" @bind="connection.ContextWindowTokens" /><small>Effective: @EffectiveLimits(connection).ContextWindowTokens (@SourceLabel(EffectiveLimits(connection).ContextWindowSource))</small></label><label>Reserved output tokens<input type="number" min="256" max="1000000" step="1" @bind="connection.ReservedOutputTokens" /><small>Effective: @EffectiveLimits(connection).ReservedOutputTokens (@SourceLabel(EffectiveLimits(connection).ReservedOutputSource))</small></label></div><div class="connection-ratings"><label>Capability<input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><small>@RatingLabel(connection.Capability, Capabilities)</small></label><label>Cost<input type="range" min="0" max="5" step="1" @bind="connection.Cost" @bind:event="oninput" /><small>@RatingLabel(connection.Cost, Costs)</small></label></div><label>Good for<InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="What the ratings cannot say: vision, long context, local" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" @bind-Value:after="() => OnEndpointChanged(connection.Id)" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></form>
                         }
                     </div>
                     break;
@@ -98,6 +100,31 @@
     // What was loaded, in the shape that is sent back; closing without edits must not write
     // (and toast) anything, and secrets never appear here, so they are checked separately.
     private string? _loadedSnapshot;
+    // Catalogs loaded from the endpoint on demand, keyed by connection id so switching between
+    // connections in the left column keeps each one's results visible until the next refresh.
+    private readonly Dictionary<Guid, IReadOnlyList<ResolvedModelInfo>> _resolvedModels = [];
+    // What the last catalog was loaded for (BaseUrl and typed key), per connection. A load is needed
+    // only when the form differs from it; storing it here skips duplicate calls and lets us know to
+    // refresh after the user edits the URL or the key.
+    private readonly Dictionary<Guid, string> _resolvedEndpoints = [];
+    // Last failure per connection, kept so the picker can show why the dropdown is empty and offer
+    // a Retry button. Cleared when the next attempt starts so a transient 401 does not linger once
+    // the user fixes the key.
+    private readonly Dictionary<Guid, string> _resolvedErrors = [];
+    private Guid? _resolvingModelsForId;
+    // Cancels an in-flight /models request when the user closes the drawer or refreshes again, so
+    // the late response cannot leak into a different connection's dropdown.
+    private CancellationTokenSource? _resolveCancellation;
+    // Debounce for the auto-load: a typing burst into BaseUrl collapses into a single request
+    // 350 ms after the last keystroke. The token cancels any pending timer so only the last
+    // keystroke's request survives.
+    private CancellationTokenSource? _autoLoadDebounce;
+    // Connection id the pending debounce belongs to; if the user switches to a different one in the
+    // middle of typing, the timer fires and would otherwise load for the old id.
+    private Guid _autoLoadDebounceForId;
+    // Auto-load latency in milliseconds. Short enough that the dropdown feels responsive after a
+    // paste, long enough to skip the per-keystroke churn of typing the URL by hand.
+    private const int AutoLoadDebounceMilliseconds = 350;
     private readonly List<ConnectionEditor> _connections = [];
     private readonly List<GlobalMcpServerEditor> _globalMcpServers = [];
     private readonly List<McpToolPolicyEditor> _toolPolicies = [];
@@ -116,6 +143,11 @@
         // A save reloads, and switching between Connections and MCP saves: keep the selection
         // where it was instead of jumping back to the first item every time.
         if (_connections.All(item => item.Id != _selectedConnectionId)) _selectedConnectionId = _connections.FirstOrDefault()?.Id;
+        // The selection may have been just resolved (first open or post-save reload) without going
+        // through SelectConnection; kick off the model load here so the catalog is in place by the
+        // time the form paints. LoadModelsIfStaleAsync is a no-op when the cache for this BaseUrl
+        // is fresh, so a redundant call on a Save-then-keep-selection is free.
+        if (_selectedConnectionId is { } autoLoadId) _ = LoadModelsIfStaleAsync(autoLoadId);
         if (_globalMcpServers.All(item => item.Id != _selectedMcpServerId)) _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
         _loadedSnapshot = Snapshot();
         _saveFailed = false;
@@ -167,10 +199,192 @@
         _selectedConnectionId = _connections.FirstOrDefault()?.Id;
     }
 
-    private void SelectConnection(Guid id) => _selectedConnectionId = id;
+    private void SelectConnection(Guid id)
+    {
+        _selectedConnectionId = id;
+        // Switching connections cancels any pending debounce for the previous one — otherwise a
+        // typing burst that finished a moment ago could land on the row the user has just left.
+        _autoLoadDebounce?.Cancel();
+        _autoLoadDebounce?.Dispose();
+        _autoLoadDebounce = null;
+        // Switching connections is the trigger to load the new one's catalog. The "first show" path
+        // (settings drawer just opened) goes through here too: the left column makes the first row
+        // selected by default, and that calls SelectConnection with that row's id.
+        _ = LoadModelsIfStaleAsync(id);
+    }
 
     private ConnectionEditor? GetSelectedConnection() =>
         _connections.SingleOrDefault(item => item.Id == _selectedConnectionId);
+
+    /// <summary>
+    /// Called after the BaseUrl input (per keystroke) and the API key input (on change). Debounces a
+    /// typing burst into a single /models request so each keystroke does not fire one. Switching to
+    /// a different connection while the timer is pending cancels the in-flight load for the old one.
+    /// </summary>
+    private void OnEndpointChanged(Guid id)
+    {
+        _autoLoadDebounce?.Cancel();
+        _autoLoadDebounce?.Dispose();
+        _autoLoadDebounce = new CancellationTokenSource();
+        _autoLoadDebounceForId = id;
+        var token = _autoLoadDebounce.Token;
+        _ = DebouncedAutoLoadAsync(id, token);
+    }
+
+    private async Task DebouncedAutoLoadAsync(Guid id, CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(AutoLoadDebounceMilliseconds, token);
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer keystroke or a connection switch superseded this one; nothing to do.
+            return;
+        }
+        if (token.IsCancellationRequested || _autoLoadDebounceForId != id) return;
+        await LoadModelsIfStaleAsync(id);
+    }
+
+    /// <summary>
+    /// Pulls the model catalog for <paramref name="id"/> unless we already have a fresh one for what
+    /// the form currently says. Called automatically when the user selects a connection in the left
+    /// column and again, debounced, after they edit its BaseUrl or key; those calls show a failure
+    /// only inline in the picker, since a toast per typing pause would be noise. Retry passes
+    /// <paramref name="force"/>, which also reloads a fresh catalog and raises a toast on failure.
+    /// </summary>
+    private async Task LoadModelsIfStaleAsync(Guid id, bool force = false)
+    {
+        var connection = _connections.SingleOrDefault(item => item.Id == id);
+        if (connection is null) return;
+
+        var baseUrl = connection.BaseUrl.Trim();
+        // Empty BaseUrl: nothing to call, and we should not flash a spinner. Drop the catalog and any
+        // error left from a URL the user has since cleared, and stop a request still in flight for it.
+        if (baseUrl.Length == 0)
+        {
+            ForgetModels(id);
+            _resolvedErrors.Remove(id);
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        // A half-typed or mistyped URL never leaves the browser: the Host would only refuse it, and
+        // what the user needs to know ("it must start with https://") is known right here.
+        if (!IsHttpUrl(baseUrl))
+        {
+            ForgetModels(id);
+            _resolvedErrors[id] = "Base URL must be an absolute HTTP or HTTPS URL, for example https://api.openai.com/v1.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        // Skip a network round-trip when nothing the catalog depends on has changed since the last
+        // successful load. A failure is not "fresh", so the next debounce tick tries again.
+        var apiKey = string.IsNullOrWhiteSpace(connection.Secret) ? null : connection.Secret;
+        var endpointKey = $"{baseUrl}\n{apiKey}";
+        if (!force &&
+            _resolvedEndpoints.TryGetValue(id, out var cached) &&
+            string.Equals(cached, endpointKey, StringComparison.Ordinal) &&
+            _resolvedModels.ContainsKey(id))
+        {
+            return;
+        }
+
+        // Cancel any prior in-flight call so the late response from a previous connection cannot
+        // overwrite the one the user is now looking at.
+        _resolveCancellation?.Cancel();
+        _resolveCancellation?.Dispose();
+        _resolveCancellation = new CancellationTokenSource();
+        var token = _resolveCancellation.Token;
+        _resolvingModelsForId = id;
+        _resolvedErrors.Remove(id);
+        // Fire-and-forget callers (auto-load on first open, debounced BaseUrl changes) do not give
+        // Blazor a task to await, so any state mutation after the network await goes unnoticed and
+        // the spinner/datalist never paint. Notify the renderer here, before we yield, so the
+        // spinner shows up immediately.
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var models = await GlobalSettingsApi.GetConnectionModelsAsync(
+                id, new ResolveConnectionModelsRequest(baseUrl, apiKey), token);
+            _resolvedModels[id] = models;
+            // Remember what this catalog came from, captured before the await: the user may have
+            // kept typing while the request was in flight, and that newer value is not loaded yet.
+            _resolvedEndpoints[id] = endpointKey;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            // A newer load or the drawer closing superseded this one; the newer call, if any,
+            // populates the dictionaries when it returns, so there is nothing to record here.
+        }
+        catch (Exception ex)
+        {
+            // HttpClient's own timeout also surfaces as a cancellation, but not ours; it is a
+            // failure like any other. The Host's message already says what went wrong; we add a
+            // leading note so the text says what we were trying to do.
+            var message = ex is OperationCanceledException
+                ? "Could not load models. The Host did not answer in time."
+                : $"Could not load models. {ex.Message}";
+            _resolvedModels.Remove(id);
+            _resolvedEndpoints.Remove(id);
+            _resolvedErrors[id] = message;
+            if (force) Notifications.ShowError(message);
+        }
+        finally
+        {
+            if (_resolvingModelsForId == id && !token.IsCancellationRequested)
+            {
+                _resolvingModelsForId = null;
+            }
+            // Repaint so the catalog reaches the DOM and the spinner goes away. Same reasoning as
+            // above: callers fire-and-forget this method, so we must explicitly wake the renderer.
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void ForgetModels(Guid id)
+    {
+        _resolvedModels.Remove(id);
+        _resolvedEndpoints.Remove(id);
+        if (_resolvingModelsForId != id) return;
+        _resolveCancellation?.Cancel();
+        _resolvingModelsForId = null;
+    }
+
+    private static bool IsHttpUrl(string value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is ("http" or "https") && uri.Host.Length > 0;
+
+    /// <summary>Placeholder text for the model picker. The picker is only useful once the user has
+    /// typed a Base URL; until then we tell them so rather than promising a catalog that is not
+    /// coming.</summary>
+    private static string ModelPickerPlaceholder(ConnectionEditor connection) =>
+        string.IsNullOrWhiteSpace(connection.BaseUrl)
+            ? "Set a Base URL first to load the model catalog"
+            : "Model id (type your own or pick from the catalog)";
+
+    /// <summary>What the open dropdown says when it has no models to list.</summary>
+    private string ModelPickerEmptyHint(ConnectionEditor connection)
+    {
+        if (string.IsNullOrWhiteSpace(connection.BaseUrl)) return "Set a Base URL to load the model catalog";
+        if (_resolvingModelsForId == connection.Id) return "Loading models…";
+        return _resolvedModels.ContainsKey(connection.Id)
+            ? "The endpoint lists no models; type the model id"
+            : "No models loaded yet";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // The Host keeps the previous request alive if we do not tell it to stop; this can fire
+        // a toast into a drawer the user has already closed.
+        _resolveCancellation?.Cancel();
+        _resolveCancellation?.Dispose();
+        // Same reasoning for the debounce timer: a delayed call would fire after the component is
+        // gone and overwrite state on a fresh drawer that has already taken its place.
+        _autoLoadDebounce?.Cancel();
+        _autoLoadDebounce?.Dispose();
+        await ValueTask.CompletedTask;
+    }
 
     /// <summary>
     /// What the list says about a connection under its name. Both marks can sit on the same one, so

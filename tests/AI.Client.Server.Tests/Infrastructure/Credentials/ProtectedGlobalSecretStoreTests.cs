@@ -4,7 +4,7 @@ namespace AI.Client.Infrastructure.Tests.Credentials;
 using AI.Client.Domain.Projects;
 using AI.Client.Infrastructure.Credentials;
 using AI.Client.Infrastructure.Storage;
-using Settings;
+using AI.Client.Infrastructure.Settings;
 using Shouldly;
 using Xunit;
 

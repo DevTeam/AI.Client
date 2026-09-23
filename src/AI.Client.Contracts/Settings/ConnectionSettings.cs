@@ -17,6 +17,28 @@ namespace AI.Client.Contracts.Settings;
 /// One line of what the two ratings cannot express — a long context, vision, being local and
 /// offline. Read by the model when it chooses, so it is prose on purpose.
 /// </param>
+/// <summary>
+/// One model the endpoint advertises through <c>GET /v1/models</c>. The resolver normalises the
+/// upstream OpenAI-compatible payload into this shape so the UI does not need to know the
+/// provider-specific schema differences.
+/// </summary>
+/// <param name="Id">The model identifier as it must be sent back in <c>model</c>.</param>
+/// <param name="DisplayName">
+/// A human-readable label, if the provider supplied one distinct from <paramref name="Id"/>; the UI
+/// prefers it when present.
+/// </param>
+/// <param name="OwnedBy">The provider's own owner tag, kept for sorting and debugging only.</param>
+public sealed record ResolvedModelInfo(string Id, string? DisplayName = null, string? OwnedBy = null);
+
+/// <summary>
+/// What the connection editor currently shows, sent when it asks for the model catalog. The form is
+/// usually ahead of what is saved (a new connection is not saved at all), so the Host must not read
+/// the endpoint from its settings.
+/// </summary>
+/// <param name="BaseUrl">The Base URL as typed.</param>
+/// <param name="ApiKey">A key typed but not yet saved; null falls back to the saved credential.</param>
+public sealed record ResolveConnectionModelsRequest(string BaseUrl, string? ApiKey = null);
+
 public sealed record ConnectionSettings(
     Guid Id,
     string Name,

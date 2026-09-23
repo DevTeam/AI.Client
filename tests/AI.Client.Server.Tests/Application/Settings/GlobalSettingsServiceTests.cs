@@ -10,6 +10,7 @@ public class GlobalSettingsServiceTests
 {
     private readonly Mock<IGlobalSettingsRepository> _repository = new(MockBehavior.Strict);
     private readonly Mock<IGlobalSecretStore> _secretStore = new(MockBehavior.Strict);
+    private readonly Mock<IConnectionModelsResolver> _modelsResolver = new(MockBehavior.Strict);
 
     [Fact]
     public async Task ShouldSelectFirstEnabledConnectionAsDefault()
@@ -107,6 +108,75 @@ public class GlobalSettingsServiceTests
         await action.ShouldThrowAsync<ArgumentException>();
     }
 
+    [Fact]
+    public async Task ShouldResolveModelsUsingTheSavedCredentialAndTheTypedBaseUrl()
+    {
+        var id = Guid.CreateVersion7();
+        var expected = new[] { new ResolvedModelInfo("alpha"), new ResolvedModelInfo("beta") };
+        _repository.Setup(item => item.LoadAsync(CancellationToken.None))
+            .ReturnsAsync(new GlobalSettings(
+                [new ConnectionSettings(id, "One", "https://saved.example/v1/", "model", true, true, true)],
+                [], []));
+        _secretStore.Setup(item => item.GetAsync("connection", id, CancellationToken.None))
+            .ReturnsAsync("secret");
+        string? capturedBaseUrl = null;
+        string? capturedKey = null;
+        _modelsResolver.Setup(item => item.ResolveAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string?, CancellationToken>((baseUrl, key, _) =>
+            {
+                capturedBaseUrl = baseUrl;
+                capturedKey = key;
+            })
+            .ReturnsAsync(expected);
+
+        var models = await CreateInstance().ResolveConnectionModelsAsync(
+            id, new ResolveConnectionModelsRequest(" https://llm.example/v1/ "), CancellationToken.None);
+
+        models.ShouldBe(expected);
+        capturedBaseUrl.ShouldBe("https://llm.example/v1/");
+        capturedKey.ShouldBe("secret");
+    }
+
+    [Fact]
+    public async Task ShouldPreferTheTypedKeyOverTheSavedOne()
+    {
+        var id = Guid.CreateVersion7();
+        string? capturedKey = null;
+        _modelsResolver.Setup(item => item.ResolveAsync("https://llm.example/v1", It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string?, CancellationToken>((_, key, _) => capturedKey = key)
+            .ReturnsAsync([]);
+
+        await CreateInstance().ResolveConnectionModelsAsync(
+            id, new ResolveConnectionModelsRequest("https://llm.example/v1", "typed"), CancellationToken.None);
+
+        capturedKey.ShouldBe("typed");
+    }
+
+    [Fact]
+    public async Task ShouldResolveModelsForAConnectionThatIsNotSavedYet()
+    {
+        _repository.Setup(item => item.LoadAsync(CancellationToken.None))
+            .ReturnsAsync(new GlobalSettings([], [], []));
+        _modelsResolver.Setup(item => item.ResolveAsync("https://llm.example/v1", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ResolvedModelInfo("alpha")]);
+
+        var models = await CreateInstance().ResolveConnectionModelsAsync(
+            Guid.CreateVersion7(), new ResolveConnectionModelsRequest("https://llm.example/v1"), CancellationToken.None);
+
+        models.Select(item => item.Id).ShouldBe(["alpha"]);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ShouldRejectAnEmptyBaseUrlOnModelsResolve(string baseUrl)
+    {
+        var action = () => CreateInstance().ResolveConnectionModelsAsync(
+            Guid.CreateVersion7(), new ResolveConnectionModelsRequest(baseUrl), CancellationToken.None);
+
+        await action.ShouldThrowAsync<ArgumentException>();
+    }
+
     private async Task<GlobalSettings> SaveAsync(params ConnectionSettings[] connections)
     {
         GlobalSettings? saved = null;
@@ -120,5 +190,5 @@ public class GlobalSettingsServiceTests
     }
 
     private GlobalSettingsService CreateInstance() => new(
-        _repository.Object, _secretStore.Object, new ConnectionContextLimitsResolver());
+        _repository.Object, _secretStore.Object, new ConnectionContextLimitsResolver(), _modelsResolver.Object);
 }

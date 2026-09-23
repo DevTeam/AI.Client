@@ -36,6 +36,13 @@ public sealed class SettingsEndpoints : IEndpointModule
             (Guid serverId, string name, string schemaHash, IGlobalSettingsService service, CancellationToken token) =>
                 service.RemoveToolPolicyAsync(serverId, name, schemaHash, token));
 
+        // Model catalog for the connection editor. The editor sends the Base URL (and a key) as typed,
+        // since it is usually ahead of what is saved; the saved key stays on the Host. A POST because
+        // the body may carry a key, which must not end up in a URL.
+        routes.MapPost("/api/settings/connections/{id:guid}/models",
+            (Guid id, ResolveConnectionModelsRequest request, IGlobalSettingsService service, CancellationToken token) =>
+                service.ResolveConnectionModelsAsync(id, request, token));
+
         routes.MapGet("/api/mcp/default/tools", async (IToolSessionFactory factory, CancellationToken token) =>
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);

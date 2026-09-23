@@ -4,7 +4,25 @@
     {
       "name": "ai-client-host",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--project", "src/AI.Client.Host"],
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "src/AI.Client.Host"
+      ],
+      "port": 52173,
+      "autoPort": true
+    },
+    {
+      "name": "ai-client-host-scratch",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "src/AI.Client.Host",
+        "--",
+        "--data-dir",
+        "C:/Users/PYANIK~1/AppData/Local/Temp/claude/C--Projects-DevTeam-AI-Client/5780f837-0f24-49a9-b5a9-2c3966ac3da9/scratchpad/data"
+      ],
       "port": 52173,
       "autoPort": true
     }

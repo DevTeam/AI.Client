@@ -7,8 +7,51 @@ using System.Text.Json;
 public sealed class GlobalSettingsService(
     IGlobalSettingsRepository repository,
     IGlobalSecretStore secretStore,
-    IConnectionContextLimitsResolver contextLimits) : IGlobalSettingsService
+    IConnectionContextLimitsResolver contextLimits,
+    IConnectionModelsResolver modelsResolver) : IGlobalSettingsService
 {
+    // The endpoint advertises its catalog through OpenAI's GET /v1/models. Providers time out the
+    // call after varying windows; we pick a short ceiling so the UI's "Refresh" button never blocks
+    // the editor for more than what the user is willing to wait.
+    private static readonly TimeSpan ModelsRequestTimeout = TimeSpan.FromSeconds(15);
+
+    public async Task<IReadOnlyList<ResolvedModelInfo>> ResolveConnectionModelsAsync(
+        Guid connectionId, ResolveConnectionModelsRequest request, CancellationToken cancellationToken)
+    {
+        var baseUrl = request.BaseUrl?.Trim();
+        if (string.IsNullOrEmpty(baseUrl))
+        {
+            throw new ArgumentException("Base URL is empty.");
+        }
+
+        // A provider requires the key to even list its models. A key typed in the editor is the one
+        // the user means; failing that, the saved one. A connection that is not saved yet has none.
+        var apiKey = string.IsNullOrWhiteSpace(request.ApiKey)
+            ? await LoadSavedConnectionKeyAsync(connectionId, cancellationToken)
+            : request.ApiKey;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(ModelsRequestTimeout);
+        try
+        {
+            return await modelsResolver.ResolveAsync(baseUrl, apiKey, timeout.Token);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            // Our own ceiling, not the caller giving up: report it as a failure the UI can show,
+            // rather than a cancellation it would silently swallow.
+            throw new InvalidOperationException(
+                $"The endpoint did not answer within {ModelsRequestTimeout.TotalSeconds:0} seconds.");
+        }
+    }
+
+    private async Task<string?> LoadSavedConnectionKeyAsync(Guid connectionId, CancellationToken cancellationToken)
+    {
+        var settings = await repository.LoadAsync(cancellationToken);
+        return settings.Connections.Any(item => item.Id == connectionId)
+            ? await secretStore.GetAsync("connection", connectionId, cancellationToken)
+            : null;
+    }
+
     public async Task<GlobalSettings> GetAsync(CancellationToken cancellationToken)
     {
         var settings = await repository.LoadAsync(cancellationToken);

@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-  </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\AI.Client.Application\AI.Client.Application.csproj" />
-    <ProjectReference Include="..\AI.Client.Domain\AI.Client.Domain.csproj" />
-  </ItemGroup>
-</Project>

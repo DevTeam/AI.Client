@@ -4,6 +4,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/AI.Client.Contracts/AI.Client.Contracts.csproj" />
+    <Project Path="src/AI.Client.Desktop/AI.Client.Desktop.csproj" />
     <Project Path="src/AI.Client.Host/AI.Client.Host.csproj" />
     <Project Path="src/AI.Client.Mcp.BuiltIn/AI.Client.Mcp.BuiltIn.csproj" />
     <Project Path="src/AI.Client.Server/AI.Client.Server.csproj" />

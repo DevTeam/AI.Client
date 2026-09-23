@@ -27,6 +27,7 @@ The documents describe the agreed-upon architecture and are the source of truth 
 21. [LLM context management](20-context-management.md)
 22. [Tool selection and adaptive compaction](21-tool-selection-and-adaptive-compaction.md)
 23. [Hidden model instructions and run completion](22-hidden-model-instructions-and-run-completion.md)
+24. [Desktop app](23-desktop.md)
 
 ## Accepted decisions
 
@@ -37,6 +38,7 @@ The documents describe the agreed-upon architecture and are the source of truth 
 - [ADR-005: Fast unit tests on xUnit](decisions/ADR-005-unit-testing.md)
 - [ADR-006: Architecture simplification](decisions/ADR-006-architecture-simplification.md)
 - [ADR-007: Application management tools in an in-process MCP server](decisions/ADR-007-in-process-app-tools.md)
+- [ADR-008: Desktop app on Avalonia with the system web view](decisions/ADR-008-desktop-app.md)
 
 ## Document status
 

@@ -16,4 +16,14 @@ namespace AI.Client.Server.Hosting;
 /// The desktop app always does; the standalone host does when asked, and otherwise leaves the
 /// UI to its own dev server.
 /// </param>
-public sealed record ServerOptions(string DataDirectory, string? Urls, bool BrowseEnabled, bool ServeWeb = false);
+/// <param name="StopOnProcessSignals">
+/// Whether the server stops by itself on Ctrl+C or SIGTERM. True for the standalone host. The
+/// desktop app turns it off and closes its window on those signals instead, which then stops the
+/// server — otherwise the window would stay open over a server that is gone.
+/// </param>
+public sealed record ServerOptions(
+    string DataDirectory,
+    string? Urls,
+    bool BrowseEnabled,
+    bool ServeWeb = false,
+    bool StopOnProcessSignals = true);

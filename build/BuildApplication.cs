@@ -9,6 +9,7 @@ internal sealed class BuildApplication(
     ITestSolutionTarget testSolutionTarget,
     IVerifyTarget verifyTarget,
     IPublishTarget publishTarget,
+    IPublishDesktopTarget publishDesktopTarget,
     IRunTarget runTarget,
     IRunBothTarget runBothTarget,
     CancellationToken cancellationToken)
@@ -20,6 +21,7 @@ internal sealed class BuildApplication(
         RegisterTest(root);
         RegisterVerify(root);
         RegisterPublish(root);
+        RegisterPublishDesktop(root);
         RegisterHost(root);
         return root.Parse(args).InvokeAsync();
     }
@@ -42,6 +44,30 @@ internal sealed class BuildApplication(
     {
         var command = new Command("verify", "Build the solution and run the fast unit test suite.");
         command.SetAction(_ => verifyTarget.RunAsync(cancellationToken));
+        root.Subcommands.Add(command);
+    }
+
+    private void RegisterPublishDesktop(RootCommand root)
+    {
+        var runtime = new Option<string>("--runtime")
+        {
+            Description = "Target platform: win-x64, win-arm64, osx-arm64, osx-x64, linux-x64 or linux-arm64.",
+            DefaultValueFactory = _ => System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier
+        };
+        runtime.AcceptOnlyFromAmong("win-x64", "win-arm64", "osx-arm64", "osx-x64", "linux-x64", "linux-arm64");
+        var output = new Option<string?>("--output")
+        {
+            Description = "Directory for the published desktop app. Defaults to artifacts/desktop/<runtime>."
+        };
+        var command = new Command("publish-desktop", "Publish the self-contained AI.Client desktop app for one platform.");
+        command.Options.Add(runtime);
+        command.Options.Add(output);
+        command.SetAction(parseResult =>
+        {
+            var target = parseResult.GetValue(runtime)!;
+            return publishDesktopTarget.RunAsync(target,
+                parseResult.GetValue(output) ?? Path.Combine("artifacts", "desktop", target), cancellationToken);
+        });
         root.Subcommands.Add(command);
     }
 

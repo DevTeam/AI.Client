@@ -576,15 +576,25 @@ body {
         overflow: visible;
     }
 
+    /* When the two columns stack, the list must not claim all remaining height — that would
+       push the form out of the drawer. Falls back to the original "size to content". */
+    .settings-list-column {
+        grid-template-rows: auto auto;
+    }
+
     .settings-list {
         max-height: 12rem;
     }
 }
 
+/* First row takes every free pixel of the column so a long Connections or MCP list reaches the
+   bottom of the drawer; the second row stays the same height as the Add button and stays in
+   place. minmax(0, 1fr) lets the cell shrink to the content rather than overflow when the drawer
+   itself is too short to host both rows comfortably. */
 .settings-list-column {
     display: grid;
-    grid-template-rows: auto auto;
-    align-content: start;
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-content: stretch;
     gap: 0.5rem;
     min-height: 0;
 }
@@ -601,9 +611,9 @@ body {
     overflow-y: auto;
 }
 
-.settings-list {
-    max-height: min(52vh, 32rem);
-}
+/* No fixed cap here: the 1fr row in .settings-list-column already gives the list a height, and
+   the drawer stays the one source of truth for "how tall can the list get". Keeping a numeric
+   cap would re-introduce the empty space below the list and push Add away from the bottom. */
 
 .settings-list-select {
     display: grid;
@@ -846,17 +856,11 @@ body {
 
 /* Revealed like every other row action, pinned or not. Whether a chat is pinned is said by its
    leading icon and by its position — the list already sorts pinned chats to the top — so this
-   button no longer has to be a permanent indicator as well as a control. */
+   button no longer has to be a permanent indicator as well as a control. The pin/unpin toggle
+   stays in the muted row-action colour regardless of state, so it reads like every other action
+   on the row instead of being promoted to an "active" accent colour. */
 .chat-nav-row > .chat-pin-button {
     color: #858585;
-}
-
-.chat-pin-button.pinned {
-    color: var(--accent-color);
-}
-
-.chat-pin-button.pinned .app-icon path {
-    fill: currentColor;
 }
 
 .directory-nav-group {

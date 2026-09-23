@@ -114,14 +114,14 @@
                             {
                                 <button class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }</button>
                             }
-                            <button class="icon-action chat-row-action chat-pin-button @(chat.IsPinned ? "pinned" : string.Empty)" type="button" title="@(chat.IsPinned ? "Unpin chat" : "Pin chat")" aria-label="@(chat.IsPinned ? "Unpin chat" : "Pin chat")" @onclick="() => ToggleChatPinAsync(chat)"><AppIcon Name="pin" /></button>
+                            <button class="icon-action chat-row-action chat-pin-button" type="button" title="@(chat.IsPinned ? "Unpin chat" : "Pin chat")" aria-label="@(chat.IsPinned ? "Unpin chat" : "Pin chat")" @onclick="() => ToggleChatPinAsync(chat)"><AppIcon Name="@(chat.IsPinned ? "unpin" : "pin")" /></button>
                             <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat)"><AppIcon Name="edit" /></button>
                             <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenu(chat.Id)"><AppIcon Name="more" /></button>
                             @if (_chatMenuId == chat.Id)
                             {
                                 <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
                                     <button type="button" role="menuitem" @onclick="() => ToggleChatPinAsync(chat)">
-                                        <AppIcon Name="pin" />
+                                        <AppIcon Name="@(chat.IsPinned ? "unpin" : "pin")" />
                                         <span>@(chat.IsPinned ? "Unpin chat" : "Pin chat")</span>
                                     </button>
                                     <button type="button" role="menuitem" @onclick="() => OpenChatPermissions(chat)">

@@ -559,30 +559,6 @@ body {
     background: #2b2b2b;
 }
 
-.global-workspace {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    min-width: 0;
-    min-height: 0;
-    padding: 2rem;
-    overflow: hidden;
-}
-
-.global-header {
-    display: flex;
-    align-items: start;
-    justify-content: space-between;
-    gap: 1rem;
-    padding-bottom: 1.25rem;
-    border-bottom: 1px solid #333;
-}
-
-.global-header h1,
-.global-header p {
-    margin: 0;
-}
-
-.global-header p,
 .section-heading p,
 .settings-list small {
     color: #858585;
@@ -595,13 +571,47 @@ body {
     justify-content: space-between;
 }
 
+/* Connections and MCP share the permissions drawer chrome but need room for a list beside a
+   form, so the drawer is wider and the two columns stack once the drawer itself gets narrow. */
+.permissions-drawer.settings-drawer { grid-template-rows: auto minmax(0, 1fr) auto; width: min(54rem, calc(100vw - 3rem)); }
+.settings-drawer-content { min-height: 0; overflow: hidden; container-type: inline-size; }
+.permissions-drawer.settings-drawer > footer { min-height: 2.1rem; }
+.settings-drawer-error { color: #ff8f8f; }
+
 .global-editor-layout {
     display: grid;
-    grid-template-columns: minmax(12rem, 16rem) minmax(20rem, 38rem);
-    gap: 1.5rem;
+    grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr);
+    gap: 1.25rem;
+    height: 100%;
     min-height: 0;
-    padding: 1.25rem 0;
+    padding: 1rem 1.2rem;
+    box-sizing: border-box;
     overflow: hidden;
+}
+
+.global-editor-layout > .settings-list-column,
+.global-editor-layout > .global-form {
+    min-height: 0;
+    overflow-y: auto;
+}
+
+@container (width <= 36rem) {
+    .global-editor-layout {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto auto;
+        height: auto;
+        max-height: 100%;
+        overflow-y: auto;
+    }
+
+    .global-editor-layout > .settings-list-column,
+    .global-editor-layout > .global-form {
+        overflow: visible;
+    }
+
+    .settings-list {
+        max-height: 12rem;
+    }
 }
 
 .settings-list-column {
@@ -664,24 +674,6 @@ body {
     flex-wrap: wrap;
     gap: 1.25rem;
     align-items: center;
-}
-
-.global-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    padding-top: 1rem;
-}
-
-.global-feedback {
-    min-width: 0;
-    margin-right: auto;
-    overflow: hidden;
-    color: #a8a8a8;
-    font-size: 0.8rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 .directory-settings {
@@ -793,7 +785,7 @@ body {
     font-size: 0.78rem;
 }
 
-@media (width <= 58rem) {
+@container (width <= 46rem) {
     .mcp-tool-policies .section-heading {
         display: grid;
         justify-items: start;
@@ -2981,7 +2973,7 @@ textarea {
 .project-menu .menu-count, .chat-menu .menu-count { margin-left: auto; }
 
 @media (width <= 44rem) {
-    .permissions-drawer { width: 100vw; }
+    .permissions-drawer, .permissions-drawer.settings-drawer { width: 100vw; }
     .permissions-drawer-backdrop { background: transparent; }
 }
 

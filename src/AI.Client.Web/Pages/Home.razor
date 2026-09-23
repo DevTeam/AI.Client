@@ -73,7 +73,7 @@
         }
         @foreach (var project in _projects)
         {
-            <div @key="project.Id" class="project-nav-row @(_globalSection is null && project.Id == _selectedProject?.Id ? "selected" : string.Empty) @(_draggedProjectId == project.Id ? "dragging" : string.Empty)" title="@GetProjectRunTitle(project.Id)" draggable="true" @ondragstart="() => OnProjectDragStart(project.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnProjectDrop(project)" @oncontextmenu="() => OnProjectContextMenu(project)" @oncontextmenu:preventDefault="true">
+            <div @key="project.Id" class="project-nav-row @(project.Id == _selectedProject?.Id ? "selected" : string.Empty) @(_draggedProjectId == project.Id ? "dragging" : string.Empty)" title="@GetProjectRunTitle(project.Id)" draggable="true" @ondragstart="() => OnProjectDragStart(project.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnProjectDrop(project)" @oncontextmenu="() => OnProjectContextMenu(project)" @oncontextmenu:preventDefault="true">
                 @if (_editingProjectId == project.Id)
                 {
                     <input class="sidebar-inline-editor" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveProjectTitleAsync(project))" @onblur="() => SaveProjectTitleAsync(project)" aria-label="Project name" />
@@ -104,7 +104,7 @@
                     @foreach (var chat in orderedChats.Take(visibleChatCount))
                     {
                         var branchCount = GetBranchCount(chat);
-                        <div @key="chat.Id" class="chat-nav-row @(_globalSection is null && chat.Id == GetActiveChatId() && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty)" title="@GetRunTitle(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
+                        <div @key="chat.Id" class="chat-nav-row @(chat.Id == GetActiveChatId() && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty)" title="@GetRunTitle(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
                             @if (_editingChatId == chat.Id)
                             {
                                 <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveChatTitleAsync(chat))" @onblur="() => SaveChatTitleAsync(chat)" aria-label="Chat name" />
@@ -260,12 +260,6 @@
 
     <div class="workspace-resizer" data-side="left" role="separator" aria-label="Resize project sidebar"></div>
 
-    @if (_globalSection is not null)
-    {
-        <GlobalSettingsPanel Section="@_globalSection" Saved="LoadGlobalSettingsAsync" />
-    }
-    else
-    {
     <section class="workspace-conversation" aria-label="Chat">
         <MessageFeed @ref="_messageFeed"
             HasSelectedProject="@(_selectedProject is not null)"
@@ -347,7 +341,6 @@
             @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
         </footer>
     </section>
-    }
 
     @if (_isProjectMenuOpen && _selectedProject is not null)
     {
@@ -413,6 +406,11 @@
     }
 </main>
 
+@if (_globalSection is not null)
+{
+    <GlobalSettingsPanel @ref="_globalSettingsPanel" Section="@_globalSection" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" />
+}
+
 @if (_permissionsScope is not null && _selectedProject is not null)
 {
     <ToolPermissionsDrawer Scope="@_permissionsScope" ProjectId="@_selectedProject.Id" ChatId="@_permissionsChatId"
@@ -459,6 +457,7 @@
     private Guid? _draggedChatId;
     private string _sidebarAnnouncement = string.Empty;
     private string? _globalSection;
+    private GlobalSettingsPanel? _globalSettingsPanel;
     private readonly List<ConnectionSettings> _connections = [];
     private int _enabledMcpServerCount;
     private ProjectEditor _editor = new();
@@ -665,15 +664,14 @@
             StateHasChanged();
         }
 
-        if (_globalSection is null && _attachComposer && _composerModule is not null && _dotNetReference is not null)
+        if (_attachComposer && _composerModule is not null && _dotNetReference is not null)
         {
             await DisposeComposerHandleAsync();
 
             try
             {
                 var handle = await _composerModule.InvokeAsync<IJSObjectReference>("attach", _composer, _dotNetReference);
-                if (_globalSection is null) _composerHandle = handle;
-                else await DisposeJsReferenceAsync(handle, invokeDispose: true);
+                _composerHandle = handle;
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException)
             {
@@ -1041,7 +1039,6 @@
         // Publish the destination as one coherent state. Previously the new project and a null
         // chat were rendered before these reads completed, so every switch visibly flashed the
         // empty composer and only then restored the remembered transcript.
-        _globalSection = null;
         _attachComposer = true;
         ResetBranchOperationState();
         CancelChatSelection();
@@ -1616,7 +1613,6 @@
     private async Task CreateChatAsync()
     {
         if (_selectedProject is null) return;
-        _globalSection = null;
         _attachComposer = true;
         ResetBranchOperationState();
         _selectedChat = null;
@@ -1760,7 +1756,6 @@
 
     private async Task SelectChatAsync(Guid chatId)
     {
-        _globalSection = null;
         _attachComposer = true;
         ResetBranchOperationState();
         CloseContextMenus();
@@ -2841,6 +2836,10 @@
         {
             ClosePermissions();
         }
+        else if (_globalSection is not null)
+        {
+            await RequestCloseGlobalSettingsAsync();
+        }
         else if (_isEndpointMenuOpen)
         {
             CloseEndpointMenu();
@@ -3079,17 +3078,29 @@
         }
     }
 
-    private void OpenGlobalSection(string section)
+    /// <summary>
+    /// Connections and MCP open as a drawer over the chat, like tool permissions, so switching
+    /// between them no longer tears down the conversation. A second section replaces the first
+    /// only after the open one has saved itself.
+    /// </summary>
+    private async Task OpenGlobalSection(string section)
     {
         CloseContextMenus();
-        ResetBranchOperationState();
-        CancelChatSelection();
-        _messageFeed = null;
-        _scrollMessagesToBottom = false;
-        _followNewMessages = false;
-        _pendingScrollRestoreKey = null;
+        if (_globalSection == section) return;
+        if (_globalSettingsPanel is not null && !await _globalSettingsPanel.SaveAsync()) return;
         _globalSection = section;
-        _attachComposer = true;
+    }
+
+    private async Task RequestCloseGlobalSettingsAsync()
+    {
+        if (_globalSettingsPanel is null) CloseGlobalSettings();
+        else await _globalSettingsPanel.RequestCloseAsync();
+    }
+
+    private void CloseGlobalSettings()
+    {
+        _globalSection = null;
+        _globalSettingsPanel = null;
     }
 
     private async Task LoadGlobalSettingsAsync()

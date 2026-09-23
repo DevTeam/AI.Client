@@ -1,14 +1,20 @@
 @using System.Diagnostics.CodeAnalysis
+@using System.Text.Json
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject IConnectionContextLimitsResolver ContextLimits
 @inject INotificationService Notifications
 
-        <section class="global-workspace" aria-label="@Section">
+<div class="permissions-drawer-backdrop" @onclick="RequestCloseAsync"></div>
+<aside class="permissions-drawer settings-drawer" aria-label="@Section" @onclick:stopPropagation="true">
+    <header>
+        <div><h2>@(Section == "Connections" ? "Connections" : "MCP")</h2><p>@(Section == "Connections" ? "OpenAI-compatible endpoints available to every project." : "Global MCP servers available to every project.")</p></div>
+        <button class="icon-action" type="button" title="Close" aria-label="Close @Section" disabled="@_saving" @onclick="RequestCloseAsync"><AppIcon Name="x" /></button>
+    </header>
+    <div class="settings-drawer-content">
             @switch (Section)
             {
                 case "Connections":
                 {
-                    <header class="global-header"><div><h1>Connections</h1><p>OpenAI-compatible endpoints available to every project.</p></div></header>
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
                             <nav class="settings-list">@foreach (var connectionItem in _connections) { <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span>@connectionItem.Name</span><small>@ConnectionStatus(connectionItem)</small></button>@if (connectionItem.Id == _selectedConnectionId) { <button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button> }</div> }</nav>
@@ -19,15 +25,13 @@
                             <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label><label class="checkbox"><input type="checkbox" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" /> For subtasks</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<InputText autocomplete="url" @bind-Value="connection.BaseUrl" /></label><label>Model<InputText autocomplete="off" @bind-Value="connection.Model" /></label><div class="connection-ratings"><label>Context window tokens<input type="number" min="1024" max="4000000" step="1" @bind="connection.ContextWindowTokens" /><small>Effective: @EffectiveLimits(connection).ContextWindowTokens (@SourceLabel(EffectiveLimits(connection).ContextWindowSource))</small></label><label>Reserved output tokens<input type="number" min="256" max="1000000" step="1" @bind="connection.ReservedOutputTokens" /><small>Effective: @EffectiveLimits(connection).ReservedOutputTokens (@SourceLabel(EffectiveLimits(connection).ReservedOutputSource))</small></label></div><div class="connection-ratings"><label>Capability<input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><small>@RatingLabel(connection.Capability, Capabilities)</small></label><label>Cost<input type="range" min="0" max="5" step="1" @bind="connection.Cost" @bind:event="oninput" /><small>@RatingLabel(connection.Cost, Costs)</small></label></div><label>Good for<InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="What the ratings cannot say: vision, long context, local" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></form>
                         }
                     </div>
-                    <footer class="global-actions"><button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
                     break;
                 }
                 default:
                 {
-                    <header class="global-header"><div><h1>MCP</h1><p>Global MCP servers available to every project.</p></div></header>
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
-                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => _selectedMcpServerId = serverItem.Id"><span>@serverItem.Name</span><small>@serverItem.Transport В· @serverItem.Policy</small></button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</div> }</nav>
+                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => _selectedMcpServerId = serverItem.Id"><span>@serverItem.Name</span><small>@serverItem.Transport · @serverItem.Policy</small></button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</div> }</nav>
                             <button class="icon-action settings-list-add" type="button" title="Add MCP server" aria-label="Add MCP server" @onclick="AddGlobalMcpServer"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedMcpServer() is { } server)
@@ -68,14 +72,32 @@
                             </form>
                         }
                     </div>
-                    <footer class="global-actions"><button type="button" @onclick="SaveGlobalSettingsAsync">Save</button><button class="secondary-action" type="button" @onclick="LoadGlobalSettingsAsync">Cancel</button></footer>
                     break;
                 }
             }
-        </section>
+    </div>
+    <footer>
+        @if (_saveFailed)
+        {
+            <span class="settings-drawer-error" role="alert">Not saved. Fix the fields or discard.</span>
+            <button class="secondary-action permissions-reset-all" type="button" disabled="@_saving" @onclick="DiscardAndCloseAsync">Discard changes</button>
+        }
+        else
+        {
+            <span>@(_saving ? "Saving…" : "Changes are saved when the panel closes.")</span>
+        }
+    </footer>
+</aside>
 @code {
     [Parameter] public string Section { get; set; } = "Connections";
     [Parameter] public EventCallback Saved { get; set; }
+    [Parameter] public EventCallback Close { get; set; }
+    private bool _loaded;
+    private bool _saving;
+    private bool _saveFailed;
+    // What was loaded, in the shape that is sent back; closing without edits must not write
+    // (and toast) anything, and secrets never appear here, so they are checked separately.
+    private string? _loadedSnapshot;
     private readonly List<ConnectionEditor> _connections = [];
     private readonly List<GlobalMcpServerEditor> _globalMcpServers = [];
     private readonly List<McpToolPolicyEditor> _toolPolicies = [];
@@ -91,9 +113,38 @@
         _globalMcpServers.AddRange(settings.McpServers.Select(GlobalMcpServerEditor.From));
         _toolPolicies.Clear();
         _toolPolicies.AddRange(settings.ToolPolicies.Select(McpToolPolicyEditor.From));
-        _selectedConnectionId = _connections.FirstOrDefault()?.Id;
-        _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
+        // A save reloads, and switching between Connections and MCP saves: keep the selection
+        // where it was instead of jumping back to the first item every time.
+        if (_connections.All(item => item.Id != _selectedConnectionId)) _selectedConnectionId = _connections.FirstOrDefault()?.Id;
+        if (_globalMcpServers.All(item => item.Id != _selectedMcpServerId)) _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
+        _loadedSnapshot = Snapshot();
+        _saveFailed = false;
+        _loaded = true;
     }
+
+    private SaveGlobalSettingsRequest BuildRequest() => new(
+        // ReSharper disable once UseCollectionExpression
+        _connections.Select(item => item.ToSettings()).ToArray(),
+        [.. _globalMcpServers.Select(item => item.ToSettings())],
+        [.. _toolPolicies.Select(item => item.ToSettings())]);
+
+    private string Snapshot() => JsonSerializer.Serialize(BuildRequest());
+
+    private bool HasChanges() => Snapshot() != _loadedSnapshot
+        || _connections.Any(item => !string.IsNullOrWhiteSpace(item.Secret))
+        || _globalMcpServers.Any(item => !string.IsNullOrWhiteSpace(item.Secret));
+
+    /// <summary>
+    /// Closing is the save, like the permissions drawer where every change is already applied.
+    /// A failed save keeps the drawer open so the edits are not lost; discarding is explicit.
+    /// </summary>
+    public async Task RequestCloseAsync()
+    {
+        if (_saving) return;
+        if (await SaveAsync()) await Close.InvokeAsync();
+    }
+
+    private Task DiscardAndCloseAsync() => Close.InvokeAsync();
 
     private void AddConnection()
     {
@@ -207,17 +258,15 @@
         }
     }
 
-    private async Task SaveGlobalSettingsAsync()
+    /// <summary>Saves pending edits; <c>true</c> when there is nothing left unsaved.</summary>
+    public async Task<bool> SaveAsync()
     {
+        if (!_loaded || !HasChanges()) return true;
+        _saving = true;
+        StateHasChanged();
         try
         {
-            await GlobalSettingsApi.SaveAsync(
-                new SaveGlobalSettingsRequest(
-                    // ReSharper disable once UseCollectionExpression
-                    _connections.Select(item => item.ToSettings()).ToArray(),
-                    [.. _globalMcpServers.Select(item => item.ToSettings())],
-                    [.. _toolPolicies.Select(item => item.ToSettings())]),
-                CancellationToken.None);
+            await GlobalSettingsApi.SaveAsync(BuildRequest(), CancellationToken.None);
             foreach (var connection in _connections.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))
                 await GlobalSettingsApi.SetConnectionCredentialAsync(connection.Id, connection.Secret, CancellationToken.None);
             foreach (var server in _globalMcpServers.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))
@@ -227,6 +276,7 @@
             // Same corner toast the rest of the app uses, so "I saved something" always looks the
             // same wherever it happened — global settings, project settings, a chat's endpoint.
             Notifications.ShowSuccess("Settings saved.");
+            return true;
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
@@ -234,6 +284,15 @@
             // was easy to miss next to the Save button, and this panel is now the only place where
             // an endpoint's base URL / model / credentials are typed in.
             Notifications.ShowError("Settings were not saved. Check required fields.");
+            _saveFailed = true;
+            return false;
+        }
+        finally
+        {
+            // Home calls this on Escape and on switching sections, outside this component's own
+            // event handlers, so nothing else would re-render the footer.
+            _saving = false;
+            StateHasChanged();
         }
     }
 

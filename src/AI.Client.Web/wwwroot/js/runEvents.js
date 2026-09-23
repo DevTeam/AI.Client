@@ -66,6 +66,9 @@ export function watchEscape(dotNetReference) {
         if (event.key !== "Escape" || event.repeat || event.defaultPrevented) return;
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest(locallyHandled)) return;
+        // The settings drawer saves on close, and a field commits its value on change, which
+        // only fires on blur: blur first so the last edit is bound before the save reads it.
+        if (target?.closest(".settings-drawer") && document.activeElement instanceof HTMLElement) document.activeElement.blur();
         void dotNetReference.invokeMethodAsync("OnEscapePressed");
     };
     document.addEventListener("keydown", handler);

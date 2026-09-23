@@ -11,5 +11,5 @@ public interface IServerCommandLine
 {
     void AddTo(Command command);
 
-    ServerOptions Bind(ParseResult result, string? urls);
+    ServerOptions Bind(ParseResult result, string? urls, bool serveWeb);
 }

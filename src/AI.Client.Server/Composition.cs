@@ -62,10 +62,10 @@ internal sealed class Composition
             .Root<IAppDataChangeSignal>()
             .Root<IRunEventsPublisher>()
             // Hosting
-            .Singleton<AiClientServer, ApiExceptionHandler, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer>()
+            .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer>()
             .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints>(Tag.Unique)
             // One storage root for data and logs: every path below and the file logger read it here.
-            .Singleton<ProjectStorageLocation>()
+            .Singleton<ProjectStorageLocation, DataDirectoryLock>()
             .Bind<ILoggerProvider>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new JsonLineFileLoggerProvider(location))
             .Bind<IProjectStoragePaths>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new ProjectStoragePaths(location.RootDirectory))
             .Bind<IChatStoragePaths>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new ChatStoragePaths(location.RootDirectory))

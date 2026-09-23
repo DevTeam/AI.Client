@@ -12,13 +12,6 @@ using Contracts.Workspace;
 /// </summary>
 public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTracker
 {
-    /// <summary>
-    /// Real Myers' implementation, used everywhere except tests that want a fixture diff.
-    /// </summary>
-    public WorkspaceChangeTracker() : this(new LineDiff())
-    {
-    }
-
     /// <summary>Built-in tools whose arguments name a path they are about to modify.</summary>
     private static readonly Dictionary<string, string[]> MutatingPathArguments = new(StringComparer.Ordinal)
     {

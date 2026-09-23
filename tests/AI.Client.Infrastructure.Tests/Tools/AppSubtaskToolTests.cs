@@ -342,7 +342,7 @@ public sealed class AppSubtaskToolTests
             Projects = new ProjectService(new JsonProjectRepository(_fileSystem, new ProjectStoragePaths("data"), new ProjectDocumentSerializer()), _ids, _clock, _settings);
             Chats = new ChatService(new JsonChatRepository(_fileSystem, new ChatStoragePaths("data"), new ChatDocumentSerializer()), _ids, _clock, _synchronization);
             var policies = new ToolPolicyResolver(Projects, Chats, _settings);
-            IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker();
+            IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker(new LineDiff());
             var modelProjector = new ToolResultModelProjector();
             var toolResultCodec = new ToolResultCodec(modelProjector);
             var instructionRegistry = new ModelInstructionRegistry();

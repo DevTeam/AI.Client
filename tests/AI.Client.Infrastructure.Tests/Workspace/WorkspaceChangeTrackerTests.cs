@@ -21,7 +21,7 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
 
     private async Task<WorkspaceChangeTracker> StartAsync(params string[] roots)
     {
-        var tracker = new WorkspaceChangeTracker();
+        var tracker = new WorkspaceChangeTracker(new LineDiff());
         await BeginAsync(tracker, _run, null, roots);
         return tracker;
     }

@@ -1,6 +1,12 @@
 namespace AI.Client.Infrastructure.Storage;
 
-public sealed class ProjectStorageLocation
+/// <summary>
+/// Resolves the storage root from the <c>AI_CLIENT_DATA_DIRECTORY</c> environment variable, falling
+/// back to the platform's local application data directory. The value lives behind
+/// <see cref="IProjectStorageLocation"/> so the container and the file logger both read it from one
+/// place.
+/// </summary>
+public sealed class ProjectStorageLocation : IProjectStorageLocation
 {
     public ProjectStorageLocation()
     {

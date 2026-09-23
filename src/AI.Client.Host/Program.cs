@@ -16,9 +16,11 @@ using AI.Client.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 // One value decides both where logs go and where the container writes its data, so the two can
-// never disagree about the storage root.
+// never disagree about the storage root. Both the logger and the composition read it from the
+// same instance.
 var storageLocation = new ProjectStorageLocation();
-builder.Logging.AddProvider(new JsonLineFileLoggerProvider(storageLocation.RootDirectory));
+builder.Services.AddSingleton<IProjectStorageLocation>(storageLocation);
+builder.Logging.AddProvider(new JsonLineFileLoggerProvider(storageLocation));
 builder.Services.AddHostedService<ChatRunHostedService>();
 var composition = new Composition(storageLocation.RootDirectory);
 builder.Host.UseServiceProviderFactory(composition);

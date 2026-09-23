@@ -22,7 +22,8 @@ internal sealed partial class Composition
             .Transient<ProcessRunTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,
                 DeleteFileTool, DeleteDirectoryTool>(Tag.Unique)
-            .Singleton<ProcessRunner, EnvironmentGrantSource, PathGuard, WebFetcher, HtmlText, BuiltInToolReply>()
+            .Singleton<ProcessRunner, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()
+            .Bind<IWebFetcher>().As(Lifetime.Singleton).To(_ => new WebFetcher(WebFetcher.CreateDefaultHandler()))
             .Singleton((IEnumerable<IToolFactory> toolFactories) =>
             {
                 var tools = new McpServerPrimitiveCollection<McpServerTool>();

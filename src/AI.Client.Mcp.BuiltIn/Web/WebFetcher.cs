@@ -10,22 +10,40 @@ public sealed class WebFetcher : IWebFetcher, IDisposable
 
     private readonly HttpClient _client;
 
-    public WebFetcher()
+    /// <summary>
+    /// Production handler — a SocketsHttpHandler tuned for short, bounded fetches. The container
+    /// passes it in; tests can pass a handler whose responses they control.
+    /// </summary>
+    public WebFetcher(HttpMessageHandler handler) : this(BuildClient(handler))
     {
-        _client = new HttpClient(new SocketsHttpHandler
-        {
-            AllowAutoRedirect = true,
-            MaxAutomaticRedirections = 5,
-            AutomaticDecompression = DecompressionMethods.All,
-            ConnectTimeout = TimeSpan.FromSeconds(10)
-        })
+    }
+
+    // Internal so the contract stays at <see cref="HttpMessageHandler"/> for callers while the
+    // container can still resolve the HttpClient it actually composes around.
+    internal WebFetcher(HttpClient client)
+    {
+        _client = client;
+        _client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("AI.Client-BuiltIn", "1.0"));
+        _client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml,application/json;q=0.9,text/plain;q=0.8,*/*;q=0.5");
+    }
+
+    private static HttpClient BuildClient(HttpMessageHandler handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        return new HttpClient(handler)
         {
             Timeout = TimeSpan.FromSeconds(30),
             MaxResponseContentBufferSize = BodyLimit
         };
-        _client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("AI.Client-BuiltIn", "1.0"));
-        _client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml,application/json;q=0.9,text/plain;q=0.8,*/*;q=0.5");
     }
+
+    internal static HttpMessageHandler CreateDefaultHandler() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = true,
+        MaxAutomaticRedirections = 5,
+        AutomaticDecompression = DecompressionMethods.All,
+        ConnectTimeout = TimeSpan.FromSeconds(10)
+    };
 
     public async Task<WebResponse> GetAsync(Uri url, CancellationToken cancellationToken)
     {

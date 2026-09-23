@@ -4,7 +4,6 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/AI.Client.Application/AI.Client.Application.csproj" />
-    <Project Path="src/AI.Client.Cli/AI.Client.Cli.csproj" />
     <Project Path="src/AI.Client.Contracts/AI.Client.Contracts.csproj" />
     <Project Path="src/AI.Client.Domain/AI.Client.Domain.csproj" />
     <Project Path="src/AI.Client.Host/AI.Client.Host.csproj" />

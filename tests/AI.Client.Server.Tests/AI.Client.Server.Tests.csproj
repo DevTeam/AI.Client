@@ -16,8 +16,5 @@
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
-  <Target Name="CopyDefaultMcpServer" AfterTargets="Build">
-    <ItemGroup><DefaultMcpFiles Include="..\..\src\AI.Client.Mcp.BuiltIn\bin\$(Configuration)\$(TargetFramework)\*" /></ItemGroup>
-    <Copy SourceFiles="@(DefaultMcpFiles)" DestinationFolder="$(OutDir)mcp" SkipUnchangedFiles="true" />
-  </Target>
+  <Import Project="..\..\build\McpBuiltIn.targets" />
 </Project>

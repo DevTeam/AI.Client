@@ -14,12 +14,5 @@
     <PackageReference Include="Pure.DI" PrivateAssets="all" />
     <PackageReference Include="Pure.DI.MS" />
   </ItemGroup>
-  <Target Name="CopyDefaultMcpServer" AfterTargets="Build">
-    <ItemGroup><DefaultMcpFiles Include="..\AI.Client.Mcp.BuiltIn\bin\$(Configuration)\$(TargetFramework)\*" /></ItemGroup>
-    <Copy SourceFiles="@(DefaultMcpFiles)" DestinationFolder="$(OutDir)mcp" SkipUnchangedFiles="true" />
-  </Target>
-  <Target Name="PublishDefaultMcpServer" AfterTargets="Publish">
-    <MSBuild Projects="..\AI.Client.Mcp.BuiltIn\AI.Client.Mcp.BuiltIn.csproj" Targets="Publish"
-             Properties="Configuration=$(Configuration);PublishDir=$(PublishDir)mcp\" />
-  </Target>
+  <Import Project="..\..\build\McpBuiltIn.targets" />
 </Project>

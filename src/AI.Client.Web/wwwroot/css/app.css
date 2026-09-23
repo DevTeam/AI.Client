@@ -352,52 +352,14 @@ body {
     background: rgb(0 0 0 / 58%);
 }
 
-.project-settings-modal {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    width: min(38rem, calc(100vw - 3rem));
-    max-height: min(44rem, calc(100vh - 3rem));
-    box-sizing: border-box;
-    padding: 1.1rem;
-    overflow: hidden;
-    border: 1px solid #454545;
-    border-radius: 1rem;
-    background: #1d1d1d;
-    box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 60%);
-}
-
 @media (height <= 36rem) {
     .modal-backdrop {
         padding: 0.75rem;
     }
-
-    .project-settings-modal {
-        width: min(38rem, calc(100vw - 1.5rem));
-        max-height: calc(100vh - 1.5rem);
-    }
 }
 
-.project-settings-modal > header {
-    display: flex;
-    align-items: start;
-    justify-content: space-between;
-    margin-bottom: 1rem;
-    padding-bottom: 0.8rem;
-    border-bottom: 1px solid #383838;
-}
-
-.project-settings-modal > header div {
-    display: grid;
-    gap: 0.2rem;
-}
-
-.project-settings-modal > header span { color: #858585; font-size: 0.8rem; }
-
-.settings-content {
-    min-height: 0;
-    overflow-y: auto;
-    padding: 0.2rem 0.2rem 0.5rem;
-}
+/* Project settings reuse the permissions drawer; it has no tabs row. */
+.permissions-drawer.project-settings-drawer { grid-template-rows: auto minmax(0, 1fr) auto; }
 
 .settings-modal-actions {
     display: flex;
@@ -2432,15 +2394,15 @@ body {
     gap: 0.75rem;
 }
 
-.project-settings-modal .workspace-form {
+.project-settings-drawer .workspace-form {
     align-content: start;
 }
 
-.project-settings-modal .workspace-form textarea {
+.project-settings-drawer .workspace-form textarea {
     min-height: 4.5rem;
 }
 
-.project-settings-modal .workspace-form input {
+.project-settings-drawer .workspace-form input {
     min-height: 2.7rem;
 }
 
@@ -2823,19 +2785,19 @@ textarea {
     resize: none;
 }
 
-.project-settings-modal label,
-.project-settings-modal input,
-.project-settings-modal select {
+.project-settings-drawer label,
+.project-settings-drawer input,
+.project-settings-drawer select {
     min-width: 0;
 }
 
-.project-settings-modal input:not([type="checkbox"]),
-.project-settings-modal textarea,
-.project-settings-modal select {
+.project-settings-drawer input:not([type="checkbox"]),
+.project-settings-drawer textarea,
+.project-settings-drawer select {
     padding: 0.5rem 0.65rem;
 }
 
-.project-settings-modal .form-actions {
+.project-settings-drawer .form-actions {
     flex-wrap: wrap;
 }
 

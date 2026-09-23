@@ -6,6 +6,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
     <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
@@ -19,6 +20,7 @@
     <Compile Include="..\AI.Client.Server\CommandLine\Composition.cs" Link="Server\CommandLine\Composition.cs" />
   </ItemGroup>
   <ItemGroup>
+    <AvaloniaResource Include="Assets\app-icon.png" />
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Controls.WebView" />
     <PackageReference Include="Avalonia.Desktop" />

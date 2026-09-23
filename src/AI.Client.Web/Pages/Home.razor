@@ -562,6 +562,7 @@
     private IJSObjectReference? _runEventsSubscription;
     private IJSObjectReference? _focusSubscription;
     private IJSObjectReference? _escapeSubscription;
+    private IJSObjectReference? _drawerDismissSubscription;
     private IJSObjectReference? _queueDragSubscription;
     private readonly ComposerHistoryNavigator _composerHistoryNavigator = new();
     private bool _composerCtrlDown;
@@ -653,6 +654,7 @@
                 _runEventsSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("subscribe", _apiBaseUrl.Value.ToString(), _dotNetReference);
                 _focusSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchFocus", _dotNetReference);
                 _escapeSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchEscape", _dotNetReference);
+                _drawerDismissSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchDrawerDismiss", _dotNetReference);
                 _queueDragSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchQueueDrag", _dotNetReference);
                 _applicationFocused = await _runEventsModule.InvokeAsync<bool>("isFocused");
             }
@@ -2829,6 +2831,16 @@
         _isConfirmingDirectoryDelete = false;
     }
 
+    /// <summary>A press outside the open drawer; the press itself still reaches its target.</summary>
+    [JSInvokable]
+    public async Task OnDrawerDismissed()
+    {
+        if (_permissionsScope is not null) ClosePermissions();
+        else if (_globalSection is not null) await RequestCloseGlobalSettingsAsync();
+        else return;
+        await InvokeAsync(StateHasChanged);
+    }
+
     [JSInvokable]
     public async Task OnEscapePressed()
     {
@@ -3086,7 +3098,11 @@
     private async Task OpenGlobalSection(string section)
     {
         CloseContextMenus();
-        if (_globalSection == section) return;
+        if (_globalSection == section)
+        {
+            await RequestCloseGlobalSettingsAsync();
+            return;
+        }
         if (_globalSettingsPanel is not null && !await _globalSettingsPanel.SaveAsync()) return;
         _globalSection = section;
     }
@@ -3310,6 +3326,7 @@
         if (_runEventsSubscription is not null) { await _runEventsSubscription.InvokeVoidAsync("dispose"); await _runEventsSubscription.DisposeAsync(); }
         if (_focusSubscription is not null) { await _focusSubscription.InvokeVoidAsync("dispose"); await _focusSubscription.DisposeAsync(); }
         if (_escapeSubscription is not null) { await _escapeSubscription.InvokeVoidAsync("dispose"); await _escapeSubscription.DisposeAsync(); }
+        if (_drawerDismissSubscription is not null) { await _drawerDismissSubscription.InvokeVoidAsync("dispose"); await _drawerDismissSubscription.DisposeAsync(); }
         if (_queueDragSubscription is not null) { await _queueDragSubscription.InvokeVoidAsync("dispose"); await _queueDragSubscription.DisposeAsync(); }
         if (_runEventsModule is not null) await _runEventsModule.DisposeAsync();
 

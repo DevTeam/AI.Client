@@ -75,6 +75,26 @@ export function watchEscape(dotNetReference) {
     return { dispose: () => document.removeEventListener("keydown", handler) };
 }
 
+/**
+ * Closes a right-hand drawer on a press anywhere outside it without swallowing that press: the
+ * backdrop no longer catches clicks, so one click both closes the drawer and opens the chat (or
+ * whatever else) under the pointer. Listening in the capture phase lets the close start before
+ * the target's own handler runs. The Connections/MCP buttons are left to their own handler.
+ */
+export function watchDrawerDismiss(dotNetReference) {
+    const handler = event => {
+        if (event.button !== 0) return;
+        const drawer = document.querySelector(".permissions-drawer");
+        const target = event.target instanceof Element ? event.target : null;
+        if (!drawer || !target || target.closest(".permissions-drawer, .sidebar-global-nav, .toast-region")) return;
+        // Same reason as on Escape: commit the focused field before the settings drawer saves.
+        if (document.activeElement instanceof HTMLElement && drawer.contains(document.activeElement)) document.activeElement.blur();
+        void dotNetReference.invokeMethodAsync("OnDrawerDismissed");
+    };
+    document.addEventListener("pointerdown", handler, true);
+    return { dispose: () => document.removeEventListener("pointerdown", handler, true) };
+}
+
 export function watchQueueDrag(dotNetReference) {
     let source = null;
     let target = null;

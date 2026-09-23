@@ -2947,7 +2947,8 @@ textarea {
 .user-prompt-actions > button:not(.secondary-action) kbd { display: inline-flex; align-items: center; justify-content: center; margin-left: .35rem; border-color: rgb(255 255 255 / 28%); background: rgb(0 0 0 / 14%); transform: translateY(1px); }
 .user-prompt-error { margin: 0; color: #ff8f8f; font-size: .8rem; }
 
-.permissions-drawer-backdrop { position: fixed; z-index: 44; inset: 0; background: rgb(0 0 0 / 12%); }
+/* Only a tint: presses go through to the page, and runEvents.watchDrawerDismiss closes the drawer. */
+.permissions-drawer-backdrop { position: fixed; z-index: 44; inset: 0; background: rgb(0 0 0 / 12%); pointer-events: none; }
 .permissions-drawer { position: fixed; z-index: 45; top: 0; right: 0; bottom: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(26rem, 100vw); border-left: 1px solid #383838; background: #1d1d1d; box-shadow: -1rem 0 2.5rem rgb(0 0 0 / 38%); }
 .permissions-drawer > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; padding: 1.2rem 1.2rem .9rem; border-bottom: 1px solid #383838; }
 .permissions-drawer h2, .permissions-drawer h3, .permissions-drawer p { margin: 0; }

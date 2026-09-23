@@ -5,6 +5,7 @@ using Contracts.Runs;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Hosting;
 
 public sealed class RunEndpoints : IEndpointModule
 {
@@ -24,8 +25,20 @@ public sealed class RunEndpoints : IEndpointModule
             async (Guid projectId, Guid chatId, Guid branchId, UserPromptResponse response, IChatRunDispatcher dispatcher, CancellationToken token) =>
                 await dispatcher.AnswerPromptAsync(projectId, chatId, branchId, response, token) ? Results.Ok() : Results.Conflict());
 
-        routes.MapGet("/api/runs/events", (IRunEventsPublisher events, HttpResponse response, CancellationToken cancellationToken) =>
-            events.WriteAsync(response, cancellationToken));
+        // The stream never ends by itself, so it also ends when the server stops: ASP.NET waits for
+        // open requests on shutdown, and an open event stream would hold every exit for the full
+        // shutdown timeout.
+        routes.MapGet("/api/runs/events", async (IRunEventsPublisher events, HttpResponse response, IHostApplicationLifetime lifetime, CancellationToken cancellationToken) =>
+        {
+            using var stream = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.ApplicationStopping);
+            try
+            {
+                await events.WriteAsync(response, stream.Token);
+            }
+            catch (OperationCanceledException) when (lifetime.ApplicationStopping.IsCancellationRequested)
+            {
+            }
+        });
 
         routes.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/stop",
             (Guid projectId, Guid chatId, Guid branchId, Guid operationId, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.StopAsync(projectId, chatId, branchId, cancellationToken, operationId));

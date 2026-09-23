@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using System.Text.Json;
 
 internal sealed partial class MainWindow : Window
 {
@@ -12,15 +13,17 @@ internal sealed partial class MainWindow : Window
     private static readonly TimeSpan EngineTimeout = TimeSpan.FromSeconds(20);
     private readonly DesktopStart _start;
     private readonly IWindowPlacementStore _placements;
+    private readonly ITaskbarBadge _taskbarBadge;
     private readonly DispatcherTimer _engineWatchdog;
     private bool _engineCreated;
     private PixelPoint _normalPosition;
     private Size _normalSize;
 
-    public MainWindow(DesktopStart start, IWindowPlacementStore placements)
+    public MainWindow(DesktopStart start, IWindowPlacementStore placements, ITaskbarBadge taskbarBadge)
     {
         _start = start;
         _placements = placements;
+        _taskbarBadge = taskbarBadge;
         InitializeComponent();
         Restore(placements.Load());
         PositionChanged += (_, _) => RememberNormalLater();
@@ -31,6 +34,7 @@ internal sealed partial class MainWindow : Window
         WebView.NavigationStarted += (_, args) => KeepNavigationInApp(args);
         WebView.NewWindowRequested += (_, args) => OpenNewWindowOutside(args);
         WebView.NavigationCompleted += (_, args) => OnNavigationCompleted(args);
+        WebView.WebMessageReceived += (_, args) => OnWebMessageReceived(args);
         Retry.Click += (_, _) => Load();
         PropertyChanged += (_, args) =>
         {
@@ -45,6 +49,7 @@ internal sealed partial class MainWindow : Window
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
+        if (OperatingSystem.IsWindows()) _taskbarBadge.Attach(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero);
         if (_start.Address is null)
         {
             ShowProblem("The AI Client server did not start.", _start.Error, canRetry: false);
@@ -65,6 +70,7 @@ internal sealed partial class MainWindow : Window
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
+        _taskbarBadge.Detach();
         base.OnClosing(e);
         RememberNormal();
         _placements.Save(new WindowPlacement(_normalPosition.X, _normalPosition.Y, _normalSize.Width, _normalSize.Height,
@@ -184,6 +190,27 @@ internal sealed partial class MainWindow : Window
         if (!args.IsSuccess && args.Request is { } target && IsApp(target))
         {
             ShowProblem("The AI Client window could not load.", $"Nothing answered at {target}.", canRetry: true);
+        }
+    }
+
+    private void OnWebMessageReceived(WebMessageReceivedEventArgs args)
+    {
+        if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(args.Body)) return;
+        try
+        {
+            using var message = JsonDocument.Parse(args.Body);
+            var root = message.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String
+                || type.GetString() != "unread-count"
+                || !root.TryGetProperty("count", out var value) || value.ValueKind != JsonValueKind.Number
+                || !value.TryGetInt32(out var count)
+                || count is < 0 or > 100) return;
+            Dispatcher.UIThread.Post(() => _taskbarBadge.SetCount(count));
+        }
+        catch (JsonException)
+        {
+            // Only the app's small typed bridge message is handled here.
         }
     }
 

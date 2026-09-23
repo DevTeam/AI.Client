@@ -8,6 +8,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
     <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
   <ItemGroup>
@@ -21,6 +22,7 @@
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="Assets\app-icon.png" />
+    <Content Include="Assets\Badges\*.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Controls.WebView" />
     <PackageReference Include="Avalonia.Desktop" />

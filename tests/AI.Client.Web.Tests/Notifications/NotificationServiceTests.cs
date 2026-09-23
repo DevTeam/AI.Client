@@ -7,6 +7,17 @@ using Xunit;
 
 public class NotificationServiceTests
 {
+    private sealed class RecordingPublisher : IUnreadCountPublisher
+    {
+        public List<int> Counts { get; } = [];
+
+        public Task PublishAsync(int count)
+        {
+            Counts.Add(count);
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class StorageJsRuntime : IJSRuntime
     {
         public Dictionary<string, string> Items { get; } = [];
@@ -58,5 +69,24 @@ public class NotificationServiceTests
         service.UnreadCount.ShouldBe(0);
         service.History.Single().IsResolved.ShouldBeTrue();
         service.History.Single().RequiresAction.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task DesktopBadgeFollowsUnreadChangesWithoutCountingGenericToasts()
+    {
+        using var inner = new NotificationService(new StorageJsRuntime());
+        var publisher = new RecordingPublisher();
+        using var service = new DesktopBadgeNotificationService(inner, publisher);
+        await service.InitializeAsync();
+        await service.InitializeAsync();
+        service.ShowSuccess("Project saved.");
+
+        var projectId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var branchId = Guid.NewGuid();
+        service.ShowChatEvent("Response ready", NotificationKind.Success, projectId, chatId, branchId);
+        service.MarkSeen(service.History[0].Id);
+
+        publisher.Counts.ShouldBe([0, 1, 0]);
     }
 }

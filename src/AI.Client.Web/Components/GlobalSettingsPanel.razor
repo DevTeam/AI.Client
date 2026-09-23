@@ -4,7 +4,7 @@
 @inject IConnectionContextLimitsResolver ContextLimits
 @inject INotificationService Notifications
 
-<div class="permissions-drawer-backdrop" @onclick="RequestCloseAsync"></div>
+<div class="permissions-drawer-backdrop"></div>
 <aside class="permissions-drawer settings-drawer" aria-label="@Section" @onclick:stopPropagation="true">
     <header>
         <div><h2>@(Section == "Connections" ? "Connections" : "MCP")</h2><p>@(Section == "Connections" ? "OpenAI-compatible endpoints available to every project." : "Global MCP servers available to every project.")</p></div>

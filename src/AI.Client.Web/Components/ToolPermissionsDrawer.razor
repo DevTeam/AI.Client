@@ -2,7 +2,7 @@
 @inject IChatHistoryApi ChatHistoryApi
 @inject IGlobalSettingsApi GlobalSettingsApi
 
-<div class="permissions-drawer-backdrop" @onclick="() => Close.InvokeAsync()"></div>
+<div class="permissions-drawer-backdrop"></div>
 <aside class="permissions-drawer" aria-label="Tool permissions" @onclick:stopPropagation="true">
     <header>
         <div><h2>Tool permissions</h2><p>@Scope · @Title</p></div>

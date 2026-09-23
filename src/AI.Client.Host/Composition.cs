@@ -30,6 +30,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .DependsOn("AI.Client.Contracts.Composition")
             // The storage root arrives from the entry point, which also hands it to the file logger,
             // so one instance decides where the application writes instead of two independently
             // resolved ones that merely happen to agree.
@@ -55,23 +56,14 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 ProtectedDataUserDataProtector, ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
                 ChatEndpoint, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
                 GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
-                ChatContextCompactor, ChatContextPlanner, ConnectionContextLimitsResolver, ModelContentCheckpointService,
+                ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService,
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff,
-                AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ToolPresentations, ChatBranchIds, ToolUserInterface>()
+                AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
             .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To(([Tag("base")] IChatCompletionClient baseClient, ILogger<RetryingChatCompletionClient> retryLogger, IChatTransportPolicy transportPolicy, IChatTransportActivity transportActivity) => new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity))
-            .Singleton<ToolResultModelProjector, ToolResultCodec, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()
+            .Singleton<ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()
             .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool, AppContextCompactTool>(Tag.Unique)
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<FileToolPresentationAdapter>()
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<ProcessToolPresentationAdapter>()
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<WebToolPresentationAdapter>()
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppReadPresentationAdapter>()
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppWritePresentationAdapter>()
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppSubtaskPresentationAdapter>()
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AskUserPresentationAdapter>()
-            // Should be last
-            .Bind<IToolPresentationAdapter>().As(Lifetime.Singleton).To<GenericToolPresentationAdapter>()
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
 }

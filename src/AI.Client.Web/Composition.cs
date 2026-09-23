@@ -27,6 +27,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .DependsOn("AI.Client.Contracts.Composition")
             .Hint(Hint.ThreadSafe, "Off")
             .Hint(Hint.OnCannotResolveContractTypeNameWildcard, "Microsoft.JSInterop.*")
             // `apiBaseUrl` arrives as a string through the Composition constructor (Pure.DI's
@@ -49,11 +50,11 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatRunsApi>()
             .Root<IRunStateService>()
             .Root<IChatComposerService>()
-            .RootBind<IToolPresentations>().To<ToolPresentations>()
-            .RootBind<IToolResultModelProjector>().To<ToolResultModelProjector>()
-            .RootBind<IToolResultCodec>().To<ToolResultCodec>()
-            .RootBind<IConnectionContextLimitsResolver>().To<ConnectionContextLimitsResolver>()
-            .RootBind<IUnifiedDiffParser>().As(Lifetime.Singleton).To<UnifiedDiff>()
+            .Root<IToolPresentations>()
+            .Root<IToolResultModelProjector>()
+            .Root<IToolResultCodec>()
+            .Root<IConnectionContextLimitsResolver>()
+            .Root<IUnifiedDiffParser>()
             .RootBind<IChatFeedProjection>().To<ChatFeed>()
             .RootBind<IDirectoryPickerState>().To<DirectoryPickerState>()
             .RootBind<IRunStatusPresentation>().To<RunStatusPresentation>()
@@ -61,14 +62,6 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             // Pure.DI wires it in automatically. Same as how `Host/Composition.cs` registers
             // its `IChatCompletionClient` lambda in `Bind<>().To(...)`.
             .Singleton<ApiBaseUrl, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService, WorkspaceStateService, ChatComposerService, RunStateService, NotificationService, ChatMessageDeltaMerger>()
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<FileToolPresentationAdapter>()
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<ProcessToolPresentationAdapter>()
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<WebToolPresentationAdapter>()
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppReadPresentationAdapter>()
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppWritePresentationAdapter>()
-            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppSubtaskPresentationAdapter>()
-            // Should be last
-            .Bind<IToolPresentationAdapter>().As(Lifetime.Singleton).To<GenericToolPresentationAdapter>()
             .Transient<ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi>()
             .Transient((IApiBaseUrl arg) => new HttpClient { BaseAddress = arg.Value });
 }

@@ -49,6 +49,14 @@ The desktop app (Windows, macOS, Linux) runs the same server in-process and show
 
 `verify` is the standard local and CI validation command. Command output is written to `artifacts/logs`.
 
+## Install the web app in Chrome
+
+```powershell
+dotnet run --project src/AI.Client.Host -- --serve-web --urls http://localhost:52173
+```
+
+Open `http://localhost:52173` in Chrome, then choose **Install AI Client** from Chrome's menu. The installed app opens in its own window and uses the same icon as the desktop app. Keep the Host running while using it; projects, chats, and generation are served by the Host. Chrome can install it from `localhost` over HTTP; access from another device requires HTTPS.
+
 ## Rider
 
 Shared Rider run configurations are stored in [`.run`](.run). Select one from Rider's run-configuration menu:

@@ -13,21 +13,17 @@
 }
 
 .app-loading { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 1rem; background: #111; color: #eee; }
-.app-loading-mark { display: flex; align-items: end; gap: 0.3rem; height: 2.5rem; }
-.app-loading-mark span { width: 0.35rem; height: 1.15rem; border-radius: 1rem; background: #b8b8b8; animation: app-loading-wave 1.05s ease-in-out infinite; }
-.app-loading-mark span:nth-child(2) { height: 2rem; animation-delay: 120ms; }
-.app-loading-mark span:nth-child(3) { height: 1.5rem; animation-delay: 240ms; }
+.app-loading-mark { display: block; width: 3rem; height: 3rem; }
 .app-loading-copy { display: grid; justify-items: center; gap: 0.35rem; }
 .app-loading-copy strong { font-size: 1.05rem; font-weight: 500; letter-spacing: 0.01em; }
 .app-loading-copy span { color: #919191; font-size: 0.85rem; }
 .app-loading-track { width: min(15rem, 58vw); height: 0.2rem; overflow: hidden; border-radius: 1rem; background: #303030; }
 .app-loading-track span { display: block; width: 42%; height: 100%; border-radius: inherit; background: #e9e9e9; animation: app-loading-progress 1.4s ease-in-out infinite; }
 
-@keyframes app-loading-wave { 0%, 100% { transform: scaleY(0.58); opacity: 0.45; } 50% { transform: scaleY(1); opacity: 1; } }
 @keyframes app-loading-progress { 0% { transform: translateX(-110%); } 55% { transform: translateX(95%); } 100% { transform: translateX(245%); } }
 
 @media (prefers-reduced-motion: reduce) {
-    .app-loading-mark span, .app-loading-track span { animation: none; }
+    .app-loading-track span { animation: none; }
     .app-loading-track span { width: 65%; }
 }
 

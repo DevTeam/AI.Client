@@ -6,12 +6,15 @@ using Xunit;
 
 public class BuiltInToolPresentationTests
 {
-    private static ToolCallPresentation Call(string name, string arguments) =>
-        Shipped.DescribeCall("mcp_built_in__" + name, arguments);
+    // The adapter set, codec and fallback the containers really produce.
+    private readonly ToolsComposition _tools = new();
 
-    private static ToolResultPresentation Result(string name, string arguments, string structured) =>
-        Shipped.DescribeResult("mcp_built_in__" + name, arguments,
-            Shipped.ToolResultCodec.Read($$"""{"structuredContent":{{structured}}}"""));
+    private ToolCallPresentation Call(string name, string arguments) =>
+        _tools.Presentations.DescribeCall("mcp_built_in__" + name, arguments);
+
+    private ToolResultPresentation Result(string name, string arguments, string structured) =>
+        _tools.Presentations.DescribeResult("mcp_built_in__" + name, arguments,
+            _tools.Codec.Read($$"""{"structuredContent":{{structured}}}"""));
 
     [Fact]
     public void ShouldNameFileCallsAfterWhatTheyDoToWhichFile()
@@ -168,9 +171,9 @@ public class BuiltInToolPresentationTests
     {
         // Structured content is validated against the output schema on the way in, but a chat file
         // can be hand-edited and a schema can change between builds.
-        var described = Shipped.DescribeResult(
+        var described = _tools.Presentations.DescribeResult(
             "mcp_built_in__" + name, "{}",
-            Shipped.ToolResultCodec.Read("""{"structuredContent":{"unexpected":[1,2]}}"""));
+            _tools.Codec.Read("""{"structuredContent":{"unexpected":[1,2]}}"""));
 
         described.ShouldNotBeNull();
         described.Summary.ShouldNotBeNullOrWhiteSpace();
@@ -180,9 +183,9 @@ public class BuiltInToolPresentationTests
     public void ShouldLeaveToolsFromOtherServersToTheGenericAdapter()
     {
         // A third-party server may well have a tool called edit_file; its result shape is its own.
-        Shipped.DescribeCall("mcp_other__edit_file", """{"path":"/a"}""")
+        _tools.Presentations.DescribeCall("mcp_other__edit_file", """{"path":"/a"}""")
             .Title.ShouldBe("Edit file");
-        Shipped.DescribeCall("mcp_other__edit_file", """{"path":"/a"}""")
+        _tools.Presentations.DescribeCall("mcp_other__edit_file", """{"path":"/a"}""")
             .Safety.ShouldBe(ToolSafety.Unknown);
     }
 }

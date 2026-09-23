@@ -8,6 +8,9 @@ using Xunit;
 
 public class ToolUserInterfaceTests
 {
+    // The adapter set, codec and fallback the containers really produce.
+    private readonly ToolsComposition _tools = new();
+
     private readonly ToolUserInterface _ui = new();
 
     private static ToolDescriptor WithMeta(string? meta) => new(
@@ -64,7 +67,7 @@ public class ToolUserInterfaceTests
     {
         // A declaration must never cost a tool its ordinary row: the native description is what
         // the user actually sees, today and whenever a server's view fails to load.
-        var described = Shipped.DescribeCall("mcp_other__edit_files", """{"path":"/src/a.cs"}""");
+        var described = _tools.Presentations.DescribeCall("mcp_other__edit_files", """{"path":"/src/a.cs"}""");
 
         described.Title.ShouldBe("Edit files");
         described.Detail.ShouldBe("/src/a.cs");

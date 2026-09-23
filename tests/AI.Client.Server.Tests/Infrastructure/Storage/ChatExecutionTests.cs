@@ -24,12 +24,11 @@ using AI.Client.Application.Workspace;
 using AI.Client.Contracts.Tools;
 using AI.Client.Contracts.Workspace;
 using AI.Client.Infrastructure.Workspace;
+using AI.Client.Server.Hosting;
 using System.Text.Json;
 
 public sealed class ChatExecutionTests
 {
-    private static readonly ToolResultModelProjector ModelProjector = new();
-    private static readonly ToolResultCodec ToolResultCodec = new(ModelProjector);
 
     [Fact]
     public async Task ToolMessagesShouldBePublishedAsAContiguousChatDelta()
@@ -228,7 +227,7 @@ public sealed class ChatExecutionTests
         limited.ModelContent.ShouldNotBeNull();
         limited.ModelContent!.ShouldContain("Only this tool is limited for the current run");
         limited.ModelContent.ShouldContain("other available tools remain usable");
-        var result = ToolResultCodec.Read(limited.Content);
+        var result = fixture.Codec.Read(limited.Content);
         result.IsError.ShouldBeTrue();
         result.StructuredContent!.Value.GetProperty("code").GetString().ShouldBe("tool_call_limit_reached");
         result.StructuredContent.Value.GetProperty("tool").GetString().ShouldBe("mcp_built_in__process_run");
@@ -246,7 +245,7 @@ public sealed class ChatExecutionTests
     public async Task QuestionShouldStopTheRunAndCarryTheAnswerBack()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Tools.Broker = fixture.Dispatcher;
+        fixture.Tools.Broker = fixture.Broker;
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Refactor it"));
         var first = await fixture.NextCallAsync();
         first.ToolCalls = [new ChatToolCall("call-1", "mcp_app__ask_user", "{}")];
@@ -277,7 +276,7 @@ public sealed class ChatExecutionTests
     public async Task AnswerToAQuestionThatIsNoLongerCurrentShouldBeRefused()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Tools.Broker = fixture.Dispatcher;
+        fixture.Tools.Broker = fixture.Broker;
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Refactor it"));
         var first = await fixture.NextCallAsync();
         first.ToolCalls = [new ChatToolCall("call-1", "mcp_app__ask_user", "{}")];
@@ -301,7 +300,7 @@ public sealed class ChatExecutionTests
     public async Task StoppingTheRunShouldReleaseTheQuestionWithIt()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Tools.Broker = fixture.Dispatcher;
+        fixture.Tools.Broker = fixture.Broker;
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Refactor it"));
         var first = await fixture.NextCallAsync();
         first.ToolCalls = [new ChatToolCall("call-1", "mcp_app__ask_user", "{}")];
@@ -407,7 +406,7 @@ public sealed class ChatExecutionTests
         await fixture.RestartAsync();
         var restored = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         restored!.Messages.Single(message => message.Id == completed.HeadMessageId).Content.ShouldBe("Final response");
-        new ChatContext(ToolResultCodec).Build(restored, completed.HeadMessageId!.Value).Select(message => message.Role).ShouldBe(["user", "assistant", "tool", "assistant"]);
+        fixture.Context.Build(restored, completed.HeadMessageId!.Value).Select(message => message.Role).ShouldBe(["user", "assistant", "tool", "assistant"]);
         fixture.Tools.CallCount.ShouldBe(allow ? 1 : 0);
     }
 
@@ -732,7 +731,7 @@ public sealed class ChatExecutionTests
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         var branches = chat!.Branches!;
         branches.Single(branch => branch.Id == fixture.ChatId).HeadMessageId.ShouldBe(main.HeadMessageId);
-        new ChatContext(ToolResultCodec).Build(chat, branches.Single(branch => branch.Id == forkId).HeadMessageId!.Value)
+        fixture.Context.Build(chat, branches.Single(branch => branch.Id == forkId).HeadMessageId!.Value)
             .Select(message => message.Content).ShouldBe(["Alternative root", "Alternative reply"]);
     }
 
@@ -781,9 +780,9 @@ public sealed class ChatExecutionTests
 
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         var branches = chat!.Branches!;
-        new ChatContext(ToolResultCodec).Build(chat, branches.Single(branch => branch.Id == fixture.ChatId).HeadMessageId!.Value)
+        fixture.Context.Build(chat, branches.Single(branch => branch.Id == fixture.ChatId).HeadMessageId!.Value)
             .Select(message => message.Content).ShouldBe(["Replacement", "Replacement reply"]);
-        new ChatContext(ToolResultCodec).Build(chat, branches.Single(branch => branch.Id == forkId).HeadMessageId!.Value)
+        fixture.Context.Build(chat, branches.Single(branch => branch.Id == forkId).HeadMessageId!.Value)
             .Select(message => message.Content).ShouldBe(["Original", "Fork", "Fork reply"]);
     }
 
@@ -865,7 +864,7 @@ public sealed class ChatExecutionTests
         branches.ShouldNotContain(branch => branch.Id == parentId);
         var child = branches.Single(branch => branch.Id == childId);
         child.ParentBranchId.ShouldBe(fixture.ChatId);
-        new ChatContext(ToolResultCodec).Build(chat, child.HeadMessageId!.Value).Select(message => message.Content)
+        fixture.Context.Build(chat, child.HeadMessageId!.Value).Select(message => message.Content)
             .ShouldBe(["Root", "Parent", "Child", "Child reply"]);
 
         var childRun = (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None))
@@ -1351,58 +1350,44 @@ public sealed class ChatExecutionTests
     }
     private sealed class Fixture : IAsyncDisposable
     {
+        private ChatExecutionComposition _composition;
         public MemoryFileSystem FileSystem { get; } = new();
         public Completion Completion { get; } = new();
         public TestTools Tools { get; } = new();
-        private readonly ChatSynchronization _synchronization = new();
-        private readonly SystemClock _clock = new();
-        private readonly Uuid7IdGenerator _ids = new();
-        private readonly IGlobalSecretStore _secrets = Mock.Of<IGlobalSecretStore>();
-        private readonly JsonChatRepository _chatRepository;
-        private readonly JsonProjectRepository _projects;
-        private readonly JsonChatRunRepository _runs;
-        private readonly JsonGlobalSettingsRepository _settings;
-        private readonly ProjectService _projectService;
-        public ChatService Chats { get; }
-        public ChatRunDispatcher Dispatcher { get; private set; }
+        public IWorkspaceChangeTracker Workspace { get; }
+        public IChatService Chats => _composition.Resolve<IChatService>();
+        public IChatRunDispatcher Dispatcher => _composition.Resolve<IChatRunDispatcher>();
+        public IChatContextBuilder Context => _composition.Resolve<IChatContextBuilder>();
+        public IUserPromptBroker Broker => _composition.Resolve<IUserPromptBroker>();
+        public IToolResultCodec Codec => _composition.Resolve<IToolResultCodec>();
+        private IProjectService Projects => _composition.Resolve<IProjectService>();
+        private IGlobalSettingsRepository Settings => _composition.Resolve<IGlobalSettingsRepository>();
+        private IChatRepository ChatRepository => _composition.Resolve<IChatRepository>();
+        private IClock Clock => _composition.Resolve<IClock>();
         public Guid ProjectId { get; private set; }
         public Guid ChatId { get; private set; }
         private Fixture(IWorkspaceChangeTracker? workspace = null)
         {
-            _chatRepository = new JsonChatRepository(FileSystem, new ChatStoragePaths("data"), new ChatDocumentSerializer());
-            _projects = new JsonProjectRepository(FileSystem, new ProjectStoragePaths("data"), new ProjectDocumentSerializer());
-            _runs = new JsonChatRunRepository(FileSystem, new ChatRunStoragePaths("data"));
-            _settings = new JsonGlobalSettingsRepository(FileSystem, new GlobalSettingsPaths("data"));
-            _projectService = new ProjectService(_projects, _ids, _clock, _settings);
-            Chats = new ChatService(_chatRepository, _ids, _clock, _synchronization);
             Workspace = workspace ?? new WorkspaceChangeTracker(new LineDiff());
-            Dispatcher = NewDispatcher();
+            _composition = NewComposition();
         }
-        public IWorkspaceChangeTracker Workspace { get; }
-        private ChatRunDispatcher NewDispatcher()
-        {
-            var policies = new ToolPolicyResolver(_projectService, Chats, _settings);
-            var instructionRegistry = new ModelInstructionRegistry();
-            return new ChatRunDispatcher(_runs, Chats, Chats, _projectService, _settings,
-                new GlobalSettingsService(_settings, _secrets, new ConnectionContextLimitsResolver()),
-                new ChatAgent(Completion, () => Tools, _projectService, _settings, policies, Workspace,
-                    ModelProjector, ToolResultCodec,
-                    new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
-                        new ConnectionContextLimitsResolver()),
-                    Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity(),
-                    new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver(), new ToolSelectionPriorityPolicy()),
-                    new ToolCatalogRegistry(), new ModelContentCheckpointService(), instructionRegistry,
-                    new ModelInstructionComposer(instructionRegistry, new ContextTokenEstimator()),
-                    Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol(),
-                    new ToolSearchDefinitionEnricher(new ContextTokenEstimator())),
-                _secrets, _clock, _ids, _synchronization, Workspace, policies,
-                new ChatContext(ToolResultCodec), new ChatBranchIds());
-        }
+
+        /// <summary>
+        /// The shipped server graph over this fixture's memory. A new one over the same memory is
+        /// what a restart of the Host amounts to.
+        /// </summary>
+        private ChatExecutionComposition NewComposition() => new(
+            options: new ServerOptions("data", null, true),
+            fileSystem: FileSystem,
+            completion: Completion,
+            tools: Tools,
+            workspace: Workspace);
+
         public static async Task<Fixture> CreateAsync(IWorkspaceChangeTracker? workspace = null)
         {
             var fixture = new Fixture(workspace);
-            await fixture._settings.SaveAsync(new GlobalSettings([new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.test/v1", "model", true, true, false)], [], []), CancellationToken.None);
-            fixture.ProjectId = (await fixture._projectService.CreateAsync(new CreateProjectRequest("Test", ""), CancellationToken.None)).Id;
+            await fixture.Settings.SaveAsync(new GlobalSettings([new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.test/v1", "model", true, true, false)], [], []), CancellationToken.None);
+            fixture.ProjectId = (await fixture.Projects.CreateAsync(new CreateProjectRequest("Test", ""), CancellationToken.None)).Id;
             fixture.ChatId = (await fixture.Chats.CreateAsync(fixture.ProjectId, new CreateChatRequest("Chat"), CancellationToken.None)).Id;
             await fixture.Dispatcher.WarmUpAsync(CancellationToken.None);
             return fixture;
@@ -1410,8 +1395,8 @@ public sealed class ChatExecutionTests
         public Task<ChatRunSnapshot> SubmitAsync(SubmitChatMessageRequest request) => Dispatcher.SubmitAsync(ProjectId, ChatId, request, CancellationToken.None);
         public async Task SetConnectionLimitsAsync(long contextWindowTokens, long reservedOutputTokens)
         {
-            var current = await _settings.LoadAsync(CancellationToken.None);
-            await _settings.SaveAsync(current with
+            var current = await Settings.LoadAsync(CancellationToken.None);
+            await Settings.SaveAsync(current with
             {
                 Connections = current.Connections.Select(connection => connection with
                 {
@@ -1422,13 +1407,13 @@ public sealed class ChatExecutionTests
         }
         public async Task AppendLegacyReplacementAsync(Guid sourceId, Guid replacementId, string content)
         {
-            var stored = await _chatRepository.GetAsync(new Domain.Projects.ProjectId(ProjectId),
+            var stored = await ChatRepository.GetAsync(new Domain.Projects.ProjectId(ProjectId),
                 new Domain.Chats.ChatId(ChatId), CancellationToken.None) ?? throw new InvalidOperationException("Chat not found.");
             var source = stored.Chat.Messages.Single(message => message.Id.Value == sourceId);
             stored.Chat.ReplaceInBranch(ChatId, source.Id,
                 new Domain.Chats.ChatMessage(new Domain.Chats.ChatMessageId(replacementId), source.ParentId,
-                    Domain.Chats.ChatMessageRole.User, content, _clock.UtcNow), _clock.UtcNow);
-            var result = await _chatRepository.SaveAsync(stored.Chat, stored.Revision, CancellationToken.None);
+                    Domain.Chats.ChatMessageRole.User, content, Clock.UtcNow), Clock.UtcNow);
+            var result = await ChatRepository.SaveAsync(stored.Chat, stored.Revision, CancellationToken.None);
             if (!result.IsSaved) throw new InvalidOperationException("Legacy replacement was not saved.");
         }
         /// <summary>Waits for the agent to finish writing tool answers, which outlives the status change.</summary>
@@ -1445,12 +1430,12 @@ public sealed class ChatExecutionTests
             }
         }
 
-        public Task<ProjectDetails?> GetProjectAsync() => _projectService.GetAsync(ProjectId, CancellationToken.None);
-        public Task<GlobalSettings> GetGlobalAsync() => _settings.LoadAsync(CancellationToken.None);
+        public Task<ProjectDetails?> GetProjectAsync() => Projects.GetAsync(ProjectId, CancellationToken.None);
+        public Task<GlobalSettings> GetGlobalAsync() => Settings.LoadAsync(CancellationToken.None);
         public async Task SetGlobalPolicyAsync(string decision)
         {
-            var global = await _settings.LoadAsync(CancellationToken.None);
-            await _settings.SaveAsync(global with
+            var global = await Settings.LoadAsync(CancellationToken.None);
+            await Settings.SaveAsync(global with
             {
                 McpServers = [DefaultMcpServer.Settings with { Policy = "Allow" }],
                 ToolPolicies = [new McpToolPolicySettings(DefaultMcpServer.Id, "process_run", "schema", decision, 20, 120)]
@@ -1459,10 +1444,10 @@ public sealed class ChatExecutionTests
 
         public async Task SetPolicyAsync(string decision, long timeoutSeconds = 120, int maxCalls = 20)
         {
-            var global = await _settings.LoadAsync(CancellationToken.None);
-            await _settings.SaveAsync(global with { McpServers = [DefaultMcpServer.Settings with { Policy = "Allow" }] }, CancellationToken.None);
-            var project = await _projectService.GetAsync(ProjectId, CancellationToken.None);
-            await _projectService.UpdateSecurityAsync(ProjectId, new UpdateProjectSecurityRequest(project!.Revision, [],
+            var global = await Settings.LoadAsync(CancellationToken.None);
+            await Settings.SaveAsync(global with { McpServers = [DefaultMcpServer.Settings with { Policy = "Allow" }] }, CancellationToken.None);
+            var project = await Projects.GetAsync(ProjectId, CancellationToken.None);
+            await Projects.UpdateSecurityAsync(ProjectId, new UpdateProjectSecurityRequest(project!.Revision, [],
                 [new Contracts.Projects.McpServerSettings(DefaultMcpServer.Id, "Default", "Stdio", true)],
                 [new ToolPolicySettings(DefaultMcpServer.Id, "process_run", "schema", decision, maxCalls, timeoutSeconds)]), CancellationToken.None);
         }
@@ -1491,17 +1476,11 @@ public sealed class ChatExecutionTests
         }
         public async Task RestartAsync()
         {
-            await Dispatcher.DisposeAsync();
-            Dispatcher = NewDispatcher();
+            await _composition.DisposeAsync();
+            _composition = NewComposition();
             await Dispatcher.WarmUpAsync(CancellationToken.None);
         }
-        public async ValueTask DisposeAsync()
-        {
-            await Dispatcher.DisposeAsync();
-            _chatRepository.Dispose();
-            _projects.Dispose();
-            _runs.Dispose();
-        }
+        public ValueTask DisposeAsync() => _composition.DisposeAsync();
     }
 
     private sealed class TestWorkspaceChangeTracker : IWorkspaceChangeTracker
@@ -1532,6 +1511,8 @@ public sealed class ChatExecutionTests
 
     private sealed class TestTools : IToolSessionFactory, IToolSession
     {
+        // A stand-in server answers in the stored result format, so it needs the codec itself.
+        private readonly ToolResultCodec _codec = new(new ToolResultModelProjector());
         public int CallCount { get; private set; }
         public int OpenCount { get; private set; }
         private static readonly AgentTool ProcessRun = new(
@@ -1585,7 +1566,7 @@ public sealed class ChatExecutionTests
                     new UserPromptRequest([new UserPromptQuestion("scope", "How far?", "Scope",
                         [new UserPromptOption("Narrow", null), new UserPromptOption("Wide", null)], false, true)]),
                     TimeSpan.FromSeconds(30), cancellationToken);
-                return ToolResultCodec.Read("{\"structuredContent\":{\"outcome\":\""
+                return _codec.Read("{\"structuredContent\":{\"outcome\":\""
                     + LastResponse.Outcome.ToString().ToLowerInvariant() + "\"}}");
             }
 
@@ -1606,7 +1587,7 @@ public sealed class ChatExecutionTests
                 }
             }
 
-            return ToolResultCodec.Read("{\"structuredContent\":{\"exitCode\":0}}");
+            return _codec.Read("{\"structuredContent\":{\"exitCode\":0}}");
         }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

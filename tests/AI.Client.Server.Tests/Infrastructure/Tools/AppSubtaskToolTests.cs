@@ -18,6 +18,7 @@ using AI.Client.Infrastructure.Tests.Storage;
 using AI.Client.Infrastructure.Tools;
 using AI.Client.Infrastructure.Workspace;
 using AI.Client.Mcp.App;
+using AI.Client.Server.Hosting;
 using Moq;
 using Shouldly;
 using System.Runtime.CompilerServices;
@@ -318,16 +319,13 @@ public sealed class AppSubtaskToolTests
     private sealed class SubtaskFixture : IAsyncDisposable
     {
         private readonly MemoryFileSystem _fileSystem = new();
-        private readonly ChatSynchronization _synchronization = new();
-        private readonly SystemClock _clock = new();
-        private readonly Uuid7IdGenerator _ids = new();
-        private readonly IGlobalSecretStore _secrets = Mock.Of<IGlobalSecretStore>();
-        private readonly JsonGlobalSettingsRepository _settings;
-        private readonly AppToolSessionFactory _sessions;
+        private readonly SubtaskComposition _composition;
 
         public StubCompletion Completion { get; } = new();
-        public ProjectService Projects { get; }
-        public ChatService Chats { get; }
+        public IProjectService Projects => _composition.Resolve<IProjectService>();
+        public IChatService Chats => _composition.Resolve<IChatService>();
+        private IGlobalSettingsRepository Settings => _composition.Resolve<IGlobalSettingsRepository>();
+        private AppToolSessionFactory Sessions => _composition.Resolve<AppToolSessionFactory>();
         public Guid ProjectId { get; private set; }
         public Guid ChatId { get; private set; }
         public Guid DefaultConnectionId { get; } = Guid.NewGuid();
@@ -337,41 +335,19 @@ public sealed class AppSubtaskToolTests
 
         private SubtaskFixture()
         {
-            _settings = new JsonGlobalSettingsRepository(_fileSystem, new GlobalSettingsPaths("data"));
-            Projects = new ProjectService(new JsonProjectRepository(_fileSystem, new ProjectStoragePaths("data"), new ProjectDocumentSerializer()), _ids, _clock, _settings);
-            Chats = new ChatService(new JsonChatRepository(_fileSystem, new ChatStoragePaths("data"), new ChatDocumentSerializer()), _ids, _clock, _synchronization);
-            var policies = new ToolPolicyResolver(Projects, Chats, _settings);
-            IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker(new LineDiff());
-            var modelProjector = new ToolResultModelProjector();
-            var toolResultCodec = new ToolResultCodec(modelProjector);
-            var instructionRegistry = new ModelInstructionRegistry();
             // No tool servers: a subtask that needs none is enough to prove the plumbing, and it
             // keeps the test from starting child processes.
-            var agent = new ChatAgent(Completion, Mock.Of<IToolSessionFactory>, Projects, _settings, policies, workspace,
-                modelProjector, toolResultCodec,
-                new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
-                    new ConnectionContextLimitsResolver()),
-                Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity(),
-                new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver(), new ToolSelectionPriorityPolicy()),
-                new ToolCatalogRegistry(), new ModelContentCheckpointService(), instructionRegistry,
-                new ModelInstructionComposer(instructionRegistry, new ContextTokenEstimator()),
-                Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol(),
-                new ToolSearchDefinitionEnricher(new ContextTokenEstimator()));
-            var presentations = new ToolPresentations(
-                new GenericToolPresentationAdapter(),
-                [
-                    new FileToolPresentationAdapter(), new ProcessToolPresentationAdapter(), new WebToolPresentationAdapter(),
-                    new AppReadPresentationAdapter(), new AppWritePresentationAdapter(), new AppSubtaskPresentationAdapter(),
-                ]);
-            IEnumerable<IAppTool> tools =
-                [new AppSubtaskTool(() => agent, Projects, Chats, _settings, _secrets, presentations, toolResultCodec, new AppToolReply())];
-            _sessions = new AppToolSessionFactory(new AppMcpServerHost(tools, new AppToolReply()), modelProjector);
+            _composition = new SubtaskComposition(
+                options: new ServerOptions("data", null, true),
+                fileSystem: _fileSystem,
+                completion: Completion,
+                tools: Mock.Of<IToolSessionFactory>());
         }
 
         public static async Task<SubtaskFixture> CreateAsync(bool withConnection = true)
         {
             var fixture = new SubtaskFixture();
-            await fixture._settings.SaveAsync(new GlobalSettings(
+            await fixture.Settings.SaveAsync(new GlobalSettings(
                 withConnection
                     ? [new ConnectionSettings(fixture.DefaultConnectionId, "Test", "https://example.test/v1", "model", true, true, false),
                        new ConnectionSettings(fixture.CheapConnectionId, "Cheap", "https://example.test/v1", "small", true, false, false),
@@ -386,15 +362,15 @@ public sealed class AppSubtaskToolTests
         /// <summary>Puts the standing mark on connections, the way the settings screen does.</summary>
         public async Task MarkForSubtasksAsync(params Guid[] connectionIds)
         {
-            var stored = await _settings.LoadAsync(CancellationToken.None);
-            await _settings.SaveAsync(stored with
+            var stored = await Settings.LoadAsync(CancellationToken.None);
+            await Settings.SaveAsync(stored with
             {
                 Connections = stored.Connections
                     .Select(item => item with { ForSubtasks = connectionIds.Contains(item.Id) }).ToArray()
             }, CancellationToken.None);
         }
 
-        public Task<IToolSession> OpenAsync(bool interactive = true) => _sessions.OpenAsync([],
+        public Task<IToolSession> OpenAsync(bool interactive = true) => Sessions.OpenAsync([],
             new ToolRunContext(ProjectId, ChatId, ChatId, interactive), TestContext.Current.CancellationToken);
 
         public string Arguments(params string[] tasks) =>
@@ -412,7 +388,7 @@ public sealed class AppSubtaskToolTests
                 tasks = tasks.Select(item => new { task = item.Task, connectionId = item.Connection }),
             });
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync() => _composition.DisposeAsync();
     }
 
     /// <summary>Answers immediately, so a subtask completes within the call that started it.</summary>

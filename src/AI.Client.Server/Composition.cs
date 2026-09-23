@@ -35,6 +35,10 @@ internal sealed class Composition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup(kind: CompositionKind.Internal)
+            // Pure.DI 2.5.4 miscompiles lightweight anonymous roots for this graph: a singleton
+            // shared by several deferred factories (AppDataChangeSignal, via AppWrites) is used
+            // before it is created, so AppWrites gets null. Off until that is fixed upstream.
+            .Hint(Hint.LightweightAnonymousRoot, "Off")
             // What the entry point decided before starting the server: its command line, parsed.
             .Arg<ServerOptions>("options")
             // Roots are what ASP.NET can resolve: the services endpoint handlers take as parameters

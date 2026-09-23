@@ -1,7 +1,6 @@
 ﻿namespace AI.Client.Infrastructure.Tests.Chat;
 
 using AI.Client.Application.Chat;
-using AI.Client.Contracts.Chat;
 using AI.Client.Infrastructure.Chat;
 using Moq;
 using Moq.Protected;

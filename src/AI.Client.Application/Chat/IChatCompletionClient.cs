@@ -1,6 +1,5 @@
 namespace AI.Client.Application.Chat;
 
-using AI.Client.Contracts.Chat;
 
 public interface IChatCompletionClient
 {

@@ -2,7 +2,7 @@ namespace AI.Client.Application.Tests.Tools;
 
 using System.Text.Json;
 using AI.Client.Application.Tools;
-using AI.Client.Contracts.Chat;
+using AI.Client.Application.Chat;
 using Shouldly;
 using Xunit;
 

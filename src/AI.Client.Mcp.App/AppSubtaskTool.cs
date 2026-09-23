@@ -5,7 +5,6 @@ using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Settings;
 using AI.Client.Application.Tools;
-using AI.Client.Contracts.Chat;
 using AI.Client.Contracts.Runs;
 using AI.Client.Contracts.Tools;
 using ModelContextProtocol;

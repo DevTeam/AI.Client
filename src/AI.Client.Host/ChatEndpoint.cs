@@ -2,7 +2,6 @@ namespace AI.Client.Host;
 
 using Application.Chat;
 using Application.Settings;
-using Contracts.Chat;
 using System.Diagnostics;
 
 internal interface IChatEndpoint

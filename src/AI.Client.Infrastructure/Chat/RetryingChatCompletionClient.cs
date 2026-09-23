@@ -1,7 +1,6 @@
 namespace AI.Client.Infrastructure.Chat;
 
 using AI.Client.Application.Chat;
-using AI.Client.Contracts.Chat;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Runtime.CompilerServices;

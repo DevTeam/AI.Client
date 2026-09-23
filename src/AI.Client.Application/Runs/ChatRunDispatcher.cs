@@ -6,7 +6,6 @@ using Tools;
 using Chats;
 using Projects;
 using Settings;
-using Contracts.Chat;
 using Contracts.Chats;
 using Contracts.Runs;
 using Contracts.Projects;

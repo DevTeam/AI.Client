@@ -1,7 +1,7 @@
 namespace AI.Client.Application.Tools;
 
 using System.Text.Json;
-using Contracts.Chat;
+using Chat;
 using Contracts.Settings;
 
 public sealed class RunCompletionProtocol : IRunCompletionProtocol

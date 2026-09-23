@@ -1,7 +1,7 @@
 namespace AI.Client.Infrastructure.Tools;
 
+using Application.Chat;
 using Application.Tools;
-using Contracts.Chat;
 using Contracts.Tools;
 using Json.Pointer;
 using Json.Schema;

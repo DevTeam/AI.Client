@@ -1,7 +1,6 @@
 namespace AI.Client.Application.Chat;
 
 using System.Text;
-using Contracts.Chat;
 
 /// <summary>
 /// Provider-independent conservative estimator. It uses two UTF-8 bytes per estimated token,

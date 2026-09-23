@@ -2,7 +2,6 @@ namespace AI.Client.Application.Tests.Chat;
 
 using AI.Client.Application.Chat;
 using AI.Client.Application.Tools;
-using AI.Client.Contracts.Chat;
 using Shouldly;
 using Xunit;
 

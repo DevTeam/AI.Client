@@ -1,4 +1,3 @@
-using AI.Client.Contracts.Chat;
 using AI.Client.Contracts.Chats;
 
 namespace AI.Client.Web.Components;

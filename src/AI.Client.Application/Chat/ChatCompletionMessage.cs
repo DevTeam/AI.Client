@@ -1,4 +1,6 @@
-namespace AI.Client.Contracts.Chat;
+namespace AI.Client.Application.Chat;
+
+using AI.Client.Contracts.Chat;
 
 /// <param name="Content">
 /// What is persisted and shown. For a tool message this is the full result, metadata included.

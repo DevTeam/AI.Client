@@ -2,7 +2,7 @@ using AI.Client.Host;
 using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Settings;
-using AI.Client.Contracts.Chat;
+using AI.Client.Application.Chat;
 using AI.Client.Contracts.Chats;
 using AI.Client.Contracts.Projects;
 using AI.Client.Contracts.Settings;

@@ -1,6 +1,5 @@
 namespace AI.Client.Application.Chat;
 
-using Contracts.Chat;
 using Contracts.Settings;
 
 public interface IChatContextPlanner

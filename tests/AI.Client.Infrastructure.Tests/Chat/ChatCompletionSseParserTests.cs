@@ -1,5 +1,6 @@
 ﻿namespace AI.Client.Infrastructure.Tests.Chat;
 
+using AI.Client.Application.Chat;
 using AI.Client.Infrastructure.Chat;
 using Shouldly;
 using System.Text;
@@ -16,7 +17,7 @@ public class ChatCompletionSseParserTests
             data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}
             """;
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
-        var chunks = new List<Contracts.Chat.ChatCompletionChunk>();
+        var chunks = new List<ChatCompletionChunk>();
         await foreach (var chunk in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
         chunks.Count.ShouldBe(2);
         chunks[0].ToolCallsStarted.ShouldBeTrue();
@@ -47,7 +48,7 @@ public class ChatCompletionSseParserTests
             data: {"choices":[{"delta":{},"finish_reason":"length"}]}
             """;
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
-        var chunks = new List<Contracts.Chat.ChatCompletionChunk>();
+        var chunks = new List<ChatCompletionChunk>();
         await foreach (var chunk in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
 
         // The text, then the fact that there was meant to be more of it.

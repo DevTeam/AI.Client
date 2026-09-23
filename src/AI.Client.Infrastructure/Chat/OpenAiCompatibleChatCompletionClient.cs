@@ -1,7 +1,6 @@
 namespace AI.Client.Infrastructure.Chat;
 
 using AI.Client.Application.Chat;
-using AI.Client.Contracts.Chat;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;

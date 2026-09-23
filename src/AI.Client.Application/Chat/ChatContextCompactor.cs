@@ -1,7 +1,6 @@
 namespace AI.Client.Application.Chat;
 
 using System.Text;
-using Contracts.Chat;
 
 /// <summary>
 /// Deterministically reduces model input. Tool results are projected to bounded excerpts first;

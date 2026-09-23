@@ -1,4 +1,6 @@
-namespace AI.Client.Contracts.Chat;
+namespace AI.Client.Application.Chat;
+
+using AI.Client.Contracts.Chat;
 
 /// <param name="FinishReason">
 /// Why the endpoint stopped, as the last chunk of a stream reports it, or null when the stream

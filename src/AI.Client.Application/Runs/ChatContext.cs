@@ -1,6 +1,6 @@
 namespace AI.Client.Application.Runs;
 
-using Contracts.Chat;
+using Chat;
 using Contracts.Chats;
 using Contracts.Tools;
 

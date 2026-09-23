@@ -1,4 +1,4 @@
-namespace AI.Client.Contracts.Chat;
+namespace AI.Client.Application.Chat;
 
 public sealed record ChatCompletionRequest(
     string BaseUrl,

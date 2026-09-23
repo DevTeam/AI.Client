@@ -2,7 +2,6 @@ namespace AI.Client.Application.Chat;
 
 using System.Collections.Concurrent;
 using System.Text;
-using Contracts.Chat;
 using Tools;
 
 /// <summary>Run-local model projection overrides. Stored chat messages are never changed.</summary>

@@ -1,6 +1,6 @@
 namespace AI.Client.Infrastructure.Chat;
 
-using AI.Client.Contracts.Chat;
+using AI.Client.Application.Chat;
 
 public interface IChatCompletionSseParser
 {

@@ -2,7 +2,6 @@ namespace AI.Client.Application.Tools;
 
 using System.Text.RegularExpressions;
 using Chat;
-using Contracts.Chat;
 using Contracts.Settings;
 
 /// <summary>

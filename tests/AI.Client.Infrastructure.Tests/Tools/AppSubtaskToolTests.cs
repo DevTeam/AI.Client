@@ -6,7 +6,6 @@ using AI.Client.Application.Projects;
 using AI.Client.Application.Settings;
 using AI.Client.Application.Tools;
 using AI.Client.Application.Workspace;
-using AI.Client.Contracts.Chat;
 using AI.Client.Contracts.Chats;
 using AI.Client.Contracts.Projects;
 using AI.Client.Contracts.Settings;

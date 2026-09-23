@@ -1,6 +1,5 @@
 namespace AI.Client.Application.Chat;
 
-using Contracts.Chat;
 using Contracts.Settings;
 
 /// <summary>The measured model input produced before transport serialization.</summary>

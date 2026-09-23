@@ -56,6 +56,11 @@ public sealed class AiClientServer(
             webClient.Configure(builder);
         }
 
+        if (!options.StopOnProcessSignals)
+        {
+            builder.Services.AddSingleton<IHostLifetime, EmbeddedHostLifetime>();
+        }
+
         // The file logger comes from the same composition as the repositories, so logs and data
         // are rooted in the same directory by construction.
         builder.Logging.AddProvider(fileLogger);

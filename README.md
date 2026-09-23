@@ -42,7 +42,10 @@ dotnet run --project build -- build
 dotnet run --project build -- test
 dotnet run --project build -- verify
 dotnet run --project build -- publish
+dotnet run --project build -- publish-desktop --runtime win-x64
 ```
+
+The desktop app (Windows, macOS, Linux) runs the same server in-process and shows the UI in the system web view; see [Desktop app](docs/23-desktop.md).
 
 `verify` is the standard local and CI validation command. Command output is written to `artifacts/logs`.
 

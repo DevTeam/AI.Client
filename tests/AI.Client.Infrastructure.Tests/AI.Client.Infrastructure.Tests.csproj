@@ -5,7 +5,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\AI.Client.Mcp.BuiltIn\AI.Client.Mcp.BuiltIn.csproj" />
-    <ProjectReference Include="..\..\src\AI.Client.Mcp.App\AI.Client.Mcp.App.csproj" />
     <ProjectReference Include="..\..\src\AI.Client.Application\AI.Client.Application.csproj" />
     <ProjectReference Include="..\..\src\AI.Client.Domain\AI.Client.Domain.csproj" />
     <ProjectReference Include="..\..\src\AI.Client.Infrastructure\AI.Client.Infrastructure.csproj" />

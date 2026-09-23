@@ -4,7 +4,6 @@
     <ProjectReference Include="..\AI.Client.Application\AI.Client.Application.csproj" />
     <ProjectReference Include="..\AI.Client.Contracts\AI.Client.Contracts.csproj" />
     <ProjectReference Include="..\AI.Client.Infrastructure\AI.Client.Infrastructure.csproj" />
-    <ProjectReference Include="..\AI.Client.Mcp.App\AI.Client.Mcp.App.csproj" />
     <ProjectReference Include="..\AI.Client.Web\AI.Client.Web.csproj"
                       Aliases="AIClientWeb" />
     <Compile Include="..\AI.Client.Contracts\Composition.cs" Link="Contracts\Composition.cs" />

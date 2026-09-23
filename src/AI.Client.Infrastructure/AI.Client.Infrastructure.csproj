@@ -9,6 +9,5 @@
     <ProjectReference Include="..\AI.Client.Application\AI.Client.Application.csproj" />
     <ProjectReference Include="..\AI.Client.Contracts\AI.Client.Contracts.csproj" />
     <ProjectReference Include="..\AI.Client.Domain\AI.Client.Domain.csproj" />
-    <ProjectReference Include="..\AI.Client.Mcp.App\AI.Client.Mcp.App.csproj" />
   </ItemGroup>
 </Project>

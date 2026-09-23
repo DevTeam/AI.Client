@@ -1,5 +1,6 @@
 namespace AI.Client.Desktop;
 
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
@@ -10,13 +11,19 @@ internal sealed partial class MainWindow : Window
     // Long enough for a cold WebView2 start on a slow disk; a missing engine never gets there.
     private static readonly TimeSpan EngineTimeout = TimeSpan.FromSeconds(20);
     private readonly DesktopStart _start;
+    private readonly IWindowPlacementStore _placements;
     private readonly DispatcherTimer _engineWatchdog;
     private bool _engineCreated;
+    private PixelPoint _normalPosition;
+    private Size _normalSize;
 
-    public MainWindow(DesktopStart start)
+    public MainWindow(DesktopStart start, IWindowPlacementStore placements)
     {
         _start = start;
+        _placements = placements;
         InitializeComponent();
+        Restore(placements.Load());
+        PositionChanged += (_, _) => RememberNormalLater();
         _engineWatchdog = new DispatcherTimer { Interval = EngineTimeout };
         _engineWatchdog.Tick += (_, _) => OnEngineTimeout();
         WebView.EnvironmentRequested += (_, args) => ConfigureEnvironment(args);
@@ -39,10 +46,72 @@ internal sealed partial class MainWindow : Window
         Load();
     }
 
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == ClientSizeProperty)
+        {
+            RememberNormalLater();
+        }
+    }
+
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        base.OnClosing(e);
+        RememberNormal();
+        _placements.Save(new WindowPlacement(_normalPosition.X, _normalPosition.Y, _normalSize.Width, _normalSize.Height,
+            WindowState is WindowState.Maximized or WindowState.FullScreen));
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         _engineWatchdog.Stop();
         base.OnClosed(e);
+    }
+
+    /// <summary>
+    /// Brings back the last placement, unless no screen shows its titlebar any more (a monitor was
+    /// unplugged or the layout changed): then the window opens centered as on the first run.
+    /// </summary>
+    private void Restore(WindowPlacement? placement)
+    {
+        _normalSize = new Size(Width, Height);
+        if (placement is null)
+        {
+            return;
+        }
+
+        var titlebar = new PixelRect(placement.X, placement.Y, (int)placement.Width, 38);
+        var screens = Screens?.All ?? [];
+        if (screens.Any(screen => screen.WorkingArea.Intersect(titlebar) is { Width: >= 100, Height: >= 19 }))
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Position = _normalPosition = new PixelPoint(placement.X, placement.Y);
+            Width = placement.Width;
+            Height = placement.Height;
+            _normalSize = new Size(Width, Height);
+        }
+
+        if (placement.Maximized)
+        {
+            WindowState = WindowState.Maximized;
+        }
+    }
+
+    /// <summary>
+    /// Maximizing moves and resizes the window before its state says so, so the bounds are read
+    /// once the state has caught up.
+    /// </summary>
+    private void RememberNormalLater() => Dispatcher.UIThread.Post(RememberNormal, DispatcherPriority.Background);
+
+    /// <summary>Only a normal window's bounds are worth restoring; a maximized one's come from its screen.</summary>
+    private void RememberNormal()
+    {
+        if (WindowState == WindowState.Normal && IsVisible)
+        {
+            _normalPosition = Position;
+            _normalSize = ClientSize;
+        }
     }
 
     private void Load()

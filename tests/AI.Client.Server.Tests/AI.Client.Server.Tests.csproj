@@ -2,11 +2,14 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Test compositions replace the server's edges (storage, model endpoint, tools) on purpose. -->
+    <NoWarn>$(NoWarn);DIW000</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\AI.Client.Mcp.BuiltIn\AI.Client.Mcp.BuiltIn.csproj" />
     <ProjectReference Include="..\..\src\AI.Client.Server\AI.Client.Server.csproj" />
     <Compile Include="..\..\src\AI.Client.Contracts\Composition.cs" Link="Contracts\Composition.cs" />
+    <Compile Include="..\..\src\AI.Client.Server\Composition.cs" Link="Server\Composition.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

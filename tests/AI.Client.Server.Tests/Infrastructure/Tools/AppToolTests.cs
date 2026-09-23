@@ -21,6 +21,7 @@ using AI.Client.Infrastructure.Tests.Storage;
 using AI.Client.Infrastructure.Tools;
 using AI.Client.Infrastructure.Workspace;
 using AI.Client.Mcp.App;
+using AI.Client.Server.Hosting;
 using Moq;
 using Shouldly;
 using System.Text.Json;
@@ -42,7 +43,7 @@ public sealed class AppToolTests
 
         // The server decides its own listing order, so the set is what matters, not the sequence.
         session.Tools.Select(tool => tool.OriginalName).Order(StringComparer.Ordinal).ShouldBe(
-            ["app_chats", "app_projects", "app_read", "app_runs", "app_security", "ask_user", "spawn_subtask"]);
+            ["app_chats", "app_projects", "app_read", "app_runs", "app_security", "ask_user", "context_compact", "spawn_subtask", "tool_search"]);
         session.Tools.ShouldAllBe(tool => tool.ServerId == AppMcpServer.Id);
         session.Tools.ShouldAllBe(tool => tool.ModelDefinition.Name.StartsWith("mcp_app__", StringComparison.Ordinal));
         // A schema hash is what ties a saved policy to the tool it was granted for.
@@ -417,75 +418,31 @@ public sealed class AppToolTests
 
     private sealed class AppFixture : IAsyncDisposable
     {
-        private readonly MemoryFileSystem _fileSystem = new();
-        private readonly ChatSynchronization _synchronization = new();
-        private readonly SystemClock _clock = new();
-        private readonly Uuid7IdGenerator _ids = new();
-        private readonly IGlobalSecretStore _secrets = Mock.Of<IGlobalSecretStore>();
-        private readonly JsonGlobalSettingsRepository _settings;
-        private readonly AppDataChangeSignal _signal = new();
-        private readonly CompositeToolSessionFactory _sessions;
+        private readonly AppToolsComposition _composition;
 
         /// <summary>Stands in for the run waiting on the question, so the tool can be exercised alone.</summary>
         public TestPromptBroker Broker { get; } = new();
 
-        public ProjectService Projects { get; }
-        public ChatService Chats { get; }
+        public IProjectService Projects => _composition.Resolve<IProjectService>();
+        public IChatService Chats => _composition.Resolve<IChatService>();
+        private IGlobalSettingsRepository Settings => _composition.Resolve<IGlobalSettingsRepository>();
+        private IToolSessionFactory Sessions => _composition.Resolve<IToolSessionFactory>();
         public Guid ProjectId { get; private set; }
         public Guid ChatId { get; private set; }
 
         private AppFixture()
         {
-            _settings = new JsonGlobalSettingsRepository(_fileSystem, new GlobalSettingsPaths("data"));
-            var projectRepository = new JsonProjectRepository(_fileSystem, new ProjectStoragePaths("data"), new ProjectDocumentSerializer());
-            var chatRepository = new JsonChatRepository(_fileSystem, new ChatStoragePaths("data"), new ChatDocumentSerializer());
-            var runRepository = new JsonChatRunRepository(_fileSystem, new ChatRunStoragePaths("data"));
-            Projects = new ProjectService(projectRepository, _ids, _clock, _settings);
-            Chats = new ChatService(chatRepository, _ids, _clock, _synchronization);
-            var settingsService = new GlobalSettingsService(_settings, _secrets, new ConnectionContextLimitsResolver());
-            IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker(new LineDiff());
-            var policies = new ToolPolicyResolver(Projects, Chats, _settings);
-            var modelProjector = new ToolResultModelProjector();
-            var toolResultCodec = new ToolResultCodec(modelProjector);
-            var instructionRegistry = new ModelInstructionRegistry();
-            var dispatcher = new ChatRunDispatcher(runRepository, Chats, Chats, Projects, _settings, settingsService,
-                new ChatAgent(Mock.Of<AI.Client.Application.Chat.IChatCompletionClient>(), Mock.Of<IToolSessionFactory>,
-                    Projects, _settings, policies, workspace, modelProjector, toolResultCodec,
-                    new ChatContextPlanner(new ContextTokenEstimator(), new ChatContextCompactor(new ContextTokenEstimator()),
-                        new ConnectionContextLimitsResolver()),
-                    Mock.Of<IContextPlanDiagnostics>(), new ChatTransportActivity(),
-                    new ToolDefinitionSelector(new ContextTokenEstimator(), new ConnectionContextLimitsResolver(), new ToolSelectionPriorityPolicy()),
-                    new ToolCatalogRegistry(), new ModelContentCheckpointService(), instructionRegistry,
-                    new ModelInstructionComposer(instructionRegistry, new ContextTokenEstimator()),
-                    Mock.Of<IModelInstructionDiagnostics>(), new RunCompletionProtocol(),
-                    new ToolSearchDefinitionEnricher(new ContextTokenEstimator())),
-                _secrets, _clock, _ids, _synchronization, workspace, policies, new ChatContext(toolResultCodec), new ChatBranchIds());
-            var writes = new AppWrites(new AppOperationLog(), _signal, new AppToolReply());
-            var presentations = new ToolPresentations(
-                new GenericToolPresentationAdapter(),
-                [
-                    new FileToolPresentationAdapter(), new ProcessToolPresentationAdapter(), new WebToolPresentationAdapter(),
-                    new AppReadPresentationAdapter(), new AppWritePresentationAdapter(), new AppSubtaskPresentationAdapter(),
-                ]);
-            IEnumerable<IAppTool> tools =
-            [
-                new AppReadTool(Projects, Chats, settingsService, new ChatSearchService(Projects, Chats), () => dispatcher, new AppToolReply()),
-                new AppChatsTool(Chats, () => dispatcher, writes, new AppToolReply()),
-                new AppRunsTool(() => dispatcher, writes, new AppToolReply()),
-                new AppProjectsTool(Projects, Chats, () => dispatcher, writes, new AppToolReply()),
-                new AppSecurityTool(Projects, Chats, settingsService, writes, new AppToolReply()),
-                new AppSubtaskTool(() => throw new InvalidOperationException("not used"), Projects, Chats, _settings, _secrets,
-                    presentations, toolResultCodec, new AppToolReply()),
-                new AppAskUserTool(() => Broker),
-            ];
-            IMcpServerConnection connection = new AppToolSessionFactory(new AppMcpServerHost(tools, new AppToolReply()), modelProjector);
-            _sessions = new CompositeToolSessionFactory([connection]);
+            _composition = new AppToolsComposition(
+                options: new ServerOptions("data", null, true),
+                fileSystem: new MemoryFileSystem(),
+                completion: Mock.Of<IChatCompletionClient>(),
+                broker: Broker);
         }
 
         public static async Task<AppFixture> CreateAsync()
         {
             var fixture = new AppFixture();
-            await fixture._settings.SaveAsync(new GlobalSettings(
+            await fixture.Settings.SaveAsync(new GlobalSettings(
                 [new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.test/v1", "model", true, true, false)],
                 [], []), CancellationToken.None);
             fixture.ProjectId = (await fixture.Projects.CreateAsync(new CreateProjectRequest("Test", ""), CancellationToken.None)).Id;
@@ -494,7 +451,7 @@ public sealed class AppToolTests
         }
 
         public Task<IToolSession> OpenAsync(bool interactive = true) =>
-            _sessions.OpenAsync([], AppServerOnly, new ToolRunContext(ProjectId, ChatId, ChatId, interactive),
+            Sessions.OpenAsync([], AppServerOnly, new ToolRunContext(ProjectId, ChatId, ChatId, interactive),
                 TestContext.Current.CancellationToken);
 
         /// <summary>Calls a tool the way the agent does, and hands back its structured result.</summary>
@@ -507,9 +464,9 @@ public sealed class AppToolTests
             return result.StructuredContent!.Value;
         }
 
-        public ChangeWatch WatchChanges() => new(_signal);
+        public ChangeWatch WatchChanges() => new(_composition.Resolve<IAppDataChangeSignal>());
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync() => _composition.DisposeAsync();
     }
 
     /// <summary>

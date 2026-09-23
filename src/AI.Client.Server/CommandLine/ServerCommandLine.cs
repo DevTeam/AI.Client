@@ -24,8 +24,9 @@ public sealed class ServerCommandLine : IServerCommandLine
         command.Options.Add(_noBrowse);
     }
 
-    public ServerOptions Bind(ParseResult result, string? urls) => new(
+    public ServerOptions Bind(ParseResult result, string? urls, bool serveWeb) => new(
         result.GetValue(_dataDirectory)!.FullName,
         urls,
-        BrowseEnabled: !result.GetValue(_noBrowse));
+        BrowseEnabled: !result.GetValue(_noBrowse),
+        ServeWeb: serveWeb);
 }

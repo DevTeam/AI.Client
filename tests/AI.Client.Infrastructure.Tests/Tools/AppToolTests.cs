@@ -443,7 +443,7 @@ public sealed class AppToolTests
             Projects = new ProjectService(projectRepository, _ids, _clock, _settings);
             Chats = new ChatService(chatRepository, _ids, _clock, _synchronization);
             var settingsService = new GlobalSettingsService(_settings, _secrets, new ConnectionContextLimitsResolver());
-            IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker();
+            IWorkspaceChangeTracker workspace = new WorkspaceChangeTracker(new LineDiff());
             var policies = new ToolPolicyResolver(Projects, Chats, _settings);
             var modelProjector = new ToolResultModelProjector();
             var toolResultCodec = new ToolResultCodec(modelProjector);

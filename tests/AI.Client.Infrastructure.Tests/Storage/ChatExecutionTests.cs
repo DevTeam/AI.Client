@@ -1375,7 +1375,7 @@ public sealed class ChatExecutionTests
             _settings = new JsonGlobalSettingsRepository(FileSystem, new GlobalSettingsPaths("data"));
             _projectService = new ProjectService(_projects, _ids, _clock, _settings);
             Chats = new ChatService(_chatRepository, _ids, _clock, _synchronization);
-            Workspace = workspace ?? new WorkspaceChangeTracker();
+            Workspace = workspace ?? new WorkspaceChangeTracker(new LineDiff());
             Dispatcher = NewDispatcher();
         }
         public IWorkspaceChangeTracker Workspace { get; }

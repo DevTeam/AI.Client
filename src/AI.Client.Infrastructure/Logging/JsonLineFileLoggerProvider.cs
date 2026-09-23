@@ -1,6 +1,7 @@
 namespace AI.Client.Infrastructure.Logging;
 
 using Microsoft.Extensions.Logging;
+using Storage;
 using System.Text.Json;
 
 public sealed class JsonLineFileLoggerProvider : ILoggerProvider
@@ -9,6 +10,16 @@ public sealed class JsonLineFileLoggerProvider : ILoggerProvider
     private readonly string _logsDirectory;
     private readonly int _retentionDays;
 
+    /// <summary>
+    /// Production constructor. The container resolves <see cref="IProjectStorageLocation"/> so the
+    /// logger and the data repositories agree on the root by construction rather than by accident.
+    /// </summary>
+    public JsonLineFileLoggerProvider(IProjectStorageLocation location, int retentionDays = 14)
+        : this(location.RootDirectory, retentionDays)
+    {
+    }
+
+    /// <summary>String-rooted constructor retained for tests and one-off bootstrap.</summary>
     public JsonLineFileLoggerProvider(string rootDirectory, int retentionDays = 14)
     {
         _logsDirectory = Path.Combine(rootDirectory, "logs");

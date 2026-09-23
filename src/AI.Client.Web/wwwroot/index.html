@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <link rel="icon" type="image/svg+xml" href="app-icon.svg" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#171717" />
     <link rel="stylesheet" href="css/app.css" />
     <title>AI Client</title>
     <script src="js/vendor/mermaid.min.js"></script>
@@ -51,7 +53,7 @@
 <body>
     <div id="app">
         <main class="app-loading" aria-label="Loading application" aria-live="polite">
-            <div class="app-loading-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+        <img class="app-loading-mark" src="app-icon.svg" width="48" height="48" alt="" />
             <div class="app-loading-copy"><strong>AI.Client</strong><span>Preparing your workspace</span></div>
             <div class="app-loading-track" role="progressbar" aria-label="Loading" aria-valuetext="Loading application"><span></span></div>
         </main>

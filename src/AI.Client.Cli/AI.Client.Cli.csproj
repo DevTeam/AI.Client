@@ -1,7 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\AI.Client.Contracts\AI.Client.Contracts.csproj" />
-    <PackageReference Include="Pure.DI" PrivateAssets="all" />
-  </ItemGroup>
-</Project>

@@ -378,10 +378,13 @@
 
     @if (_isProjectSettingsOpen && _selectedProject is not null)
     {
-        <div class="modal-backdrop" @onclick="CancelCurrentSettingsAsync">
-            <section class="project-settings-modal" role="dialog" aria-modal="true" aria-labelledby="project-settings-title" @onclick:stopPropagation="true" @onkeydown="HandleProjectSettingsKeyDownAsync">
-                <header><div><strong id="project-settings-title">Project settings</strong><span>@_selectedProject.Name</span></div></header>
-            <div class="settings-content">
+        <div class="permissions-drawer-backdrop"></div>
+        <aside class="permissions-drawer project-settings-drawer" aria-label="Project settings">
+            <header>
+                <div><h2>Project settings</h2><p>@_selectedProject.Name</p></div>
+                <button class="icon-action" type="button" title="Close" aria-label="Close project settings" @onclick="RequestCloseProjectSettingsAsync"><AppIcon Name="x" /></button>
+            </header>
+            <div class="permissions-content">
                 <EditForm Model="_editor" class="workspace-form">
                     <DataAnnotationsValidator />
                     <label>Name<InputText @bind-Value="_editor.Name" /></label>
@@ -390,12 +393,18 @@
                 </EditForm>
                 @if (!string.IsNullOrEmpty(_error)) { <p class="error" role="alert">@_error</p> }
             </div>
-            <footer class="settings-modal-actions">
-                <button type="button" @onclick="SaveProjectSettingsAsync">Save</button>
-                <button type="button" class="secondary-action" @onclick="CancelCurrentSettingsAsync">Cancel</button>
+            <footer>
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <span class="settings-drawer-error">Not saved.</span>
+                    <button class="secondary-action permissions-reset-all" type="button" @onclick="CancelCurrentSettingsAsync">Discard changes</button>
+                }
+                else
+                {
+                    <span>@ProjectSettingsStats</span>
+                }
             </footer>
-            </section>
-        </div>
+        </aside>
     }
 
     @if (_isDirectoryPickerOpen && _selectedProject is not null)
@@ -433,6 +442,8 @@
     private ProjectSummary? _selectedProject;
     private bool _isProjectMenuOpen;
     private bool _isProjectSettingsOpen;
+    // The editor's values when the drawer opened: closing without edits must not save.
+    private (string Name, string Description, Guid? ConnectionId) _projectSettingsSnapshot;
     private bool _isConfirmingProjectDelete;
     private string? _permissionsScope;
     private Guid? _permissionsChatId;
@@ -2837,6 +2848,7 @@
     {
         if (_permissionsScope is not null) ClosePermissions();
         else if (_globalSection is not null) await RequestCloseGlobalSettingsAsync();
+        else if (_isProjectSettingsOpen) await RequestCloseProjectSettingsAsync();
         else return;
         await InvokeAsync(StateHasChanged);
     }
@@ -2851,6 +2863,10 @@
         else if (_globalSection is not null)
         {
             await RequestCloseGlobalSettingsAsync();
+        }
+        else if (_isProjectSettingsOpen)
+        {
+            await RequestCloseProjectSettingsAsync();
         }
         else if (_isEndpointMenuOpen)
         {
@@ -2956,8 +2972,37 @@
                 ConnectionId = _editor.ConnectionId
             };
         }
+        _error = null;
+        _projectSettingsSnapshot = (_editor.Name, _editor.Description, _editor.ConnectionId);
         _isProjectSettingsOpen = true;
     }
+
+    /// <summary>
+    /// Same contract as the Connections/MCP drawer: closing is the save. A failed save leaves the
+    /// drawer open with its error, and "Discard changes" is the way out without saving.
+    /// </summary>
+    private async Task RequestCloseProjectSettingsAsync()
+    {
+        if (_selectedProject is null || _projectSettingsSnapshot == (_editor.Name, _editor.Description, _editor.ConnectionId))
+        {
+            await CloseProjectSettingsAsync();
+            return;
+        }
+        await SaveProjectSettingsAsync();
+    }
+
+    private string ProjectSettingsStats
+    {
+        get
+        {
+            var directories = _security.DirectoryGrants.Count;
+            var overrides = _security.ToolPolicies.Count;
+            return $"{Plural(_chats.Count, "chat")} · {Plural(directories, "directory", "directories")} · {Plural(overrides, "tool override")}";
+        }
+    }
+
+    private static string Plural(int count, string one, string? many = null) =>
+        $"{count} {(count == 1 ? one : many ?? one + "s")}";
 
     private void OpenProjectPermissions()
     {
@@ -3014,9 +3059,6 @@
 
         await CloseProjectSettingsAsync();
     }
-
-    private Task HandleProjectSettingsKeyDownAsync(KeyboardEventArgs args) =>
-        args.Key == "Escape" ? CancelCurrentSettingsAsync() : Task.CompletedTask;
 
     private Task CloseProjectSettingsAsync()
     {

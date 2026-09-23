@@ -465,6 +465,8 @@
     // stops the loop without leaving a dangling observer against a detached subtree.
     private IJSObjectReference? _mermaidBlocksModule;
     private IJSObjectReference? _mermaidBlocksHandle;
+    private IJSObjectReference? _svgBlocksModule;
+    private IJSObjectReference? _svgBlocksHandle;
     private DotNetObjectReference<MessageFeed>? _selfReference;
     // Mirrors the JS side's "the user is at the bottom" state, which is the only thing that
     // decides whether new content scrolls the feed. Starts true: an empty feed is at its bottom.
@@ -550,6 +552,7 @@
                 _scrollModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
                 _messageScrollModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/messageScroll.js");
                 _mermaidBlocksModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/mermaidBlocks.js");
+                _svgBlocksModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/svgBlocks.js");
                 // The scroller element is part of this component's fixed markup, so it outlives
                 // every chat switch — one attach for the lifetime of the feed.
                 _selfReference = DotNetObjectReference.Create(this);
@@ -558,11 +561,13 @@
                 // fences already in the feed so opening a long transcript after a reload still
                 // shows diagrams without requiring the user to scroll to the bottom.
                 _mermaidBlocksHandle = await _mermaidBlocksModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer);
+                _svgBlocksHandle = await _svgBlocksModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer);
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException)
             {
                 _historyMarkersModule = null;
                 _mermaidBlocksModule = null;
+                _svgBlocksModule = null;
             }
         }
 
@@ -1568,12 +1573,16 @@
         var messageScrollHandle = _messageScrollHandle;
         var mermaidBlocksModule = _mermaidBlocksModule;
         var mermaidBlocksHandle = _mermaidBlocksHandle;
+        var svgBlocksModule = _svgBlocksModule;
+        var svgBlocksHandle = _svgBlocksHandle;
         _historyMarkersModule = null;
         _scrollModule = null;
         _messageScrollModule = null;
         _messageScrollHandle = null;
         _mermaidBlocksModule = null;
         _mermaidBlocksHandle = null;
+        _svgBlocksModule = null;
+        _svgBlocksHandle = null;
         try
         {
             if (messageScrollHandle is not null)
@@ -1589,10 +1598,16 @@
                 await mermaidBlocksHandle.InvokeVoidAsync("dispose");
                 await mermaidBlocksHandle.DisposeAsync();
             }
+            if (svgBlocksHandle is not null)
+            {
+                await svgBlocksHandle.InvokeVoidAsync("dispose");
+                await svgBlocksHandle.DisposeAsync();
+            }
             if (historyMarkersModule is not null) await historyMarkersModule.DisposeAsync();
             if (scrollModule is not null) await scrollModule.DisposeAsync();
             if (messageScrollModule is not null) await messageScrollModule.DisposeAsync();
             if (mermaidBlocksModule is not null) await mermaidBlocksModule.DisposeAsync();
+            if (svgBlocksModule is not null) await svgBlocksModule.DisposeAsync();
         }
         catch (Exception error) when (error is JSException or ObjectDisposedException)
         {

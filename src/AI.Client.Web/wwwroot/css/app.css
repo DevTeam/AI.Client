@@ -3808,6 +3808,24 @@ textarea {
     font-size: 0.85rem;
 }
 
+/* SVG fences are displayed in an image context, keeping model-authored markup
+   out of the page DOM. Large drawings stay within the message width. */
+.svg-block {
+    margin: 0.85rem 0;
+    padding: 0.85rem;
+    border: 1px solid rgb(255 255 255 / 8%);
+    border-radius: 0.5rem;
+    background: rgb(255 255 255 / 2%);
+    text-align: center;
+}
+
+.svg-block img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
+}
+
 /* Mermaid diagrams. ```mermaid``` fences arrive from Markdig as
    `<pre><code class="language-mermaid">…</code></pre>` and are then replaced in place by
    `js/mermaidBlocks.js` with a `<div class="mermaid-block" data-mermaid-state="…">`. The

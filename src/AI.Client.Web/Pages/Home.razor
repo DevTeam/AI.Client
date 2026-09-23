@@ -524,6 +524,8 @@
     private string? _globalSection;
     private IJSObjectReference? _navigationModule;
     private IJSObjectReference? _navigationHandle;
+    private IJSObjectReference? _scrollbarGutterModule;
+    private IJSObjectReference? _scrollbarGutterHandle;
     private bool _canNavigateBack;
     private bool _canNavigateForward;
     private bool _notificationsOpen;
@@ -903,6 +905,12 @@
                 _applicationFocused = await _runEventsModule.InvokeAsync<bool>("isFocused");
                 _navigationModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/workspaceNavigation.js");
                 _navigationHandle = await _navigationModule.InvokeAsync<IJSObjectReference>("attach", _dotNetReference);
+                _scrollbarGutterModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatScrollbarGutter.js");
+                _scrollbarGutterHandle = await _scrollbarGutterModule.InvokeAsync<IJSObjectReference>(
+                    "attach",
+                    ".workspace-messages",
+                    ".workspace-conversation",
+                    "--chat-scrollbar-width");
             }
             catch (JSException)
             {
@@ -3690,6 +3698,9 @@
         if (_runEventsModule is not null) await _runEventsModule.DisposeAsync();
         if (_navigationHandle is not null) { await _navigationHandle.InvokeVoidAsync("dispose"); await _navigationHandle.DisposeAsync(); }
         if (_navigationModule is not null) await _navigationModule.DisposeAsync();
+
+        if (_scrollbarGutterHandle is not null) { await _scrollbarGutterHandle.InvokeVoidAsync("dispose"); await _scrollbarGutterHandle.DisposeAsync(); }
+        if (_scrollbarGutterModule is not null) await _scrollbarGutterModule.DisposeAsync();
 
         _dotNetReference?.Dispose();
         await WorkspaceLayoutService.DisposeAsync();

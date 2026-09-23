@@ -1226,6 +1226,11 @@ body {
     height: 100%;
     box-sizing: border-box;
     overflow-y: auto;
+    /* Reserve the vertical scrollbar gutter up front, even before content overflows, so the
+       measured width stays stable as the transcript grows or shrinks. chatScrollbarGutter.js
+       re-measures on every layout change and writes the real value to --chat-scrollbar-width
+       on .workspace-conversation, which the absolute header then uses for its right inset. */
+    scrollbar-gutter: stable;
     padding: 3rem max(2rem, calc((100% - 48rem) / 2)) 1.1rem;
     /* Browser scroll anchoring: when a block above the viewport changes height — a tool group
        being expanded, an image or markdown block finishing its layout — the reading position
@@ -2503,7 +2508,12 @@ body {
     position: absolute;
     z-index: 6;
     top: 0;
-    right: 0;
+    /* Keep the header from sliding under the chat's vertical scrollbar. The JS in
+       chatScrollbarGutter.js measures the live scrollbar width and writes it to
+       --chat-scrollbar-width on .workspace-conversation, which this element inherits.
+       Fallback 0px keeps the header flush to the right on macOS overlay scrollbars
+       (where offsetWidth - clientWidth is 0). */
+    right: var(--chat-scrollbar-width, 0px);
     left: 0;
     display: flex;
     align-items: center;

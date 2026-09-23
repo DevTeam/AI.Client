@@ -3,18 +3,14 @@
     <Project Path="build/build.csproj" />
   </Folder>
   <Folder Name="/src/">
-    <Project Path="src/AI.Client.Application/AI.Client.Application.csproj" />
     <Project Path="src/AI.Client.Contracts/AI.Client.Contracts.csproj" />
-    <Project Path="src/AI.Client.Domain/AI.Client.Domain.csproj" />
     <Project Path="src/AI.Client.Host/AI.Client.Host.csproj" />
-    <Project Path="src/AI.Client.Infrastructure/AI.Client.Infrastructure.csproj" />
     <Project Path="src/AI.Client.Mcp.BuiltIn/AI.Client.Mcp.BuiltIn.csproj" />
+    <Project Path="src/AI.Client.Server/AI.Client.Server.csproj" />
     <Project Path="src/AI.Client.Web/AI.Client.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AI.Client.Server.Tests/AI.Client.Server.Tests.csproj" />
     <Project Path="tests/AI.Client.Web.Tests/AI.Client.Web.Tests.csproj" />
-    <Project Path="tests/AI.Client.Application.Tests/AI.Client.Application.Tests.csproj" />
-    <Project Path="tests/AI.Client.Domain.Tests/AI.Client.Domain.Tests.csproj" />
-    <Project Path="tests/AI.Client.Infrastructure.Tests/AI.Client.Infrastructure.Tests.csproj" />
   </Folder>
 </Solution>

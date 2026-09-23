@@ -5,19 +5,8 @@ using AI.Client.Application.Notifications;
 using AI.Client.Application.Settings;
 using AI.Client.Application.Runs;
 using AI.Client.Application.Tools;
-using AI.Client.Application.Workspace;
-using AI.Client.Infrastructure.Tools;
 using AI.Client.Mcp.App;
-using AI.Client.Infrastructure.Chat;
-using AI.Client.Infrastructure.Credentials;
-using AI.Client.Infrastructure.Projects;
-using AI.Client.Infrastructure.Storage;
-using AI.Client.Infrastructure.Settings;
-using AI.Client.Infrastructure.Workspace;
-using AI.Client.Contracts.Tools;
-using AI.Client.Contracts.Settings;
 using System.Diagnostics;
-using Microsoft.Extensions.Logging;
 using Pure.DI;
 using Pure.DI.MS;
 // ReSharper disable InconsistentNaming
@@ -30,11 +19,9 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            // Two calls on purpose: Pure.DI 2.5.4 crashes (DIE043) on DependsOn("a", "b").
             .DependsOn("AI.Client.Contracts.Composition")
-            // The storage root arrives from the entry point, which also hands it to the file logger,
-            // so one instance decides where the application writes instead of two independently
-            // resolved ones that merely happen to agree.
-            .Arg<string>("rootDirectory")
+            .DependsOn("AI.Client.Server.Composition")
             .Root<IHostDescriptor>()
             .Root<IProjectRepository>()
             .Root<IDirectoryBrowser>()
@@ -48,22 +35,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatRunDispatcher>()
             .Root<IChatBranchIds>()
             .Root<IToolUserInterface>()
-            .RootBind<IAppToolReply>().To<AppToolReply>()
+            .Root<IAppToolReply>()
             .Root<IToolSessionFactory>()
             .Root<IAppDataChangeSignal>()
-            .Singleton<HostDescriptor, PhysicalTextFileSystem, PhysicalDirectoryBrowser, JsonProjectRepository, ProjectDocumentSerializer,
-                Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
-                ProtectedDataUserDataProtector, ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
-                ChatEndpoint, JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
-                GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
-                ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService,
-                ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,
-                ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff,
-                AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
-            .Singleton<OpenAiCompatibleChatCompletionClient>("base")
-            .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To(([Tag("base")] IChatCompletionClient baseClient, ILogger<RetryingChatCompletionClient> retryLogger, IChatTransportPolicy transportPolicy, IChatTransportActivity transportActivity) => new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity))
-            .Singleton<ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()
-            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool, AppContextCompactTool>(Tag.Unique)
-            .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
-            .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
+            .Singleton<HostDescriptor, ChatEndpoint>();
 }

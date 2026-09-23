@@ -1,13 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="ModelContextProtocol.Core" />
     <PackageReference Include="JsonSchema.Net" />
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Include="Pure.DI" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\AI.Client.Application\AI.Client.Application.csproj" />
     <ProjectReference Include="..\AI.Client.Contracts\AI.Client.Contracts.csproj" />
-    <ProjectReference Include="..\AI.Client.Domain\AI.Client.Domain.csproj" />
   </ItemGroup>
 </Project>

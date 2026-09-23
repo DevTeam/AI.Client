@@ -1,6 +1,6 @@
 # Storage
 
-By default, data is located in `%LOCALAPPDATA%/AI.Client`. `AI_CLIENT_DATA_DIRECTORY` sets a separate Host data directory.
+By default, data is located in `%LOCALAPPDATA%/AI.Client`. `AI_CLIENT_DATA_DIRECTORY` sets a separate Host data directory, and the `--data-dir` command-line option overrides both (`AI.Client.Host --help` lists all options).
 
 Projects and chats use schema 2; runs use schema 4. Old formats are not supported and are not migrated. A new data directory is required; user files are not removed automatically.
 

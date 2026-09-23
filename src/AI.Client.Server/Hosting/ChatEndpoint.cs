@@ -1,17 +1,19 @@
-namespace AI.Client.Host;
+namespace AI.Client.Server.Hosting;
 
 using Application.Chat;
 using Application.Settings;
 using System.Diagnostics;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 
-internal interface IChatEndpoint
+public interface IChatEndpoint
 {
     Task<IResult> HandleAsync(ChatCompletionRequest request, CancellationToken cancellationToken);
 
     Task HandleStreamAsync(ChatCompletionRequest request, HttpResponse response, CancellationToken cancellationToken);
 }
 
-internal sealed class ChatEndpoint(
+public sealed class ChatEndpoint(
     IChatCompletionClient client,
     IGlobalSecretStore globalSecretStore,
     ILogger<ChatEndpoint> logger) : IChatEndpoint

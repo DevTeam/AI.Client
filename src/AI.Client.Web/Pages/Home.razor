@@ -17,6 +17,7 @@
 @inject IChatFeedProjection Feed
 @inject INotificationService Notifications
 @inject IRunStatusPresentation StatusPresentation
+@inject NavigationManager Navigation
 @implements IAsyncDisposable
 
 <PageTitle>@ClientMetadata.ProductName</PageTitle>
@@ -261,6 +262,37 @@
     <div class="workspace-resizer" data-side="left" role="separator" aria-label="Resize project sidebar"></div>
 
     <section class="workspace-conversation" aria-label="Chat">
+        <header class="workspace-header">
+            <div class="notification-quick-access @(_hideNotificationPreview ? "preview-hidden" : null)" @onpointerleave="RestoreNotificationPreview">
+                <button class="history-notifications-button" type="button" aria-label="Notifications" aria-expanded="@_notificationsOpen" @onclick="ToggleNotificationsAsync">
+                    <AppIcon Name="bell" />
+                    @if (Notifications.UnreadCount > 0) { <span class="notification-count">@Notifications.UnreadCount</span> }
+                </button>
+                @if (!_notificationsOpen)
+                {
+                    var recentNotifications = Notifications.History.Where(item => item.ProjectId is not null && item.ChatId is not null).Take(4).ToList();
+                    <div class="notification-quick-popover">
+                        <div class="notification-quick-surface" role="group" aria-label="Recent chat notifications">
+                            <div class="notification-quick-heading">Recent notifications</div>
+                            @foreach (var item in recentNotifications)
+                            {
+                                <button class="notification-quick-item @(item.IsSeen ? string.Empty : "new") @(item.Kind == NotificationKind.Error ? "error" : item.RequiresAction && !item.IsResolved ? "attention" : string.Empty)" type="button" @onclick="() => OpenNotificationAsync(item)">
+                                    <AppIcon Name="@(item.Kind == NotificationKind.Error ? "error" : item.RequiresAction && !item.IsResolved ? "info" : "check")" />
+                                    <span><strong>@item.Message</strong><small>@item.CreatedAt.LocalDateTime.ToString("g")@(item.IsResolved ? " · Resolved" : string.Empty)</small></span>
+                                </button>
+                            }
+                            @if (recentNotifications.Count == 0) { <p class="notification-quick-empty">No chat notifications yet</p> }
+                            <button class="notification-quick-all" type="button" @onclick="ToggleNotificationsAsync">All notifications <AppIcon Name="chevron-right" /></button>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="workspace-history-actions">
+                <button class="icon-action" type="button" title="Back" aria-label="Back" disabled="@(!_canNavigateBack)" @onclick="GoBackAsync"><AppIcon Name="chevron-left" /></button>
+                <button class="icon-action" type="button" title="Forward" aria-label="Forward" disabled="@(!_canNavigateForward)" @onclick="GoForwardAsync"><AppIcon Name="chevron-right" /></button>
+            </div>
+            <span class="workspace-location" title="@GetWorkspaceLocation()">@GetWorkspaceLocation()</span>
+        </header>
         <MessageFeed @ref="_messageFeed"
             HasSelectedProject="@(_selectedProject is not null)"
             SelectedProjectName="@_selectedProject?.Name"
@@ -427,6 +459,28 @@
         Close="ClosePermissions" Changed="RefreshAfterPermissionChangeAsync" />
 }
 
+@if (_notificationsOpen)
+{
+    <div class="permissions-drawer-backdrop"></div>
+    <section class="permissions-drawer notifications-drawer" aria-label="Notifications">
+        <header><h2>Notifications</h2><button class="icon-action" type="button" title="Close notifications" aria-label="Close notifications" @onclick="ToggleNotificationsAsync"><AppIcon Name="x" /></button></header>
+        <div class="notification-filters">
+            <button type="button" class="@(!_showAttentionOnly ? "selected" : string.Empty)" @onclick="() => _showAttentionOnly = false">All</button>
+            <button type="button" class="@(_showAttentionOnly ? "selected" : string.Empty)" @onclick="() => _showAttentionOnly = true">Needs attention</button>
+        </div>
+        <div class="notification-history">
+            @foreach (var item in Notifications.History.Where(item => !_showAttentionOnly || item.RequiresAction && !item.IsResolved))
+            {
+                <button class="notification-history-item @(item.IsSeen ? string.Empty : "new") @(item.Kind == NotificationKind.Error ? "error" : item.RequiresAction && !item.IsResolved ? "attention" : string.Empty)" type="button" disabled="@(item.ChatId is null)" @onclick="() => OpenNotificationAsync(item)">
+                    <AppIcon Name="@(item.Kind == NotificationKind.Error ? "error" : item.RequiresAction && !item.IsResolved ? "info" : "check")" />
+                    <span><strong>@item.Message</strong><small>@item.CreatedAt.LocalDateTime.ToString("g")@(item.IsResolved ? " · Resolved" : string.Empty)</small></span>
+                </button>
+            }
+            @if (!Notifications.History.Any(item => !_showAttentionOnly || item.RequiresAction && !item.IsResolved)) { <p class="empty-hint">No notifications</p> }
+        </div>
+    </section>
+}
+
 @* The corner toast used to live here as a private field + ShowToast helper. It was inlined into
    this page because at the time every operation that showed one (project create/save/delete,
    chat delete, pin toggle, …) happened on this page. After the global settings panel and the
@@ -468,6 +522,21 @@
     private Guid? _draggedChatId;
     private string _sidebarAnnouncement = string.Empty;
     private string? _globalSection;
+    private IJSObjectReference? _navigationModule;
+    private IJSObjectReference? _navigationHandle;
+    private bool _canNavigateBack;
+    private bool _canNavigateForward;
+    private bool _notificationsOpen;
+    private bool _hideNotificationPreview;
+    private bool _notificationCenterHistoryEntry;
+    private bool _showAttentionOnly;
+    private bool _suppressNavigationWrite;
+    private bool _workspaceInitialized;
+    private Guid? _targetMessageId;
+    private readonly Dictionary<Guid, string> _notificationChatTitles = [];
+
+    private sealed record WorkspaceTarget(Guid? ProjectId, Guid? ChatId, Guid? BranchId, Guid? MessageId, bool NotificationsOpen);
+    public sealed record NavigationButtons(bool CanBack, bool CanForward);
     private GlobalSettingsPanel? _globalSettingsPanel;
     private readonly List<ConnectionSettings> _connections = [];
     private int _enabledMcpServerCount;
@@ -582,12 +651,176 @@
     private readonly CancellationTokenSource _generatingTickerCancellation = new();
     private readonly SemaphoreSlim _projectMutationGate = new(1, 1);
 
+    private static WorkspaceTarget ParseWorkspaceTarget(string url)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in new Uri(url).Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 2) values[Uri.UnescapeDataString(parts[0])] = Uri.UnescapeDataString(parts[1]);
+        }
+        Guid? ReadId(string key) => values.TryGetValue(key, out var value) && Guid.TryParse(value, out var id) ? id : null;
+        return new WorkspaceTarget(ReadId("project"), ReadId("chat"), ReadId("branch"), ReadId("message"),
+            values.TryGetValue("panel", out var panel) && panel == "notifications");
+    }
+
+    private string GetWorkspaceLocation()
+    {
+        var project = _selectedProject?.Name ?? "Projects";
+        if (_selectedChat is null) return project;
+        var branch = GetSelectedBranchItem();
+        return branch is null ? $"{project} / {_selectedChat.Title}" : $"{project} / {_selectedChat.Title} / {branch.Title}";
+    }
+
+    private async Task NavigateToTargetAsync(WorkspaceTarget target)
+    {
+        if (target.ProjectId is { } projectId && _selectedProject?.Id != projectId)
+        {
+            var project = _projects.FirstOrDefault(item => item.Id == projectId);
+            if (project is null)
+            {
+                Notifications.ShowError("The project in this link is unavailable.");
+                return;
+            }
+            await SelectProjectAsync(project, restoreLastChat: false);
+        }
+        if (target.ChatId is { } chatId && _selectedProject is not null)
+        {
+            if (_chats.All(item => item.Id != chatId))
+            {
+                Notifications.ShowError("The chat in this link is unavailable.");
+                return;
+            }
+            if (_selectedChat?.Id != chatId || (target.BranchId ?? chatId) == chatId && _selectedBranchId != chatId)
+                await SelectChatAsync(chatId);
+            if (target.BranchId is { } branchId && branchId != chatId && GetSelectedBranchId() != branchId
+                && GetBranchTreeItems().FirstOrDefault(item => item.RootId == branchId) is { } branch)
+                await SelectBranchTreeItemAsync(branch);
+            else if (target.BranchId is { } missingBranchId && missingBranchId != chatId && GetSelectedBranchId() != missingBranchId)
+                Notifications.ShowError("The branch in this link is unavailable.");
+            _targetMessageId = target.MessageId;
+        }
+        else if (target.ChatId is null && _selectedChat is not null && _selectedProject is not null)
+        {
+            await SelectProjectAsync(_selectedProject, restoreLastChat: false);
+        }
+        _notificationsOpen = target.NotificationsOpen;
+        if (_notificationsOpen) Notifications.MarkAllSeen();
+    }
+
+    private async Task SyncWorkspaceUrlAsync(bool replace = false, bool overrideMessage = false, Guid? messageId = null)
+    {
+        if (_navigationHandle is null || _suppressNavigationWrite) return;
+        var current = ParseWorkspaceTarget(await _navigationHandle.InvokeAsync<string>("url"));
+        var sameDestination = current.ProjectId == _selectedProject?.Id
+            && current.ChatId == _selectedChat?.Id
+            && (current.BranchId ?? current.ChatId) == (_selectedBranchId ?? _selectedChat?.Id);
+        var urlMessageId = overrideMessage ? messageId : sameDestination ? current.MessageId : null;
+        var buttons = await _navigationHandle.InvokeAsync<NavigationButtons>("set",
+            _selectedProject?.Id.ToString(), _selectedChat?.Id.ToString(), _selectedBranchId?.ToString(),
+            urlMessageId?.ToString(), _notificationsOpen ? "notifications" : null, replace);
+        _canNavigateBack = buttons.CanBack;
+        _canNavigateForward = buttons.CanForward;
+    }
+
+    [JSInvokable]
+    public async Task OnWorkspaceHistoryChanged(string url, NavigationButtons buttons)
+    {
+        _canNavigateBack = buttons.CanBack;
+        _canNavigateForward = buttons.CanForward;
+        _notificationCenterHistoryEntry = false;
+        _suppressNavigationWrite = true;
+        try { await NavigateToTargetAsync(ParseWorkspaceTarget(url)); }
+        finally { _suppressNavigationWrite = false; }
+        await SyncWorkspaceUrlAsync(replace: true);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task GoBackAsync() => _navigationHandle?.InvokeVoidAsync("back").AsTask() ?? Task.CompletedTask;
+    private Task GoForwardAsync() => _navigationHandle?.InvokeVoidAsync("forward").AsTask() ?? Task.CompletedTask;
+
+    private async Task ToggleNotificationsAsync()
+    {
+        _hideNotificationPreview = true;
+        if (_notificationsOpen)
+        {
+            if (_notificationCenterHistoryEntry && _navigationHandle is not null)
+            {
+                _notificationCenterHistoryEntry = false;
+                await GoBackAsync();
+                return;
+            }
+            _notificationsOpen = false;
+            await SyncWorkspaceUrlAsync(replace: true);
+            return;
+        }
+        if (!_notificationsOpen)
+        {
+            if (_globalSection is not null)
+            {
+                await RequestCloseGlobalSettingsAsync();
+                if (_globalSection is not null) return;
+            }
+            if (_isProjectSettingsOpen) await RequestCloseProjectSettingsAsync();
+            if (_permissionsScope is not null) ClosePermissions();
+        }
+        _notificationsOpen = !_notificationsOpen;
+        if (_notificationsOpen)
+        {
+            Notifications.Dismiss();
+            Notifications.MarkAllSeen();
+        }
+        _notificationCenterHistoryEntry = true;
+        await SyncWorkspaceUrlAsync();
+    }
+
+    private async Task OpenNotificationAsync(NotificationMessage item)
+    {
+        if (item.ProjectId is null || item.ChatId is null) return;
+        _hideNotificationPreview = true;
+        var wasCenterOpen = _notificationsOpen;
+        Notifications.MarkSeen(item.Id);
+        Notifications.Dismiss();
+        _suppressNavigationWrite = true;
+        try { await NavigateToTargetAsync(new WorkspaceTarget(item.ProjectId, item.ChatId, item.BranchId, item.MessageId, false)); }
+        finally { _suppressNavigationWrite = false; }
+        _notificationsOpen = false;
+        _notificationCenterHistoryEntry = false;
+        await SyncWorkspaceUrlAsync(replace: wasCenterOpen, overrideMessage: true, messageId: item.MessageId);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnNotificationOpenRequested(NotificationMessage item) => _ = InvokeAsync(() => OpenNotificationAsync(item));
+    private void RestoreNotificationPreview() => _hideNotificationPreview = false;
+    private void OnNotificationCenterRequested() => _ = InvokeAsync(async () =>
+    {
+        if (!_notificationsOpen) await ToggleNotificationsAsync();
+        StateHasChanged();
+    });
+    private void OnNotificationsChanged() => _ = InvokeAsync(StateHasChanged);
+
     protected override async Task OnInitializedAsync()
     {
+        Notifications.Changed += OnNotificationsChanged;
+        Notifications.OpenRequested += OnNotificationOpenRequested;
+        Notifications.CenterRequested += OnNotificationCenterRequested;
+        await Notifications.InitializeAsync();
         await LoadGlobalSettingsAsync();
         foreach (var run in await ChatRunsApi.GetAsync(CancellationToken.None)) StoreRun(run);
         await WorkspaceStateService.InitializeAsync();
-        await LoadProjectsAsync(WorkspaceStateService.LastProjectId);
+        var target = ParseWorkspaceTarget(Navigation.Uri);
+        var projectId = target.ProjectId ?? (target.ChatId is { } chatId
+            ? RunState.Runs.Values.FirstOrDefault(run => run.ChatId == chatId)?.ProjectId
+            : null);
+        await LoadProjectsAsync(projectId ?? WorkspaceStateService.LastProjectId,
+            restoreLastChat: target.ProjectId is null && target.ChatId is null);
+        if (target.ProjectId is not null && _selectedProject?.Id != target.ProjectId)
+            Notifications.ShowError("The project in this link is unavailable.");
+        if (target.ChatId is not null && (target.ProjectId is null || _selectedProject?.Id == target.ProjectId))
+            await NavigateToTargetAsync(target);
+        _notificationsOpen = target.NotificationsOpen;
+        if (_notificationsOpen) Notifications.MarkAllSeen();
+        _workspaceInitialized = true;
         _ = RunGeneratingTickerAsync(_generatingTickerCancellation.Token);
     }
 
@@ -668,6 +901,8 @@
                 _drawerDismissSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchDrawerDismiss", _dotNetReference);
                 _queueDragSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchQueueDrag", _dotNetReference);
                 _applicationFocused = await _runEventsModule.InvokeAsync<bool>("isFocused");
+                _navigationModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/workspaceNavigation.js");
+                _navigationHandle = await _navigationModule.InvokeAsync<IJSObjectReference>("attach", _dotNetReference);
             }
             catch (JSException)
             {
@@ -717,6 +952,12 @@
             await _messageFeed.FollowNewContentAsync();
         }
 
+        if (_targetMessageId is { } targetMessageId && _messageFeed is not null)
+        {
+            _targetMessageId = null;
+            await _messageFeed.ScrollToMessageAsync(targetMessageId);
+        }
+
         // After the render that shows the transcript, never before it: both of these are round
         // trips, and neither of them changes what the user is looking at.
         if (_openedChatToSettle is { } opened)
@@ -748,6 +989,8 @@
             _focusEditingInputPending = false;
             await _inlineEditorModule.InvokeVoidAsync("focusAndSelect", _editingInput);
         }
+
+        if (!_suppressNavigationWrite) await SyncWorkspaceUrlAsync(firstRender);
     }
 
     [JSInvokable]
@@ -857,6 +1100,8 @@
             RunState.Runs.GetValueOrDefault(new RunKey(append.ChatId, append.BranchId))).OfType<ChatRunSnapshot>());
         foreach (var snapshot in updatedSnapshots)
         {
+            var previous = GetRun(snapshot.ChatId, snapshot.BranchId);
+            await ShowRunNotificationAsync(previous, snapshot);
             StoreRun(snapshot);
             if (snapshot.ChatId == _selectedChat?.Id)
             {
@@ -902,6 +1147,70 @@
             _wasGeneratingByBranch[snapshot.BranchId] = isGenerating;
         }
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ShowRunNotificationAsync(ChatRunSnapshot? previous, ChatRunSnapshot current)
+    {
+        if (!StatusPresentation.NeedsAttention(current) && current.Status != ChatRunStatus.Failed)
+            Notifications.ResolveChatAttention(current.ChatId, current.BranchId);
+        if (!_workspaceInitialized || previous is null || current.Revision <= previous.Revision) return;
+
+        var visibleHere = _applicationFocused && _selectedChat?.Id == current.ChatId
+            && GetSelectedRunBranchId() == current.BranchId;
+        string? title = null;
+        var kind = NotificationKind.Info;
+        var requiresAction = false;
+        Guid? messageId = null;
+
+        if (current.PendingApproval is { } approval && previous?.PendingApproval?.Id != approval.Id)
+        {
+            if (!visibleHere) { title = "Tool approval needed"; requiresAction = true; }
+        }
+        else if (current.PendingPrompt is { } prompt && previous?.PendingPrompt?.Id != prompt.Id)
+        {
+            if (!visibleHere) { title = "Your answer needed"; requiresAction = true; }
+        }
+        else if (current.Status == ChatRunStatus.Failed && previous?.Status != ChatRunStatus.Failed)
+        {
+            title = "Run failed";
+            kind = NotificationKind.Error;
+            requiresAction = true;
+        }
+        else if (current.Status is ChatRunStatus.Paused or ChatRunStatus.Interrupted && previous?.Status != current.Status)
+        {
+            if (!visibleHere) { title = $"Run {current.Status.ToString().ToLowerInvariant()}"; requiresAction = true; }
+        }
+        else if (current.Status == ChatRunStatus.Completed && previous?.Status == ChatRunStatus.Generating
+            && current.HasUnreadResponse && !visibleHere)
+        {
+            title = "Reply ready";
+            kind = NotificationKind.Success;
+            messageId = current.HeadMessageId;
+        }
+
+        if (title is null) return;
+        var location = await GetNotificationLocationAsync(current);
+        Notifications.ShowChatEvent($"{title} · {location}", kind, current.ProjectId, current.ChatId,
+            current.BranchId, requiresAction, messageId);
+    }
+
+    private async Task<string> GetNotificationLocationAsync(ChatRunSnapshot run)
+    {
+        var projectName = _projects.FirstOrDefault(project => project.Id == run.ProjectId)?.Name ?? "Project";
+        var chatName = _selectedChat?.Id == run.ChatId ? _selectedChat.Title
+            : _chats.FirstOrDefault(chat => chat.Id == run.ChatId)?.Title
+            ?? _chatDetailsCache.GetValueOrDefault(run.ChatId)?.Title;
+        if (chatName is null && !_notificationChatTitles.TryGetValue(run.ChatId, out chatName))
+        {
+            try
+            {
+                foreach (var chat in await ChatHistoryApi.ListAsync(run.ProjectId, CancellationToken.None))
+                    _notificationChatTitles[chat.Id] = chat.Title;
+                _notificationChatTitles.TryGetValue(run.ChatId, out chatName);
+            }
+            catch (HttpRequestException) { /* The event still links to the chat by ID. */ }
+        }
+        return $"{projectName} / {chatName ?? $"Chat {run.ChatId.ToString("N")[..8]}"}";
     }
 
     // Single entry point for the transient accent-line marker: setting it also schedules the clear,
@@ -1189,7 +1498,7 @@
             : "This project no longer exists.";
     }
 
-    private async Task LoadProjectsAsync(Guid? selectedId = null)
+    private async Task LoadProjectsAsync(Guid? selectedId = null, bool restoreLastChat = true)
     {
         try
         {
@@ -1211,7 +1520,7 @@
                 : _projects.SingleOrDefault(item => item.Id == selectedId) ?? _projects.FirstOrDefault();
             if (project is not null)
             {
-                await SelectProjectAsync(project);
+                await SelectProjectAsync(project, restoreLastChat);
             }
             else
             {
@@ -2846,7 +3155,8 @@
     [JSInvokable]
     public async Task OnDrawerDismissed()
     {
-        if (_permissionsScope is not null) ClosePermissions();
+        if (_notificationsOpen) await ToggleNotificationsAsync();
+        else if (_permissionsScope is not null) ClosePermissions();
         else if (_globalSection is not null) await RequestCloseGlobalSettingsAsync();
         else if (_isProjectSettingsOpen) await RequestCloseProjectSettingsAsync();
         else return;
@@ -2856,7 +3166,11 @@
     [JSInvokable]
     public async Task OnEscapePressed()
     {
-        if (_permissionsScope is not null)
+        if (_notificationsOpen)
+        {
+            await ToggleNotificationsAsync();
+        }
+        else if (_permissionsScope is not null)
         {
             ClosePermissions();
         }
@@ -3335,6 +3649,9 @@
 
     public async ValueTask DisposeAsync()
     {
+        Notifications.Changed -= OnNotificationsChanged;
+        Notifications.OpenRequested -= OnNotificationOpenRequested;
+        Notifications.CenterRequested -= OnNotificationCenterRequested;
         CancelChatSelection();
         if (_projectSelectionCancellation is not null)
         {
@@ -3371,6 +3688,8 @@
         if (_drawerDismissSubscription is not null) { await _drawerDismissSubscription.InvokeVoidAsync("dispose"); await _drawerDismissSubscription.DisposeAsync(); }
         if (_queueDragSubscription is not null) { await _queueDragSubscription.InvokeVoidAsync("dispose"); await _queueDragSubscription.DisposeAsync(); }
         if (_runEventsModule is not null) await _runEventsModule.DisposeAsync();
+        if (_navigationHandle is not null) { await _navigationHandle.InvokeVoidAsync("dispose"); await _navigationHandle.DisposeAsync(); }
+        if (_navigationModule is not null) await _navigationModule.DisposeAsync();
 
         _dotNetReference?.Dispose();
         await WorkspaceLayoutService.DisposeAsync();

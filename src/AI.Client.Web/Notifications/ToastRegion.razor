@@ -3,17 +3,33 @@
 
 @* Renders the single, fixed-position toast region for the whole app. Sits in App.razor so it shows
    above any page (Home.razor, GlobalSettingsPanel, ToolPermissionsDrawer — anywhere a save might
-   happen). Subscribes to NotificationService.Changed and re-renders only when the visible message
-   changes, which is rare (one Show() per save), so the lack of fine-grained diffing is fine here. *@
+   happen). Subscribes to NotificationService.Changed for the latest event and its short history. *@
 
-<div class="toast-region" aria-live="polite" aria-atomic="true">
+<div class="toast-region" @onmouseenter="Notifications.PauseAutoDismiss" @onmouseleave="Notifications.ResumeAutoDismiss">
     @if (_current is not null)
     {
-        <div class="toast @KindClass(_current.Kind)" role="status">
+        <div class="toast @KindClass(_current.Kind) @(_current.RequiresAction ? "attention" : string.Empty)" role="status" aria-live="polite" aria-atomic="true">
             <AppIcon Name="@(_current.Kind == NotificationKind.Error ? "error" : _current.Kind == NotificationKind.Success ? "check" : "info")" />
-            <span>@_current.Message</span>
+            @if (_current.ChatId is not null)
+            {
+                <button class="toast-message-link" type="button" @onclick="() => Notifications.Open(_current)">@_current.Message</button>
+            }
+            else
+            {
+                <span>@_current.Message</span>
+            }
             <button class="icon-action" type="button" title="Dismiss notification" aria-label="Dismiss notification" @onclick="Notifications.Dismiss"><AppIcon Name="x" /></button>
         </div>
+        @if (Notifications.History.Skip(1).Take(2).Any())
+        {
+            <div class="toast-recent">
+                @foreach (var previous in Notifications.History.Skip(1).Take(2))
+                {
+                    <button type="button" disabled="@(previous.ChatId is null)" @onclick="() => Notifications.Open(previous)">@previous.Message</button>
+                }
+                <button class="toast-view-all" type="button" @onclick="Notifications.OpenCenter">View all notifications@(Notifications.History.Count > 3 ? $" · {Notifications.History.Count - 3} more" : string.Empty)</button>
+            </div>
+        }
     }
 </div>
 

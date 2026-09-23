@@ -125,12 +125,12 @@ Symmetric to `awaiting_approval` / `session approve`.
 |---|---|
 | `Contracts/Runs/UserPrompt.cs` | `UserPrompt`, `UserPromptQuestion`, `UserPromptOption`, `UserPromptAnswer`, `UserPromptResponse`, `UserPromptOutcome` |
 | `Contracts/Runs/ChatRunSnapshot.cs` | `PendingPrompt` |
-| `Application/Runs/IUserPromptBroker.cs` | `AskAsync`, `UserPromptRequest` |
-| `Application/Runs/ChatRunDispatcher.cs` | broker implementation, `AnswerPromptAsync`, releasing the question together with the turn |
-| `Application/Tools/IToolSession.cs` | `ToolRunContext` and its pass-through in `OpenAsync` |
-| `Application/Tools/ChatAgent.cs` | `TurnDeadline`, bypassing `Patience` and confirmation for `ask_user`, `interactive` |
-| `Infrastructure/Tools/*` | context pass-through through three factories |
-| `Mcp.App/AppAskUserTool.cs` | tool, validation, position-to-text conversion |
+| `Server/Application/Runs/IUserPromptBroker.cs` | `AskAsync`, `UserPromptRequest` |
+| `Server/Application/Runs/ChatRunDispatcher.cs` | broker implementation, `AnswerPromptAsync`, releasing the question together with the turn |
+| `Server/Application/Tools/IToolSession.cs` | `ToolRunContext` and its pass-through in `OpenAsync` |
+| `Server/Application/Tools/ChatAgent.cs` | `TurnDeadline`, bypassing `Patience` and confirmation for `ask_user`, `interactive` |
+| `Server/Infrastructure/Tools/*` | context pass-through through three factories |
+| `Server/Infrastructure/Tools/App/AppAskUserTool.cs` | tool, validation, position-to-text conversion |
 | `Contracts/Tools/AskUserPresentationAdapter.cs` | transcript row |
 | `Host/Program.cs` | `POST /api/projects/{p}/chats/{c}/prompts/answer?branchId=…` |
 | `Web/Components/UserPromptCard.razor`, `MessageFeed.razor`, `Pages/Home.razor`, `Runs/*`, `Markdown/*`, `css` | card, composer, attention marker, inline markdown |

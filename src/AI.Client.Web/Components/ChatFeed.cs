@@ -1,4 +1,6 @@
 using AI.Client.Contracts.Chats;
+using AI.Client.Contracts.Tools;
+using System.Text.Json;
 
 namespace AI.Client.Web.Components;
 
@@ -254,5 +256,39 @@ public sealed class ChatFeed : IChatFeedProjection
             }
         }
         return invocations;
+    }
+
+    public IReadOnlyList<ContextCheckpoint> CheckpointsOf(IReadOnlyList<ChatMessageView> group)
+    {
+        var checkpoints = new List<ContextCheckpoint>();
+        foreach (var invocation in BuildInvocations(group))
+        {
+            if (ToolRef.Parse(invocation.Call.Name) is not { IsApp: true, Name: "context_compact" }
+                || invocation.Result is not { ContentOmitted: false } result) continue;
+
+            try
+            {
+                using var document = JsonDocument.Parse(result.Content);
+                var envelope = document.RootElement;
+                if (envelope.ValueKind != JsonValueKind.Object
+                    || !envelope.TryGetProperty("isError", out var isError)
+                    || isError.ValueKind != JsonValueKind.False
+                    || !envelope.TryGetProperty("structuredContent", out var payload)
+                    || payload.ValueKind != JsonValueKind.Object
+                    || !payload.TryGetProperty("action", out var action)
+                    || action.ValueKind != JsonValueKind.String
+                    || action.GetString() != "Compact"
+                    || !payload.TryGetProperty("applied", out var applied)
+                    || applied.ValueKind != JsonValueKind.True
+                    || !payload.TryGetProperty("coveredMessages", out var covered)
+                    || covered.ValueKind != JsonValueKind.Number
+                    || !covered.TryGetInt32(out var count)
+                    || count <= 0) continue;
+
+                checkpoints.Add(new ContextCheckpoint(invocation.Call.Id, count));
+            }
+            catch (JsonException) { /* Old or malformed tool output is ordinary tool activity. */ }
+        }
+        return checkpoints;
     }
 }

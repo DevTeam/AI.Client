@@ -284,6 +284,36 @@ public sealed class ChatFeedTests
     }
 
     [Fact]
+    public void ShouldProjectOnlyAppliedCompactResultsIntoIntermediateWork()
+    {
+        var question = User("do it");
+        var compactCall = Message("Assistant", string.Empty,
+            [new ChatToolCall("compact-1", "mcp_app__context_compact", "{\"action\":\"Compact\"}")]);
+        var pending = _feed.BuildTurns([question, compactCall], lastTurnEndedWithoutFinalAnswer: true)
+            .ShouldHaveSingleItem();
+        _feed.CheckpointsOf(pending.IntermediateItems[0].ToolGroup!).ShouldBeEmpty();
+
+        var result = ToolResult("compact-1", """
+            {"isError":false,"structuredContent":{"action":"Compact","coveredMessages":7,"applied":true}}
+            """);
+        var answer = Assistant("finished");
+        var complete = _feed.BuildTurns([question, compactCall, result, answer]).ShouldHaveSingleItem();
+
+        complete.IntermediateItems.ShouldHaveSingleItem();
+        _feed.CheckpointsOf(complete.IntermediateItems[0].ToolGroup!)
+            .ShouldBe([new ContextCheckpoint("compact-1", 7)]);
+        complete.FinalAnswer!.Value.Message.ShouldBe(answer);
+
+        var notApplied = result with { Content = """
+            {"isError":true,"structuredContent":{"action":"Compact","coveredMessages":7,"applied":false}}
+            """ };
+        _feed.CheckpointsOf([compactCall, notApplied]).ShouldBeEmpty();
+        _feed.CheckpointsOf([compactCall, result with { Content = result.Content.Replace("\"isError\":false", "\"isError\":true") }])
+            .ShouldBeEmpty();
+        _feed.CheckpointsOf([compactCall, result with { Content = "not json" }]).ShouldBeEmpty();
+    }
+
+    [Fact]
     public void ShouldUseLatestIntermediateAssistantTextForRunningTitle()
     {
         var question = User("do it");

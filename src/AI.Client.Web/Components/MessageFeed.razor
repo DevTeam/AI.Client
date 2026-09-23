@@ -225,6 +225,17 @@
                     </div>
                     @renderBranchPicker(anchor)
                 </article>
+                @if (entry.IsExpandedIntermediate)
+                {
+                    @foreach (var checkpoint in Feed.CheckpointsOf(group))
+                    {
+                        <div @key="checkpoint.CallId" class="context-checkpoint" role="note">
+                            <span class="context-checkpoint-mark" aria-hidden="true"><AppIcon Name="check" /></span>
+                            <span>Context checkpoint</span>
+                            <span class="context-checkpoint-detail">@checkpoint.CoveredMessages earlier messages summarized for this run</span>
+                        </div>
+                    }
+                }
             }
         }
         </TranscriptRenderBoundary>
@@ -923,6 +934,7 @@
         FeedTurn? Summary = null,
         ChatMessageView? ChangesMessage = null,
         int? RevealIndex = null,
+        bool IsExpandedIntermediate = false,
         IReadOnlyList<ActiveToolInvocation>? ActiveTools = null,
         Guid? TurnId = null,
         Guid? CollapseTurnId = null,
@@ -970,7 +982,8 @@
                     entries.AddRange(visibleIntermediateItems
                         .Select((item, index) => new RenderedFeedEntry(
                             Item: item,
-                            RevealIndex: index % ExpandedTurnBatchSize)));
+                            RevealIndex: index % ExpandedTurnBatchSize,
+                            IsExpandedIntermediate: true)));
                     // File-change receipts from later chunks stay visible while the detailed
                     // blocks are mounted over several frames.
                     entries.AddRange(turn.IntermediateItems.Skip(visibleCount)

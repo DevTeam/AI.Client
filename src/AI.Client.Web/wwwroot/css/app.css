@@ -3864,6 +3864,176 @@ textarea {
     font-size: 0.85rem;
 }
 
+/* The Model input pairs with a <datalist> for autocomplete. The loading spinner sits inline to
+   the right so the user knows a network call is in flight, without taking up an extra row. */
+.model-field-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+}
+
+/* A div, not a label: a label refocuses the input on any click inside it, which reopened the list
+   right after an outside press had closed it. The colour is the one labels get. */
+.model-field-row > .model-field {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    color: #c9d7e7;
+}
+
+.model-field-row > .model-field > input {
+    width: 100%;
+}
+
+/* A compact square that the spinner can rotate inside; sits at the bottom of the row so its
+   vertical centre matches the input's vertical centre. */
+.model-loading {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    color: #919191;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .model-loading .tool-row-spinner { animation: none; }
+}
+
+/* The Model picker is a free-text input with an inline chevron trigger. Clicking the chevron (or
+   focusing the input) opens a list of catalog models — independent of what the user has typed —
+   so a saved but non-catalog id never hides the catalog behind a filter the browser applied
+   silently. The picker is absolutely positioned so the drawer layout does not reflow when it
+   opens. */
+.model-picker {
+    position: relative;
+    display: flex;
+    width: 100%;
+}
+
+.model-picker-input {
+    flex: 1;
+    min-width: 0;
+    padding-right: 2.25rem;
+}
+
+.model-picker-toggle {
+    position: absolute;
+    right: 0.25rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.6rem;
+    height: 1.6rem;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #919191;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+}
+
+.model-picker-toggle:disabled { cursor: default; opacity: 0.6; }
+
+.model-picker-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 18rem;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0.25rem;
+    list-style: none;
+    background: var(--surface-1, #1a1a1a);
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 0.4rem;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+    z-index: 50;
+}
+
+.model-picker-empty {
+    padding: 0.6rem 0.75rem;
+    color: #919191;
+    font-size: 0.9rem;
+}
+
+/* The input picks up a red outline while a load has failed, matching the error pane below it so
+   the picker reads as a single errored unit rather than an empty control with a stray toast. */
+.model-picker-input-error {
+    border-color: #c44;
+}
+
+.model-picker-error {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+}
+
+.model-picker-error-message {
+    margin: 0;
+    color: #f5b5b5;
+    font-size: 0.85rem;
+    line-height: 1.3;
+    word-break: break-word;
+}
+
+.model-picker-retry {
+    align-self: flex-start;
+}
+
+.model-picker-error-hint {
+    color: #f5b5b5;
+    line-height: 1.3;
+    word-break: break-word;
+}
+
+.model-picker-retry-link {
+    margin-left: 0.35rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.model-picker-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    width: 100%;
+    padding: 0.45rem 0.6rem;
+    border: none;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 0.3rem;
+}
+
+.model-picker-option:hover,
+.model-picker-option.selected {
+    background: rgb(255 255 255 / 6%);
+}
+
+.model-picker-option-id {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9rem;
+}
+
+.model-picker-option-name {
+    color: #919191;
+    font-size: 0.8rem;
+}
+
 /* SVG fences are displayed in an image context, keeping model-authored markup
    out of the page DOM. Large drawings stay within the message width. */
 .svg-block {

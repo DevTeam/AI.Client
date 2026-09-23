@@ -103,7 +103,7 @@ internal sealed class Composition
                 Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
                 JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
-                GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
+                GlobalSettingsService, OpenAiCompatibleConnectionModelsResolver, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService,
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff,

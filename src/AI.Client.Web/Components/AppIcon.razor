@@ -132,6 +132,12 @@
         case "pin":
             <path d="M12 17v5" /><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v2.34a4 4 0 0 1-1.52 3.13l-.99.79A2 2 0 0 0 6 15.83V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.17a2 2 0 0 0-.74-1.56l-.99-.79A4 4 0 0 1 15 9.34Z" />
             break;
+        @* Unpin: the same pin, with a diagonal slash from top-right to bottom-left to show the
+           pinned state is the one about to be removed. Drawn as one path so the stroke joins
+           stay consistent with the rest of the icon set. *@
+        case "unpin":
+            <path d="M12 17v5" /><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v2.34a4 4 0 0 1-1.52 3.13l-.99.79A2 2 0 0 0 6 15.83V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.17a2 2 0 0 0-.74-1.56l-.99-.79A4 4 0 0 1 15 9.34Z" /><path d="M4 4l16 16" />
+            break;
         default:
             <circle cx="12" cy="12" r="9" />
             break;

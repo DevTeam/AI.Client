@@ -1,0 +1,23 @@
+// ReSharper disable UnusedMember.Local
+namespace AI.Client.Server.CommandLine;
+
+using System.CommandLine;
+using System.Diagnostics;
+using Pure.DI;
+
+/// <summary>
+/// The command line shared by every executable that hosts the server. Executables link this file,
+/// build on it with <c>DependsOn("AI.Client.Server.CommandLine.Composition")</c> and add their own
+/// <see cref="IInitializable"/> commands, which register themselves on the root command.
+/// </summary>
+internal sealed class Composition
+{
+    [Conditional("DI")]
+    private static void Setup() =>
+        DI.Setup(kind: CompositionKind.Internal)
+            .Arg<string[]>("args")
+            .Bind<RootCommand>().As(Lifetime.PerResolve).To(_ => new RootCommand())
+            .Bind<IServerCommandLine>().As(Lifetime.Singleton).To<ServerCommandLine>()
+            .Bind<ICommandLineApplication>().To<CommandLineApplication>()
+            .Root<ICommandLineApplication>("Root");
+}

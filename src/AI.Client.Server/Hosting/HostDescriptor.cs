@@ -1,6 +1,6 @@
-namespace AI.Client.Host;
+namespace AI.Client.Server.Hosting;
 
-internal sealed class HostDescriptor : IHostDescriptor
+public sealed class HostDescriptor : IHostDescriptor
 {
     public string ProductName => "AI.Client";
 

@@ -132,7 +132,7 @@ Symmetric to `awaiting_approval` / `session approve`.
 | `Server/Infrastructure/Tools/*` | context pass-through through three factories |
 | `Server/Infrastructure/Tools/App/AppAskUserTool.cs` | tool, validation, position-to-text conversion |
 | `Contracts/Tools/AskUserPresentationAdapter.cs` | transcript row |
-| `Host/Program.cs` | `POST /api/projects/{p}/chats/{c}/prompts/answer?branchId=…` |
+| `Server/Hosting/Endpoints/RunEndpoints.cs` | `POST /api/projects/{p}/chats/{c}/prompts/answer?branchId=…` |
 | `Web/Components/UserPromptCard.razor`, `MessageFeed.razor`, `Pages/Home.razor`, `Runs/*`, `Markdown/*`, `css` | card, composer, attention marker, inline markdown |
 | `Cli/*` | `awaiting_answer`, `session answer` |
 

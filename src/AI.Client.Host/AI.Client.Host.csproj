@@ -7,6 +7,7 @@
                       Aliases="AIClientWeb" />
     <Compile Include="..\AI.Client.Contracts\Composition.cs" Link="Contracts\Composition.cs" />
     <Compile Include="..\AI.Client.Server\Composition.cs" Link="Server\Composition.cs" />
+    <Compile Include="..\AI.Client.Server\CommandLine\Composition.cs" Link="Server\CommandLine\Composition.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" />

@@ -1,6 +1,7 @@
-namespace AI.Client.Host;
+namespace AI.Client.Server.Hosting;
 
 using Application.Runs;
+using Microsoft.Extensions.Hosting;
 
 internal sealed class ChatRunHostedService(IChatRunDispatcher dispatcher) : IHostedService
 {

@@ -1,4 +1,4 @@
-namespace AI.Client.Host;
+namespace AI.Client.Server.Hosting;
 
 public interface IHostDescriptor
 {

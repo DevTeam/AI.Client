@@ -38,3 +38,6 @@ public readonly record struct ToolInvocation(
         ? completed - StartedAt
         : null;
 }
+
+/// <summary>A completed context checkpoint shown only among expanded intermediate steps.</summary>
+public readonly record struct ContextCheckpoint(string CallId, int CoveredMessages);

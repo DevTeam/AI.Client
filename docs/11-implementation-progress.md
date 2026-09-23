@@ -259,3 +259,20 @@ The tools are split by path kind. `delete_file` deletes only a file, `delete_dir
 The call presentation marks recursion directly in the row title ("Delete directory (recursive)"), and the result — the deleted file size. `WorkspaceChangeTracker` watches both tools: a deleted file appears in the run changes as `Deleted` with the line count taken from the content captured before the run.
 
 Check: 395 tests in four test projects — 120 Application, 178 Infrastructure, 67 Web, 30 Domain — with no failures, solution and test projects compilation without warnings. The full `dotnet run --project build -- verify` was not run: the running `AI.Client.Host` instance was holding the assemblies in its `bin`, so the test assemblies were run directly.
+
+## 2026-09-23 — explicit context checkpoint in expanded turns
+
+The chat feed now marks a successful `mcp_app__context_compact` call with a small checkpoint row after
+its tool group, only while the intermediate turn is expanded. The marker uses the persisted
+structured result and appears when the result arrives; pending, failed, and malformed results
+do not create it. Collapsing the turn hides it, and the final assistant answer remains a separate
+message. This covers the explicit tool checkpoint, not the automatic planner fallback above.
+
+Check: Web build completed with zero warnings or errors; all 102 Web tests passed with the xUnit
+v3 runner, including the pending-result and completed-turn projection cases.
+
+Follow-up: the expanded activity API originally omitted every tool result, including the
+checkpoint result needed by the row. It now includes only small results for the app's
+`context_compact` tool while other tool output remains lazy. The feed recognizes the persisted
+`mcp_app__context_compact` name. Checks: Server build with zero warnings, 420 Server tests passed
+with one platform skip, and all 102 Web tests passed.

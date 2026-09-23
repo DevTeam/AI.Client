@@ -71,4 +71,7 @@ public interface IChatFeedProjection
     /// and timestamps each one from the messages themselves.
     /// </summary>
     List<ToolInvocation> BuildInvocations(IReadOnlyList<ChatMessageView> group);
+
+    /// <summary>Successful model-only context checkpoints recorded by this tool group.</summary>
+    IReadOnlyList<ContextCheckpoint> CheckpointsOf(IReadOnlyList<ChatMessageView> group);
 }

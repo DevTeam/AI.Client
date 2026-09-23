@@ -4,6 +4,7 @@ namespace AI.Client.Application.Chats;
 using Projects;
 using AI.Client.Contracts.Chats;
 using AI.Client.Contracts.Projects;
+using AI.Client.Contracts.Tools;
 using AI.Client.Contracts.Workspace;
 using AI.Client.Domain.Chats;
 using AI.Client.Domain.Projects;
@@ -75,10 +76,21 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         // transcript as the final answer. Everything before it is expandable activity.
         if (end > start + 1 && IsPlainAssistant(branch[end - 1])) end--;
 
+        // The expanded feed needs the small checkpoint result to decide whether compaction
+        // actually applied. Other tool output remains lazy, even when the turn is expanded.
+        var compactCallIds = branch.Skip(start + 1).Take(end - start - 1)
+            .SelectMany(message => message.ToolCalls ?? [])
+            .Where(call => ToolRef.Parse(call.Name) is { IsApp: true, Name: "context_compact" })
+            .Select(call => call.Id)
+            .ToHashSet(StringComparer.Ordinal);
         var messages = branch
             .Skip(start + 1)
             .Take(end - start - 1)
-            .Select(message => ToView(message, omitToolResultContent: true))
+            .Select(message => ToView(message, omitToolResultContent:
+                message.Role != ChatMessageRole.Tool
+                || message.ToolCallId is not { } callId
+                || !compactCallIds.Contains(callId)
+                || message.Content.Length > 4096))
             .ToArray();
         return new ChatTurnActivity(stored.Revision, turnId, messages);
     }

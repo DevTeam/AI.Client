@@ -129,5 +129,44 @@ public class ChatServiceTests
         content.Content.ShouldBe("very large result");
     }
 
+    [Fact]
+    public async Task ShouldIncludeOnlySmallAppCompactionResultsInExpandedActivity()
+    {
+        var userId = new ChatMessageId(Guid.NewGuid());
+        var callId = new ChatMessageId(Guid.NewGuid());
+        var compactResultId = new ChatMessageId(Guid.NewGuid());
+        var otherResultId = new ChatMessageId(Guid.NewGuid());
+        var answerId = new ChatMessageId(Guid.NewGuid());
+        var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
+        chat.AddMessage(new ChatMessage(userId, null, ChatMessageRole.User, "Question", _now), _now);
+        chat.AddMessage(new ChatMessage(callId, userId, ChatMessageRole.Assistant, string.Empty, _now.AddSeconds(1),
+            toolCalls:
+            [
+                new ChatToolCall("compact", "mcp_app__context_compact", "{\"action\":\"Compact\"}"),
+                new ChatToolCall("other", "mcp_built_in__process_run", "{}")
+            ]), _now.AddSeconds(1));
+        const string compactContent = """
+            {"isError":false,"structuredContent":{"action":"Compact","coveredMessages":3,"applied":true}}
+            """;
+        chat.AddMessage(new ChatMessage(compactResultId, callId, ChatMessageRole.Tool, compactContent,
+            _now.AddSeconds(2), toolCallId: "compact"), _now.AddSeconds(2));
+        chat.AddMessage(new ChatMessage(otherResultId, compactResultId, ChatMessageRole.Tool, "large ordinary output",
+            _now.AddSeconds(3), toolCallId: "other"), _now.AddSeconds(3));
+        chat.AddMessage(new ChatMessage(answerId, otherResultId, ChatMessageRole.Assistant, "Done",
+            _now.AddSeconds(4)), _now.AddSeconds(4));
+        _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None))
+            .ReturnsAsync(new StoredChat(chat, 1));
+
+        var service = CreateInstance();
+        var transcript = await service.GetTranscriptAsync(_projectId.Value, _chatId.Value, CancellationToken.None);
+        transcript!.Messages.Single(message => message.Id == compactResultId.Value).ContentOmitted.ShouldBeTrue();
+
+        var activity = await service.GetTurnActivityAsync(
+            _projectId.Value, _chatId.Value, userId.Value, answerId.Value, CancellationToken.None);
+        activity!.Messages.Single(message => message.Id == compactResultId.Value).Content.ShouldBe(compactContent);
+        activity.Messages.Single(message => message.Id == compactResultId.Value).ContentOmitted.ShouldBeFalse();
+        activity.Messages.Single(message => message.Id == otherResultId.Value).ContentOmitted.ShouldBeTrue();
+    }
+
     private ChatService CreateInstance() => new(_repository.Object, _idGenerator.Object, _clock.Object, new ChatSynchronization());
 }

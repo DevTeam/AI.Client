@@ -1,5 +1,7 @@
 namespace AI.Client.Desktop;
 
+using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
@@ -25,6 +27,19 @@ internal sealed partial class MainWindow : Window
         WebView.NewWindowRequested += (_, args) => OpenNewWindowOutside(args);
         WebView.NavigationCompleted += (_, args) => OnNavigationCompleted(args);
         Retry.Click += (_, _) => Load();
+        Minimize.Click += (_, _) => WindowState = WindowState.Minimized;
+        Maximize.Click += (_, _) => WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+        CloseButton.Click += (_, _) => Close();
+        PropertyChanged += (_, args) =>
+        {
+            if (args.Property == WindowStateProperty)
+            {
+                UpdateMaximizeButton();
+            }
+        };
+        UpdateMaximizeButton();
     }
 
     protected override void OnOpened(EventArgs e)
@@ -143,6 +158,15 @@ internal sealed partial class MainWindow : Window
         StatusDetail.IsVisible = !string.IsNullOrWhiteSpace(detail);
         Retry.IsVisible = canRetry;
         Status.IsVisible = true;
+    }
+
+    private void UpdateMaximizeButton()
+    {
+        var maximized = WindowState == WindowState.Maximized;
+        MaximizeGlyph.IsVisible = !maximized;
+        RestoreGlyph.IsVisible = maximized;
+        ToolTip.SetTip(Maximize, maximized ? "Restore" : "Maximize");
+        AutomationProperties.SetName(Maximize, maximized ? "Restore window" : "Maximize window");
     }
 
     private static string EngineHint() =>

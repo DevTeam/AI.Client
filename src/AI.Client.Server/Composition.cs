@@ -71,10 +71,37 @@ internal sealed class Composition
             .Bind<IChatStoragePaths>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new ChatStoragePaths(location.RootDirectory))
             .Bind<IChatRunStoragePaths>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new ChatRunStoragePaths(location.RootDirectory))
             .Bind<IGlobalSettingsPaths>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new GlobalSettingsPaths(location.RootDirectory))
+            // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
+            // or in the data directory when the machine has no working keyring.
+            .Bind<IUserDataProtector>().As(Lifetime.Singleton).To<IUserDataProtector>(ctx =>
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    ctx.Inject<ProtectedDataUserDataProtector>(out var windows);
+                    return windows;
+                }
+
+                ctx.Inject<MasterKeyUserDataProtector>(out var portable);
+                return portable;
+            })
+            .Bind<IKeyringMasterKeyStore>().As(Lifetime.Singleton).To<IKeyringMasterKeyStore>(ctx =>
+            {
+                if (OperatingSystem.IsMacOS())
+                {
+                    ctx.Inject<KeychainMasterKeyStore>(out var keychain);
+                    return keychain;
+                }
+
+                ctx.Inject<SecretServiceMasterKeyStore>(out var secretService);
+                return secretService;
+            })
+            .Bind<IMasterKeyStore>().As(Lifetime.Singleton).To<KeyringOrFileMasterKeyStore>()
+            .Bind<IFileMasterKeyStore>().As(Lifetime.Singleton).To<FileMasterKeyStore>()
+            .Singleton<MasterKeyFormat, ProcessCommandRunner>()
             // Application and infrastructure
             .Singleton<PhysicalTextFileSystem, PhysicalDirectoryBrowser, JsonProjectRepository, ProjectDocumentSerializer,
                 Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
-                ProtectedDataUserDataProtector, ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
+                ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
                 JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
                 GlobalSettingsService, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService,

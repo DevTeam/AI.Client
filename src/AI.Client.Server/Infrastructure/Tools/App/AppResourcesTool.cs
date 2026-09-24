@@ -18,7 +18,7 @@ public sealed class AppResourcesTool(IResourceService resources, IReviewService 
         {
             SerializerOptions = reply.Json,
             Description = "Create or retire project file and directory references; create or update mutable chat reviews. "
-                          + "A review names one saved assistant change set and comments on its files or diff lines. "
+                          + "A diff review names one saved assistant change set; a message review comments on selected text. "
                           + "Create validates a path against "
                           + "the project's read grants and returns a reusable reference without reading file contents. "
                           + "Use app_read Resources to list references, and app_runs Submit to attach one to a chat turn. "
@@ -32,7 +32,8 @@ public sealed class AppResourcesTool(IResourceService resources, IReviewService 
         ChatResourceKind? kind = null, string? path = null,
         Guid? resourceId = null, long? revision = null, Guid? chatId = null,
         Guid? sourceMessageId = null, string? name = null, string[]? files = null,
-        ReviewComment[]? comments = null, CancellationToken cancellationToken = default)
+        ReviewComment[]? comments = null, ChatReviewKind? reviewKind = null,
+        MessageReviewComment[]? messageComments = null, CancellationToken cancellationToken = default)
         => writes.RunAsync(operation.ToString(), operationId, async builder =>
         {
             if (operation == ResourceOperation.CreateReview)
@@ -40,7 +41,8 @@ public sealed class AppResourcesTool(IResourceService resources, IReviewService 
                 var review = await reviews.CreateAsync(projectId,
                     chatId ?? throw new ArgumentException("'chatId' is required."),
                     new CreateReviewRequest(sourceMessageId ?? throw new ArgumentException("'sourceMessageId' is required."),
-                        name ?? throw new ArgumentException("'name' is required."), files ?? []), cancellationToken);
+                        name ?? throw new ArgumentException("'name' is required."), files ?? [],
+                        reviewKind ?? ChatReviewKind.Diff, messageComments), cancellationToken);
                 return builder.Applied("Created review resource.", projectId, review.ChatId, revision: review.Revision,
                     current: JsonSerializer.SerializeToElement(review, reply.Json));
             }
@@ -50,7 +52,8 @@ public sealed class AppResourcesTool(IResourceService resources, IReviewService 
                     chatId ?? throw new ArgumentException("'chatId' is required."),
                     resourceId ?? throw new ArgumentException("'resourceId' is required."),
                     new UpdateReviewRequest(name ?? throw new ArgumentException("'name' is required."),
-                        files ?? [], comments ?? [], revision ?? throw new ArgumentException("'revision' is required.")),
+                        files ?? [], comments ?? [], revision ?? throw new ArgumentException("'revision' is required."),
+                        messageComments),
                     cancellationToken);
                 return review is null ? builder.Failed("Review not found.", projectId)
                     : builder.Applied("Updated review resource.", projectId, review.ChatId, revision: review.Revision,

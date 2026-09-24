@@ -74,7 +74,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
                 message.Content,
                 message.CreatedAt,
                 message.IsIncomplete, message.ToolCalls, message.ToolCallId,
-                ToDomain(message.WorkspaceChanges), ResourceReferences.ToDomain(message.Resources)), message.CreatedAt);
+                ToDomain(message.WorkspaceChanges), ResourceReferences.ToDomain(message.Resources),
+                allowEmptyAfterResourceRemoval: true), message.CreatedAt);
         }
         chat.RestoreBranches(document.Branches.Select(branch => new ChatBranch(branch.Id,
             branch.HeadMessageId is { } head ? new ChatMessageId(head) : null, branch.Title,

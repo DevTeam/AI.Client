@@ -1,14 +1,23 @@
 namespace AI.Client.Contracts.Resources;
 
-/// <summary>A mutable, named chat resource anchored to one saved assistant change set.</summary>
+/// <summary>A mutable, named chat resource anchored to saved changes or a chat message.</summary>
 public sealed record ChatReview(Guid Id, Guid ProjectId, Guid ChatId, string Name, Guid SourceMessageId,
     DateTimeOffset SourceCreatedAt, IReadOnlyList<string> Files, IReadOnlyList<ReviewComment> Comments,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, long Revision);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, long Revision,
+    ChatReviewKind Kind = ChatReviewKind.Diff,
+    IReadOnlyList<MessageReviewComment>? MessageComments = null);
 
-/// <summary>Either a whole-file comment or a range in the saved unified diff.</summary>
+public enum ChatReviewKind { Diff, Message }
+
+public sealed record MessageReviewComment(Guid Id, int Start, int End, string Quote, string Body);
+
+/// <summary>Either a whole-file comment or a range in a saved unified diff.</summary>
 public sealed record ReviewComment(Guid Id, string Path, int? OldStart, int? OldEnd,
     int? NewStart, int? NewEnd, string Body);
 
-public sealed record CreateReviewRequest(Guid SourceMessageId, string Name, IReadOnlyList<string> Files);
+public sealed record CreateReviewRequest(Guid SourceMessageId, string Name, IReadOnlyList<string> Files,
+    ChatReviewKind Kind = ChatReviewKind.Diff,
+    IReadOnlyList<MessageReviewComment>? MessageComments = null);
 public sealed record UpdateReviewRequest(string Name, IReadOnlyList<string> Files,
-    IReadOnlyList<ReviewComment> Comments, long ExpectedRevision);
+    IReadOnlyList<ReviewComment> Comments, long ExpectedRevision,
+    IReadOnlyList<MessageReviewComment>? MessageComments = null);

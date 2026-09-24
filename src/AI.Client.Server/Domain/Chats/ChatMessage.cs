@@ -12,7 +12,8 @@ public sealed class ChatMessage(
     IReadOnlyList<ChatToolCall>? toolCalls = null,
     string? toolCallId = null,
     ChatWorkspaceChangeSet? workspaceChanges = null,
-    IReadOnlyList<AI.Client.Domain.Resources.ChatResourceRef>? resources = null)
+    IReadOnlyList<AI.Client.Domain.Resources.ChatResourceRef>? resources = null,
+    bool allowEmptyAfterResourceRemoval = false)
 {
     public ChatMessageId Id { get; } = id;
 
@@ -20,7 +21,8 @@ public sealed class ChatMessage(
 
     public ChatMessageRole Role { get; } = role;
 
-    public string Content { get; } = string.IsNullOrWhiteSpace(content) && toolCalls is not { Count: > 0 } && resources is not { Count: > 0 }
+    public string Content { get; } = !allowEmptyAfterResourceRemoval && string.IsNullOrWhiteSpace(content)
+        && toolCalls is not { Count: > 0 } && resources is not { Count: > 0 }
         ? throw new DomainException("Chat message content cannot be empty.")
         : content.Trim();
 

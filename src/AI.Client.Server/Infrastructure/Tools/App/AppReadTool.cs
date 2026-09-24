@@ -3,6 +3,7 @@
 using AI.Client.Application.Chats;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Runs;
+using AI.Client.Application.Resources;
 using AI.Client.Application.Settings;
 using AI.Client.Application.Tools;
 using AI.Client.Contracts.Chats;
@@ -39,6 +40,8 @@ public enum AppResource
     /// 'branchId' narrow it to. Returns a snippet around each match, not the whole message.
     /// </summary>
     Search,
+    /// <summary>Reusable file and directory references of one project.</summary>
+    Resources,
 }
 
 [McpServerToolType]
@@ -47,6 +50,7 @@ public sealed class AppReadTool(
     IChatService chats,
     IGlobalSettingsService settings,
     IChatSearchService search,
+    IResourceService resources,
     Func<IChatRunDispatcher> runs,
     IAppToolReply reply) : IAppTool
 {
@@ -55,7 +59,7 @@ public sealed class AppReadTool(
         new McpServerToolCreateOptions
         {
             SerializerOptions = reply.Json,
-            Description = "Read this application's own data: projects, chats, messages, runs and global settings. "
+            Description = "Read this application's own data: projects, chats, messages, runs, resources and global settings. "
                           + "'Project', 'Chat' and 'Messages' need the ids named in their description; the others ignore them. "
                           + "'Search' finds text in messages across every chat at once and needs 'query'; use it instead of reading "
                           + "chats one by one. Results are paged: pass the returned 'nextCursor' back to continue, and expect "
@@ -153,6 +157,9 @@ public sealed class AppReadTool(
             }
             case AppResource.Settings:
                 return Paging.Page("Settings", [await settings.GetAsync(cancellationToken)], cursor, limit, reply.Json);
+            case AppResource.Resources:
+                return Paging.Page("Resources", await resources.ListAsync(Required(projectId, nameof(projectId)), cancellationToken),
+                    cursor, limit, reply.Json);
             default:
                 throw new ArgumentException("Unknown resource.", nameof(resource));
         }

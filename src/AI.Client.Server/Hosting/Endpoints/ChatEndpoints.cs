@@ -4,6 +4,8 @@ using Application.Chats;
 using Application.Runs;
 using Contracts.Chats;
 using Contracts.Projects;
+using Contracts.Resources;
+using Application.Resources;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -12,6 +14,9 @@ public sealed class ChatEndpoints : IEndpointModule
 {
     public void Map(IEndpointRouteBuilder routes)
     {
+        routes.MapPost("/api/projects/{projectId:guid}/resources",
+            async (Guid projectId, CreateResourceRequest request, IResourceService service, CancellationToken token) =>
+                Results.Ok(await service.CreateAsync(projectId, request.Kind, request.Path, token)));
         // Searching is reading, so it stays a GET: the whole request fits in the query string and a result
         // is a projection of stored history, never a change to it.
         routes.MapGet("/api/chats/search", (

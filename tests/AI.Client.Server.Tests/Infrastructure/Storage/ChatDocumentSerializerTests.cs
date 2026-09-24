@@ -3,6 +3,7 @@ namespace AI.Client.Infrastructure.Tests.Storage;
 using Domain.Chats;
 using AI.Client.Domain.Projects;
 using AI.Client.Infrastructure.Storage;
+using AI.Client.Domain.Resources;
 using Shouldly;
 using System.Text.Json.Nodes;
 using Xunit;
@@ -10,6 +11,22 @@ using Xunit;
 public class ChatDocumentSerializerTests
 {
     private readonly ChatDocumentSerializer _serializer = new();
+
+    [Fact]
+    public void ShouldKeepResourceOnlyUserMessageAsReferences()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var reference = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.Directory, "C:\\work\\src");
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", now);
+        chat.AddMessage(new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null,
+            ChatMessageRole.User, string.Empty, now, resources: [reference]), now);
+
+        var restored = _serializer.Deserialize(_serializer.Serialize(chat, 1));
+
+        var message = restored.Chat.Messages.ShouldHaveSingleItem();
+        message.Content.ShouldBe(string.Empty);
+        message.Resources!.ShouldHaveSingleItem().ShouldBe(reference);
+    }
 
     [Fact]
     public void ShouldRestoreWorkspaceChangesAttachedToAMessage()

@@ -12,6 +12,7 @@ using Contracts.Projects;
 using Contracts.Settings;
 using Contracts.Workspace;
 using Workspace;
+using AI.Client.Application.Resources;
 using Domain.Runs;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
@@ -21,7 +22,8 @@ public sealed class ChatRunDispatcher(
     IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, IChatAgent agent,
     IGlobalSecretStore secretStore, IClock clock, IIdGenerator ids, IChatSynchronization synchronization,
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies,
-    IChatContextBuilder contextBuilder, IChatBranchIds branchIds) : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
+    IChatContextBuilder contextBuilder, IChatBranchIds branchIds, IResourceService resources,
+    IResourceModelProjection resourceProjection) : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
     /// <summary>
@@ -112,7 +114,8 @@ public sealed class ChatRunDispatcher(
     public async Task<ChatRunSnapshot> SubmitAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request, CancellationToken cancellationToken)
     {
         _shutdown.Token.ThrowIfCancellationRequested();
-        ArgumentException.ThrowIfNullOrWhiteSpace(request.Content);
+        if (string.IsNullOrWhiteSpace(request.Content) && request.Resources is not { Count: > 0 })
+            throw new ArgumentException("A message needs text or a resource reference.");
         if (request.OperationId == Guid.Empty || request.MessageId == Guid.Empty || !Enum.IsDefined(request.Mode))
             throw new ArgumentException("Valid operation, message and submission mode are required.");
         // Interrupting has to finish before the queue is rewritten: the worker commits the
@@ -130,6 +133,7 @@ public sealed class ChatRunDispatcher(
             ?? throw new ArgumentException("Branch does not exist.");
         var runtime = await GetRuntimeAsync(projectId, chatId, branchId, chat, cancellationToken);
         if (runtime.State.Operations.Contains(request.OperationId)) return runtime.Snapshot;
+        var validatedResources = await resources.ValidateAsync(projectId, request.Resources, cancellationToken);
         if (request.ExpectedBranchRevision is { } branchRevision && branchRevision != sourceBranch.Revision
             && request.Mode != ChatSubmitMode.Replace)
             throw new InvalidOperationException("The branch changed. Reload it before submitting.");
@@ -179,7 +183,7 @@ public sealed class ChatRunDispatcher(
         if (request.Mode == ChatSubmitMode.Replace) runtime.State.Clear();
         runtime.State.Enqueue(request.OperationId, new QueuedRunMessage(request.MessageId, request.Content.Trim(), clock.UtcNow,
             parentMode, parentId, replaceId, request.Mode == ChatSubmitMode.Fork ? sourceBranchId : null,
-            sourceBranch.Revision));
+            sourceBranch.Revision, Resources: ResourceReferences.ToDomain(validatedResources)));
         if (request.Mode == ChatSubmitMode.Queue)
         {
             runtime.ResumeRequested = false;
@@ -392,13 +396,15 @@ public sealed class ChatRunDispatcher(
                         chat = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
                             new AppendChatMessageRequest(queued.Id, parent, "User", queued.Content, chat.Revision,
                                 BranchId: runtime.State.BranchId, ParentBranchId: queued.ParentBranchId,
-                                ReplaceSourceId: queued.ReplaceSourceId),
+                                ReplaceSourceId: queued.ReplaceSourceId,
+                                Resources: ResourceReferences.ToContract(queued.Resources)),
                             RetainedMessageIds(chat.Id, queued.Id), token)
                             ?? throw new InvalidOperationException("Message conflict.");
                     }
                     runtime.State.MarkUserCommitted(queued.Id);
                     request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
-                        await secretStore.GetAsync("connection", connection.Id, token), queued.Content, connection.Id,
+                        await secretStore.GetAsync("connection", connection.Id, token),
+                        resourceProjection.Project(queued.Content, ResourceReferences.ToContract(queued.Resources)), connection.Id,
                         contextBuilder.Build(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id)));
                     runtime.ToolHead = ResumeHead(chat, runtime.State.BranchId, queued.Id);
                     await SaveAsync(runtime, chat, token);
@@ -958,6 +964,7 @@ public sealed class ChatRunDispatcher(
         foreach (var chatId in _runtimes.Keys.Where(key => key.ProjectId == projectId).Select(key => key.ChatId).Distinct())
             await RemoveAsync(projectId, chatId, null, cancellationToken);
         await repository.DeleteProjectAsync(projectId, cancellationToken);
+        await resources.DeleteProjectAsync(projectId, cancellationToken);
     }
 
     public async Task<ChatDeleteResult> DeleteChatAsync(Guid projectId, Guid chatId, long revision, CancellationToken cancellationToken)
@@ -1138,7 +1145,8 @@ public sealed class ChatRunDispatcher(
     private static ChatRunSnapshot Snapshot(ChatRunState state, ChatDetails? chat, Guid? activeMessageId = null) => new(state.ProjectId, state.ChatId, state.BranchId,
         (ChatRunStatus)state.Status, state.StreamingContent,
         state.Queue.Select(item => new QueuedChatMessage(item.Id, item.Content, item.CreatedAt,
-            ParentMode(item.ParentMode), item.ParentMessageId, Stage(item.Stage))).ToArray(),
+            ParentMode(item.ParentMode), item.ParentMessageId, Stage(item.Stage),
+            ResourceReferences.ToContract(item.Resources))).ToArray(),
         state.HasUnreadResponse, state.Error, state.Revision, chat?.Revision ?? 0,
         chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.HeadMessageId,
         FailureCode: FailureCode(state.FailureKind), CanRetry: state.CanRetry,

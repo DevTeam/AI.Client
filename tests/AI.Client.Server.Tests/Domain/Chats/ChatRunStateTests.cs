@@ -1,11 +1,25 @@
 namespace AI.Client.Domain.Tests.Chats;
 
 using Runs;
+using AI.Client.Domain.Resources;
 using Shouldly;
 using Xunit;
 
 public class ChatRunStateTests
 {
+    [Fact]
+    public void ShouldQueueAResourceOnlyMessage()
+    {
+        var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var reference = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.Directory, "C:\\work");
+        var message = new QueuedRunMessage(Guid.CreateVersion7(), string.Empty, DateTimeOffset.UtcNow,
+            Resources: [reference]);
+
+        state.Enqueue(Guid.CreateVersion7(), message).ShouldBeTrue();
+        state.Update(message.Id, string.Empty);
+        state.Queue.ShouldHaveSingleItem().Resources!.ShouldHaveSingleItem().ShouldBe(reference);
+    }
+
     [Fact]
     public void ShouldIgnoreRepeatedOperation()
     {

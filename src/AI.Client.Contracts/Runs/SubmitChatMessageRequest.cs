@@ -10,4 +10,5 @@ public enum ChatSubmitMode { Send, Queue, Fork, Replace, SendNow }
 public sealed record SubmitChatMessageRequest(Guid OperationId, Guid MessageId, string Content,
     ChatSubmitMode Mode = ChatSubmitMode.Send, Guid? BranchId = null,
     MessageParentMode ParentMode = MessageParentMode.BranchHead, Guid? ParentMessageId = null,
-    Guid? ReplaceSourceId = null, long? ExpectedBranchRevision = null);
+    Guid? ReplaceSourceId = null, long? ExpectedBranchRevision = null,
+    IReadOnlyList<Resources.ChatResourceRef>? Resources = null);

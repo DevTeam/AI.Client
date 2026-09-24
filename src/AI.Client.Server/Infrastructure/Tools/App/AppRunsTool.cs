@@ -3,6 +3,7 @@
 using AI.Client.Application.Runs;
 using AI.Client.Application.Tools;
 using AI.Client.Contracts.Runs;
+using AI.Client.Contracts.Resources;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
@@ -71,7 +72,8 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
                           + "call returns as soon as the message is accepted and the answer is read later with 'app_read'; with 'wait' "
                           + "true it returns when that run stops, or reports the run's current status if 'waitTimeoutMs' runs out first. "
                           + "Waiting is also bounded by this tool's own policy timeout, so a long wait can be cut short from outside. "
-                          + "'operationId' must be a fresh UUID per distinct message and the same UUID when repeating one."
+                          + "'operationId' must be a fresh UUID per distinct message and the same UUID when repeating one. "
+                          + "Submit may include resource references returned by app_resources Create; these add no file contents to the message."
         });
 
     [McpServerTool(Name = "app_runs", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false,
@@ -86,6 +88,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         SubmitMode mode = SubmitMode.Send,
         Guid? parentMessageId = null,
         Guid? messageId = null,
+        ChatResourceRef[]? resources = null,
         int? position = null,
         bool wait = false,
         int waitTimeoutMs = 60_000,
@@ -95,7 +98,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         var branch = branchId ?? chatId;
         return writes.RunAsync(operation.ToString(), operationId, builder => operation switch
         {
-            RunOperation.Submit => SubmitAsync(builder, projectId, chatId, branch, operationId, content, mode,
+            RunOperation.Submit => SubmitAsync(builder, projectId, chatId, branch, operationId, content, resources, mode,
                 parentMessageId, wait, waitTimeoutMs, cancellationToken),
             RunOperation.Stop => CommandAsync(builder, projectId, chatId, branch, "Stopped the run.",
                 () => runs().StopAsync(projectId, chatId, branch, cancellationToken, operationId)),
@@ -119,12 +122,13 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
     }
 
     private async Task<AppWriteResult> SubmitAsync(
-        AppWriteBuilder builder, Guid projectId, Guid chatId, Guid branchId, Guid operationId, string? content, SubmitMode mode,
+        AppWriteBuilder builder, Guid projectId, Guid chatId, Guid branchId, Guid operationId, string? content,
+        ChatResourceRef[]? resources, SubmitMode mode,
         Guid? parentMessageId, bool wait, int waitTimeoutMs, CancellationToken cancellationToken)
     {
-        var text = string.IsNullOrWhiteSpace(content)
-            ? throw new ArgumentException("'content' is required to submit a message.", nameof(content))
-            : content;
+        var text = content ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(text) && resources is not { Length: > 0 })
+            throw new ArgumentException("'content' or 'resources' is required to submit a message.", nameof(content));
         if (mode is SubmitMode.Fork or SubmitMode.Replace && parentMessageId is null)
             throw new ArgumentException("'parentMessageId' is required to fork or replace.", nameof(parentMessageId));
 
@@ -133,7 +137,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         var request = new SubmitChatMessageRequest(operationId, operationId, text,
             Enum.Parse<ChatSubmitMode>(mode.ToString()), branchId,
             parentMessageId is null ? MessageParentMode.BranchHead : MessageParentMode.Explicit, parentMessageId,
-            mode == SubmitMode.Replace ? parentMessageId : null);
+            mode == SubmitMode.Replace ? parentMessageId : null, Resources: resources);
         var snapshot = await runs().SubmitAsync(projectId, chatId, request, cancellationToken);
         if (wait) snapshot = await AwaitStopAsync(snapshot, waitTimeoutMs, cancellationToken);
         return builder.Applied(Effect(snapshot, wait), projectId, chatId, snapshot.BranchId, operationId,

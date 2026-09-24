@@ -193,7 +193,22 @@
                          class="workspace-message @message.Role.ToLowerInvariant() @(entry.RevealIndex is null ? string.Empty : "turn-message-arriving") @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)"
                          style="@(entry.RevealIndex is { } messageRevealIndex ? $"--turn-arrive-delay: {messageRevealIndex * 60}ms" : null)">
                     @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
-                    <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div>
+                    @if (!string.IsNullOrWhiteSpace(message.Content))
+                    {
+                        <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div>
+                    }
+                    @if (message.Resources is { Count: > 0 })
+                    {
+                        <div class="message-resource-list" aria-label="Workspace references">
+                            @foreach (var resource in message.Resources)
+                            {
+                                <span class="message-resource-chip" @key="resource.Id" title="@resource.Path">
+                                    <AppIcon Name="@(resource.Kind == AI.Client.Contracts.Resources.ChatResourceKind.File ? "file" : "folder")" />
+                                    <span>@resource.Path</span>
+                                </span>
+                            }
+                        </div>
+                    }
                     <div class="message-actions">
                         <button class="icon-action" type="button" title="Copy Markdown" aria-label="Copy Markdown" @onclick="() => OnCopyMessage.InvokeAsync(message.Content)"><AppIcon Name="copy" /></button>
                         <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>

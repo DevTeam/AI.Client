@@ -43,7 +43,7 @@ public sealed class AppToolTests
 
         // The server decides its own listing order, so the set is what matters, not the sequence.
         session.Tools.Select(tool => tool.OriginalName).Order(StringComparer.Ordinal).ShouldBe(
-            ["app_chats", "app_projects", "app_read", "app_runs", "app_security", "ask_user", "context_compact", "spawn_subtask", "tool_search"]);
+            ["app_chats", "app_projects", "app_read", "app_resources", "app_runs", "app_security", "ask_user", "context_compact", "spawn_subtask", "tool_search"]);
         session.Tools.ShouldAllBe(tool => tool.ServerId == AppMcpServer.Id);
         session.Tools.ShouldAllBe(tool => tool.ModelDefinition.Name.StartsWith("mcp_app__", StringComparison.Ordinal));
         // A schema hash is what ties a saved policy to the tool it was granted for.

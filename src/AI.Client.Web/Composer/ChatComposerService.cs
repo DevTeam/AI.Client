@@ -10,7 +10,8 @@ public sealed class ChatComposerService(IChatHistoryApi chatHistory, IChatRunsAp
     public async Task<ComposerSubmitOutcome> SubmitAsync(ComposerSubmitRequest request, CancellationToken cancellationToken)
     {
         if (request.ProjectId is not { } projectId) return new ComposerSubmitOutcome.Rejected("Select a project.");
-        if (string.IsNullOrWhiteSpace(request.Message)) return new ComposerSubmitOutcome.Rejected("The composer is empty.");
+        if (string.IsNullOrWhiteSpace(request.Message) && request.Resources is not { Count: > 0 })
+            return new ComposerSubmitOutcome.Rejected("The composer is empty.");
         var mode = ResolveMode(request);
         // Send-now and replacement both resolve a stuck run by abandoning its old command.
         if (request.SelectedRun is { Status: ChatRunStatus.Failed, CanRetry: false }
@@ -19,8 +20,10 @@ public sealed class ChatComposerService(IChatHistoryApi chatHistory, IChatRunsAp
         try
         {
             var prompt = request.Message.Trim();
+            var title = prompt.Length > 0 ? prompt[..Math.Min(48, prompt.Length)]
+                : request.Resources![0].Path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries).Last();
             var chat = request.SelectedChat ?? await chatHistory.CreateAsync(projectId,
-                new CreateChatRequest(prompt[..Math.Min(48, prompt.Length)], request.CredentialProfileId), cancellationToken);
+                new CreateChatRequest(title, request.CredentialProfileId), cancellationToken);
             var parent = mode == ChatSubmitMode.Fork ? request.ForkSourceId ?? request.BranchLeafId : null;
             var sourceBranchId = request.SelectedBranchId ?? request.SelectedRun?.BranchId
                 ?? BranchLeafHelpers.RunBranchIdFor(request.BranchLeafId, chat);
@@ -33,7 +36,8 @@ public sealed class ChatComposerService(IChatHistoryApi chatHistory, IChatRunsAp
                         : MessageParentMode.BranchHead,
                     ParentMessageId: parent,
                     ReplaceSourceId: request.ReplaceSourceId,
-                    ExpectedBranchRevision: mode is ChatSubmitMode.Replace or ChatSubmitMode.Fork ? branchRevision : null), cancellationToken);
+                    ExpectedBranchRevision: mode is ChatSubmitMode.Replace or ChatSubmitMode.Fork ? branchRevision : null,
+                    Resources: request.Resources), cancellationToken);
             return new ComposerSubmitOutcome.Accepted(chat, snapshot, snapshot.BranchId,
                 parent ?? request.BranchLeafId, snapshot.Status == ChatRunStatus.Paused);
         }

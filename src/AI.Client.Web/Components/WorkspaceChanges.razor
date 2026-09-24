@@ -24,6 +24,7 @@
                 }
             </ul>
         </div>
+        <div class="workspace-changes-top">
         @if (SourceMessageId is { } sourceId)
         {
             <button class="workspace-review-action" type="button" title="Review these changes" @onclick="() => OnReview.InvokeAsync(sourceId)">Review</button>
@@ -41,6 +42,7 @@
             </span>
             <span class="workspace-changes-chevron" aria-hidden="true"><AppIcon Name="chevron-down" /></span>
         </button>
+        </div>
         <div class="workspace-changes-details" aria-hidden="@(!_showDetails)">
             <div class="workspace-changes-details-inner">
             <ul class="workspace-changes-list">
@@ -74,7 +76,7 @@
                                     <div class="workspace-change-diff">
                                         @foreach (var line in lines.Take(MaxRenderedLines))
                                         {
-                                            @RenderDiffLine(line)
+                                            <WorkspaceDiffLine Line="@line" />
                                         }
                                         @if (lines.Count > MaxRenderedLines)
                                         {
@@ -126,45 +128,6 @@
     {
         if (!_expanded.Add(path)) _expanded.Remove(path);
     }
-
-    private RenderFragment RenderDiffLine(DiffLine line) => @<text>
-        @if (line.Kind == DiffLineKind.Hunk)
-        {
-            <div class="diff-hunk">@line.Text</div>
-        }
-        else if (line.Kind == DiffLineKind.Note)
-        {
-            <div class="diff-note">@line.Text</div>
-        }
-        else
-        {
-            <div class="diff-line @KindClass(line.Kind)">
-                @* Two gutters: where the line was, and where it is. An added line has no former
-                   number and a removed one has no current number, and leaving those blank is
-                   what makes the two columns readable as a before and an after. *@
-                <span class="diff-gutter" aria-hidden="true">@line.OldLine</span>
-                <span class="diff-gutter" aria-hidden="true">@line.NewLine</span>
-                @* Not aria-hidden: for anyone reading by ear this sign is the only thing that
-                   says whether the line arrived or left. *@
-                <span class="diff-sign">@Sign(line.Kind)</span>
-                <span class="diff-text">@line.Text</span>
-            </div>
-        }
-    </text>;
-
-    private static string KindClass(DiffLineKind kind) => kind switch
-    {
-        DiffLineKind.Added => "diff-line-added",
-        DiffLineKind.Removed => "diff-line-removed",
-        _ => "diff-line-context",
-    };
-
-    private static string Sign(DiffLineKind kind) => kind switch
-    {
-        DiffLineKind.Added => "+",
-        DiffLineKind.Removed => "−",
-        _ => " ",
-    };
 
     private static string UnavailableReason(FileChange file) => file switch
     {

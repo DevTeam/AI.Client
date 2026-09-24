@@ -366,7 +366,9 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             var keepContent = message.Role == ChatMessageRole.User
                 || IsPlainAssistant(message)
                 && (branchHeads.Contains(message.Id) || followedByUser.Contains(message.Id));
-            return ToView(message, omitContent: !keepContent, omitToolArguments: true, omitWorkspaceChanges: true);
+            // The feed renders each completed turn's file-change receipt from the transcript.
+            // Keep it even when the message body is folded; the live run stops carrying it on completion.
+            return ToView(message, omitContent: !keepContent, omitToolArguments: true);
         }).ToArray();
 
         return new ChatDetails(
@@ -392,8 +394,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         ChatMessage message,
         bool omitContent = false,
         bool omitToolArguments = false,
-        bool omitToolResultContent = false,
-        bool omitWorkspaceChanges = false)
+        bool omitToolResultContent = false)
     {
         var contentOmitted = (omitContent || omitToolResultContent && message.Role == ChatMessageRole.Tool)
             && message.Content.Length > 0;
@@ -409,7 +410,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
                 call.Name,
                 omitToolArguments ? string.Empty : call.Arguments)).ToArray(),
             message.ToolCallId,
-            omitWorkspaceChanges ? null : ToContract(message.WorkspaceChanges),
+            ToContract(message.WorkspaceChanges),
             contentOmitted,
             ResourceReferences.ToContract(message.Resources));
     }

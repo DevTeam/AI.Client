@@ -8,13 +8,19 @@
      @onmouseup="CaptureAsync" @onkeyup="CaptureKeyboardAsync">@Content</div>
 @if (_selection is { } selected && _editing)
 {
-    <div class="message-review-editor">
+    <div class="message-review-editor @(_popupBelow ? "is-below" : null)" role="dialog" aria-label="Comment on selected text"
+         style="left: @_popupXpx; top: @_popupYpx;">
         <small>Comment on “@selected.Quote”</small>
         <textarea aria-label="Message review comment" value="@_body" @oninput="e => _body = e.Value?.ToString() ?? string.Empty"></textarea>
-        <div>
-            <button type="button" disabled="@(_saving || string.IsNullOrWhiteSpace(_body))" @onclick="SaveAsync">Save comment</button>
+        <div class="message-review-editor-actions">
+            <button type="button" disabled="@(_saving || string.IsNullOrWhiteSpace(_body))" @onclick="SaveAsync">Save</button>
+            @if (_editingId is { } editingId && _current?.MessageComments?.FirstOrDefault(item => item.Id == editingId) is { } editingComment)
+            {
+                <button type="button" class="secondary-action" disabled="@_saving" @onclick="() => DeleteAsync(editingComment)">Delete</button>
+            }
             <button type="button" class="secondary-action" @onclick="Cancel">Cancel</button>
         </div>
+        @if (_error is not null) { <p class="error" role="alert">@_error</p> }
     </div>
 }
 @if (_current?.MessageComments is { Count: > 0 } comments)
@@ -27,17 +33,16 @@
         <div class="message-review-comments">
             @foreach (var comment in comments)
             {
-                <div class="message-review-comment" @key="comment.Id">
-                    <small>“@comment.Quote”</small><p>@comment.Body</p>
-                    <button type="button" class="secondary-action compact-action" @onclick="() => Edit(comment)">Edit</button>
-                    <button type="button" class="secondary-action compact-action" @onclick="() => DeleteAsync(comment)">Delete</button>
-                </div>
+                <button type="button" class="message-review-comment" @key="comment.Id" title="Open comment on selected text"
+                        @onclick="() => EditAsync(comment)">
+                    <span class="message-review-quote">“@comment.Quote”</span>
+                    <span class="message-review-body">@comment.Body</span>
+                </button>
             }
-            <button type="button" class="secondary-action compact-action" @onclick="() => OnAttach.InvokeAsync(_current)">Add to message</button>
+            <button type="button" class="message-review-attach" @onclick="() => OnAttach.InvokeAsync(_current)">Add to message</button>
         </div>
     }
 }
-@if (_error is not null) { <p class="error" role="alert">@_error</p> }
 
 @code {
     [Parameter, EditorRequired] public Guid ProjectId { get; set; }
@@ -48,13 +53,17 @@
     [Parameter] public EventCallback<ChatReview> OnChanged { get; set; }
     [Parameter] public EventCallback<ChatReview> OnAttach { get; set; }
 
-    private sealed record MessageTextHit(int Start, int End, string Quote, int? Hit);
+    private sealed record MessageTextHit(int Start, int End, string Quote, int? Hit, double X, double Y, bool Below);
     private ChatReview? _current;
     private MessageTextHit? _selection;
     private Guid? _editingId;
     private string _body = string.Empty;
     private string? _error;
     private bool _editing, _saving, _showComments;
+    private double _popupX, _popupY;
+    private bool _popupBelow;
+    private string _popupXpx => $"{_popupX.ToString(System.Globalization.CultureInfo.InvariantCulture)}px";
+    private string _popupYpx => $"{_popupY.ToString(System.Globalization.CultureInfo.InvariantCulture)}px";
     private long _highlightRevision = -1;
 
     protected override void OnParametersSet()
@@ -91,6 +100,7 @@
         if (hit.End > hit.Start)
         {
             _selection = hit;
+            Position(hit);
             _editingId = null;
             _body = string.Empty;
             _editing = true;
@@ -98,17 +108,28 @@
         }
         else if (hit.Hit is { } position && _current?.MessageComments?.FirstOrDefault(item =>
                      item.Start <= position && position < item.End) is { } comment)
-            Edit(comment);
+            await EditAsync(comment);
     }
 
-    private void Edit(MessageReviewComment comment)
+    private async Task EditAsync(MessageReviewComment comment)
     {
-        _selection = new MessageTextHit(comment.Start, comment.End, comment.Quote, null);
+        MessageTextHit? hit;
+        try { hit = await JsRuntime.InvokeAsync<MessageTextHit?>("messageReviews.locate", MessageId, comment.Start, comment.End); }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { return; }
+        if (hit is null) return;
+        _selection = hit with { Quote = comment.Quote };
+        Position(hit);
         _editingId = comment.Id;
         _body = comment.Body;
         _editing = true;
-        _showComments = true;
         _error = null;
+    }
+
+    private void Position(MessageTextHit hit)
+    {
+        _popupX = hit.X;
+        _popupY = hit.Y;
+        _popupBelow = hit.Below;
     }
 
     private void Cancel() { _selection = null; _editing = false; _editingId = null; _body = string.Empty; }
@@ -135,7 +156,6 @@
                     new UpdateReviewRequest(_current.Name, [], [], _current.Revision, comments), CancellationToken.None);
             }
             await OnChanged.InvokeAsync(_current);
-            _showComments = true;
             _error = null;
             Cancel();
         }

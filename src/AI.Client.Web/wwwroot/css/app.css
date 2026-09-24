@@ -2263,15 +2263,20 @@ body {
 .review-resource-chip .review-resource-remove .app-icon { width: .75rem; height: .75rem; }
 ::highlight(message-review) { background-color: color-mix(in srgb, var(--accent-color) 35%, transparent); text-decoration: underline; text-decoration-color: var(--accent-color); }
 .message-review-text { cursor: text; }
-.message-review-toggle { display: inline-flex; align-items: center; gap: .3rem; margin-top: .35rem; padding: .15rem .35rem; border: 0; background: transparent; color: var(--accent-color); font-size: .75rem; cursor: pointer; }
+.message-review-toggle { display: inline-flex; align-items: center; gap: .3rem; margin-top: .25rem; padding: .1rem 0; border: 0; background: transparent; color: var(--accent-color); font-size: .8rem; cursor: pointer; }
 .message-review-toggle .app-icon { width: .85rem; height: .85rem; }
-.message-review-editor, .message-review-comments { margin-top: .45rem; padding: .65rem; border: 1px solid #484848; border-radius: .5rem; background: #2b2b2b; }
-.message-review-editor small, .message-review-comment small { display: block; overflow: hidden; text-overflow: ellipsis; color: var(--accent-color); }
-.message-review-editor textarea { display: block; width: 100%; min-height: 5rem; margin: .5rem 0; resize: vertical; }
-.message-review-editor > div { display: flex; gap: .4rem; }
-.message-review-comment { padding: .4rem 0; border-bottom: 1px solid #444; }
-.message-review-comment p { margin: .25rem 0 .5rem; white-space: pre-wrap; }
-.message-review-comment button { margin-right: .35rem; }
+.message-review-editor { position: fixed; z-index: 110; width: min(21rem, calc(100vw - 1.5rem)); padding: .55rem; transform: translate(-50%, -100%); border: 1px solid #555; border-radius: .5rem; background: #2b2b2b; box-shadow: 0 .5rem 1.5rem #0009; }
+.message-review-editor.is-below { transform: translateX(-50%); }
+.message-review-editor small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent-color); }
+.message-review-editor textarea { display: block; width: 100%; min-height: 4rem; margin: .4rem 0; resize: vertical; }
+.message-review-editor-actions { display: flex; gap: .35rem; justify-content: flex-end; }
+.message-review-editor .error { margin: .35rem 0 0; }
+.message-review-comments { display: grid; gap: .1rem; max-width: 32rem; max-height: 15rem; margin-top: .2rem; padding: .3rem; overflow-y: auto; border: 1px solid #484848; border-radius: .5rem; background: #2b2b2b; }
+.message-review-comment { display: grid; grid-template-columns: minmax(5rem, 35%) minmax(0, 1fr); gap: .5rem; width: 100%; padding: .3rem .4rem; border: 0; border-radius: .3rem; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.message-review-comment:hover, .message-review-comment:focus-visible { background: #3a3a3a; }
+.message-review-quote { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent-color); }
+.message-review-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.message-review-attach { justify-self: end; padding: .2rem .4rem; border: 0; background: transparent; color: var(--accent-color); font-size: .75rem; cursor: pointer; }
 .queue-resource-count { color: #aeb9c8; white-space: nowrap; }
 
 .composer-resource-menu-anchor { position: relative; display: inline-flex; margin-right: auto; }

@@ -53,6 +53,18 @@
         return range.toString().length;
     }
 
+    function positionFor(range, reveal = false) {
+        let rect = range.getClientRects()[0] || range.getBoundingClientRect();
+        if (reveal && (rect.top < 80 || rect.bottom > window.innerHeight - 80)) {
+            range.startContainer.parentElement?.scrollIntoView({ block: "center" });
+            rect = range.getClientRects()[0] || range.getBoundingClientRect();
+        }
+        const halfWidth = Math.min(168, Math.max(0, window.innerWidth / 2 - 12));
+        const x = Math.max(halfWidth + 12, Math.min(rect.left + rect.width / 2, window.innerWidth - halfWidth - 12));
+        const below = rect.top < 190;
+        return { x, y: below ? rect.bottom + 8 : rect.top - 8, below };
+    }
+
     window.messageReviews = {
         setComments(messageId, comments) {
             commentsByMessage.set(messageId, comments || []);
@@ -69,13 +81,20 @@
                     const end = offsetAt(container, range.endContainer, range.endOffset);
                     const quote = range.toString();
                     if (start < end && quote && end - start <= 2000)
-                        return { start, end, quote, hit: null };
+                        return { start, end, quote, hit: null, ...positionFor(range) };
                 }
             }
             const caret = document.caretRangeFromPoint?.(x, y);
             if (caret && container.contains(caret.startContainer))
-                return { start: 0, end: 0, quote: "", hit: offsetAt(container, caret.startContainer, caret.startOffset) };
+                return { start: 0, end: 0, quote: "", hit: offsetAt(container, caret.startContainer, caret.startOffset), x, y, below: false };
             return null;
+        },
+        locate(messageId, start, end) {
+            const container = containerFor(messageId);
+            if (!container) return null;
+            const range = offsetRange(container, start, end);
+            if (!range) return null;
+            return { start, end, quote: range.toString(), hit: null, ...positionFor(range, true) };
         }
     };
 })();

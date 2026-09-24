@@ -174,6 +174,34 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task StoppingAndResumingShouldKeepLiveWorkspaceChanges()
+    {
+        var workspace = new TestWorkspaceChangeTracker();
+        workspace.Enqueue(new WorkspaceChangeSet(
+            [new FileChange("continued.cs", FileChangeKind.Modified, 2, 0, Diff: "saved diff")], 2, 0));
+        await using var fixture = await Fixture.CreateAsync(workspace);
+        await fixture.SetPolicyAsync("Allow");
+
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Edit a file"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+        await fixture.NextCallAsync();
+        await fixture.WaitAsync(run => run.WorkspaceChanges is { IsEmpty: false });
+
+        await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused && run.WorkspaceChanges is { IsEmpty: false });
+        await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
+        var resumed = await fixture.NextCallAsync();
+        var live = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Generating
+            && run.WorkspaceChanges is { IsEmpty: false });
+        live.WorkspaceChanges!.Files.ShouldHaveSingleItem().Path.ShouldBe("continued.cs");
+
+        resumed.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task CompletedRepliesShouldKeepTheirOwnWorkspaceChangesAfterRestart()
     {
         var workspace = new TestWorkspaceChangeTracker();
@@ -1507,14 +1535,15 @@ public sealed class ChatExecutionTests
     private sealed class TestWorkspaceChangeTracker : IWorkspaceChangeTracker
     {
         private readonly Queue<WorkspaceChangeSet> _queued = new();
-        private WorkspaceChangeSet _current = WorkspaceChangeSet.Empty;
+        private readonly Dictionary<WorkspaceRunKey, WorkspaceChangeSet> _current = new();
 
         public void Enqueue(WorkspaceChangeSet changes) => _queued.Enqueue(changes);
 
         public Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, WorkspaceRunKey? parent,
             CancellationToken cancellationToken)
         {
-            _current = _queued.TryDequeue(out var changes) ? changes : WorkspaceChangeSet.Empty;
+            if (!_current.ContainsKey(run))
+                _current[run] = _queued.TryDequeue(out var changes) ? changes : WorkspaceChangeSet.Empty;
             return Task.CompletedTask;
         }
 
@@ -1525,9 +1554,13 @@ public sealed class ChatExecutionTests
             Task.CompletedTask;
 
         public Task<WorkspaceChangeSet> SnapshotAsync(WorkspaceRunKey run, CancellationToken cancellationToken) =>
-            Task.FromResult(_current);
+            Task.FromResult(_current.GetValueOrDefault(run, WorkspaceChangeSet.Empty));
 
-        public Task CompleteRunAsync(WorkspaceRunKey run, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task CompleteRunAsync(WorkspaceRunKey run, CancellationToken cancellationToken)
+        {
+            _current.Remove(run);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class TestTools : IToolSessionFactory, IToolSession

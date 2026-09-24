@@ -36,7 +36,9 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTra
         // A run cannot be its own parent, and a parent that is not being tracked is no parent at
         // all: either would turn the walk below into a loop or a dead end.
         var linked = parent is { } above && above != run && _runs.ContainsKey(above) ? above : (WorkspaceRunKey?)null;
-        _runs[run] = new RunState(grants.Select(grant => grant.Root).ToArray(), linked);
+        // A stopped or failed attempt can resume on this branch. Keep its original file
+        // baselines so the next attempt still describes the whole unfinished round.
+        _runs.GetOrAdd(run, _ => new RunState(grants.Select(grant => grant.Root).ToArray(), linked));
         return Task.CompletedTask;
     }
 

@@ -359,7 +359,6 @@ public sealed class ChatRunDispatcher(
                     runtime.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
                     token = runtime.Cancellation.Token;
                     runtime.State.Start();
-                    runtime.WorkspaceChanges = null;
                     // A previous attempt at this same command may have been cut short, leaving a
                     // truncated answer and its tool messages on the branch. Retrying replaces that
                     // attempt rather than continuing from it, so the branch is rewound to the user
@@ -485,10 +484,10 @@ public sealed class ChatRunDispatcher(
         {
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
             // Successful turns complete their tracker when ChatAgent returns the change set for
-            // the final message. This also releases a failed turn's baselines.
+            // the final message. An interrupted attempt keeps its baselines for resume/retry or
+            // a new user message continuing the same unfinished round.
             if (runtime.State.Status != RunStatus.Completed)
                 runtime.WorkspaceChanges = await workspace.SnapshotAsync(WorkspaceKey(runtime), CancellationToken.None);
-            await workspace.CompleteRunAsync(WorkspaceKey(runtime), CancellationToken.None);
             runtime.Cancellation?.Dispose();
             runtime.Cancellation = null;
             runtime.ActiveMessageId = null;

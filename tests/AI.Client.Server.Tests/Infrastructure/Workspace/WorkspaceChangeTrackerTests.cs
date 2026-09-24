@@ -250,6 +250,20 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
     }
 
     [Fact]
+    public async Task ShouldKeepOriginalBaselineWhenAnInterruptedRunBeginsAgain()
+    {
+        var file = Path("continued.txt");
+        var tracker = await StartAsync();
+        await EditAsync(tracker, "write_file", file, () => File.WriteAllTextAsync(file, "first\n"));
+
+        await BeginAsync(tracker, _run, null);
+        await EditAsync(tracker, "edit_file", file, () => File.WriteAllTextAsync(file, "first\nsecond\n"));
+
+        var change = (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).Files.ShouldHaveSingleItem();
+        change.Additions.ShouldBe(3);
+    }
+
+    [Fact]
     public async Task ShouldNotCountLinesForABinaryFile()
     {
         var file = Path("blob.bin");

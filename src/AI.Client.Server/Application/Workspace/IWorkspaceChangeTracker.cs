@@ -20,7 +20,7 @@ using Tools;
 public interface IWorkspaceChangeTracker
 {
     /// <summary>
-    /// Starts tracking for a run, discarding anything held for a previous one on the same branch.
+    /// Starts tracking for a run, retaining any baselines from an interrupted attempt on the same branch.
     /// <paramref name="grants"/> bounds every path this tracker will read.
     /// </summary>
     /// <param name="parent">

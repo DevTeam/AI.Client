@@ -8,7 +8,8 @@
      @onmouseup="CaptureAsync" @onkeyup="CaptureKeyboardAsync">@Content</div>
 @if (_selection is { } selected && _editing)
 {
-    <div class="message-review-editor @(_popupBelow ? "is-below" : null)" role="dialog" aria-label="Comment on selected text"
+    <div id="review-editor-@MessageId" popover="manual"
+         class="message-review-editor @(_popupBelow ? "is-below" : null)" role="dialog" aria-label="Comment on selected text"
          style="left: @_popupXpx; top: @_popupYpx;">
         <small>Comment on “@selected.Quote”</small>
         <textarea aria-label="Message review comment" value="@_body" @oninput="e => _body = e.Value?.ToString() ?? string.Empty"></textarea>
@@ -74,6 +75,11 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_editing)
+        {
+            try { await JsRuntime.InvokeVoidAsync("messageReviews.showEditor", MessageId); }
+            catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+        }
         var revision = _current?.Revision ?? 0;
         if (!firstRender && _highlightRevision == revision) return;
         _highlightRevision = revision;

@@ -527,8 +527,7 @@
     @if (_reviewWorkspaceOpen && _selectedProject is not null && _selectedChat is not null)
     {
         <ReviewWorkspace @key="_reviewPanelKey" ProjectId="@_selectedProject.Id" Chat="@(_reviewChat ?? _selectedChat)"
-                         Sources="@ReviewSources()" Reviews="@_reviews" StartReviewId="@_reviewStartId"
-                         StartSourceId="@_reviewStartSourceId"
+                         Reviews="@_reviews" StartReviewId="@_reviewStartId"
                          OnChanged="OnReviewChangedAsync" OnAttach="AttachReviewAsync" OnClose="CloseReview" />
     }
 </main>
@@ -644,7 +643,7 @@
     private bool _isReviewSubmenuOpen;
     private ChatDetails? _reviewChat;
     private bool _reviewWorkspaceOpen;
-    private Guid? _reviewStartId, _reviewStartSourceId;
+    private Guid? _reviewStartId, _openingReviewSourceId;
     private int _reviewPanelKey;
     private int _reviewVersion;
     private Guid? _directoryPickerGrantId;
@@ -3598,11 +3597,6 @@
         _resourcePickerMode = mode;
     }
 
-    private IReadOnlyList<ChatMessageView> ReviewSources() => _reviewChat is null ? []
-        : Feed.BuildBranch(_reviewChat.Messages, _branchLeafId)
-            .Where(item => item.Role == "Assistant" && item.WorkspaceChanges is { IsEmpty: false })
-            .ToArray();
-
     private IReadOnlyList<ChatReview> ReviewsForBranch(BranchTreeItem branch)
     {
         if (_reviewChat is null || _selectedChat is null || _reviewChat.Id != _selectedChat.Id) return [];
@@ -3719,14 +3713,35 @@
     {
         await LoadReviewsAsync();
         if (!await LoadReviewChatAsync()) return;
-        OpenReviewPanel(id, null);
+        OpenReviewPanel(id);
     }
 
     private async Task OpenReviewFromChangesAsync(Guid sourceMessageId)
     {
-        await LoadReviewsAsync();
-        if (!await LoadReviewChatAsync()) return;
-        OpenReviewPanel(null, sourceMessageId);
+        if (_openingReviewSourceId == sourceMessageId) return;
+        _openingReviewSourceId = sourceMessageId;
+        try
+        {
+            await LoadReviewsAsync();
+            if (!await LoadReviewChatAsync() || _reviewChat is null || _selectedProject is null) return;
+            var review = _reviews.Where(item => item.Kind == ChatReviewKind.Diff && item.SourceMessageId == sourceMessageId)
+                .OrderByDescending(item => item.UpdatedAt).FirstOrDefault();
+            if (review is null)
+            {
+                var source = _reviewChat.Messages.FirstOrDefault(item => item.Id == sourceMessageId);
+                if (source?.WorkspaceChanges is not { IsEmpty: false } changes) return;
+                review = await ReviewApi.CreateAsync(_selectedProject.Id, _reviewChat.Id,
+                    new CreateReviewRequest(sourceMessageId, $"Review {source.CreatedAt.LocalDateTime:g}",
+                        changes.Files.Select(item => item.Path).ToArray()), CancellationToken.None);
+                await OnReviewChangedAsync(review);
+            }
+            OpenReviewPanel(review.Id);
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
+        {
+            _chatError = $"Could not open review: {error.Message}";
+        }
+        finally { _openingReviewSourceId = null; }
     }
 
     private async Task<bool> LoadReviewChatAsync()
@@ -3748,11 +3763,10 @@
         }
     }
 
-    private void OpenReviewPanel(Guid? reviewId, Guid? sourceId)
+    private void OpenReviewPanel(Guid reviewId)
     {
         if (_selectedChat is null) return;
         _reviewStartId = reviewId;
-        _reviewStartSourceId = sourceId;
         _reviewPanelKey++;
         _reviewWorkspaceOpen = true;
     }

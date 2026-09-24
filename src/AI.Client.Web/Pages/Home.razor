@@ -756,24 +756,42 @@
             await SyncWorkspaceUrlAsync(replace: true);
             return;
         }
-        if (!_notificationsOpen)
-        {
-            if (_globalSection is not null)
-            {
-                await RequestCloseGlobalSettingsAsync();
-                if (_globalSection is not null) return;
-            }
-            if (_isProjectSettingsOpen) await RequestCloseProjectSettingsAsync();
-            if (_permissionsScope is not null) ClosePermissions();
-        }
-        _notificationsOpen = !_notificationsOpen;
-        if (_notificationsOpen)
-        {
-            Notifications.Dismiss();
-            Notifications.MarkAllSeen();
-        }
+        if (!await CloseDrawersExceptAsync(Drawer.Notifications)) return;
+        _notificationsOpen = true;
+        Notifications.Dismiss();
+        Notifications.MarkAllSeen();
         _notificationCenterHistoryEntry = true;
         await SyncWorkspaceUrlAsync();
+    }
+
+    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings }
+
+    /// <summary>
+    /// All right-hand drawers share one slot, so opening one closes the rest instead of stacking
+    /// them (the narrower notifications drawer used to cover half of Connections/MCP). Settings
+    /// drawers save on close; false means one kept itself open because its save failed.
+    /// </summary>
+    private async Task<bool> CloseDrawersExceptAsync(Drawer keep)
+    {
+        if (keep != Drawer.Notifications && _notificationsOpen)
+        {
+            // Replace rather than go back: the drawer being opened is not a history entry either.
+            _notificationsOpen = false;
+            _notificationCenterHistoryEntry = false;
+            await SyncWorkspaceUrlAsync(replace: true);
+        }
+        if (keep != Drawer.Permissions && _permissionsScope is not null) ClosePermissions();
+        if (keep != Drawer.GlobalSettings && _globalSection is not null)
+        {
+            await RequestCloseGlobalSettingsAsync();
+            if (_globalSection is not null) return false;
+        }
+        if (keep != Drawer.ProjectSettings && _isProjectSettingsOpen)
+        {
+            await RequestCloseProjectSettingsAsync();
+            if (_isProjectSettingsOpen) return false;
+        }
+        return true;
     }
 
     private async Task OpenNotificationAsync(NotificationMessage item)
@@ -3284,9 +3302,10 @@
         Notifications.ShowSuccess("Chat deleted.");
     }
 
-    private void OpenProjectSettings()
+    private async Task OpenProjectSettings()
     {
         _isProjectMenuOpen = false;
+        if (!await CloseDrawersExceptAsync(Drawer.ProjectSettings)) return;
         if (_selectedProject is not null)
         {
             _editor = new ProjectEditor(_selectedProject.Name, _selectedProject.Description, _editor.Revision)
@@ -3326,17 +3345,19 @@
     private static string Plural(int count, string one, string? many = null) =>
         $"{count} {(count == 1 ? one : many ?? one + "s")}";
 
-    private void OpenProjectPermissions()
+    private async Task OpenProjectPermissions()
     {
         CloseContextMenus();
+        if (!await CloseDrawersExceptAsync(Drawer.Permissions)) return;
         _permissionsScope = "Project";
         _permissionsChatId = null;
         _permissionsChatTitle = null;
     }
 
-    private void OpenChatPermissions(ChatSummary chat)
+    private async Task OpenChatPermissions(ChatSummary chat)
     {
         CloseContextMenus();
+        if (!await CloseDrawersExceptAsync(Drawer.Permissions)) return;
         _permissionsScope = "Chat";
         _permissionsChatId = chat.Id;
         _permissionsChatTitle = chat.Title;
@@ -3468,6 +3489,7 @@
             return;
         }
         if (_globalSettingsPanel is not null && !await _globalSettingsPanel.SaveAsync()) return;
+        if (!await CloseDrawersExceptAsync(Drawer.GlobalSettings)) return;
         _globalSection = section;
     }
 

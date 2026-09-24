@@ -20,10 +20,16 @@ public sealed class ChatComposerService(IChatHistoryApi chatHistory, IChatRunsAp
         try
         {
             var prompt = request.Message.Trim();
-            var title = prompt.Length > 0 ? prompt[..Math.Min(48, prompt.Length)]
-                : request.Resources![0].Path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries).Last();
-            var chat = request.SelectedChat ?? await chatHistory.CreateAsync(projectId,
-                new CreateChatRequest(title, request.CredentialProfileId), cancellationToken);
+            var chat = request.SelectedChat;
+            if (chat is null)
+            {
+                var firstResource = request.Resources is { Count: > 0 } resources ? resources[0] : null;
+                var title = prompt.Length > 0 ? prompt[..Math.Min(48, prompt.Length)]
+                    : firstResource?.Name ?? firstResource?.Path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
+                        .LastOrDefault() ?? "Workspace references";
+                chat = await chatHistory.CreateAsync(projectId,
+                    new CreateChatRequest(title, request.CredentialProfileId), cancellationToken);
+            }
             var parent = mode == ChatSubmitMode.Fork ? request.ForkSourceId ?? request.BranchLeafId : null;
             var sourceBranchId = request.SelectedBranchId ?? request.SelectedRun?.BranchId
                 ?? BranchLeafHelpers.RunBranchIdFor(request.BranchLeafId, chat);

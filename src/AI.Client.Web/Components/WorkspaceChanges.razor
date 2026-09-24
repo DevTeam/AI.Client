@@ -3,7 +3,7 @@
    first touched each path, so repeated edits to one file collapse into a single net difference
    and anything the user changed beforehand is never counted here. *@
 @using AI.Client.Contracts.Workspace
-@inject IUnifiedDiffParser DiffParser
+@using AI.Client.Contracts.Resources
 
 @if (Changes is { IsEmpty: false } changes)
 {
@@ -54,42 +54,15 @@
                         @* Expansion is tracked here rather than left to <details>, which keeps its
                            contents in the DOM whether open or shut. A diff can run to thousands of
                            lines, and several closed files would each be paying for one. *@
-                        <button class="workspace-change-summary" type="button" aria-expanded="@expanded" aria-controls="@bodyId"
-                                @onclick="() => Toggle(file.Path)">
-                            <span class="workspace-change-kind" title="@KindTitle(file.Kind)">@KindGlyph(file.Kind)</span>
-                            <span class="workspace-change-path" title="@file.Path">@Display(file)</span>
-                            @if (file.Confidence == FileChangeConfidence.Approximate)
-                            {
-                                <span class="workspace-change-approximate" title="Exact line counts were not available for this file">approx.</span>
-                            }
-                            <span class="workspace-change-counts">
-                                @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
-                                @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
-                                @if (file.IsBinary) { <span class="workspace-change-binary">binary</span> }
-                            </span>
-                        </button>
+                        <WorkspaceChangeFileHeader File="@file" Expanded="@expanded" CommentCount="@(Review?.Comments.Count(comment => comment.Path == file.Path) ?? 0)" OnToggle="() => Toggle(file.Path)" />
                         @if (expanded)
                         {
                             <div class="workspace-change-body" id="@bodyId">
-                                @if (DiffParser.Parse(file.Diff) is { Count: > 0 } lines)
-                                {
-                                    <div class="workspace-change-diff">
-                                        @foreach (var line in lines.Take(MaxRenderedLines))
-                                        {
-                                            <WorkspaceDiffLine Line="@line" />
-                                        }
-                                        @if (lines.Count > MaxRenderedLines)
-                                        {
-                                            <div class="diff-note">… @(lines.Count - MaxRenderedLines) more lines not shown</div>
-                                        }
-                                    </div>
-                                }
-                                else
-                                {
-                                    @* A file with no diff is not an empty diff. Saying which of the
-                                       reasons applies is the whole value of opening the row. *@
-                                    <p class="workspace-change-unavailable">@UnavailableReason(file)</p>
-                                }
+                                <div class="workspace-change-diff">
+                                    <ReviewDiffFile File="@file" SourceFiles="@changes.Files" ProjectId="@ProjectId" ChatId="@ChatId"
+                                                    SourceMessageId="@(SourceMessageId ?? Guid.Empty)" Review="@Review"
+                                                    OnChanged="OnReviewChanged" />
+                                </div>
                             </div>
                         }
                     </li>
@@ -101,15 +74,13 @@
 }
 
 @code {
-    /// <summary>
-    /// Past this many lines the rest is summarised instead of built. The diff itself is already
-    /// capped upstream; this caps what reaches the DOM.
-    /// </summary>
-    private const int MaxRenderedLines = 400;
-
     [Parameter] public WorkspaceChangeSet? Changes { get; set; }
+    [Parameter] public Guid ProjectId { get; set; }
+    [Parameter] public Guid ChatId { get; set; }
     [Parameter] public Guid? SourceMessageId { get; set; }
+    [Parameter] public ChatReview? Review { get; set; }
     [Parameter] public EventCallback<Guid> OnReview { get; set; }
+    [Parameter] public EventCallback<ChatReview> OnReviewChanged { get; set; }
 
     private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _previewId = $"workspace-changes-preview-{Guid.NewGuid():N}";
@@ -129,20 +100,6 @@
         if (!_expanded.Add(path)) _expanded.Remove(path);
     }
 
-    private static string UnavailableReason(FileChange file) => file switch
-    {
-        { IsBinary: true } => "Binary file — there are no lines to compare.",
-        { Kind: FileChangeKind.Deleted } => "The file was deleted; its former contents are not kept.",
-        { Confidence: FileChangeConfidence.Approximate } =>
-            "This file changed during the turn, but the Host did not observe the change itself, so it has nothing to show line by line.",
-        _ => "No differences were recorded for this file.",
-    };
-
-    private static string Display(FileChange file) =>
-        file is { Kind: FileChangeKind.Renamed, PreviousPath: { } previous }
-            ? $"{Name(previous)} → {Name(file.Path)}"
-            : Name(file.Path);
-
     private static string PreviewDisplay(FileChange file) =>
         file is { Kind: FileChangeKind.Renamed, PreviousPath: { } previous }
             ? $"{FileName(previous)} → {FileName(file.Path)}"
@@ -154,29 +111,4 @@
         return segments.Length == 0 ? path : segments[^1];
     }
 
-    /// <summary>
-    /// The last two segments. A run usually touches files under one root, so the shared prefix is
-    /// the least informative part of every row; the full path stays in the tooltip.
-    /// </summary>
-    private static string Name(string path)
-    {
-        var segments = path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
-        return segments.Length <= 2 ? path : string.Join('/', segments[^2..]);
-    }
-
-    private static string KindGlyph(FileChangeKind kind) => kind switch
-    {
-        FileChangeKind.Added => "A",
-        FileChangeKind.Deleted => "D",
-        FileChangeKind.Renamed => "R",
-        _ => "M",
-    };
-
-    private static string KindTitle(FileChangeKind kind) => kind switch
-    {
-        FileChangeKind.Added => "Added",
-        FileChangeKind.Deleted => "Deleted",
-        FileChangeKind.Renamed => "Renamed",
-        _ => "Modified",
-    };
 }

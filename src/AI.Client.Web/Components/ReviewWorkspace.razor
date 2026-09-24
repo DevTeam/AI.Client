@@ -3,7 +3,7 @@
 @using AI.Client.Contracts.Workspace
 @using AI.Client.Web.Resources
 @inject IReviewApi ReviewsApi
-@inject IUnifiedDiffParser DiffParser
+@inject IJSRuntime JsRuntime
 
 <section class="review-workspace" aria-label="Review changes">
     <header class="review-workspace-header">
@@ -17,52 +17,26 @@
     }
     else if (SourceOf(_current) is { WorkspaceChanges: { } changes })
     {
-        <div class="review-workspace-body">
+        <div class="review-workspace-body" id="@_bodyId">
             <div class="review-diff-scroll">
                 @foreach (var file in changes.Files.Where(item => _current.Files.Contains(item.Path, StringComparer.Ordinal)))
                 {
                     var fileId = FileId(file.Path);
                     <section class="review-file" id="@fileId" @key="file.Path">
-                        <header class="review-file-header">
-                            <button class="review-file-expand" type="button" aria-label="Toggle @file.Path diff"
-                                    aria-expanded="@_expandedFiles.Contains(file.Path)" @onclick="() => ToggleExpandedFile(file.Path)">
-                                <AppIcon Name="chevron-down" />
-                            </button>
-                            <strong title="@file.Path">@FileName(file.Path)</strong>
-                            <span class="review-file-directory">@DirectoryName(file.Path)</span>
-                            <span class="workspace-change-counts">
-                                @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
-                                @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
-                            </span>
-                            <button class="secondary-action compact-action" type="button" @onclick="() => BeginFileComment(file.Path)">Comment on file</button>
-                        </header>
+                        <WorkspaceChangeFileHeader File="@file" Expanded="@_expandedFiles.Contains(file.Path)"
+                                                   CommentCount="@_current.Comments.Count(comment => comment.Path == file.Path)"
+                                                   OnToggle="() => ToggleExpandedFile(file.Path)" />
                         @if (_expandedFiles.Contains(file.Path))
                         {
-                            @if (DiffParser.Parse(file.Diff) is { Count: > 0 } lines)
-                            {
-                                @foreach (var line in lines.Take(1500))
-                                {
-                                    <WorkspaceDiffLine Line="@line" ReviewMode="true"
-                                                       OnComment="args => BeginLineComment(file.Path, line, args.ShiftKey)" />
-                                    @if (line.Kind is not (DiffLineKind.Hunk or DiffLineKind.Note))
-                                    {
-                                        @if (CommentsAt(file.Path, line).Count > 0)
-                                        {
-                                            @foreach (var comment in CommentsAt(file.Path, line)) { @CommentCard(comment) }
-                                        }
-                                        @if (_editingCommentId is null && _pendingPath == file.Path && PendingEndsAt(line)) { @CommentEditor() }
-                                    }
-                                }
-                                @if (lines.Count > 1500) { <p class="review-diff-note">More lines are available in the saved diff.</p> }
-                            }
-                            else { <p class="review-diff-note">Line diff unavailable; comment on the file instead.</p> }
-                            @foreach (var comment in _current.Comments.Where(item => item.Path == file.Path && item.OldStart is null && item.NewStart is null))
-                            { @CommentCard(comment) }
-                            @if (_editingCommentId is null && _pendingPath == file.Path && _pendingOldStart is null && _pendingNewStart is null) { @CommentEditor() }
+                            <ReviewDiffFile @key="file.Path" File="@file" SourceFiles="@changes.Files"
+                                            ProjectId="@ProjectId" ChatId="@Chat.Id" SourceMessageId="@_current.SourceMessageId"
+                                            Review="@_current" OnChanged="ReviewChangedAsync" />
                         }
                     </section>
                 }
             </div>
+            <div class="review-tree-resizer" role="separator" tabindex="0" aria-label="Resize review file tree"
+                 aria-orientation="vertical" aria-valuemin="180" aria-valuemax="600" aria-valuenow="352"></div>
             <aside class="review-file-tree" aria-label="Review files">
                 <input type="search" value="@_fileFilter" @oninput="e => _fileFilter = e.Value?.ToString() ?? string.Empty" placeholder="Filter files" aria-label="Filter review files" />
                 @foreach (var node in BuildFileTree(changes.Files)) { @RenderTreeNode(node) }
@@ -83,14 +57,10 @@
     private ChatReview? _current;
     private readonly HashSet<string> _expandedFiles = new(StringComparer.Ordinal);
     private readonly HashSet<string> _collapsedFolders = new(StringComparer.Ordinal);
+    private readonly string _bodyId = $"review-body-{Guid.NewGuid():N}";
     private string _fileFilter = string.Empty;
     private string? _error;
     private bool _saving;
-    private Guid? _editingCommentId;
-    private string? _pendingPath;
-    private int? _pendingOldStart, _pendingOldEnd, _pendingNewStart, _pendingNewEnd;
-    private string _commentBody = string.Empty;
-    private (string Path, int? Old, int? New)? _rangeStart;
 
     protected override void OnInitialized()
     {
@@ -100,12 +70,6 @@
 
     private ChatMessageView? SourceOf(ChatReview review) => Chat.Messages.FirstOrDefault(item => item.Id == review.SourceMessageId);
     private static string FileId(string path) => "review-file-" + Uri.EscapeDataString(path);
-    private static string FileName(string path) => path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? path;
-    private static string DirectoryName(string path)
-    {
-        var separator = Math.Max(path.LastIndexOf('/'), path.LastIndexOf('\\'));
-        return separator < 0 ? string.Empty : path[..separator];
-    }
     private sealed class FileTreeNode(string name, string path)
     {
         public string Name { get; } = name;
@@ -197,90 +161,19 @@
         if (!_expandedFiles.Add(path)) _expandedFiles.Remove(path);
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_current is null) return;
+        try { await JsRuntime.InvokeVoidAsync("reviewWorkspace.initialize", _bodyId); }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+    }
+
     private void OpenFile(string path) => _expandedFiles.Add(path);
 
-    private void BeginFileComment(string path)
+    private async Task ReviewChangedAsync(ChatReview review)
     {
-        _expandedFiles.Add(path);
-        BeginComment(path, null, null);
-    }
-    private void BeginLineComment(string path, DiffLine line, bool shift)
-    {
-        var oldLine = line.Kind == DiffLineKind.Removed ? line.OldLine : null;
-        var newLine = line.Kind == DiffLineKind.Removed ? null : line.NewLine;
-        if (shift && _rangeStart is { } start && start.Path == path
-            && (start.Old is not null && oldLine is not null || start.New is not null && newLine is not null))
-        {
-            BeginComment(path, oldLine is null ? null : Math.Min(start.Old!.Value, oldLine.Value),
-                newLine is null ? null : Math.Min(start.New!.Value, newLine.Value));
-            _pendingOldEnd = oldLine is null ? null : Math.Max(start.Old!.Value, oldLine.Value);
-            _pendingNewEnd = newLine is null ? null : Math.Max(start.New!.Value, newLine.Value);
-        }
-        else
-        {
-            BeginComment(path, oldLine, newLine);
-            _rangeStart = (path, oldLine, newLine);
-        }
-    }
-
-    private void BeginComment(string path, int? oldLine, int? newLine)
-    {
-        _editingCommentId = null;
-        _pendingPath = path;
-        _pendingOldStart = _pendingOldEnd = oldLine;
-        _pendingNewStart = _pendingNewEnd = newLine;
-        _commentBody = string.Empty;
-        _error = null;
-    }
-
-    private bool PendingEndsAt(DiffLine line) =>
-        _pendingOldEnd is { } oldLine && line.OldLine == oldLine && line.Kind == DiffLineKind.Removed
-        || _pendingNewEnd is { } newLine && line.NewLine == newLine && line.Kind != DiffLineKind.Removed;
-
-    private IReadOnlyList<ReviewComment> CommentsAt(string path, DiffLine line) => _current?.Comments
-        .Where(item => item.Path == path && (line.Kind == DiffLineKind.Removed
-            ? item.OldEnd == line.OldLine && item.NewStart is null
-            : item.NewEnd == line.NewLine && item.OldStart is null)).ToArray() ?? [];
-
-    private RenderFragment CommentCard(ReviewComment comment) => @<div class="review-comment" @key="comment.Id">
-        @if (_editingCommentId == comment.Id) { @CommentEditor() }
-        else
-        {
-            <p>@comment.Body</p>
-            <div><button class="secondary-action compact-action" type="button" @onclick="() => EditComment(comment)">Edit</button>
-                <button class="secondary-action compact-action" type="button" @onclick="() => DeleteCommentAsync(comment)">Delete</button></div>
-        }
-    </div>;
-
-    private RenderFragment CommentEditor() => @<div class="review-comment-editor">
-        <textarea aria-label="Review comment" value="@_commentBody" @oninput="e => _commentBody = e.Value?.ToString() ?? string.Empty"></textarea>
-        <div><button type="button" disabled="@(_saving || string.IsNullOrWhiteSpace(_commentBody))" @onclick="SaveCommentAsync">Save comment</button>
-            <button class="secondary-action compact-action" type="button" @onclick="CancelComment">Cancel</button></div>
-    </div>;
-
-    private void EditComment(ReviewComment comment)
-    {
-        _editingCommentId = comment.Id;
-        _pendingPath = comment.Path;
-        _pendingOldStart = comment.OldStart; _pendingOldEnd = comment.OldEnd;
-        _pendingNewStart = comment.NewStart; _pendingNewEnd = comment.NewEnd;
-        _commentBody = comment.Body;
-    }
-
-    private void CancelComment() { _editingCommentId = null; _pendingPath = null; _commentBody = string.Empty; }
-
-    private async Task SaveCommentAsync()
-    {
-        if (_current is null || _pendingPath is null || string.IsNullOrWhiteSpace(_commentBody)) return;
-        var comment = new ReviewComment(_editingCommentId ?? Guid.CreateVersion7(), _pendingPath,
-            _pendingOldStart, _pendingOldEnd, _pendingNewStart, _pendingNewEnd, _commentBody.Trim());
-        var comments = _current.Comments.Where(item => item.Id != comment.Id).Append(comment).ToArray();
-        if (await SaveAsync(_current.Files, comments)) CancelComment();
-    }
-
-    private async Task DeleteCommentAsync(ReviewComment comment)
-    {
-        if (_current is not null) await SaveAsync(_current.Files, _current.Comments.Where(item => item.Id != comment.Id).ToArray());
+        _current = review;
+        await OnChanged.InvokeAsync(review);
     }
 
     private async Task<bool> SaveAsync(IReadOnlyList<string> files, IReadOnlyList<ReviewComment> comments)

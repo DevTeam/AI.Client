@@ -10,7 +10,7 @@
 {
     <div id="review-editor-@MessageId" popover="manual"
          class="message-review-editor @(_popupBelow ? "is-below" : null)" role="dialog" aria-label="Comment on selected text"
-         style="left: @_popupXpx; top: @_popupYpx;">
+         style="left: @_popupXpx; top: @_popupYpx;" @onkeydown="HandleEditorKeyDown">
         <small>Comment on “@selected.Quote”</small>
         <textarea aria-label="Message review comment" value="@_body" @oninput="e => _body = e.Value?.ToString() ?? string.Empty"></textarea>
         <div class="message-review-editor-actions">
@@ -26,12 +26,12 @@
 }
 @if (_current?.MessageComments is { Count: > 0 } comments)
 {
-    <button type="button" class="message-review-toggle" aria-expanded="@_showComments" @onclick="() => _showComments = !_showComments">
+    <button type="button" class="message-review-toggle" aria-expanded="@_showComments" @onclick="() => _showComments = !_showComments" @onkeydown="HandleCommentsKeyDown">
         <AppIcon Name="message-circle" /> @comments.Count @(comments.Count == 1 ? "comment" : "comments")
     </button>
     @if (_showComments)
     {
-        <div class="message-review-comments">
+        <div class="message-review-comments" @onkeydown="HandleCommentsKeyDown">
             @foreach (var comment in comments)
             {
                 <button type="button" class="message-review-comment" @key="comment.Id" title="Open comment on selected text"
@@ -138,7 +138,17 @@
         _popupBelow = hit.Below;
     }
 
-    private void Cancel() { _selection = null; _editing = false; _editingId = null; _body = string.Empty; }
+    private void HandleEditorKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") Cancel();
+    }
+
+    private void HandleCommentsKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") _showComments = false;
+    }
+
+    private void Cancel() { _selection = null; _editing = false; _editingId = null; _body = string.Empty; _error = null; }
 
     private async Task SaveAsync()
     {

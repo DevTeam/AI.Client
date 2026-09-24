@@ -2,6 +2,7 @@ namespace AI.Client.Web.Tests.Composer;
 
 using AI.Client.Contracts.Chats;
 using AI.Client.Contracts.Runs;
+using AI.Client.Contracts.Resources;
 using Chats;
 using AI.Client.Web.Composer;
 using Runs;
@@ -11,6 +12,32 @@ using Xunit;
 
 public class ChatComposerServiceTests
 {
+    [Fact]
+    public async Task ShouldSubmitReviewOnlyMessageToExistingChat()
+    {
+        var history = new Mock<IChatHistoryApi>(MockBehavior.Strict);
+        var runs = new Mock<IChatRunsApi>(MockBehavior.Strict);
+        var chatId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        var review = new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Review, string.Empty,
+            "Message review", ChatReviewKind.Message);
+        var chat = new ChatDetails(chatId, projectId, "Chat", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+            1, null, [], [new ChatBranchView(chatId, null, "Main")]);
+        runs.Setup(api => api.SubmitAsync(projectId, chatId,
+                It.Is<SubmitChatMessageRequest>(request => request.Content == string.Empty
+                    && request.Resources != null && request.Resources.Count == 1
+                    && request.Resources[0].Id == review.Id), CancellationToken.None))
+            .ReturnsAsync(new ChatRunSnapshot(projectId, chatId, chatId, ChatRunStatus.Idle, "", [], false, null, 1));
+
+        var result = await new ChatComposerService(history.Object, runs.Object).SubmitAsync(
+            new ComposerSubmitRequest(ComposerSubmitMode.Send, projectId, chat, null, null, null,
+                null, null, null, string.Empty, null, Resources: [review]), CancellationToken.None);
+
+        result.ShouldBeOfType<ComposerSubmitOutcome.Accepted>();
+        runs.VerifyAll();
+        history.VerifyNoOtherCalls();
+    }
+
     [Theory]
     [InlineData(ComposerSubmitMode.Send, ChatSubmitMode.Send)]
     [InlineData(ComposerSubmitMode.Queue, ChatSubmitMode.Queue)]

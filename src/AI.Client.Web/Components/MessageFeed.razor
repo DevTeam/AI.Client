@@ -9,6 +9,8 @@
 @inject IChatRunsApi RunsApi
 @inject IChatHistoryApi ChatHistoryApi
 @inject IRunStatusPresentation StatusPresentation
+@inject ITurnLiveText LiveText
+@inject IToolPresentations Presentations
 @implements IAsyncDisposable
 @using AI.Client.Contracts.Tools
 
@@ -95,7 +97,8 @@
                                   BranchMenuId="@MessageBranchMenuId"
                                   RunPresentationVersion="@TranscriptRunPresentationVersion"
                                   ExpandedTurnsVersion="@_expandedTurnsVersion"
-                                  TurnElapsedSeconds="@GetGeneratingElapsedSeconds()">
+                                  TurnElapsedSeconds="@GetGeneratingElapsedSeconds()"
+                                  LiveTextVersion="@GetLiveTextInputVersion()">
         @foreach (var entry in GetRenderedFeedItems())
         {
             var item = entry.Item;
@@ -160,6 +163,19 @@
                         @onclick="() => CollapseTurnFromEndAsync(collapseTurnId)">
                     <AppIcon Name="chevron-up" />
                 </button>
+            }
+            else if (entry.LiveText is { } liveText)
+            {
+                @* What the running turn is saying right now, in full. Keyed by the text's version,
+                   not the turn: a replacement mounts a fresh element, which is what plays the
+                   entry animation, while growth of the same text only patches it. *@
+                var liveKey = (entry.TurnId, "live-text", entry.LiveVersion);
+                <article @key="liveKey" id="message-live"
+                         class="workspace-message assistant live-text streaming"
+                         @onmouseenter="() => SetLiveTextHeld(true)"
+                         @onmouseleave="() => SetLiveTextHeld(false)">
+                    <div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(liveText))</div>
+                </article>
             }
             else if (entry.StreamingRun is { } streamingRun)
             {
@@ -500,6 +516,7 @@
     private bool _renderedPinned = true;
     private string? _renderedSearchQuery;
     private bool _renderedNewBelow;
+    private int _renderedLiveTextTick;
 
     protected override bool ShouldRender()
     {
@@ -519,7 +536,8 @@
             // The jump affordance lives entirely in this component's own state, and ShouldRender
             // is what decides whether its StateHasChanged reaches the DOM at all.
             || _renderedPinned != _pinned
-            || _renderedNewBelow != _newBelow;
+            || _renderedNewBelow != _newBelow
+            || _renderedLiveTextTick != _liveTextTick;
 
         _renderedSelectedChat = SelectedChat;
         _renderedTranscriptId = TranscriptId;
@@ -536,6 +554,7 @@
         _renderedSearchQuery = SearchQuery;
         _renderedPinned = _pinned;
         _renderedNewBelow = _newBelow;
+        _renderedLiveTextTick = _liveTextTick;
 
         return changed;
     }
@@ -943,7 +962,9 @@
         IReadOnlyList<ActiveToolInvocation>? ActiveTools = null,
         Guid? TurnId = null,
         Guid? CollapseTurnId = null,
-        ChatRunSnapshot? StreamingRun = null);
+        ChatRunSnapshot? StreamingRun = null,
+        string? LiveText = null,
+        int LiveVersion = 0);
 
     private readonly HashSet<Guid> _expandedTurns = [];
     private readonly Dictionary<Guid, int> _expandedTurnItemLimits = [];
@@ -961,6 +982,7 @@
     private List<RenderedFeedEntry> GetRenderedFeedItems()
     {
         var entries = new List<RenderedFeedEntry>();
+        var liveTurnPresented = false;
         foreach (var turn in Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer()))
         {
             IReadOnlyList<FeedItem> visibleIntermediateItems = [];
@@ -1004,6 +1026,26 @@
                         .Select(message => new RenderedFeedEntry(ChangesMessage: message)));
                 }
 
+                // The final answer arriving as StreamingContent is shown below as it is; the live
+                // text steps aside at once rather than making the reader wait for it.
+                if (IsRunningTurn(turn) && string.IsNullOrWhiteSpace(SelectedRun?.StreamingContent))
+                {
+                    liveTurnPresented = true;
+                    _liveFrame = LiveText.Present(turn.Id, GetLiveTextCandidate(turn), _liveTextHeld, DateTimeOffset.UtcNow);
+                    ScheduleLiveTextCheck(_liveFrame.NextCheck);
+                    if (!IsTurnExpanded(turn))
+                    {
+                        if (_liveFrame.Text is { } liveText)
+                            entries.Add(new RenderedFeedEntry(LiveText: liveText, LiveVersion: _liveFrame.Version, TurnId: turn.Id));
+                    }
+                    // Expanded, the notes are already there as themselves; only the step still in
+                    // flight has nowhere else to appear.
+                    else if (SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft))
+                    {
+                        entries.Add(new RenderedFeedEntry(LiveText: draft, LiveVersion: -1, TurnId: turn.Id));
+                    }
+                }
+
                 if (IsRunningTurn(turn) && IsTurnExpanded(turn)
                     && SelectedRun?.ActiveTools is { Count: > 0 } activeTools)
                 {
@@ -1043,7 +1085,69 @@
             }
         }
 
+        if (!liveTurnPresented)
+        {
+            _liveFrame = LiveText.Present(null, null, false, DateTimeOffset.UtcNow);
+            // The element under the pointer can go without a mouseleave; the next turn must not
+            // inherit a hold nobody is exerting.
+            _liveTextHeld = false;
+        }
+
         return entries;
+    }
+
+    private LiveTextFrame _liveFrame;
+    private bool _liveTextHeld;
+    private int _liveTextTick;
+    private CancellationTokenSource? _liveTextTimer;
+    private DateTimeOffset? _liveTextTimerDue;
+
+    /// <summary>The step in flight when the model is writing, else the turn's latest note.</summary>
+    private string? GetLiveTextCandidate(FeedTurn turn) =>
+        SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft)
+            ? draft
+            : turn.IntermediateMessages
+                .LastOrDefault(message => message.Role == "Assistant" && !string.IsNullOrWhiteSpace(message.Content))
+                ?.Content;
+
+    // Everything the live text is computed from that the transcript boundary does not already
+    // watch: the draft growing, the final answer starting, a reading delay running out, the hold.
+    private int GetLiveTextInputVersion() => HashCode.Combine(
+        SelectedRun?.DraftContent?.Length,
+        string.IsNullOrEmpty(SelectedRun?.StreamingContent),
+        _liveTextTick,
+        _liveTextHeld);
+
+    private void SetLiveTextHeld(bool held)
+    {
+        if (_liveTextHeld == held) return;
+        _liveTextHeld = held;
+        _liveTextTick++;
+    }
+
+    /// <summary>
+    /// Wakes the transcript when a waiting text becomes due. Nothing else would: the run may be
+    /// quiet (a tool running, the model thinking) exactly while the reader finishes the old text.
+    /// </summary>
+    private void ScheduleLiveTextCheck(DateTimeOffset? due)
+    {
+        if (due is null || due == _liveTextTimerDue) return;
+        _liveTextTimerDue = due;
+        _liveTextTimer?.Cancel();
+        _liveTextTimer?.Dispose();
+        var timer = _liveTextTimer = new CancellationTokenSource();
+        var delay = due.Value - DateTimeOffset.UtcNow;
+        _ = FireAsync(delay > TimeSpan.Zero ? delay : TimeSpan.Zero);
+
+        async Task FireAsync(TimeSpan wait)
+        {
+            try { await Task.Delay(wait + TimeSpan.FromMilliseconds(20), timer.Token); }
+            catch (OperationCanceledException) { return; }
+            if (_disposed) return;
+            _liveTextTimerDue = null;
+            _liveTextTick++;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private bool LastTurnEndedWithoutFinalAnswer()
@@ -1245,7 +1349,11 @@
         var duration = Feed.FormatDuration(elapsed);
         if (IsRunningTurn(turn))
         {
-            return Feed.RunningTitleOf(turn, elapsed) ?? $"Working for {duration}";
+            // The model's words are under the row in full now; the row says what it is doing
+            // with its hands, or just that it is at work.
+            if (SelectedRun?.ActiveTools is { Count: > 0 } tools)
+                return $"{Presentations.DescribeCall(tools[^1].Name, tools[^1].Arguments).Title} · {duration}";
+            return $"Working for {duration}";
         }
 
         if (IsCurrentTurn(turn))
@@ -1566,6 +1674,9 @@
         _activityCancellation?.Cancel();
         _activityCancellation?.Dispose();
         _activityCancellation = null;
+        _liveTextTimer?.Cancel();
+        _liveTextTimer?.Dispose();
+        _liveTextTimer = null;
         await DisposeHistoryMarkersAsync();
         var historyMarkersModule = _historyMarkersModule;
         var scrollModule = _scrollModule;

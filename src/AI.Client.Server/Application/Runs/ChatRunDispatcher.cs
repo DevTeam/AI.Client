@@ -421,7 +421,8 @@ public sealed class ChatRunDispatcher(
                     },
                     (activity, ct) => ReportToolActivityAsync(runtime, activity, ct),
                     (wait, ct) => ReportTransportActivityAsync(runtime, wait, ct),
-                    (tool, arguments, timeout, position, ct) => ApproveAsync(runtime, tool, arguments, timeout, position, ct), token);
+                    (tool, arguments, timeout, position, ct) => ApproveAsync(runtime, tool, arguments, timeout, position, ct), token,
+                    draft: (chunk, ct) => ReportDraftAsync(runtime, chunk, ct));
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
                 {
                     token.ThrowIfCancellationRequested();
@@ -493,11 +494,13 @@ public sealed class ChatRunDispatcher(
             runtime.Prompt = null;
             runtime.PendingPrompt = null;
             runtime.ActiveTools.Clear();
+            runtime.Draft.Clear();
             runtime.Snapshot = runtime.Snapshot with
             {
                 PendingApproval = null,
                 PendingPrompt = null,
                 ActiveTools = [],
+                DraftContent = null,
                 // This block patches the last published snapshot instead of rebuilding it, so
                 // every field the worker just released has to be named here. Leaving this one out
                 // left the run advertising an active command it had already finished with.
@@ -703,6 +706,28 @@ public sealed class ChatRunDispatcher(
     }
 
     private static readonly TimeSpan ProgressPublishInterval = TimeSpan.FromMilliseconds(150);
+
+    /// <summary>
+    /// Mirrors the model step in flight into the snapshot. Nothing here touches storage: a draft
+    /// is either replaced by what the step becomes or discarded with it. A reset is not published
+    /// on its own — the save that follows it (the preamble landing, the answer arriving) carries
+    /// it, so the text changes hands in one publication.
+    /// </summary>
+    private async Task ReportDraftAsync(Runtime runtime, string? chunk, CancellationToken token)
+    {
+        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
+        if (chunk is null)
+        {
+            runtime.Draft.Clear();
+            return;
+        }
+
+        runtime.Draft.Append(chunk);
+        if (clock.UtcNow - runtime.LastDraftPublished < ProgressPublishInterval) return;
+        runtime.LastDraftPublished = clock.UtcNow;
+        runtime.Snapshot = runtime.Snapshot with { DraftContent = runtime.DraftContent };
+        Publish();
+    }
 
     private async Task ReportTransportActivityAsync(Runtime runtime, ChatTransportWait? wait, CancellationToken token)
     {
@@ -914,7 +939,8 @@ public sealed class ChatRunDispatcher(
             ActiveTools = runtime.ActiveTools.Values.ToArray(),
             WorkspaceChanges = runtime.WorkspaceChanges,
             Wait = runtime.Wait,
-            MessageDelta = runtime.MessageDelta
+            MessageDelta = runtime.MessageDelta,
+            DraftContent = runtime.DraftContent
         };
         if (chat is not null)
             foreach (var other in _runtimes.Values.Where(item => item.State.ChatId == chat.Id && item != runtime))
@@ -1204,6 +1230,11 @@ public sealed class ChatRunDispatcher(
         public bool ResumeRequested { get; set; }
         public DateTimeOffset LastPublished { get; set; }
         public ChatRunWait? Wait { get; set; }
+
+        /// <summary>The prose of the model step in flight; never persisted.</summary>
+        public System.Text.StringBuilder Draft { get; } = new();
+        public DateTimeOffset LastDraftPublished { get; set; }
+        public string? DraftContent => Draft.Length == 0 ? null : Draft.ToString();
 
         public ChatMessageDelta? MessageDelta => _recentMessages.Count == 0
             ? null

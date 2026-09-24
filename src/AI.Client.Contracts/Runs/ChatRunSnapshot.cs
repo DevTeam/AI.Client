@@ -9,7 +9,11 @@ public sealed record ChatRunSnapshot(Guid ProjectId, Guid ChatId, Guid BranchId,
     Guid? ActiveMessageId = null,
     UserPrompt? PendingPrompt = null,
     ChatRunWait? Wait = null,
-    ChatMessageDelta? MessageDelta = null);
+    ChatMessageDelta? MessageDelta = null,
+    // The prose of the model step in flight. Unlike StreamingContent it is never persisted and
+    // is not the answer: it lets the transcript show what the model is saying before the step
+    // ends and becomes a preamble, the final answer, or nothing.
+    string? DraftContent = null);
 
 /// <summary>
 /// A bounded, self-contained tail of messages persisted while a run is active. Every append names

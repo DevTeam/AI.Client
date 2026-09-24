@@ -22,5 +22,6 @@ public sealed class RunSnapshotComparer : IRunSnapshotComparer
         && current.BranchRevision == old.BranchRevision
         && (current.RecoveryActions ?? []).SequenceEqual(old.RecoveryActions ?? [])
         && current.ActiveMessageId == old.ActiveMessageId
+        && current.DraftContent == old.DraftContent
         && Equals(current.WorkspaceChanges, old.WorkspaceChanges);
 }

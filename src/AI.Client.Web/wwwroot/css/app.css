@@ -3252,6 +3252,16 @@ textarea {
     }
 }
 
+/* The running turn's current text under its row. Written like an answer, because it may turn out
+   to be one; a replacement rises out of the row instead of snapping in. */
+.workspace-message.live-text {
+    animation: turn-message-arrive 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .workspace-message.live-text { animation: none; }
+}
+
 .tool-row-glyph {
     display: inline-grid;
     flex: 0 0 auto;

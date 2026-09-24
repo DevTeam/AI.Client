@@ -38,12 +38,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         Func<AgentTool, string, long, ToolCallPosition, CancellationToken, Task<ToolApprovalAction>> approve,
         CancellationToken cancellationToken,
         bool interactive = true,
-        Guid? parentBranchId = null)
+        Guid? parentBranchId = null,
+        Func<string?, CancellationToken, Task>? draft = null)
     {
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var transportScope = transport.BeginScope(transportActivity);
         var deadline = new TurnDeadline(source, TimeSpan.FromMinutes(60));
         var token = source.Token;
+        Task Draft(string? content) => draft?.Invoke(content, token) ?? Task.CompletedTask;
         var global = await settings.LoadAsync(token);
         var configuredConnection = request.CredentialProfileId is { } connectionId
             ? global.Connections.SingleOrDefault(item => item.Id == connectionId)
@@ -100,6 +102,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var completionRequired = counts.Count > 0;
         while (true)
         {
+            // A continuation after truncation is the same answer carrying on, so its draft keeps
+            // growing instead of starting over.
+            if (truncated == 0) await Draft(null);
             checkpoints.Update(run, context);
             var modelContext = checkpoints.Apply(run, context);
             var permitted = new List<AgentTool>();
@@ -139,6 +144,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 if (chunk.FinishReason is { Length: > 0 } reason) finish = reason;
                 if (chunk.Content.Length == 0) continue;
                 content.Append(chunk.Content);
+                await Draft(chunk.Content);
             }
             if (calls.Count == 0 && content.Length == 0)
             {
@@ -204,6 +210,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     continue;
                 }
 
+                await Draft(null);
                 await text(continuedAnswer.ToString() + content, token);
                 continuedAnswer.Clear();
                 var changes = await workspace.SnapshotAsync(runKey, token);
@@ -242,6 +249,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 missingCompletion = 0;
                 if (decision.Status is RunCompletionStatus.Complete or RunCompletionStatus.Blocked)
                 {
+                    await Draft(null);
                     await text(decision.FinalAnswer!, token);
                     var changes = await workspace.SnapshotAsync(runKey, token);
                     await workspace.CompleteRunAsync(runKey, CancellationToken.None);
@@ -261,6 +269,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             if (calls.Any(call => !seenIds.Add(call.Id)))
                 throw new InvalidOperationException("Duplicate tool call IDs or excessive calls.");
             var assistant = new ChatCompletionMessage("assistant", content.ToString(), calls.ToArray());
+            // Cleared first so the publication that carries the preamble also drops its draft:
+            // the text changes owner without a frame showing it twice or not at all.
+            await Draft(null);
             await persist(assistant, token); // Durable intent before any side effect.
             context.Add(assistant);
             checkpoints.Update(run, context);

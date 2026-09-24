@@ -34,7 +34,8 @@ One row per turn, in place of all intermediate messages — that is, between the
 
 | Turn state | Row text |
 | --- | --- |
-| Running | current model action + time: `Gathering class usage data… · 12s` |
+| Running, a tool in flight | the tool's title + time: `Read file · 12s` |
+| Running, otherwise | `Working for 12s`; the model's text is shown in full below the row (see [Live text](#live-text)) |
 | Completed | `Worked for 1m 13s` |
 | Stopped by user | `Stopped after 22s` |
 | Failed | `Failed after 22s` |
@@ -42,9 +43,24 @@ One row per turn, in place of all intermediate messages — that is, between the
 
 Only time — no step count, no call count, no error badge. Errors are visible after expanding: today's `ToolActivityGroup` is there with its own `N failed`.
 
-"Current action" is the text of the latest intermediate assistant message — it changes with each cycle. An intermediate message whose content is identical to the previous one does not update the row, so a reasoning chain that repeats itself does not flicker. When the row is built from tool groups only, the latest group's first tool name appears in the row; the row already names a tool, and adding the model text is not necessary.
+The row no longer carries the model's text: a single truncated line of it was unreadable. The text moved under the row, in full — see [Live text](#live-text).
 
-If the latest message is an assistant response without tools but with text, the row shows that text. Pure tool groups with no reasoning also update the row to their tool name.
+### Live text
+
+While the turn runs, the model's current text is shown under the row as an ordinary assistant message, streamed as it is written. It may turn out to be the final answer, so it is written like one: when the turn ends that way, the answer is already in place and nothing jumps.
+
+Source, newest first: the draft of the model step in flight (`ChatRunSnapshot.DraftContent`, published by the server as the model streams, never persisted), else the text of the turn's latest intermediate assistant message.
+
+- **The text stays until the next one starts.** When the model moves on to tools, its text stays up; the row shows the tool. A step that lands as a preamble with the same text is a continuation, not a new text.
+- **The next text waits until the previous could be read.** Reading time is length ÷ 20 characters per second, clamped to 1.5–6 s, counted from when the shown text last grew. A note that finished before a slow tool call has usually been read by then, so most switches cost no wait.
+- **No queue.** When the wait is over, the newest text is shown; anything in between is in the expanded turn.
+- **Hold.** While the pointer is over the text, it is not replaced.
+- **No going back.** A text the turn has moved past is not shown again (a draft rejected by the completion protocol leaves an older note as the newest candidate).
+- **The end is immediate.** Final answer, stop or failure replace the live text at once; the reader is not made to wait for the thing the wait was for.
+- **Expanded turn:** the notes are shown as themselves, so only the draft of the step in flight is added at the end.
+- A replacement fades in from the row (300 ms); growth of the same text is patched in place. `prefers-reduced-motion` turns the animation off.
+
+The logic lives in `TurnLiveText` (one instance per transcript) and is covered by `TurnLiveTextTests`.
 
 The row is not interactive during generation — click and expand are available only after the turn ends, so a half-rendered intermediate state does not need a skeleton.
 
@@ -134,7 +150,10 @@ Running turn:
 ```
   Look where classes are used without DI
 
-◌ Gathering class usage data… · 12s  ›                     ← text changes with each step
+◌ Read file · 12s  ›                                       ← running tool, or "Working for 12s"
+
+  Gathering class usage data in Web/Cli/Host. First I'll   ← live text, in full, streaming;
+  look at where the registrations are▌                        the next one waits until this is read
 ```
 
 Expanded:
@@ -160,8 +179,8 @@ The row is rendered in a muted color, smaller text, single line with ellipsis on
 1. The feed shows only the user message, the final answer, the workspace changes card, and a single row between the user message and the final answer.
 2. The row's text matches the table by turn state.
 3. Click on the row expands the intermediate items into today's view without changes.
-4. A row of a running turn shows the latest action of the model; on repeated identical text, the row does not flicker; a half-rendered state does not require a skeleton.
-5. During generation the row shows the current model action and the growing time; the feed itself does not grow in the number of items.
+4. A running turn shows the model's current text in full under the row, streamed; a new text replaces it only after the reading delay (see [Live text](#live-text)).
+5. During generation the row shows the running tool or `Working for …` and the growing time; the feed holds at most one live text for the turn.
 6. A turn with no intermediate messages does not add a row.
 7. Stopped and failed turns show `Stopped after …` / `Failed after …`.
 8. The file changes card is visible with the turn collapsed.

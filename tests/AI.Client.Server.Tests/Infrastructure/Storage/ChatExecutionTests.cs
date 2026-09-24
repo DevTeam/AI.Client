@@ -227,6 +227,12 @@ public sealed class ChatExecutionTests
         replies[0].WorkspaceChanges!.Additions.ShouldBe(2);
         replies[1].WorkspaceChanges!.Files.ShouldHaveSingleItem().Path.ShouldBe("second.cs");
         replies[1].WorkspaceChanges!.Additions.ShouldBe(3);
+
+        var transcript = await fixture.Chats.GetTranscriptAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var visibleReplies = transcript!.Messages.Where(message => message.Role == "Assistant").ToArray();
+        visibleReplies.Length.ShouldBe(2);
+        visibleReplies[0].WorkspaceChanges!.Files.ShouldHaveSingleItem().Diff.ShouldBe("first diff");
+        visibleReplies[1].WorkspaceChanges!.Files.ShouldHaveSingleItem().Diff.ShouldBe("second diff");
     }
 
     [Theory]

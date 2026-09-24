@@ -28,6 +28,7 @@ The documents describe the agreed-upon architecture and are the source of truth 
 22. [Tool selection and adaptive compaction](21-tool-selection-and-adaptive-compaction.md)
 23. [Hidden model instructions and run completion](22-hidden-model-instructions-and-run-completion.md)
 24. [Desktop app](23-desktop.md)
+25. [Chat artifacts and reviews (proposal)](24-chat-artifacts.md)
 
 ## Accepted decisions
 

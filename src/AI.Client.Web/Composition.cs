@@ -56,6 +56,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IConnectionContextLimitsResolver>()
             .Root<IUnifiedDiffParser>()
             .RootBind<IChatFeedProjection>().To<ChatFeed>()
+            // Per transcript: it remembers which text it showed and since when.
+            .RootBind<ITurnLiveText>().To<TurnLiveText>()
             .RootBind<IDirectoryPickerState>().To<DirectoryPickerState>()
             .RootBind<IRunStatusPresentation>().To<RunStatusPresentation>()
             .Bind<NotificationService>().As(Lifetime.Singleton).To<NotificationService>()

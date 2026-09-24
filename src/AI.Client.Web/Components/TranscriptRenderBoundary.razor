@@ -14,6 +14,9 @@
     [Parameter] public int RunPresentationVersion { get; set; }
     [Parameter] public int ExpandedTurnsVersion { get; set; }
     [Parameter] public int? TurnElapsedSeconds { get; set; }
+    // The running turn's live text moves on its own clock: it grows with each draft publication and
+    // switches when a reading delay runs out, neither of which changes the chat revision.
+    [Parameter] public int LiveTextVersion { get; set; }
     private Guid? _renderedChatId;
     private long _renderedChatRevision = -1;
     private Guid? _renderedBranchLeafId;
@@ -23,6 +26,7 @@
     private int _renderedRunPresentationVersion;
     private int _renderedExpandedTurnsVersion;
     private int? _renderedTurnElapsedSeconds;
+    private int _renderedLiveTextVersion;
 
     protected override bool ShouldRender()
     {
@@ -34,7 +38,8 @@
             || _renderedBranchMenuId != BranchMenuId
             || _renderedRunPresentationVersion != RunPresentationVersion
             || _renderedExpandedTurnsVersion != ExpandedTurnsVersion
-            || _renderedTurnElapsedSeconds != TurnElapsedSeconds;
+            || _renderedTurnElapsedSeconds != TurnElapsedSeconds
+            || _renderedLiveTextVersion != LiveTextVersion;
 
         _renderedChatId = ChatId;
         _renderedChatRevision = ChatRevision;
@@ -45,6 +50,7 @@
         _renderedRunPresentationVersion = RunPresentationVersion;
         _renderedExpandedTurnsVersion = ExpandedTurnsVersion;
         _renderedTurnElapsedSeconds = TurnElapsedSeconds;
+        _renderedLiveTextVersion = LiveTextVersion;
         return changed;
     }
 }

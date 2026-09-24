@@ -26,5 +26,9 @@ public interface IChatAgent
         bool interactive = true,
         // The branch of the run that delegated this one, when one did. It buys nothing for the run
         // itself: it is what lets the delegating turn report a file total that includes this work.
-        Guid? parentBranchId = null);
+        Guid? parentBranchId = null,
+        // The prose of the model step in flight, chunk by chunk; null starts a new step. It is a
+        // live view only: what survives is whatever the step turns into — a preamble, the final
+        // answer, or nothing when the protocol rejects the step.
+        Func<string?, CancellationToken, Task>? draft = null);
 }

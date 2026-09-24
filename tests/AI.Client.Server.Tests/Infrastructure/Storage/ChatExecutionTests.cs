@@ -53,6 +53,27 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task StepInFlightShouldBeLiveAndHandOverToItsPreambleInOnePublication()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        var call = await fixture.StreamPreludeAsync(
+            new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"), "Checking the setup");
+
+        var drafting = await fixture.WaitAsync(run => run.DraftContent == "Checking the setup");
+        drafting.StreamingContent.ShouldBeEmpty();
+
+        call.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        call.Answer.SetResult("");
+        var landed = await fixture.WaitAsync(run => run.MessageDelta?.Appends
+            .Any(append => append.Message.Content == "Checking the setup") == true);
+        landed.DraftContent.ShouldBeNull();
+
+        (await fixture.NextCallAsync()).Answer.SetResult("Done");
+        (await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed)).DraftContent.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task ProvisionalTextAfterAToolMustNotBecomeTheFinalAnswer()
     {
         await using var fixture = await Fixture.CreateAsync();

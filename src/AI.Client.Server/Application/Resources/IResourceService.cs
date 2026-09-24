@@ -9,4 +9,6 @@ public interface IResourceService
     Task<ResourceDefinition?> RetireAsync(Guid projectId, Guid id, long expectedRevision, CancellationToken cancellationToken);
     Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ChatResourceRef>> ValidateAsync(Guid projectId, IReadOnlyList<ChatResourceRef>? references, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ChatResourceRef>> ValidateForChatAsync(Guid projectId, Guid chatId,
+        IReadOnlyList<ChatResourceRef>? references, CancellationToken cancellationToken);
 }

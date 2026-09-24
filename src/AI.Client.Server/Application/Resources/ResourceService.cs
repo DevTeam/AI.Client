@@ -5,13 +5,15 @@ using AI.Client.Contracts.Resources;
 
 /// <summary>Validates path references against a project's read grants at creation and submission.</summary>
 public sealed class ResourceService(IProjectService projects, IDirectoryBrowser browser,
-    IResourceRepository repository) : IResourceService
+    IResourceRepository repository, IReviewService reviews) : IResourceService
 {
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     public async Task<ChatResourceRef> CreateAsync(Guid projectId, ChatResourceKind kind, string path, CancellationToken cancellationToken)
     {
+        if (kind is not (ChatResourceKind.File or ChatResourceKind.Directory))
+            throw new ArgumentException("Only files and directories can be created from a path.");
         var reference = new ChatResourceRef(Guid.CreateVersion7(), kind, path);
         var prepared = (await ValidatePathsAsync(projectId, [reference], cancellationToken))[0];
         return (await repository.GetOrCreateAsync(projectId, prepared, cancellationToken)).Reference;
@@ -29,6 +31,8 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
     public async Task<IReadOnlyList<ChatResourceRef>> ValidateAsync(Guid projectId,
         IReadOnlyList<ChatResourceRef>? references, CancellationToken cancellationToken)
     {
+        if (references?.Any(item => item.Kind == ChatResourceKind.Review) == true)
+            throw new ArgumentException("Chat ID is required for review references.");
         var validated = await ValidatePathsAsync(projectId, references, cancellationToken);
         if (validated.Count == 0) return validated;
         var catalog = (await repository.ListAsync(projectId, cancellationToken))
@@ -41,6 +45,27 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
                 throw new InvalidOperationException("Resource reference is missing, retired, or changed.");
         }
         return validated;
+    }
+
+    public async Task<IReadOnlyList<ChatResourceRef>> ValidateForChatAsync(Guid projectId, Guid chatId,
+        IReadOnlyList<ChatResourceRef>? references, CancellationToken cancellationToken)
+    {
+        if (references is null or { Count: 0 }) return [];
+        if (references.Count > 20 || references.Select(item => item.Id).Distinct().Count() != references.Count)
+            throw new ArgumentException("A message needs at most 20 unique resources.");
+        var files = await ValidateAsync(projectId,
+            references.Where(item => item.Kind != ChatResourceKind.Review).ToArray(), cancellationToken);
+        var reviewList = references.Any(item => item.Kind == ChatResourceKind.Review)
+            ? (await reviews.ListAsync(projectId, chatId, cancellationToken)).ToDictionary(item => item.Id)
+            : [];
+        var byId = files.ToDictionary(item => item.Id);
+        foreach (var reference in references.Where(item => item.Kind == ChatResourceKind.Review))
+        {
+            if (!reviewList.TryGetValue(reference.Id, out var review))
+                throw new InvalidOperationException("Review resource is not in this chat.");
+            byId.Add(reference.Id, new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty, review.Name));
+        }
+        return references.Select(item => byId[item.Id]).ToArray();
     }
 
     private async Task<IReadOnlyList<ChatResourceRef>> ValidatePathsAsync(Guid projectId,
@@ -67,7 +92,7 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
                 grant.ToolNames.Contains("read", StringComparer.OrdinalIgnoreCase)
                 && InGrant(path, ResolveLinks(grant.CanonicalRoot), grant.Recursive));
             if (!allowed) throw new InvalidOperationException($"No project read grant covers {reference.Path}.");
-            result.Add(reference with { Path = path });
+            result.Add(reference with { Path = path, Name = null });
         }
         return result;
     }

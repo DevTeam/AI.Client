@@ -11,6 +11,7 @@ using Application.Resources;
 using Application.Settings;
 using Application.Tools;
 using Application.Workspace;
+using AI.Client.Contracts.Workspace;
 using Hosting;
 using Hosting.Endpoints;
 using Infrastructure.Chat;
@@ -58,6 +59,9 @@ internal sealed class Composition
             .Root<IChatRunDispatcher>()
             .Root<IResourceService>()
             .Root<IResourceRepository>()
+            .Root<IReviewService>()
+            .Root<IReviewRepository>()
+            .Root<IUnifiedDiffParser>()
             .Root<IChatBranchIds>()
             .Root<IToolUserInterface>()
             .Root<IAppToolReply>()
@@ -106,6 +110,7 @@ internal sealed class Composition
                 Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
                 JsonGlobalSettingsRepository, ProtectedGlobalSecretStore, ResourceService, ResourceModelProjection, JsonResourceRepository,
+                ReviewService, JsonReviewRepository,
                 GlobalSettingsService, OpenAiCompatibleConnectionModelsResolver, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService,
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,

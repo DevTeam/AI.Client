@@ -8,6 +8,7 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
     private const string LastProjectKey = "ai-client.last-project.v1";
     private const string ProjectContextKey = "ai-client.project-context.v1";
     private const string ComposerDraftKey = "ai-client.composer-drafts.v1";
+    private const string ComposerResourceDraftKey = "ai-client.composer-resource-drafts.v1";
     private const string ComposerHistoryKey = "ai-client.composer-history.v1";
     private const string LastBrowsedDirectoryKey = "ai-client.last-browsed-directory.v1";
 
@@ -28,6 +29,7 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
     // -> A must not lose A's own context, and a chat can be mid-draft in more than one place at once.
     private Dictionary<Guid, ProjectContextEntry> _projectContexts = [];
     private Dictionary<string, string> _composerDrafts = [];
+    private Dictionary<string, AI.Client.Contracts.Resources.ChatResourceRef[]> _composerResourceDrafts = [];
     // Per project, newest first. Scoped to the project rather than the chat because the point of
     // the feature is re-sending a phrasing the user already used ("run the tests", "do the
     // recommended thing"), and that reuse happens across the project's chats — a per-chat history
@@ -58,6 +60,7 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
 
         _projectContexts = await LoadDictionaryAsync<Guid, ProjectContextEntry>(ProjectContextKey);
         _composerDrafts = await LoadDictionaryAsync<string, string>(ComposerDraftKey);
+        _composerResourceDrafts = await LoadDictionaryAsync<string, AI.Client.Contracts.Resources.ChatResourceRef[]>(ComposerResourceDraftKey);
         _composerHistory = await LoadDictionaryAsync<Guid, List<string>>(ComposerHistoryKey);
         LastBrowsedDirectory = await jsRuntime.InvokeAsync<string?>("localStorage.getItem", LastBrowsedDirectoryKey);
     }
@@ -105,6 +108,19 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
 
     public string GetComposerDraft(string draftKey) =>
         draftKey.Length == 0 ? string.Empty : _composerDrafts.GetValueOrDefault(draftKey, string.Empty);
+
+    public IReadOnlyList<AI.Client.Contracts.Resources.ChatResourceRef> GetComposerResourceDraft(string draftKey) =>
+        draftKey.Length == 0 ? [] : _composerResourceDrafts.GetValueOrDefault(draftKey, []);
+
+    public async Task SetComposerResourceDraftAsync(string draftKey,
+        IReadOnlyList<AI.Client.Contracts.Resources.ChatResourceRef> references)
+    {
+        if (draftKey.Length == 0) return;
+        if (references.Count == 0) _composerResourceDrafts.Remove(draftKey);
+        else _composerResourceDrafts[draftKey] = references.ToArray();
+        await jsRuntime.InvokeVoidAsync("localStorage.setItem", ComposerResourceDraftKey,
+            JsonSerializer.Serialize(_composerResourceDrafts));
+    }
 
     public IReadOnlyList<string> GetComposerHistory(Guid projectId) =>
         _composerHistory.TryGetValue(projectId, out var entries) ? entries : [];

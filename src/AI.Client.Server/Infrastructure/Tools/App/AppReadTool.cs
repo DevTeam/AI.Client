@@ -42,6 +42,10 @@ public enum AppResource
     Search,
     /// <summary>Reusable file and directory references of one project.</summary>
     Resources,
+    /// <summary>Named reviews created in one chat, across all its branches.</summary>
+    Reviews,
+    /// <summary>One mutable review, including a bounded number of comments.</summary>
+    Review,
 }
 
 [McpServerToolType]
@@ -51,6 +55,7 @@ public sealed class AppReadTool(
     IGlobalSettingsService settings,
     IChatSearchService search,
     IResourceService resources,
+    IReviewService reviews,
     Func<IChatRunDispatcher> runs,
     IAppToolReply reply) : IAppTool
 {
@@ -75,6 +80,7 @@ public sealed class AppReadTool(
         Guid? projectId = null,
         Guid? chatId = null,
         Guid? branchId = null,
+        Guid? resourceId = null,
         string? cursor = null,
         int limit = Paging.DefaultLimit,
         string? query = null,
@@ -88,7 +94,7 @@ public sealed class AppReadTool(
             if (resource == AppResource.Search)
                 return reply.Reply(await SearchAsync(projectId, chatId, branchId, cursor, limit, query, isRegex, ignoreCase,
                     roles, cancellationToken));
-            return reply.Reply(await PageAsync(resource, projectId, chatId, branchId, cursor, limit, cancellationToken));
+            return reply.Reply(await PageAsync(resource, projectId, chatId, branchId, resourceId, cursor, limit, cancellationToken));
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
@@ -118,7 +124,7 @@ public sealed class AppReadTool(
     }
 
     private async Task<AppReadResult> PageAsync(
-        AppResource resource, Guid? projectId, Guid? chatId, Guid? branchId, string? cursor, int limit,
+        AppResource resource, Guid? projectId, Guid? chatId, Guid? branchId, Guid? resourceId, string? cursor, int limit,
         CancellationToken cancellationToken)
     {
         switch (resource)
@@ -160,6 +166,25 @@ public sealed class AppReadTool(
             case AppResource.Resources:
                 return Paging.Page("Resources", await resources.ListAsync(Required(projectId, nameof(projectId)), cancellationToken),
                     cursor, limit, reply.Json);
+            case AppResource.Reviews:
+            {
+                var items = await reviews.ListAsync(Required(projectId, nameof(projectId)),
+                    Required(chatId, nameof(chatId)), cancellationToken);
+                var summaries = items.Select(item => new { item.Id, item.Name, item.SourceMessageId,
+                    item.SourceCreatedAt, item.Files, CommentCount = item.Comments.Count, item.UpdatedAt }).ToArray();
+                return Paging.Page("Reviews", summaries, cursor, limit, reply.Json);
+            }
+            case AppResource.Review:
+            {
+                var item = await reviews.GetAsync(Required(projectId, nameof(projectId)),
+                    Required(chatId, nameof(chatId)), Required(resourceId, nameof(resourceId)), cancellationToken)
+                    ?? throw new InvalidOperationException("Review not found.");
+                var bounded = new { item.Id, item.Name, item.SourceMessageId, item.Files,
+                    Comments = item.Comments.Take(40).Select(comment => comment with
+                    { Body = comment.Body[..Math.Min(comment.Body.Length, 1000)] }).ToArray(),
+                    RemainingComments = Math.Max(0, item.Comments.Count - 40), item.Revision };
+                return Paging.Page("Review", [bounded], cursor, limit, reply.Json);
+            }
             default:
                 throw new ArgumentException("Unknown resource.", nameof(resource));
         }

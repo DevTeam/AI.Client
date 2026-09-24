@@ -11,4 +11,5 @@ using Contracts.Chats;
 public interface IChatContextBuilder
 {
     IReadOnlyList<ChatCompletionMessage> Build(ChatDetails chat, Guid headId);
+    Task<IReadOnlyList<ChatCompletionMessage>> BuildAsync(ChatDetails chat, Guid headId, CancellationToken cancellationToken);
 }

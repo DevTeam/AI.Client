@@ -24,6 +24,33 @@ public sealed class ChatContext(IToolResultCodec toolResultCodec, IResourceModel
             current = message.ParentId;
         }
         path.Reverse();
+        return RepairToolExchanges(path);
+    }
+
+    public async Task<IReadOnlyList<ChatCompletionMessage>> BuildAsync(ChatDetails chat, Guid headId,
+        CancellationToken cancellationToken)
+    {
+        var byId = chat.Messages.ToDictionary(message => message.Id);
+        var path = new List<ChatCompletionMessage>();
+        var visited = new HashSet<Guid>();
+        Guid? current = headId;
+        while (current is { } id)
+        {
+            if (!visited.Add(id) || !byId.TryGetValue(id, out var message))
+                throw new InvalidOperationException("Invalid message ancestry.");
+            var role = message.Role.ToLowerInvariant();
+            var modelContent = role == "tool" ? toolResultCodec.TryRead(message.Content)?.ModelContent : null;
+            if (role == "user") modelContent = await resources.ProjectAsync(chat.ProjectId, chat.Id,
+                message.Content, message.Resources, cancellationToken);
+            path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent));
+            current = message.ParentId;
+        }
+        path.Reverse();
+        return RepairToolExchanges(path);
+    }
+
+    private static List<ChatCompletionMessage> RepairToolExchanges(IReadOnlyList<ChatCompletionMessage> path)
+    {
         // A stopped run or a fork may end inside a tool exchange. Never execute missing results on recovery.
         var complete = new List<ChatCompletionMessage>();
         // Keep the model's call order. Some compatible endpoints enforce it even though calls are

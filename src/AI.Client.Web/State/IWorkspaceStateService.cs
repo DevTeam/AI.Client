@@ -49,6 +49,13 @@ public interface IWorkspaceStateService : IAsyncDisposable
     /// <summary>The unsent composer draft for the given key (chat id, or "new:{projectId}" before the first message creates the chat).</summary>
     string GetComposerDraft(string draftKey);
 
+    /// <summary>Unsent resource links saved beside the text draft for this chat/branch.</summary>
+    IReadOnlyList<AI.Client.Contracts.Resources.ChatResourceRef> GetComposerResourceDraft(string draftKey);
+
+    /// <summary>Resource changes are infrequent, so persist them immediately.</summary>
+    Task SetComposerResourceDraftAsync(string draftKey,
+        IReadOnlyList<AI.Client.Contracts.Resources.ChatResourceRef> references);
+
     /// <summary>
     /// Schedules a debounced (500ms) save of the draft. Skips scheduling entirely if the text
     /// already matches what's saved — typing back to an unchanged value costs nothing.

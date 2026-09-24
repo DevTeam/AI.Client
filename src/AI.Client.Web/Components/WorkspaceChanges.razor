@@ -24,6 +24,10 @@
                 }
             </ul>
         </div>
+        @if (SourceMessageId is { } sourceId)
+        {
+            <button class="workspace-review-action" type="button" title="Review these changes" @onclick="() => OnReview.InvokeAsync(sourceId)">Review</button>
+        }
         <button class="workspace-changes-header" type="button" aria-expanded="@_showDetails"
                 aria-describedby="@(!_showDetails ? _previewId : null)"
                 title="@(_showDetails ? "Collapse file changes" : "Expand file changes")" @onclick="ToggleDetails">
@@ -102,6 +106,8 @@
     private const int MaxRenderedLines = 400;
 
     [Parameter] public WorkspaceChangeSet? Changes { get; set; }
+    [Parameter] public Guid? SourceMessageId { get; set; }
+    [Parameter] public EventCallback<Guid> OnReview { get; set; }
 
     private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _previewId = $"workspace-changes-preview-{Guid.NewGuid():N}";

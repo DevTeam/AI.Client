@@ -7,17 +7,19 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
 
-public enum ResourceOperation { Create, Retire }
+public enum ResourceOperation { Create, Retire, CreateReview, UpdateReview }
 
 /// <summary>Manages project references; actual attachment is atomic with app_runs Submit.</summary>
 [McpServerToolType]
-public sealed class AppResourcesTool(IResourceService resources, IAppWrites writes, IAppToolReply reply) : IAppTool
+public sealed class AppResourcesTool(IResourceService resources, IReviewService reviews, IAppWrites writes, IAppToolReply reply) : IAppTool
 {
     public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => McpServerTool.Create(ExecuteAsync,
         new McpServerToolCreateOptions
         {
             SerializerOptions = reply.Json,
-            Description = "Create or retire project file and directory references. Create validates a path against "
+            Description = "Create or retire project file and directory references; create or update mutable chat reviews. "
+                          + "A review names one saved assistant change set and comments on its files or diff lines. "
+                          + "Create validates a path against "
                           + "the project's read grants and returns a reusable reference without reading file contents. "
                           + "Use app_read Resources to list references, and app_runs Submit to attach one to a chat turn. "
                           + "Retire needs the resource id and revision; earlier submitted turns keep their reference. "
@@ -28,9 +30,32 @@ public sealed class AppResourcesTool(IResourceService resources, IAppWrites writ
         OpenWorld = false, UseStructuredContent = true, OutputSchemaType = typeof(AppWriteResult))]
     private Task<CallToolResult> ExecuteAsync(ResourceOperation operation, Guid projectId, Guid operationId,
         ChatResourceKind? kind = null, string? path = null,
-        Guid? resourceId = null, long? revision = null, CancellationToken cancellationToken = default)
+        Guid? resourceId = null, long? revision = null, Guid? chatId = null,
+        Guid? sourceMessageId = null, string? name = null, string[]? files = null,
+        ReviewComment[]? comments = null, CancellationToken cancellationToken = default)
         => writes.RunAsync(operation.ToString(), operationId, async builder =>
         {
+            if (operation == ResourceOperation.CreateReview)
+            {
+                var review = await reviews.CreateAsync(projectId,
+                    chatId ?? throw new ArgumentException("'chatId' is required."),
+                    new CreateReviewRequest(sourceMessageId ?? throw new ArgumentException("'sourceMessageId' is required."),
+                        name ?? throw new ArgumentException("'name' is required."), files ?? []), cancellationToken);
+                return builder.Applied("Created review resource.", projectId, review.ChatId, revision: review.Revision,
+                    current: JsonSerializer.SerializeToElement(review, reply.Json));
+            }
+            if (operation == ResourceOperation.UpdateReview)
+            {
+                var review = await reviews.UpdateAsync(projectId,
+                    chatId ?? throw new ArgumentException("'chatId' is required."),
+                    resourceId ?? throw new ArgumentException("'resourceId' is required."),
+                    new UpdateReviewRequest(name ?? throw new ArgumentException("'name' is required."),
+                        files ?? [], comments ?? [], revision ?? throw new ArgumentException("'revision' is required.")),
+                    cancellationToken);
+                return review is null ? builder.Failed("Review not found.", projectId)
+                    : builder.Applied("Updated review resource.", projectId, review.ChatId, revision: review.Revision,
+                        current: JsonSerializer.SerializeToElement(review, reply.Json));
+            }
             ResourceDefinition? result = operation switch
             {
                 ResourceOperation.Create => new ResourceDefinition(await resources.CreateAsync(projectId,

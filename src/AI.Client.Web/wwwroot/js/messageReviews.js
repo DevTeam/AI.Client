@@ -68,7 +68,10 @@
     window.messageReviews = {
         showEditor(messageId) {
             const editor = document.getElementById(`review-editor-${messageId}`);
-            if (editor && !editor.matches(":popover-open")) editor.showPopover();
+            if (editor && !editor.matches(":popover-open")) {
+                editor.showPopover();
+                editor.querySelector("textarea")?.focus();
+            }
         },
         setComments(messageId, comments) {
             commentsByMessage.set(messageId, comments || []);

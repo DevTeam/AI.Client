@@ -61,7 +61,7 @@ export function watchFocus(dotNetReference) {
 }
 
 export function watchEscape(dotNetReference) {
-    const locallyHandled = ".sidebar-search-input, .sidebar-inline-editor, .queue-item input, .message-branch-indicator";
+    const locallyHandled = ".sidebar-search-input, .sidebar-inline-editor, .queue-item input, .message-branch-indicator, .message-review-editor, .message-review-toggle, .message-review-comments, .review-comment-editor";
     const handler = event => {
         if (event.key !== "Escape" || event.repeat || event.defaultPrevented) return;
         const target = event.target instanceof Element ? event.target : null;
@@ -73,6 +73,22 @@ export function watchEscape(dotNetReference) {
     };
     document.addEventListener("keydown", handler);
     return { dispose: () => document.removeEventListener("keydown", handler) };
+}
+
+export function showReviewSubmenu(triggerId, popupId) {
+    const trigger = document.getElementById(triggerId);
+    const popup = document.getElementById(popupId);
+    if (!trigger || !popup) return;
+    if (!popup.matches(":popover-open")) popup.showPopover();
+    const anchor = trigger.getBoundingClientRect();
+    const width = popup.getBoundingClientRect().width;
+    const height = popup.getBoundingClientRect().height;
+    const gap = 6;
+    let left = anchor.right + gap;
+    if (left + width + gap > window.innerWidth) left = anchor.left - width - gap;
+    popup.style.left = `${Math.max(gap, Math.min(left, window.innerWidth - width - gap))}px`;
+    popup.style.top = `${Math.max(gap, Math.min(anchor.top, window.innerHeight - height - gap))}px`;
+    popup.querySelector("button")?.focus();
 }
 
 /**

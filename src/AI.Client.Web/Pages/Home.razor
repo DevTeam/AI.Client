@@ -138,13 +138,18 @@
                                     </button>
                                     @if (_menuReviews.TryGetValue(chat.Id, out var chatReviews) && chatReviews.Any(item => item.Kind == ChatReviewKind.Diff))
                                     {
-                                        <div class="review-menu-heading">Reviews</div>
-                                        <div class="review-menu-list">
+                                        <button id="chat-reviews-trigger-@chat.Id" class="review-submenu-trigger" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="@(_reviewSubmenuChatId == chat.Id)" @onclick="() => ToggleReviewSubmenu(chat.Id, false)"><AppIcon Name="diff" /><span>Reviews</span><AppIcon Name="chevron-right" /></button>
+                                        @if (_reviewSubmenuChatId == chat.Id)
+                                        {
+                                        <div id="chat-reviews-popup-@chat.Id" popover="manual" class="review-submenu" role="menu" aria-label="Chat reviews">
+                                            <div class="review-menu-list">
                                             @foreach (var review in chatReviews.Where(item => item.Kind == ChatReviewKind.Diff).OrderByDescending(item => item.UpdatedAt))
                                             {
-                                                <button type="button" role="menuitem" @onclick="() => OpenReviewForChatAsync(chat.Id, review.Id)"><AppIcon Name="diff" /><span>@review.Name</span></button>
+                                                <button type="button" role="menuitem" title="@review.Name" @onclick="() => OpenReviewForChatAsync(chat.Id, review.Id)"><AppIcon Name="diff" /><span>@review.Name</span></button>
                                             }
+                                            </div>
                                         </div>
+                                        }
                                     }
                                     @if (_isConfirmingChatDelete)
                                     {
@@ -178,13 +183,18 @@
                                         <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
                                             @if (ReviewsForBranch(branch).Count > 0)
                                             {
-                                                <div class="review-menu-heading">Reviews</div>
-                                                <div class="review-menu-list">
+                                                <button id="branch-reviews-trigger-@branch.RootId" class="review-submenu-trigger" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="@(_reviewSubmenuBranchId == branch.RootId)" @onclick="() => ToggleReviewSubmenu(branch.RootId, true)"><AppIcon Name="diff" /><span>Reviews</span><AppIcon Name="chevron-right" /></button>
+                                                @if (_reviewSubmenuBranchId == branch.RootId)
+                                                {
+                                                <div id="branch-reviews-popup-@branch.RootId" popover="manual" class="review-submenu" role="menu" aria-label="Branch reviews">
+                                                    <div class="review-menu-list">
                                                     @foreach (var review in ReviewsForBranch(branch))
                                                     {
-                                                        <button type="button" role="menuitem" @onclick="() => OpenReviewForBranchAsync(branch, review.Id)"><AppIcon Name="diff" /><span>@review.Name</span></button>
+                                                        <button type="button" role="menuitem" title="@review.Name" @onclick="() => OpenReviewForBranchAsync(branch, review.Id)"><AppIcon Name="diff" /><span>@review.Name</span></button>
                                                     }
+                                                    </div>
                                                 </div>
+                                                }
                                             }
                                             @if (_confirmingBranchDeleteId == branch.RootId)
                                             {
@@ -338,6 +348,8 @@
             ReviewNames="@_reviews.ToDictionary(item => item.Id, item => item.Name)"
             MessageReviewIds="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).Select(item => item.Id).ToHashSet()"
             MessageReviews="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).GroupBy(item => item.SourceMessageId).ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.UpdatedAt).First())"
+            DiffReviews="@_reviews.Where(item => item.Kind == ChatReviewKind.Diff).GroupBy(item => item.SourceMessageId).ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.UpdatedAt).First())"
+            OnDiffReviewChanged="OnReviewChangedAsync"
             OnMessageReviewChanged="OnReviewChangedAsync"
             OnAttachMessageReview="AttachReviewAsync"
             ReviewVersion="@_reviewVersion"
@@ -382,10 +394,10 @@
                 <div class="composer-resource-list" aria-label="Attached workspace references">
                     @foreach (var resource in _draftResources)
                     {
-                        <span class="composer-resource-chip" @key="resource.Id" title="@resource.Path">
+                        <span class="composer-resource-chip" @key="resource.Id" title="@(resource.Kind == ChatResourceKind.Review ? ReviewName(resource) : resource.Path)">
                             <AppIcon Name="@(resource.Kind == ChatResourceKind.Review ? "diff" : resource.Kind == ChatResourceKind.File ? "file" : "folder")" />
                             <span>@(resource.Kind == ChatResourceKind.Review ? ReviewName(resource) : ResourceDisplayName(resource.Path))</span>
-                            <button type="button" aria-label="Remove @resource.Path" title="Remove reference" @onclick="() => RemoveDraftResource(resource.Id)"><AppIcon Name="x" /></button>
+                            <button type="button" aria-label="Remove @(resource.Kind == ChatResourceKind.Review ? ReviewName(resource) : resource.Path)" title="Remove reference" @onclick="() => RemoveDraftResource(resource.Id)"><AppIcon Name="x" /></button>
                         </span>
                     }
                 </div>
@@ -589,6 +601,9 @@
     private string? _permissionsChatTitle;
     private Guid? _chatMenuId;
     private Guid? _branchMenuId;
+    private Guid? _reviewSubmenuChatId;
+    private Guid? _reviewSubmenuBranchId;
+    private (Guid OwnerId, bool IsBranch)? _pendingReviewSubmenu;
     private Guid? _confirmingBranchDeleteId;
     private Guid? _messageBranchMenuId;
     private bool _isEndpointMenuOpen;
@@ -861,7 +876,7 @@
         await SyncWorkspaceUrlAsync();
     }
 
-    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings }
+    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings, Review }
 
     /// <summary>
     /// All right-hand drawers share one slot, so opening one closes the rest instead of stacking
@@ -888,6 +903,7 @@
             await RequestCloseProjectSettingsAsync();
             if (_isProjectSettingsOpen) return false;
         }
+        if (keep != Drawer.Review && _reviewWorkspaceOpen) CloseReview();
         return true;
     }
 
@@ -1033,6 +1049,14 @@
             }
 
             StateHasChanged();
+        }
+
+        if (_pendingReviewSubmenu is { } submenu && _runEventsModule is not null)
+        {
+            _pendingReviewSubmenu = null;
+            var prefix = submenu.IsBranch ? "branch" : "chat";
+            await _runEventsModule.InvokeVoidAsync("showReviewSubmenu",
+                $"{prefix}-reviews-trigger-{submenu.OwnerId}", $"{prefix}-reviews-popup-{submenu.OwnerId}");
         }
 
         if (_attachComposer && _composerModule is not null && _dotNetReference is not null)
@@ -2783,6 +2807,7 @@
 
     private void ToggleProjectMenu()
     {
+        CloseReviewSubmenu();
         _isProjectMenuOpen = !_isProjectMenuOpen;
         _isConfirmingProjectDelete = false;
         _chatMenuId = null;
@@ -2793,8 +2818,26 @@
         _isConfirmingDirectoryDelete = false;
     }
 
+    private void ToggleReviewSubmenu(Guid ownerId, bool isBranch)
+    {
+        var isOpen = isBranch ? _reviewSubmenuBranchId == ownerId : _reviewSubmenuChatId == ownerId;
+        CloseReviewSubmenu();
+        if (isOpen) return;
+        if (isBranch) _reviewSubmenuBranchId = ownerId;
+        else _reviewSubmenuChatId = ownerId;
+        _pendingReviewSubmenu = (ownerId, isBranch);
+    }
+
+    private void CloseReviewSubmenu()
+    {
+        _reviewSubmenuChatId = null;
+        _reviewSubmenuBranchId = null;
+        _pendingReviewSubmenu = null;
+    }
+
     private async Task ToggleChatMenuAsync(Guid chatId)
     {
+        CloseReviewSubmenu();
         _chatMenuId = _chatMenuId == chatId ? null : chatId;
         _isConfirmingChatDelete = false;
         _isProjectMenuOpen = false;
@@ -2819,6 +2862,7 @@
 
     private async Task ToggleBranchMenuAsync(Guid branchId)
     {
+        CloseReviewSubmenu();
         _branchMenuId = _branchMenuId == branchId ? null : branchId;
         _confirmingBranchDeleteId = null;
         _chatMenuId = null;
@@ -3306,6 +3350,7 @@
 
     private void CloseContextMenus()
     {
+        CloseReviewSubmenu();
         _isProjectMenuOpen = false;
         _isConfirmingProjectDelete = false;
         _chatMenuId = null;
@@ -3711,6 +3756,7 @@
 
     private async Task OpenReviewAsync(Guid id)
     {
+        if (!await CloseDrawersExceptAsync(Drawer.Review)) return;
         await LoadReviewsAsync();
         if (!await LoadReviewChatAsync()) return;
         OpenReviewPanel(id);
@@ -3719,6 +3765,7 @@
     private async Task OpenReviewFromChangesAsync(Guid sourceMessageId)
     {
         if (_openingReviewSourceId == sourceMessageId) return;
+        if (!await CloseDrawersExceptAsync(Drawer.Review)) return;
         _openingReviewSourceId = sourceMessageId;
         try
         {
@@ -3780,23 +3827,66 @@
         _reviews.Sort((first, second) => second.SourceCreatedAt.CompareTo(first.SourceCreatedAt));
         _menuReviews[review.ChatId] = _reviews.ToArray();
         _reviewVersion++;
+        if (IsFromPreviousRound(review))
+        {
+            if (review.Kind == ChatReviewKind.Message && review.MessageComments is not { Count: > 0 })
+                RemoveReviewFromDraft(review.Id);
+            else
+                AddReviewToDraft(review);
+        }
         return Task.CompletedTask;
     }
 
     private Task AttachReviewAsync(ChatReview review)
     {
         if (_selectedChat?.Id != review.ChatId || _selectedProject?.Id != review.ProjectId) return Task.CompletedTask;
+        AddReviewToDraft(review);
+        return Task.CompletedTask;
+    }
+
+    private void AddReviewToDraft(ChatReview review)
+    {
         var reference = new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty, review.Name, review.Kind);
         var index = _draftResources.FindIndex(item => item.Id == review.Id);
         if (index >= 0) _draftResources[index] = reference;
         else if (_draftResources.Count < 20) _draftResources.Add(reference);
-        else { _chatError = "A message can reference at most 20 resources."; return Task.CompletedTask; }
+        else { _chatError = "A message can reference at most 20 resources."; return; }
         _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
-        return Task.CompletedTask;
+    }
+
+    private bool IsFromPreviousRound(ChatReview review)
+    {
+        if (_selectedChat?.Id != review.ChatId || _selectedProject?.Id != review.ProjectId) return false;
+        var branch = Feed.BuildBranch(_selectedChat.Messages, _branchLeafId);
+        var run = GetSelectedRun();
+        var activeMessageId = run?.ActiveMessageId
+            ?? run?.Queue.FirstOrDefault(item => item.Stage == QueuedMessageStage.UserCommitted)?.Id;
+        var lastTurnIsPending = run?.Status is ChatRunStatus.Generating or ChatRunStatus.Failed
+                or ChatRunStatus.Interrupted or ChatRunStatus.Paused
+            && activeMessageId is not null
+            && !Feed.LastTurnHasCompleteAnswer(branch)
+            && branch.LastOrDefault(message => message.Role == "User")?.Id == activeMessageId;
+        var completedAnswers = Feed.BuildTurns(branch, lastTurnIsPending)
+            .Select(turn => turn.FinalAnswer?.Message)
+            .Where(message => message is { IsIncomplete: false })
+            .Select(message => message!.Id).ToArray();
+        if (completedAnswers.Length == 0) return false;
+        var lastAnswer = -1;
+        var previousAnswer = -1;
+        for (var index = 0; index < branch.Count; index++)
+        {
+            if (branch[index].Id == completedAnswers[^1]) lastAnswer = index;
+            if (completedAnswers.Length > 1 && branch[index].Id == completedAnswers[^2]) previousAnswer = index;
+        }
+        for (var index = previousAnswer + 1; index <= lastAnswer; index++)
+            if (branch[index].Id == review.SourceMessageId) return true;
+        return false;
     }
 
     private string ReviewName(ChatResourceRef reference) =>
-        _reviews.FirstOrDefault(item => item.Id == reference.Id)?.Name ?? reference.Name ?? reference.Path;
+        reference.ReviewKind == ChatReviewKind.Message
+            ? $"Message comments · {_reviews.FirstOrDefault(item => item.Id == reference.Id)?.MessageComments?.Count ?? 0}"
+            : _reviews.FirstOrDefault(item => item.Id == reference.Id)?.Name ?? reference.Name ?? reference.Path;
 
     private string? ResourcePickerStartPath()
     {
@@ -3842,7 +3932,9 @@
         }
     }
 
-    private void RemoveDraftResource(Guid id)
+    private void RemoveDraftResource(Guid id) => RemoveReviewFromDraft(id);
+
+    private void RemoveReviewFromDraft(Guid id)
     {
         _draftResources.RemoveAll(item => item.Id == id);
         _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();

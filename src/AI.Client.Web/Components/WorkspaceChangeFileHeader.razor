@@ -1,0 +1,49 @@
+@using AI.Client.Contracts.Workspace
+
+<button class="workspace-change-summary" type="button" aria-expanded="@Expanded" @onclick="OnToggle">
+    <span class="workspace-change-kind" title="@KindTitle(File.Kind)">@KindGlyph(File.Kind)</span>
+    <span class="workspace-change-path" title="@File.Path">@Display(File)</span>
+    @if (File.Confidence == FileChangeConfidence.Approximate)
+    {
+        <span class="workspace-change-approximate" title="Exact line counts were not available for this file">approx.</span>
+    }
+    @if (CommentCount > 0)
+    {
+        <span class="workspace-change-comments" title="@CommentCount @(CommentCount == 1 ? "comment" : "comments")" aria-label="@CommentCount @(CommentCount == 1 ? "comment" : "comments")"><AppIcon Name="message-circle" />@CommentCount</span>
+    }
+    <span class="workspace-change-counts">
+        @if (File.Additions is { } added) { <span class="workspace-added">+@added</span> }
+        @if (File.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
+        @if (File.IsBinary) { <span class="workspace-change-binary">binary</span> }
+    </span>
+</button>
+
+@code {
+    [Parameter, EditorRequired] public FileChange File { get; set; } = default!;
+    [Parameter] public bool Expanded { get; set; }
+    [Parameter] public int CommentCount { get; set; }
+    [Parameter] public EventCallback OnToggle { get; set; }
+
+    private static string Display(FileChange file) =>
+        file is { Kind: FileChangeKind.Renamed, PreviousPath: { } previous }
+            ? $"{Name(previous)} → {Name(file.Path)}"
+            : Name(file.Path);
+
+    private static string Name(string path)
+    {
+        var segments = path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+        return segments.Length <= 2 ? path : string.Join('/', segments[^2..]);
+    }
+
+    private static string KindGlyph(FileChangeKind kind) => kind switch
+    {
+        FileChangeKind.Added => "A", FileChangeKind.Deleted => "D",
+        FileChangeKind.Renamed => "R", _ => "M",
+    };
+
+    private static string KindTitle(FileChangeKind kind) => kind switch
+    {
+        FileChangeKind.Added => "Added", FileChangeKind.Deleted => "Deleted",
+        FileChangeKind.Renamed => "Renamed", _ => "Modified",
+    };
+}

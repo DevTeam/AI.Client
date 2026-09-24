@@ -35,7 +35,8 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
 
     public bool Enqueue(Guid operationId, QueuedRunMessage message)
     {
-        if (string.IsNullOrWhiteSpace(message.Content)) throw new DomainException("Queued message cannot be empty.");
+        if (string.IsNullOrWhiteSpace(message.Content) && message.Resources is not { Count: > 0 })
+            throw new DomainException("Queued message cannot be empty.");
         if (!_operations.Add(operationId)) return false;
         _queue.Add(message); Revision++; return true;
     }
@@ -119,10 +120,11 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
 
     public void Update(Guid id, string content)
     {
-        if (string.IsNullOrWhiteSpace(content)) throw new DomainException("Queued message cannot be empty.");
         var index = _queue.FindIndex(item => item.Id == id);
         if (index >= 0)
         {
+            if (string.IsNullOrWhiteSpace(content) && _queue[index].Resources is not { Count: > 0 })
+                throw new DomainException("Queued message cannot be empty.");
             _queue[index] = _queue[index] with { Content = content };
             Revision++;
         }

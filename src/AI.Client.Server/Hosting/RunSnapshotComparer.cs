@@ -9,7 +9,8 @@ public sealed class RunSnapshotComparer : IRunSnapshotComparer
         && current.Status == old.Status
         && current.StreamingContent.Length > old.StreamingContent.Length
         && current.StreamingContent.StartsWith(old.StreamingContent, StringComparison.Ordinal)
-        && current.Queue.SequenceEqual(old.Queue)
+        && current.Queue.Count == old.Queue.Count
+        && current.Queue.Zip(old.Queue).All(pair => QueueItemEqual(pair.First, pair.Second))
         && current.HasUnreadResponse == old.HasUnreadResponse
         && current.Error == old.Error
         && current.ChatRevision == old.ChatRevision
@@ -24,4 +25,8 @@ public sealed class RunSnapshotComparer : IRunSnapshotComparer
         && current.ActiveMessageId == old.ActiveMessageId
         && current.DraftContent == old.DraftContent
         && Equals(current.WorkspaceChanges, old.WorkspaceChanges);
+
+    private static bool QueueItemEqual(QueuedChatMessage first, QueuedChatMessage second) =>
+        first with { Resources = null } == second with { Resources = null }
+        && (first.Resources ?? []).SequenceEqual(second.Resources ?? []);
 }

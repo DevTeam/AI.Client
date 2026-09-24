@@ -2225,6 +2225,61 @@ body {
     gap: 0.6rem;
 }
 
+.composer-resource-list,
+.message-resource-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+    margin-bottom: .45rem;
+}
+
+.composer-resource-chip,
+.message-resource-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    max-width: 100%;
+    padding: .2rem .45rem;
+    border: 1px solid #484848;
+    border-radius: .45rem;
+    background: #333;
+    color: #ddd;
+    font-size: .78rem;
+}
+
+.composer-resource-chip > span,
+.message-resource-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-resource-chip .app-icon,
+.message-resource-chip .app-icon { flex: none; width: .9rem; height: .9rem; }
+.composer-resource-chip button { display: inline-flex; padding: .08rem; border: 0; background: transparent; color: #aaa; }
+.composer-resource-chip button:hover { color: #fff; }
+.composer-resource-chip button .app-icon { width: .8rem; height: .8rem; }
+.message-resource-list { margin-top: .5rem; }
+.message-resource-chip { max-width: min(100%, 25rem); }
+.queue-resource-count { color: #aeb9c8; white-space: nowrap; }
+
+.composer-resource-menu-anchor { position: relative; display: inline-flex; margin-right: auto; }
+.composer-add-resource { width: 2rem; height: 2rem; }
+.composer-resource-menu-backdrop { position: fixed; inset: 0; z-index: 29; }
+.composer-resource-menu {
+    position: absolute;
+    bottom: calc(100% + .5rem);
+    left: 0;
+    z-index: 30;
+    display: grid;
+    width: 13rem;
+    padding: .35rem;
+    border: 1px solid #4a4a4a;
+    border-radius: .65rem;
+    background: #2d2d2d;
+    box-shadow: 0 .6rem 2rem #0008;
+}
+.composer-resource-menu-label { padding: .3rem .55rem; color: #999; font-size: .75rem; }
+.composer-resource-menu button { display: flex; align-items: center; gap: .6rem; padding: .5rem .55rem; border: 0; border-radius: .35rem; background: transparent; color: #eee; text-align: left; }
+.composer-resource-menu button:hover,
+.composer-resource-menu button:focus-visible { background: #414141; }
+.composer-resource-menu button .app-icon { width: 1rem; height: 1rem; }
+
 .composer-endpoint {
     position: relative;
     display: inline-flex;

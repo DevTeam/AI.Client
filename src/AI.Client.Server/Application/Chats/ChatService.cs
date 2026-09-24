@@ -8,6 +8,7 @@ using AI.Client.Contracts.Tools;
 using AI.Client.Contracts.Workspace;
 using AI.Client.Domain.Chats;
 using AI.Client.Domain.Projects;
+using AI.Client.Application.Resources;
 
 public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, IChatSynchronization synchronization) : IChatService, IChatMutations
 {
@@ -157,7 +158,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             request.IsIncomplete,
             request.ToolCalls?.Select(call => new ChatToolCall(call.Id, call.Name, call.Arguments)).ToArray(),
             request.ToolCallId,
-            ToDomain(request.WorkspaceChanges));
+            ToDomain(request.WorkspaceChanges), ResourceReferences.ToDomain(request.Resources));
         if (request.ReplaceSourceId is { } replaceId)
         {
             stored.Chat.ReplaceInBranch(request.BranchId ?? throw new ArgumentException("A replacement branch is required."),
@@ -397,7 +398,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
                 omitToolArguments ? string.Empty : call.Arguments)).ToArray(),
             message.ToolCallId,
             omitWorkspaceChanges ? null : ToContract(message.WorkspaceChanges),
-            contentOmitted);
+            contentOmitted,
+            ResourceReferences.ToContract(message.Resources));
     }
 
     private static ChatWorkspaceChangeSet? ToDomain(WorkspaceChangeSet? changes) => changes is null

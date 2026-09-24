@@ -7,6 +7,7 @@ using Application.Chats;
 using Application.Notifications;
 using Application.Projects;
 using Application.Runs;
+using Application.Resources;
 using Application.Settings;
 using Application.Tools;
 using Application.Workspace;
@@ -55,6 +56,8 @@ internal sealed class Composition
             .Root<IChatEndpoint>()
             .Root<IChatRunRepository>()
             .Root<IChatRunDispatcher>()
+            .Root<IResourceService>()
+            .Root<IResourceRepository>()
             .Root<IChatBranchIds>()
             .Root<IToolUserInterface>()
             .Root<IAppToolReply>()
@@ -102,7 +105,7 @@ internal sealed class Composition
             .Singleton<PhysicalTextFileSystem, PhysicalDirectoryBrowser, JsonProjectRepository, ProjectDocumentSerializer,
                 Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
-                JsonGlobalSettingsRepository, ProtectedGlobalSecretStore,
+                JsonGlobalSettingsRepository, ProtectedGlobalSecretStore, ResourceService, ResourceModelProjection, JsonResourceRepository,
                 GlobalSettingsService, OpenAiCompatibleConnectionModelsResolver, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService,
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,
@@ -111,7 +114,7 @@ internal sealed class Composition
             .Bind<IAppToolReply>().To<AppToolReply>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
             .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To(([Tag("base")] IChatCompletionClient baseClient, ILogger<RetryingChatCompletionClient> retryLogger, IChatTransportPolicy transportPolicy, IChatTransportActivity transportActivity) => new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity))
-            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool, AppContextCompactTool>(Tag.Unique)
+            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool, AppContextCompactTool, AppResourcesTool>(Tag.Unique)
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
 }

@@ -2,6 +2,8 @@
 @using System.Diagnostics.CodeAnalysis
 @using System.Text.Json
 @using AI.Client.Web.State
+@using AI.Client.Web.FileSystem
+@using AI.Client.Contracts.Resources
 @inject IClientMetadata ClientMetadata
 @inject IApiBaseUrl _apiBaseUrl
 @inject IProjectApi ProjectApi
@@ -14,6 +16,7 @@
 @inject IChatRunsApi ChatRunsApi
 @inject IRunStateService RunState
 @inject IChatComposerService Composer
+@inject AI.Client.Web.Resources.IResourceApi ResourceApi
 @inject IChatFeedProjection Feed
 @inject INotificationService Notifications
 @inject IRunStatusPresentation StatusPresentation
@@ -323,7 +326,7 @@
             @* Only what has not been sent yet. A command that is already a message in the
                transcript belongs to the turn chip above, not to a list whose every row promises
                that it can still be edited, reordered or removed. *@
-            <section class="chat-queue @(_queueActionPending ? "queue-busy" : null)" aria-busy="@(_queueActionPending ? "true" : "false")"><div class="queue-header"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @pendingQueue.Count</span><AppIcon Name="chevron-right" /></button><div class="queue-actions">@if (_isConfirmingQueueClearAll) { <span class="queue-clear-confirm"><span>Stop the run and drop everything?</span><button class="danger compact-action" type="button" @onclick="ClearEverythingAsync">Clear all</button><button class="secondary-action compact-action" type="button" @onclick="() => _isConfirmingQueueClearAll = false">Cancel</button></span> } else { <button type="button" class="queue-action-button queue-action-clear" title="@($"Remove the {pendingQueue.Count} message(s) still waiting in the queue")" aria-label="Clear queued messages" @onclick="ClearQueueAsync"><AppIcon Name="x" /></button>@if (HasCommittedCommand(selectedRun)) { <button type="button" class="queue-action-button destructive-action" title="Stop the run and clear everything, including the message already sent" aria-label="Stop and clear everything" @onclick="() => _isConfirmingQueueClearAll = true"><AppIcon Name="trash" /></button> } }</div></div>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in pendingQueue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span title="@item.Content">@GetSingleLine(item.Content)</span><button class="icon-action queue-send-now" type="button" title="Interrupt and send this message now" aria-label="Interrupt and send this message now" @onclick="() => SendQueuedMessageNowAsync(item.Id)"><AppIcon Name="zap" /></button><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }</section>
+            <section class="chat-queue @(_queueActionPending ? "queue-busy" : null)" aria-busy="@(_queueActionPending ? "true" : "false")"><div class="queue-header"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @pendingQueue.Count</span><AppIcon Name="chevron-right" /></button><div class="queue-actions">@if (_isConfirmingQueueClearAll) { <span class="queue-clear-confirm"><span>Stop the run and drop everything?</span><button class="danger compact-action" type="button" @onclick="ClearEverythingAsync">Clear all</button><button class="secondary-action compact-action" type="button" @onclick="() => _isConfirmingQueueClearAll = false">Cancel</button></span> } else { <button type="button" class="queue-action-button queue-action-clear" title="@($"Remove the {pendingQueue.Count} message(s) still waiting in the queue")" aria-label="Clear queued messages" @onclick="ClearQueueAsync"><AppIcon Name="x" /></button>@if (HasCommittedCommand(selectedRun)) { <button type="button" class="queue-action-button destructive-action" title="Stop the run and clear everything, including the message already sent" aria-label="Stop and clear everything" @onclick="() => _isConfirmingQueueClearAll = true"><AppIcon Name="trash" /></button> } }</div></div>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in pendingQueue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span title="@item.Content">@(string.IsNullOrWhiteSpace(item.Content) ? "Workspace references" : GetSingleLine(item.Content))@if (item.Resources is { Count: > 0 }) { <span class="queue-resource-count"> refs: @item.Resources.Count</span> }</span><button class="icon-action queue-send-now" type="button" title="Interrupt and send this message now" aria-label="Interrupt and send this message now" @onclick="() => SendQueuedMessageNowAsync(item.Id)"><AppIcon Name="zap" /></button><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }</section>
         }
         <div class="composer-status" role="status">
             @* While the composer shows a history entry the counter comes first and the plain
@@ -344,8 +347,33 @@
             else if (!_composerHistoryNavigator.IsActive) { <span>@GetComposerHint()</span> }
         </div>
         <footer class="workspace-composer">
+            @if (_draftResources.Count > 0)
+            {
+                <div class="composer-resource-list" aria-label="Attached workspace references">
+                    @foreach (var resource in _draftResources)
+                    {
+                        <span class="composer-resource-chip" @key="resource.Id" title="@resource.Path">
+                            <AppIcon Name="@(resource.Kind == ChatResourceKind.File ? "file" : "folder")" />
+                            <span>@ResourceDisplayName(resource.Path)</span>
+                            <button type="button" aria-label="Remove @resource.Path" title="Remove reference" @onclick="() => RemoveDraftResource(resource.Id)"><AppIcon Name="x" /></button>
+                        </span>
+                    }
+                </div>
+            }
             <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@(_replaceSourceId is not null ? "Edit the message to replace this branch..." : _isForking ? "Write the first message in the new branch..." : GetSelectedRun() is { PendingPrompt: not null } ? "Answer the question above..." : "Message the assistant...")" aria-label="Message"></textarea>
             <div class="composer-footer">
+                <div class="composer-resource-menu-anchor">
+                    <button class="icon-action composer-add-resource" type="button" title="Add to chat" aria-label="Add to chat" aria-expanded="@_isResourceMenuOpen" @onclick="() => _isResourceMenuOpen = !_isResourceMenuOpen"><AppIcon Name="plus" /></button>
+                    @if (_isResourceMenuOpen)
+                    {
+                        <div class="composer-resource-menu-backdrop" @onclick="() => _isResourceMenuOpen = false"></div>
+                        <div class="composer-resource-menu" role="menu" aria-label="Add to chat">
+                            <span class="composer-resource-menu-label">Add</span>
+                            <button type="button" role="menuitem" @onclick="() => OpenResourcePicker(DirectoryPickerMode.File)"><AppIcon Name="file" /> File</button>
+                            <button type="button" role="menuitem" @onclick="() => OpenResourcePicker(DirectoryPickerMode.Directory)"><AppIcon Name="folder" /> Directory</button>
+                        </div>
+                    }
+                </div>
                 <div class="composer-endpoint">
                     <button class="composer-endpoint-trigger" type="button" title="Endpoint for this chat" aria-label="Endpoint for this chat" aria-haspopup="true" aria-expanded="@(_isEndpointMenuOpen ? "true" : "false")" @onclick="ToggleEndpointMenu" disabled="@(_connections.Count == 0)">
                         <span>@GetEndpointDisplayName()</span>
@@ -444,6 +472,13 @@
         <DirectoryPickerDialog StartPath="@_directoryPickerStartPath"
                                Subtitle="@(_directoryPickerGrantId is null ? "New directory grant" : "Change directory grant")"
                                Selected="OnDirectoryPickedAsync" Cancelled="CloseDirectoryPicker" />
+    }
+    @if (_resourcePickerMode is { } resourceMode && _selectedProject is not null)
+    {
+        <DirectoryPickerDialog @key="resourceMode" Mode="resourceMode"
+                               StartPath="@ResourcePickerStartPath()"
+                               Subtitle="Add a workspace reference to the chat"
+                               Selected="OnResourcePickedAsync" Cancelled="CloseResourcePicker" />
     }
 </main>
 
@@ -549,6 +584,10 @@
     // one (its id). A grant is only added once a directory comes back, so cancelling leaves nothing
     // half-made in the sidebar.
     private bool _isDirectoryPickerOpen;
+    private bool _isResourceMenuOpen;
+    private DirectoryPickerMode? _resourcePickerMode;
+    private readonly List<ChatResourceRef> _draftResources = [];
+    private readonly Dictionary<string, ChatResourceRef[]> _resourceDrafts = [];
     private Guid? _directoryPickerGrantId;
     private string? _directoryPickerStartPath;
     private Guid? _directoryMenuId;
@@ -1597,7 +1636,7 @@
     /// </remarks>
     private async Task<bool> TryAnswerPendingPromptAsync(string text)
     {
-        if (_isForking || _replaceSourceId is not null || string.IsNullOrWhiteSpace(text)) return false;
+        if (_isForking || _replaceSourceId is not null || _draftResources.Count > 0 || string.IsNullOrWhiteSpace(text)) return false;
         if (GetSelectedRun() is not { PendingPrompt: { } prompt } run) return false;
         if (prompt.Questions.FirstOrDefault(question => question.AllowOther) is not { } target) return false;
         if (!await ChatRunsApi.AnswerPromptAsync(run.ProjectId, run.ChatId, run.BranchId,
@@ -1650,7 +1689,8 @@
                 _chat.Model,
                 _chat.Message,
                 GetSelectedRun(),
-                _selectedChat is null ? null : GetSelectedRunBranchId());
+                _selectedChat is null ? null : GetSelectedRunBranchId(),
+                _draftResources.ToArray());
 
             var outcome = await Composer.SubmitAsync(request, CancellationToken.None);
 
@@ -1727,6 +1767,8 @@
         _isForking = false;
         _replaceSourceId = null;
         _chat.Message = string.Empty;
+        _draftResources.Clear();
+        _resourceDrafts.Remove(submittedDraftKey);
         _composerHistoryNavigator.Reset();
         // Clear the draft under its pre-submit key. GetComposerDraftKey() now points at the
         // accepted chat/branch, so using it here would leave the submitted new-chat text
@@ -1773,7 +1815,7 @@
     private bool CanSendMessage() =>
         !_isSubmittingMessage
         && _selectedProject is not null
-        && !string.IsNullOrWhiteSpace(_chat.Message)
+        && (!string.IsNullOrWhiteSpace(_chat.Message) || _draftResources.Count > 0)
         && !string.IsNullOrWhiteSpace(_chat.BaseUrl)
         && !string.IsNullOrWhiteSpace(_chat.Model);
 
@@ -1980,6 +2022,8 @@
         WorkspaceStateService.QueueComposerDraftSave($"new:{_selectedProject.Id}", string.Empty);
         await WorkspaceStateService.FlushPendingComposerDraftAsync();
         _chat.Message = string.Empty;
+        _draftResources.Clear();
+        _resourceDrafts.Remove(GetComposerDraftKey());
         if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("focus");
     }
 
@@ -2552,6 +2596,9 @@
         _replaceSourceId = null;
         _branchLeafId = message.ParentId;
         _chat.Message = message.Content;
+        _draftResources.Clear();
+        _draftResources.AddRange(message.Resources ?? []);
+        _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
         _composerNeedsResize = true;
         if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("focus");
     }
@@ -2565,6 +2612,9 @@
         _forkSourceId = null;
         _branchLeafId = message.ParentId;
         _chat.Message = message.Content;
+        _draftResources.Clear();
+        _draftResources.AddRange(message.Resources ?? []);
+        _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
         _composerNeedsResize = true;
         if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("focus");
     }
@@ -2577,6 +2627,7 @@
         _isForking = true;
         _forkSourceId = message.Id;
         _chat.Message = string.Empty;
+        _draftResources.Clear();
         _composerNeedsResize = true;
         if (_composerHandle is not null)
         {
@@ -2590,6 +2641,7 @@
         ResetBranchOperationState();
         _branchLeafId = GetOriginalBranchLeaf(_selectedChat);
         _chat.Message = string.Empty;
+        _draftResources.Clear();
         _composerNeedsResize = true;
     }
 
@@ -3452,6 +3504,69 @@
         WorkspaceStateService.QueueComposerDraftSave(GetComposerDraftKey(), _chat.Message);
     }
 
+    private void OpenResourcePicker(DirectoryPickerMode mode)
+    {
+        _isResourceMenuOpen = false;
+        _resourcePickerMode = mode;
+    }
+
+    private string? ResourcePickerStartPath()
+    {
+        var roots = _security.DirectoryGrants
+            .Where(grant => grant.ToolNames.Split(',', StringSplitOptions.TrimEntries)
+                .Contains("read", StringComparer.OrdinalIgnoreCase))
+            .Select(grant => grant.CanonicalRoot)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToArray();
+        var previous = WorkspaceStateService.LastBrowsedDirectory;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (previous is not null && roots.Any(root => string.Equals(previous, root, comparison)
+            || previous.StartsWith(Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar,
+                comparison))) return previous;
+        return roots.FirstOrDefault();
+    }
+
+    private void CloseResourcePicker() => _resourcePickerMode = null;
+
+    private async Task OnResourcePickedAsync(string path)
+    {
+        var mode = _resourcePickerMode;
+        CloseResourcePicker();
+        if (mode is null || _selectedProject is null) return;
+        var projectId = _selectedProject.Id;
+        var draftKey = GetComposerDraftKey();
+        try
+        {
+            var kind = mode == DirectoryPickerMode.File ? ChatResourceKind.File : ChatResourceKind.Directory;
+            var resource = await ResourceApi.CreateAsync(projectId, kind, path, CancellationToken.None);
+            if (_selectedProject?.Id != projectId || GetComposerDraftKey() != draftKey) return;
+            if (_draftResources.Any(item => item.Kind == resource.Kind && string.Equals(item.Path, resource.Path,
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))) return;
+            _draftResources.Add(resource);
+            _resourceDrafts[draftKey] = _draftResources.ToArray();
+            await WorkspaceStateService.SetLastBrowsedDirectoryAsync(resource.Kind == ChatResourceKind.Directory
+                ? resource.Path : Path.GetDirectoryName(resource.Path) ?? resource.Path);
+            _chatError = null;
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _chatError = $"Could not add the resource: {error.Message}";
+        }
+    }
+
+    private void RemoveDraftResource(Guid id)
+    {
+        _draftResources.RemoveAll(item => item.Id == id);
+        _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
+    }
+
+    private static string ResourceDisplayName(string path)
+    {
+        var trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var name = Path.GetFileName(trimmed);
+        return string.IsNullOrEmpty(name) ? path : name;
+    }
+
     private string GetComposerDraftKey() => _selectedChat is not null
         ? $"{_selectedChat.Id}:{_branchLeafId}"
         : _selectedProject is not null ? $"new:{_selectedProject.Id}" : string.Empty;
@@ -3462,6 +3577,8 @@
         // chat or project switch would have Escape restore a draft that is no longer on screen.
         _composerHistoryNavigator.Reset();
         _chat.Message = WorkspaceStateService.GetComposerDraft(GetComposerDraftKey());
+        _draftResources.Clear();
+        if (_resourceDrafts.TryGetValue(GetComposerDraftKey(), out var resources)) _draftResources.AddRange(resources);
     }
 
     private string? GetScrollPositionKey() => _selectedChat is null ? null : $"{_selectedChat.Id}:{_branchLeafId}";

@@ -1,6 +1,12 @@
 # Chat artifacts and reviews
 
-Status: Proposed design. No implementation is implied by this document.
+Status: File and directory references implemented; reviews remain a proposed design.
+
+## First implementation (file and directory references)
+
+The first increment uses `ChatResourceRef(Id, Kind, Path)`, a per-project JSON catalog, `IResourceService`, and `app_resources Create/Retire`. `app_read Resources` lists the catalog. The composer `+` menu opens the existing Host-backed file/directory picker and shows removable chips. `Submit` accepts text, references, or both; the queue, saved user message, and transcript preserve them. The model receives only a bounded path manifest. Project read grants are checked when a ref is created and submitted. Review resources and versioned comment documents below remain proposed.
+
+The initial ref carries its kind and canonical path in the message for reliable historical display. A later review resource can use an ID/revision target without copying its document into the message. The longer-term envelope below describes that direction rather than an already shipped format.
 
 ## Goal and boundaries
 
@@ -10,9 +16,9 @@ The artifact is a first-class part of the user turn, not Markdown syntax. The co
 
 ## Existing seams
 
-- `ChatMessage` has immutable text, parent, role, and optional `WorkspaceChanges`; `ChatDocumentSerializer` writes message nodes and the chat manifest separately. `ChatContext` builds model context along the selected branch's parent chain.
+- `ChatMessage` has immutable text, parent, role, resource references, and optional `WorkspaceChanges`; `ChatDocumentSerializer` writes message nodes and the chat manifest separately. `ChatContext` builds model context along the selected branch's parent chain.
 - `WorkspaceChanges.razor` already shows a completed assistant turn's net file changes and saved diffs. A diff can be unavailable, approximate, truncated in the UI, or binary. It is evidence for **that turn**, not a representation of the current working tree.
-- `SubmitChatMessageRequest`, queued messages, and `ChatComposerService` currently carry text only. The composer rejects an empty string. The proposed artifact list would travel with the same submit/queue/retry operation and make an artifact-only turn valid.
+- `SubmitChatMessageRequest`, queued messages, and `ChatComposerService` carry file and directory references alongside text. The composer accepts a resource-only turn. Review references will use the same submit and queue path.
 - Built-in filesystem tools already apply project directory grants. Attaching a path must not silently grant the agent access to it.
 - The in-process `App tools` MCP server already separates read-only `app_read` from mutating tools because permissions are granted per tool. Its reads are paged and bounded; its writes use revisions and operation IDs.
 

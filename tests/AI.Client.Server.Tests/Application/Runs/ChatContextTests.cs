@@ -1,15 +1,35 @@
 namespace AI.Client.Application.Tests.Runs;
 
 using AI.Client.Application.Runs;
+using AI.Client.Application.Resources;
 using AI.Client.Contracts.Chat;
 using AI.Client.Contracts.Chats;
 using AI.Client.Contracts.Tools;
+using AI.Client.Contracts.Resources;
 using Shouldly;
 using Xunit;
 
 public sealed class ChatContextTests
 {
     private static readonly ToolResultCodec ToolResults = new(new ToolResultModelProjector());
+
+    [Fact]
+    public void ShouldExposeReferencesToModelWithoutChangingStoredText()
+    {
+        var id = Guid.CreateVersion7();
+        var reference = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.File, "C:\\work\\code.cs");
+        var chat = new ChatDetails(Guid.CreateVersion7(), Guid.CreateVersion7(), "Chat",
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1, null,
+            [new ChatMessageView(id, null, "User", "Check this", DateTimeOffset.UnixEpoch,
+                Resources: [reference])]);
+
+        var message = new ChatContext(ToolResults, new ResourceModelProjection()).Build(chat, id).Single();
+
+        message.Content.ShouldBe("Check this");
+        message.ForModel.ShouldContain("file:");
+        message.ForModel.ShouldContain("code.cs");
+        message.ForModel.ShouldContain("contents not loaded");
+    }
 
     [Fact]
     public void ShouldRepairInterruptedToolBatchInOriginalCallOrder()
@@ -33,7 +53,7 @@ public sealed class ChatContextTests
                 new ChatMessageView(nextUser, firstResult, "User", "Urgent", DateTimeOffset.UnixEpoch)
             ]);
 
-        var context = new ChatContext(ToolResults).Build(chat, nextUser);
+        var context = new ChatContext(ToolResults, new ResourceModelProjection()).Build(chat, nextUser);
 
         context.Select(message => message.Role).ShouldBe(["user", "assistant", "tool", "tool", "tool", "user"]);
         context.Where(message => message.Role == "tool").Select(message => message.ToolCallId)
@@ -58,7 +78,7 @@ public sealed class ChatContextTests
                 new ChatMessageView(tool, assistant, "Tool", stored, DateTimeOffset.UnixEpoch, ToolCallId: "call-1")
             ]);
 
-        var restored = new ChatContext(ToolResults).Build(chat, tool).Single(message => message.Role == "tool");
+        var restored = new ChatContext(ToolResults, new ResourceModelProjection()).Build(chat, tool).Single(message => message.Role == "tool");
 
         restored.Content.ShouldBe(stored);
         restored.ForModel.ShouldBe("{\"exitCode\":0}");
@@ -81,7 +101,7 @@ public sealed class ChatContextTests
                 new ChatMessageView(tool, assistant, "Tool", stored, DateTimeOffset.UnixEpoch, ToolCallId: "call-1")
             ]);
 
-        var restored = new ChatContext(ToolResults).Build(chat, tool).Single(message => message.Role == "tool");
+        var restored = new ChatContext(ToolResults, new ResourceModelProjection()).Build(chat, tool).Single(message => message.Role == "tool");
 
         restored.ModelContent.ShouldBeNull();
         restored.ForModel.ShouldBe(stored);

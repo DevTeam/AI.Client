@@ -20,4 +20,5 @@ public sealed record ComposerSubmitRequest(
     string? EndpointModel,
     string Message,
     ChatRunSnapshot? SelectedRun,
-    Guid? SelectedBranchId = null);
+    Guid? SelectedBranchId = null,
+    IReadOnlyList<AI.Client.Contracts.Resources.ChatResourceRef>? Resources = null);

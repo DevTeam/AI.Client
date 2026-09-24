@@ -29,7 +29,7 @@ The tools receive `IChatRunDispatcher` as `Func<IChatRunDispatcher>`: the dispat
 
 ## Tool composition
 
-Seven tools. Five are grouped by risk level: the tool boundary matches the boundary of what the user allows with a single `Allow` button. The model sees them with the `mcp_app__` prefix.
+The tools are grouped by risk level: the tool boundary matches the boundary of what the user allows with a single `Allow` button. The model sees them with the `mcp_app__` prefix.
 
 | Tool | Operations |
 |---|---|
@@ -38,12 +38,15 @@ Seven tools. Five are grouped by risk level: the tool boundary matches the bound
 | `app_runs` | `Submit`, `Stop`, `UpdateQueued`, `RemoveQueued`, `ClearQueue`, `Resume`, `SkipFailed`, `Rebase`, `MarkRead` |
 | `app_projects` | `Create`, `Update`, `Delete` |
 | `app_security` | policies and grants for the project, chat, and globally; global settings; write credentials |
+| `app_resources` | create and retire reusable project file/directory references; attach them with `app_runs Submit` |
 | `spawn_subtask` | run a task in a separate conversation and return only its result |
 | `ask_user` | ask the user a question and wait for an answer — see [19-ask-user.md](19-ask-user.md) |
 
 ### app_read
 
-Resources: `Projects`, `Project`, `Chats`, `Chat`, `Messages`, `Runs`, `Settings`, `Search`. The response always has one shape — a page of items — so a single document is a page of one item.
+Resources: `Projects`, `Project`, `Chats`, `Chat`, `Messages`, `Runs`, `Settings`, `Search`, `Resources`. The response always has one shape — a page of items — so a single document is a page of one item.
+
+`Resources` lists the project's reusable file and directory references, including their revision and retired state. A reference contains a path and kind, never file contents. `app_resources Create` checks the project's read grants, canonicalizes the path and returns the reference; `Retire` uses an expected revision. To attach references to a turn, pass them in `app_runs Submit`. The queued and stored user message keep the same structured refs, and the model receives a short manifest rather than file bodies.
 
 `Chat` is returned without messages: they are a separate resource, otherwise reading a heading would drag the entire history in. `Messages` with `branchId` returns the chain from the branch head to the root — exactly the context the model sees.
 

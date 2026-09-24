@@ -1,6 +1,7 @@
 using AI.Client.Application.Chats;
 using AI.Client.Domain.Chats;
 using AI.Client.Domain.Projects;
+using AI.Client.Application.Resources;
 using System.Text.Json;
 // ReSharper disable UseCollectionExpression
 
@@ -28,7 +29,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             message.Content,
             message.CreatedAt,
             message.IsIncomplete, message.ToolCalls, message.ToolCallId,
-            ToDocument(message.WorkspaceChanges))).ToArray(),
+            ToDocument(message.WorkspaceChanges), ResourceReferences.ToContract(message.Resources))).ToArray(),
         chat.Branches.Select(branch => new BranchDocument(branch.Id, branch.HeadMessageId?.Value, branch.Title,
             branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
         chat.ToolPolicies.Select(policy => new ToolPolicyDocument(policy.Tool.ServerId.Value, policy.Tool.Name,
@@ -73,7 +74,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
                 message.Content,
                 message.CreatedAt,
                 message.IsIncomplete, message.ToolCalls, message.ToolCallId,
-                ToDomain(message.WorkspaceChanges)), message.CreatedAt);
+                ToDomain(message.WorkspaceChanges), ResourceReferences.ToDomain(message.Resources)), message.CreatedAt);
         }
         chat.RestoreBranches(document.Branches.Select(branch => new ChatBranch(branch.Id,
             branch.HeadMessageId is { } head ? new ChatMessageId(head) : null, branch.Title,
@@ -195,5 +196,6 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
         string? ToolCallId = null,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-        WorkspaceChangeDocument? WorkspaceChanges = null);
+        WorkspaceChangeDocument? WorkspaceChanges = null,
+        IReadOnlyList<AI.Client.Contracts.Resources.ChatResourceRef>? Resources = null);
 }

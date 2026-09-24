@@ -10,4 +10,5 @@ public sealed record ChatMessageView(
     IReadOnlyList<Chat.ChatToolCall>? ToolCalls = null,
     string? ToolCallId = null,
     Workspace.WorkspaceChangeSet? WorkspaceChanges = null,
-    bool ContentOmitted = false);
+    bool ContentOmitted = false,
+    IReadOnlyList<Resources.ChatResourceRef>? Resources = null);

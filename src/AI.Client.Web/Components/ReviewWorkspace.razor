@@ -8,12 +8,6 @@
 <section class="review-workspace" aria-label="Review changes">
     <header class="review-workspace-header">
         <strong>Review</strong>
-        @if (_current is { } current)
-        {
-            <input class="review-name" aria-label="Review name" value="@_name" @oninput="e => _name = e.Value?.ToString() ?? string.Empty" @onchange="SaveNameAsync" />
-            <span class="review-source-label">@SourceLabel(current.SourceMessageId)</span>
-            <button type="button" @onclick="() => OnAttach.InvokeAsync(current)">Add to message</button>
-        }
         <button class="icon-action review-close" type="button" title="Close review" aria-label="Close review" @onclick="OnClose"><AppIcon Name="x" /></button>
     </header>
     @if (_error is { Length: > 0 }) { <p class="review-error" role="alert">@_error</p> }
@@ -84,12 +78,11 @@
     [Parameter] public IReadOnlyList<ChatReview> Reviews { get; set; } = [];
     [Parameter] public Guid? StartReviewId { get; set; }
     [Parameter] public EventCallback<ChatReview> OnChanged { get; set; }
-    [Parameter] public EventCallback<ChatReview> OnAttach { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
     private ChatReview? _current;
     private readonly HashSet<string> _expandedFiles = new(StringComparer.Ordinal);
-    private string _name = string.Empty;
+    private readonly HashSet<string> _collapsedFolders = new(StringComparer.Ordinal);
     private string _fileFilter = string.Empty;
     private string? _error;
     private bool _saving;
@@ -102,12 +95,10 @@
     protected override void OnInitialized()
     {
         _current = Reviews.FirstOrDefault(item => item.Id == StartReviewId);
-        if (_current is not null) _name = _current.Name;
         if (_current?.Files.FirstOrDefault() is { } firstFile) _expandedFiles.Add(firstFile);
     }
 
     private ChatMessageView? SourceOf(ChatReview review) => Chat.Messages.FirstOrDefault(item => item.Id == review.SourceMessageId);
-    private string SourceLabel(Guid id) => SourceOf(_current!) is { } source ? source.CreatedAt.LocalDateTime.ToString("g") : id.ToString();
     private static string FileId(string path) => "review-file-" + Uri.EscapeDataString(path);
     private static string FileName(string path) => path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? path;
     private static string DirectoryName(string path)
@@ -168,17 +159,23 @@
         }
         else
         {
-            <details class="review-tree-folder" open @key="node.Path">
-                <summary>@node.Name</summary>
-                <div>@foreach (var child in node.Children) { @RenderTreeNode(child) }</div>
-            </details>
+            <div class="review-tree-folder" @key="node.Path">
+                <button class="review-tree-folder-toggle" type="button" aria-expanded="@(!_collapsedFolders.Contains(node.Path))"
+                        @onclick="() => ToggleFolder(node.Path)">
+                    <AppIcon Name="@(_collapsedFolders.Contains(node.Path) ? "chevron-right" : "chevron-down")" />
+                    <span>@node.Name</span>
+                </button>
+                @if (!_collapsedFolders.Contains(node.Path))
+                {
+                    <div class="review-tree-children">@foreach (var child in node.Children) { @RenderTreeNode(child) }</div>
+                }
+            </div>
         }
     </text>;
 
-    private async Task SaveNameAsync()
+    private void ToggleFolder(string path)
     {
-        if (_current is not null && _name.Trim() != _current.Name)
-            await SaveAsync(_current.Files, _current.Comments);
+        if (!_collapsedFolders.Add(path)) _collapsedFolders.Remove(path);
     }
 
     private async Task ToggleFileAsync(string path)
@@ -293,7 +290,7 @@
         try
         {
             var revised = await ReviewsApi.UpdateAsync(ProjectId, Chat.Id, _current.Id,
-                new UpdateReviewRequest(_name, files, comments, _current.Revision), CancellationToken.None);
+                new UpdateReviewRequest(_current.Name, files, comments, _current.Revision), CancellationToken.None);
             _current = revised;
             _error = null;
             await OnChanged.InvokeAsync(revised);

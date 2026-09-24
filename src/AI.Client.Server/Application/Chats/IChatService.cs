@@ -9,6 +9,8 @@ public interface IChatService
     Task<ChatDetails?> GetTranscriptAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task<ChatTurnActivity?> GetTurnActivityAsync(Guid projectId, Guid chatId, Guid turnId, Guid branchLeafId, CancellationToken cancellationToken);
     Task<ChatMessageContent?> GetMessageContentAsync(Guid projectId, Guid chatId, Guid messageId, CancellationToken cancellationToken);
+    Task<ChatDetails?> RemoveReviewReferenceAsync(Guid projectId, Guid chatId, Guid messageId,
+        Guid reviewId, long revision, CancellationToken cancellationToken);
     Task<ChatDetails> CreateAsync(Guid projectId, CreateChatRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> AppendMessageAsync(Guid projectId, Guid chatId, AppendChatMessageRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> UpdateEndpointAsync(Guid projectId, Guid chatId, UpdateChatEndpointRequest request, CancellationToken cancellationToken);

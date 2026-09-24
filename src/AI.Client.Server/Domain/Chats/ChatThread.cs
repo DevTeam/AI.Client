@@ -188,6 +188,22 @@ public sealed class ChatThread
         LastActivityAt = updatedAt;
     }
 
+    public bool RemoveReviewReference(ChatMessageId messageId, Guid reviewId, DateTimeOffset updatedAt)
+    {
+        if (!_messages.TryGetValue(messageId, out var message) || message.Role != ChatMessageRole.User)
+            return false;
+        var resources = message.Resources;
+        if (resources is null || !resources.Any(item => item.Id == reviewId
+            && item.Kind == AI.Client.Domain.Resources.ChatResourceKind.Review)) return false;
+        EnsureTimestampDoesNotMoveBackwards(updatedAt);
+        var remaining = resources.Where(item => item.Id != reviewId).ToArray();
+        _messages[messageId] = new ChatMessage(message.Id, message.ParentId, message.Role,
+            message.Content, message.CreatedAt, message.IsIncomplete, message.ToolCalls,
+            message.ToolCallId, message.WorkspaceChanges, remaining, allowEmptyAfterResourceRemoval: true);
+        UpdatedAt = updatedAt;
+        return true;
+    }
+
     public void ReplaceInBranch(Guid branchId, ChatMessageId sourceId, ChatMessage replacement, DateTimeOffset updatedAt)
     {
         if (!_branches.TryGetValue(branchId, out var branch)) throw new DomainException("Branch does not exist in this chat.");

@@ -63,7 +63,8 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
         {
             if (!reviewList.TryGetValue(reference.Id, out var review))
                 throw new InvalidOperationException("Review resource is not in this chat.");
-            byId.Add(reference.Id, new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty, review.Name));
+            byId.Add(reference.Id, new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty,
+                review.Name, review.Kind));
         }
         return references.Select(item => byId[item.Id]).ToArray();
     }

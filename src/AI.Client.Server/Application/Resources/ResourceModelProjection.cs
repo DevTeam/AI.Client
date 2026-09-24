@@ -41,6 +41,15 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
                 lines.Add($"- review {reference.Id}: unavailable");
                 continue;
             }
+            if (review.Kind == ChatReviewKind.Message)
+            {
+                lines.Add($"- message review: {JsonSerializer.Serialize(review.Name)} [resource {review.Id}; source message {review.SourceMessageId}; current mutable state]");
+                foreach (var comment in (review.MessageComments ?? []).Take(10))
+                    lines.Add($"  - selected text {JsonSerializer.Serialize(comment.Quote)}: {JsonSerializer.Serialize(comment.Body[..Math.Min(comment.Body.Length, 500)])}");
+                if ((review.MessageComments?.Count ?? 0) > 10)
+                    lines.Add($"  - {review.MessageComments!.Count - 10} more comments; use app_read to inspect the resource.");
+                continue;
+            }
             lines.Add($"- review: {JsonSerializer.Serialize(review.Name)} [resource {review.Id}; saved changes in message {review.SourceMessageId}; current mutable state]");
             foreach (var file in review.Files.Take(20)) lines.Add($"  - selected file: {JsonSerializer.Serialize(file)}");
             foreach (var comment in review.Comments.Take(10))

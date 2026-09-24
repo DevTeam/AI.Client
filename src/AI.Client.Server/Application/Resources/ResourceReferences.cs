@@ -6,10 +6,12 @@ public static class ResourceReferences
     public static IReadOnlyList<Domain.Resources.ChatResourceRef>? ToDomain(
         IReadOnlyList<Contracts.Resources.ChatResourceRef>? references) =>
         references?.Select(item => new Domain.Resources.ChatResourceRef(item.Id,
-            (Domain.Resources.ChatResourceKind)item.Kind, item.Path, item.Name)).ToArray();
+            (Domain.Resources.ChatResourceKind)item.Kind, item.Path, item.Name,
+            item.ReviewKind is { } reviewKind ? (Domain.Resources.ChatReviewKind)reviewKind : null)).ToArray();
 
     public static IReadOnlyList<Contracts.Resources.ChatResourceRef>? ToContract(
         IReadOnlyList<Domain.Resources.ChatResourceRef>? references) =>
         references?.Select(item => new Contracts.Resources.ChatResourceRef(item.Id,
-            (Contracts.Resources.ChatResourceKind)item.Kind, item.Path, item.Name)).ToArray();
+            (Contracts.Resources.ChatResourceKind)item.Kind, item.Path, item.Name,
+            item.ReviewKind is { } reviewKind ? (Contracts.Resources.ChatReviewKind)reviewKind : null)).ToArray();
 }

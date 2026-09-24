@@ -13,6 +13,7 @@
 @inject IToolPresentations Presentations
 @implements IAsyncDisposable
 @using AI.Client.Contracts.Tools
+@using AI.Client.Contracts.Resources
 
 <div class="messages-area">
 @if (SelectedChat is not null)
@@ -196,18 +197,32 @@
                     @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
                     @if (!string.IsNullOrWhiteSpace(message.Content))
                     {
-                        <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div>
+                        @if (message.Role is "User" or "Assistant" && message.ToolCalls is null)
+                        {
+                            <MessageReviewText @key="message.Id" ProjectId="SelectedChat.ProjectId" ChatId="SelectedChat.Id"
+                                               MessageId="message.Id" Content="@((MarkupString)RenderMarkdownCached(message.Id, message.Content))"
+                                               Review="@(MessageReviews?.GetValueOrDefault(message.Id))"
+                                               OnChanged="OnMessageReviewChanged" OnAttach="OnAttachMessageReview" />
+                        }
+                        else { <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div> }
                     }
                     @if (message.Resources is { Count: > 0 })
                     {
                         <div class="message-resource-list" aria-label="Workspace references">
                             @foreach (var resource in message.Resources)
                             {
+                                @if (resource.ReviewKind == ChatReviewKind.Message || MessageReviewIds?.Contains(resource.Id) == true) { continue; }
                                 @if (resource.Kind == AI.Client.Contracts.Resources.ChatResourceKind.Review)
                                 {
-                                    <button type="button" class="message-resource-chip" @key="resource.Id" title="Open review" @onclick="() => OnOpenReview.InvokeAsync(resource.Id)">
-                                        <AppIcon Name="diff" /><span>@(ReviewNames?.GetValueOrDefault(resource.Id) ?? resource.Name ?? resource.Path)</span>
-                                    </button>
+                                    <span class="message-resource-chip review-resource-chip" @key="resource.Id">
+                                        <button type="button" title="Open review" @onclick="() => OnOpenReview.InvokeAsync(resource.Id)">
+                                            <AppIcon Name="diff" /><span>@(ReviewNames?.GetValueOrDefault(resource.Id) ?? resource.Name ?? resource.Path)</span>
+                                        </button>
+                                        @if (message.Role == "User")
+                                        {
+                                            <button type="button" class="review-resource-remove" title="Remove review link" aria-label="Remove review link" @onclick="() => OnRemoveReview.InvokeAsync((message.Id, resource.Id))"><AppIcon Name="x" /></button>
+                                        }
+                                    </span>
                                 }
                                 else
                                 {
@@ -455,7 +470,12 @@
     [Parameter] public EventCallback<string> OnCopyMessage { get; set; }
     [Parameter] public EventCallback<Guid> OnReviewChanges { get; set; }
     [Parameter] public EventCallback<Guid> OnOpenReview { get; set; }
+    [Parameter] public EventCallback<(Guid MessageId, Guid ReviewId)> OnRemoveReview { get; set; }
     [Parameter] public IReadOnlyDictionary<Guid, string>? ReviewNames { get; set; }
+    [Parameter] public IReadOnlySet<Guid>? MessageReviewIds { get; set; }
+    [Parameter] public IReadOnlyDictionary<Guid, ChatReview>? MessageReviews { get; set; }
+    [Parameter] public EventCallback<ChatReview> OnMessageReviewChanged { get; set; }
+    [Parameter] public EventCallback<ChatReview> OnAttachMessageReview { get; set; }
     [Parameter] public int ReviewVersion { get; set; }
     [Parameter] public EventCallback<ChatMessageView> OnForkFromMessage { get; set; }
     [Parameter] public EventCallback<ChatMessageView> OnEditAndBranch { get; set; }

@@ -12,7 +12,6 @@
         {
             <input class="review-name" aria-label="Review name" value="@_name" @oninput="e => _name = e.Value?.ToString() ?? string.Empty" @onchange="SaveNameAsync" />
             <span class="review-source-label">@SourceLabel(current.SourceMessageId)</span>
-            <button type="button" class="secondary-action compact-action" @onclick="ShowList">All reviews</button>
             <button type="button" @onclick="() => OnAttach.InvokeAsync(current)">Add to message</button>
         }
         <button class="icon-action review-close" type="button" title="Close review" aria-label="Close review" @onclick="OnClose"><AppIcon Name="x" /></button>
@@ -23,14 +22,14 @@
         <div class="review-picker">
             <div class="review-picker-controls">
                 <input type="search" placeholder="Filter reviews" aria-label="Filter reviews" value="@_filter" @oninput="e => _filter = e.Value?.ToString() ?? string.Empty" />
-                <button type="button" @onclick="BeginCreate">Create review</button>
+                @if (StartSourceId is not null) { <button type="button" @onclick="BeginCreate">Create review</button> }
             </div>
             @if (_creating)
             {
                 <div class="review-create">
                     <label>Step
                         <select @bind="_sourceId">
-                            @foreach (var source in Sources.OrderByDescending(item => item.CreatedAt))
+                            @foreach (var source in Sources.Where(item => item.Id == StartSourceId))
                             {
                                 <option value="@source.Id">@source.CreatedAt.LocalDateTime.ToString("g") · @source.WorkspaceChanges!.Files.Count files</option>
                             }
@@ -41,17 +40,16 @@
                     <button class="secondary-action" type="button" @onclick="() => _creating = false">Cancel</button>
                 </div>
             }
-            @foreach (var review in Reviews.Where(item => (_startSourceId is null || item.SourceMessageId == _startSourceId)
+            @foreach (var review in Reviews.Where(item => item.Kind == ChatReviewKind.Diff && (_startSourceId is null || item.SourceMessageId == _startSourceId)
                          && (string.IsNullOrWhiteSpace(_filter) || item.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase)))
                          .OrderByDescending(item => item.SourceCreatedAt))
             {
-                <button class="review-picker-item" type="button" @onclick="() => SelectAsync(review)">
+                <button class="review-picker-item" type="button" @onclick="() => Select(review)">
                     <AppIcon Name="diff" /><span>@review.Name</span>
                     <small>@review.SourceCreatedAt.LocalDateTime.ToString("g") · @review.Files.Count files · @review.Comments.Count comments</small>
                 </button>
             }
             @if (Reviews.Count == 0 && !_creating) { <p class="empty-hint">No reviews yet. Create one from a completed step.</p> }
-            @if (_startSourceId is not null) { <button class="secondary-action" type="button" @onclick="() => _startSourceId = null">Show all chat reviews</button> }
         </div>
     }
     else if (SourceOf(_current) is { WorkspaceChanges: { } changes })
@@ -115,7 +113,6 @@
     [Parameter] public IReadOnlyList<ChatReview> Reviews { get; set; } = [];
     [Parameter] public Guid? StartReviewId { get; set; }
     [Parameter] public Guid? StartSourceId { get; set; }
-    [Parameter] public bool AttachOnSelect { get; set; }
     [Parameter] public EventCallback<ChatReview> OnChanged { get; set; }
     [Parameter] public EventCallback<ChatReview> OnAttach { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
@@ -206,11 +203,11 @@
         }
     </text>;
 
-    private void ShowList() { _current = null; _creating = false; _error = null; CancelComment(); }
     private void BeginCreate()
     {
+        if (StartSourceId is null) return;
         _creating = true;
-        _sourceId = _startSourceId ?? Sources.OrderByDescending(item => item.CreatedAt).FirstOrDefault()?.Id ?? Guid.Empty;
+        _sourceId = StartSourceId.Value;
         _name = "Review " + DateTime.Now.ToString("g");
     }
 
@@ -232,14 +229,8 @@
         finally { _saving = false; }
     }
 
-    private async Task SelectAsync(ChatReview review)
+    private void Select(ChatReview review)
     {
-        if (AttachOnSelect)
-        {
-            await OnAttach.InvokeAsync(review);
-            await OnClose.InvokeAsync();
-            return;
-        }
         _current = review;
         _name = review.Name;
         _error = null;

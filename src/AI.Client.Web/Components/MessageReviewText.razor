@@ -1,0 +1,168 @@
+@using AI.Client.Contracts.Resources
+@using Microsoft.AspNetCore.Components.Web
+@using AI.Client.Web.Resources
+@inject IReviewApi ReviewsApi
+@inject IJSRuntime JsRuntime
+
+<div id="review-message-@MessageId" class="markdown-content message-review-text"
+     @onmouseup="CaptureAsync" @onkeyup="CaptureKeyboardAsync">@Content</div>
+@if (_selection is { } selected && _editing)
+{
+    <div class="message-review-editor">
+        <small>Comment on “@selected.Quote”</small>
+        <textarea aria-label="Message review comment" value="@_body" @oninput="e => _body = e.Value?.ToString() ?? string.Empty"></textarea>
+        <div>
+            <button type="button" disabled="@(_saving || string.IsNullOrWhiteSpace(_body))" @onclick="SaveAsync">Save comment</button>
+            <button type="button" class="secondary-action" @onclick="Cancel">Cancel</button>
+        </div>
+    </div>
+}
+@if (_current?.MessageComments is { Count: > 0 } comments)
+{
+    <button type="button" class="message-review-toggle" aria-expanded="@_showComments" @onclick="() => _showComments = !_showComments">
+        <AppIcon Name="message-circle" /> @comments.Count @(comments.Count == 1 ? "comment" : "comments")
+    </button>
+    @if (_showComments)
+    {
+        <div class="message-review-comments">
+            @foreach (var comment in comments)
+            {
+                <div class="message-review-comment" @key="comment.Id">
+                    <small>“@comment.Quote”</small><p>@comment.Body</p>
+                    <button type="button" class="secondary-action compact-action" @onclick="() => Edit(comment)">Edit</button>
+                    <button type="button" class="secondary-action compact-action" @onclick="() => DeleteAsync(comment)">Delete</button>
+                </div>
+            }
+            <button type="button" class="secondary-action compact-action" @onclick="() => OnAttach.InvokeAsync(_current)">Add to message</button>
+        </div>
+    }
+}
+@if (_error is not null) { <p class="error" role="alert">@_error</p> }
+
+@code {
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+    [Parameter, EditorRequired] public Guid ChatId { get; set; }
+    [Parameter, EditorRequired] public Guid MessageId { get; set; }
+    [Parameter, EditorRequired] public MarkupString Content { get; set; }
+    [Parameter] public ChatReview? Review { get; set; }
+    [Parameter] public EventCallback<ChatReview> OnChanged { get; set; }
+    [Parameter] public EventCallback<ChatReview> OnAttach { get; set; }
+
+    private sealed record MessageTextHit(int Start, int End, string Quote, int? Hit);
+    private ChatReview? _current;
+    private MessageTextHit? _selection;
+    private Guid? _editingId;
+    private string _body = string.Empty;
+    private string? _error;
+    private bool _editing, _saving, _showComments;
+    private long _highlightRevision = -1;
+
+    protected override void OnParametersSet()
+    {
+        if (Review is not null && (_current is null || Review.Revision > _current.Revision))
+            _current = Review;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var revision = _current?.Revision ?? 0;
+        if (!firstRender && _highlightRevision == revision) return;
+        _highlightRevision = revision;
+        try
+        {
+            await JsRuntime.InvokeVoidAsync("messageReviews.setComments", MessageId,
+                (_current?.MessageComments ?? []).Select(item => new { item.Start, item.End, item.Quote }).ToArray());
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+    }
+
+    private Task CaptureKeyboardAsync(KeyboardEventArgs _) => CaptureAsync(null);
+
+    private async Task CaptureAsync(MouseEventArgs? args)
+    {
+        MessageTextHit? hit;
+        try
+        {
+            hit = await JsRuntime.InvokeAsync<MessageTextHit?>("messageReviews.capture", MessageId,
+                args?.ClientX ?? 0, args?.ClientY ?? 0);
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { return; }
+        if (hit is null) return;
+        if (hit.End > hit.Start)
+        {
+            _selection = hit;
+            _editingId = null;
+            _body = string.Empty;
+            _editing = true;
+            _error = null;
+        }
+        else if (hit.Hit is { } position && _current?.MessageComments?.FirstOrDefault(item =>
+                     item.Start <= position && position < item.End) is { } comment)
+            Edit(comment);
+    }
+
+    private void Edit(MessageReviewComment comment)
+    {
+        _selection = new MessageTextHit(comment.Start, comment.End, comment.Quote, null);
+        _editingId = comment.Id;
+        _body = comment.Body;
+        _editing = true;
+        _showComments = true;
+        _error = null;
+    }
+
+    private void Cancel() { _selection = null; _editing = false; _editingId = null; _body = string.Empty; }
+
+    private async Task SaveAsync()
+    {
+        if (_selection is not { } selected || string.IsNullOrWhiteSpace(_body)) return;
+        _saving = true;
+        try
+        {
+            var comment = new MessageReviewComment(_editingId ?? Guid.CreateVersion7(),
+                selected.Start, selected.End, selected.Quote, _body.Trim());
+            if (_current is null)
+            {
+                _current = await ReviewsApi.CreateAsync(ProjectId, ChatId,
+                    new CreateReviewRequest(MessageId, "Message review", [], ChatReviewKind.Message, [comment]),
+                    CancellationToken.None);
+            }
+            else
+            {
+                var comments = (_current.MessageComments ?? []).Where(item => item.Id != comment.Id)
+                    .Append(comment).ToArray();
+                _current = await ReviewsApi.UpdateAsync(ProjectId, ChatId, _current.Id,
+                    new UpdateReviewRequest(_current.Name, [], [], _current.Revision, comments), CancellationToken.None);
+            }
+            await OnChanged.InvokeAsync(_current);
+            _showComments = true;
+            _error = null;
+            Cancel();
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
+        {
+            _error = error.Message;
+        }
+        finally { _saving = false; }
+    }
+
+    private async Task DeleteAsync(MessageReviewComment comment)
+    {
+        if (_current is null) return;
+        _saving = true;
+        try
+        {
+            _current = await ReviewsApi.UpdateAsync(ProjectId, ChatId, _current.Id,
+                new UpdateReviewRequest(_current.Name, [], [], _current.Revision,
+                    (_current.MessageComments ?? []).Where(item => item.Id != comment.Id).ToArray()), CancellationToken.None);
+            await OnChanged.InvokeAsync(_current);
+            _error = null;
+            Cancel();
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
+        {
+            _error = error.Message;
+        }
+        finally { _saving = false; }
+    }
+}

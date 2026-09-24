@@ -4,7 +4,7 @@ using AI.Client.Application.Chats;
 using AI.Client.Contracts.Resources;
 using AI.Client.Contracts.Workspace;
 
-/// <summary>Owns mutable reviews; their source is always a saved change set in the same chat.</summary>
+/// <summary>Owns mutable reviews of saved changes and chat messages.</summary>
 public sealed class ReviewService(IChatService chats, IReviewRepository repository,
     IUnifiedDiffParser diffParser) : IReviewService
 {
@@ -23,6 +23,22 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
         var chat = await RequireChatAsync(projectId, chatId, cancellationToken);
         var source = chat.Messages.FirstOrDefault(item => item.Id == request.SourceMessageId)
             ?? throw new ArgumentException("Review source message does not exist in this chat.");
+        if (request.Kind == ChatReviewKind.Message)
+        {
+            if (request.Files is { Count: > 0 }) throw new ArgumentException("Message reviews cannot select files.");
+            if (source.Role is not ("User" or "Assistant") || string.IsNullOrWhiteSpace(source.Content))
+                throw new ArgumentException("Message review source must contain user or assistant text.");
+            if ((await repository.ListAsync(projectId, chatId, cancellationToken)).Any(item =>
+                item.Kind == ChatReviewKind.Message && item.SourceMessageId == source.Id))
+                throw new InvalidOperationException("This message already has a review.");
+            var created = DateTimeOffset.UtcNow;
+            return await repository.CreateAsync(new ChatReview(Guid.CreateVersion7(), projectId, chatId,
+                CleanName(request.Name), source.Id, source.CreatedAt, [], [], created, created, 1,
+                ChatReviewKind.Message, ValidateMessageComments(request.MessageComments)), cancellationToken);
+        }
+        if (request.Kind != ChatReviewKind.Diff) throw new ArgumentException("Unsupported review kind.");
+        if (request.MessageComments is { Count: > 0 })
+            throw new ArgumentException("Diff reviews cannot contain message comments.");
         if (source.Role != "Assistant" || source.WorkspaceChanges is not { IsEmpty: false } changes)
             throw new ArgumentException("Review source has no saved file changes.");
         var name = CleanName(request.Name);
@@ -39,7 +55,20 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
         var review = (await repository.ListAsync(projectId, chatId, cancellationToken)).FirstOrDefault(item => item.Id == reviewId);
         if (review is null) return null;
         var source = chat.Messages.FirstOrDefault(item => item.Id == review.SourceMessageId);
+        if (review.Kind == ChatReviewKind.Message)
+        {
+            if (request.Files is { Count: > 0 } || request.Comments is { Count: > 0 })
+                throw new ArgumentException("Message reviews cannot contain file selections or diff comments.");
+            if (source is null) throw new InvalidOperationException("Review source is unavailable.");
+            var messageName = CleanName(request.Name);
+            var messageComments = ValidateMessageComments(request.MessageComments, allowEmpty: true);
+            return await repository.UpdateAsync(projectId, chatId, reviewId, request.ExpectedRevision,
+                current => current with { Name = messageName, MessageComments = messageComments, UpdatedAt = DateTimeOffset.UtcNow },
+                cancellationToken);
+        }
         var changes = source?.WorkspaceChanges ?? throw new InvalidOperationException("Review source is unavailable.");
+        if (request.MessageComments is { Count: > 0 })
+            throw new ArgumentException("Diff reviews cannot contain message comments.");
         var name = CleanName(request.Name);
         var files = ValidateFiles(request.Files, changes);
         var comments = ValidateComments(request.Comments, changes, files);
@@ -69,6 +98,20 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
         var available = changes.Files.Select(item => item.Path).ToHashSet(StringComparer.Ordinal);
         if (files.Any(path => !available.Contains(path))) throw new ArgumentException("Review file is not in the saved change set.");
         return files.ToArray();
+    }
+
+    private static MessageReviewComment[] ValidateMessageComments(IReadOnlyList<MessageReviewComment>? comments, bool allowEmpty = false)
+    {
+        if (comments is null || !allowEmpty && comments.Count == 0 || comments.Count > 200
+            || comments.Select(item => item.Id).Distinct().Count() != comments.Count)
+            throw new ArgumentException("Message review needs 1 to 200 distinct comments.");
+        foreach (var comment in comments)
+            if (comment.Id == Guid.Empty || comment.Start < 0 || comment.End <= comment.Start
+                || comment.End - comment.Start > 2000 || string.IsNullOrWhiteSpace(comment.Quote)
+                || comment.Quote.Length != comment.End - comment.Start || string.IsNullOrWhiteSpace(comment.Body)
+                || comment.Body.Length > 8000)
+                throw new ArgumentException("Message review comment has an invalid text range or body.");
+        return comments.ToArray();
     }
 
     private ReviewComment[] ValidateComments(IReadOnlyList<ReviewComment>? comments,

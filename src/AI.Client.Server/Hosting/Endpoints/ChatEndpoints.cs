@@ -17,6 +17,21 @@ public sealed class ChatEndpoints : IEndpointModule
         routes.MapPost("/api/projects/{projectId:guid}/resources",
             async (Guid projectId, CreateResourceRequest request, IResourceService service, CancellationToken token) =>
                 Results.Ok(await service.CreateAsync(projectId, request.Kind, request.Path, token)));
+        routes.MapGet("/api/projects/{projectId:guid}/chats/{chatId:guid}/reviews",
+            (Guid projectId, Guid chatId, IReviewService service, CancellationToken token) =>
+                service.ListAsync(projectId, chatId, token));
+        routes.MapGet("/api/projects/{projectId:guid}/chats/{chatId:guid}/reviews/{reviewId:guid}",
+            async (Guid projectId, Guid chatId, Guid reviewId, IReviewService service, CancellationToken token) =>
+                await service.GetAsync(projectId, chatId, reviewId, token) is { } review
+                    ? Results.Ok(review) : Results.NotFound());
+        routes.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/reviews",
+            async (Guid projectId, Guid chatId, CreateReviewRequest request, IReviewService service, CancellationToken token) =>
+                Results.Ok(await service.CreateAsync(projectId, chatId, request, token)));
+        routes.MapPut("/api/projects/{projectId:guid}/chats/{chatId:guid}/reviews/{reviewId:guid}",
+            async (Guid projectId, Guid chatId, Guid reviewId, UpdateReviewRequest request,
+                IReviewService service, CancellationToken token) =>
+                await service.UpdateAsync(projectId, chatId, reviewId, request, token) is { } review
+                    ? Results.Ok(review) : Results.NotFound());
         // Searching is reading, so it stays a GET: the whole request fits in the query string and a result
         // is a projection of stored history, never a change to it.
         routes.MapGet("/api/chats/search", (

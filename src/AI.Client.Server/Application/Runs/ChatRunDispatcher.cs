@@ -22,7 +22,7 @@ public sealed class ChatRunDispatcher(
     IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, IChatAgent agent,
     IGlobalSecretStore secretStore, IClock clock, IIdGenerator ids, IChatSynchronization synchronization,
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies,
-    IChatContextBuilder contextBuilder, IChatBranchIds branchIds, IResourceService resources,
+    IChatContextBuilder contextBuilder, IChatBranchIds branchIds, IResourceService resources, IReviewService reviews,
     IResourceModelProjection resourceProjection) : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -133,7 +133,7 @@ public sealed class ChatRunDispatcher(
             ?? throw new ArgumentException("Branch does not exist.");
         var runtime = await GetRuntimeAsync(projectId, chatId, branchId, chat, cancellationToken);
         if (runtime.State.Operations.Contains(request.OperationId)) return runtime.Snapshot;
-        var validatedResources = await resources.ValidateAsync(projectId, request.Resources, cancellationToken);
+        var validatedResources = await resources.ValidateForChatAsync(projectId, chatId, request.Resources, cancellationToken);
         if (request.ExpectedBranchRevision is { } branchRevision && branchRevision != sourceBranch.Revision
             && request.Mode != ChatSubmitMode.Replace)
             throw new InvalidOperationException("The branch changed. Reload it before submitting.");
@@ -404,8 +404,9 @@ public sealed class ChatRunDispatcher(
                     runtime.State.MarkUserCommitted(queued.Id);
                     request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
                         await secretStore.GetAsync("connection", connection.Id, token),
-                        resourceProjection.Project(queued.Content, ResourceReferences.ToContract(queued.Resources)), connection.Id,
-                        contextBuilder.Build(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id)));
+                        await resourceProjection.ProjectAsync(runtime.State.ProjectId, runtime.State.ChatId, queued.Content,
+                            ResourceReferences.ToContract(queued.Resources), token), connection.Id,
+                        await contextBuilder.BuildAsync(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id), token));
                     runtime.ToolHead = ResumeHead(chat, runtime.State.BranchId, queued.Id);
                     await SaveAsync(runtime, chat, token);
                 }
@@ -965,6 +966,7 @@ public sealed class ChatRunDispatcher(
             await RemoveAsync(projectId, chatId, null, cancellationToken);
         await repository.DeleteProjectAsync(projectId, cancellationToken);
         await resources.DeleteProjectAsync(projectId, cancellationToken);
+        await reviews.DeleteProjectAsync(projectId, cancellationToken);
     }
 
     public async Task<ChatDeleteResult> DeleteChatAsync(Guid projectId, Guid chatId, long revision, CancellationToken cancellationToken)
@@ -977,7 +979,11 @@ public sealed class ChatRunDispatcher(
             if (chat.Revision != revision) return new ChatDeleteResult(false, chat.Revision);
             await PauseWorkersAsync(projectId, chatId, cancellationToken);
             var result = await chatMutations.DeleteAsync(projectId, chatId, revision, cancellationToken);
-            if (result.IsDeleted) await RemoveAsync(projectId, chatId, null, CancellationToken.None);
+            if (result.IsDeleted)
+            {
+                await RemoveAsync(projectId, chatId, null, CancellationToken.None);
+                await reviews.DeleteChatAsync(projectId, chatId, CancellationToken.None);
+            }
             return result;
         }
         finally { _maintenance.TryRemove(chatId, out _); }

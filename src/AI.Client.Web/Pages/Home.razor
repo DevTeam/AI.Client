@@ -17,6 +17,7 @@
 @inject IRunStateService RunState
 @inject IChatComposerService Composer
 @inject AI.Client.Web.Resources.IResourceApi ResourceApi
+@inject AI.Client.Web.Resources.IReviewApi ReviewApi
 @inject IChatFeedProjection Feed
 @inject INotificationService Notifications
 @inject IRunStatusPresentation StatusPresentation
@@ -251,6 +252,16 @@
                         }
                     }
                 </div>
+                @if (_selectedChat is not null)
+                {
+                    <div class="sidebar-reviews">
+                        <button class="workspace-nav-item sidebar-reviews-heading" type="button" @onclick="OpenReviewListAsync"><AppIcon Name="diff" /><span>Reviews</span><span class="directory-count">@_reviews.Count</span></button>
+                        @foreach (var review in _reviews)
+                        {
+                            <button class="workspace-nav-item sidebar-review-item" type="button" @onclick="() => OpenReviewAsync(review.Id)"><AppIcon Name="diff" /><span class="nav-item-label">@review.Name</span><small>@review.Comments.Count</small></button>
+                        }
+                    </div>
+                }
             }
         }
         </div>
@@ -311,6 +322,10 @@
             TranscriptRunPresentationVersion="@GetTranscriptRunPresentationVersion()"
             GetRunForBranch="@(messageId => _selectedChat is null ? null : GetRun(_selectedChat.Id, BranchLeafHelpers.RunBranchIdFor(messageId, _selectedChat)))"
             OnCopyMessage="CopyMessageAsync"
+            OnReviewChanges="OpenReviewFromChangesAsync"
+            OnOpenReview="OpenReviewAsync"
+            ReviewNames="@_reviews.ToDictionary(item => item.Id, item => item.Name)"
+            ReviewVersion="@_reviewVersion"
             OnForkFromMessage="ForkFromMessageAsync"
             OnEditAndBranch="EditAndBranchAsync"
             OnEditAndReplaceBranch="EditAndReplaceBranchAsync"
@@ -353,8 +368,8 @@
                     @foreach (var resource in _draftResources)
                     {
                         <span class="composer-resource-chip" @key="resource.Id" title="@resource.Path">
-                            <AppIcon Name="@(resource.Kind == ChatResourceKind.File ? "file" : "folder")" />
-                            <span>@ResourceDisplayName(resource.Path)</span>
+                            <AppIcon Name="@(resource.Kind == ChatResourceKind.Review ? "diff" : resource.Kind == ChatResourceKind.File ? "file" : "folder")" />
+                            <span>@(resource.Kind == ChatResourceKind.Review ? ReviewName(resource) : ResourceDisplayName(resource.Path))</span>
                             <button type="button" aria-label="Remove @resource.Path" title="Remove reference" @onclick="() => RemoveDraftResource(resource.Id)"><AppIcon Name="x" /></button>
                         </span>
                     }
@@ -371,6 +386,7 @@
                             <span class="composer-resource-menu-label">Add</span>
                             <button type="button" role="menuitem" @onclick="() => OpenResourcePicker(DirectoryPickerMode.File)"><AppIcon Name="file" /> File</button>
                             <button type="button" role="menuitem" @onclick="() => OpenResourcePicker(DirectoryPickerMode.Directory)"><AppIcon Name="folder" /> Directory</button>
+                            @if (_selectedChat is not null) { <button type="button" role="menuitem" @onclick="OpenReviewPickerAsync"><AppIcon Name="diff" /> Review</button> }
                         </div>
                     }
                 </div>
@@ -480,6 +496,13 @@
                                Subtitle="Add a workspace reference to the chat"
                                Selected="OnResourcePickedAsync" Cancelled="CloseResourcePicker" />
     }
+    @if (_reviewWorkspaceOpen && _selectedProject is not null && _selectedChat is not null)
+    {
+        <ReviewWorkspace @key="_reviewPanelKey" ProjectId="@_selectedProject.Id" Chat="@(_reviewChat ?? _selectedChat)"
+                         Sources="@ReviewSources()" Reviews="@_reviews" StartReviewId="@_reviewStartId"
+                         StartSourceId="@_reviewStartSourceId" AttachOnSelect="@_reviewAttachOnSelect"
+                         OnChanged="OnReviewChangedAsync" OnAttach="AttachReviewAsync" OnClose="CloseReview" />
+    }
 </main>
 
 @if (_globalSection is not null)
@@ -588,6 +611,13 @@
     private DirectoryPickerMode? _resourcePickerMode;
     private readonly List<ChatResourceRef> _draftResources = [];
     private readonly Dictionary<string, ChatResourceRef[]> _resourceDrafts = [];
+    private readonly List<ChatReview> _reviews = [];
+    private ChatDetails? _reviewChat;
+    private bool _reviewWorkspaceOpen;
+    private Guid? _reviewStartId, _reviewStartSourceId;
+    private bool _reviewAttachOnSelect;
+    private int _reviewPanelKey;
+    private int _reviewVersion;
     private Guid? _directoryPickerGrantId;
     private string? _directoryPickerStartPath;
     private Guid? _directoryMenuId;
@@ -1380,6 +1410,8 @@
 
     private async Task SelectProjectAsync(ProjectSummary project, bool restoreLastChat = true)
     {
+        CloseReview();
+        _reviewChat = null;
         _projectSelectionCancellation?.Cancel();
         _projectSelectionCancellation?.Dispose();
         var projectSelection = new CancellationTokenSource();
@@ -1477,6 +1509,7 @@
             RestoreComposerDraft();
         }
 
+        await LoadReviewsAsync();
         await WorkspaceStateService.SetLastProjectIdAsync(project.Id);
     }
 
@@ -2003,6 +2036,10 @@
     private async Task CreateChatAsync()
     {
         if (_selectedProject is null) return;
+        CloseReview();
+        _reviewChat = null;
+        _reviews.Clear();
+        _reviewVersion++;
         _attachComposer = true;
         ResetBranchOperationState();
         _selectedChat = null;
@@ -2148,6 +2185,8 @@
 
     private async Task SelectChatAsync(Guid chatId)
     {
+        CloseReview();
+        _reviewChat = null;
         _attachComposer = true;
         ResetBranchOperationState();
         CloseContextMenus();
@@ -2220,6 +2259,7 @@
             // MessageFeed (it knows whether a saved position exists) — see OnAfterRenderAsync.
             _pendingScrollRestoreKey = GetScrollPositionKey();
             _openedChatToSettle = (projectId, _selectedChat?.Id, _branchLeafId);
+            await LoadReviewsAsync();
         }
         else
         {
@@ -2907,6 +2947,8 @@
     private async Task SelectBranchTreeItemAsync(BranchTreeItem branch)
     {
         if (_selectedProject is null || _selectedChat is null) return;
+        CloseReview();
+        _reviewChat = null;
         ResetBranchOperationState();
 
         // A branch is a transcript too, so switching to one is superseded by the next click the
@@ -3509,6 +3551,117 @@
         _isResourceMenuOpen = false;
         _resourcePickerMode = mode;
     }
+
+    private IReadOnlyList<ChatMessageView> ReviewSources() => _reviewChat is null ? []
+        : Feed.BuildBranch(_reviewChat.Messages, _branchLeafId)
+            .Where(item => item.Role == "Assistant" && item.WorkspaceChanges is { IsEmpty: false })
+            .ToArray();
+
+    private async Task LoadReviewsAsync()
+    {
+        var projectId = _selectedProject?.Id;
+        var chatId = _selectedChat?.Id;
+        _reviews.Clear();
+        _reviewVersion++;
+        if (projectId is null || chatId is null) return;
+        try
+        {
+            var reviews = await ReviewApi.ListAsync(projectId.Value, chatId.Value, CancellationToken.None);
+            if (_selectedProject?.Id == projectId && _selectedChat?.Id == chatId)
+            {
+                _reviews.AddRange(reviews);
+                _reviewVersion++;
+            }
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _chatError = $"Could not load reviews: {error.Message}";
+        }
+    }
+
+    private async Task OpenReviewListAsync()
+    {
+        await LoadReviewsAsync();
+        if (!await LoadReviewChatAsync()) return;
+        OpenReviewPanel(null, null, false);
+    }
+
+    private async Task OpenReviewPickerAsync()
+    {
+        _isResourceMenuOpen = false;
+        await LoadReviewsAsync();
+        if (!await LoadReviewChatAsync()) return;
+        OpenReviewPanel(null, null, true);
+    }
+
+    private async Task OpenReviewAsync(Guid id)
+    {
+        await LoadReviewsAsync();
+        if (!await LoadReviewChatAsync()) return;
+        OpenReviewPanel(id, null, false);
+    }
+
+    private async Task OpenReviewFromChangesAsync(Guid sourceMessageId)
+    {
+        await LoadReviewsAsync();
+        if (!await LoadReviewChatAsync()) return;
+        OpenReviewPanel(null, sourceMessageId, false);
+    }
+
+    private async Task<bool> LoadReviewChatAsync()
+    {
+        if (_selectedProject is null || _selectedChat is null) return false;
+        var projectId = _selectedProject.Id;
+        var chatId = _selectedChat.Id;
+        try
+        {
+            var full = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);
+            if (full is null || _selectedProject?.Id != projectId || _selectedChat?.Id != chatId) return false;
+            _reviewChat = full;
+            return true;
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _chatError = $"Could not open review: {error.Message}";
+            return false;
+        }
+    }
+
+    private void OpenReviewPanel(Guid? reviewId, Guid? sourceId, bool attachOnSelect)
+    {
+        if (_selectedChat is null) return;
+        _reviewStartId = reviewId;
+        _reviewStartSourceId = sourceId;
+        _reviewAttachOnSelect = attachOnSelect;
+        _reviewPanelKey++;
+        _reviewWorkspaceOpen = true;
+    }
+
+    private void CloseReview() => _reviewWorkspaceOpen = false;
+
+    private async Task OnReviewChangedAsync(ChatReview review)
+    {
+        var index = _reviews.FindIndex(item => item.Id == review.Id);
+        if (index < 0) _reviews.Add(review); else _reviews[index] = review;
+        _reviews.Sort((first, second) => second.SourceCreatedAt.CompareTo(first.SourceCreatedAt));
+        _reviewVersion++;
+        await AttachReviewAsync(review);
+    }
+
+    private Task AttachReviewAsync(ChatReview review)
+    {
+        if (_selectedChat?.Id != review.ChatId || _selectedProject?.Id != review.ProjectId) return Task.CompletedTask;
+        var reference = new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty, review.Name);
+        var index = _draftResources.FindIndex(item => item.Id == review.Id);
+        if (index >= 0) _draftResources[index] = reference;
+        else if (_draftResources.Count < 20) _draftResources.Add(reference);
+        else { _chatError = "A message can reference at most 20 resources."; return Task.CompletedTask; }
+        _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
+        return Task.CompletedTask;
+    }
+
+    private string ReviewName(ChatResourceRef reference) =>
+        _reviews.FirstOrDefault(item => item.Id == reference.Id)?.Name ?? reference.Name ?? reference.Path;
 
     private string? ResourcePickerStartPath()
     {

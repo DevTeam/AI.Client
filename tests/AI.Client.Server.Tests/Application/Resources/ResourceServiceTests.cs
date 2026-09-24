@@ -31,7 +31,8 @@ public sealed class ResourceServiceTests
             var location = new Mock<IProjectStorageLocation>();
             location.SetupGet(item => item.RootDirectory).Returns(root);
             using var repository = new JsonResourceRepository(location.Object, new PhysicalTextFileSystem());
-            var service = new ResourceService(projects.Object, new PhysicalDirectoryBrowser(), repository);
+            var service = new ResourceService(projects.Object, new PhysicalDirectoryBrowser(), repository,
+                new Mock<IReviewService>().Object);
 
             var first = await service.CreateAsync(projectId, ChatResourceKind.File, source, token);
             var second = await service.CreateAsync(projectId, ChatResourceKind.File, source, token);
@@ -51,5 +52,31 @@ public sealed class ResourceServiceTests
             // The target is generated below the explicitly chosen temporary test root.
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task ShouldAcceptOnlyReviewsInTheTargetChat()
+    {
+        var projectId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var reviewId = Guid.NewGuid();
+        var review = new ChatReview(reviewId, projectId, chatId, "Current name", Guid.NewGuid(),
+            DateTimeOffset.UnixEpoch, ["file.cs"], [], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1);
+        var reviews = new Mock<IReviewService>();
+        reviews.Setup(item => item.ListAsync(projectId, chatId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([review]);
+        var otherChatId = Guid.NewGuid();
+        reviews.Setup(item => item.ListAsync(projectId, otherChatId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var service = new ResourceService(new Mock<IProjectService>().Object,
+            new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object, reviews.Object);
+        var token = TestContext.Current.CancellationToken;
+
+        var validated = await service.ValidateForChatAsync(projectId, chatId,
+            [new ChatResourceRef(reviewId, ChatResourceKind.Review, string.Empty, "Old name")], token);
+
+        validated.ShouldHaveSingleItem().Name.ShouldBe("Current name");
+        await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId,
+            otherChatId, [validated[0]], token));
     }
 }

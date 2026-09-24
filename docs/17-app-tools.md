@@ -38,15 +38,17 @@ The tools are grouped by risk level: the tool boundary matches the boundary of w
 | `app_runs` | `Submit`, `Stop`, `UpdateQueued`, `RemoveQueued`, `ClearQueue`, `Resume`, `SkipFailed`, `Rebase`, `MarkRead` |
 | `app_projects` | `Create`, `Update`, `Delete` |
 | `app_security` | policies and grants for the project, chat, and globally; global settings; write credentials |
-| `app_resources` | create and retire reusable project file/directory references; attach them with `app_runs Submit` |
+| `app_resources` | create and retire project file/directory references; create and update named chat reviews; attach them with `app_runs Submit` |
 | `spawn_subtask` | run a task in a separate conversation and return only its result |
 | `ask_user` | ask the user a question and wait for an answer — see [19-ask-user.md](19-ask-user.md) |
 
 ### app_read
 
-Resources: `Projects`, `Project`, `Chats`, `Chat`, `Messages`, `Runs`, `Settings`, `Search`, `Resources`. The response always has one shape — a page of items — so a single document is a page of one item.
+Resources: `Projects`, `Project`, `Chats`, `Chat`, `Messages`, `Runs`, `Settings`, `Search`, `Resources`, `Reviews`, `Review`. The response always has one shape — a page of items — so a single document is a page of one item.
 
 `Resources` lists the project's reusable file and directory references, including their revision and retired state. A reference contains a path and kind, never file contents. `app_resources Create` checks the project's read grants, canonicalizes the path and returns the reference; `Retire` uses an expected revision. To attach references to a turn, pass them in `app_runs Submit`. The queued and stored user message keep the same structured refs, and the model receives a short manifest rather than file bodies.
+
+`Reviews` lists the named review resources of one chat, across its branches; `Review` reads one resource with bounded comments. `app_resources CreateReview` selects files from one saved assistant change set. `UpdateReview` changes its name, selected files, and comments using the current revision as a concurrency check. Review resources are mutable; a later model request resolves their current comments.
 
 `Chat` is returned without messages: they are a separate resource, otherwise reading a heading would drag the entire history in. `Messages` with `branchId` returns the chain from the branch head to the root — exactly the context the model sees.
 

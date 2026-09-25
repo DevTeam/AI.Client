@@ -489,6 +489,7 @@
         <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
         <div class="project-menu" role="menu" @onclick:stopPropagation="true">
             <button type="button" role="menuitem" @onclick="OpenProjectSettings"><AppIcon Name="sliders" />Project settings</button>
+            <button type="button" role="menuitem" @onclick='() => OpenGlobalSection("ProjectMemory")'><AppIcon Name="memory" />Memory</button>
             <button type="button" role="menuitem" @onclick="OpenProjectPermissions">
                 <AppIcon Name="tool" />
                 <span>Tool permissions</span>
@@ -573,7 +574,7 @@
 
 @if (_globalSection is not null)
 {
-    <GlobalSettingsPanel @ref="_globalSettingsPanel" Section="@_globalSection" ProjectId="@_selectedProject?.Id" ProjectName="@_selectedProject?.Name" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" />
+    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection == "ProjectMemory" ? _selectedProject?.Id : null)" Section="@_globalSection" ProjectId="@_selectedProject?.Id" ProjectName="@_selectedProject?.Name" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" />
 }
 
 @if (_permissionsScope is not null && _selectedProject is not null)

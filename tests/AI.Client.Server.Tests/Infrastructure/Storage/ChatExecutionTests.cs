@@ -130,6 +130,32 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task ProseRepeatedAfterEveryCompletionCorrectionMustBePublishedInsteadOfFailing()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Completion.AdaptLegacyFinalAnswers = false;
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "What is my name?"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+        // An endpoint that never emits the control call: the answer arrives as prose every time,
+        // including when app_finish_run is the only tool offered.
+        (await fixture.NextCallAsync()).Answer.SetResult("Your name is Kolya.");
+        for (var correction = 0; correction < 2; correction++)
+            (await fixture.NextCallAsync()).Answer.SetResult("Your name is Kolya.");
+        var last = await fixture.NextCallAsync();
+        last.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
+        last.Answer.SetResult("Kolya.");
+
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
+            .ShouldHaveSingleItem().Content.ShouldBe("Kolya.");
+    }
+
+    [Fact]
     public async Task EmptyResponseMustKeepCompletionCorrectionUntilAValidDecision()
     {
         await using var fixture = await Fixture.CreateAsync();

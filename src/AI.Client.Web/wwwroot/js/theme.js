@@ -23,15 +23,28 @@
         document.dispatchEvent(new CustomEvent("ai-client-theme-change", { detail: { theme } }));
     }
 
+    // Inside the desktop app the titlebar is native and follows the page through Avalonia's
+    // bridge (MainWindow.OnWebMessageReceived). The preference, not the resolved theme, is sent:
+    // "system" lets the host follow the OS itself. An ordinary browser has no bridge.
+    let toldHost;
+    function tellHost() {
+        if (toldHost === preference || typeof globalThis.invokeCSharpAction !== "function") return;
+        globalThis.invokeCSharpAction(JSON.stringify({ type: "theme", preference }));
+        toldHost = preference;
+    }
+
     function apply(value) {
         preference = value === "light" || value === "dark" ? value : "system";
         render();
+        tellHost();
     }
 
     let saved;
     try { saved = JSON.parse(localStorage.getItem(storageKey) || "null")?.theme; } catch { saved = undefined; }
     apply(saved);
     systemLight.addEventListener("change", () => { if (preference === "system") render(); });
+    // The bridge may not be injected yet while <head> runs; catch up once the document is parsed.
+    document.addEventListener("DOMContentLoaded", tellHost);
 
     globalThis.aiClientTheme = { apply };
 })();

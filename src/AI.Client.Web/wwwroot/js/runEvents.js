@@ -96,7 +96,7 @@ export function hideReviewSubmenus() {
 }
 
 /**
- * Closes a right-hand drawer on a press anywhere outside it without swallowing that press: the
+ * Closes a right-hand drawer or review on a press anywhere outside it without swallowing that press: the
  * backdrop no longer catches clicks, so one click both closes the drawer and opens the chat (or
  * whatever else) under the pointer. Listening in the capture phase lets the close start before
  * the target's own handler runs. The Connections/MCP buttons are left to their own handler.
@@ -104,9 +104,9 @@ export function hideReviewSubmenus() {
 export function watchDrawerDismiss(dotNetReference) {
     const handler = event => {
         if (event.button !== 0) return;
-        const drawer = document.querySelector(".permissions-drawer");
+        const drawer = document.querySelector(".permissions-drawer, .review-workspace");
         const target = event.target instanceof Element ? event.target : null;
-        if (!drawer || !target || target.closest(".permissions-drawer, .sidebar-global-nav, .toast-region, .history-notifications-button")) return;
+        if (!drawer || !target || target.closest(".permissions-drawer, .review-workspace, .sidebar-global-nav, .toast-region, .history-notifications-button")) return;
         // Same reason as on Escape: commit the focused field before the settings drawer saves.
         if (document.activeElement instanceof HTMLElement && drawer.contains(document.activeElement)) document.activeElement.blur();
         void dotNetReference.invokeMethodAsync("OnDrawerDismissed");

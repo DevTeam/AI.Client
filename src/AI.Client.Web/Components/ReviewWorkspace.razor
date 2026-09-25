@@ -3,6 +3,7 @@
 @using AI.Client.Contracts.Workspace
 @using AI.Client.Web.Resources
 @inject IReviewApi ReviewsApi
+@inject INotificationService Notifications
 @inject IJSRuntime JsRuntime
 
 <section class="review-workspace" aria-label="Review changes">
@@ -217,11 +218,12 @@
         if (files.Contains(path, StringComparer.Ordinal) && _current.Comments.Any(item => item.Path == path))
         {
             _error = "Remove the file's comments before excluding it from this review.";
+            Notifications.ShowError(_error);
             return;
         }
         if (!files.Remove(path)) files.Add(path);
-        if (files.Count == 0) { _error = "A review must include at least one file."; return; }
-        await SaveAsync(files, _current.Comments);
+        if (files.Count == 0) { _error = "A review must include at least one file."; Notifications.ShowError(_error); return; }
+        if (await SaveAsync(files, _current.Comments)) Notifications.ShowSuccess("Review updated.");
     }
 
     private void ToggleExpandedFile(string path)
@@ -277,6 +279,7 @@
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
             _error = error.Message;
+            Notifications.ShowError($"Could not update review: {error.Message}");
             return false;
         }
         finally { _saving = false; }

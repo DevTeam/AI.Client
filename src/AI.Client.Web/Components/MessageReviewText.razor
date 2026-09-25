@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @using AI.Client.Web.Resources
 @inject IReviewApi ReviewsApi
+@inject INotificationService Notifications
 @inject IJSRuntime JsRuntime
 
 <div id="review-message-@MessageId" class="markdown-content message-review-text"
@@ -157,6 +158,7 @@
     private async Task SaveAsync()
     {
         if (_selection is not { } selected || string.IsNullOrWhiteSpace(_body)) return;
+        var editing = _editingId is not null;
         _saving = true;
         try
         {
@@ -178,10 +180,12 @@
             await OnChanged.InvokeAsync(_current);
             _error = null;
             Cancel();
+            Notifications.ShowSuccess(editing ? "Message comment updated." : "Message comment added.");
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
         {
             _error = error.Message;
+            Notifications.ShowError($"Could not save message comment: {error.Message}");
         }
         finally { _saving = false; }
     }
@@ -199,10 +203,12 @@
             await OnChanged.InvokeAsync(updated);
             _error = null;
             Cancel();
+            Notifications.ShowSuccess("Message comment deleted.");
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
         {
             _error = error.Message;
+            Notifications.ShowError($"Could not delete message comment: {error.Message}");
         }
         finally { _saving = false; }
     }

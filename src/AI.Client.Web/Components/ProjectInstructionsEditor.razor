@@ -1,16 +1,15 @@
 @using AI.Client.Contracts.Instructions
 @using AI.Client.Web.Memory
 @inject IMemoryApi MemoryApi
-@inject INotificationService Notifications
 
 <section class="project-instructions" aria-label="Project instructions">
     <div class="section-heading">
-        <div><h3>Instructions</h3><p>Sent to the assistant in full on every run in this project.</p></div>
+        <div><h3>Instructions</h3><p>Used at the start of each run. Changes save when you close settings.</p></div>
     </div>
     <textarea class="project-instructions-text" rows="8" maxlength="32000" disabled="@(_stored is null)"
               placeholder="Rules for the assistant here: code style, commands to run, what not to touch…"
               @bind="_text" @bind:event="oninput"></textarea>
-    <label class="checkbox"><input type="checkbox" disabled="@(_stored is null)" @bind="_includeFiles" /> Add AGENTS.md and CLAUDE.md from the project's directories</label>
+    <label class="checkbox"><input type="checkbox" disabled="@(_stored is null)" @bind="_includeFiles" /><span>Include AGENTS.md and CLAUDE.md from project directories</span></label>
     @if (ProjectLayer is { } layer)
     {
         <ul class="instruction-sources">
@@ -19,32 +18,30 @@
                 <li class="@(source.Included ? string.Empty : "excluded")"><span title="@source.Name">@source.Name</span><small>@(source.Included ? $"{source.Tokens} tokens" : "left out: over budget")</small></li>
             }
         </ul>
-        <p class="instruction-budget @(layer.Truncated ? "over" : string.Empty)">@layer.Tokens of @layer.BudgetTokens tokens@(layer.Truncated ? " · cut to fit" : string.Empty)@(IsDirty ? " · as last saved" : string.Empty)</p>
+        <p class="instruction-budget @(layer.Truncated ? "over" : string.Empty)">Saved project context: @layer.Tokens / @layer.BudgetTokens tokens@(layer.Truncated ? " · some content omitted" : string.Empty)</p>
     }
     @if (_error is { Length: > 0 })
     {
         <p class="settings-drawer-error" role="alert">@_error</p>
     }
-    <div class="form-actions">
-        @if (IsDirty)
+    <details class="model-context-disclosure">
+        <summary><AppIcon Name="chevron-right" /><span>What the model sees</span></summary>
+        @if (IsDirty) { <p class="model-context-stale">Preview shows the last saved instructions. Close settings to update it.</p> }
+        @if (_previewError is not null) { <p class="model-context-stale" role="status">@_previewError</p> }
+        @if (_preview is { } preview)
         {
-            <button type="button" class="compact-action" disabled="@_busy" @onclick="SaveAsync">Save instructions</button>
+            <div class="model-context-preview">
+                <p>System instructions for the next run, in order. Run-control instructions follow. @preview.TotalTokens tokens in total.</p>
+                @foreach (var item in preview.Layers)
+                {
+                    <details>
+                        <summary><strong>@item.Title</strong><small>@item.Tokens / @item.BudgetTokens tokens@(item.Truncated ? " · cut" : string.Empty)</small></summary>
+                        <pre>@item.Content</pre>
+                    </details>
+                }
+            </div>
         }
-        <button type="button" class="secondary-action compact-action" aria-expanded="@_previewOpen" @onclick="TogglePreviewAsync"><AppIcon Name="@(_previewOpen ? "chevron-up" : "chevron-down")" />What the model sees</button>
-    </div>
-    @if (_previewOpen && _preview is { } preview)
-    {
-        <div class="model-context-preview">
-            <p>The standing part of the system prompt, in order, as the next run will send it. Run-control instructions follow it. @preview.TotalTokens tokens in total.</p>
-            @foreach (var item in preview.Layers)
-            {
-                <details>
-                    <summary><strong>@item.Title</strong><small>@item.Tokens / @item.BudgetTokens tokens@(item.Truncated ? " · cut" : string.Empty)</small></summary>
-                    <pre>@item.Content</pre>
-                </details>
-            }
-        </div>
-    }
+    </details>
 </section>
 
 @code {
@@ -54,9 +51,8 @@
     private ModelContextPreview? _preview;
     private string _text = string.Empty;
     private bool _includeFiles = true;
-    private bool _busy;
-    private bool _previewOpen;
     private string? _error;
+    private string? _previewError;
     private Guid _loadedFor;
 
     public bool IsDirty => _stored is { } stored && (stored.Text != _text.Trim() || stored.IncludeWorkspaceFiles != _includeFiles);
@@ -74,7 +70,6 @@
     public async Task<bool> SaveAsync()
     {
         if (!IsDirty || _stored is not { } stored) return true;
-        _busy = true;
         _error = null;
         try
         {
@@ -82,8 +77,7 @@
                 new UpdateProjectInstructionsRequest(_text, _includeFiles, stored.Revision), CancellationToken.None);
             _text = _stored.Text;
             _includeFiles = _stored.IncludeWorkspaceFiles;
-            Notifications.ShowSuccess("Instructions saved.");
-            _preview = await MemoryApi.GetModelContextAsync(ProjectId, CancellationToken.None);
+            await RefreshPreviewAsync();
             return true;
         }
         catch (MemoryConflictException error)
@@ -99,10 +93,6 @@
             _error = error.Message;
             return false;
         }
-        finally
-        {
-            _busy = false;
-        }
     }
 
     public void Discard()
@@ -115,23 +105,35 @@
 
     private async Task LoadAsync()
     {
+        _stored = null;
+        _preview = null;
+        _previewError = null;
         try
         {
             _stored = await MemoryApi.GetInstructionsAsync(ProjectId, CancellationToken.None);
             _text = _stored.Text;
             _includeFiles = _stored.IncludeWorkspaceFiles;
-            _preview = await MemoryApi.GetModelContextAsync(ProjectId, CancellationToken.None);
             _error = null;
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
             _error = "Instructions could not be loaded.";
+            return;
         }
+        await RefreshPreviewAsync();
     }
 
-    private async Task TogglePreviewAsync()
+    private async Task RefreshPreviewAsync()
     {
-        _previewOpen = !_previewOpen;
-        if (_previewOpen) _preview = await MemoryApi.GetModelContextAsync(ProjectId, CancellationToken.None);
+        try
+        {
+            _preview = await MemoryApi.GetModelContextAsync(ProjectId, CancellationToken.None);
+            _previewError = null;
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _preview = null;
+            _previewError = "Preview is unavailable. Saved instructions will still be used.";
+        }
     }
 }

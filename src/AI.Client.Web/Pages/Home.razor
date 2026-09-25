@@ -532,10 +532,10 @@
         <div class="permissions-drawer-backdrop"></div>
         <aside class="permissions-drawer project-settings-drawer" aria-label="Project settings">
             <header>
-                <div><h2>Project settings</h2><p>@_selectedProject.Name</p></div>
+                <div class="project-settings-heading"><h2>Project settings</h2><p title="@_selectedProject.Name">@_selectedProject.Name</p></div>
                 <button class="icon-action" type="button" title="Close" aria-label="Close project settings" @onclick="RequestCloseProjectSettingsAsync"><AppIcon Name="x" /></button>
             </header>
-            <div class="permissions-content">
+            <div class="permissions-content project-settings-content">
                 <EditForm Model="_editor" class="workspace-form">
                     <DataAnnotationsValidator />
                     <label>Name<InputText @bind-Value="_editor.Name" /></label>
@@ -545,17 +545,13 @@
                 <ProjectInstructionsEditor @ref="_instructionsEditor" ProjectId="@_selectedProject.Id" />
                 @if (!string.IsNullOrEmpty(_error)) { <p class="error" role="alert">@_error</p> }
             </div>
-            <footer>
-                @if (!string.IsNullOrEmpty(_error))
-                {
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <footer>
                     <span class="settings-drawer-error">Not saved.</span>
                     <button class="secondary-action permissions-reset-all" type="button" @onclick="CancelCurrentSettingsAsync">Discard changes</button>
-                }
-                else
-                {
-                    <span>@ProjectSettingsStats</span>
-                }
-            </footer>
+                </footer>
+            }
         </aside>
     }
 
@@ -3413,6 +3409,7 @@
         else if (_permissionsScope is not null) ClosePermissions();
         else if (_globalSection is not null) await RequestCloseGlobalSettingsAsync();
         else if (_isProjectSettingsOpen) await RequestCloseProjectSettingsAsync();
+        else if (_reviewWorkspaceOpen) await CloseReviewAsync();
         else return;
         await InvokeAsync(StateHasChanged);
     }
@@ -3435,6 +3432,10 @@
         else if (_isProjectSettingsOpen)
         {
             await RequestCloseProjectSettingsAsync();
+        }
+        else if (_reviewWorkspaceOpen)
+        {
+            await CloseReviewAsync();
         }
         else if (_isEndpointMenuOpen)
         {
@@ -3552,6 +3553,7 @@
     /// </summary>
     private async Task RequestCloseProjectSettingsAsync()
     {
+        var instructionsChanged = _instructionsEditor?.IsDirty == true;
         if (_instructionsEditor is not null && !await _instructionsEditor.SaveAsync())
         {
             _error = "Instructions were not saved.";
@@ -3560,23 +3562,11 @@
         if (_selectedProject is null || _projectSettingsSnapshot == (_editor.Name, _editor.Description, _editor.ConnectionId))
         {
             await CloseProjectSettingsAsync();
+            if (instructionsChanged) Notifications.ShowSuccess("Project settings saved.");
             return;
         }
         await SaveProjectSettingsAsync();
     }
-
-    private string ProjectSettingsStats
-    {
-        get
-        {
-            var directories = _security.DirectoryGrants.Count;
-            var overrides = _security.ToolPolicies.Count;
-            return $"{Plural(_chats.Count, "chat")} · {Plural(directories, "directory", "directories")} · {Plural(overrides, "tool override")}";
-        }
-    }
-
-    private static string Plural(int count, string one, string? many = null) =>
-        $"{count} {(count == 1 ? one : many ?? one + "s")}";
 
     private async Task OpenProjectPermissions()
     {
@@ -3612,7 +3602,6 @@
         await LoadSecurityAsync(_selectedProject.Id);
         if (_permissionsChatId is { } chatId && _selectedChat?.Id == chatId)
             _selectedChat = await ChatHistoryApi.GetTranscriptAsync(_selectedProject.Id, chatId, CancellationToken.None);
-        Notifications.ShowSuccess("Tool permission reset.");
     }
 
     private void CloseProjectSettings() => _isProjectSettingsOpen = false;
@@ -3753,7 +3742,7 @@
         await OpenReviewAsync(reviewId);
     }
 
-    private async Task DeleteReviewAsync(Guid chatId, Guid reviewId)
+    private async Task DeleteReviewAsync(Guid chatId, Guid reviewId, bool notify = true)
     {
         if (_selectedProject is null) return;
         var projectId = _selectedProject.Id;
@@ -3762,6 +3751,7 @@
             if (!await ReviewApi.DeleteAsync(projectId, chatId, reviewId, CancellationToken.None))
             {
                 _chatError = "Review no longer exists.";
+                if (notify) Notifications.ShowError(_chatError);
                 return;
             }
             if (_runEventsModule is not null) await _runEventsModule.InvokeVoidAsync("hideReviewSubmenus");
@@ -3779,10 +3769,12 @@
                 if (refreshed is not null) { _selectedChat = refreshed; _reviewChat = refreshed; CacheChatDetails(refreshed); }
                 if (_reviewStartId == reviewId) CloseReview();
             }
+            if (notify) Notifications.ShowSuccess("Review deleted.");
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
             _chatError = $"Could not delete review: {error.Message}";
+            if (notify) Notifications.ShowError(_chatError);
         }
     }
 
@@ -3982,7 +3974,7 @@
         var review = _reviews.FirstOrDefault(item => item.Id == _reviewStartId);
         CloseReview();
         if (review is not null && IsEmptyReview(review))
-            await DeleteReviewAsync(review.ChatId, review.Id);
+            await DeleteReviewAsync(review.ChatId, review.Id, notify: false);
     }
 
     private async Task OnReviewChangedAsync(ChatReview review)
@@ -3992,7 +3984,7 @@
             var previous = _reviews.FirstOrDefault(item => item.Id == review.Id);
             if (!_reviewWorkspaceOpen || _reviewStartId != review.Id
                 || previous is { } existing && !IsEmptyReview(existing))
-                await DeleteReviewAsync(review.ChatId, review.Id);
+                await DeleteReviewAsync(review.ChatId, review.Id, notify: false);
             else
             {
                 var draftIndex = _reviews.FindIndex(item => item.Id == review.Id);

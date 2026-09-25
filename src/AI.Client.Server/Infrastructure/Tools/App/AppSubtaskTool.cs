@@ -44,8 +44,8 @@ public sealed record SubtaskTranscript(IReadOnlyList<SubtaskTranscriptEntry> Tra
 /// Runs a task in a conversation of its own and hands back only its conclusion.
 /// </summary>
 /// <remarks>
-/// The point is the split between audiences. The subtask's whole exchange � its reasoning, every
-/// tool call and every tool result � goes into <c>_meta</c>, which the contract keeps out of the
+/// The point is the split between audiences. The subtask's whole exchange — its reasoning, every
+/// tool call and every tool result — goes into <c>_meta</c>, which the contract keeps out of the
 /// model-facing projection, so the user can open and read it while the caller pays context for the
 /// answer alone. Delegating work this way is cheaper than reading a second chat back, which would
 /// import exactly the text the delegation was meant to avoid.
@@ -184,7 +184,7 @@ public sealed class AppSubtaskTool(
         var transcript = new List<SubtaskTranscriptEntry>();
         var answer = new System.Text.StringBuilder();
         // A tool message names only the call it answers, so what that call was has to be remembered
-        // from the message before it � without it a result cannot be described, only dumped.
+        // from the message before it — without it a result cannot be described, only dumped.
         var made = new Dictionary<string, (string Name, string Arguments)>(StringComparer.Ordinal);
         var toolCalls = 0;
         board.Set(index, "starting");
@@ -251,7 +251,7 @@ public sealed class AppSubtaskTool(
     /// <summary>
     /// Turns one message of a subtask into a line a person can read. A tool result is stored as the
     /// protocol's own JSON, and dropping that into the transcript verbatim produces escaped JSON
-    /// inside escaped JSON � technically complete and practically unreadable. It is described by the
+    /// inside escaped JSON — technically complete and practically unreadable. It is described by the
     /// same adapters that describe every other tool result instead.
     /// </summary>
     private SubtaskTranscriptEntry Entry(
@@ -272,7 +272,7 @@ public sealed class AppSubtaskTool(
     /// the transcript is stored in the parent's history, where that cost is paid on every read.
     /// </summary>
     private static string Clamp(string? text) =>
-        text is null ? string.Empty : text.Length <= MaxEntryLength ? text : text[..MaxEntryLength] + "�";
+        text is null ? string.Empty : text.Length <= MaxEntryLength ? text : text[..MaxEntryLength] + "…";
 
     /// <summary>
     /// The connection the subtask speaks through: the one it was given, else one of those marked
@@ -294,8 +294,8 @@ public sealed class AppSubtaskTool(
             ?? throw new InvalidOperationException("Project not found.");
         var global = await settings.LoadAsync(cancellationToken);
         // Naming a connection is exact and fails loudly. Naming none falls back to the ones marked
-        // for subtasks � the whole point of that mark is that delegated work need not cost what the
-        // conversation costs � and only then to whatever the conversation itself runs on.
+        // for subtasks — the whole point of that mark is that delegated work need not cost what the
+        // conversation costs — and only then to whatever the conversation itself runs on.
         var marked = global.Connections.Where(item => item.ForSubtasks && item.Enabled).ToArray();
         var connection = requested is { } named
             ? global.Connections.SingleOrDefault(item => item.Id == named && item.Enabled)
@@ -349,13 +349,13 @@ public sealed class AppSubtaskTool(
                 finished = _finished;
                 // One subtask needs no numbering; several do, or the line says nothing about which
                 // of them is where.
-                message = string.Join(" � ", _state
+                message = string.Join(" · ", _state
                     .Select((what, index) => what is null ? null : total == 1 ? what : $"{index + 1}: {what}")
                     .OfType<string>());
             }
 
             if (finished > 0 && total > 1)
-                message = message.Length == 0 ? $"{finished}/{total} done" : $"{finished}/{total} done � {message}";
+                message = message.Length == 0 ? $"{finished}/{total} done" : $"{finished}/{total} done · {message}";
             sink.Report(new ProgressNotificationValue { Progress = finished, Total = total, Message = message });
         }
     }

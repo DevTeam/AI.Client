@@ -13,6 +13,7 @@
 @inject IWorkspaceLayoutService WorkspaceLayoutService
 @inject IWorkspaceStateService WorkspaceStateService
 @inject IGlobalSettingsApi GlobalSettingsApi
+@inject AI.Client.Web.Memory.IMemoryApi MemoryApi
 @inject IChatRunsApi ChatRunsApi
 @inject IRunStateService RunState
 @inject IChatComposerService Composer
@@ -314,7 +315,7 @@
         <nav class="global-nav root-nav sidebar-global-nav" aria-label="Application settings">
             <button class="workspace-nav-item @(_globalSection == "Connections" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Connections")'><AppIcon Name="connection" /><span>Connections</span><span class="directory-count">@_connections.Count(item => item.Enabled)</span></button>
             <button class="workspace-nav-item @(_globalSection == "MCP" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("MCP")'><AppIcon Name="mcp" /><span>MCP</span><span class="directory-count">@_enabledMcpServerCount</span></button>
-            <button class="workspace-nav-item @(_globalSection == "Memory" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Memory")'><AppIcon Name="memory" /><span>Memory</span></button>
+            <button class="workspace-nav-item @(_globalSection == "Memory" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Memory")'><AppIcon Name="memory" /><span>Memory</span><span class="directory-count">@_userMemoryCount</span></button>
             <button class="workspace-nav-item @(_globalSection == "Settings" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Settings")'><AppIcon Name="settings" /><span>Settings</span></button>
         </nav>
     </aside>
@@ -672,6 +673,7 @@
     private GlobalSettingsPanel? _globalSettingsPanel;
     private readonly List<ConnectionSettings> _connections = [];
     private int _enabledMcpServerCount;
+    private int _userMemoryCount;
     private ProjectEditor _editor = new();
     private ProjectSecurityEditor _security = new();
     private bool _directoriesExpanded;
@@ -4098,18 +4100,36 @@
         if (_globalSettingsPanel is not null && !await _globalSettingsPanel.SaveAsync()) return;
         if (!await CloseDrawersExceptAsync(Drawer.GlobalSettings)) return;
         _globalSection = section;
+        await LoadMemoryCountAsync();
     }
 
     private async Task RequestCloseGlobalSettingsAsync()
     {
-        if (_globalSettingsPanel is null) CloseGlobalSettings();
+        if (_globalSettingsPanel is null) await CloseGlobalSettings();
         else await _globalSettingsPanel.RequestCloseAsync();
     }
 
-    private void CloseGlobalSettings()
+    private async Task CloseGlobalSettings()
     {
         _globalSection = null;
         _globalSettingsPanel = null;
+        await LoadMemoryCountAsync();
+    }
+
+    /// <summary>
+    /// Enabled entries of the person's own memory, as MCP counts enabled servers. The editor saves
+    /// on close, so the count is refreshed whenever a settings drawer closes or changes section.
+    /// </summary>
+    private async Task LoadMemoryCountAsync()
+    {
+        try
+        {
+            _userMemoryCount = (await MemoryApi.ListAsync(null, CancellationToken.None)).Count(entry => entry.Enabled);
+        }
+        catch (HttpRequestException)
+        {
+            // The badge is a convenience; a Host that cannot answer now is reported elsewhere.
+        }
     }
 
     private async Task LoadGlobalSettingsAsync()
@@ -4118,6 +4138,7 @@
         _connections.Clear();
         _connections.AddRange(settings.Connections);
         _enabledMcpServerCount = settings.McpServers.Count(item => item.Enabled);
+        await LoadMemoryCountAsync();
     }
 
     private ConnectionSettings? GetDefaultConnection() =>

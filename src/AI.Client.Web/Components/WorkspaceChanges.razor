@@ -15,6 +15,10 @@
                 {
                     <li @key="file.Path">
                         <span class="workspace-changes-preview-path" title="@file.Path">@PreviewDisplay(file)</span>
+                        @if (CommentCount(file.Path) is > 0 and var count)
+                        {
+                            <span class="workspace-change-comments" title="@count @(count == 1 ? "comment" : "comments")" aria-label="@count @(count == 1 ? "comment" : "comments")"><AppIcon Name="message-circle" />@count</span>
+                        }
                         <span class="workspace-changes-preview-counts">
                             @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
                             @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
@@ -54,7 +58,7 @@
                         @* Expansion is tracked here rather than left to <details>, which keeps its
                            contents in the DOM whether open or shut. A diff can run to thousands of
                            lines, and several closed files would each be paying for one. *@
-                        <WorkspaceChangeFileHeader File="@file" Expanded="@expanded" CommentCount="@(Review?.Comments.Count(comment => comment.Path == file.Path) ?? 0)" OnToggle="() => Toggle(file.Path)" />
+                        <WorkspaceChangeFileHeader File="@file" Expanded="@expanded" CommentCount="@CommentCount(file.Path)" OnToggle="() => Toggle(file.Path)" />
                         @if (expanded)
                         {
                             <div class="workspace-change-body" id="@bodyId">
@@ -94,6 +98,8 @@
     }
 
     private void EnablePreview() => _suppressPreview = false;
+
+    private int CommentCount(string path) => Review?.Comments.Count(comment => comment.Path == path) ?? 0;
 
     private void Toggle(string path)
     {

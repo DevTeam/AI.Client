@@ -490,7 +490,14 @@
         <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
         <div class="project-menu" role="menu" @onclick:stopPropagation="true">
             <button type="button" role="menuitem" @onclick="OpenProjectSettings"><AppIcon Name="sliders" />Project settings</button>
-            <button type="button" role="menuitem" @onclick='() => OpenGlobalSection("ProjectMemory")'><AppIcon Name="memory" />Memory</button>
+            <button type="button" role="menuitem" @onclick='() => OpenGlobalSection("ProjectMemory")'>
+                <AppIcon Name="memory" />
+                <span>Memory</span>
+                @if (_projectMemoryCount > 0)
+                {
+                    <span class="menu-count">@_projectMemoryCount</span>
+                }
+            </button>
             <button type="button" role="menuitem" @onclick="OpenProjectPermissions">
                 <AppIcon Name="tool" />
                 <span>Tool permissions</span>
@@ -674,6 +681,7 @@
     private readonly List<ConnectionSettings> _connections = [];
     private int _enabledMcpServerCount;
     private int _userMemoryCount;
+    private int _projectMemoryCount;
     private ProjectEditor _editor = new();
     private ProjectSecurityEditor _security = new();
     private bool _directoriesExpanded;
@@ -2931,6 +2939,7 @@
             await SelectProjectAsync(project, restoreLastChat: false);
         }
 
+        if (!_isProjectMenuOpen) await LoadProjectMemoryCountAsync();
         ToggleProjectMenu();
     }
 
@@ -3113,6 +3122,7 @@
         {
             await SelectProjectAsync(project);
         }
+        await LoadProjectMemoryCountAsync();
         _isProjectMenuOpen = true;
         _isConfirmingProjectDelete = false;
         _chatMenuId = null;
@@ -4175,6 +4185,21 @@
     /// Enabled entries of the person's own memory, as MCP counts enabled servers. The editor saves
     /// on close, so the count is refreshed whenever a settings drawer closes or changes section.
     /// </summary>
+    /// <summary>Enabled entries of the selected project's memory, read when its popup menu opens.</summary>
+    private async Task LoadProjectMemoryCountAsync()
+    {
+        if (_selectedProject is not { } project) return;
+        try
+        {
+            _projectMemoryCount = (await MemoryApi.ListAsync(project.Id, CancellationToken.None))
+                .Count(entry => entry is { Scope: AI.Client.Contracts.Memory.MemoryScope.Project, Enabled: true });
+        }
+        catch (HttpRequestException)
+        {
+            _projectMemoryCount = 0;
+        }
+    }
+
     private async Task LoadMemoryCountAsync()
     {
         try

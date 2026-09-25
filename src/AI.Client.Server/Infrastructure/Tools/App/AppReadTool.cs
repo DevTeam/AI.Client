@@ -150,7 +150,7 @@ public sealed class AppReadTool(
 
     /// <summary>
     /// Search answers in the same page shape as every other resource, so one tool keeps one result
-    /// contract. Its own limits � matches, characters, messages examined � live with the search.
+    /// contract. Its own limits — matches, characters, messages examined — live with the search.
     /// </summary>
     private async Task<AppReadResult> SearchAsync(
         Guid? projectId, Guid? chatId, Guid? branchId, string? cursor, int limit, string? query,

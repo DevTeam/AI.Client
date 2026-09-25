@@ -15,7 +15,7 @@ public sealed record AskUserOption(string Label, string? Description = null);
 /// What is being asked. Emphasis, code spans and links are rendered; anything larger is not, because
 /// a question is a label on a decision and the decision is what the person should be reading.
 /// </param>
-/// <param name="Label">A short chip beside the question � "Scope", "Naming" � or nothing.</param>
+/// <param name="Label">A short chip beside the question — "Scope", "Naming" — or nothing.</param>
 /// <param name="MultiSelect">True only when the choices genuinely combine.</param>
 /// <param name="AllowOther">Whether the person may type an answer of their own instead of choosing.</param>
 /// <param name="PathKind">

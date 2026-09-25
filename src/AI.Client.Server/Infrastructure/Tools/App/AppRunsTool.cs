@@ -173,7 +173,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
                 latest = run;
                 // A status carried over from before this message was submitted says nothing about
                 // it. Only a state the run reached afterwards counts, and the run's own revision is
-                // what distinguishes the two � without this a chat that answered a minute ago
+                // what distinguishes the two — without this a chat that answered a minute ago
                 // reports an immediate, entirely fictional "Completed".
                 if (run.Revision <= start.Revision) continue;
                 if (run.Status == ChatRunStatus.Generating) { started = true; continue; }

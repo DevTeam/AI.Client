@@ -49,6 +49,15 @@ public sealed class JsonReviewRepository(IProjectStorageLocation location, IText
         await SaveAsync(projectId, items, cancellationToken);
     }
 
+    public async Task<bool> DeleteAsync(Guid projectId, Guid chatId, Guid reviewId, CancellationToken cancellationToken)
+    {
+        using var lease = await _gate.EnterAsync(cancellationToken);
+        var items = (await LoadAsync(projectId, cancellationToken)).ToList();
+        if (items.RemoveAll(item => item.ChatId == chatId && item.Id == reviewId) == 0) return false;
+        await SaveAsync(projectId, items, cancellationToken);
+        return true;
+    }
+
     public async Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken)
     {
         using var lease = await _gate.EnterAsync(cancellationToken);

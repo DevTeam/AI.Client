@@ -194,6 +194,16 @@ public sealed class ChatThread
     public bool RemoveResourceReference(ChatMessageId messageId, Guid resourceId, DateTimeOffset updatedAt)
         => RemoveReference(messageId, resourceId, updatedAt, reviewOnly: false);
 
+    public bool RemoveReviewReferences(Guid reviewId, DateTimeOffset updatedAt)
+    {
+        var messageIds = _messages.Values.Where(message => message.Role == ChatMessageRole.User
+            && message.Resources?.Any(item => item.Id == reviewId
+                && item.Kind == AI.Client.Domain.Resources.ChatResourceKind.Review) == true)
+            .Select(message => message.Id).ToArray();
+        foreach (var messageId in messageIds) RemoveReference(messageId, reviewId, updatedAt, reviewOnly: true);
+        return messageIds.Length > 0;
+    }
+
     private bool RemoveReference(ChatMessageId messageId, Guid resourceId, DateTimeOffset updatedAt, bool reviewOnly)
     {
         if (!_messages.TryGetValue(messageId, out var message) || message.Role != ChatMessageRole.User)

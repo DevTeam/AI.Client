@@ -117,6 +117,18 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         Guid messageId, Guid resourceId, long revision, CancellationToken cancellationToken)
         => await RemoveReferenceAsync(projectId, chatId, messageId, resourceId, revision, reviewOnly: false, cancellationToken);
 
+    public async Task<ChatDetails?> RemoveReviewReferencesAsync(Guid projectId, Guid chatId,
+        Guid reviewId, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        if (!stored.Chat.RemoveReviewReferences(reviewId, clock.UtcNow)) return ToDetails(stored.Chat, stored.Revision);
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        if (!result.IsSaved) throw new InvalidOperationException("Could not remove review links from the chat.");
+        return ToDetails(stored.Chat, result.Revision);
+    }
+
     private async Task<ChatDetails?> RemoveReferenceAsync(Guid projectId, Guid chatId,
         Guid messageId, Guid resourceId, long revision, bool reviewOnly, CancellationToken cancellationToken)
     {

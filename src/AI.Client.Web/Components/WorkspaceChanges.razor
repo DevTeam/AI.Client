@@ -25,10 +25,6 @@
             </ul>
         </div>
         <div class="workspace-changes-top">
-        @if (SourceMessageId is { } sourceId)
-        {
-            <button class="workspace-review-action" type="button" title="Review these changes" @onclick="() => OnReview.InvokeAsync(sourceId)">Review</button>
-        }
         <button class="workspace-changes-header" type="button" aria-expanded="@_showDetails"
                 aria-describedby="@(!_showDetails ? _previewId : null)"
                 title="@(_showDetails ? "Collapse file changes" : "Expand file changes")" @onclick="ToggleDetails">
@@ -36,12 +32,16 @@
             <span class="workspace-changes-title">@changes.Files.Count @(changes.Files.Count == 1 ? "file" : "files") changed</span>
             @* The sign carries the meaning, not the colour: red/green alone fails for anyone who
                cannot tell them apart, and in a diff the direction is the whole point. *@
-            <span class="workspace-changes-totals">
-                <span class="workspace-added">+@changes.Additions</span>
-                <span class="workspace-removed">−@changes.Deletions</span>
-            </span>
             <span class="workspace-changes-chevron" aria-hidden="true"><AppIcon Name="chevron-down" /></span>
         </button>
+        @if (SourceMessageId is { } sourceId)
+        {
+            <button class="workspace-review-action" type="button" title="Review these changes" @onclick="() => OnReview.InvokeAsync(sourceId)">Review</button>
+        }
+        <span class="workspace-changes-totals" aria-label="@changes.Additions additions, @changes.Deletions deletions">
+            <span class="workspace-added">+@changes.Additions</span>
+            <span class="workspace-removed">−@changes.Deletions</span>
+        </span>
         </div>
         <div class="workspace-changes-details" aria-hidden="@(!_showDetails)">
             <div class="workspace-changes-details-inner">

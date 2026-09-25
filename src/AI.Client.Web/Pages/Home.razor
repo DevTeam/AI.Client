@@ -564,7 +564,7 @@
     {
         <ReviewWorkspace @key="_reviewPanelKey" ProjectId="@_selectedProject.Id" Chat="@(_reviewChat ?? _selectedChat)"
                          Reviews="@_reviews" StartReviewId="@_reviewStartId"
-                         OnChanged="OnReviewChangedAsync" OnClose="CloseReview" />
+                         OnChanged="OnReviewChangedAsync" OnDelete="@(id => DeleteReviewAsync(_selectedChat.Id, id))" OnClose="CloseReview" />
     }
 </main>
 

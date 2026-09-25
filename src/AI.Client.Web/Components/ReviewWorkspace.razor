@@ -7,7 +7,27 @@
 
 <section class="review-workspace" aria-label="Review changes">
     <header class="review-workspace-header">
-        <strong>Review</strong>
+        <AppIcon Name="diff" />
+        <div class="review-workspace-identity">
+            <strong title="@_current?.Name">@(_current?.Name ?? "Review")</strong>
+            @if (_current is not null)
+            {
+                <span>@_current.Files.Count files · @_current.Comments.Count comments · Round @_current.SourceCreatedAt.LocalDateTime.ToString("g") · Created @_current.CreatedAt.LocalDateTime.ToString("g") · Updated @_current.UpdatedAt.LocalDateTime.ToString("g")</span>
+            }
+        </div>
+        @if (_current is not null)
+        {
+            @if (_confirmingDelete)
+            {
+                <span class="review-workspace-delete-confirm">Delete this review?</span>
+                <button class="review-workspace-delete-yes" type="button" @onclick="DeleteAsync">Delete</button>
+                <button class="icon-action" type="button" title="Cancel deletion" aria-label="Cancel deletion" @onclick="() => _confirmingDelete = false"><AppIcon Name="x" /></button>
+            }
+            else
+            {
+                <button class="icon-action review-workspace-delete" type="button" title="Delete review" aria-label="Delete review" @onclick="() => _confirmingDelete = true"><AppIcon Name="trash" /></button>
+            }
+        }
         <button class="icon-action review-close" type="button" title="Close review" aria-label="Close review" @onclick="OnClose"><AppIcon Name="x" /></button>
     </header>
     @if (_error is { Length: > 0 }) { <p class="review-error" role="alert">@_error</p> }
@@ -68,6 +88,7 @@
     [Parameter] public IReadOnlyList<ChatReview> Reviews { get; set; } = [];
     [Parameter] public Guid? StartReviewId { get; set; }
     [Parameter] public EventCallback<ChatReview> OnChanged { get; set; }
+    [Parameter] public EventCallback<Guid> OnDelete { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
     private ChatReview? _current;
@@ -77,6 +98,12 @@
     private string _fileFilter = string.Empty;
     private string? _error;
     private bool _saving;
+    private bool _confirmingDelete;
+
+    private async Task DeleteAsync()
+    {
+        if (_current is not null) await OnDelete.InvokeAsync(_current.Id);
+    }
 
     protected override void OnInitialized()
     {

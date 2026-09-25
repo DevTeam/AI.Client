@@ -15,7 +15,10 @@
         @foreach (var line in lines.Take(MaxLines))
         {
             <WorkspaceDiffLine Line="@line" ReviewMode="@(SourceMessageId != Guid.Empty)"
-                               OnComment="args => BeginLineComment(line, args.ShiftKey)" />
+                               Commented="@HasSavedComment(line)"
+                               Selected="@IsInPendingRange(line)"
+                               OnComment="args => BeginLineComment(line, args.ShiftKey)"
+                               OnLineClick="args => HandleLineClick(line, args)" />
             @if (line.Kind is not (DiffLineKind.Hunk or DiffLineKind.Note))
             {
                 @foreach (var comment in CommentsAt(line)) { @CommentCard(comment) }
@@ -65,17 +68,36 @@
 
     private void BeginFileComment() => BeginComment(null, null);
 
+    private void HandleLineClick(DiffLine line, MouseEventArgs args)
+    {
+        if (args.ShiftKey && SourceMessageId != Guid.Empty)
+            BeginLineComment(line, shift: true);
+    }
+
     private void BeginLineComment(DiffLine line, bool shift)
     {
         var oldLine = line.Kind == DiffLineKind.Removed ? line.OldLine : null;
         var newLine = line.Kind == DiffLineKind.Removed ? null : line.NewLine;
-        if (shift && _rangeStart is { } start
-            && (start.Old is not null && oldLine is not null || start.New is not null && newLine is not null))
+        if (shift && _rangeStart is { } start)
         {
-            BeginComment(oldLine is null ? null : Math.Min(start.Old!.Value, oldLine.Value),
-                newLine is null ? null : Math.Min(start.New!.Value, newLine.Value));
-            _pendingOldEnd = oldLine is null ? null : Math.Max(start.Old!.Value, oldLine.Value);
-            _pendingNewEnd = newLine is null ? null : Math.Max(start.New!.Value, newLine.Value);
+            if (start.New is { } newStart && newLine is { } newEnd)
+            {
+                _pendingOldStart = _pendingOldEnd = null;
+                _pendingNewStart = Math.Min(newStart, newEnd);
+                _pendingNewEnd = Math.Max(newStart, newEnd);
+                _error = null;
+            }
+            else if (start.Old is { } oldStart && oldLine is { } oldEnd)
+            {
+                _pendingNewStart = _pendingNewEnd = null;
+                _pendingOldStart = Math.Min(oldStart, oldEnd);
+                _pendingOldEnd = Math.Max(oldStart, oldEnd);
+                _error = null;
+            }
+            else
+            {
+                _error = "Select lines on the same side of the diff.";
+            }
         }
         else
         {
@@ -83,6 +105,16 @@
             _rangeStart = (oldLine, newLine);
         }
     }
+
+    private bool IsInPendingRange(DiffLine line) => _pending &&
+        (line.Kind == DiffLineKind.Removed
+            ? line.OldLine is { } oldLine && _pendingOldStart <= oldLine && oldLine <= _pendingOldEnd
+            : line.NewLine is { } newLine && _pendingNewStart <= newLine && newLine <= _pendingNewEnd);
+
+    private bool HasSavedComment(DiffLine line) => (_current?.Comments ?? []).Any(comment =>
+        comment.Path == File.Path && (line.Kind == DiffLineKind.Removed
+            ? line.OldLine is { } oldLine && comment.OldStart <= oldLine && oldLine <= comment.OldEnd
+            : line.NewLine is { } newLine && comment.NewStart <= newLine && newLine <= comment.NewEnd));
 
     private void BeginComment(int? oldLine, int? newLine)
     {
@@ -105,6 +137,7 @@
             : item.NewEnd == line.NewLine && item.OldStart is null)).ToArray();
 
     private RenderFragment CommentCard(ReviewComment comment) => @<div class="review-comment @(_editingCommentId == comment.Id ? "is-editing" : null)" @key="comment.Id">
+        @if (RangeLabel(comment) is { } label) { <div class="review-comment-anchor">@label</div> }
         @if (_editingCommentId == comment.Id) { @CommentEditor() }
         else
         {
@@ -116,7 +149,18 @@
         }
     </div>;
 
+    private static string? RangeLabel(ReviewComment comment) => comment switch
+    {
+        { NewStart: { } start, NewEnd: { } end } when start != end => $"New lines {start}–{end}",
+        { OldStart: { } start, OldEnd: { } end } when start != end => $"Old lines {start}–{end}",
+        _ => null,
+    };
+
     private RenderFragment CommentEditor() => @<div class="review-comment-editor" @onkeydown="HandleCommentKeyDown">
+        @if (_rangeStart is not null && _pendingOldStart == _pendingOldEnd && _pendingNewStart == _pendingNewEnd)
+        {
+            <small class="review-comment-range-hint">Shift-click another line to select a range.</small>
+        }
         <textarea @ref="_commentEditor" data-review-comment aria-label="Review comment" value="@_commentBody" @oninput="e => _commentBody = e.Value?.ToString() ?? string.Empty" @onkeydown="HandleCommentTextKeyDownAsync"></textarea>
         <div class="review-comment-actions">
             <button class="review-comment-icon-action is-save" type="button" title="Save comment (Enter)" aria-label="Save comment" aria-keyshortcuts="Enter" disabled="@(_saving || string.IsNullOrWhiteSpace(_commentBody))" @onclick="SaveCommentAsync"><AppIcon Name="check" /></button>

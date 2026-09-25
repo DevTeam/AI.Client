@@ -2427,7 +2427,19 @@ body {
 .message-resource-remove { display: inline-flex; flex: 0 0 auto; margin-left: .2rem; padding: 0; border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; }
 .message-resource-remove:hover { color: var(--color-text-strong); }
 .message-resource-remove .app-icon { width: .75rem; height: .75rem; }
-::highlight(message-review) { background-color: color-mix(in srgb, var(--color-accent) 35%, transparent); text-decoration: underline; text-decoration-color: var(--color-accent); }
+/* Comments and local-path links share one mark — see .file-link. A highlight can only set
+   colours and the underline, so the shared mark is exactly that, and the icon tells them apart. */
+::highlight(message-review) { background-color: color-mix(in srgb, var(--color-accent) 22%, transparent); text-decoration: underline solid color-mix(in srgb, var(--color-accent) 80%, transparent); }
+/* The comment icon of the edit statistics (.workspace-change-comments): the same AppIcon markup,
+   colour and size, so a comment looks the same wherever it is counted or marked. */
+.review-comment-marker {
+    display: inline-flex;
+    margin-left: 0.2em;
+    vertical-align: -0.1em;
+    color: var(--color-accent);
+    pointer-events: none;
+}
+.review-comment-marker .app-icon { width: .85rem; height: .85rem; }
 .message-review-text { cursor: text; }
 .message-review-toggle { display: inline-flex; align-items: center; gap: .3rem; margin-top: .25rem; padding: .1rem 0; border: 0; background: transparent; color: var(--color-accent); font-size: .8rem; cursor: pointer; }
 .message-review-toggle .app-icon { width: .85rem; height: .85rem; }
@@ -4805,6 +4817,32 @@ textarea {
 .markdown-content .file-link { color: var(--color-accent); }
 .markdown-content a:hover,
 .markdown-content .file-link:hover { color: var(--color-accent-strong); }
-.markdown-content .file-link { text-decoration: underline dashed; text-underline-offset: 0.2em; cursor: context-menu; }
+/* A local path carries the same mark as a message comment — the same tint and underline — and is
+   told apart by being a link: accent text, and after it an icon for what the project may do there
+   instead of the comment icon. */
+.markdown-content .file-link {
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    text-decoration: underline solid color-mix(in srgb, var(--color-accent) 80%, transparent);
+    cursor: context-menu;
+}
+.markdown-content .file-link[data-file-access="none"] {
+    color: var(--color-text-muted);
+    background: color-mix(in srgb, var(--color-text-muted) 22%, transparent);
+    text-decoration-color: color-mix(in srgb, var(--color-text-muted) 80%, transparent);
+}
+.markdown-content .file-link[data-file-access]::after {
+    content: "";
+    display: inline-block;
+    width: 0.75em;
+    height: 0.75em;
+    margin-left: 0.2em;
+    vertical-align: -0.05em;
+    background-color: var(--file-access-color);
+    -webkit-mask: var(--file-access-icon) center / contain no-repeat;
+    mask: var(--file-access-icon) center / contain no-repeat;
+}
+.markdown-content .file-link[data-file-access="read"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='10' width='16' height='11' rx='2' fill='black' stroke='none'/%3E%3Cpath d='M8 10V7a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E"); --file-access-color: var(--color-text-faint); }
+.markdown-content .file-link[data-file-access="write"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='11' width='15' height='10' rx='2' fill='black' stroke='none'/%3E%3Cpath d='M9 11V7a4 4 0 0 1 7.8-1.2'/%3E%3C/svg%3E"); --file-access-color: var(--color-accent); }
+.markdown-content .file-link[data-file-access="none"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M5.6 5.6l12.8 12.8'/%3E%3C/svg%3E"); --file-access-color: var(--color-danger-text); }
 .file-link-menu { position: fixed; top: auto; right: auto; }
 .file-link-menu-path { overflow: hidden; padding: 0.35rem 0.9rem 0.2rem; color: var(--color-text-faint); font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }

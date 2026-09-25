@@ -33,14 +33,14 @@ public sealed partial class WorkspacePathResolver(IProjectService projects, IDir
 
     /// <summary>
     /// An absolute path is checked where it is; a relative one is tried under each readable root in
-    /// grant order, and the first that exists and stays inside a grant wins.
+    /// grant order, and the first that exists and stays inside a grant wins. Only an absolute path
+    /// may come back unreadable: a relative one that climbs out of every root names nothing here.
     /// </summary>
     private async Task<ResolvedPath?> FindAsync(Contracts.Projects.ProjectDetails project, IReadOnlyList<string> roots,
         string written, CancellationToken cancellationToken)
     {
-        IEnumerable<string> candidates = Path.IsPathFullyQualified(written)
-            ? [written]
-            : roots.Select(root => Path.Combine(root, written));
+        var absolute = Path.IsPathFullyQualified(written);
+        IEnumerable<string> candidates = absolute ? [written] : roots.Select(root => Path.Combine(root, written));
         foreach (var candidate in candidates)
         {
             try
@@ -48,8 +48,9 @@ public sealed partial class WorkspacePathResolver(IProjectService projects, IDir
                 var probe = await browser.ResolveAsync(candidate, cancellationToken);
                 if (!probe.IsFullyQualified || !probe.FileExists && !probe.DirectoryExists) continue;
                 var path = access.ResolveLinks(probe.CanonicalPath);
-                if (!access.CanRead(project, path)) continue;
-                return new ResolvedPath(written, path, probe.FileExists ? ChatResourceKind.File : ChatResourceKind.Directory);
+                var kind = probe.FileExists ? ChatResourceKind.File : ChatResourceKind.Directory;
+                var allowed = access.AccessOf(project, path);
+                if (allowed != PathAccess.None || absolute) return new ResolvedPath(written, path, kind, allowed);
             }
             catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException
                                               or NotSupportedException)

@@ -1,6 +1,7 @@
 namespace AI.Client.Application.Resources;
 
 using AI.Client.Contracts.Projects;
+using AI.Client.Contracts.Resources;
 
 public sealed class ProjectPathAccess : IProjectPathAccess
 {
@@ -26,12 +27,20 @@ public sealed class ProjectPathAccess : IProjectPathAccess
         return current;
     }
 
-    public bool CanRead(ProjectDetails project, string path)
+    public bool CanRead(ProjectDetails project, string path) => AccessOf(project, path) != PathAccess.None;
+
+    public PathAccess AccessOf(ProjectDetails project, string path)
     {
         ArgumentNullException.ThrowIfNull(project);
-        return project.DirectoryGrants.Any(grant =>
-            grant.ToolNames.Contains("read", StringComparer.OrdinalIgnoreCase)
-            && InGrant(path, ResolveLinks(grant.CanonicalRoot), grant.Recursive));
+        var access = PathAccess.None;
+        foreach (var grant in project.DirectoryGrants)
+        {
+            if (!grant.ToolNames.Contains("read", StringComparer.OrdinalIgnoreCase)
+                || !InGrant(path, ResolveLinks(grant.CanonicalRoot), grant.Recursive)) continue;
+            if (grant.ToolNames.Contains("write", StringComparer.OrdinalIgnoreCase)) return PathAccess.ReadWrite;
+            access = PathAccess.Read;
+        }
+        return access;
     }
 
     private static bool InGrant(string path, string root, bool recursive)

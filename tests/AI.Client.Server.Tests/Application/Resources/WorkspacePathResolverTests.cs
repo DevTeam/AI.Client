@@ -37,7 +37,7 @@ public sealed class WorkspacePathResolverTests : IDisposable
         var project = new ProjectDetails(projectId, "Project", "", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1,
         [
             new DirectoryGrantSettings(Guid.CreateVersion7(), "First", first, true, ["read"]),
-            new DirectoryGrantSettings(Guid.CreateVersion7(), "Second", second, true, ["read"])
+            new DirectoryGrantSettings(Guid.CreateVersion7(), "Second", second, true, ["read", "write", "edit", "delete"])
         ], [], []);
         var projects = new Mock<IProjectService>();
         projects.Setup(item => item.GetAsync(projectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
@@ -47,13 +47,17 @@ public sealed class WorkspacePathResolverTests : IDisposable
             ["src/Program.cs:12", "./src", program, "docs", secret, "missing.cs", "../outside/secret.txt"], token);
 
         result.Select(item => item.Kind).ShouldBe(
-            [ChatResourceKind.File, ChatResourceKind.Directory, ChatResourceKind.File, ChatResourceKind.Directory, null, null, null]);
+            [ChatResourceKind.File, ChatResourceKind.Directory, ChatResourceKind.File, ChatResourceKind.Directory,
+                ChatResourceKind.File, null, null]);
+        result.Select(item => item.Access).ShouldBe([PathAccess.ReadWrite, PathAccess.ReadWrite, PathAccess.ReadWrite,
+            PathAccess.Read, PathAccess.None, PathAccess.None, PathAccess.None]);
         result[0].Input.ShouldBe("src/Program.cs:12");
         result[0].Path.ShouldBe(program, StringCompareShould.IgnoreCase);
         // A relative path is tried under every root in grant order; "docs" only exists under the first.
         result[3].Path.ShouldBe(Path.Combine(first, "docs"), StringCompareShould.IgnoreCase);
-        // A path outside every grant is never reported, however it is spelled.
-        result[4].Path.ShouldBeNull();
+        // An absolute path outside every grant is reported as there but unreadable, so access can be
+        // granted; a relative one that climbs out of the roots names nothing.
+        result[4].Path.ShouldBe(secret, StringCompareShould.IgnoreCase);
         result[6].Path.ShouldBeNull();
     }
 }

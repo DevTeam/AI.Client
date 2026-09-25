@@ -535,7 +535,14 @@
              style="left: min(@(fileLink.ClientX.ToString(System.Globalization.CultureInfo.InvariantCulture))px, calc(100vw - 15rem)); top: min(@(fileLink.ClientY.ToString(System.Globalization.CultureInfo.InvariantCulture))px, calc(100vh - 7rem));"
              @onclick:stopPropagation="true">
             <div class="file-link-menu-path" title="@fileLink.Path">@ResourceDisplayName(fileLink.Path)</div>
-            <button type="button" role="menuitem" disabled="@(_selectedProject is null)" @onclick="AddFileLinkToMessageAsync"><AppIcon Name="plus" />Add to message</button>
+            @if (fileLink.Readable == false)
+            {
+                <button type="button" role="menuitem" disabled="@(_selectedProject is null)" title="@($"Let the assistant's tools read {FileLinkGrantPath(fileLink)}")" @onclick="GrantFileLinkAccessAsync"><AppIcon Name="folder-plus" />Allow project access</button>
+            }
+            else
+            {
+                <button type="button" role="menuitem" disabled="@(_selectedProject is null)" @onclick="AddFileLinkToMessageAsync"><AppIcon Name="plus" />Add to message</button>
+            }
             <button type="button" role="menuitem" @onclick="CopyFileLinkPathAsync"><AppIcon Name="copy" />Copy path</button>
         </div>
     }
@@ -1125,6 +1132,8 @@
             _attachComposer = false;
         }
 
+        await SyncFileLinkAccessAsync();
+
         if (_scrollMessagesToBottom && _messageFeed is not null)
         {
             // An explicit "just sent a message" always wins over a stale pending restore from
@@ -1268,6 +1277,9 @@
 
                 _selectedProject = refreshed;
                 await LoadChatsAsync(selected.Id);
+                // A model may have changed the project's directories; the sidebar and the access icons
+                // on message links both follow them.
+                await LoadSecurityAsync(selected.Id);
                 if (_selectedChat is { } chat && _chats.All(item => item.Id != chat.Id)) _selectedChat = null;
             }
         }
@@ -1737,6 +1749,26 @@
         }
     }
 
+    // The project and grants the message links were last checked against. Directories change from
+    // the sidebar, the settings drawer, a link's own menu or a model's app_security call; comparing
+    // after each render catches every one of them without each having to remember the links.
+    private Guid? _fileLinkProjectId;
+    private string _fileLinkGrants = string.Empty;
+
+    private async Task SyncFileLinkAccessAsync()
+    {
+        var projectId = _selectedProject?.Id;
+        var grants = string.Join('\n', _security.DirectoryGrants
+            .Select(grant => $"{grant.CanonicalRoot}|{grant.Recursive}|{grant.ToolNames}")
+            .Order(StringComparer.Ordinal));
+        if (projectId == _fileLinkProjectId && grants == _fileLinkGrants) return;
+        var sameProject = projectId == _fileLinkProjectId;
+        _fileLinkProjectId = projectId;
+        _fileLinkGrants = grants;
+        // A switch of project is the feed's own business: it re-scopes its links when its chat changes.
+        if (sameProject && _messageFeed is not null) await _messageFeed.RefreshFileLinksAsync();
+    }
+
     private async Task LoadSecurityAsync(Guid id)
     {
         var project = await ProjectApi.GetAsync(id, CancellationToken.None);
@@ -2055,26 +2087,36 @@
         var grant = grantId is { } id ? _security.DirectoryGrants.SingleOrDefault(item => item.Id == id) : null;
         if (grant is null)
         {
-            // Paths are canonicalised by the host, so two grants over one directory would be two
-            // identical rows — and revoking the one you can see would leave the other in force.
-            if (_security.DirectoryGrants.Exists(item => string.Equals(item.CanonicalRoot, path, StringComparison.OrdinalIgnoreCase)))
-            {
-                Notifications.ShowInfo("That directory is already granted.");
-                return;
-            }
-
-            grant = new DirectoryGrantEditor { ToolNames = "read" };
-            _security.DirectoryGrants.Add(grant);
-            _directoriesExpanded = true;
-        }
-        else if (string.Equals(grant.CanonicalRoot, path, StringComparison.Ordinal))
-        {
+            await AddDirectoryGrantAsync(path);
             return;
         }
+        if (string.Equals(grant.CanonicalRoot, path, StringComparison.Ordinal)) return;
 
         grant.CanonicalRoot = path;
         grant.DisplayName = GetDirectoryDisplayNameSuggestion(path);
         await PersistDirectoryGrantsAsync();
+    }
+
+    /// <summary>Adds a read-only grant over <paramref name="path"/>; true once it is saved.</summary>
+    private async Task<bool> AddDirectoryGrantAsync(string path, string? successMessage = null)
+    {
+        // Paths are canonicalised by the host, so two grants over one directory would be two
+        // identical rows — and revoking the one you can see would leave the other in force.
+        if (_security.DirectoryGrants.Exists(item => string.Equals(item.CanonicalRoot, path, StringComparison.OrdinalIgnoreCase)))
+        {
+            Notifications.ShowInfo("That directory is already granted.");
+            return false;
+        }
+
+        var grant = new DirectoryGrantEditor
+        {
+            ToolNames = "read",
+            CanonicalRoot = path,
+            DisplayName = GetDirectoryDisplayNameSuggestion(path)
+        };
+        _security.DirectoryGrants.Add(grant);
+        _directoriesExpanded = true;
+        return await PersistDirectoryGrantsAsync(successMessage);
     }
 
     private static string GetDirectoryDisplayNameSuggestion(string path)
@@ -2113,7 +2155,7 @@
         await PersistDirectoryGrantsAsync();
     }
 
-    private async Task<bool> PersistDirectoryGrantsAsync()
+    private async Task<bool> PersistDirectoryGrantsAsync(string? successMessage = null)
     {
         if (_selectedProject is null) return false;
 
@@ -2130,7 +2172,7 @@
         // SaveSecurityAsync is the "Save" of the project settings panel, so it gets the same toast
         // as the project form itself — otherwise the one panel with a dozen fields is the one that
         // stays silent about whether the write landed.
-        Notifications.ShowSuccess("Project settings saved.");
+        Notifications.ShowSuccess(successMessage ?? "Project settings saved.");
         return true;
     }
 
@@ -4127,6 +4169,29 @@
             : link.Path.EndsWith('\\') || link.Path.EndsWith('/') ? [ChatResourceKind.Directory]
             : [ChatResourceKind.File, ChatResourceKind.Directory];
         await AddDraftResourceAsync(kinds, link.Path);
+    }
+
+    /// <summary>A directory is granted as it is; a file through the directory that holds it.</summary>
+    private static string FileLinkGrantPath(FileLinkMenuRequest link)
+    {
+        if (link.Kind == ChatResourceKind.Directory) return link.Path;
+        var trimmed = link.Path.TrimEnd('\\', '/');
+        var separator = trimmed.LastIndexOfAny(['\\', '/']);
+        // "C:\file.txt" lives in "C:\", not in "C:".
+        return separator <= 0 ? link.Path : trimmed[..(trimmed[separator - 1] == ':' ? separator + 1 : separator)];
+    }
+
+    /// <summary>
+    /// Grants read access to the linked directory, or to the one holding the linked file, the same
+    /// way the directory picker does. The file tools see it from the assistant's next run.
+    /// </summary>
+    private async Task GrantFileLinkAccessAsync()
+    {
+        if (_fileLinkMenu is not { } link) return;
+        CloseFileLinkMenu();
+        var folder = FileLinkGrantPath(link);
+        if (!await AddDirectoryGrantAsync(folder,
+                $"The project can now read {GetDirectoryDisplayNameSuggestion(folder)}; the assistant's tools see it from its next run.")) return;
     }
 
     private async Task CopyFileLinkPathAsync()

@@ -75,7 +75,9 @@ const findFences = root => {
     const found = new Set();
     for (const selector of FENCE_SELECTORS) {
         for (const node of root.querySelectorAll(selector)) {
-            found.add(node);
+            // Replace the whole fence. Replacing only <code> leaves a <div> inside <pre>,
+            // which inherits code-block layout and may stretch the chat column.
+            found.add(node.tagName === "PRE" ? node : node.closest("pre") ?? node);
         }
     }
     return Array.from(found);

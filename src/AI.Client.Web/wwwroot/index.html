@@ -31,6 +31,9 @@
                 const ff = root.getPropertyValue('font-family').trim() || 'Inter, system-ui, sans-serif';
                 mermaid.initialize({
                     startOnLoad: false,
+                    // A failed render must remove Mermaid's temporary SVG from document.body.
+                    // The message renderer shows the parse error inside the chat instead.
+                    suppressErrorRendering: true,
                     theme: 'base',
                     securityLevel: 'strict',
                     fontFamily: ff,

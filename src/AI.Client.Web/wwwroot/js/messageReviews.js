@@ -65,6 +65,14 @@
         return { x, y: below ? rect.bottom + 8 : rect.top - 8, below };
     }
 
+    // Enter saves a review comment (handled in Blazor), so keep it from inserting a newline; Shift+Enter still does.
+    document.addEventListener("keydown", event => {
+        if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey
+            && !event.isComposing && event.target instanceof HTMLTextAreaElement
+            && event.target.hasAttribute("data-review-comment"))
+            event.preventDefault();
+    }, true);
+
     window.messageReviews = {
         showEditor(messageId) {
             const editor = document.getElementById(`review-editor-${messageId}`);

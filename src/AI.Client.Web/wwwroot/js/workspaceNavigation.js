@@ -5,12 +5,23 @@ function currentIndex() { return Number.isInteger(history.state?.[indexKey]) ? h
 function maximumIndex() { return Number(sessionStorage.getItem(maxKey) ?? currentIndex()); }
 function state() { const index = currentIndex(); return { canBack: index > 0, canForward: index < maximumIndex() }; }
 
+function rememberWorkspace() {
+    if (typeof globalThis.invokeCSharpAction !== "function") return;
+    const query = new URL(location.href).searchParams;
+    globalThis.invokeCSharpAction(JSON.stringify({
+        type: "workspace-location",
+        project: query.get("project"),
+        chat: query.get("chat"),
+        branch: query.get("branch")
+    }));
+}
+
 export function attach(dotNetReference) {
     if (!Number.isInteger(history.state?.[indexKey])) {
         history.replaceState({ ...history.state, [indexKey]: 0 }, "", location.href);
         sessionStorage.setItem(maxKey, "0");
     }
-    const onPop = () => { void dotNetReference.invokeMethodAsync("OnWorkspaceHistoryChanged", location.href, state()); };
+    const onPop = () => { rememberWorkspace(); void dotNetReference.invokeMethodAsync("OnWorkspaceHistoryChanged", location.href, state()); };
     window.addEventListener("popstate", onPop);
     return {
         state,
@@ -30,6 +41,7 @@ export function attach(dotNetReference) {
                 history.pushState({ ...history.state, [indexKey]: next }, "", url);
                 sessionStorage.setItem(maxKey, String(next));
             }
+            rememberWorkspace();
             return state();
         },
         back() { if (state().canBack) history.back(); },

@@ -211,15 +211,17 @@
                 if (SourceMessageId == Guid.Empty || SourceFiles.Count == 0) return;
                 _current = await ReviewsApi.CreateAsync(ProjectId, ChatId,
                     new CreateReviewRequest(SourceMessageId, $"Review {DateTime.Now:g}",
-                        SourceFiles.Select(item => item.Path).ToArray()), CancellationToken.None);
-                await OnChanged.InvokeAsync(_current);
+                        SourceFiles.Select(item => item.Path).ToArray(), Comments: [comment]), CancellationToken.None);
             }
-            var files = _current.Files.Contains(File.Path, StringComparer.Ordinal)
-                ? _current.Files : _current.Files.Append(File.Path).ToArray();
-            _current = await ReviewsApi.UpdateAsync(ProjectId, ChatId, _current.Id,
-                new UpdateReviewRequest(_current.Name, files,
-                    _current.Comments.Where(item => item.Id != comment.Id).Append(comment).ToArray(),
-                    _current.Revision), CancellationToken.None);
+            else
+            {
+                var files = _current.Files.Contains(File.Path, StringComparer.Ordinal)
+                    ? _current.Files : _current.Files.Append(File.Path).ToArray();
+                _current = await ReviewsApi.UpdateAsync(ProjectId, ChatId, _current.Id,
+                    new UpdateReviewRequest(_current.Name, files,
+                        _current.Comments.Where(item => item.Id != comment.Id).Append(comment).ToArray(),
+                        _current.Revision), CancellationToken.None);
+            }
             _error = null;
             CancelComment();
             await OnChanged.InvokeAsync(_current);
@@ -237,13 +239,14 @@
         _saving = true;
         try
         {
-            _current = await ReviewsApi.UpdateAsync(ProjectId, ChatId, _current.Id,
+            var updated = await ReviewsApi.UpdateAsync(ProjectId, ChatId, _current.Id,
                 new UpdateReviewRequest(_current.Name, _current.Files,
                     _current.Comments.Where(item => item.Id != comment.Id).ToArray(), _current.Revision),
                 CancellationToken.None);
+            _current = updated.Comments.Count == 0 ? null : updated;
             _error = null;
             CancelComment();
-            await OnChanged.InvokeAsync(_current);
+            await OnChanged.InvokeAsync(updated);
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
         {

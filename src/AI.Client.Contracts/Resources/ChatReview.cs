@@ -18,7 +18,8 @@ public sealed record ReviewComment(Guid Id, string Path, int? OldStart, int? Old
 
 public sealed record CreateReviewRequest(Guid SourceMessageId, string Name, IReadOnlyList<string> Files,
     ChatReviewKind Kind = ChatReviewKind.Diff,
-    IReadOnlyList<MessageReviewComment>? MessageComments = null);
+    IReadOnlyList<MessageReviewComment>? MessageComments = null,
+    IReadOnlyList<ReviewComment>? Comments = null);
 public sealed record UpdateReviewRequest(string Name, IReadOnlyList<string> Files,
     IReadOnlyList<ReviewComment> Comments, long ExpectedRevision,
     IReadOnlyList<MessageReviewComment>? MessageComments = null);

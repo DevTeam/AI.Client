@@ -31,6 +31,7 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
         if (request.Kind == ChatReviewKind.Message)
         {
             if (request.Files is { Count: > 0 }) throw new ArgumentException("Message reviews cannot select files.");
+            if (request.Comments is { Count: > 0 }) throw new ArgumentException("Message reviews cannot contain diff comments.");
             if (source.Role is not ("User" or "Assistant") || string.IsNullOrWhiteSpace(source.Content))
                 throw new ArgumentException("Message review source must contain user or assistant text.");
             if ((await repository.ListAsync(projectId, chatId, cancellationToken)).Any(item =>
@@ -48,9 +49,10 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
             throw new ArgumentException("Review source has no saved file changes.");
         var name = CleanName(request.Name);
         var files = ValidateFiles(request.Files, changes);
+        var comments = ValidateComments(request.Comments ?? [], changes, files);
         var now = DateTimeOffset.UtcNow;
         return await repository.CreateAsync(new ChatReview(Guid.CreateVersion7(), projectId, chatId, name,
-            source.Id, source.CreatedAt, files, [], now, now, 1, SourceChanges: changes), cancellationToken);
+            source.Id, source.CreatedAt, files, comments, now, now, 1, SourceChanges: changes), cancellationToken);
     }
 
     public async Task<ChatReview?> UpdateAsync(Guid projectId, Guid chatId, Guid reviewId,

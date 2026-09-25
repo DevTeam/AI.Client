@@ -38,11 +38,14 @@ public sealed class AppResourcesTool(IResourceService resources, IReviewService 
         {
             if (operation == ResourceOperation.CreateReview)
             {
+                var selectedReviewKind = reviewKind ?? ChatReviewKind.Diff;
+                if (selectedReviewKind == ChatReviewKind.Diff && comments is not { Length: > 0 })
+                    throw new ArgumentException("A diff review needs at least one comment.");
                 var review = await reviews.CreateAsync(projectId,
                     chatId ?? throw new ArgumentException("'chatId' is required."),
                     new CreateReviewRequest(sourceMessageId ?? throw new ArgumentException("'sourceMessageId' is required."),
                         name ?? throw new ArgumentException("'name' is required."), files ?? [],
-                        reviewKind ?? ChatReviewKind.Diff, messageComments), cancellationToken);
+                        selectedReviewKind, messageComments, comments), cancellationToken);
                 return builder.Applied("Created review resource.", projectId, review.ChatId, revision: review.Revision,
                     current: JsonSerializer.SerializeToElement(review, reply.Json));
             }

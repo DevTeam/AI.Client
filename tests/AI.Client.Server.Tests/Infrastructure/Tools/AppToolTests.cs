@@ -79,6 +79,28 @@ public sealed class AppToolTests
     }
 
     [Fact]
+    public async Task ShouldDefaultProjectScopedReadsToTheCurrentProject()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        var otherProject = await fixture.Projects.CreateAsync(new CreateProjectRequest("Other", ""), CancellationToken.None);
+        await using var session = await fixture.OpenAsync();
+
+        var current = await AppFixture.CallAsync(session, "app_read", new { resource = "Project" });
+        current.GetProperty("items")[0].GetProperty("id").GetGuid().ShouldBe(fixture.ProjectId);
+
+        var explicitProject = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "Project", projectId = otherProject.Id });
+        explicitProject.GetProperty("items")[0].GetProperty("id").GetGuid().ShouldBe(otherProject.Id);
+
+        var chats = await AppFixture.CallAsync(session, "app_read", new { resource = "Chats" });
+        chats.GetProperty("items")[0].GetProperty("id").GetGuid().ShouldBe(fixture.ChatId);
+
+        var description = session.Tools.Single(tool => tool.OriginalName == "app_read").ModelDefinition.Description;
+        description.ShouldContain("omitted projectId means the current project");
+        description.ShouldContain("'Review' needs resourceId");
+    }
+
+    [Fact]
     public async Task ShouldNotReturnSecretsWhenReadingSettings()
     {
         await using var fixture = await AppFixture.CreateAsync();

@@ -222,7 +222,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 return changes;
             }
 
-            var completionCalls = calls.Where(call => call.Name == completionProtocol.Tool.ModelDefinition.Name).ToArray();
+            var completionCalls = calls.Where(call => IsCompletionCall(call.Name)).ToArray();
             if (completionCalls.Length > 0)
             {
                 // Once the model has entered the structured completion protocol, every correction
@@ -287,10 +287,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 {
                     token.ThrowIfCancellationRequested();
                     var tool = selectedTools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name)
-                        ?? throw new ArgumentException(
-                            $"Tool '{call.Name}' is not available in this turn. Its schema was omitted to fit the model's context budget. "
-                            + "Call app_tool_search with a short English capability description (for example: 'read text file', 'list directory', 'grep in files') "
-                            + "so the matching tools are pinned and become available on the next model step. Do not invent or guess tool names.");
+                        ?? throw new ArgumentException(permitted.Any(item => item.ModelDefinition.Name == call.Name)
+                            ? $"Tool '{call.Name}' is not available in this turn. Its schema was omitted to fit the model's context budget. "
+                              + "Call app_tool_search with a short English capability description (for example: 'read text file', 'list directory', 'grep in files') "
+                              + "so the matching tools are pinned and become available on the next model step. Do not invent or guess tool names."
+                            : $"There is no tool named '{call.Name}'. Use only the tool names you were given; call app_tool_search "
+                              + "with a short English capability description when the one you need is not listed.");
                     var arguments = session!.ValidateArguments(tool, call.Arguments);
                     var policy = await PolicyAsync(projectId, chatId, tool, token);
                     if (tool.OriginalName == "process_run")
@@ -427,6 +429,16 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         "Your previous message was cut off at the output token limit. Continue it from exactly where "
         + "it stopped, in the middle of the word or line if that is where the cut fell. Do not repeat "
         + "any text you have already sent, do not restate what you were doing, and do not apologise.";
+
+    /// <summary>
+    /// Whether a call is the completion control tool. The control tool has no server prefix, but a
+    /// model that has just read App tool names sometimes gives it the App server's; that spelling is
+    /// accepted too. Only the App prefix is: a third-party server could otherwise end a run by
+    /// naming one of its own tools app_finish_run.
+    /// </summary>
+    private bool IsCompletionCall(string name) =>
+        name == completionProtocol.Tool.ModelDefinition.Name
+        || name == ToolRef.AppPrefix + completionProtocol.Tool.ModelDefinition.Name;
 
     /// <summary>
     /// The base prompt, project instructions and memory index, built once per run. Their order in

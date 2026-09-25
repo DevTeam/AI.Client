@@ -117,7 +117,6 @@
     [Parameter] public EventCallback Saved { get; set; }
     /// <summary>The project whose memory the ProjectMemory section edits.</summary>
     [Parameter] public Guid? ProjectId { get; set; }
-    [Parameter] public string? ProjectName { get; set; }
     private MemoryEditor? _memoryEditor;
     [Parameter] public EventCallback Close { get; set; }
     private bool _loaded;
@@ -204,7 +203,7 @@
     {
         "Settings" => "How the app looks on this device.",
         "Memory" => "What the assistant remembers about you in every project.",
-        "ProjectMemory" => $"What the assistant remembers about {ProjectName ?? "this project"}.",
+        "ProjectMemory" => "What the assistant remembers about this project.",
         "Connections" => "OpenAI-compatible endpoints available to every project.",
         _ => "Global MCP servers available to every project."
     };

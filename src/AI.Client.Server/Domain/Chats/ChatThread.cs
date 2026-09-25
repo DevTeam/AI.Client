@@ -189,14 +189,20 @@ public sealed class ChatThread
     }
 
     public bool RemoveReviewReference(ChatMessageId messageId, Guid reviewId, DateTimeOffset updatedAt)
+        => RemoveReference(messageId, reviewId, updatedAt, reviewOnly: true);
+
+    public bool RemoveResourceReference(ChatMessageId messageId, Guid resourceId, DateTimeOffset updatedAt)
+        => RemoveReference(messageId, resourceId, updatedAt, reviewOnly: false);
+
+    private bool RemoveReference(ChatMessageId messageId, Guid resourceId, DateTimeOffset updatedAt, bool reviewOnly)
     {
         if (!_messages.TryGetValue(messageId, out var message) || message.Role != ChatMessageRole.User)
             return false;
         var resources = message.Resources;
-        if (resources is null || !resources.Any(item => item.Id == reviewId
-            && item.Kind == AI.Client.Domain.Resources.ChatResourceKind.Review)) return false;
+        if (resources is null || !resources.Any(item => item.Id == resourceId
+            && (!reviewOnly || item.Kind == AI.Client.Domain.Resources.ChatResourceKind.Review))) return false;
         EnsureTimestampDoesNotMoveBackwards(updatedAt);
-        var remaining = resources.Where(item => item.Id != reviewId).ToArray();
+        var remaining = resources.Where(item => item.Id != resourceId).ToArray();
         _messages[messageId] = new ChatMessage(message.Id, message.ParentId, message.Role,
             message.Content, message.CreatedAt, message.IsIncomplete, message.ToolCalls,
             message.ToolCallId, message.WorkspaceChanges, remaining, allowEmptyAfterResourceRemoval: true);

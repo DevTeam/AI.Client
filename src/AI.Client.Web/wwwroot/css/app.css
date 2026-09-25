@@ -4,6 +4,8 @@
     background: #0c1017;
     color: #edf2f7;
     --accent-color: #7eb4ed;
+    --code-highlight-bg: #e6e6e6;
+    --code-highlight-fg: #202020;
     /* Lifetime of the transient accent line under a just-arrived assistant message.
        Home.razor's BranchLeafLineLifetime must stay >= the sum of these three, or the
        class is dropped mid-animation and the line vanishes with a jump. */
@@ -1683,8 +1685,8 @@ body {
 .message-empty-label { display: block; color: #c0c0c0; font-size: .82rem; }
 .workspace-message.user.resource-only .message-resource-list { margin: .3rem 0 0; }
 .workspace-message.user.resource-only .message-resource-chip { min-width: 0; }
-.review-resource-chip > button:first-child { flex: 1; min-width: 0; }
-.review-resource-chip > .review-resource-remove { flex: 0 0 auto; }
+.message-resource-open, .message-resource-content { display: inline-flex; flex: 1; min-width: 0; align-items: center; gap: .35rem; }
+.message-resource-content > span, .message-resource-open > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* === Branch leaf transient effects === */
 
@@ -2272,11 +2274,10 @@ body {
 .composer-resource-chip button .app-icon { width: .8rem; height: .8rem; }
 .message-resource-list { margin-top: .5rem; }
 .message-resource-chip { max-width: min(100%, 25rem); }
-.review-resource-chip button { display: inline-flex; align-items: center; gap: .35rem; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
-.review-resource-chip button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.review-resource-chip .review-resource-remove { margin-left: .2rem; color: #aaa; }
-.review-resource-chip .review-resource-remove:hover { color: #fff; }
-.review-resource-chip .review-resource-remove .app-icon { width: .75rem; height: .75rem; }
+.message-resource-open { padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.message-resource-remove { display: inline-flex; flex: 0 0 auto; margin-left: .2rem; padding: 0; border: 0; background: transparent; color: #aaa; cursor: pointer; }
+.message-resource-remove:hover { color: #fff; }
+.message-resource-remove .app-icon { width: .75rem; height: .75rem; }
 ::highlight(message-review) { background-color: color-mix(in srgb, var(--accent-color) 35%, transparent); text-decoration: underline; text-decoration-color: var(--accent-color); }
 .message-review-text { cursor: text; }
 .message-review-toggle { display: inline-flex; align-items: center; gap: .3rem; margin-top: .25rem; padding: .1rem 0; border: 0; background: transparent; color: var(--accent-color); font-size: .8rem; cursor: pointer; }
@@ -3910,40 +3911,27 @@ textarea {
     .workspace-change-summary { flex-wrap: wrap; }
 }
 
-/* Highlighted match inside a message, driven by the sidebar search. The fill is a warm amber
-   rather than the workspace accent so a match reads as "highlighted" the way it does in every
-   other app, while the inset ring keeps a single character from disappearing against a coloured
-   token (a link, a code span). Decoration-break: clone is load-bearing here: a query that wraps
-   onto a new line still reads as one continuous match, not two pale half-strips at the line
-   ends. The text is darkened on top of the amber so the match is unambiguous in assistant prose,
-   in headings, and inside user-message bubbles alike. */
+/* Search matches use the same light surface and dark text as the diff comment action on hover. */
 .search-highlight {
-    background: rgb(255 226 117 / 70%);
-    color: #1a1a1a;
+    background: var(--code-highlight-bg);
+    color: var(--code-highlight-fg);
     border-radius: 0.2rem;
     padding: 0.05em 0.25em;
     font-weight: 600;
     box-decoration-break: clone;
     -webkit-box-decoration-break: clone;
-    box-shadow: 0 0 0 1px rgb(255 226 117 / 90%);
+    box-shadow: 0 0 0 1px var(--code-highlight-bg);
 }
 
-/* Inside a code block the body is already a coloured panel (#0c1017) and monospace runs are
-   tracked with their own colours. The full amber swap above would clash with both: soften the
-   fill, drop the bold, and keep the existing token colour so a match inside a `code` span still
-   reads as "the bit you searched for in this expression". The ring does the work of saying
-   "highlighted" without forcing a colour flip that the eye has to re-read. */
 .markdown-content pre .search-highlight,
 .markdown-content code .search-highlight {
-    background: rgb(255 226 117 / 45%);
-    color: inherit;
+    background: var(--code-highlight-bg);
+    color: var(--code-highlight-fg);
     font-weight: inherit;
-    box-shadow: 0 0 0 1px rgb(255 226 117 / 75%);
+    box-shadow: 0 0 0 1px var(--code-highlight-bg);
 }
 
-/* On the user-message bubble the dark-on-amber contrast is fine, but a single-letter match at
-   0.05em vertical padding collapses to almost nothing. A little more vertical air keeps the
-   marker legible without making prose look like it has been coloured in by a marker pen. */
+/* Keep short matches legible in the user-message bubble. */
 .workspace-message.user .search-highlight {
     padding: 0.1em 0.3em;
 }
@@ -4507,6 +4495,10 @@ textarea {
 .review-workspace-header { display: flex; align-items: center; gap: .8rem; min-height: 2.8rem; padding: .4rem .8rem; border-bottom: 1px solid #383838; }
 .review-workspace-header .review-close { margin-left: auto; }
 .review-error { margin: .35rem 1rem; padding: .5rem .65rem; border: 1px solid #754746; border-radius: .45rem; color: #ffc8c4; }
+.review-legacy-summary { max-width: 48rem; margin: 1rem; color: #bbb; font-size: .8rem; }
+.review-legacy-summary section { padding: .5rem 0; border-top: 1px solid #383838; }
+.review-legacy-summary strong { color: #ddd; font-weight: 500; }
+.review-legacy-summary section p { margin: .25rem 0 0 .75rem; white-space: pre-wrap; }
 .review-workspace-body { display: grid; grid-template-columns: var(--review-tree-width, 22rem) .35rem minmax(0, 1fr); flex: 1; min-height: 0; }
 .review-diff-scroll, .review-file-tree { overflow: auto; min-width: 0; }
 .review-diff-scroll { grid-column: 3; padding: .25rem 0 1rem; scroll-behavior: smooth; background: #161616; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; line-height: 1.55; }
@@ -4519,8 +4511,9 @@ textarea {
 .review-file .workspace-change-summary { min-height: 1.65rem; }
 .review-file .review-diff-content { border-top: 1px solid #262626; }
 .diff-line-review:hover { outline: 1px solid #666; }
-.diff-line-comment { position: sticky; left: 0; z-index: 1; flex: 0 0 1.8rem; padding: 0; border: 0; background: inherit; color: var(--accent-color); cursor: pointer; opacity: 0; }
+.diff-line-comment { position: sticky; left: 0; z-index: 1; flex: 0 0 1.8rem; padding: 0; border: 0; border-radius: .2rem; background: #353535; color: #eee; cursor: pointer; opacity: 0; }
 .diff-line-review:hover .diff-line-comment, .diff-line-comment:focus-visible { opacity: 1; }
+.diff-line-comment:hover, .diff-line-comment:focus-visible { background: var(--code-highlight-bg); color: var(--code-highlight-fg); }
 .diff-line-review .diff-gutter { left: 1.8rem; }
 .diff-line-review .diff-gutter + .diff-gutter { left: 4.6rem; }
 .diff-line-review .diff-sign { left: 7.4rem; }

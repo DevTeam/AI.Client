@@ -5,7 +5,8 @@ public sealed record ChatReview(Guid Id, Guid ProjectId, Guid ChatId, string Nam
     DateTimeOffset SourceCreatedAt, IReadOnlyList<string> Files, IReadOnlyList<ReviewComment> Comments,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, long Revision,
     ChatReviewKind Kind = ChatReviewKind.Diff,
-    IReadOnlyList<MessageReviewComment>? MessageComments = null);
+    IReadOnlyList<MessageReviewComment>? MessageComments = null,
+    Workspace.WorkspaceChangeSet? SourceChanges = null);
 
 public enum ChatReviewKind { Diff, Message }
 

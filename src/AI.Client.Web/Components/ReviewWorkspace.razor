@@ -15,7 +15,7 @@
     {
         <p class="review-error">Review is unavailable.</p>
     }
-    else if (SourceOf(_current) is { WorkspaceChanges: { } changes })
+    else if ((_current.SourceChanges ?? SourceOf(_current)?.WorkspaceChanges) is { } changes)
     {
         <div class="review-workspace-body" id="@_bodyId">
             <div class="review-diff-scroll">
@@ -43,7 +43,23 @@
             </aside>
         </div>
     }
-    else { <p class="review-error">The saved source for this review is unavailable.</p> }
+    else if (_current.Kind == ChatReviewKind.Diff)
+    {
+        <div class="review-legacy-summary">
+            <p>The original diff is no longer available for this review. Saved file names and comments:</p>
+            @foreach (var path in _current.Files)
+            {
+                <section>
+                    <strong>@path</strong>
+                    @foreach (var comment in _current.Comments.Where(item => item.Path == path))
+                    {
+                        <p>@comment.Body</p>
+                    }
+                </section>
+            }
+        </div>
+    }
+    else { <p class="review-error">The reviewed message is no longer available.</p> }
 </section>
 
 @code {

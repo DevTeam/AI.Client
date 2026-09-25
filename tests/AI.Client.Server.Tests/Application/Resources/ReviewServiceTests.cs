@@ -70,8 +70,10 @@ public sealed class ReviewServiceTests
                 DateTimeOffset.UnixEpoch, 1, null,
                 [new ChatMessageView(sourceId, null, "Assistant", "Done", DateTimeOffset.UnixEpoch,
                     WorkspaceChanges: new WorkspaceChangeSet([file], 1, 1))]);
+            var currentChat = chat;
             var chats = new Mock<IChatService>();
-            chats.Setup(item => item.GetAsync(projectId, chatId, It.IsAny<CancellationToken>())).ReturnsAsync(chat);
+            chats.Setup(item => item.GetAsync(projectId, chatId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => currentChat);
             var otherChatId = Guid.NewGuid();
             chats.Setup(item => item.GetAsync(projectId, otherChatId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(chat with { Id = otherChatId });
@@ -82,6 +84,7 @@ public sealed class ReviewServiceTests
 
             var created = await service.CreateAsync(projectId, chatId,
                 new CreateReviewRequest(sourceId, "Check behavior", [file.Path]), token);
+            created.SourceChanges!.Files.ShouldHaveSingleItem().ShouldBe(file);
             var comment = new ReviewComment(Guid.NewGuid(), file.Path, null, null, 2, 2, "Please fix this.");
             var updated = await service.UpdateAsync(projectId, chatId, created.Id,
                 new UpdateReviewRequest("Renamed", [file.Path], [comment], created.Revision), token);
@@ -93,10 +96,19 @@ public sealed class ReviewServiceTests
             restored.Name.ShouldBe("Renamed");
             restored.Files.ShouldBe([file.Path]);
             restored.Comments.ShouldHaveSingleItem().ShouldBe(comment);
+            restored.SourceChanges.ShouldBeNull();
+            var fullReview = await service.GetAsync(projectId, chatId, restored.Id, token);
+            fullReview!.SourceChanges!.Files.ShouldHaveSingleItem().ShouldBe(file);
             (await service.ListAsync(projectId, otherChatId, token)).ShouldBeEmpty();
+            currentChat = chat with { Messages = [] };
+            (await service.GetAsync(projectId, chatId, created.Id, token))!.SourceChanges!.Files
+                .ShouldHaveSingleItem().ShouldBe(file);
+            var afterPruning = await service.UpdateAsync(projectId, chatId, created.Id,
+                new UpdateReviewRequest("After pruning", [file.Path], [comment], updated.Revision), token);
+            afterPruning!.Name.ShouldBe("After pruning");
             await Should.ThrowAsync<ArgumentException>(() => service.UpdateAsync(projectId, chatId, created.Id,
                 new UpdateReviewRequest("Renamed", [file.Path], [comment with { NewStart = 500, NewEnd = 500 }],
-                    updated.Revision), token));
+                    afterPruning.Revision), token));
             await Should.ThrowAsync<InvalidOperationException>(() => service.UpdateAsync(projectId, chatId, created.Id,
                 new UpdateReviewRequest("Stale", [file.Path], [comment], created.Revision), token));
         }

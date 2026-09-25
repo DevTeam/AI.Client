@@ -12,11 +12,16 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
     {
         await RequireChatAsync(projectId, chatId, cancellationToken);
         return (await repository.ListAsync(projectId, chatId, cancellationToken))
-            .OrderByDescending(item => item.SourceCreatedAt).ThenByDescending(item => item.CreatedAt).ToArray();
+            .OrderByDescending(item => item.SourceCreatedAt).ThenByDescending(item => item.CreatedAt)
+            .Select(item => item with { SourceChanges = null }).ToArray();
     }
 
-    public async Task<ChatReview?> GetAsync(Guid projectId, Guid chatId, Guid reviewId, CancellationToken cancellationToken) =>
-        (await ListAsync(projectId, chatId, cancellationToken)).FirstOrDefault(item => item.Id == reviewId);
+    public async Task<ChatReview?> GetAsync(Guid projectId, Guid chatId, Guid reviewId, CancellationToken cancellationToken)
+    {
+        await RequireChatAsync(projectId, chatId, cancellationToken);
+        return (await repository.ListAsync(projectId, chatId, cancellationToken))
+            .FirstOrDefault(item => item.Id == reviewId);
+    }
 
     public async Task<ChatReview> CreateAsync(Guid projectId, Guid chatId, CreateReviewRequest request, CancellationToken cancellationToken)
     {
@@ -45,7 +50,7 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
         var files = ValidateFiles(request.Files, changes);
         var now = DateTimeOffset.UtcNow;
         return await repository.CreateAsync(new ChatReview(Guid.CreateVersion7(), projectId, chatId, name,
-            source.Id, source.CreatedAt, files, [], now, now, 1), cancellationToken);
+            source.Id, source.CreatedAt, files, [], now, now, 1, SourceChanges: changes), cancellationToken);
     }
 
     public async Task<ChatReview?> UpdateAsync(Guid projectId, Guid chatId, Guid reviewId,
@@ -66,7 +71,8 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
                 current => current with { Name = messageName, MessageComments = messageComments, UpdatedAt = DateTimeOffset.UtcNow },
                 cancellationToken);
         }
-        var changes = source?.WorkspaceChanges ?? throw new InvalidOperationException("Review source is unavailable.");
+        var changes = review.SourceChanges ?? source?.WorkspaceChanges
+            ?? throw new InvalidOperationException("Review source is unavailable.");
         if (request.MessageComments is { Count: > 0 })
             throw new ArgumentException("Diff reviews cannot contain message comments.");
         var name = CleanName(request.Name);

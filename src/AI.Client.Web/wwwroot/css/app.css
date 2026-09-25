@@ -3741,7 +3741,7 @@ textarea {
 
 .workspace-changes-preview li {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 0.8rem;
     min-height: 1.35rem;
     padding: 0.08rem 0;
@@ -3756,13 +3756,18 @@ textarea {
     white-space: nowrap;
 }
 
+/* The same two fixed columns as the expanded file list, so +/− line up from row to row. */
 .workspace-changes-preview-counts {
-    display: flex;
+    display: grid;
     flex: 0 0 auto;
-    gap: 0.45rem;
+    grid-template-columns: 3rem 3rem;
+    column-gap: 0.45rem;
     margin-left: auto;
     font-variant-numeric: tabular-nums;
 }
+
+.workspace-changes-preview-counts .workspace-added { text-align: right; }
+.workspace-changes-preview-counts .workspace-removed { text-align: left; }
 
 .workspace-changes-header {
     display: flex;

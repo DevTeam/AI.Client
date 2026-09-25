@@ -1,5 +1,7 @@
 (() => {
     const commentsByMessage = new Map();
+    // The ranges drawn last time, with their comment text, for the hover tooltip.
+    const drawnByContainer = new Map();
     let scheduled = false;
 
     function containerFor(messageId) {
@@ -51,17 +53,21 @@
         scheduled = false;
         if (!CSS.highlights) return;
         const ranges = [];
+        // The comment on show may be gone or moved; the next pointer move shows what is there now.
+        hideTooltip();
+        drawnByContainer.clear();
         for (const [messageId, comments] of commentsByMessage) {
             const container = containerFor(messageId);
             if (!container) continue;
             const own = [];
             for (const comment of comments) {
                 const range = offsetRange(container, comment.start, comment.end);
-                if (range && range.toString() === comment.quote) own.push(range);
+                if (range && range.toString() === comment.quote) own.push({ range, body: comment.body ?? "" });
             }
-            own.sort((left, right) => left.compareBoundaryPoints(Range.END_TO_END, right));
-            placeMarkers(container, own);
-            ranges.push(...own);
+            own.sort((left, right) => left.range.compareBoundaryPoints(Range.END_TO_END, right.range));
+            placeMarkers(container, own.map(item => item.range));
+            if (own.length > 0) drawnByContainer.set(container, own);
+            ranges.push(...own.map(item => item.range));
         }
         CSS.highlights.set("message-review", new Highlight(...ranges));
     }
@@ -71,6 +77,53 @@
         scheduled = true;
         requestAnimationFrame(rebuild);
     }
+
+    // A highlight is not an element, so it cannot carry a title: the pointer is tested against
+    // the drawn ranges' own rectangles instead, at most every 50 ms, and the app's one tooltip
+    // (tooltips.js) shows the comment. Comments are few per message, so this is a handful of
+    // rectangle checks.
+    let lastMove = 0;
+    let shownFor = null;
+
+    function hideTooltip() {
+        if (shownFor === null) return;
+        shownFor = null;
+        window.appTooltip?.hide();
+    }
+
+    function hitAt(container, x, y) {
+        const hits = [];
+        let anchor = null;
+        for (const item of drawnByContainer.get(container) ?? []) {
+            for (const rect of item.range.getClientRects()) {
+                if (x >= rect.left - 1 && x <= rect.right + 1 && y >= rect.top - 1 && y <= rect.bottom + 1) {
+                    hits.push(item);
+                    anchor ??= rect;
+                    break;
+                }
+            }
+        }
+        return hits.length ? { hits, anchor } : null;
+    }
+
+    function showTooltip(hit, x) {
+        const texts = hit.hits.map(item => item.body || "Empty comment");
+        shownFor = texts.join("\n\n");
+        window.appTooltip?.show(texts, hit.anchor, x);
+    }
+
+    document.addEventListener("pointermove", event => {
+        if (drawnByContainer.size === 0) return;
+        const now = performance.now();
+        if (now - lastMove < 50) return;
+        lastMove = now;
+        const container = event.target instanceof Element ? event.target.closest('[id^="review-message-"]') : null;
+        const hit = container ? hitAt(container, event.clientX, event.clientY) : null;
+        if (hit) showTooltip(hit, event.clientX);
+        else hideTooltip();
+    }, { passive: true });
+    // Clicks, scrolling and losing focus already hide the shared tooltip; this only forgets it.
+    for (const type of ["pointerdown", "scroll"]) document.addEventListener(type, () => { shownFor = null; }, { capture: true, passive: true });
 
     function offsetAt(container, node, nodeOffset) {
         const range = document.createRange();

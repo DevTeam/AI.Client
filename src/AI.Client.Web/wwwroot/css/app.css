@@ -2440,6 +2440,25 @@ body {
     pointer-events: none;
 }
 .review-comment-marker .app-icon { width: .85rem; height: .85rem; }
+/* The app's one tooltip (js/tooltips.js): every title, a local path's access, the comment under
+   the pointer. It wears the chrome of the comment editor, in a smaller type than the text it explains. */
+.app-tooltip {
+    position: fixed;
+    z-index: 1000;
+    max-width: min(22rem, calc(100vw - 1rem));
+    padding: .3rem .45rem;
+    border: 1px solid var(--color-border-stronger);
+    border-radius: .45rem;
+    background: var(--color-fill-hover);
+    box-shadow: 0 .5rem 1.5rem rgb(0 0 0 / calc(60% * var(--shadow-scale)));
+    color: var(--color-text);
+    font-size: .75rem;
+    line-height: 1.35;
+    pointer-events: none;
+}
+.app-tooltip[hidden] { display: none; }
+.app-tooltip p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.app-tooltip p + p { margin-top: .3rem; padding-top: .3rem; border-top: 1px solid var(--color-border); }
 .message-review-text { cursor: text; }
 .message-review-toggle { display: inline-flex; align-items: center; gap: .3rem; margin-top: .25rem; padding: .1rem 0; border: 0; background: transparent; color: var(--color-accent); font-size: .8rem; cursor: pointer; }
 .message-review-toggle .app-icon { width: .85rem; height: .85rem; }

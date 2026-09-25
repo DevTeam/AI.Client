@@ -132,6 +132,8 @@ export function attach(container, dotnet) {
         delete element.dataset.fileKind;
         delete element.dataset.fileAccess;
         element.removeAttribute('title');
+        // tooltips.js may already have moved the title here.
+        delete element.dataset.tooltip;
     };
 
     const consider = (element, input) => {

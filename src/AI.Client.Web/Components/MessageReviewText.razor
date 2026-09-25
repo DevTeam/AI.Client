@@ -87,7 +87,7 @@
         try
         {
             await JsRuntime.InvokeVoidAsync("messageReviews.setComments", MessageId,
-                (_current?.MessageComments ?? []).Select(item => new { item.Start, item.End, item.Quote }).ToArray());
+                (_current?.MessageComments ?? []).Select(item => new { item.Start, item.End, item.Quote, item.Body }).ToArray());
         }
         catch (Exception error) when (error is JSException or ObjectDisposedException) { }
     }

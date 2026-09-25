@@ -21,7 +21,7 @@
             {
                 <span class="review-workspace-delete-confirm">Delete this review?</span>
                 <button class="review-workspace-delete-yes" type="button" @onclick="DeleteAsync">Delete</button>
-                <button class="icon-action" type="button" title="Cancel deletion" aria-label="Cancel deletion" @onclick="() => _confirmingDelete = false"><AppIcon Name="x" /></button>
+                <button class="review-workspace-delete-cancel" type="button" @onclick="() => _confirmingDelete = false">Cancel</button>
             }
             else
             {
@@ -39,10 +39,11 @@
     {
         <div class="review-workspace-body" id="@_bodyId">
             <div class="review-diff-scroll">
-                @foreach (var file in changes.Files.Where(item => _current.Files.Contains(item.Path, StringComparer.Ordinal)))
+                @foreach (var file in FilesInTreeOrder(BuildFileTree(changes.Files, null))
+                    .Where(item => _current.Files.Contains(item.Path, StringComparer.Ordinal)))
                 {
                     var fileId = FileId(file.Path);
-                    <section class="review-file" id="@fileId" @key="file.Path">
+                    <section class="review-file @(_hoveredFilePath == file.Path ? "is-tree-hovered" : null)" id="@fileId" @key="file.Path">
                         <WorkspaceChangeFileHeader File="@file" Expanded="@_expandedFiles.Contains(file.Path)"
                                                    CommentCount="@_current.Comments.Count(comment => comment.Path == file.Path)"
                                                    OnToggle="() => ToggleExpandedFile(file.Path)" />
@@ -59,7 +60,7 @@
                  aria-orientation="vertical" aria-valuemin="180" aria-valuemax="600" aria-valuenow="352"></div>
             <aside class="review-file-tree" aria-label="Review files">
                 <input type="search" value="@_fileFilter" @oninput="e => _fileFilter = e.Value?.ToString() ?? string.Empty" placeholder="Filter files" aria-label="Filter review files" />
-                @foreach (var node in BuildFileTree(changes.Files)) { @RenderTreeNode(node) }
+                @foreach (var node in BuildFileTree(changes.Files, _fileFilter)) { @RenderTreeNode(node) }
             </aside>
         </div>
     }
@@ -96,6 +97,7 @@
     private readonly HashSet<string> _collapsedFolders = new(StringComparer.Ordinal);
     private readonly string _bodyId = $"review-body-{Guid.NewGuid():N}";
     private string _fileFilter = string.Empty;
+    private string? _hoveredFilePath;
     private string? _error;
     private bool _saving;
     private bool _confirmingDelete;
@@ -108,7 +110,11 @@
     protected override void OnInitialized()
     {
         _current = Reviews.FirstOrDefault(item => item.Id == StartReviewId);
-        if (_current?.Files.FirstOrDefault() is { } firstFile) _expandedFiles.Add(firstFile);
+        if (_current is not null
+            && (_current.SourceChanges ?? SourceOf(_current)?.WorkspaceChanges) is { } changes
+            && FilesInTreeOrder(BuildFileTree(changes.Files, null))
+                .FirstOrDefault(file => _current.Files.Contains(file.Path, StringComparer.Ordinal)) is { } firstFile)
+            _expandedFiles.Add(firstFile.Path);
     }
 
     private ChatMessageView? SourceOf(ChatReview review) => Chat.Messages.FirstOrDefault(item => item.Id == review.SourceMessageId);
@@ -121,11 +127,11 @@
         public List<FileTreeNode> Children { get; } = [];
     }
 
-    private IReadOnlyList<FileTreeNode> BuildFileTree(IReadOnlyList<FileChange> files)
+    private static IReadOnlyList<FileTreeNode> BuildFileTree(IReadOnlyList<FileChange> files, string? filter)
     {
         var roots = new List<FileTreeNode>();
-        foreach (var file in files.Where(item => string.IsNullOrWhiteSpace(_fileFilter)
-                     || item.Path.Contains(_fileFilter, StringComparison.OrdinalIgnoreCase)))
+        foreach (var file in files.Where(item => string.IsNullOrWhiteSpace(filter)
+                     || item.Path.Contains(filter, StringComparison.OrdinalIgnoreCase)))
         {
             var segments = file.Path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
             var siblings = roots;
@@ -151,16 +157,31 @@
         foreach (var node in nodes) SortTree(node.Children);
     }
 
+    private static IEnumerable<FileChange> FilesInTreeOrder(IEnumerable<FileTreeNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.File is { } file) yield return file;
+            foreach (var child in FilesInTreeOrder(node.Children)) yield return child;
+        }
+    }
+
     private RenderFragment RenderTreeNode(FileTreeNode node) => @<text>
         @if (node.File is { } file)
         {
-            <div class="review-tree-row" @key="file.Path">
+            <div class="review-tree-row" @key="file.Path"
+                 @onmouseenter="() => _hoveredFilePath = file.Path"
+                 @onmouseleave="() => _hoveredFilePath = null">
                 <input type="checkbox" checked="@_current!.Files.Contains(file.Path, StringComparer.Ordinal)" aria-label="Include @file.Path" @onchange="() => ToggleFileAsync(file.Path)" />
-                <a href="#@FileId(file.Path)" title="@file.Path" @onclick="() => OpenFile(file.Path)">@node.Name</a>
                 <span class="review-tree-counts">
                     @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
                     @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
                 </span>
+                <a href="#@FileId(file.Path)" title="@file.Path" aria-expanded="@_expandedFiles.Contains(file.Path)"
+                   @onclick="() => ToggleExpandedFile(file.Path)">
+                    <span class="review-tree-file-status" title="@FileKindTitle(file.Kind)">@FileKindGlyph(file.Kind)</span>
+                    <span class="review-tree-file-name">@node.Name</span>
+                </a>
                 @if (_current.Comments.Count(item => item.Path == file.Path) is > 0 and var count) { <small>@count</small> }
             </div>
         }
@@ -211,7 +232,17 @@
         catch (Exception error) when (error is JSException or ObjectDisposedException) { }
     }
 
-    private void OpenFile(string path) => _expandedFiles.Add(path);
+    private static string FileKindGlyph(FileChangeKind kind) => kind switch
+    {
+        FileChangeKind.Added => "A", FileChangeKind.Deleted => "D",
+        FileChangeKind.Renamed => "R", _ => "M",
+    };
+
+    private static string FileKindTitle(FileChangeKind kind) => kind switch
+    {
+        FileChangeKind.Added => "Added", FileChangeKind.Deleted => "Deleted",
+        FileChangeKind.Renamed => "Renamed", _ => "Modified",
+    };
 
     private async Task ReviewChangedAsync(ChatReview review)
     {

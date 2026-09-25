@@ -20,6 +20,9 @@ internal sealed partial class MainWindow : Window
     private PixelPoint _normalPosition;
     private Size _normalSize;
 
+    /// <summary>The page picked a theme: "system", "light" or "dark".</summary>
+    public event Action<string>? ThemeRequested;
+
     public MainWindow(DesktopStart start, IWindowPlacementStore placements,
         IWorkspaceLocationStore workspaceLocation, ITaskbarBadge taskbarBadge)
     {
@@ -217,6 +220,14 @@ internal sealed partial class MainWindow : Window
                      && value.TryGetInt32(out var count) && count is >= 0 and <= 100)
             {
                 Dispatcher.UIThread.Post(() => _taskbarBadge.SetCount(count));
+            }
+            else if (type.GetString() == "theme"
+                     && root.TryGetProperty("preference", out var preference)
+                     && preference.ValueKind == JsonValueKind.String
+                     && preference.GetString() is "system" or "light" or "dark")
+            {
+                var requested = preference.GetString()!;
+                Dispatcher.UIThread.Post(() => ThemeRequested?.Invoke(requested));
             }
         }
         catch (JsonException)

@@ -61,6 +61,7 @@ internal sealed class Composition
             .Root<IChatRunDispatcher>()
             .Root<IResourceService>()
             .Root<IResourceRepository>()
+            .Root<IWorkspacePathResolver>()
             .Root<IReviewService>()
             .Root<IReviewRepository>()
             .Root<IMemoryService>()
@@ -114,7 +115,7 @@ internal sealed class Composition
             .Singleton<PhysicalTextFileSystem, PhysicalDirectoryBrowser, JsonProjectRepository, ProjectDocumentSerializer,
                 Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
-                JsonGlobalSettingsRepository, ProtectedGlobalSecretStore, ResourceService, ResourceModelProjection, JsonResourceRepository,
+                JsonGlobalSettingsRepository, ProtectedGlobalSecretStore, ResourceService, ResourceModelProjection, JsonResourceRepository, ProjectPathAccess, WorkspacePathResolver,
                 ReviewService, JsonReviewRepository,
                 MemoryService, JsonMemoryRepository, ProjectInstructionsService, JsonProjectInstructionsRepository,
                 WorkspaceInstructionFileReader, StandingInstructions,

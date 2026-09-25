@@ -32,7 +32,7 @@ public sealed class ResourceServiceTests
             location.SetupGet(item => item.RootDirectory).Returns(root);
             using var repository = new JsonResourceRepository(location.Object, new PhysicalTextFileSystem());
             var service = new ResourceService(projects.Object, new PhysicalDirectoryBrowser(), repository,
-                new Mock<IReviewService>().Object);
+                new Mock<IReviewService>().Object, new ProjectPathAccess());
 
             var first = await service.CreateAsync(projectId, ChatResourceKind.File, source, token);
             var second = await service.CreateAsync(projectId, ChatResourceKind.File, source, token);
@@ -71,7 +71,7 @@ public sealed class ResourceServiceTests
         reviews.Setup(item => item.ListAsync(projectId, otherChatId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         var service = new ResourceService(new Mock<IProjectService>().Object,
-            new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object, reviews.Object);
+            new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object, reviews.Object, new ProjectPathAccess());
         var token = TestContext.Current.CancellationToken;
 
         var validated = await service.ValidateForChatAsync(projectId, chatId,
@@ -97,7 +97,7 @@ public sealed class ResourceServiceTests
         reviews.Setup(item => item.ListAsync(projectId, chatId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([review]);
         var service = new ResourceService(new Mock<IProjectService>().Object,
-            new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object, reviews.Object);
+            new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object, reviews.Object, new ProjectPathAccess());
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId, chatId,
             [new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty)],

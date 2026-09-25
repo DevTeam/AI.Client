@@ -117,10 +117,10 @@
     </div>;
 
     private RenderFragment CommentEditor() => @<div class="review-comment-editor" @onkeydown="HandleCommentKeyDown">
-        <textarea @ref="_commentEditor" aria-label="Review comment" value="@_commentBody" @oninput="e => _commentBody = e.Value?.ToString() ?? string.Empty"></textarea>
+        <textarea @ref="_commentEditor" data-review-comment aria-label="Review comment" value="@_commentBody" @oninput="e => _commentBody = e.Value?.ToString() ?? string.Empty" @onkeydown="HandleCommentTextKeyDownAsync"></textarea>
         <div class="review-comment-actions">
-            <button class="review-comment-icon-action is-save" type="button" title="Save comment" aria-label="Save comment" disabled="@(_saving || string.IsNullOrWhiteSpace(_commentBody))" @onclick="SaveCommentAsync"><AppIcon Name="check" /></button>
-            <button class="review-comment-icon-action" type="button" title="Cancel" aria-label="Cancel comment" @onclick="CancelComment"><AppIcon Name="x" /></button>
+            <button class="review-comment-icon-action is-save" type="button" title="Save comment (Enter)" aria-label="Save comment" aria-keyshortcuts="Enter" disabled="@(_saving || string.IsNullOrWhiteSpace(_commentBody))" @onclick="SaveCommentAsync"><AppIcon Name="check" /></button>
+            <button class="review-comment-icon-action" type="button" title="Cancel (Esc)" aria-label="Cancel comment" aria-keyshortcuts="Escape" @onclick="CancelComment"><AppIcon Name="x" /></button>
         </div>
     </div>;
 
@@ -138,6 +138,10 @@
     {
         if (args.Key == "Escape") CancelComment();
     }
+
+    private Task HandleCommentTextKeyDownAsync(KeyboardEventArgs args) =>
+        args is { Key: "Enter", ShiftKey: false, CtrlKey: false, AltKey: false, MetaKey: false }
+            ? SaveCommentAsync() : Task.CompletedTask;
 
     private void CancelComment()
     {

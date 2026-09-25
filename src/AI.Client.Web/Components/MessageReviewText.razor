@@ -12,14 +12,14 @@
          class="message-review-editor @(_popupBelow ? "is-below" : null)" role="dialog" aria-label="Comment on selected text"
          style="left: @_popupXpx; top: @_popupYpx;" @onkeydown="HandleEditorKeyDown">
         <small>Comment on “@selected.Quote”</small>
-        <textarea aria-label="Message review comment" value="@_body" @oninput="e => _body = e.Value?.ToString() ?? string.Empty"></textarea>
+        <textarea data-review-comment aria-label="Message review comment" value="@_body" @oninput="e => _body = e.Value?.ToString() ?? string.Empty" @onkeydown="HandleTextKeyDownAsync"></textarea>
         <div class="message-review-editor-actions">
-            <button class="review-comment-icon-action is-save" type="button" title="Save comment" aria-label="Save comment" disabled="@(_saving || string.IsNullOrWhiteSpace(_body))" @onclick="SaveAsync"><AppIcon Name="check" /></button>
+            <button class="review-comment-icon-action is-save" type="button" title="Save comment (Enter)" aria-label="Save comment" aria-keyshortcuts="Enter" disabled="@(_saving || string.IsNullOrWhiteSpace(_body))" @onclick="SaveAsync"><AppIcon Name="check" /></button>
             @if (_editingId is { } editingId && _current?.MessageComments?.FirstOrDefault(item => item.Id == editingId) is { } editingComment)
             {
                 <button class="review-comment-icon-action is-danger" type="button" title="Delete comment" aria-label="Delete comment" disabled="@_saving" @onclick="() => DeleteAsync(editingComment)"><AppIcon Name="trash" /></button>
             }
-            <button class="review-comment-icon-action" type="button" title="Cancel" aria-label="Cancel comment" @onclick="Cancel"><AppIcon Name="x" /></button>
+            <button class="review-comment-icon-action" type="button" title="Cancel (Esc)" aria-label="Cancel comment" aria-keyshortcuts="Escape" @onclick="Cancel"><AppIcon Name="x" /></button>
         </div>
         @if (_error is not null) { <p class="error" role="alert">@_error</p> }
     </div>
@@ -142,6 +142,10 @@
     {
         if (args.Key == "Escape") Cancel();
     }
+
+    private Task HandleTextKeyDownAsync(KeyboardEventArgs args) =>
+        args is { Key: "Enter", ShiftKey: false, CtrlKey: false, AltKey: false, MetaKey: false } && !_saving
+            ? SaveAsync() : Task.CompletedTask;
 
     private void HandleCommentsKeyDown(KeyboardEventArgs args)
     {

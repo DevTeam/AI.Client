@@ -59,23 +59,47 @@ public sealed class AppReadTool(
     Func<IChatRunDispatcher> runs,
     IAppToolReply reply) : IAppTool
 {
-    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => McpServerTool.Create(
-        ReadAsync,
-        new McpServerToolCreateOptions
-        {
-            SerializerOptions = reply.Json,
-            Description = "Read this application's own data: projects, chats, messages, runs, resources and global settings. "
-                          + "'Project', 'Chat' and 'Messages' need the ids named in their description; the others ignore them. "
-                          + "'Search' finds text in messages across every chat at once and needs 'query'; use it instead of reading "
-                          + "chats one by one. Results are paged: pass the returned 'nextCursor' back to continue, and expect "
-                          + "'truncated' when a page ended on a limit rather than on 'limit' items. API keys are never returned — a "
-                          + "connection only reports whether it has one. Call this before any change, because every mutating tool "
-                          + "here needs the current revision of what it is changing."
-        });
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(this, run, reply).Create();
 
-    [McpServerTool(Name = "app_read", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
-        UseStructuredContent = true, OutputSchemaType = typeof(AppReadResult))]
+    private sealed class Session(AppReadTool tool, ToolRunContext run, IAppToolReply reply)
+    {
+        public McpServerTool Create() => McpServerTool.Create(ReadAsync,
+            new McpServerToolCreateOptions
+            {
+                SerializerOptions = reply.Json,
+                Description = "Read this application's own data: projects, chats, messages, runs, resources and global settings. "
+                              + "'Projects' and 'Settings' need no ids. 'Project', 'Chats', 'Resources', 'Chat', 'Messages', "
+                              + "'Reviews' and 'Review' use projectId; the last four also need chatId, and 'Review' needs resourceId. "
+                              + "For these project-scoped resources, omitted projectId means the current project. "
+                              + "'Runs' accepts optional projectId, chatId and branchId filters. 'Search' accepts the same optional "
+                              + "filters and requires query; use it instead of reading chats one by one. Results are paged: pass "
+                              + "the returned 'nextCursor' back to continue, and expect 'truncated' when a page ended on a limit "
+                              + "rather than on 'limit' items. API keys are never returned — a connection only reports whether "
+                              + "it has one. Call this before any change, because every mutating tool here needs the current "
+                              + "revision of what it is changing."
+            });
+
+        [McpServerTool(Name = "app_read", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+            UseStructuredContent = true, OutputSchemaType = typeof(AppReadResult))]
+        private Task<CallToolResult> ReadAsync(
+            AppResource resource,
+            Guid? projectId = null,
+            Guid? chatId = null,
+            Guid? branchId = null,
+            Guid? resourceId = null,
+            string? cursor = null,
+            int limit = Paging.DefaultLimit,
+            string? query = null,
+            bool isRegex = false,
+            bool ignoreCase = true,
+            string[]? roles = null,
+            CancellationToken cancellationToken = default) =>
+            tool.ReadAsync(run, resource, projectId, chatId, branchId, resourceId, cursor, limit, query, isRegex,
+                ignoreCase, roles, cancellationToken);
+    }
+
     private async Task<CallToolResult> ReadAsync(
+        ToolRunContext run,
         AppResource resource,
         Guid? projectId = null,
         Guid? chatId = null,
@@ -91,6 +115,9 @@ public sealed class AppReadTool(
     {
         try
         {
+            if (resource is AppResource.Project or AppResource.Chats or AppResource.Chat or AppResource.Messages
+                or AppResource.Resources or AppResource.Reviews or AppResource.Review)
+                projectId ??= run.ProjectId == Guid.Empty ? null : run.ProjectId;
             if (resource == AppResource.Search)
                 return reply.Reply(await SearchAsync(projectId, chatId, branchId, cursor, limit, query, isRegex, ignoreCase,
                     roles, cancellationToken));

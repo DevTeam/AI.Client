@@ -25,6 +25,28 @@
         return range;
     }
 
+    // AppIcon "message-circle", the icon the edit statistics count comments with. Kept as markup
+    // rather than redrawn so the two cannot drift apart.
+    const commentIcon = '<svg class="app-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+        + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + '<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-3.9-.94L3 20l1.06-3.98A8.5 8.5 0 1 1 21 11.5Z" /></svg>';
+
+    // A highlight cannot draw an icon, so each comment gets a marker element at its end. It holds
+    // no text, so the text offsets comments are anchored by do not move.
+    function placeMarkers(container, ranges) {
+        for (const marker of container.querySelectorAll(".review-comment-marker")) marker.remove();
+        // Last first: inserting splits a text node, and the ranges still to come stay ahead of it.
+        for (const range of [...ranges].reverse()) {
+            const end = range.cloneRange();
+            end.collapse(false);
+            const marker = document.createElement("span");
+            marker.className = "review-comment-marker";
+            marker.setAttribute("aria-hidden", "true");
+            marker.innerHTML = commentIcon;
+            end.insertNode(marker);
+        }
+    }
+
     function rebuild() {
         scheduled = false;
         if (!CSS.highlights) return;
@@ -32,10 +54,14 @@
         for (const [messageId, comments] of commentsByMessage) {
             const container = containerFor(messageId);
             if (!container) continue;
+            const own = [];
             for (const comment of comments) {
                 const range = offsetRange(container, comment.start, comment.end);
-                if (range && range.toString() === comment.quote) ranges.push(range);
+                if (range && range.toString() === comment.quote) own.push(range);
             }
+            own.sort((left, right) => left.compareBoundaryPoints(Range.END_TO_END, right));
+            placeMarkers(container, own);
+            ranges.push(...own);
         }
         CSS.highlights.set("message-review", new Highlight(...ranges));
     }

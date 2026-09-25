@@ -5,7 +5,8 @@ using AI.Client.Contracts.Resources;
 /// <summary>
 /// Turns paths written in a message into the files and directories they name, so the chat can
 /// link them however the model spelled them: absolute, relative to a granted directory, with a
-/// line suffix. Only what the project may read is ever reported.
+/// line suffix. A relative path is looked for only inside what the project may read; an absolute
+/// one outside it is reported as existing but not readable, so the person can grant access.
 /// </summary>
 public interface IWorkspacePathResolver
 {

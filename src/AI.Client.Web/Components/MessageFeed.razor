@@ -711,9 +711,22 @@
 
     /// <summary>A right-click on a link to a local file or directory in a rendered message.</summary>
     [JSInvokable]
-    public Task OnFileLinkContextMenu(string path, double clientX, double clientY, string? kind) =>
+    public Task OnFileLinkContextMenu(string path, double clientX, double clientY, string? kind, bool? readable) =>
         OnFileLinkMenu.InvokeAsync(new FileLinkMenuRequest(path, clientX, clientY,
-            Enum.TryParse<ChatResourceKind>(kind, out var parsed) ? parsed : null));
+            Enum.TryParse<ChatResourceKind>(kind, out var parsed) ? parsed : null, readable));
+
+    /// <summary>What the project may read changed, so every path in the transcript is checked again.</summary>
+    public async Task RefreshFileLinksAsync()
+    {
+        if (_fileLinksHandle is null) return;
+        try
+        {
+            await _fileLinksHandle.InvokeVoidAsync("refresh");
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+        }
+    }
 
     private async Task SyncFileLinkScopeAsync()
     {

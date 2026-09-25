@@ -84,14 +84,22 @@ const windowsPathsIn = text => {
     return found;
 };
 
-// The Host spells ChatResourceKind as a number unless told otherwise.
+// The Host spells its enums as numbers unless told otherwise.
 const kindName = kind => kind === 0 || kind === 'File' ? 'File' : kind === 1 || kind === 'Directory' ? 'Directory' : null;
+const accessName = access => access === 2 || access === 'ReadWrite' ? 'write'
+    : access === 1 || access === 'Read' ? 'read' : 'none';
+const ACCESS_TITLES = {
+    read: 'The project can read this; right-click to add it to the message',
+    write: 'The project can read and change this; right-click to add it to the message',
+    none: 'The project cannot read this yet; right-click to allow access'
+};
 
 export function attach(container, dotnet) {
     let scope = null;
     let resolveUrl = null;
     let disposed = false;
-    // input → { path, kind } for a path the Host confirmed, null for one it did not.
+    // input → { path, kind, access } for a path the Host found, null for one it did not. access is
+    // 'read', 'write' or 'none' (outside the project's directories), or null before the Host answered.
     const cache = new Map();
     const pending = new Set();
     const inFlight = new Set();
@@ -104,15 +112,35 @@ export function attach(container, dotnet) {
         element.dataset.filePath = resolved.path;
         if (resolved.kind) element.dataset.fileKind = resolved.kind;
         else delete element.dataset.fileKind;
-        element.title = `${resolved.path}\nRight-click to add it to the message`;
+        // The access shows as an icon after the link, drawn by CSS from this attribute.
+        if (resolved.access) element.dataset.fileAccess = resolved.access;
+        else delete element.dataset.fileAccess;
+        element.title = `${resolved.path}\n${ACCESS_TITLES[resolved.access] ?? 'Right-click to add it to the message'}`;
     };
 
     // Decorates an element from the cache, or queues its path and marks it pending.
+    // A verdict can turn negative once a directory is removed from the project, so an element that
+    // was a link stops being one — except a link written as a local path, which stays usable as written.
+    const undecorate = element => {
+        const direct = element.matches('a[href]') ? directPathOf(element.getAttribute('href') ?? '') : null;
+        if (direct) {
+            decorate(element, { path: direct, kind: null, access: null });
+            return;
+        }
+        element.classList.remove('file-link');
+        delete element.dataset.filePath;
+        delete element.dataset.fileKind;
+        delete element.dataset.fileAccess;
+        element.removeAttribute('title');
+    };
+
     const consider = (element, input) => {
         if (cache.has(input)) {
             const resolved = cache.get(input);
             element.dataset.pathState = resolved ? 'yes' : 'no';
+            element.dataset.pathInput = input;
             if (resolved) decorate(element, resolved);
+            else if (element.dataset.filePath) undecorate(element);
             return;
         }
         element.dataset.pathState = 'pending';
@@ -127,7 +155,7 @@ export function attach(container, dotnet) {
             const direct = directPathOf(href);
             if (direct) {
                 // Usable at once; the Host's answer only adds the kind and the canonical form.
-                decorate(anchor, { path: direct, kind: null });
+                decorate(anchor, { path: direct, kind: null, access: null });
                 if (scope) consider(anchor, direct); else anchor.dataset.pathState = 'yes';
                 continue;
             }
@@ -139,6 +167,9 @@ export function attach(container, dotnet) {
             consider(anchor, relative);
         }
         if (!scope) return;
+        // Bare paths already wrapped by an earlier pass are checked again after a reset.
+        for (const span of block.querySelectorAll('span.file-link[data-path-input]:not([data-path-state])'))
+            consider(span, span.dataset.pathInput);
         for (const code of block.querySelectorAll('code:not([data-path-state])')) {
             if (code.closest('pre, a')) {
                 code.dataset.pathState = 'no';
@@ -181,6 +212,8 @@ export function attach(container, dotnet) {
                 fragment.append(node.data.slice(offset, item.index));
                 const span = document.createElement('span');
                 span.textContent = item.path;
+                span.dataset.pathInput = item.path;
+                span.dataset.pathState = 'yes';
                 decorate(span, resolved);
                 fragment.append(span);
                 offset = item.index + item.path.length;
@@ -257,7 +290,9 @@ export function attach(container, dotnet) {
             const byInput = new Map(results.map(item => [item.input, item]));
             for (const input of batch) {
                 const item = byInput.get(input);
-                cache.set(input, item?.path ? { path: item.path, kind: kindName(item.kind) } : null);
+                cache.set(input, item?.path
+                    ? { path: item.path, kind: kindName(item.kind), access: accessName(item.access) }
+                    : null);
             }
             applyResolved();
         }
@@ -289,7 +324,7 @@ export function attach(container, dotnet) {
         if (!target || !container.contains(target)) return;
         event.preventDefault();
         dotnet.invokeMethodAsync('OnFileLinkContextMenu', target.dataset.filePath, event.clientX, event.clientY,
-            target.dataset.fileKind ?? null);
+            target.dataset.fileKind ?? null, target.dataset.fileAccess === 'none' ? false : null);
     };
 
     const observer = new MutationObserver(records => {
@@ -306,21 +341,25 @@ export function attach(container, dotnet) {
     for (const block of container.querySelectorAll(BLOCK)) dirty.add(block);
     scheduleScan(0);
 
+    // Every verdict is dropped and the transcript is looked at again.
+    const reset = () => {
+        cache.clear();
+        pending.clear();
+        // The input stays, so every element is asked about the same path again.
+        for (const element of container.querySelectorAll('[data-path-state]')) delete element.dataset.pathState;
+        for (const block of container.querySelectorAll(BLOCK)) dirty.add(block);
+        scheduleScan(0);
+    };
+
     return {
-        // A different project reads different directories, so every verdict is dropped and the
-        // transcript is looked at again.
+        // A different project reads different directories.
         setScope: (next, url) => {
             scope = next || null;
             resolveUrl = url || null;
-            cache.clear();
-            pending.clear();
-            for (const element of container.querySelectorAll('[data-path-state]')) {
-                delete element.dataset.pathState;
-                delete element.dataset.pathInput;
-            }
-            for (const block of container.querySelectorAll(BLOCK)) dirty.add(block);
-            scheduleScan(0);
+            reset();
         },
+        // The project's directories changed, so what it may read did too.
+        refresh: reset,
         dispose: () => {
             disposed = true;
             observer.disconnect();

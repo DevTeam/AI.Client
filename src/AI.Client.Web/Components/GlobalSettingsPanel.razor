@@ -4,17 +4,33 @@
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject IConnectionContextLimitsResolver ContextLimits
 @inject INotificationService Notifications
+@inject IThemeService Theme
 @implements IAsyncDisposable
 
 <div class="permissions-drawer-backdrop"></div>
 <aside class="permissions-drawer settings-drawer" aria-label="@Section" @onclick:stopPropagation="true">
     <header>
-        <div><h2>@(Section == "Connections" ? "Connections" : "MCP")</h2><p>@(Section == "Connections" ? "OpenAI-compatible endpoints available to every project." : "Global MCP servers available to every project.")</p></div>
+        <div><h2>@Section</h2><p>@Description</p></div>
         <button class="icon-action" type="button" title="Close" aria-label="Close @Section" disabled="@_saving" @onclick="RequestCloseAsync"><AppIcon Name="x" /></button>
     </header>
     <div class="settings-drawer-content">
             @switch (Section)
             {
+                case "Settings":
+                {
+                    <div class="app-settings">
+                        <fieldset class="app-settings-group">
+                            <legend>Theme</legend>
+                            <div class="theme-options">
+                                @foreach (var option in ThemeOptions)
+                                {
+                                    <label class="theme-option @(_theme == option.Value ? "selected" : string.Empty)"><input type="radio" name="theme" checked="@(_theme == option.Value)" @onchange="() => SetThemeAsync(option.Value)" /><span>@option.Label</span></label>
+                                }
+                            </div>
+                        </fieldset>
+                    </div>
+                    break;
+                }
                 case "Connections":
                 {
                     <div class="global-editor-layout">
@@ -130,7 +146,12 @@
     private readonly List<McpToolPolicyEditor> _toolPolicies = [];
     private Guid? _selectedConnectionId;
     private Guid? _selectedMcpServerId;
-    protected override Task OnInitializedAsync() => LoadGlobalSettingsAsync();
+    private ThemePreference _theme;
+    protected override async Task OnInitializedAsync()
+    {
+        _theme = await Theme.GetAsync();
+        await LoadGlobalSettingsAsync();
+    }
     private async Task LoadGlobalSettingsAsync()
     {
         var settings = await GlobalSettingsApi.GetAsync(CancellationToken.None);
@@ -155,9 +176,29 @@
     }
 
     /// <summary>The footer line, counted the way the permissions drawer counts its overrides.</summary>
-    private string Stats => Section == "Connections"
-        ? $"{Plural(_connections.Count, "connection")} · {_connections.Count(item => item.Enabled)} enabled"
-        : $"{Plural(_globalMcpServers.Count, "server")} · {_globalMcpServers.Count(item => item.Enabled)} enabled · {Plural(_toolPolicies.Count, "tool default")}";
+    private string Stats => Section switch
+    {
+        "Settings" => "Applied right away · stored on this device",
+        "Connections" => $"{Plural(_connections.Count, "connection")} · {_connections.Count(item => item.Enabled)} enabled",
+        _ => $"{Plural(_globalMcpServers.Count, "server")} · {_globalMcpServers.Count(item => item.Enabled)} enabled · {Plural(_toolPolicies.Count, "tool default")}"
+    };
+
+    private string Description => Section switch
+    {
+        "Settings" => "How the app looks on this device.",
+        "Connections" => "OpenAI-compatible endpoints available to every project.",
+        _ => "Global MCP servers available to every project."
+    };
+
+    private static readonly (ThemePreference Value, string Label)[] ThemeOptions =
+        [(ThemePreference.System, "System"), (ThemePreference.Light, "Light"), (ThemePreference.Dark, "Dark")];
+
+    /// <summary>Unlike the Host-side settings, a theme needs no save on close: it applies on click.</summary>
+    private async Task SetThemeAsync(ThemePreference preference)
+    {
+        _theme = preference;
+        await Theme.SetAsync(preference);
+    }
 
     private static string Plural(int count, string word) => $"{count} {word}{(count == 1 ? string.Empty : "s")}";
 

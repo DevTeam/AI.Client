@@ -494,6 +494,7 @@
     [Parameter] public EventCallback<ChatReview> OnDiffReviewChanged { get; set; }
     [Parameter] public EventCallback<ChatResourceRef> OnOpenReview { get; set; }
     [Parameter] public EventCallback<(Guid MessageId, Guid ResourceId)> OnRemoveResource { get; set; }
+    [Parameter] public EventCallback<FileLinkMenuRequest> OnFileLinkMenu { get; set; }
     [Parameter] public IReadOnlyDictionary<Guid, string>? ReviewNames { get; set; }
     [Parameter] public IReadOnlySet<Guid>? MessageReviewIds { get; set; }
     [Parameter] public IReadOnlyDictionary<Guid, ChatReview>? MessageReviews { get; set; }
@@ -556,6 +557,8 @@
     private IJSObjectReference? _mermaidBlocksHandle;
     private IJSObjectReference? _svgBlocksModule;
     private IJSObjectReference? _svgBlocksHandle;
+    private IJSObjectReference? _fileLinksModule;
+    private IJSObjectReference? _fileLinksHandle;
     private DotNetObjectReference<MessageFeed>? _selfReference;
     // Mirrors the JS side's "the user is at the bottom" state, which is the only thing that
     // decides whether new content scrolls the feed. Starts true: an empty feed is at its bottom.
@@ -648,6 +651,7 @@
                 _messageScrollModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/messageScroll.js");
                 _mermaidBlocksModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/mermaidBlocks.js");
                 _svgBlocksModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/svgBlocks.js");
+                _fileLinksModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/fileLinks.js");
                 // The scroller element is part of this component's fixed markup, so it outlives
                 // every chat switch — one attach for the lifetime of the feed.
                 _selfReference = DotNetObjectReference.Create(this);
@@ -657,12 +661,14 @@
                 // shows diagrams without requiring the user to scroll to the bottom.
                 _mermaidBlocksHandle = await _mermaidBlocksModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer);
                 _svgBlocksHandle = await _svgBlocksModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer);
+                _fileLinksHandle = await _fileLinksModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer, _selfReference);
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException)
             {
                 _historyMarkersModule = null;
                 _mermaidBlocksModule = null;
                 _svgBlocksModule = null;
+                _fileLinksModule = null;
             }
         }
 
@@ -698,6 +704,11 @@
     [JSInvokable]
     public Task OnTurnSummaryVisibilityChanged(bool visible) =>
         OnCurrentTurnSummaryVisibilityChanged.InvokeAsync(visible);
+
+    /// <summary>A right-click on a link to a local file or directory in a rendered message.</summary>
+    [JSInvokable]
+    public Task OnFileLinkContextMenu(string path, double clientX, double clientY) =>
+        OnFileLinkMenu.InvokeAsync(new FileLinkMenuRequest(path, clientX, clientY));
 
     /// <summary>
     /// Pushes the current SearchQuery to the JS side. Called from OnAfterRenderAsync on every
@@ -1773,6 +1784,8 @@
         var mermaidBlocksHandle = _mermaidBlocksHandle;
         var svgBlocksModule = _svgBlocksModule;
         var svgBlocksHandle = _svgBlocksHandle;
+        var fileLinksModule = _fileLinksModule;
+        var fileLinksHandle = _fileLinksHandle;
         _historyMarkersModule = null;
         _scrollModule = null;
         _messageScrollModule = null;
@@ -1781,6 +1794,8 @@
         _mermaidBlocksHandle = null;
         _svgBlocksModule = null;
         _svgBlocksHandle = null;
+        _fileLinksModule = null;
+        _fileLinksHandle = null;
         try
         {
             if (messageScrollHandle is not null)
@@ -1801,11 +1816,17 @@
                 await svgBlocksHandle.InvokeVoidAsync("dispose");
                 await svgBlocksHandle.DisposeAsync();
             }
+            if (fileLinksHandle is not null)
+            {
+                await fileLinksHandle.InvokeVoidAsync("dispose");
+                await fileLinksHandle.DisposeAsync();
+            }
             if (historyMarkersModule is not null) await historyMarkersModule.DisposeAsync();
             if (scrollModule is not null) await scrollModule.DisposeAsync();
             if (messageScrollModule is not null) await messageScrollModule.DisposeAsync();
             if (mermaidBlocksModule is not null) await mermaidBlocksModule.DisposeAsync();
             if (svgBlocksModule is not null) await svgBlocksModule.DisposeAsync();
+            if (fileLinksModule is not null) await fileLinksModule.DisposeAsync();
         }
         catch (Exception error) when (error is JSException or ObjectDisposedException)
         {

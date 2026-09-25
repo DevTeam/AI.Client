@@ -19,6 +19,8 @@ Status: File and directory references, diff reviews, and reviews of selected cha
 
 The review workspace opens as a right panel beside the chat. Its wide left area shows the saved diff, one file after another; the right area is a filterable file tree with checkboxes and comment counts. Selecting a file scrolls to its diff. A `+` in a diff line opens a comment editor below that line. Shift-click on another line of the same side selects a range. Each saved comment has inline Edit and Delete actions. Binary files and files without a saved text diff allow file-level comments. A file with comments cannot be unchecked until its comments are removed.
 
+Links to local files and directories in a rendered message — `file:///` URIs, which the base prompt asks the model to use, or bare Windows paths — are not followed. A right-click opens `Add to message` and `Copy path`. Adding one creates the same file or directory reference as `+ -> File` or `+ -> Directory`: a trailing separator means a directory, otherwise the Host is asked for a file and then for a directory, and the project's read grants apply.
+
 The header shows the diff review name, source step, Add to message, and Close. The chat and queue show a diff review as a resource link, alongside file and directory links. The link opens the review workspace. Queueing a message does not freeze the review; it is resolved when the queued model request starts.
 
 ## Current model and storage

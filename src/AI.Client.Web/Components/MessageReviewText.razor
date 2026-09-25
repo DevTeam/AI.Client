@@ -14,12 +14,12 @@
         <small>Comment on “@selected.Quote”</small>
         <textarea aria-label="Message review comment" value="@_body" @oninput="e => _body = e.Value?.ToString() ?? string.Empty"></textarea>
         <div class="message-review-editor-actions">
-            <button type="button" disabled="@(_saving || string.IsNullOrWhiteSpace(_body))" @onclick="SaveAsync">Save</button>
+            <button class="review-comment-icon-action is-save" type="button" title="Save comment" aria-label="Save comment" disabled="@(_saving || string.IsNullOrWhiteSpace(_body))" @onclick="SaveAsync"><AppIcon Name="check" /></button>
             @if (_editingId is { } editingId && _current?.MessageComments?.FirstOrDefault(item => item.Id == editingId) is { } editingComment)
             {
-                <button type="button" class="secondary-action" disabled="@_saving" @onclick="() => DeleteAsync(editingComment)">Delete</button>
+                <button class="review-comment-icon-action is-danger" type="button" title="Delete comment" aria-label="Delete comment" disabled="@_saving" @onclick="() => DeleteAsync(editingComment)"><AppIcon Name="trash" /></button>
             }
-            <button type="button" class="secondary-action" @onclick="Cancel">Cancel</button>
+            <button class="review-comment-icon-action" type="button" title="Cancel" aria-label="Cancel comment" @onclick="Cancel"><AppIcon Name="x" /></button>
         </div>
         @if (_error is not null) { <p class="error" role="alert">@_error</p> }
     </div>

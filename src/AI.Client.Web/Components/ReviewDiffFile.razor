@@ -104,20 +104,24 @@
             ? item.OldEnd == line.OldLine && item.NewStart is null
             : item.NewEnd == line.NewLine && item.OldStart is null)).ToArray();
 
-    private RenderFragment CommentCard(ReviewComment comment) => @<div class="review-comment" @key="comment.Id">
+    private RenderFragment CommentCard(ReviewComment comment) => @<div class="review-comment @(_editingCommentId == comment.Id ? "is-editing" : null)" @key="comment.Id">
         @if (_editingCommentId == comment.Id) { @CommentEditor() }
         else
         {
             <button class="review-comment-body" type="button" title="Edit comment" aria-label="Edit comment" @onclick="() => EditComment(comment)">@comment.Body</button>
-            <div><button class="secondary-action compact-action" type="button" @onclick="() => EditComment(comment)">Edit</button>
-                <button class="secondary-action compact-action" type="button" @onclick="() => DeleteCommentAsync(comment)">Delete</button></div>
+            <div class="review-comment-actions">
+                <button class="review-comment-icon-action" type="button" title="Edit comment" aria-label="Edit comment" @onclick="() => EditComment(comment)"><AppIcon Name="edit" /></button>
+                <button class="review-comment-icon-action is-danger" type="button" title="Delete comment" aria-label="Delete comment" @onclick="() => DeleteCommentAsync(comment)"><AppIcon Name="trash" /></button>
+            </div>
         }
     </div>;
 
     private RenderFragment CommentEditor() => @<div class="review-comment-editor" @onkeydown="HandleCommentKeyDown">
         <textarea @ref="_commentEditor" aria-label="Review comment" value="@_commentBody" @oninput="e => _commentBody = e.Value?.ToString() ?? string.Empty"></textarea>
-        <div><button type="button" disabled="@(_saving || string.IsNullOrWhiteSpace(_commentBody))" @onclick="SaveCommentAsync">Save comment</button>
-            <button class="secondary-action compact-action" type="button" @onclick="CancelComment">Cancel</button></div>
+        <div class="review-comment-actions">
+            <button class="review-comment-icon-action is-save" type="button" title="Save comment" aria-label="Save comment" disabled="@(_saving || string.IsNullOrWhiteSpace(_commentBody))" @onclick="SaveCommentAsync"><AppIcon Name="check" /></button>
+            <button class="review-comment-icon-action" type="button" title="Cancel" aria-label="Cancel comment" @onclick="CancelComment"><AppIcon Name="x" /></button>
+        </div>
     </div>;
 
     private void EditComment(ReviewComment comment)

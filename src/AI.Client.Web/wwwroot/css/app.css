@@ -4651,7 +4651,7 @@ textarea {
 }
 .review-menu-row .review-menu-open > .app-icon { flex: 0 0 auto; width: 1rem; height: 1rem; color: var(--color-text-muted); }
 .review-menu-row .review-menu-open > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.review-menu-delete, .review-menu-cancel { display: grid; place-items: center; flex: 0 0 1.7rem; height: 1.7rem; margin-right: .15rem; border-radius: .3rem; color: var(--color-text-muted) !important; }
+.review-menu-delete, .review-menu-cancel { display: grid; place-items: center; flex: 0 0 1.7rem; height: 1.7rem; margin-right: .15rem; padding: 0; border-radius: .3rem; color: var(--color-text-muted) !important; }
 .review-menu-delete:hover, .review-menu-delete:focus-visible, .review-menu-confirm-delete:hover { background: var(--color-danger-bg-hover); color: var(--color-danger-text) !important; }
 .review-menu-delete .app-icon, .review-menu-cancel .app-icon { width: .9rem; height: .9rem; }
 .review-menu-confirm-label { flex: 1; min-width: 0; padding-left: .6rem; }

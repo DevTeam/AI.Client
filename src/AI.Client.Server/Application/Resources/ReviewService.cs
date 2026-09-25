@@ -85,6 +85,14 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
     public Task DeleteChatAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
         repository.DeleteChatAsync(projectId, chatId, cancellationToken);
 
+    public async Task<bool> DeleteAsync(Guid projectId, Guid chatId, Guid reviewId, CancellationToken cancellationToken)
+    {
+        if (await GetAsync(projectId, chatId, reviewId, cancellationToken) is null) return false;
+        if (await chats.RemoveReviewReferencesAsync(projectId, chatId, reviewId, cancellationToken) is null)
+            throw new InvalidOperationException("Chat not found.");
+        return await repository.DeleteAsync(projectId, chatId, reviewId, cancellationToken);
+    }
+
     public Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken) => repository.DeleteProjectAsync(projectId, cancellationToken);
 
     private async Task<AI.Client.Contracts.Chats.ChatDetails> RequireChatAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>

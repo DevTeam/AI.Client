@@ -32,6 +32,10 @@ public sealed class ChatEndpoints : IEndpointModule
                 IReviewService service, CancellationToken token) =>
                 await service.UpdateAsync(projectId, chatId, reviewId, request, token) is { } review
                     ? Results.Ok(review) : Results.NotFound());
+        routes.MapDelete("/api/projects/{projectId:guid}/chats/{chatId:guid}/reviews/{reviewId:guid}",
+            async (Guid projectId, Guid chatId, Guid reviewId, IReviewService service, CancellationToken token) =>
+                await service.DeleteAsync(projectId, chatId, reviewId, token)
+                    ? Results.NoContent() : Results.NotFound());
         // Searching is reading, so it stays a GET: the whole request fits in the query string and a result
         // is a projection of stored history, never a change to it.
         routes.MapGet("/api/chats/search", (

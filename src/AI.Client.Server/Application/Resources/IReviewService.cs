@@ -9,6 +9,7 @@ public interface IReviewService
     Task<ChatReview> CreateAsync(Guid projectId, Guid chatId, CreateReviewRequest request, CancellationToken cancellationToken);
     Task<ChatReview?> UpdateAsync(Guid projectId, Guid chatId, Guid reviewId, UpdateReviewRequest request,
         CancellationToken cancellationToken);
+    Task<bool> DeleteAsync(Guid projectId, Guid chatId, Guid reviewId, CancellationToken cancellationToken);
     Task DeleteChatAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken);
 }

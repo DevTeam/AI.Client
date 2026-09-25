@@ -145,7 +145,19 @@
                                             <div class="review-menu-list">
                                             @foreach (var review in chatReviews.Where(item => item.Kind == ChatReviewKind.Diff).OrderByDescending(item => item.UpdatedAt))
                                             {
-                                                <button type="button" role="menuitem" title="@review.Name" @onclick="() => OpenReviewForChatAsync(chat.Id, review.Id)"><AppIcon Name="diff" /><span>@review.Name</span></button>
+                                                <div class="review-menu-row" @key="review.Id">
+                                                    @if (_confirmingReviewDeleteId == review.Id)
+                                                    {
+                                                        <span class="review-menu-confirm-label">Delete review?</span>
+                                                        <button type="button" class="review-menu-confirm-delete" aria-label="Delete @review.Name" @onclick="() => DeleteReviewAsync(chat.Id, review.Id)">Delete</button>
+                                                        <button type="button" class="review-menu-cancel" aria-label="Cancel deletion" @onclick="() => _confirmingReviewDeleteId = null"><AppIcon Name="x" /></button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button type="button" class="review-menu-open" role="menuitem" title="@review.Name" @onclick="() => OpenReviewForChatAsync(chat.Id, review.Id)"><AppIcon Name="diff" /><span>@review.Name</span></button>
+                                                        <button type="button" class="review-menu-delete" title="Delete review" aria-label="Delete @review.Name" @onclick="() => _confirmingReviewDeleteId = review.Id"><AppIcon Name="trash" /></button>
+                                                    }
+                                                </div>
                                             }
                                             </div>
                                         </div>
@@ -190,7 +202,19 @@
                                                     <div class="review-menu-list">
                                                     @foreach (var review in ReviewsForBranch(branch))
                                                     {
-                                                        <button type="button" role="menuitem" title="@review.Name" @onclick="() => OpenReviewForBranchAsync(branch, review.Id)"><AppIcon Name="diff" /><span>@review.Name</span></button>
+                                                        <div class="review-menu-row" @key="review.Id">
+                                                            @if (_confirmingReviewDeleteId == review.Id)
+                                                            {
+                                                                <span class="review-menu-confirm-label">Delete review?</span>
+                                                                <button type="button" class="review-menu-confirm-delete" aria-label="Delete @review.Name" @onclick="() => DeleteReviewAsync(chat.Id, review.Id)">Delete</button>
+                                                                <button type="button" class="review-menu-cancel" aria-label="Cancel deletion" @onclick="() => _confirmingReviewDeleteId = null"><AppIcon Name="x" /></button>
+                                                            }
+                                                            else
+                                                            {
+                                                                <button type="button" class="review-menu-open" role="menuitem" title="@review.Name" @onclick="() => OpenReviewForBranchAsync(branch, review.Id)"><AppIcon Name="diff" /><span>@review.Name</span></button>
+                                                                <button type="button" class="review-menu-delete" title="Delete review" aria-label="Delete @review.Name" @onclick="() => _confirmingReviewDeleteId = review.Id"><AppIcon Name="trash" /></button>
+                                                            }
+                                                        </div>
                                                     }
                                                     </div>
                                                 </div>
@@ -603,6 +627,7 @@
     private Guid? _branchMenuId;
     private Guid? _reviewSubmenuChatId;
     private Guid? _reviewSubmenuBranchId;
+    private Guid? _confirmingReviewDeleteId;
     private (Guid OwnerId, bool IsBranch)? _pendingReviewSubmenu;
     private Guid? _confirmingBranchDeleteId;
     private Guid? _messageBranchMenuId;
@@ -2833,6 +2858,7 @@
         _reviewSubmenuChatId = null;
         _reviewSubmenuBranchId = null;
         _pendingReviewSubmenu = null;
+        _confirmingReviewDeleteId = null;
     }
 
     private async Task ToggleChatMenuAsync(Guid chatId)
@@ -3700,6 +3726,39 @@
         CloseContextMenus();
         await SelectBranchTreeItemAsync(branch);
         await OpenReviewAsync(reviewId);
+    }
+
+    private async Task DeleteReviewAsync(Guid chatId, Guid reviewId)
+    {
+        if (_selectedProject is null) return;
+        var projectId = _selectedProject.Id;
+        try
+        {
+            if (!await ReviewApi.DeleteAsync(projectId, chatId, reviewId, CancellationToken.None))
+            {
+                _chatError = "Review no longer exists.";
+                return;
+            }
+            if (_runEventsModule is not null) await _runEventsModule.InvokeVoidAsync("hideReviewSubmenus");
+            CloseContextMenus();
+            if (_menuReviews.TryGetValue(chatId, out var menuReviews))
+                _menuReviews[chatId] = menuReviews.Where(item => item.Id != reviewId).ToArray();
+            _reviews.RemoveAll(item => item.Id == reviewId);
+            _reviewVersion++;
+            foreach (var key in _resourceDrafts.Keys.Where(key => key.StartsWith($"{chatId}:", StringComparison.Ordinal)).ToArray())
+                _resourceDrafts[key] = _resourceDrafts[key].Where(item => item.Id != reviewId).ToArray();
+            if (_selectedChat?.Id == chatId)
+            {
+                RemoveReviewFromDraft(reviewId);
+                var refreshed = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);
+                if (refreshed is not null) { _selectedChat = refreshed; _reviewChat = refreshed; CacheChatDetails(refreshed); }
+                if (_reviewStartId == reviewId) CloseReview();
+            }
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _chatError = $"Could not delete review: {error.Message}";
+        }
     }
 
     private async Task OpenAttachedReviewAsync(ChatResourceRef reference)

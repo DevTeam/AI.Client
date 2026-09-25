@@ -66,6 +66,26 @@ public class ChatDocumentSerializerTests
     }
 
     [Fact]
+    public void RemovingAReviewShouldClearItsLinksFromEveryMessage()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var review = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.Review, string.Empty, "Review");
+        var file = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.File, "C:\\work\\api.cs");
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", now);
+        var first = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User,
+            string.Empty, now, resources: [review]);
+        var second = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), first.Id, ChatMessageRole.User,
+            string.Empty, now, resources: [review, file]);
+        chat.AddMessage(first, now);
+        chat.AddMessage(second, now);
+
+        chat.RemoveReviewReferences(review.Id, now).ShouldBeTrue();
+        var restored = _serializer.Deserialize(_serializer.Serialize(chat, 3));
+        restored.Chat.Messages.Single(item => item.Id == first.Id).Resources.ShouldBeEmpty();
+        restored.Chat.Messages.Single(item => item.Id == second.Id).Resources!.ShouldHaveSingleItem().ShouldBe(file);
+    }
+
+    [Fact]
     public void ShouldRestoreWorkspaceChangesAttachedToAMessage()
     {
         var createdAt = new DateTimeOffset(2026, 9, 14, 10, 0, 0, TimeSpan.Zero);

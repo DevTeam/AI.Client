@@ -33,6 +33,14 @@ public sealed class ReviewApi(HttpClient http) : IReviewApi
             ?? throw new InvalidOperationException("Review service returned no review.");
     }
 
+    public async Task<bool> DeleteAsync(Guid projectId, Guid chatId, Guid reviewId, CancellationToken cancellationToken)
+    {
+        using var response = await http.DeleteAsync($"api/projects/{projectId}/chats/{chatId}/reviews/{reviewId}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+        await EnsureSuccessAsync(response, cancellationToken);
+        return true;
+    }
+
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode) return;

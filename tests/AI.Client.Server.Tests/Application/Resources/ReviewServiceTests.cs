@@ -111,6 +111,12 @@ public sealed class ReviewServiceTests
                     afterPruning.Revision), token));
             await Should.ThrowAsync<InvalidOperationException>(() => service.UpdateAsync(projectId, chatId, created.Id,
                 new UpdateReviewRequest("Stale", [file.Path], [comment], created.Revision), token));
+            chats.Setup(item => item.RemoveReviewReferencesAsync(projectId, chatId, created.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(currentChat);
+            (await service.DeleteAsync(projectId, chatId, created.Id, token)).ShouldBeTrue();
+            chats.Verify(item => item.RemoveReviewReferencesAsync(projectId, chatId, created.Id,
+                It.IsAny<CancellationToken>()), Times.Once);
+            (await service.ListAsync(projectId, chatId, token)).ShouldBeEmpty();
         }
         finally
         {

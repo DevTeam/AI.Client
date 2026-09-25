@@ -133,7 +133,7 @@ public sealed class RunCompletionProtocol : IRunCompletionProtocol
           "type": "object",
           "properties": {
             "status": { "type": "string", "enum": ["complete", "continue", "blocked"] },
-            "finalAnswer": { "type": "string", "description": "User-facing answer. Required for complete and blocked; omitted for continue." },
+            "finalAnswer": { "type": "string", "description": "User-facing answer in Markdown; link files as in your normal answers. Required for complete and blocked; omitted for continue." },
             "completed": { "type": "array", "items": { "type": "string" } },
             "evidence": { "type": "array", "items": { "type": "string" } },
             "remaining": { "type": "array", "items": { "type": "string" } },

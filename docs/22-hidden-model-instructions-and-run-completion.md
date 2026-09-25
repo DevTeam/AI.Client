@@ -52,8 +52,12 @@ After the run has used a normal tool, ordinary model prose is provisional. A pla
 complete the run: the agent adds a transient hidden correction and asks the model to continue. Only
 `complete.finalAnswer` or `blocked.finalAnswer` becomes the durable final assistant message.
 `continue` is returned to the model as an internal tool result and starts the next step. Three
-consecutive missing or invalid completion decisions fail the run instead of looping indefinitely;
-before that limit, malformed decisions receive a hidden structured rejection and correction request.
+consecutive invalid completion decisions fail the run instead of looping indefinitely; before that
+limit, malformed decisions receive a hidden structured rejection and correction request. A missing
+decision is corrected three times — after the first correction the request offers only
+`app_finish_run` — and if the model still answers in prose, that latest text is published as the
+final answer rather than failing the run. Some OpenAI-compatible endpoints never emit the control
+call; losing an answer the model repeated several times is worse than accepting it.
 
 An empty provider response does not acknowledge model-only instructions. The agent retains every
 pending correction and adds `response.empty`. When completion is already required, the recovery

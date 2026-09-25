@@ -199,11 +199,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             truncated = 0;
             if (calls.Count == 0)
             {
-                if (completionRequired)
+                if (completionRequired && ++missingCompletion <= MaxMissingCompletionTurns)
                 {
-                    if (++missingCompletion > MaxMissingCompletionTurns)
-                        throw new InvalidOperationException(
-                            $"The model did not call {completionProtocol.Tool.ModelDefinition.Name} after using tools.");
                     context.Add(new ChatCompletionMessage("assistant", continuedAnswer.ToString() + content));
                     continuedAnswer.Clear();
                     instructions.Upsert(run, new ModelInstruction("run.completion-required",
@@ -214,6 +211,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     continue;
                 }
 
+                // Either no tool was used, or the model was asked for the control tool every time it
+                // is allowed to be — the last requests offered nothing else — and still answered in
+                // prose. Some OpenAI-compatible endpoints never emit a tool call for it. Failing the
+                // run would throw away an answer the model has repeated several times, so its latest
+                // text is published instead.
                 await Draft(null);
                 await text(continuedAnswer.ToString() + content, token);
                 continuedAnswer.Clear();

@@ -29,9 +29,9 @@
         const width = tooltip.offsetWidth;
         const height = tooltip.offsetHeight;
         const left = Math.max(8, Math.min(x - width / 2, window.innerWidth - width - 8));
-        const above = anchor.top - height - 6;
+        const above = anchor.top - height - 4;
         tooltip.style.left = `${left}px`;
-        tooltip.style.top = `${above >= 8 ? above : Math.min(anchor.bottom + 6, window.innerHeight - height - 8)}px`;
+        tooltip.style.top = `${above >= 8 ? above : Math.min(anchor.bottom + 4, window.innerHeight - height - 8)}px`;
     }
 
     // Shows one paragraph per text, so several comments on one fragment stay apart.

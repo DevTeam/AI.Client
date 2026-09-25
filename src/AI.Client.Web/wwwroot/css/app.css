@@ -2,6 +2,7 @@
    they take. js/theme.js puts data-theme="light|dark" on <html> before the first paint (the
    Settings drawer picks it), so a new colour means a new token here, in both themes. */
 :root {
+    --message-font-size: 0.93rem;
     font-family: Inter, ui-sans-serif, system-ui, sans-serif;
     background: var(--color-bg);
     color: var(--color-text);
@@ -2441,24 +2442,27 @@ body {
 }
 .review-comment-marker .app-icon { width: .85rem; height: .85rem; }
 /* The app's one tooltip (js/tooltips.js): every title, a local path's access, the comment under
-   the pointer. It wears the chrome of the comment editor, in a smaller type than the text it explains. */
+   the pointer. It wears the chrome of the comment editor, in a smaller type than the transcript. */
 .app-tooltip {
     position: fixed;
     z-index: 1000;
-    max-width: min(22rem, calc(100vw - 1rem));
-    padding: .3rem .45rem;
+    max-width: min(18rem, calc(100vw - 1rem));
+    padding: .12rem .35rem;
     border: 1px solid var(--color-border-stronger);
-    border-radius: .45rem;
-    background: var(--color-fill-hover);
-    box-shadow: 0 .5rem 1.5rem rgb(0 0 0 / calc(60% * var(--shadow-scale)));
-    color: var(--color-text);
-    font-size: .75rem;
-    line-height: 1.35;
+    border-radius: .3rem;
+    /* Lifted off whatever it covers: a lighter surface and brighter text than the transcript, a
+       ring of page background so the text behind never runs up to its edge, and a firm shadow. */
+    background: var(--color-fill-strong);
+    box-shadow: 0 0 0 3px var(--color-bg), 0 .4rem 1.2rem rgb(0 0 0 / calc(65% * var(--shadow-scale)));
+    color: var(--color-text-strong);
+    font-size: .78rem;
+    line-height: 1.3;
     pointer-events: none;
 }
 .app-tooltip[hidden] { display: none; }
-.app-tooltip p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.app-tooltip p + p { margin-top: .3rem; padding-top: .3rem; border-top: 1px solid var(--color-border); }
+/* The global p rule sets its own size and a muted colour; a tooltip's text takes the tooltip's. */
+.app-tooltip p { margin: 0; color: inherit; font-size: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.app-tooltip p + p { margin-top: .2rem; padding-top: .2rem; border-top: 1px solid var(--color-border-stronger); }
 .message-review-text { cursor: text; }
 .message-review-toggle { display: inline-flex; align-items: center; gap: .3rem; margin-top: .25rem; padding: .1rem 0; border: 0; background: transparent; color: var(--color-accent); font-size: .8rem; cursor: pointer; }
 .message-review-toggle .app-icon { width: .85rem; height: .85rem; }
@@ -3011,7 +3015,7 @@ button:active:not(:disabled) {
     max-width: 100%;
     overflow-wrap: anywhere;
     word-break: break-word;
-    font-size: 0.93rem;
+    font-size: var(--message-font-size);
     line-height: 1.5;
 }
 

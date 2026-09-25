@@ -499,7 +499,11 @@ body {
 }
 
 /* Project settings reuse the permissions drawer; it has no tabs row. */
-.permissions-drawer.project-settings-drawer { grid-template-rows: auto minmax(0, 1fr) auto; }
+.permissions-drawer.project-settings-drawer { grid-template-rows: auto minmax(0, 1fr) auto; width: min(33rem, 100vw); overflow: hidden; }
+.permissions-drawer.project-settings-drawer > header { align-items: center; padding: 1rem 1.25rem; }
+.project-settings-heading { min-width: 0; }
+.project-settings-heading p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-settings-drawer .project-settings-content { min-width: 0; padding: 1.1rem 1.25rem 1.5rem; overflow-x: hidden; }
 
 .settings-modal-actions {
     display: flex;
@@ -2656,15 +2660,18 @@ body {
 
 .project-settings-drawer .workspace-form {
     align-content: start;
+    min-width: 0;
+    gap: .8rem;
 }
 
+.project-settings-drawer .workspace-form label { min-width: 0; gap: .3rem; font-size: .78rem; font-weight: 500; }
 .project-settings-drawer .workspace-form textarea {
-    min-height: 4.5rem;
+    min-height: 4.25rem;
+    resize: vertical;
 }
 
-.project-settings-drawer .workspace-form input {
-    min-height: 2.7rem;
-}
+.project-settings-drawer .workspace-form input,
+.project-settings-drawer .workspace-form select { min-height: 2.45rem; font-size: .86rem; }
 
 .endpoint-settings {
     margin: 0;
@@ -3127,8 +3134,10 @@ textarea {
 
 .project-settings-drawer label,
 .project-settings-drawer input,
-.project-settings-drawer select {
+.project-settings-drawer select,
+.project-settings-drawer textarea {
     min-width: 0;
+    max-width: 100%;
 }
 
 .project-settings-drawer input:not([type="checkbox"]),
@@ -4760,19 +4769,31 @@ textarea {
 .memory-meta { margin: 0; color: var(--color-text-faint); font-size: 0.8rem; }
 
 /* Project instructions sit under the project's details in its settings drawer. */
-.project-instructions { display: grid; gap: 0.6rem; margin-top: 1.25rem; }
-.project-instructions .section-heading p { font-size: 0.8rem; }
-.project-instructions-text { min-height: 9rem; resize: vertical; font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.85rem; }
-.instruction-sources { display: grid; gap: 0.2rem; margin: 0; padding: 0; list-style: none; font-size: 0.8rem; }
-.instruction-sources li { display: flex; gap: 0.5rem; justify-content: space-between; min-width: 0; }
+.project-instructions { display: grid; min-width: 0; gap: .55rem; margin-top: 1.15rem; padding-top: 1.1rem; border-top: 1px solid var(--color-border); }
+.project-instructions .section-heading { min-width: 0; }
+.project-instructions .section-heading h3 { font-size: .94rem; }
+.project-instructions .section-heading p { margin-top: .2rem; color: var(--color-text-subtle); font-size: .75rem; line-height: 1.4; }
+.project-instructions-text { min-height: 7.5rem; max-height: 20rem; resize: vertical; font-family: inherit; font-size: .84rem; line-height: 1.45; }
+.project-instructions .checkbox { display: flex; align-items: flex-start; gap: .5rem; min-width: 0; margin-top: .15rem; color: var(--color-text-secondary); font-size: .77rem; line-height: 1.4; white-space: normal; }
+.project-instructions .checkbox input { flex: none; margin: .15rem 0 0; }
+.project-instructions .checkbox span { min-width: 0; overflow-wrap: anywhere; }
+.instruction-sources { display: grid; gap: .2rem; min-width: 0; margin: .15rem 0 0; padding: 0; list-style: none; font-size: .74rem; }
+.instruction-sources li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; min-width: 0; }
 .instruction-sources li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 .instruction-sources li small, .instruction-budget { color: var(--color-text-faint); }
 .instruction-sources li.excluded > span { color: var(--color-text-faint); text-decoration: line-through; }
-.instruction-budget { margin: 0; font-size: 0.8rem; }
+.instruction-budget { margin: 0; font-size: .73rem; }
 .instruction-budget.over { color: var(--color-danger-text); }
-.model-context-preview { display: grid; gap: 0.4rem; font-size: 0.8rem; }
-.model-context-preview > p { margin: 0; color: var(--color-text-secondary); }
-.model-context-preview details { border: 1px solid var(--color-border); border-radius: 0.5rem; padding: 0.4rem 0.6rem; }
-.model-context-preview summary { display: flex; gap: 0.5rem; justify-content: space-between; cursor: pointer; }
-.model-context-preview summary small { color: var(--color-text-faint); }
-.model-context-preview pre { max-height: 16rem; margin: 0.5rem 0 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.78rem; }
+.model-context-disclosure { min-width: 0; margin-top: .2rem; padding-top: .65rem; border-top: 1px solid var(--color-border); }
+.model-context-disclosure > summary { display: flex; align-items: center; gap: .4rem; min-width: 0; color: var(--color-text-secondary); font-size: .8rem; cursor: pointer; list-style: none; }
+.model-context-disclosure > summary::-webkit-details-marker { display: none; }
+.model-context-disclosure > summary .app-icon { flex: none; width: .75rem; height: .75rem; transition: transform .15s ease; }
+.model-context-disclosure[open] > summary .app-icon { transform: rotate(90deg); }
+.model-context-stale { margin: .55rem 0 0 !important; color: var(--color-text-subtle); font-size: .73rem; }
+.model-context-preview { display: grid; gap: .45rem; min-width: 0; padding-top: .55rem; font-size: .76rem; }
+.model-context-preview > p { margin: 0; color: var(--color-text-subtle); line-height: 1.4; }
+.model-context-preview details { min-width: 0; padding: .45rem .55rem; border: 1px solid var(--color-border); border-radius: .4rem; }
+.model-context-preview summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; min-width: 0; cursor: pointer; }
+.model-context-preview summary strong { min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
+.model-context-preview summary small { color: var(--color-text-faint); white-space: nowrap; }
+.model-context-preview pre { box-sizing: border-box; max-width: 100%; max-height: 16rem; margin: .5rem 0 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .72rem; line-height: 1.45; }

@@ -1,6 +1,7 @@
 @inject IProjectApi ProjectApi
 @inject IChatHistoryApi ChatHistoryApi
 @inject IGlobalSettingsApi GlobalSettingsApi
+@inject INotificationService Notifications
 
 <div class="permissions-drawer-backdrop"></div>
 <aside class="permissions-drawer" aria-label="Tool permissions" @onclick:stopPropagation="true">
@@ -136,6 +137,12 @@
 
     private async Task ResetAsync(ViewPolicy policy)
     {
+        if (await ResetPolicyAsync(policy)) Notifications.ShowSuccess("Tool permission reset.");
+        else Notifications.ShowError(_error ?? "Permission could not be reset.");
+    }
+
+    private async Task<bool> ResetPolicyAsync(ViewPolicy policy)
+    {
         _saving = true;
         _error = null;
         try
@@ -144,16 +151,35 @@
                 _chat = await ChatHistoryApi.RemoveToolPolicyAsync(ProjectId, chatId, policy.ServerId, policy.Name, policy.SchemaHash, CancellationToken.None);
             else
                 _project = await ProjectApi.RemoveToolPolicyAsync(ProjectId, policy.ServerId, policy.Name, policy.SchemaHash, CancellationToken.None);
-            if ((Scope == "Chat" && _chat is null) || (Scope == "Project" && _project is null)) _error = "Permission could not be reset.";
-            else await Changed.InvokeAsync();
+            if ((Scope == "Chat" && _chat is null) || (Scope == "Project" && _project is null))
+            {
+                _error = "Permission could not be reset.";
+                return false;
+            }
+            await Changed.InvokeAsync();
+            return true;
         }
-        catch (HttpRequestException) { _error = "Permission could not be reset."; }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _error = "Permission could not be reset.";
+            return false;
+        }
         finally { _saving = false; }
     }
 
     private async Task ResetAllAsync()
     {
-        foreach (var policy in Overrides.ToArray()) await ResetAsync(policy);
+        var resetCount = 0;
+        foreach (var policy in Overrides.ToArray())
+        {
+            if (!await ResetPolicyAsync(policy))
+            {
+                Notifications.ShowError(_error ?? "Permissions could not be reset.");
+                return;
+            }
+            resetCount++;
+        }
+        if (resetCount > 0) Notifications.ShowSuccess("Tool permissions reset.");
     }
 
     private sealed record ViewPolicy(Guid ServerId, string Name, string SchemaHash, string Decision,

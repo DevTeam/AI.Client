@@ -133,11 +133,14 @@
         {
             _selectedKey = untitled.Key;
             _error = "Every entry needs a title.";
+            Notifications.ShowError(_error);
             // The drawer calls this from outside the editor's own events, so nothing else re-renders it.
             StateHasChanged();
             return false;
         }
         if (_removed.Count == 0 && !_items.Any(item => item.IsDirty)) return true;
+        var removedCount = _removed.Count;
+        var savedCount = _items.Count(item => item.IsDirty);
         _error = null;
         try
         {
@@ -158,12 +161,15 @@
                     saved = await MemoryApi.UpdateAsync(saved, item.ToUpdate(saved.Revision), CancellationToken.None);
                 item.Stored = saved;
             }
-            Notifications.ShowSuccess("Memory saved.");
+            Notifications.ShowSuccess(removedCount > 0 && savedCount == 0
+                ? removedCount == 1 ? "Memory entry deleted." : "Memory entries deleted."
+                : "Memory saved.");
             return true;
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
             _error = error.Message;
+            Notifications.ShowError($"Memory was not saved: {error.Message}");
             StateHasChanged();
             return false;
         }

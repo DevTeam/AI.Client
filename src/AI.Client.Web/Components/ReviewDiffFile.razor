@@ -3,6 +3,7 @@
 @using AI.Client.Web.Resources
 @using Microsoft.AspNetCore.Components.Web
 @inject IReviewApi ReviewsApi
+@inject INotificationService Notifications
 @inject IUnifiedDiffParser DiffParser
 
 <div class="review-diff-content">
@@ -201,6 +202,7 @@
     private async Task SaveCommentAsync()
     {
         if (!_pending || string.IsNullOrWhiteSpace(_commentBody) || _saving) return;
+        var editing = _editingCommentId is not null;
         var comment = new ReviewComment(_editingCommentId ?? Guid.CreateVersion7(), File.Path,
             _pendingOldStart, _pendingOldEnd, _pendingNewStart, _pendingNewEnd, _commentBody.Trim());
         _saving = true;
@@ -225,10 +227,12 @@
             _error = null;
             CancelComment();
             await OnChanged.InvokeAsync(_current);
+            Notifications.ShowSuccess(editing ? "Review comment updated." : "Review comment added.");
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
         {
             _error = error.Message;
+            Notifications.ShowError($"Could not save review comment: {error.Message}");
         }
         finally { _saving = false; }
     }
@@ -247,10 +251,12 @@
             _error = null;
             CancelComment();
             await OnChanged.InvokeAsync(updated);
+            Notifications.ShowSuccess("Review comment deleted.");
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
         {
             _error = error.Message;
+            Notifications.ShowError($"Could not delete review comment: {error.Message}");
         }
         finally { _saving = false; }
     }

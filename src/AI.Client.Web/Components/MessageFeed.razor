@@ -11,6 +11,7 @@
 @inject IRunStatusPresentation StatusPresentation
 @inject ITurnLiveText LiveText
 @inject IToolPresentations Presentations
+@inject INotificationService Notifications
 @implements IAsyncDisposable
 @using AI.Client.Contracts.Tools
 @using AI.Client.Contracts.Resources
@@ -430,8 +431,24 @@
         _renderedSelectedRun = null;
         _approvalError = null;
         _confirmGlobalApprovalId = null;
-        try { await RunsApi.DecideToolAsync(run.ProjectId, run.ChatId, run.BranchId, new ToolApprovalDecision(approvalId, action), CancellationToken.None); }
-        catch (HttpRequestException) { _approvalError = "This approval is no longer available. Refresh the chat."; }
+        try
+        {
+            await RunsApi.DecideToolAsync(run.ProjectId, run.ChatId, run.BranchId,
+                new ToolApprovalDecision(approvalId, action), CancellationToken.None);
+            var message = action switch
+            {
+                ToolApprovalAction.AllowForChat => "Tool permission saved for this chat.",
+                ToolApprovalAction.AllowForProject => "Tool permission saved for this project.",
+                ToolApprovalAction.AllowGlobally => "Tool permission saved globally.",
+                _ => null
+            };
+            if (message is not null) Notifications.ShowSuccess(message);
+        }
+        catch (HttpRequestException)
+        {
+            _approvalError = "This approval is no longer available. Refresh the chat.";
+            Notifications.ShowError(_approvalError);
+        }
         finally { _decidingApproval = null; }
         _renderedSelectedRun = null;
     }

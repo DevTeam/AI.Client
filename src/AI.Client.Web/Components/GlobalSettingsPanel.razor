@@ -126,6 +126,8 @@
     // What was loaded, in the shape that is sent back; closing without edits must not write
     // (and toast) anything, and secrets never appear here, so they are checked separately.
     private string? _loadedSnapshot;
+    private HashSet<Guid> _loadedConnectionIds = [];
+    private HashSet<Guid> _loadedMcpServerIds = [];
     // Catalogs loaded from the endpoint on demand, keyed by connection id so switching between
     // connections in the left column keeps each one's results visible until the next refresh.
     private readonly Dictionary<Guid, IReadOnlyList<ResolvedModelInfo>> _resolvedModels = [];
@@ -181,6 +183,8 @@
         if (_selectedConnectionId is { } autoLoadId) _ = LoadModelsIfStaleAsync(autoLoadId);
         if (_globalMcpServers.All(item => item.Id != _selectedMcpServerId)) _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
         _loadedSnapshot = Snapshot();
+        _loadedConnectionIds = _connections.Select(item => item.Id).ToHashSet();
+        _loadedMcpServerIds = _globalMcpServers.Select(item => item.Id).ToHashSet();
         _saveFailed = false;
         _loaded = true;
     }
@@ -548,6 +552,7 @@
         StateHasChanged();
         try
         {
+            var successMessage = SavedSettingsMessage();
             await GlobalSettingsApi.SaveAsync(BuildRequest(), CancellationToken.None);
             foreach (var connection in _connections.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))
                 await GlobalSettingsApi.SetConnectionCredentialAsync(connection.Id, connection.Secret, CancellationToken.None);
@@ -557,7 +562,7 @@
             await Saved.InvokeAsync();
             // Same corner toast the rest of the app uses, so "I saved something" always looks the
             // same wherever it happened — global settings, project settings, a chat's endpoint.
-            Notifications.ShowSuccess("Settings saved.");
+            Notifications.ShowSuccess(successMessage);
             return true;
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
@@ -565,7 +570,7 @@
             // A save that fails silently is worse than no toast at all: the previous footer text
             // was easy to miss next to the Save button, and this panel is now the only place where
             // an endpoint's base URL / model / credentials are typed in.
-            Notifications.ShowError("Settings were not saved. Check required fields.");
+            Notifications.ShowError($"Could not save {Title}: {error.Message}");
             _saveFailed = true;
             return false;
         }
@@ -576,6 +581,23 @@
             _saving = false;
             StateHasChanged();
         }
+    }
+
+    private string SavedSettingsMessage()
+    {
+        if (Section == "Connections")
+        {
+            var removed = _loadedConnectionIds.Count(id => _connections.All(item => item.Id != id));
+            var added = _connections.Count(item => !_loadedConnectionIds.Contains(item.Id));
+            return removed == 1 && added == 0 ? "Connection deleted."
+                : added == 1 && removed == 0 ? "Connection added."
+                : "Connections updated.";
+        }
+        var removedServers = _loadedMcpServerIds.Count(id => _globalMcpServers.All(item => item.Id != id));
+        var addedServers = _globalMcpServers.Count(item => !_loadedMcpServerIds.Contains(item.Id));
+        return removedServers == 1 && addedServers == 0 ? "MCP server deleted."
+            : addedServers == 1 && removedServers == 0 ? "MCP server added."
+            : "MCP settings updated.";
     }
 
     [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]

@@ -2,6 +2,21 @@
     const storageKey = "review-tree-width";
 
     window.reviewWorkspace = {
+        revealFile(bodyId, fileId) {
+            const body = document.getElementById(bodyId);
+            const scroller = body?.querySelector(".review-diff-scroll");
+            const file = document.getElementById(fileId);
+            if (!scroller || !file || !scroller.contains(file)) return;
+
+            const viewport = scroller.getBoundingClientRect();
+            const header = file.querySelector(".workspace-change-summary")?.getBoundingClientRect();
+            if (!header || (header.top >= viewport.top && header.bottom <= viewport.bottom)) return;
+
+            scroller.scrollTo({
+                top: scroller.scrollTop + header.top - viewport.top - 8,
+                behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth"
+            });
+        },
         initialize(id) {
             const body = document.getElementById(id);
             if (!body || body.dataset.resizeReady) return;

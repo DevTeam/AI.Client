@@ -22,10 +22,13 @@ public sealed class RunCompletionProtocol : IRunCompletionProtocol
 
     public RunCompletionDecision Parse(string arguments)
     {
-        using var document = JsonDocument.Parse(arguments);
-        var root = document.RootElement;
+        using var outer = JsonDocument.Parse(arguments);
+        // Some endpoints send the arguments object encoded once more as a JSON string.
+        using var inner = outer.RootElement.ValueKind == JsonValueKind.String
+            ? JsonDocument.Parse(outer.RootElement.GetString() ?? string.Empty) : null;
+        var root = (inner ?? outer).RootElement;
         if (root.ValueKind != JsonValueKind.Object) throw new ArgumentException("Completion arguments must be an object.");
-        var statusText = RequiredString(root, "status");
+        var statusText = RequiredString(root, "status").ToLowerInvariant();
         var status = statusText switch
         {
             "complete" => RunCompletionStatus.Complete,
@@ -88,15 +91,37 @@ public sealed class RunCompletionProtocol : IRunCompletionProtocol
             ? NullIfWhiteSpace(property.GetString())
             : null;
 
+    /// <summary>
+    /// The schema asks for an array of strings, but models get the shape wrong in harmless ways: a
+    /// single string, an object such as <c>{"item": "..."}</c>, or an array of such objects. The
+    /// content is what the protocol needs, so every string found at any depth is taken, in order.
+    /// Rejecting these would only teach a weaker model to give up on the protocol.
+    /// </summary>
     private static string[] Strings(JsonElement root, string name)
     {
         if (!root.TryGetProperty(name, out var property)) return [];
-        if (property.ValueKind != JsonValueKind.Array)
-            throw new ArgumentException($"Completion argument '{name}' must be an array.");
-        return property.EnumerateArray().Select(item => item.ValueKind == JsonValueKind.String
-                ? NullIfWhiteSpace(item.GetString())
-                : throw new ArgumentException($"Completion argument '{name}' must contain strings."))
-            .Where(item => item is not null).Select(item => item!).ToArray();
+        var values = new List<string>();
+        Collect(property, values);
+        return values.ToArray();
+    }
+
+    private static void Collect(JsonElement element, List<string> values)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.String when NullIfWhiteSpace(element.GetString()) is { } text:
+                values.Add(text);
+                break;
+            case JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False:
+                values.Add(element.GetRawText());
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray()) Collect(item, values);
+                break;
+            case JsonValueKind.Object:
+                foreach (var item in element.EnumerateObject()) Collect(item.Value, values);
+                break;
+        }
     }
 
     private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

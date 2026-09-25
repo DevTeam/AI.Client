@@ -57,7 +57,10 @@ limit, malformed decisions receive a hidden structured rejection and correction 
 decision is corrected three times — after the first correction the request offers only
 `app_finish_run` — and if the model still answers in prose, that latest text is published as the
 final answer rather than failing the run. Some OpenAI-compatible endpoints never emit the control
-call; losing an answer the model repeated several times is worse than accepting it.
+call; losing an answer the model repeated several times is worse than accepting it. The same prose is the
+fallback when the model then returns only empty responses. The parser accepts harmless shape
+mistakes in the list fields — a single string, an object such as `{"item": "..."}`, or an array of
+objects — as well as a capitalised status and arguments encoded once more as a JSON string.
 
 An empty provider response does not acknowledge model-only instructions. The agent retains every
 pending correction and adds `response.empty`. When completion is already required, the recovery

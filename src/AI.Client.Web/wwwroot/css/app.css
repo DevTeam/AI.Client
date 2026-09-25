@@ -4748,10 +4748,11 @@ textarea {
 .memory-group-label { margin: 0.4rem 0 0.1rem; padding: 0 0.4rem; color: var(--color-text-secondary); font-size: 0.8rem; font-weight: 500; }
 .memory-group-label:first-child { margin-top: 0; }
 .memory-editor .settings-list .empty-hint { margin: 0; padding: 0 0.4rem; font-size: 0.8rem; }
-.memory-add { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.memory-kind { display: inline-flex; justify-self: start; gap: 0.25rem; padding: 0.25rem; border: 1px solid var(--color-border); border-radius: 0.6rem; background: var(--color-surface); }
+.memory-editor .settings-list-select > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .memory-disabled .settings-list-select > span { color: var(--color-text-faint); }
 .memory-editor .settings-list-select > span { display: flex; gap: 0.35rem; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.memory-form textarea { min-height: 7rem; resize: vertical; }
+.memory-form textarea { min-height: 9rem; resize: vertical; }
 .memory-meta { margin: 0; color: var(--color-text-faint); font-size: 0.8rem; }
 
 /* Project instructions sit under the project's details in its settings drawer. */

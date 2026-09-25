@@ -77,7 +77,11 @@ A stale revision answers `409`, validation `400`.
 
 ## UI
 
-- **Memory** in the sidebar's global navigation opens a drawer with two groups: `About me` and the open project. An entry has a kind, title, text, tags, `Enabled` and `Pinned`, and shows who saved it. As in the other settings drawers, closing, switching entries or adding one saves the current edit first.
+- **Memory** is one editor, `MemoryEditor`, laid out like Connections and MCP: the list on the left, grouped by kind, and the selected entry's form on the right (Enabled, Pinned, kind, title, text, who saved it and when). It edits one catalog at a time:
+  - **Memory** in the global navigation under MCP edits only the user's own entries;
+  - **Memory** in a project's popup menu edits only that project's entries.
+
+  As in the other settings drawers, every change stays local until the drawer closes, and closing saves them all. A blank new entry is dropped. An entry without a title, or a failed write, keeps the drawer open with "Discard changes". Tags stay in the model but are not shown.
 - **Project settings** has an `Instructions` section: the text, the instruction-file switch, the sources found with their token counts, and the used budget. `What the model sees` expands the three standing layers exactly as the next run sends them. Closing the drawer saves; a conflict keeps the typed text and moves to the stored revision.
 
 ## Follow-up

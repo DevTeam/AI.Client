@@ -971,7 +971,7 @@
             ? RunState.Runs.Values.FirstOrDefault(run => run.ChatId == chatId)?.ProjectId
             : null);
         await LoadProjectsAsync(projectId ?? WorkspaceStateService.LastProjectId,
-            restoreLastChat: target.ProjectId is null && target.ChatId is null);
+            restoreLastChat: target.ChatId is null);
         if (target.ProjectId is not null && _selectedProject?.Id != target.ProjectId)
             Notifications.ShowError("The project in this link is unavailable.");
         if (target.ChatId is not null && (target.ProjectId is null || _selectedProject?.Id == target.ProjectId))

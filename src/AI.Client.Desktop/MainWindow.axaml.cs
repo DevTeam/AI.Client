@@ -13,16 +13,19 @@ internal sealed partial class MainWindow : Window
     private static readonly TimeSpan EngineTimeout = TimeSpan.FromSeconds(20);
     private readonly DesktopStart _start;
     private readonly IWindowPlacementStore _placements;
+    private readonly IWorkspaceLocationStore _workspaceLocation;
     private readonly ITaskbarBadge _taskbarBadge;
     private readonly DispatcherTimer _engineWatchdog;
     private bool _engineCreated;
     private PixelPoint _normalPosition;
     private Size _normalSize;
 
-    public MainWindow(DesktopStart start, IWindowPlacementStore placements, ITaskbarBadge taskbarBadge)
+    public MainWindow(DesktopStart start, IWindowPlacementStore placements,
+        IWorkspaceLocationStore workspaceLocation, ITaskbarBadge taskbarBadge)
     {
         _start = start;
         _placements = placements;
+        _workspaceLocation = workspaceLocation;
         _taskbarBadge = taskbarBadge;
         InitializeComponent();
         Restore(placements.Load());
@@ -133,7 +136,7 @@ internal sealed partial class MainWindow : Window
         Status.IsVisible = false;
         WebView.IsVisible = true;
         _engineWatchdog.Start();
-        WebView.Navigate(_start.Address!);
+        WebView.Navigate(_workspaceLocation.Restore(_start.Address!) ?? _start.Address!);
     }
 
     /// <summary>
@@ -195,18 +198,26 @@ internal sealed partial class MainWindow : Window
 
     private void OnWebMessageReceived(WebMessageReceivedEventArgs args)
     {
-        if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(args.Body)) return;
+        if (string.IsNullOrEmpty(args.Body)) return;
         try
         {
             using var message = JsonDocument.Parse(args.Body);
             var root = message.RootElement;
             if (root.ValueKind != JsonValueKind.Object
-                || !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String
-                || type.GetString() != "unread-count"
-                || !root.TryGetProperty("count", out var value) || value.ValueKind != JsonValueKind.Number
-                || !value.TryGetInt32(out var count)
-                || count is < 0 or > 100) return;
-            Dispatcher.UIThread.Post(() => _taskbarBadge.SetCount(count));
+                || !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String) return;
+            if (type.GetString() == "workspace-location")
+            {
+                Guid? ReadId(string name) => root.TryGetProperty(name, out var value)
+                    && value.ValueKind == JsonValueKind.String && Guid.TryParse(value.GetString(), out var id)
+                        ? id : null;
+                _workspaceLocation.Save(ReadId("project"), ReadId("chat"), ReadId("branch"));
+            }
+            else if (OperatingSystem.IsWindows() && type.GetString() == "unread-count"
+                     && root.TryGetProperty("count", out var value) && value.ValueKind == JsonValueKind.Number
+                     && value.TryGetInt32(out var count) && count is >= 0 and <= 100)
+            {
+                Dispatcher.UIThread.Post(() => _taskbarBadge.SetCount(count));
+            }
         }
         catch (JsonException)
         {

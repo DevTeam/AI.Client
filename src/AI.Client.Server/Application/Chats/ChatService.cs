@@ -111,11 +111,22 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
 
     public async Task<ChatDetails?> RemoveReviewReferenceAsync(Guid projectId, Guid chatId,
         Guid messageId, Guid reviewId, long revision, CancellationToken cancellationToken)
+        => await RemoveReferenceAsync(projectId, chatId, messageId, reviewId, revision, reviewOnly: true, cancellationToken);
+
+    public async Task<ChatDetails?> RemoveResourceReferenceAsync(Guid projectId, Guid chatId,
+        Guid messageId, Guid resourceId, long revision, CancellationToken cancellationToken)
+        => await RemoveReferenceAsync(projectId, chatId, messageId, resourceId, revision, reviewOnly: false, cancellationToken);
+
+    private async Task<ChatDetails?> RemoveReferenceAsync(Guid projectId, Guid chatId,
+        Guid messageId, Guid resourceId, long revision, bool reviewOnly, CancellationToken cancellationToken)
     {
         using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
         if (stored is null || stored.Revision != revision) return null;
-        if (!stored.Chat.RemoveReviewReference(new ChatMessageId(messageId), reviewId, clock.UtcNow))
+        var removed = reviewOnly
+            ? stored.Chat.RemoveReviewReference(new ChatMessageId(messageId), resourceId, clock.UtcNow)
+            : stored.Chat.RemoveResourceReference(new ChatMessageId(messageId), resourceId, clock.UtcNow);
+        if (!removed)
             return null;
         var result = await repository.SaveAsync(stored.Chat, revision, cancellationToken);
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;

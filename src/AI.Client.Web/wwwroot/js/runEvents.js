@@ -91,6 +91,10 @@ export function showReviewSubmenu(triggerId, popupId) {
     popup.querySelector("button")?.focus();
 }
 
+export function hideReviewSubmenus() {
+    document.querySelectorAll(".review-submenu:popover-open").forEach(popup => popup.hidePopover());
+}
+
 /**
  * Closes a right-hand drawer on a press anywhere outside it without swallowing that press: the
  * backdrop no longer catches clicks, so one click both closes the drawer and opens the chat (or

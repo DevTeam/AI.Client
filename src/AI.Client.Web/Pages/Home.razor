@@ -343,8 +343,8 @@
             GetRunForBranch="@(messageId => _selectedChat is null ? null : GetRun(_selectedChat.Id, BranchLeafHelpers.RunBranchIdFor(messageId, _selectedChat)))"
             OnCopyMessage="CopyMessageAsync"
             OnReviewChanges="OpenReviewFromChangesAsync"
-            OnOpenReview="OpenReviewAsync"
-            OnRemoveReview="RemoveMessageReviewAsync"
+            OnOpenReview="OpenAttachedReviewAsync"
+            OnRemoveResource="RemoveMessageResourceAsync"
             ReviewNames="@_reviews.ToDictionary(item => item.Id, item => item.Name)"
             MessageReviewIds="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).Select(item => item.Id).ToHashSet()"
             MessageReviews="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).GroupBy(item => item.SourceMessageId).ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.UpdatedAt).First())"
@@ -3688,6 +3688,7 @@
 
     private async Task OpenReviewForChatAsync(Guid chatId, Guid reviewId)
     {
+        if (_runEventsModule is not null) await _runEventsModule.InvokeVoidAsync("hideReviewSubmenus");
         CloseContextMenus();
         if (_selectedChat?.Id != chatId) await SelectChatAsync(chatId);
         if (_selectedChat?.Id == chatId) await OpenReviewAsync(reviewId);
@@ -3695,30 +3696,45 @@
 
     private async Task OpenReviewForBranchAsync(BranchTreeItem branch, Guid reviewId)
     {
+        if (_runEventsModule is not null) await _runEventsModule.InvokeVoidAsync("hideReviewSubmenus");
         CloseContextMenus();
         await SelectBranchTreeItemAsync(branch);
         await OpenReviewAsync(reviewId);
     }
 
-    private async Task RemoveMessageReviewAsync((Guid MessageId, Guid ReviewId) link)
+    private async Task OpenAttachedReviewAsync(ChatResourceRef reference)
+    {
+        if (reference.ReviewKind == ChatReviewKind.Message
+            || _reviews.Any(item => item.Id == reference.Id && item.Kind == ChatReviewKind.Message))
+        {
+            var review = _reviews.FirstOrDefault(item => item.Id == reference.Id);
+            if (review is null) { await LoadReviewsAsync(); review = _reviews.FirstOrDefault(item => item.Id == reference.Id); }
+            if (review is not null && _messageFeed is not null)
+                await _messageFeed.ScrollToMessageAsync(review.SourceMessageId);
+            return;
+        }
+        await OpenReviewAsync(reference.Id);
+    }
+
+    private async Task RemoveMessageResourceAsync((Guid MessageId, Guid ResourceId) link)
     {
         if (_selectedProject is null || _selectedChat is null) return;
         var projectId = _selectedProject.Id;
         var chatId = _selectedChat.Id;
         try
         {
-            var updated = await ChatHistoryApi.RemoveReviewReferenceAsync(projectId, chatId,
-                link.MessageId, link.ReviewId, _selectedChat.Revision, CancellationToken.None);
+            var updated = await ChatHistoryApi.RemoveResourceReferenceAsync(projectId, chatId,
+                link.MessageId, link.ResourceId, _selectedChat.Revision, CancellationToken.None);
             if (updated is null)
             {
                 var current = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);
                 if (current?.Messages.FirstOrDefault(item => item.Id == link.MessageId)?.Resources
-                    ?.Any(item => item.Id == link.ReviewId) == true)
-                    updated = await ChatHistoryApi.RemoveReviewReferenceAsync(projectId, chatId,
-                        link.MessageId, link.ReviewId, current.Revision, CancellationToken.None);
+                    ?.Any(item => item.Id == link.ResourceId) == true)
+                    updated = await ChatHistoryApi.RemoveResourceReferenceAsync(projectId, chatId,
+                        link.MessageId, link.ResourceId, current.Revision, CancellationToken.None);
                 else updated = current;
             }
-            if (updated is null) { _chatError = "The chat changed. Try removing the link again."; return; }
+            if (updated is null) { _chatError = "The chat changed. Try removing the resource again."; return; }
             if (_selectedProject?.Id == projectId && _selectedChat?.Id == chatId)
             {
                 _selectedChat = updated;
@@ -3728,7 +3744,7 @@
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
-            _chatError = $"Could not remove review link: {error.Message}";
+            _chatError = $"Could not remove resource link: {error.Message}";
         }
     }
 
@@ -3758,8 +3774,31 @@
     {
         if (!await CloseDrawersExceptAsync(Drawer.Review)) return;
         await LoadReviewsAsync();
+        if (!await LoadFullReviewAsync(id)) return;
         if (!await LoadReviewChatAsync()) return;
         OpenReviewPanel(id);
+    }
+
+    private async Task<bool> LoadFullReviewAsync(Guid id)
+    {
+        if (_selectedProject is null || _selectedChat is null) return false;
+        var projectId = _selectedProject.Id;
+        var chatId = _selectedChat.Id;
+        try
+        {
+            var review = await ReviewApi.GetAsync(projectId, chatId, id, CancellationToken.None);
+            if (_selectedProject?.Id != projectId || _selectedChat?.Id != chatId) return false;
+            if (review is null) { _chatError = "Review is unavailable."; return false; }
+            var index = _reviews.FindIndex(item => item.Id == id);
+            if (index < 0) _reviews.Add(review); else _reviews[index] = review;
+            _reviewVersion++;
+            return true;
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _chatError = $"Could not open review: {error.Message}";
+            return false;
+        }
     }
 
     private async Task OpenReviewFromChangesAsync(Guid sourceMessageId)
@@ -3782,6 +3821,7 @@
                         changes.Files.Select(item => item.Path).ToArray()), CancellationToken.None);
                 await OnReviewChangedAsync(review);
             }
+            else if (!await LoadFullReviewAsync(review.Id)) return;
             OpenReviewPanel(review.Id);
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)

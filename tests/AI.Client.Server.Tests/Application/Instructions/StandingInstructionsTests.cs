@@ -99,6 +99,9 @@ public sealed class StandingInstructionsTests : IDisposable
         // Without the App tools the base prompt does not describe them, and there is nothing to
         // remember with and nothing remembered: no memory layer.
         preview.Layers[0].Content.ShouldNotContain("spawn_subtask");
+        // The chat draws diagrams whatever tools the run has, so that part is always there.
+        preview.Layers[0].Content.ShouldContain("```mermaid");
+        preview.Layers[0].Content.ShouldContain("xmlns=\"http://www.w3.org/2000/svg\"");
         preview.Layers.ShouldNotContain(layer => layer.Key == "memory.index");
     }
 

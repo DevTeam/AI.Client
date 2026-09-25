@@ -157,6 +157,20 @@ public sealed class AppToolTests
     }
 
     [Fact]
+    public async Task ToolSearchShouldPointADrawingRequestAtDiagramBlocks()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var drawing = await AppFixture.CallAsync(session, "tool_search", new { query = "draw architecture diagram" });
+        var unrelated = await AppFixture.CallAsync(session, "tool_search", new { query = "translate spreadsheet cells" });
+
+        drawing.GetProperty("tools").GetArrayLength().ShouldBe(0);
+        drawing.GetProperty("guidance").GetString()!.ShouldContain("```mermaid");
+        unrelated.GetProperty("guidance").GetString()!.ShouldNotContain("mermaid");
+    }
+
+    [Fact]
     public async Task ShouldRememberCorrectAndForgetAMemoryEntry()
     {
         await using var fixture = await AppFixture.CreateAsync();

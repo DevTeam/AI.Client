@@ -17,7 +17,7 @@ public sealed class StandingInstructions(
     public const string BaseKey = "app.base";
     public const string ProjectKey = "project.instructions";
     public const string MemoryKey = "memory.index";
-    public const long BaseBudgetTokens = 1_536;
+    public const long BaseBudgetTokens = 2_048;
     public const long ProjectBudgetTokens = 4_096;
     public const long MemoryBudgetTokens = 2_048;
 
@@ -38,6 +38,23 @@ public sealed class StandingInstructions(
         + "lossy compaction. Search before you read: locate the file or lines first, then read only the part you need, "
         + "not whole large files, trees or logs. Make independent calls in one step, never repeat a call whose result you "
         + "already have, and do not restate tool output: the user sees each call.";
+
+    /// <summary>
+    /// What the chat draws from an answer. It is sent whatever tools a run has, because the chat,
+    /// not a tool, renders these blocks; without it a model hunts for a drawing tool that does not
+    /// exist or writes an SVG the image preview rejects.
+    /// </summary>
+    private const string RenderingGuide =
+        "\nYour answers are rendered as Markdown. There is no drawing tool: to show a diagram, write it in your answer.\n"
+        + "- A ```mermaid block is drawn as a diagram (Mermaid 11: flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, "
+        + "erDiagram, gantt, pie, mindmap, timeline, gitGraph). Diagrams are static and styled by the app theme. Quote labels "
+        + "that contain punctuation: A[\"Parse (step 1)\"]. Prefer Mermaid for flows, structures and sequences.\n"
+        + "- A ```svg block is shown as an image. Write one complete document starting with "
+        + "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"...\">. It cannot run scripts or load external images, fonts "
+        + "or stylesheets, and it does not follow the app theme: use explicit colors that read on both light and dark "
+        + "backgrounds, or draw your own background. Use SVG for illustrations and precise layouts Mermaid cannot express.\n"
+        + "A malformed or unclosed block is shown as code, and a Mermaid error is shown to the user: fix the source rather "
+        + "than explaining the error. Write a diagram to a file only when the user asks for a file.";
 
     /// <summary>
     /// Strategy for the App tools, sent only when a run can reach them. The tools' own descriptions
@@ -66,7 +83,7 @@ public sealed class StandingInstructions(
     {
         var project = await projects.GetAsync(projectId, cancellationToken)
             ?? throw new InvalidOperationException("Project not found.");
-        var basePrompt = appToolsAvailable ? BasePrompt + AppToolsGuide : BasePrompt;
+        var basePrompt = BasePrompt + RenderingGuide + (appToolsAvailable ? AppToolsGuide : string.Empty);
         var layers = new List<ModelContextLayer> { Layer(BaseKey, "Base prompt", basePrompt, BaseBudgetTokens, [], false) };
         if (await ProjectLayerAsync(project.Id, project.Name, project.Description,
                 project.DirectoryGrants.Select(grant => grant.CanonicalRoot).ToArray(), cancellationToken) is { } projectLayer)

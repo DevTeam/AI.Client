@@ -63,6 +63,9 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
         {
             if (!reviewList.TryGetValue(reference.Id, out var review))
                 throw new InvalidOperationException("Review resource is not in this chat.");
+            if (review.Kind == ChatReviewKind.Diff ? review.Comments.Count == 0
+                : review.MessageComments is not { Count: > 0 })
+                throw new InvalidOperationException("A review without comments cannot be attached to a message.");
             byId.Add(reference.Id, new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty,
                 review.Name, review.Kind));
         }

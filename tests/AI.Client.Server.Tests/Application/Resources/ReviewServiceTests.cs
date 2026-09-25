@@ -91,6 +91,15 @@ public sealed class ReviewServiceTests
 
             updated!.Name.ShouldBe("Renamed");
             updated.Comments.ShouldHaveSingleItem().ShouldBe(comment);
+            var createdWithComment = await service.CreateAsync(projectId, chatId,
+                new CreateReviewRequest(sourceId, "Direct comment", [file.Path], Comments: [comment]), token);
+            createdWithComment.Comments.ShouldHaveSingleItem().ShouldBe(comment);
+            await Should.ThrowAsync<ArgumentException>(() => service.CreateAsync(projectId, chatId,
+                new CreateReviewRequest(sourceId, "Invalid comment", [file.Path],
+                    Comments: [comment with { NewStart = 500, NewEnd = 500 }]), token));
+            chats.Setup(item => item.RemoveReviewReferencesAsync(projectId, chatId, createdWithComment.Id,
+                It.IsAny<CancellationToken>())).ReturnsAsync(currentChat);
+            (await service.DeleteAsync(projectId, chatId, createdWithComment.Id, token)).ShouldBeTrue();
             var restored = (await service.ListAsync(projectId, chatId, token)).ShouldHaveSingleItem();
             restored.Id.ShouldBe(updated.Id);
             restored.Name.ShouldBe("Renamed");

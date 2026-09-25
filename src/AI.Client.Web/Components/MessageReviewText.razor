@@ -192,10 +192,11 @@
         _saving = true;
         try
         {
-            _current = await ReviewsApi.UpdateAsync(ProjectId, ChatId, _current.Id,
+            var updated = await ReviewsApi.UpdateAsync(ProjectId, ChatId, _current.Id,
                 new UpdateReviewRequest(_current.Name, [], [], _current.Revision,
                     (_current.MessageComments ?? []).Where(item => item.Id != comment.Id).ToArray()), CancellationToken.None);
-            await OnChanged.InvokeAsync(_current);
+            _current = updated.MessageComments is { Count: > 0 } ? updated : null;
+            await OnChanged.InvokeAsync(updated);
             _error = null;
             Cancel();
         }

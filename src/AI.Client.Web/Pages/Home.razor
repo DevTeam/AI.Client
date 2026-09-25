@@ -569,7 +569,7 @@
     {
         <ReviewWorkspace @key="_reviewPanelKey" ProjectId="@_selectedProject.Id" Chat="@(_reviewChat ?? _selectedChat)"
                          Reviews="@_reviews" StartReviewId="@_reviewStartId"
-                         OnChanged="OnReviewChangedAsync" OnDelete="@(id => DeleteReviewAsync(_selectedChat.Id, id))" OnClose="CloseReview" />
+                         OnChanged="OnReviewChangedAsync" OnDelete="@(id => DeleteReviewAsync(_selectedChat.Id, id))" OnClose="CloseReviewAsync" />
     }
 </main>
 
@@ -935,7 +935,7 @@
             await RequestCloseProjectSettingsAsync();
             if (_isProjectSettingsOpen) return false;
         }
-        if (keep != Drawer.Review && _reviewWorkspaceOpen) CloseReview();
+        if (keep != Drawer.Review && _reviewWorkspaceOpen) await CloseReviewAsync();
         return true;
     }
 
@@ -1494,7 +1494,7 @@
 
     private async Task SelectProjectAsync(ProjectSummary project, bool restoreLastChat = true)
     {
-        CloseReview();
+        await CloseReviewAsync();
         _reviewChat = null;
         _projectSelectionCancellation?.Cancel();
         _projectSelectionCancellation?.Dispose();
@@ -2120,7 +2120,7 @@
     private async Task CreateChatAsync()
     {
         if (_selectedProject is null) return;
-        CloseReview();
+        await CloseReviewAsync();
         _reviewChat = null;
         _reviews.Clear();
         _reviewVersion++;
@@ -2269,7 +2269,7 @@
 
     private async Task SelectChatAsync(Guid chatId)
     {
-        CloseReview();
+        await CloseReviewAsync();
         _reviewChat = null;
         _attachComposer = true;
         ResetBranchOperationState();
@@ -2883,9 +2883,10 @@
         var projectId = _selectedProject.Id;
         try
         {
-            var reviews = await ReviewApi.ListAsync(projectId, chatId, CancellationToken.None);
+            var reviews = await PruneEmptyReviewsAsync(projectId, chatId,
+                await ReviewApi.ListAsync(projectId, chatId, CancellationToken.None));
             if (_selectedProject?.Id == projectId && _chatMenuId == chatId)
-                _menuReviews[chatId] = reviews;
+                _menuReviews[chatId] = reviews.Where(item => !IsEmptyReview(item)).ToArray();
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
@@ -3069,7 +3070,7 @@
     private async Task SelectBranchTreeItemAsync(BranchTreeItem branch)
     {
         if (_selectedProject is null || _selectedChat is null) return;
-        CloseReview();
+        await CloseReviewAsync();
         _reviewChat = null;
         ResetBranchOperationState();
 
@@ -3686,7 +3687,8 @@
         if (_reviewChat is null || _selectedChat is null || _reviewChat.Id != _selectedChat.Id) return [];
         var visibleMessages = Feed.BuildBranch(_reviewChat.Messages, branch.LeafId)
             .Select(item => item.Id).ToHashSet();
-        return _reviews.Where(item => item.Kind == ChatReviewKind.Diff && visibleMessages.Contains(item.SourceMessageId))
+        return _reviews.Where(item => item.Kind == ChatReviewKind.Diff && !IsEmptyReview(item)
+            && visibleMessages.Contains(item.SourceMessageId))
             .OrderByDescending(item => item.UpdatedAt).ToArray();
     }
 
@@ -3696,7 +3698,7 @@
         var lastAnswer = Feed.BuildBranch(_selectedChat.Messages, _branchLeafId)
             .LastOrDefault(item => item.Role == "Assistant" && item.ToolCalls is null && !item.IsIncomplete);
         var lastReviewSourceId = lastAnswer?.WorkspaceChanges is { IsEmpty: false } ? lastAnswer.Id : (Guid?)null;
-        return _reviews.Where(item => item.Kind == ChatReviewKind.Diff)
+        return _reviews.Where(item => item.Kind == ChatReviewKind.Diff && !IsEmptyReview(item))
             .OrderByDescending(item => item.SourceMessageId == lastReviewSourceId)
             .ThenByDescending(item => item.UpdatedAt).ToArray();
     }
@@ -3829,7 +3831,8 @@
         if (projectId is null || chatId is null) return;
         try
         {
-            var reviews = await ReviewApi.ListAsync(projectId.Value, chatId.Value, CancellationToken.None);
+            var reviews = await PruneEmptyReviewsAsync(projectId.Value, chatId.Value,
+                await ReviewApi.ListAsync(projectId.Value, chatId.Value, CancellationToken.None));
             if (_selectedProject?.Id == projectId && _selectedChat?.Id == chatId)
             {
                 _reviews.AddRange(reviews);
@@ -3842,8 +3845,36 @@
         }
     }
 
+    private async Task<IReadOnlyList<ChatReview>> PruneEmptyReviewsAsync(Guid projectId, Guid chatId,
+        IReadOnlyList<ChatReview> reviews)
+    {
+        var kept = new List<ChatReview>(reviews.Count);
+        var deletedIds = new HashSet<Guid>();
+        foreach (var review in reviews)
+        {
+            if (!IsEmptyReview(review) || _reviewWorkspaceOpen && _reviewStartId == review.Id)
+            {
+                kept.Add(review);
+                continue;
+            }
+            if (await ReviewApi.DeleteAsync(projectId, chatId, review.Id, CancellationToken.None))
+                deletedIds.Add(review.Id);
+        }
+        if (deletedIds.Count == 0) return kept;
+        foreach (var key in _resourceDrafts.Keys.Where(key => key.StartsWith($"{chatId}:", StringComparison.Ordinal)).ToArray())
+            _resourceDrafts[key] = _resourceDrafts[key].Where(item => !deletedIds.Contains(item.Id)).ToArray();
+        if (_selectedChat?.Id == chatId && _selectedProject?.Id == projectId)
+        {
+            _draftResources.RemoveAll(item => deletedIds.Contains(item.Id));
+            var refreshed = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);
+            if (refreshed is not null) { _selectedChat = refreshed; _reviewChat = refreshed; CacheChatDetails(refreshed); }
+        }
+        return kept;
+    }
+
     private async Task OpenReviewAsync(Guid id)
     {
+        if (_reviewWorkspaceOpen && _reviewStartId != id) await CloseReviewAsync();
         if (!await CloseDrawersExceptAsync(Drawer.Review)) return;
         await LoadReviewsAsync();
         if (!await LoadFullReviewAsync(id)) return;
@@ -3876,6 +3907,8 @@
     private async Task OpenReviewFromChangesAsync(Guid sourceMessageId)
     {
         if (_openingReviewSourceId == sourceMessageId) return;
+        if (_reviewWorkspaceOpen && _reviews.FirstOrDefault(item => item.Id == _reviewStartId)?.SourceMessageId != sourceMessageId)
+            await CloseReviewAsync();
         if (!await CloseDrawersExceptAsync(Drawer.Review)) return;
         _openingReviewSourceId = sourceMessageId;
         try
@@ -3891,7 +3924,8 @@
                 review = await ReviewApi.CreateAsync(_selectedProject.Id, _reviewChat.Id,
                     new CreateReviewRequest(sourceMessageId, $"Review {source.CreatedAt.LocalDateTime:g}",
                         changes.Files.Select(item => item.Path).ToArray()), CancellationToken.None);
-                await OnReviewChangedAsync(review);
+                _reviews.Add(review);
+                _reviewVersion++;
             }
             else if (!await LoadFullReviewAsync(review.Id)) return;
             OpenReviewPanel(review.Id);
@@ -3932,32 +3966,50 @@
 
     private void CloseReview() => _reviewWorkspaceOpen = false;
 
-    private Task OnReviewChangedAsync(ChatReview review)
+    private async Task CloseReviewAsync()
     {
+        if (!_reviewWorkspaceOpen) return;
+        var review = _reviews.FirstOrDefault(item => item.Id == _reviewStartId);
+        CloseReview();
+        if (review is not null && IsEmptyReview(review))
+            await DeleteReviewAsync(review.ChatId, review.Id);
+    }
+
+    private async Task OnReviewChangedAsync(ChatReview review)
+    {
+        if (IsEmptyReview(review))
+        {
+            var previous = _reviews.FirstOrDefault(item => item.Id == review.Id);
+            if (!_reviewWorkspaceOpen || _reviewStartId != review.Id
+                || previous is { } existing && !IsEmptyReview(existing))
+                await DeleteReviewAsync(review.ChatId, review.Id);
+            else
+            {
+                var draftIndex = _reviews.FindIndex(item => item.Id == review.Id);
+                if (draftIndex < 0) _reviews.Add(review); else _reviews[draftIndex] = review;
+                _reviewVersion++;
+            }
+            return;
+        }
         var index = _reviews.FindIndex(item => item.Id == review.Id);
         if (index < 0) _reviews.Add(review); else _reviews[index] = review;
         _reviews.Sort((first, second) => second.SourceCreatedAt.CompareTo(first.SourceCreatedAt));
         _menuReviews[review.ChatId] = _reviews.ToArray();
         _reviewVersion++;
-        if (IsFromPreviousRound(review))
-        {
-            if (review.Kind == ChatReviewKind.Message && review.MessageComments is not { Count: > 0 })
-                RemoveReviewFromDraft(review.Id);
-            else
-                AddReviewToDraft(review);
-        }
-        return Task.CompletedTask;
+        if (IsFromPreviousRound(review)) AddReviewToDraft(review);
     }
 
     private Task AttachReviewAsync(ChatReview review)
     {
-        if (_selectedChat?.Id != review.ChatId || _selectedProject?.Id != review.ProjectId) return Task.CompletedTask;
+        if (_selectedChat?.Id != review.ChatId || _selectedProject?.Id != review.ProjectId
+            || IsEmptyReview(review)) return Task.CompletedTask;
         AddReviewToDraft(review);
         return Task.CompletedTask;
     }
 
     private void AddReviewToDraft(ChatReview review)
     {
+        if (IsEmptyReview(review)) { RemoveReviewFromDraft(review.Id); return; }
         var reference = new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty, review.Name, review.Kind);
         var index = _draftResources.FindIndex(item => item.Id == review.Id);
         if (index >= 0) _draftResources[index] = reference;
@@ -3965,6 +4017,9 @@
         else { _chatError = "A message can reference at most 20 resources."; return; }
         _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
     }
+
+    private static bool IsEmptyReview(ChatReview review) => review.Kind == ChatReviewKind.Diff
+        ? review.Comments.Count == 0 : review.MessageComments is not { Count: > 0 };
 
     private bool IsFromPreviousRound(ChatReview review)
     {

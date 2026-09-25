@@ -61,7 +61,9 @@ public sealed class ResourceServiceTests
         var chatId = Guid.NewGuid();
         var reviewId = Guid.NewGuid();
         var review = new ChatReview(reviewId, projectId, chatId, "Current name", Guid.NewGuid(),
-            DateTimeOffset.UnixEpoch, ["file.cs"], [], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1);
+            DateTimeOffset.UnixEpoch, ["file.cs"],
+            [new ReviewComment(Guid.NewGuid(), "file.cs", null, null, 1, 1, "Check this line")],
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1);
         var reviews = new Mock<IReviewService>();
         reviews.Setup(item => item.ListAsync(projectId, chatId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([review]);
@@ -78,5 +80,27 @@ public sealed class ResourceServiceTests
         validated.ShouldHaveSingleItem().Name.ShouldBe("Current name");
         await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId,
             otherChatId, [validated[0]], token));
+    }
+
+    [Theory]
+    [InlineData(ChatReviewKind.Diff)]
+    [InlineData(ChatReviewKind.Message)]
+    public async Task ShouldRejectReviewWithoutComments(ChatReviewKind kind)
+    {
+        var projectId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var review = new ChatReview(Guid.NewGuid(), projectId, chatId, "Empty", Guid.NewGuid(),
+            DateTimeOffset.UnixEpoch, kind == ChatReviewKind.Diff ? ["file.cs"] : [], [],
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1, kind,
+            kind == ChatReviewKind.Message ? [] : null);
+        var reviews = new Mock<IReviewService>();
+        reviews.Setup(item => item.ListAsync(projectId, chatId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([review]);
+        var service = new ResourceService(new Mock<IProjectService>().Object,
+            new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object, reviews.Object);
+
+        await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId, chatId,
+            [new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty)],
+            TestContext.Current.CancellationToken));
     }
 }

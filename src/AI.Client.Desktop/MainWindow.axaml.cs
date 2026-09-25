@@ -15,6 +15,7 @@ internal sealed partial class MainWindow : Window
     private readonly IWindowPlacementStore _placements;
     private readonly IWorkspaceLocationStore _workspaceLocation;
     private readonly ITaskbarBadge _taskbarBadge;
+    private readonly IFileDropBridge _fileDrop;
     private readonly DispatcherTimer _engineWatchdog;
     private bool _engineCreated;
     private PixelPoint _normalPosition;
@@ -24,19 +25,24 @@ internal sealed partial class MainWindow : Window
     public event Action<string>? ThemeRequested;
 
     public MainWindow(DesktopStart start, IWindowPlacementStore placements,
-        IWorkspaceLocationStore workspaceLocation, ITaskbarBadge taskbarBadge)
+        IWorkspaceLocationStore workspaceLocation, ITaskbarBadge taskbarBadge, IFileDropBridge fileDrop)
     {
         _start = start;
         _placements = placements;
         _workspaceLocation = workspaceLocation;
         _taskbarBadge = taskbarBadge;
+        _fileDrop = fileDrop;
         InitializeComponent();
         Restore(placements.Load());
         PositionChanged += (_, _) => RememberNormalLater();
         _engineWatchdog = new DispatcherTimer { Interval = EngineTimeout };
         _engineWatchdog.Tick += (_, _) => OnEngineTimeout();
         WebView.EnvironmentRequested += (_, args) => ConfigureEnvironment(args);
-        WebView.AdapterCreated += (_, _) => _engineCreated = true;
+        WebView.AdapterCreated += (_, _) =>
+        {
+            _engineCreated = true;
+            _fileDrop.Attach(WebView.TryGetPlatformHandle(), OnFilesDropped);
+        };
         WebView.NavigationStarted += (_, args) => KeepNavigationInApp(args);
         WebView.NewWindowRequested += (_, args) => OpenNewWindowOutside(args);
         WebView.NavigationCompleted += (_, args) => OnNavigationCompleted(args);
@@ -86,6 +92,7 @@ internal sealed partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _engineWatchdog.Stop();
+        _fileDrop.Detach();
         base.OnClosed(e);
     }
 
@@ -235,6 +242,11 @@ internal sealed partial class MainWindow : Window
             // Only the app's small typed bridge message is handled here.
         }
     }
+
+    /// <summary>An empty list still answers the page, which then explains why nothing was added.</summary>
+    private void OnFilesDropped(IReadOnlyList<string> paths) => Dispatcher.UIThread.Post(() =>
+        WebView.InvokeScript(
+            $"window.dispatchEvent(new CustomEvent('ai-client-files-dropped', {{ detail: {JsonSerializer.Serialize(paths)} }}));"));
 
     private void OnEngineTimeout()
     {

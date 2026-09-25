@@ -791,6 +791,7 @@
     // already at the bottom. See MessageFeed.FollowNewContentAsync.
     private bool _followNewMessages;
     private IJSObjectReference? _composerModule;
+    private IJSObjectReference? _resourceDropSubscription;
     private IJSObjectReference? _composerHandle;
     private DotNetObjectReference<Home>? _dotNetReference;
     private ElementReference _workspace;
@@ -1082,6 +1083,7 @@
             try
             {
                 _composerModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
+                _resourceDropSubscription = await _composerModule.InvokeAsync<IJSObjectReference>("watchResourceDrop", _dotNetReference);
                 _inlineEditorModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/inlineEditor.js");
                 _runEventsModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/runEvents.js");
                 _runEventsSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("subscribe", _apiBaseUrl.Value.ToString(), _dotNetReference);
@@ -4139,6 +4141,40 @@
         await AddDraftResourceAsync(mode == DirectoryPickerMode.File ? [ChatResourceKind.File] : [ChatResourceKind.Directory], path);
     }
 
+    [JSInvokable]
+    public async Task OnComposerFilesDropped(string[] paths)
+    {
+        if (_selectedProject is null || paths.Length == 0) return;
+        var before = _draftResources.Count;
+        var failures = 0;
+        _chatError = null;
+        var comparison = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        foreach (var path in paths.Where(path => !string.IsNullOrWhiteSpace(path)).Distinct(comparison).Take(20))
+        {
+            if (_draftResources.Count >= 20)
+            {
+                _chatError = "A message can reference at most 20 resources.";
+                failures++;
+                break;
+            }
+            _chatError = null;
+            await AddDraftResourceAsync([ChatResourceKind.File], path, notifyErrors: false);
+            if (_chatError is not null) failures++;
+        }
+        var added = _draftResources.Count - before;
+        if (added > 0)
+            Notifications.ShowSuccess(added == 1 ? "File added to the message." : $"{added} files added to the message.");
+        if (failures > 0) Notifications.ShowError($"Could not add {failures} dropped file(s). {_chatError}");
+    }
+
+    [JSInvokable]
+    public Task OnComposerFileDropUnavailable(string[] names)
+    {
+        var detail = names.Length == 0 ? string.Empty : $" ({string.Join(", ", names.Take(3))})";
+        Notifications.ShowError($"Could not read the dropped file path{detail}. Use + → File to select it from the project.");
+        return Task.CompletedTask;
+    }
+
     private FileLinkMenuRequest? _fileLinkMenu;
 
     private void OpenFileLinkMenu(FileLinkMenuRequest request)
@@ -4207,9 +4243,17 @@
     /// Adds a file or directory reference to the composer of the chat that is open now. Each kind is
     /// tried in turn and the first the Host accepts wins; when none is, the first refusal is shown.
     /// </summary>
-    private async Task AddDraftResourceAsync(IReadOnlyList<ChatResourceKind> kinds, string path)
+    private async Task AddDraftResourceAsync(IReadOnlyList<ChatResourceKind> kinds, string path, bool notifyErrors = true)
     {
         if (_selectedProject is null) return;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (_draftResources.Any(item => kinds.Contains(item.Kind) && string.Equals(item.Path, path, comparison))) return;
+        if (_draftResources.Count >= 20)
+        {
+            _chatError = "A message can reference at most 20 resources.";
+            if (notifyErrors) Notifications.ShowError(_chatError);
+            return;
+        }
         var projectId = _selectedProject.Id;
         var draftKey = GetComposerDraftKey();
         try
@@ -4241,6 +4285,7 @@
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
             _chatError = $"Could not add the resource: {error.Message}";
+            if (notifyErrors) Notifications.ShowError(_chatError);
         }
     }
 
@@ -4549,6 +4594,7 @@
 
         await DisposeComposerHandleAsync();
 
+        if (_resourceDropSubscription is not null) { await _resourceDropSubscription.InvokeVoidAsync("dispose"); await _resourceDropSubscription.DisposeAsync(); }
         if (_composerModule is not null)
         {
             await _composerModule.DisposeAsync();

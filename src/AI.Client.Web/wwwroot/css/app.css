@@ -2151,6 +2151,7 @@ body {
 }
 
 .workspace-composer {
+    position: relative;
     grid-row: 5;
     grid-column: 1;
     width: min(48rem, calc(100% - 3rem));
@@ -2159,6 +2160,25 @@ body {
     border: 1px solid var(--color-border);
     border-radius: 0.85rem;
     background: var(--color-fill);
+}
+
+.workspace-composer.resource-drop-active {
+    outline: 2px dashed var(--color-accent);
+    outline-offset: 3px;
+}
+.workspace-composer.resource-drop-active::after {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+    color: var(--color-text-strong);
+    content: "Drop files to attach them to this message";
+    font-size: .86rem;
+    font-weight: 500;
+    pointer-events: none;
 }
 
 .composer-status {

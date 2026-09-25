@@ -158,6 +158,139 @@ export function copyText(text) {
     return navigator.clipboard.writeText(text);
 }
 
+/**
+ * File references need an absolute workspace path; a browser File alone does not expose one.
+ * Under WebView2 the dropped FileList goes to the desktop host, which reads each file's path and
+ * answers with the custom event; URI-list drags work in hosts that expose file URLs. Nothing is
+ * uploaded from the dropped files.
+ */
+export function watchResourceDrop(dotNetReference) {
+    const conversation = document.querySelector(".workspace-conversation");
+    const composer = conversation?.querySelector(".workspace-composer");
+    if (!conversation || !composer) return { dispose: () => {} };
+
+    let dragDepth = 0;
+    let unsupportedTimer = 0;
+    let disposed = false;
+    let pendingNames = null;
+
+    const hasFiles = transfer => Array.from(transfer?.types ?? []).some(type =>
+        type === "Files" || type === "text/uri-list" || type === "application/x-moz-file");
+
+    const toPath = value => {
+        if (!value) return null;
+        const trimmed = value.trim();
+        if (/^[a-z]:[\\/]/i.test(trimmed) || trimmed.startsWith("\\\\")) return trimmed;
+        try {
+            const url = new URL(trimmed);
+            if (url.protocol !== "file:") return null;
+            let path = decodeURIComponent(url.pathname);
+            if (url.hostname) return `\\\\${url.hostname}${path.replaceAll("/", "\\")}`;
+            if (/^\/[a-z]:\//i.test(path)) return path.slice(1).replaceAll("/", "\\");
+            return path;
+        } catch {
+            return null;
+        }
+    };
+
+    const pathsFromTransfer = transfer => {
+        const paths = [];
+        for (const file of Array.from(transfer?.files ?? [])) {
+            const path = toPath(file.path) ?? toPath(file.localPath);
+            if (path) paths.push(path);
+        }
+        for (const type of ["text/uri-list", "text/plain"]) {
+            const text = transfer?.getData(type);
+            if (!text) continue;
+            for (const line of text.split(/\r?\n/)) {
+                const value = line.trim();
+                if (!value || value.startsWith("#")) continue;
+                const path = toPath(value);
+                if (path) paths.push(path);
+            }
+        }
+        return [...new Set(paths)];
+    };
+
+    const clearHighlight = () => {
+        dragDepth = 0;
+        composer.classList.remove("resource-drop-active");
+    };
+    const onEnter = event => {
+        if (!hasFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        dragDepth++;
+        composer.classList.add("resource-drop-active");
+    };
+    const onOver = event => {
+        if (!hasFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+        composer.classList.add("resource-drop-active");
+    };
+    const onLeave = event => {
+        if (!hasFiles(event.dataTransfer)) return;
+        if (conversation.contains(event.relatedTarget)) return;
+        clearHighlight();
+    };
+    const onDrop = event => {
+        if (!hasFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        clearHighlight();
+        const paths = pathsFromTransfer(event.dataTransfer);
+        if (paths.length) {
+            clearTimeout(unsupportedTimer);
+            void dotNetReference.invokeMethodAsync("OnComposerFilesDropped", paths);
+            return;
+        }
+        const files = event.dataTransfer?.files ?? [];
+        const names = Array.from(files).map(file => file.name).filter(Boolean);
+        const unavailable = () => {
+            pendingNames = null;
+            if (!disposed) void dotNetReference.invokeMethodAsync("OnComposerFileDropUnavailable", names);
+        };
+        clearTimeout(unsupportedTimer);
+        const desktop = globalThis.chrome?.webview;
+        if (files.length && typeof desktop?.postMessageWithAdditionalObjects === "function") {
+            pendingNames = names;
+            desktop.postMessageWithAdditionalObjects(JSON.stringify({ type: "dropped-files" }), files);
+            // A host without the bridge never answers; say so rather than drop the files silently.
+            unsupportedTimer = window.setTimeout(unavailable, 2000);
+            return;
+        }
+        unavailable();
+    };
+    const onNativeDrop = event => {
+        if (pendingNames === null) return;
+        const names = pendingNames;
+        pendingNames = null;
+        clearTimeout(unsupportedTimer);
+        const paths = Array.isArray(event.detail) ? event.detail.map(toPath).filter(Boolean) : [];
+        if (disposed) return;
+        if (paths.length) void dotNetReference.invokeMethodAsync("OnComposerFilesDropped", [...new Set(paths)]);
+        else void dotNetReference.invokeMethodAsync("OnComposerFileDropUnavailable", names);
+    };
+
+    conversation.addEventListener("dragenter", onEnter);
+    conversation.addEventListener("dragover", onOver);
+    conversation.addEventListener("dragleave", onLeave);
+    conversation.addEventListener("drop", onDrop);
+    window.addEventListener("ai-client-files-dropped", onNativeDrop);
+
+    return {
+        dispose: () => {
+            disposed = true;
+            clearTimeout(unsupportedTimer);
+            conversation.removeEventListener("dragenter", onEnter);
+            conversation.removeEventListener("dragover", onOver);
+            conversation.removeEventListener("dragleave", onLeave);
+            conversation.removeEventListener("drop", onDrop);
+            window.removeEventListener("ai-client-files-dropped", onNativeDrop);
+            clearHighlight();
+        }
+    };
+}
+
 export function scrollToBottom(element) {
     element.scrollTop = element.scrollHeight;
 }

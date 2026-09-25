@@ -17,7 +17,7 @@ public sealed class StandingInstructions(
     public const string BaseKey = "app.base";
     public const string ProjectKey = "project.instructions";
     public const string MemoryKey = "memory.index";
-    public const long BaseBudgetTokens = 2_560;
+    public const long BaseBudgetTokens = 3_072;
     public const long ProjectBudgetTokens = 4_096;
     public const long MemoryBudgetTokens = 2_048;
 
@@ -37,7 +37,9 @@ public sealed class StandingInstructions(
         + "Work economically. Every tool result stays in your context for the rest of the run, and a full context forces "
         + "lossy compaction. Search before you read: locate the file or lines first, then read only the part you need, "
         + "not whole large files, trees or logs. Make independent calls in one step, never repeat a call whose result you "
-        + "already have, and do not restate tool output: the user sees each call.";
+        + "already have, and do not restate tool output: the user sees each call.\n"
+        + "The project's directory grants are its access boundary. Never reach a path outside them another way, through "
+        + "process_run, a shell, fetch or any other tool, even when that would work.";
 
     /// <summary>
     /// What the chat draws from an answer. It is sent whatever tools a run has, because the chat,
@@ -77,6 +79,12 @@ public sealed class StandingInstructions(
         + "everything it needs, because it cannot ask anyone.\n"
         + "- ask_user: only when the choice is genuinely the user's and a wrong guess would waste real work. Offer concrete "
         + "options with the recommended one first, and put related questions in one call.\n"
+        + "- Access: when the task needs a path outside the granted directories, neither refuse nor work around it. Call "
+        + "ask_user once with two questions: which directories to grant (pathKind 'directories', offering the paths the task "
+        + "needs, narrowest first) and the access level ('Read only (Recommended)' or 'Read and write'). Read the project "
+        + "with app_read, then add each chosen directory with app_security SetProjectSecurity, toolNames ['read'] or "
+        + "['read', 'write', 'edit', 'delete']. A grant reaches the file tools from the next run: say what you granted and "
+        + "ask the user to send the request again. If they decline or do not answer, say what you could not do without access.\n"
         + "- tool_search: the visible tool list may be a budgeted subset. Search before concluding a capability is missing; "
         + "never invent a tool name.\n"
         + "- context_compact: after a long exploration, once you have what you need, replace the finished work of this turn "

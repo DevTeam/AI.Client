@@ -69,6 +69,9 @@ public sealed class StandingInstructionsTests : IDisposable
 
         preview.Layers.Select(layer => layer.Key).ShouldBe(["app.base", "project.instructions", "memory.index"]);
         preview.Layers[0].Content.ShouldContain("spawn_subtask");
+        // Access outside the grants is asked for, not worked around.
+        preview.Layers[0].Content.ShouldContain("pathKind 'directories'");
+        preview.Layers[0].Content.ShouldContain("SetProjectSecurity");
         preview.Layers[0].Tokens.ShouldBeLessThanOrEqualTo(preview.Layers[0].BudgetTokens);
         var project = preview.Layers[1];
         project.Content.ShouldContain("An online shop.");
@@ -99,6 +102,7 @@ public sealed class StandingInstructionsTests : IDisposable
         // Without the App tools the base prompt does not describe them, and there is nothing to
         // remember with and nothing remembered: no memory layer.
         preview.Layers[0].Content.ShouldNotContain("spawn_subtask");
+        preview.Layers[0].Content.ShouldContain("access boundary");
         // The chat draws diagrams whatever tools the run has, so that part is always there.
         preview.Layers[0].Content.ShouldContain("```mermaid");
         preview.Layers[0].Content.ShouldContain("xmlns=\"http://www.w3.org/2000/svg\"");

@@ -38,6 +38,7 @@ internal sealed partial class UiComposition
             .Hint(Hint.Resolve, "Off")
             .Arg<DesktopStart>("start")
             .Bind<ITaskbarBadge>().As(Lifetime.Singleton).To<WindowsTaskbarBadge>()
+            .Bind<IFileDropBridge>().As(Lifetime.Singleton).To<WebView2FileDropBridge>()
             .Singleton<App, MainWindow, ProcessSignals, JsonWindowPlacementStore, JsonWorkspaceLocationStore, JsonThemePreferenceStore>()
             .Root<App>("App");
 }

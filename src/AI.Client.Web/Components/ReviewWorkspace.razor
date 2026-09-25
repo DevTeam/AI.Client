@@ -179,7 +179,10 @@
                     <span class="review-tree-file-status" title="@FileKindTitle(file.Kind)">@FileKindGlyph(file.Kind)</span>
                     <span class="review-tree-file-name">@node.Name</span>
                 </a>
-                @if (_current.Comments.Count(item => item.Path == file.Path) is > 0 and var count) { <small>@count</small> }
+                @if (_current.Comments.Count(item => item.Path == file.Path) is > 0 and var count)
+                {
+                    <span class="workspace-change-comments review-tree-comments" title="@count @(count == 1 ? "comment" : "comments")" aria-label="@count @(count == 1 ? "comment" : "comments")"><AppIcon Name="message-circle" />@count</span>
+                }
                 <span class="review-tree-counts">
                     @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
                     @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }

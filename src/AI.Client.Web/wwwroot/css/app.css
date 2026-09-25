@@ -4336,16 +4336,13 @@ textarea {
     margin: 0 auto;
 }
 
-/* Mermaid diagrams. ```mermaid``` fences arrive from Markdig as
-   `<pre><code class="language-mermaid">…</code></pre>` and are then replaced in place by
-   `js/mermaidBlocks.js` with a `<div class="mermaid-block" data-mermaid-state="…">`. The
-   replaced `<pre><code>` stays in the DOM only as a no-op fallback (Blazor's diff can
-   momentarily recreate the original between renders) — hiding it via the marker attribute on
-   its wrapper guarantees the raw source never flashes through, even if the replacement races
-   with the next diff. */
+/* Mermaid fences are replaced with a block that contains the SVG or a parse error. */
 .mermaid-block {
+    box-sizing: border-box;
     margin: 0.85rem 0;
     padding: 0.85rem 1rem;
+    min-width: 0;
+    max-width: 100%;
     border: 1px solid var(--color-border-translucent);
     border-radius: 0.5rem;
     background: var(--color-overlay-faint);
@@ -4397,6 +4394,7 @@ textarea {
     margin: 0;
     color: var(--color-text-secondary);
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 .mermaid-error .mermaid-source {

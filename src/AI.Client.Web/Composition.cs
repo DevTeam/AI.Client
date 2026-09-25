@@ -47,6 +47,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IWorkspaceLayoutService>()
             .Root<IWorkspaceStateService>()
             .Root<IGlobalSettingsApi>()
+            .Root<IClientSettingsService>()
+            .Root<IThemeService>()
             .Root<INotificationService>()
             .Root<IChatRunsApi>()
             .Root<IResourceApi>()
@@ -69,7 +71,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             // `ApiBaseUrl(string)` matches the constructor generated for the `Arg` above, so
             // Pure.DI wires it in automatically. Same as how `Host/Composition.cs` registers
             // its `IChatCompletionClient` lambda in `Bind<>().To(...)`.
-            .Singleton<ApiBaseUrl, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService, WorkspaceStateService, ChatComposerService, RunStateService, ChatMessageDeltaMerger>()
+            .Singleton<ApiBaseUrl, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService, WorkspaceStateService, ChatComposerService, RunStateService, ChatMessageDeltaMerger, ClientSettingsService, ThemeService>()
             .Transient<ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi, ResourceApi, ReviewApi>()
             .Transient((IApiBaseUrl arg) => new HttpClient { BaseAddress = arg.Value });
 }

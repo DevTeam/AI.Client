@@ -68,6 +68,8 @@ public sealed class StandingInstructionsTests : IDisposable
         var preview = await _standing.BuildAsync(_projectId, true, token);
 
         preview.Layers.Select(layer => layer.Key).ShouldBe(["app.base", "project.instructions", "memory.index"]);
+        preview.Layers[0].Content.ShouldContain("spawn_subtask");
+        preview.Layers[0].Tokens.ShouldBeLessThanOrEqualTo(preview.Layers[0].BudgetTokens);
         var project = preview.Layers[1];
         project.Content.ShouldContain("An online shop.");
         project.Content.ShouldContain("Never touch the payments module.");
@@ -94,7 +96,9 @@ public sealed class StandingInstructionsTests : IDisposable
         project.Content.ShouldNotContain("From the file.");
         project.Truncated.ShouldBeTrue();
         project.Tokens.ShouldBeLessThanOrEqualTo(project.BudgetTokens);
-        // Without the App tools there is nothing to remember with and nothing remembered: no memory layer.
+        // Without the App tools the base prompt does not describe them, and there is nothing to
+        // remember with and nothing remembered: no memory layer.
+        preview.Layers[0].Content.ShouldNotContain("spawn_subtask");
         preview.Layers.ShouldNotContain(layer => layer.Key == "memory.index");
     }
 

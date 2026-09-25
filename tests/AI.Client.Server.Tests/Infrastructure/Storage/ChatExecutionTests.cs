@@ -106,6 +106,30 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task CompletionCalledWithTheAppServerPrefixMustStillEndTheRun()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Completion.AdaptLegacyFinalAnswers = false;
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "What is my name?"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+        // The model has just read App tool names and spells the control tool the same way.
+        var finish = await fixture.NextCallAsync();
+        finish.ToolCalls = [new ChatToolCall("finish-1", ToolRef.AppPrefix + RunCompletionProtocol.Name, """
+            {"status":"complete","finalAnswer":"Your name is Kolya.","completed":["Read memory"],"evidence":["Profile entry"],"remaining":[]}
+            """)];
+        finish.Answer.SetResult("");
+
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
+            .ShouldHaveSingleItem().Content.ShouldBe("Your name is Kolya.");
+    }
+
+    [Fact]
     public async Task EmptyResponseMustKeepCompletionCorrectionUntilAValidDecision()
     {
         await using var fixture = await Fixture.CreateAsync();

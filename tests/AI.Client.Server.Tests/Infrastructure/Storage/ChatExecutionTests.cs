@@ -156,6 +156,28 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task EmptyResponsesAfterProvisionalProseMustPublishThatProse()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Completion.AdaptLegacyFinalAnswers = false;
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Remember that I use DI"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+        (await fixture.NextCallAsync()).Answer.SetResult("Saved: you use DI through interfaces.");
+        // Offered only the control tool, this endpoint falls silent.
+        for (var attempt = 0; attempt < 3; attempt++)
+            (await fixture.NextCallAsync()).Answer.SetResult("");
+
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
+            .ShouldHaveSingleItem().Content.ShouldBe("Saved: you use DI through interfaces.");
+    }
+
+    [Fact]
     public async Task EmptyResponseMustKeepCompletionCorrectionUntilAValidDecision()
     {
         await using var fixture = await Fixture.CreateAsync();

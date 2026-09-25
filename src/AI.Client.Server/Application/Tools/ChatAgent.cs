@@ -103,6 +103,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var truncated = 0;
         var continuedAnswer = new StringBuilder();
         var missingCompletion = 0;
+        // The latest prose the model gave while a completion decision was required. It is not
+        // published at once, but it is the answer to fall back on if the model then stops answering.
+        string? provisionalAnswer = null;
         var completionRequired = counts.Count > 0;
         while (true)
         {
@@ -168,6 +171,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                         : "Your previous response contained neither text nor a tool call and was not accepted. "
                           + "Return a non-empty answer or call an available tool.",
                     980, ModelInstructionLifetime.UntilAcknowledged));
+                if (attempt > MaxEmptyTurns && completionRequired && provisionalAnswer is { Length: > 0 } fallback)
+                {
+                    await Draft(null);
+                    await text(fallback, token);
+                    var fallbackChanges = await workspace.SnapshotAsync(runKey, token);
+                    await workspace.CompleteRunAsync(runKey, CancellationToken.None);
+                    return fallbackChanges;
+                }
                 if (attempt > MaxEmptyTurns)
                     throw new InvalidOperationException(
                         $"The model returned an empty response {attempt} times "
@@ -201,7 +212,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             {
                 if (completionRequired && ++missingCompletion <= MaxMissingCompletionTurns)
                 {
-                    context.Add(new ChatCompletionMessage("assistant", continuedAnswer.ToString() + content));
+                    provisionalAnswer = continuedAnswer.ToString() + content;
+                    context.Add(new ChatCompletionMessage("assistant", provisionalAnswer));
                     continuedAnswer.Clear();
                     instructions.Upsert(run, new ModelInstruction("run.completion-required",
                         $"Your previous response was provisional and was not published. Work is not finished until you call "
@@ -271,6 +283,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
 
             completionRequired = true;
             missingCompletion = 0;
+            // Prose written before new work began no longer describes where the work stands.
+            provisionalAnswer = null;
             continuedAnswer.Clear();
             if (calls.Any(call => !seenIds.Add(call.Id)))
                 throw new InvalidOperationException("Duplicate tool call IDs or excessive calls.");

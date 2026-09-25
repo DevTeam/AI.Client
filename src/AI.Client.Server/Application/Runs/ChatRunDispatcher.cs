@@ -13,6 +13,8 @@ using Contracts.Settings;
 using Contracts.Workspace;
 using Workspace;
 using AI.Client.Application.Resources;
+using AI.Client.Application.Memory;
+using AI.Client.Application.Instructions;
 using Domain.Runs;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
@@ -23,7 +25,8 @@ public sealed class ChatRunDispatcher(
     IGlobalSecretStore secretStore, IClock clock, IIdGenerator ids, IChatSynchronization synchronization,
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies,
     IChatContextBuilder contextBuilder, IChatBranchIds branchIds, IResourceService resources, IReviewService reviews,
-    IResourceModelProjection resourceProjection) : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
+    IResourceModelProjection resourceProjection, IMemoryService memory, IProjectInstructionsService projectInstructions)
+    : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
     /// <summary>
@@ -966,6 +969,8 @@ public sealed class ChatRunDispatcher(
         await repository.DeleteProjectAsync(projectId, cancellationToken);
         await resources.DeleteProjectAsync(projectId, cancellationToken);
         await reviews.DeleteProjectAsync(projectId, cancellationToken);
+        await memory.DeleteProjectAsync(projectId, cancellationToken);
+        await projectInstructions.DeleteProjectAsync(projectId, cancellationToken);
     }
 
     public async Task<ChatDeleteResult> DeleteChatAsync(Guid projectId, Guid chatId, long revision, CancellationToken cancellationToken)

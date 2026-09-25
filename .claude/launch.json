@@ -25,6 +25,27 @@
       ],
       "port": 52173,
       "autoPort": true
+    },
+    {
+      "name": "ai-client-host-isolated",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "src/AI.Client.Host",
+        "--no-launch-profile",
+        "-p:BaseOutputPath=C:/Users/PYANIK~1/AppData/Local/Temp/claude/C--Projects-DevTeam-AI-Client/dfa10bf5-2fd1-4711-a999-de026b3ff113/scratchpad/hostbin/",
+        "--",
+        "--data-dir",
+        "C:/Users/PYANIK~1/AppData/Local/Temp/claude/C--Projects-DevTeam-AI-Client/dfa10bf5-2fd1-4711-a999-de026b3ff113/scratchpad/data",
+        "--serve-web"
+      ],
+      "port": 52180,
+      "autoPort": false,
+      "env": {
+        "ASPNETCORE_URLS": "http://localhost:52180",
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     }
   ]
 }

@@ -1,0 +1,137 @@
+@using AI.Client.Contracts.Instructions
+@using AI.Client.Web.Memory
+@inject IMemoryApi MemoryApi
+@inject INotificationService Notifications
+
+<section class="project-instructions" aria-label="Project instructions">
+    <div class="section-heading">
+        <div><h3>Instructions</h3><p>Sent to the assistant in full on every run in this project.</p></div>
+    </div>
+    <textarea class="project-instructions-text" rows="8" maxlength="32000" disabled="@(_stored is null)"
+              placeholder="Rules for the assistant here: code style, commands to run, what not to touch…"
+              @bind="_text" @bind:event="oninput"></textarea>
+    <label class="checkbox"><input type="checkbox" disabled="@(_stored is null)" @bind="_includeFiles" /> Add AGENTS.md and CLAUDE.md from the project's directories</label>
+    @if (ProjectLayer is { } layer)
+    {
+        <ul class="instruction-sources">
+            @foreach (var source in layer.Sources)
+            {
+                <li class="@(source.Included ? string.Empty : "excluded")"><span title="@source.Name">@source.Name</span><small>@(source.Included ? $"{source.Tokens} tokens" : "left out: over budget")</small></li>
+            }
+        </ul>
+        <p class="instruction-budget @(layer.Truncated ? "over" : string.Empty)">@layer.Tokens of @layer.BudgetTokens tokens@(layer.Truncated ? " · cut to fit" : string.Empty)@(IsDirty ? " · as last saved" : string.Empty)</p>
+    }
+    @if (_error is { Length: > 0 })
+    {
+        <p class="settings-drawer-error" role="alert">@_error</p>
+    }
+    <div class="form-actions">
+        @if (IsDirty)
+        {
+            <button type="button" class="compact-action" disabled="@_busy" @onclick="SaveAsync">Save instructions</button>
+        }
+        <button type="button" class="secondary-action compact-action" aria-expanded="@_previewOpen" @onclick="TogglePreviewAsync"><AppIcon Name="@(_previewOpen ? "chevron-up" : "chevron-down")" />What the model sees</button>
+    </div>
+    @if (_previewOpen && _preview is { } preview)
+    {
+        <div class="model-context-preview">
+            <p>The standing part of the system prompt, in order, as the next run will send it. Run-control instructions follow it. @preview.TotalTokens tokens in total.</p>
+            @foreach (var item in preview.Layers)
+            {
+                <details>
+                    <summary><strong>@item.Title</strong><small>@item.Tokens / @item.BudgetTokens tokens@(item.Truncated ? " · cut" : string.Empty)</small></summary>
+                    <pre>@item.Content</pre>
+                </details>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+
+    private ProjectInstructions? _stored;
+    private ModelContextPreview? _preview;
+    private string _text = string.Empty;
+    private bool _includeFiles = true;
+    private bool _busy;
+    private bool _previewOpen;
+    private string? _error;
+    private Guid _loadedFor;
+
+    public bool IsDirty => _stored is { } stored && (stored.Text != _text.Trim() || stored.IncludeWorkspaceFiles != _includeFiles);
+
+    private ModelContextLayer? ProjectLayer => _preview?.Layers.FirstOrDefault(layer => layer.Key == "project.instructions");
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == ProjectId) return;
+        _loadedFor = ProjectId;
+        await LoadAsync();
+    }
+
+    /// <summary>The drawer calls this when it closes: closing is the save, as for the other project settings.</summary>
+    public async Task<bool> SaveAsync()
+    {
+        if (!IsDirty || _stored is not { } stored) return true;
+        _busy = true;
+        _error = null;
+        try
+        {
+            _stored = await MemoryApi.UpdateInstructionsAsync(ProjectId,
+                new UpdateProjectInstructionsRequest(_text, _includeFiles, stored.Revision), CancellationToken.None);
+            _text = _stored.Text;
+            _includeFiles = _stored.IncludeWorkspaceFiles;
+            Notifications.ShowSuccess("Instructions saved.");
+            _preview = await MemoryApi.GetModelContextAsync(ProjectId, CancellationToken.None);
+            return true;
+        }
+        catch (MemoryConflictException error)
+        {
+            // Someone — possibly the assistant, with the user's approval — saved first. Keep the typed
+            // text so nothing is lost, and move to the stored revision so the next save can land.
+            _stored = await MemoryApi.GetInstructionsAsync(ProjectId, CancellationToken.None);
+            _error = error.Message + " Your text is kept; save again to replace it.";
+            return false;
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _error = error.Message;
+            return false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public void Discard()
+    {
+        if (_stored is null) return;
+        _text = _stored.Text;
+        _includeFiles = _stored.IncludeWorkspaceFiles;
+        _error = null;
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _stored = await MemoryApi.GetInstructionsAsync(ProjectId, CancellationToken.None);
+            _text = _stored.Text;
+            _includeFiles = _stored.IncludeWorkspaceFiles;
+            _preview = await MemoryApi.GetModelContextAsync(ProjectId, CancellationToken.None);
+            _error = null;
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _error = "Instructions could not be loaded.";
+        }
+    }
+
+    private async Task TogglePreviewAsync()
+    {
+        _previewOpen = !_previewOpen;
+        if (_previewOpen) _preview = await MemoryApi.GetModelContextAsync(ProjectId, CancellationToken.None);
+    }
+}

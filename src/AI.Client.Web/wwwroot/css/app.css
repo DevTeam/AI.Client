@@ -4743,3 +4743,31 @@ textarea {
 .review-tree-folder-toggle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .review-tree-children { margin-left: .4rem; border-left: 1px solid var(--color-border); padding-left: .2rem; }
 @media (width <= 900px) { .review-workspace { left: 0; width: 100vw; } .review-workspace-body { grid-template-columns: minmax(0, 1fr); } .review-diff-scroll { grid-column: 1; } .review-file-tree, .review-tree-resizer { display: none; } }
+
+/* Memory: the person's entries and the open project's, one list beside the entry being edited. */
+.memory-group-label { margin: 0.4rem 0 0.1rem; padding: 0 0.4rem; color: var(--color-text-secondary); font-size: 0.8rem; font-weight: 500; }
+.memory-group-label:first-child { margin-top: 0; }
+.memory-editor .settings-list .empty-hint { margin: 0; padding: 0 0.4rem; font-size: 0.8rem; }
+.memory-add { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.memory-disabled .settings-list-select > span { color: var(--color-text-faint); }
+.memory-editor .settings-list-select > span { display: flex; gap: 0.35rem; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memory-form textarea { min-height: 7rem; resize: vertical; }
+.memory-meta { margin: 0; color: var(--color-text-faint); font-size: 0.8rem; }
+
+/* Project instructions sit under the project's details in its settings drawer. */
+.project-instructions { display: grid; gap: 0.6rem; margin-top: 1.25rem; }
+.project-instructions .section-heading p { font-size: 0.8rem; }
+.project-instructions-text { min-height: 9rem; resize: vertical; font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.85rem; }
+.instruction-sources { display: grid; gap: 0.2rem; margin: 0; padding: 0; list-style: none; font-size: 0.8rem; }
+.instruction-sources li { display: flex; gap: 0.5rem; justify-content: space-between; min-width: 0; }
+.instruction-sources li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.instruction-sources li small, .instruction-budget { color: var(--color-text-faint); }
+.instruction-sources li.excluded > span { color: var(--color-text-faint); text-decoration: line-through; }
+.instruction-budget { margin: 0; font-size: 0.8rem; }
+.instruction-budget.over { color: var(--color-danger-text); }
+.model-context-preview { display: grid; gap: 0.4rem; font-size: 0.8rem; }
+.model-context-preview > p { margin: 0; color: var(--color-text-secondary); }
+.model-context-preview details { border: 1px solid var(--color-border); border-radius: 0.5rem; padding: 0.4rem 0.6rem; }
+.model-context-preview summary { display: flex; gap: 0.5rem; justify-content: space-between; cursor: pointer; }
+.model-context-preview summary small { color: var(--color-text-faint); }
+.model-context-preview pre { max-height: 16rem; margin: 0.5rem 0 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.78rem; }

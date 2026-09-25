@@ -4,6 +4,8 @@ namespace AI.Client.Server;
 using System.Diagnostics;
 using Application.Chat;
 using Application.Chats;
+using Application.Instructions;
+using Application.Memory;
 using Application.Notifications;
 using Application.Projects;
 using Application.Runs;
@@ -61,6 +63,9 @@ internal sealed class Composition
             .Root<IResourceRepository>()
             .Root<IReviewService>()
             .Root<IReviewRepository>()
+            .Root<IMemoryService>()
+            .Root<IProjectInstructionsService>()
+            .Root<IStandingInstructions>()
             .Root<IUnifiedDiffParser>()
             .Root<IChatBranchIds>()
             .Root<IToolUserInterface>()
@@ -70,7 +75,7 @@ internal sealed class Composition
             .Root<IRunEventsPublisher>()
             // Hosting
             .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer>()
-            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints>(Tag.Unique)
+            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, MemoryEndpoints>(Tag.Unique)
             // One storage root for data and logs: every path below and the file logger read it here.
             .Singleton<ProjectStorageLocation, DataDirectoryLock>()
             .Bind<ILoggerProvider>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new JsonLineFileLoggerProvider(location))
@@ -111,6 +116,8 @@ internal sealed class Composition
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
                 JsonGlobalSettingsRepository, ProtectedGlobalSecretStore, ResourceService, ResourceModelProjection, JsonResourceRepository,
                 ReviewService, JsonReviewRepository,
+                MemoryService, JsonMemoryRepository, ProjectInstructionsService, JsonProjectInstructionsRepository,
+                WorkspaceInstructionFileReader, StandingInstructions,
                 GlobalSettingsService, OpenAiCompatibleConnectionModelsResolver, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService,
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,
@@ -119,7 +126,7 @@ internal sealed class Composition
             .Bind<IAppToolReply>().To<AppToolReply>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
             .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To(([Tag("base")] IChatCompletionClient baseClient, ILogger<RetryingChatCompletionClient> retryLogger, IChatTransportPolicy transportPolicy, IChatTransportActivity transportActivity) => new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity))
-            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool, AppContextCompactTool, AppResourcesTool>(Tag.Unique)
+            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool, AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool>(Tag.Unique)
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
 }

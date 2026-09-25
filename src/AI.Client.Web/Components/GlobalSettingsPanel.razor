@@ -31,6 +31,11 @@
                     </div>
                     break;
                 }
+                case "Memory":
+                {
+                    <MemoryEditor @ref="_memoryEditor" ProjectId="@ProjectId" ProjectName="@ProjectName" />
+                    break;
+                }
                 case "Connections":
                 {
                     <div class="global-editor-layout">
@@ -109,6 +114,10 @@
 @code {
     [Parameter] public string Section { get; set; } = "Connections";
     [Parameter] public EventCallback Saved { get; set; }
+    /// <summary>The open project, whose memory the Memory section shows beside the person's own.</summary>
+    [Parameter] public Guid? ProjectId { get; set; }
+    [Parameter] public string? ProjectName { get; set; }
+    private MemoryEditor? _memoryEditor;
     [Parameter] public EventCallback Close { get; set; }
     private bool _loaded;
     private bool _saving;
@@ -179,6 +188,7 @@
     private string Stats => Section switch
     {
         "Settings" => "Applied right away · stored on this device",
+        "Memory" => "Seen by the assistant in every chat · stored by the Host",
         "Connections" => $"{Plural(_connections.Count, "connection")} · {_connections.Count(item => item.Enabled)} enabled",
         _ => $"{Plural(_globalMcpServers.Count, "server")} · {_globalMcpServers.Count(item => item.Enabled)} enabled · {Plural(_toolPolicies.Count, "tool default")}"
     };
@@ -186,6 +196,7 @@
     private string Description => Section switch
     {
         "Settings" => "How the app looks on this device.",
+        "Memory" => ProjectName is { } name ? $"What the assistant remembers about you and {name}." : "What the assistant remembers about you.",
         "Connections" => "OpenAI-compatible endpoints available to every project.",
         _ => "Global MCP servers available to every project."
     };
@@ -523,6 +534,7 @@
     /// <summary>Saves pending edits; <c>true</c> when there is nothing left unsaved.</summary>
     public async Task<bool> SaveAsync()
     {
+        if (_memoryEditor is not null && !await _memoryEditor.SaveAsync()) return false;
         if (!_loaded || !HasChanges()) return true;
         _saving = true;
         StateHasChanged();

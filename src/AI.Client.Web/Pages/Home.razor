@@ -314,6 +314,7 @@
         <nav class="global-nav root-nav sidebar-global-nav" aria-label="Application settings">
             <button class="workspace-nav-item @(_globalSection == "Connections" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Connections")'><AppIcon Name="connection" /><span>Connections</span><span class="directory-count">@_connections.Count(item => item.Enabled)</span></button>
             <button class="workspace-nav-item @(_globalSection == "MCP" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("MCP")'><AppIcon Name="mcp" /><span>MCP</span><span class="directory-count">@_enabledMcpServerCount</span></button>
+            <button class="workspace-nav-item @(_globalSection == "Memory" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Memory")'><AppIcon Name="memory" /><span>Memory</span></button>
             <button class="workspace-nav-item @(_globalSection == "Settings" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Settings")'><AppIcon Name="settings" /><span>Settings</span></button>
         </nav>
     </aside>
@@ -532,6 +533,7 @@
                     <label>Description<InputTextArea @bind-Value="_editor.Description" /></label>
                     <label>Connection<select @bind="_editor.ConnectionId"><option value="">No connection</option>@foreach (var connection in _connections) { <option value="@connection.Id" disabled="@(!connection.Enabled)">@connection.Name@(!connection.Enabled ? " (Unavailable)" : string.Empty)</option> }</select></label>
                 </EditForm>
+                <ProjectInstructionsEditor @ref="_instructionsEditor" ProjectId="@_selectedProject.Id" />
                 @if (!string.IsNullOrEmpty(_error)) { <p class="error" role="alert">@_error</p> }
             </div>
             <footer>
@@ -571,7 +573,7 @@
 
 @if (_globalSection is not null)
 {
-    <GlobalSettingsPanel @ref="_globalSettingsPanel" Section="@_globalSection" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" />
+    <GlobalSettingsPanel @ref="_globalSettingsPanel" Section="@_globalSection" ProjectId="@_selectedProject?.Id" ProjectName="@_selectedProject?.Name" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" />
 }
 
 @if (_permissionsScope is not null && _selectedProject is not null)
@@ -618,6 +620,7 @@
     private ProjectSummary? _selectedProject;
     private bool _isProjectMenuOpen;
     private bool _isProjectSettingsOpen;
+    private ProjectInstructionsEditor? _instructionsEditor;
     // The editor's values when the drawer opened: closing without edits must not save.
     private (string Name, string Description, Guid? ConnectionId) _projectSettingsSnapshot;
     private bool _isConfirmingProjectDelete;
@@ -3535,6 +3538,11 @@
     /// </summary>
     private async Task RequestCloseProjectSettingsAsync()
     {
+        if (_instructionsEditor is not null && !await _instructionsEditor.SaveAsync())
+        {
+            _error = "Instructions were not saved.";
+            return;
+        }
         if (_selectedProject is null || _projectSettingsSnapshot == (_editor.Name, _editor.Description, _editor.ConnectionId))
         {
             await CloseProjectSettingsAsync();
@@ -3601,6 +3609,7 @@
 
     private async Task CancelCurrentSettingsAsync()
     {
+        _instructionsEditor?.Discard();
         if (_selectedProject is not null)
         {
             var connectionId = _editor.ConnectionId;

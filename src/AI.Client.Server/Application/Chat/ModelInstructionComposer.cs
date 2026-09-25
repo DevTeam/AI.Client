@@ -13,13 +13,21 @@ public sealed class ModelInstructionComposer(
         ArgumentNullException.ThrowIfNull(context);
         var selected = new List<ModelInstruction>();
         long tokens = 0;
+        long runTokens = 0;
         foreach (var instruction in registry.List(run)
-                     .OrderByDescending(item => item.Priority)
+                     .OrderByDescending(item => item.Placement)
+                     .ThenByDescending(item => item.Priority)
                      .ThenBy(item => item.Key, StringComparer.Ordinal))
         {
             var message = new ChatCompletionMessage("system", instruction.Content);
             var cost = estimator.EstimateMessages([message]);
-            if (selected.Count > 0 && tokens + cost > InstructionBudgetTokens) continue;
+            // A standing layer was already fitted to its own budget when it was built; only run
+            // instructions compete for this one.
+            if (instruction.Placement == ModelInstructionPlacement.Run)
+            {
+                if (runTokens > 0 && runTokens + cost > InstructionBudgetTokens) continue;
+                runTokens = Add(runTokens, cost);
+            }
             selected.Add(instruction);
             tokens = Add(tokens, cost);
         }

@@ -1,0 +1,239 @@
+@using AI.Client.Contracts.Memory
+@using AI.Client.Web.Memory
+@inject IMemoryApi MemoryApi
+@inject INotificationService Notifications
+
+<div class="global-editor-layout memory-editor">
+    <div class="settings-list-column">
+        <nav class="settings-list" aria-label="Memory entries">
+            <div class="memory-group-label">About me</div>
+            @if (Entries(MemoryScope.User).Count == 0)
+            {
+                <p class="empty-hint">Name, languages, preferences — whatever every project should know.</p>
+            }
+            @foreach (var entry in Entries(MemoryScope.User))
+            {
+                @Row(entry)
+            }
+            @if (ProjectId is not null)
+            {
+                <div class="memory-group-label">@(ProjectName ?? "This project")</div>
+                @if (Entries(MemoryScope.Project).Count == 0)
+                {
+                    <p class="empty-hint">Decisions and facts that only this project needs.</p>
+                }
+                @foreach (var entry in Entries(MemoryScope.Project))
+                {
+                    @Row(entry)
+                }
+            }
+        </nav>
+        <div class="memory-add">
+            <button class="secondary-action compact-action" type="button" disabled="@_busy" @onclick="() => AddAsync(MemoryScope.User)"><AppIcon Name="plus" />About me</button>
+            @if (ProjectId is not null)
+            {
+                <button class="secondary-action compact-action" type="button" disabled="@_busy" @onclick="() => AddAsync(MemoryScope.Project)"><AppIcon Name="plus" />Project</button>
+            }
+        </div>
+    </div>
+    @if (_draft is { } draft)
+    {
+        <form class="global-form memory-form" autocomplete="off" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
+            <div class="connection-flags">
+                <label class="checkbox"><input type="checkbox" @bind="draft.Enabled" /> Enabled</label>
+                <label class="checkbox" title="Pinned entries reach the model in full on every run"><input type="checkbox" @bind="draft.Pinned" /> Pinned</label>
+            </div>
+            <label>Kind<select @bind="draft.Kind">
+                <option value="@MemoryKind.Profile">Profile — about me</option>
+                <option value="@MemoryKind.Preference">Preference — how I like things done</option>
+                <option value="@MemoryKind.Fact">Fact — anything else</option>
+            </select></label>
+            <label>Title<input maxlength="120" @bind="draft.Title" @bind:event="oninput" placeholder="Preferred language" /></label>
+            <label>Text<textarea maxlength="4000" rows="6" @bind="draft.Body" @bind:event="oninput" placeholder="One fact per entry"></textarea></label>
+            <label>Tags<input @bind="draft.Tags" @bind:event="oninput" placeholder="Comma-separated, optional" /></label>
+            <p class="memory-meta">@Meta(draft)</p>
+            @if (_error is { Length: > 0 })
+            {
+                <p class="settings-drawer-error" role="alert">@_error</p>
+            }
+            <div class="form-actions">
+                <button type="submit" class="compact-action" disabled="@(_busy || !draft.IsDirty || string.IsNullOrWhiteSpace(draft.Title))">@(draft.Entry is null ? "Save" : "Save changes")</button>
+                @if (draft.Entry is not null)
+                {
+                    <button type="button" class="danger compact-action" disabled="@_busy" @onclick="DeleteAsync"><AppIcon Name="trash" />Delete</button>
+                }
+                else
+                {
+                    <button type="button" class="secondary-action compact-action" disabled="@_busy" @onclick="CancelDraft">Cancel</button>
+                }
+            </div>
+        </form>
+    }
+    else
+    {
+        <div class="global-form"><p class="empty-hint">@(_entries.Count == 0 ? "The assistant sees memory in every chat. Add what it should know about you, or ask it in a chat to remember something." : "Select an entry to edit it.")</p></div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid? ProjectId { get; set; }
+    [Parameter] public string? ProjectName { get; set; }
+
+    private readonly List<MemoryEntry> _entries = [];
+    private Draft? _draft;
+    private bool _busy;
+    private string? _error;
+
+    private Guid? _loadedFor;
+    private bool _loaded;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loaded && _loadedFor == ProjectId) return;
+        _loaded = true;
+        _loadedFor = ProjectId;
+        _draft = null;
+        await LoadAsync(null);
+    }
+
+    /// <summary>The panel calls this before it closes, so an edit is never lost silently.</summary>
+    public async Task<bool> SaveAsync()
+    {
+        if (_draft is not { IsDirty: true } draft) return true;
+        if (string.IsNullOrWhiteSpace(draft.Title))
+        {
+            _error = "A title is required.";
+            return false;
+        }
+        _busy = true;
+        _error = null;
+        try
+        {
+            var tags = draft.Tags.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            var saved = draft.Entry is { } entry
+                ? await MemoryApi.UpdateAsync(entry, new UpdateMemoryEntryRequest(draft.Kind, draft.Title, draft.Body, tags,
+                    draft.Pinned, draft.Enabled, entry.Revision), CancellationToken.None)
+                : await MemoryApi.CreateAsync(new CreateMemoryEntryRequest(draft.Scope,
+                    draft.Scope == MemoryScope.Project ? ProjectId : null, draft.Kind, draft.Title, draft.Body, tags,
+                    draft.Pinned), CancellationToken.None);
+            if (!draft.Enabled && draft.Entry is null)
+                saved = await MemoryApi.UpdateAsync(saved, new UpdateMemoryEntryRequest(saved.Kind, saved.Title, saved.Body,
+                    saved.Tags, saved.Pinned, false, saved.Revision), CancellationToken.None);
+            Notifications.ShowSuccess("Memory saved.");
+            await LoadAsync(saved.Id);
+            return true;
+        }
+        catch (MemoryConflictException error)
+        {
+            _error = error.Message;
+            await LoadAsync(draft.Entry?.Id, keepError: true);
+            return false;
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _error = error.Message;
+            return false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task LoadAsync(Guid? select, bool keepError = false)
+    {
+        try
+        {
+            var entries = await MemoryApi.ListAsync(ProjectId, CancellationToken.None);
+            _entries.Clear();
+            _entries.AddRange(entries);
+            if (!keepError) _error = null;
+            if (_draft is { Entry: null, IsDirty: true } && select is null) return;
+            _draft = _entries.FirstOrDefault(item => item.Id == select) is { } selected ? Draft.From(selected) : null;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Memory could not be loaded.";
+        }
+    }
+
+    private IReadOnlyList<MemoryEntry> Entries(MemoryScope scope) => _entries.Where(entry => entry.Scope == scope)
+        .OrderByDescending(entry => entry.Pinned).ThenBy(entry => entry.Kind).ThenBy(entry => entry.Title, StringComparer.CurrentCultureIgnoreCase)
+        .ToArray();
+
+    private RenderFragment Row(MemoryEntry entry) =>
+        @<div class="settings-list-item @(entry.Id == _draft?.Entry?.Id ? "selected" : string.Empty) @(entry.Enabled ? string.Empty : "memory-disabled")">
+            <button class="settings-list-select" type="button" disabled="@_busy" @onclick="() => SelectAsync(entry)">
+                <span>@if (entry.Pinned) { <AppIcon Name="pin" /> }@entry.Title</span>
+                <small>@entry.Kind@(entry.Author == MemoryAuthor.Model ? " · by assistant" : string.Empty)@(entry.Enabled ? string.Empty : " · off")</small>
+            </button>
+        </div>;
+
+    private async Task SelectAsync(MemoryEntry entry)
+    {
+        if (!await SaveAsync()) return;
+        _draft = Draft.From(_entries.First(item => item.Id == entry.Id));
+    }
+
+    private async Task AddAsync(MemoryScope scope)
+    {
+        if (!await SaveAsync()) return;
+        _draft = new Draft(null, scope, scope == MemoryScope.User ? MemoryKind.Profile : MemoryKind.Fact);
+    }
+
+    private void CancelDraft()
+    {
+        _draft = null;
+        _error = null;
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_draft?.Entry is not { } entry) return;
+        _busy = true;
+        try
+        {
+            await MemoryApi.DeleteAsync(entry, CancellationToken.None);
+            _draft = null;
+            Notifications.ShowSuccess("Memory entry deleted.");
+            await LoadAsync(null);
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _error = error.Message;
+            if (error is MemoryConflictException) await LoadAsync(entry.Id, keepError: true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private string Meta(Draft draft)
+    {
+        var scope = draft.Scope == MemoryScope.User ? "Every project" : $"Only {ProjectName ?? "this project"}";
+        if (draft.Entry is not { } entry) return $"{scope} · new entry";
+        var author = entry.Author == MemoryAuthor.Model ? "saved by the assistant" : "saved by you";
+        return $"{scope} · {author} · {entry.UpdatedAt.LocalDateTime:g}";
+    }
+
+    /// <summary>An editable copy; <see cref="IsDirty"/> compares it with what was loaded.</summary>
+    private sealed class Draft(MemoryEntry? entry, MemoryScope scope, MemoryKind kind)
+    {
+        public MemoryEntry? Entry { get; } = entry;
+        public MemoryScope Scope { get; } = scope;
+        public MemoryKind Kind { get; set; } = kind;
+        public string Title { get; set; } = entry?.Title ?? string.Empty;
+        public string Body { get; set; } = entry?.Body ?? string.Empty;
+        public string Tags { get; set; } = entry is null ? string.Empty : string.Join(", ", entry.Tags);
+        public bool Pinned { get; set; } = entry?.Pinned ?? false;
+        public bool Enabled { get; set; } = entry?.Enabled ?? true;
+
+        public bool IsDirty => Entry is not { } stored
+            ? Title.Length > 0 || Body.Length > 0
+            : stored.Kind != Kind || stored.Title != Title || stored.Body != Body || stored.Pinned != Pinned
+              || stored.Enabled != Enabled || string.Join(", ", stored.Tags) != Tags;
+
+        public static Draft From(MemoryEntry entry) => new(entry, entry.Scope, entry.Kind);
+    }
+}

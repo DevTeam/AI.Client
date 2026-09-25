@@ -372,6 +372,7 @@
             OnReviewChanges="OpenReviewFromChangesAsync"
             OnOpenReview="OpenAttachedReviewAsync"
             OnRemoveResource="RemoveMessageResourceAsync"
+            OnFileLinkMenu="OpenFileLinkMenu"
             ReviewNames="@_reviews.ToDictionary(item => item.Id, item => item.Name)"
             MessageReviewIds="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).Select(item => item.Id).ToHashSet()"
             MessageReviews="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).GroupBy(item => item.SourceMessageId).ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.UpdatedAt).First())"
@@ -525,6 +526,18 @@
     @if (_directoryMenuId is not null)
     {
         <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
+    }
+
+    @if (_fileLinkMenu is { } fileLink)
+    {
+        <div class="context-menu-backdrop" @onclick="CloseFileLinkMenu" @oncontextmenu="OnFileLinkBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
+        <div class="chat-menu file-link-menu" role="menu" aria-label="Link menu"
+             style="left: min(@(fileLink.ClientX.ToString(System.Globalization.CultureInfo.InvariantCulture))px, calc(100vw - 15rem)); top: min(@(fileLink.ClientY.ToString(System.Globalization.CultureInfo.InvariantCulture))px, calc(100vh - 7rem));"
+             @onclick:stopPropagation="true">
+            <div class="file-link-menu-path" title="@fileLink.Path">@ResourceDisplayName(fileLink.Path)</div>
+            <button type="button" role="menuitem" disabled="@(_selectedProject is null)" @onclick="AddFileLinkToMessageAsync"><AppIcon Name="plus" />Add to message</button>
+            <button type="button" role="menuitem" @onclick="CopyFileLinkPathAsync"><AppIcon Name="copy" />Copy path</button>
+        </div>
     }
 
     @if (_isProjectSettingsOpen && _selectedProject is not null)
@@ -3391,6 +3404,7 @@
     private void CloseContextMenus()
     {
         CloseReviewSubmenu();
+        _fileLinkMenu = null;
         _isProjectMenuOpen = false;
         _isConfirmingProjectDelete = false;
         _chatMenuId = null;
@@ -3445,7 +3459,7 @@
         {
             _messageBranchMenuId = null;
         }
-        else if (_isProjectMenuOpen || _chatMenuId is not null || _branchMenuId is not null || _directoryMenuId is not null)
+        else if (_isProjectMenuOpen || _chatMenuId is not null || _branchMenuId is not null || _directoryMenuId is not null || _fileLinkMenu is not null)
         {
             CloseContextMenus();
         }
@@ -4080,12 +4094,76 @@
         var mode = _resourcePickerMode;
         CloseResourcePicker();
         if (mode is null || _selectedProject is null) return;
+        await AddDraftResourceAsync(mode == DirectoryPickerMode.File ? [ChatResourceKind.File] : [ChatResourceKind.Directory], path);
+    }
+
+    private FileLinkMenuRequest? _fileLinkMenu;
+
+    private void OpenFileLinkMenu(FileLinkMenuRequest request)
+    {
+        CloseContextMenus();
+        _fileLinkMenu = request;
+    }
+
+    private void CloseFileLinkMenu() => _fileLinkMenu = null;
+
+    private async Task OnFileLinkBackdropContextMenu(MouseEventArgs e)
+    {
+        CloseFileLinkMenu();
+        await WorkspaceLayoutService.ForwardContextMenuAsync(e.ClientX, e.ClientY, ".context-menu-backdrop");
+    }
+
+    /// <summary>
+    /// A link does not say whether it names a file or a directory. A trailing separator settles it;
+    /// otherwise the Host is asked for a file first and a directory second, and it checks the path
+    /// against the project's read grants either way.
+    /// </summary>
+    private async Task AddFileLinkToMessageAsync()
+    {
+        if (_fileLinkMenu is not { } link) return;
+        CloseFileLinkMenu();
+        if (_selectedProject is null) return;
+        ChatResourceKind[] kinds = link.Path.EndsWith('\\') || link.Path.EndsWith('/')
+            ? [ChatResourceKind.Directory]
+            : [ChatResourceKind.File, ChatResourceKind.Directory];
+        await AddDraftResourceAsync(kinds, link.Path);
+    }
+
+    private async Task CopyFileLinkPathAsync()
+    {
+        if (_fileLinkMenu is not { } link) return;
+        CloseFileLinkMenu();
+        if (_composerModule is null) return;
+        await _composerModule.InvokeVoidAsync("copyText", link.Path);
+        Notifications.ShowSuccess("Path copied.");
+    }
+
+    /// <summary>
+    /// Adds a file or directory reference to the composer of the chat that is open now. Each kind is
+    /// tried in turn and the first the Host accepts wins; when none is, the first refusal is shown.
+    /// </summary>
+    private async Task AddDraftResourceAsync(IReadOnlyList<ChatResourceKind> kinds, string path)
+    {
+        if (_selectedProject is null) return;
         var projectId = _selectedProject.Id;
         var draftKey = GetComposerDraftKey();
         try
         {
-            var kind = mode == DirectoryPickerMode.File ? ChatResourceKind.File : ChatResourceKind.Directory;
-            var resource = await ResourceApi.CreateAsync(projectId, kind, path, CancellationToken.None);
+            ChatResourceRef? created = null;
+            Exception? firstError = null;
+            foreach (var candidate in kinds)
+            {
+                try
+                {
+                    created = await ResourceApi.CreateAsync(projectId, candidate, path, CancellationToken.None);
+                    break;
+                }
+                catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+                {
+                    firstError ??= error;
+                }
+            }
+            if (created is not { } resource) throw firstError ?? new InvalidOperationException("The path could not be added.");
             if (_selectedProject?.Id != projectId || GetComposerDraftKey() != draftKey) return;
             if (_draftResources.Any(item => item.Kind == resource.Kind && string.Equals(item.Path, resource.Path,
                     OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))) return;
@@ -4109,10 +4187,14 @@
         _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
     }
 
+    /// <summary>
+    /// The last segment of a Host path. Split by hand: in the browser <c>Path</c> follows the
+    /// browser's own conventions, so a Windows path from the Host would come back whole.
+    /// </summary>
     private static string ResourceDisplayName(string path)
     {
-        var trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var name = Path.GetFileName(trimmed);
+        var trimmed = path.TrimEnd('\\', '/');
+        var name = trimmed[(trimmed.LastIndexOfAny(['\\', '/']) + 1)..];
         return string.IsNullOrEmpty(name) ? path : name;
     }
 

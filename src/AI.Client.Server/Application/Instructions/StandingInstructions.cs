@@ -17,7 +17,7 @@ public sealed class StandingInstructions(
     public const string BaseKey = "app.base";
     public const string ProjectKey = "project.instructions";
     public const string MemoryKey = "memory.index";
-    public const long BaseBudgetTokens = 2_048;
+    public const long BaseBudgetTokens = 2_560;
     public const long ProjectBudgetTokens = 4_096;
     public const long MemoryBudgetTokens = 2_048;
 
@@ -45,7 +45,11 @@ public sealed class StandingInstructions(
     /// exist or writes an SVG the image preview rejects.
     /// </summary>
     private const string RenderingGuide =
-        "\nYour answers are rendered as Markdown. There is no drawing tool: to show a diagram, write it in your answer.\n"
+        "\nYour answers are rendered as Markdown: headings, lists, tables, task lists and fenced code work, while raw HTML "
+        + "is shown as literal text, so use Markdown instead of HTML tags. When you mention a file or directory on this "
+        + "machine that you know exists, link it with its absolute path as a file URI, for example "
+        + "[Program.cs](file:///C:/repo/src/Program.cs) or [src](file:///C:/repo/src/), with spaces encoded as %20: the "
+        + "user can add a linked path to their next message. There is no drawing tool: to show a diagram, write it in your answer.\n"
         + "- A ```mermaid block is drawn as a diagram (Mermaid 11: flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, "
         + "erDiagram, gantt, pie, mindmap, timeline, gitGraph). Diagrams are static and styled by the app theme. Quote labels "
         + "that contain punctuation: A[\"Parse (step 1)\"]. Prefer Mermaid for flows, structures and sequences.\n"

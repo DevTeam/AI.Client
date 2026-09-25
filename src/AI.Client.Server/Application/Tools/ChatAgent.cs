@@ -10,6 +10,8 @@ using Contracts.Runs;
 using Contracts.Settings;
 using Contracts.Workspace;
 using Workspace;
+using Instructions;
+using Contracts.Instructions;
 using System.Text;
 using System.Text.Json;
 
@@ -28,7 +30,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IToolDefinitionSelector toolSelector, IToolCatalogRegistry toolCatalog,
     IModelContentCheckpointService checkpoints, IModelInstructionRegistry instructions,
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
-    IRunCompletionProtocol completionProtocol, IToolSearchDefinitionEnricher toolSearchEnricher) : IChatAgent
+    IRunCompletionProtocol completionProtocol, IToolSearchDefinitionEnricher toolSearchEnricher,
+    IStandingInstructions standingInstructions) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -66,6 +69,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         using var instructionScope = instructions.Begin(run);
         instructions.Upsert(run, new ModelInstruction("run.completion-protocol", CompletionInstruction,
             1_000, ModelInstructionLifetime.Run));
+        await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), token);
         using var checkpointScope = checkpoints.Begin(run, async (prompt, ct) =>
             (await completion.CompleteAsync(request with
             {
@@ -423,6 +427,27 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         "Your previous message was cut off at the output token limit. Continue it from exactly where "
         + "it stopped, in the middle of the word or line if that is where the cut fell. Do not repeat "
         + "any text you have already sent, do not restate what you were doing, and do not apologise.";
+
+    /// <summary>
+    /// The base prompt, project instructions and memory index, built once per run. Their order in
+    /// the preview is their order in the prompt, so the priority is taken from it. A catalog that
+    /// cannot be read leaves the run without its standing layers rather than failing every chat.
+    /// </summary>
+    private async Task UpsertStandingAsync(ToolRunContext run, bool appToolsAvailable, CancellationToken token)
+    {
+        ModelContextPreview preview;
+        try
+        {
+            preview = await standingInstructions.BuildAsync(run.ProjectId, appToolsAvailable, token);
+        }
+        catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+        for (var index = 0; index < preview.Layers.Count; index++)
+            instructions.Upsert(run, new ModelInstruction(preview.Layers[index].Key, preview.Layers[index].Content,
+                preview.Layers.Count - index, ModelInstructionLifetime.Run, ModelInstructionPlacement.Standing));
+    }
 
     /// <summary>
     /// The stable run-wide protocol. Ordinary text before a tool call remains a compact

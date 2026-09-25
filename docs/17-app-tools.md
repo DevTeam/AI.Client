@@ -39,12 +39,14 @@ The tools are grouped by risk level: the tool boundary matches the boundary of w
 | `app_projects` | `Create`, `Update`, `Delete` |
 | `app_security` | policies and grants for the project, chat, and globally; global settings; write credentials |
 | `app_resources` | create and retire project file/directory references; create and update named chat reviews; attach them with `app_runs Submit` |
+| `app_memory` | `Create`, `Update`, `Delete` long-term memory entries — see [25-memory-and-instructions.md](25-memory-and-instructions.md) |
+| `app_instructions` | replace the current project's instructions; kept apart so it still asks where other writes are allowed |
 | `spawn_subtask` | run a task in a separate conversation and return only its result |
 | `ask_user` | ask the user a question and wait for an answer — see [19-ask-user.md](19-ask-user.md) |
 
 ### app_read
 
-Resources: `Projects`, `Project`, `Chats`, `Chat`, `Messages`, `Runs`, `Settings`, `Search`, `Resources`, `Reviews`, `Review`. The response always has one shape — a page of items — so a single document is a page of one item.
+Resources: `Projects`, `Project`, `Chats`, `Chat`, `Messages`, `Runs`, `Settings`, `Search`, `Resources`, `Reviews`, `Review`, `Memory`, `Instructions`. The response always has one shape — a page of items — so a single document is a page of one item.
 
 `Resources` lists the project's reusable file and directory references, including their revision and retired state. A reference contains a path and kind, never file contents. `app_resources Create` checks the project's read grants, canonicalizes the path and returns the reference; `Retire` uses an expected revision. To attach references to a turn, pass them in `app_runs Submit`. The queued and stored user message keep the same structured refs, and the model receives a short manifest rather than file bodies.
 

@@ -2,6 +2,7 @@ namespace AI.Client.Infrastructure.Tests.Tools;
 
 using AI.Client.Application.Chat;
 using AI.Client.Application.Chats;
+using AI.Client.Application.Instructions;
 using AI.Client.Application.Notifications;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Runs;
@@ -43,7 +44,7 @@ public sealed class AppToolTests
 
         // The server decides its own listing order, so the set is what matters, not the sequence.
         session.Tools.Select(tool => tool.OriginalName).Order(StringComparer.Ordinal).ShouldBe(
-            ["app_chats", "app_projects", "app_read", "app_resources", "app_runs", "app_security", "ask_user", "context_compact", "spawn_subtask", "tool_search"]);
+            ["app_chats", "app_instructions", "app_memory", "app_projects", "app_read", "app_resources", "app_runs", "app_security", "ask_user", "context_compact", "spawn_subtask", "tool_search"]);
         session.Tools.ShouldAllBe(tool => tool.ServerId == AppMcpServer.Id);
         session.Tools.ShouldAllBe(tool => tool.ModelDefinition.Name.StartsWith("mcp_app__", StringComparison.Ordinal));
         // A schema hash is what ties a saved policy to the tool it was granted for.
@@ -153,6 +154,70 @@ public sealed class AppToolTests
         var chats = await fixture.Chats.ListAsync(fixture.ProjectId, CancellationToken.None);
         chats.ShouldContain(chat => chat.Title == "From a tool");
         (await changed.WaitAsync()).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ShouldRememberCorrectAndForgetAMemoryEntry()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var created = await AppFixture.CallAsync(session, "app_memory", new
+        {
+            operation = "Create", operationId = Guid.NewGuid(), scope = "User", kind = "Profile",
+            title = "Name", body = "The user is called Nikolay."
+        });
+        created.GetProperty("applied").GetBoolean().ShouldBeTrue();
+        var id = created.GetProperty("current").GetProperty("id").GetGuid();
+
+        var found = await AppFixture.CallAsync(session, "app_read", new { resource = "Memory", query = "nikolay" });
+        found.GetProperty("items").GetArrayLength().ShouldBe(1);
+        found.GetProperty("items")[0].GetProperty("author").GetString().ShouldBe("Model");
+        found.GetProperty("items")[0].GetProperty("chatId").GetGuid().ShouldBe(fixture.ChatId);
+
+        // Only the body is sent; the kind and the pin survive the correction.
+        var updated = await AppFixture.CallAsync(session, "app_memory", new
+        {
+            operation = "Update", operationId = Guid.NewGuid(), resourceId = id, revision = 1, body = "The user is called Kolya."
+        });
+        updated.GetProperty("current").GetProperty("kind").GetString().ShouldBe("Profile");
+        updated.GetProperty("revision").GetInt64().ShouldBe(2);
+
+        var stale = await AppFixture.CallAsync(session, "app_memory", new
+        {
+            operation = "Delete", operationId = Guid.NewGuid(), resourceId = id, revision = 1
+        }, expectError: true);
+        stale.GetProperty("status").GetString().ShouldBe("Conflict");
+
+        await AppFixture.CallAsync(session, "app_memory", new
+        {
+            operation = "Delete", operationId = Guid.NewGuid(), resourceId = id, revision = 2
+        });
+        var empty = await AppFixture.CallAsync(session, "app_read", new { resource = "Memory" });
+        empty.GetProperty("total").GetInt32().ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ShouldReplaceProjectInstructionsAndShowThemInTheStandingPrompt()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var before = await AppFixture.CallAsync(session, "app_read", new { resource = "Instructions" });
+        var revision = before.GetProperty("items")[0].GetProperty("instructions").GetProperty("revision").GetInt64();
+        revision.ShouldBe(0);
+
+        var result = await AppFixture.CallAsync(session, "app_instructions", new
+        {
+            operationId = Guid.NewGuid(), text = "Answer in Russian. Run the tests before finishing.", revision
+        });
+        result.GetProperty("applied").GetBoolean().ShouldBeTrue();
+
+        var preview = await fixture.Standing.BuildAsync(fixture.ProjectId, true, TestContext.Current.CancellationToken);
+        preview.Layers.Select(layer => layer.Key).ShouldBe(["app.base", "project.instructions", "memory.index"]);
+        preview.Layers[1].Content.ShouldContain("Run the tests before finishing.");
+        var description = session.Tools.Single(tool => tool.OriginalName == "app_instructions").ModelDefinition.Description;
+        description.ShouldContain("app_memory");
     }
 
     [Fact]
@@ -447,6 +512,7 @@ public sealed class AppToolTests
 
         public IProjectService Projects => _composition.Resolve<IProjectService>();
         public IChatService Chats => _composition.Resolve<IChatService>();
+        public IStandingInstructions Standing => _composition.Resolve<IStandingInstructions>();
         private IGlobalSettingsRepository Settings => _composition.Resolve<IGlobalSettingsRepository>();
         private IToolSessionFactory Sessions => _composition.Resolve<IToolSessionFactory>();
         public Guid ProjectId { get; private set; }

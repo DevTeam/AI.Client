@@ -1,6 +1,8 @@
 ﻿namespace AI.Client.Mcp.App;
 
 using AI.Client.Application.Chats;
+using AI.Client.Application.Instructions;
+using AI.Client.Application.Memory;
 using AI.Client.Application.Projects;
 using AI.Client.Application.Runs;
 using AI.Client.Application.Resources;
@@ -46,6 +48,16 @@ public enum AppResource
     Reviews,
     /// <summary>One mutable review, including a bounded number of comments.</summary>
     Review,
+    /// <summary>
+    /// Long-term memory of the person and of the project: every entry, one entry by resourceId, or
+    /// the enabled entries matching 'query'.
+    /// </summary>
+    Memory,
+    /// <summary>
+    /// The project's instructions document with its revision, and the size and sources of each standing
+    /// system prompt layer.
+    /// </summary>
+    Instructions,
 }
 
 [McpServerToolType]
@@ -56,6 +68,9 @@ public sealed class AppReadTool(
     IChatSearchService search,
     IResourceService resources,
     IReviewService reviews,
+    IMemoryService memory,
+    IProjectInstructionsService projectInstructions,
+    IStandingInstructions standing,
     Func<IChatRunDispatcher> runs,
     IAppToolReply reply) : IAppTool
 {
@@ -70,6 +85,8 @@ public sealed class AppReadTool(
                 Description = "Read this application's own data: projects, chats, messages, runs, resources and global settings. "
                               + "'Projects' and 'Settings' need no ids. 'Project', 'Chats', 'Resources', 'Chat', 'Messages', "
                               + "'Reviews' and 'Review' use projectId; the last four also need chatId, and 'Review' needs resourceId. "
+                              + "'Memory' lists the user's and the project's long-term memory; pass resourceId for one entry or "
+                              + "query to search. 'Instructions' returns the project instructions and their revision. "
                               + "For these project-scoped resources, omitted projectId means the current project. "
                               + "'Runs' accepts optional projectId, chatId and branchId filters. 'Search' accepts the same optional "
                               + "filters and requires query; use it instead of reading chats one by one. Results are paged: pass "
@@ -116,12 +133,14 @@ public sealed class AppReadTool(
         try
         {
             if (resource is AppResource.Project or AppResource.Chats or AppResource.Chat or AppResource.Messages
-                or AppResource.Resources or AppResource.Reviews or AppResource.Review)
+                or AppResource.Resources or AppResource.Reviews or AppResource.Review or AppResource.Memory
+                or AppResource.Instructions)
                 projectId ??= run.ProjectId == Guid.Empty ? null : run.ProjectId;
             if (resource == AppResource.Search)
                 return reply.Reply(await SearchAsync(projectId, chatId, branchId, cursor, limit, query, isRegex, ignoreCase,
                     roles, cancellationToken));
-            return reply.Reply(await PageAsync(resource, projectId, chatId, branchId, resourceId, cursor, limit, cancellationToken));
+            return reply.Reply(await PageAsync(resource, projectId, chatId, branchId, resourceId, cursor, limit, query,
+                cancellationToken));
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
@@ -152,7 +171,7 @@ public sealed class AppReadTool(
 
     private async Task<AppReadResult> PageAsync(
         AppResource resource, Guid? projectId, Guid? chatId, Guid? branchId, Guid? resourceId, string? cursor, int limit,
-        CancellationToken cancellationToken)
+        string? query, CancellationToken cancellationToken)
     {
         switch (resource)
         {
@@ -211,6 +230,31 @@ public sealed class AppReadTool(
                     { Body = comment.Body[..Math.Min(comment.Body.Length, 1000)] }).ToArray(),
                     RemainingComments = Math.Max(0, item.Comments.Count - 40), item.Revision };
                 return Paging.Page("Review", [bounded], cursor, limit, reply.Json);
+            }
+            case AppResource.Memory:
+            {
+                if (resourceId is { } entryId)
+                    return Paging.Page("Memory", [await memory.GetAsync(entryId, projectId, cancellationToken)
+                        ?? throw new InvalidOperationException("Memory entry not found.")], cursor, limit, reply.Json);
+                var entries = string.IsNullOrWhiteSpace(query)
+                    ? await memory.ListAsync(projectId, cancellationToken)
+                    : await memory.SearchAsync(query, projectId, cancellationToken);
+                return Paging.Page("Memory", entries, cursor, limit, reply.Json);
+            }
+            case AppResource.Instructions:
+            {
+                var id = Required(projectId, nameof(projectId));
+                var stored = await projectInstructions.GetAsync(id, cancellationToken)
+                    ?? throw new InvalidOperationException("Project not found.");
+                // The layer text itself is already in the model's own system prompt; repeating it
+                // here would only spend the context twice.
+                var preview = await standing.BuildAsync(id, true, cancellationToken);
+                return Paging.Page("Instructions", [new
+                {
+                    Instructions = stored,
+                    Layers = preview.Layers.Select(layer => new
+                        { layer.Key, layer.Title, layer.Sources, layer.Tokens, layer.BudgetTokens, layer.Truncated }).ToArray()
+                }], cursor, limit, reply.Json);
             }
             default:
                 throw new ArgumentException("Unknown resource.", nameof(resource));

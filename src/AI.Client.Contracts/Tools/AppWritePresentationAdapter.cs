@@ -12,7 +12,7 @@ public sealed class AppWritePresentationAdapter : BuiltInToolPresentationAdapter
 {
     protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        "app_chats", "app_runs", "app_projects", "app_security",
+        "app_chats", "app_runs", "app_projects", "app_security", "app_memory", "app_instructions",
     };
 
     protected override string Prefix => ToolRef.AppPrefix;
@@ -23,11 +23,13 @@ public sealed class AppWritePresentationAdapter : BuiltInToolPresentationAdapter
         var operation = Argument(arguments, "operation");
         var detail = Argument(arguments, "title") ?? Argument(arguments, "name") ?? Argument(arguments, "content");
         return new ToolCallPresentation(
-            operation is { Length: > 0 } ? AppReadPresentationAdapter.Spaced(operation) : tool.FallbackLabel,
+            operation is { Length: > 0 } ? AppReadPresentationAdapter.Spaced(operation)
+                : tool.Name == "app_instructions" ? "Update instructions" : tool.FallbackLabel,
             detail is { Length: > 0 } ? Trim(detail) : null,
             // The tools that can delete announce themselves as destructive; app_runs changes state
-            // without ever removing history.
-            tool.Name == "app_runs" ? ToolSafety.Mutating : ToolSafety.Destructive);
+            // without ever removing history, and remembering something removes nothing either.
+            tool.Name == "app_runs" || tool.Name == "app_memory" && operation != "Delete"
+                ? ToolSafety.Mutating : ToolSafety.Destructive);
     }
 
     public override ToolResultPresentation DescribeResult(ToolRef tool, JsonElement? arguments, ToolCallResult result)

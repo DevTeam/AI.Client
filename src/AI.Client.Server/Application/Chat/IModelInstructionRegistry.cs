@@ -11,6 +11,18 @@ public enum ModelInstructionLifetime
 }
 
 /// <summary>
+/// Where an instruction sits in the system preamble. Standing layers — the base prompt, project
+/// instructions and memory — change rarely, so they come first and keep the request prefix stable
+/// for provider-side prompt caching; each is bounded by its own budget where it is built. Run
+/// instructions follow and share the composer's run budget.
+/// </summary>
+public enum ModelInstructionPlacement
+{
+    Run,
+    Standing
+}
+
+/// <summary>
 /// A trusted instruction addressed only to the model. The key is stable identity used for
 /// replacement, acknowledgement and diagnostics; the content is never part of chat persistence.
 /// </summary>
@@ -18,7 +30,8 @@ public sealed record ModelInstruction(
     string Key,
     string Content,
     int Priority = 0,
-    ModelInstructionLifetime Lifetime = ModelInstructionLifetime.Run);
+    ModelInstructionLifetime Lifetime = ModelInstructionLifetime.Run,
+    ModelInstructionPlacement Placement = ModelInstructionPlacement.Run);
 
 /// <summary>
 /// Run-local mailbox for application mechanisms which need to guide the next model request

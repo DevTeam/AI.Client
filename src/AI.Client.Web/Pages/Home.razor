@@ -4123,8 +4123,8 @@
         if (_fileLinkMenu is not { } link) return;
         CloseFileLinkMenu();
         if (_selectedProject is null) return;
-        ChatResourceKind[] kinds = link.Path.EndsWith('\\') || link.Path.EndsWith('/')
-            ? [ChatResourceKind.Directory]
+        ChatResourceKind[] kinds = link.Kind is { } known ? [known]
+            : link.Path.EndsWith('\\') || link.Path.EndsWith('/') ? [ChatResourceKind.Directory]
             : [ChatResourceKind.File, ChatResourceKind.Directory];
         await AddDraftResourceAsync(kinds, link.Path);
     }

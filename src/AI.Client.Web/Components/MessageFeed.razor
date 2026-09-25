@@ -12,6 +12,7 @@
 @inject ITurnLiveText LiveText
 @inject IToolPresentations Presentations
 @inject INotificationService Notifications
+@inject IApiBaseUrl ApiBaseUrl
 @implements IAsyncDisposable
 @using AI.Client.Contracts.Tools
 @using AI.Client.Contracts.Resources
@@ -559,6 +560,8 @@
     private IJSObjectReference? _svgBlocksHandle;
     private IJSObjectReference? _fileLinksModule;
     private IJSObjectReference? _fileLinksHandle;
+    // The project the file-link module's cache belongs to; a switch empties it.
+    private Guid? _fileLinkScope;
     private DotNetObjectReference<MessageFeed>? _selfReference;
     // Mirrors the JS side's "the user is at the bottom" state, which is the only thing that
     // decides whether new content scrolls the feed. Starts true: an empty feed is at its bottom.
@@ -672,6 +675,7 @@
             }
         }
 
+        await SyncFileLinkScopeAsync();
         await SyncCurrentTurnSummaryVisibilityAsync();
 
         if (await AdvanceTurnExpansionAsync()) return;
@@ -707,8 +711,27 @@
 
     /// <summary>A right-click on a link to a local file or directory in a rendered message.</summary>
     [JSInvokable]
-    public Task OnFileLinkContextMenu(string path, double clientX, double clientY) =>
-        OnFileLinkMenu.InvokeAsync(new FileLinkMenuRequest(path, clientX, clientY));
+    public Task OnFileLinkContextMenu(string path, double clientX, double clientY, string? kind) =>
+        OnFileLinkMenu.InvokeAsync(new FileLinkMenuRequest(path, clientX, clientY,
+            Enum.TryParse<ChatResourceKind>(kind, out var parsed) ? parsed : null));
+
+    private async Task SyncFileLinkScopeAsync()
+    {
+        var scope = SelectedChat?.ProjectId;
+        if (_fileLinksHandle is null || scope == _fileLinkScope) return;
+        _fileLinkScope = scope;
+        try
+        {
+            // The module asks the Host itself: a batch of a hundred paths marshalled through .NET
+            // and parsed by the WebAssembly runtime blocked the page for about 150 ms, while a
+            // browser fetch parses the same answer off the main thread's critical path.
+            await _fileLinksHandle.InvokeVoidAsync("setScope", scope?.ToString(),
+                scope is { } projectId ? new Uri(ApiBaseUrl.Value, $"api/projects/{projectId}/resources/resolve").ToString() : null);
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+        }
+    }
 
     /// <summary>
     /// Pushes the current SearchQuery to the JS side. Called from OnAfterRenderAsync on every

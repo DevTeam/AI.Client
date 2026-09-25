@@ -5,7 +5,7 @@ using AI.Client.Contracts.Resources;
 
 /// <summary>Validates path references against a project's read grants at creation and submission.</summary>
 public sealed class ResourceService(IProjectService projects, IDirectoryBrowser browser,
-    IResourceRepository repository, IReviewService reviews) : IResourceService
+    IResourceRepository repository, IReviewService reviews, IProjectPathAccess access) : IResourceService
 {
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -91,40 +91,10 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
             if (!probe.IsFullyQualified || reference.Kind == ChatResourceKind.File && !probe.FileExists
                 || reference.Kind == ChatResourceKind.Directory && !probe.DirectoryExists)
                 throw new ArgumentException($"The {reference.Kind.ToString().ToLowerInvariant()} does not exist: {reference.Path}");
-            var path = ResolveLinks(probe.CanonicalPath);
-            var allowed = project.DirectoryGrants.Any(grant =>
-                grant.ToolNames.Contains("read", StringComparer.OrdinalIgnoreCase)
-                && InGrant(path, ResolveLinks(grant.CanonicalRoot), grant.Recursive));
-            if (!allowed) throw new InvalidOperationException($"No project read grant covers {reference.Path}.");
+            var path = access.ResolveLinks(probe.CanonicalPath);
+            if (!access.CanRead(project, path)) throw new InvalidOperationException($"No project read grant covers {reference.Path}.");
             result.Add(reference with { Path = path, Name = null });
         }
         return result;
-    }
-
-    private static bool InGrant(string path, string root, bool recursive)
-    {
-        if (string.Equals(path, root, PathComparison)) return true;
-        var prefix = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
-        return path.StartsWith(prefix, PathComparison)
-            && (recursive || string.Equals(Path.GetDirectoryName(path), root, PathComparison));
-    }
-
-    private static string ResolveLinks(string path)
-    {
-        var full = Path.GetFullPath(path);
-        var root = Path.GetPathRoot(full) ?? throw new ArgumentException("Path has no root.");
-        var current = root;
-        var depth = 0;
-        foreach (var segment in full[root.Length..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
-                     StringSplitOptions.RemoveEmptyEntries))
-        {
-            var next = Path.Combine(current, segment);
-            FileSystemInfo info = Directory.Exists(next) ? new DirectoryInfo(next) : new FileInfo(next);
-            if (info.LinkTarget is null) { current = next; continue; }
-            if (++depth > 40) throw new ArgumentException("Too many links in resource path.");
-            current = info.ResolveLinkTarget(true)?.FullName
-                ?? throw new ArgumentException("Resource path contains a broken link.");
-        }
-        return current;
     }
 }

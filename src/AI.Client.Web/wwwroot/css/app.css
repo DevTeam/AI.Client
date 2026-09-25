@@ -4570,9 +4570,10 @@ textarea {
 .review-tree-row input[type=checkbox] { flex: 0 0 .8rem; width: .8rem; height: .8rem; margin: 0 .1rem 0 0; }
 .review-tree-row a { display: inline-flex; align-items: center; gap: .25rem; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; color: #ddd; text-decoration: none; }
 .review-tree-row a:hover { text-decoration: underline; }
+.review-tree-file-chevron { flex: none; width: .72rem; height: .72rem; color: #999; }
 .review-tree-file-status { flex: 0 0 .8rem; color: #999; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .68rem; text-align: center; text-decoration: none; }
 .review-tree-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.review-tree-counts { display: inline-grid; grid-template-columns: 2rem 2rem; align-items: center; gap: .2rem; flex: none; font-size: .7rem; font-variant-numeric: tabular-nums; }
+.review-tree-counts { display: inline-grid; grid-template-columns: 2rem 2rem; align-items: center; gap: .2rem; flex: none; margin-left: auto; font-size: .7rem; font-variant-numeric: tabular-nums; }
 .review-tree-counts .workspace-added, .review-tree-counts .workspace-removed { min-width: 0; }
 .review-tree-counts .workspace-added { grid-column: 1; }
 .review-tree-counts .workspace-removed { grid-column: 2; }

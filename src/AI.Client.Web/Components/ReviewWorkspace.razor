@@ -170,19 +170,20 @@
         @if (node.File is { } file)
         {
             <div class="review-tree-row" @key="file.Path"
-                 @onmouseenter="() => _hoveredFilePath = file.Path"
+                 @onmouseenter="() => HoverFileAsync(file.Path)"
                  @onmouseleave="() => _hoveredFilePath = null">
                 <input type="checkbox" checked="@_current!.Files.Contains(file.Path, StringComparer.Ordinal)" aria-label="Include @file.Path" @onchange="() => ToggleFileAsync(file.Path)" />
-                <span class="review-tree-counts">
-                    @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
-                    @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
-                </span>
                 <a href="#@FileId(file.Path)" title="@file.Path" aria-expanded="@_expandedFiles.Contains(file.Path)"
                    @onclick="() => ToggleExpandedFile(file.Path)">
+                    <AppIcon Name="@(_expandedFiles.Contains(file.Path) ? "chevron-down" : "chevron-right")" Class="review-tree-file-chevron" />
                     <span class="review-tree-file-status" title="@FileKindTitle(file.Kind)">@FileKindGlyph(file.Kind)</span>
                     <span class="review-tree-file-name">@node.Name</span>
                 </a>
                 @if (_current.Comments.Count(item => item.Path == file.Path) is > 0 and var count) { <small>@count</small> }
+                <span class="review-tree-counts">
+                    @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
+                    @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
+                </span>
             </div>
         }
         else
@@ -223,6 +224,13 @@
     private void ToggleExpandedFile(string path)
     {
         if (!_expandedFiles.Add(path)) _expandedFiles.Remove(path);
+    }
+
+    private async Task HoverFileAsync(string path)
+    {
+        _hoveredFilePath = path;
+        try { await JsRuntime.InvokeVoidAsync("reviewWorkspace.revealFile", _bodyId, FileId(path)); }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

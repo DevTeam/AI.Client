@@ -212,8 +212,9 @@ export function watchResourceDrop(dotNetReference) {
         return [...new Set(paths)];
     };
 
-    // Paths shown in the app (the files a run changed) drag as file URIs, which the drop below
-    // already reads, and which other apps understand too.
+    // Every path the app shows — a file a run changed, a directory of the project, a file link in
+    // the transcript — drags the same way: as a file URI, which the drop below already reads and
+    // other apps understand too, under one picture shaped like the composer's resource chip.
     const toFileUri = path => {
         const encode = value => value.split("/").map(encodeURIComponent).join("/");
         const slashed = path.replaceAll("\\", "/");
@@ -221,13 +222,43 @@ export function watchResourceDrop(dotNetReference) {
         if (/^[a-z]:\//i.test(slashed)) return `file:///${slashed.slice(0, 2)}${encode(slashed.slice(2))}`;
         return `file://${encode(slashed)}`;
     };
+    const ICONS = {
+        File: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5" />',
+        Directory: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />'
+    };
+    const dragSourceOf = target => {
+        const element = target instanceof Element ? target.closest("[data-drag-path], [data-file-path]") : null;
+        const path = element?.dataset.dragPath ?? element?.dataset.filePath;
+        if (!path) return null;
+        const declared = element.dataset.dragKind ?? element.dataset.fileKind;
+        const kind = declared === "Directory" || !declared && /[\\/]$/.test(path) ? "Directory" : "File";
+        return { element, path, kind };
+    };
+    const showDragImage = (transfer, source) => {
+        const chip = document.createElement("div");
+        chip.className = "composer-resource-chip path-drag-image";
+        chip.innerHTML = `<svg class="app-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[source.kind]}</svg><span></span>`;
+        chip.querySelector("span").textContent = source.path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || source.path;
+        document.body.append(chip);
+        transfer.setDragImage(chip, 14, Math.round(chip.offsetHeight / 2));
+        // The browser takes its snapshot while this event runs; the element is not needed after.
+        window.setTimeout(() => chip.remove(), 0);
+    };
+    let dragSource = null;
     const onDragStart = event => {
-        const source = event.target instanceof Element ? event.target.closest("[data-drag-path]") : null;
-        const path = source?.getAttribute("data-drag-path");
-        if (!path || !event.dataTransfer) return;
-        event.dataTransfer.setData("text/uri-list", toFileUri(path));
-        event.dataTransfer.setData("text/plain", path);
+        const source = dragSourceOf(event.target);
+        if (!source || !event.dataTransfer) return;
+        event.dataTransfer.clearData();
+        event.dataTransfer.setData("text/uri-list", toFileUri(source.path));
+        event.dataTransfer.setData("text/plain", source.path);
         event.dataTransfer.effectAllowed = "copy";
+        showDragImage(event.dataTransfer, source);
+        dragSource = source.element;
+        dragSource.classList.add("path-drag-source");
+    };
+    const onDragEnd = () => {
+        dragSource?.classList.remove("path-drag-source");
+        dragSource = null;
     };
 
     const clearHighlight = () => {
@@ -295,6 +326,7 @@ export function watchResourceDrop(dotNetReference) {
     conversation.addEventListener("drop", onDrop);
     window.addEventListener("ai-client-files-dropped", onNativeDrop);
     document.addEventListener("dragstart", onDragStart);
+    document.addEventListener("dragend", onDragEnd);
 
     return {
         dispose: () => {
@@ -306,6 +338,8 @@ export function watchResourceDrop(dotNetReference) {
             conversation.removeEventListener("drop", onDrop);
             window.removeEventListener("ai-client-files-dropped", onNativeDrop);
             document.removeEventListener("dragstart", onDragStart);
+            document.removeEventListener("dragend", onDragEnd);
+            onDragEnd();
             clearHighlight();
         }
     };

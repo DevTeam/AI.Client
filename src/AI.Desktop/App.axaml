@@ -7,13 +7,16 @@
         Window.Resources. Caption* and TitleBarBackgroundBrush are the names Fluent's
         WindowDrawnDecorations theme looks up; the rest are the window's own. The values follow
         the page's tokens (app.css): App.ApplyTheme switches between the two sets when the page
-        changes its theme.
+        changes its theme. A full-screen window pops its titlebar up filled with Fluent's
+        SystemControlBackgroundChromeMediumLowBrush, so that brush is the titlebar's too; no other
+        control here uses it.
     -->
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#202020" />
+                    <SolidColorBrush x:Key="SystemControlBackgroundChromeMediumLowBrush" Color="#202020" />
                     <SolidColorBrush x:Key="TitleBarBorderBrush" Color="#2E2E2E" />
                     <SolidColorBrush x:Key="CaptionButtonForeground" Color="#ECECEC" />
                     <SolidColorBrush x:Key="CaptionButtonBackground" Color="#2B2B2B" />
@@ -25,6 +28,7 @@
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#F3F3F3" />
+                    <SolidColorBrush x:Key="SystemControlBackgroundChromeMediumLowBrush" Color="#F3F3F3" />
                     <SolidColorBrush x:Key="TitleBarBorderBrush" Color="#E0E0E0" />
                     <SolidColorBrush x:Key="CaptionButtonForeground" Color="#1F1F1F" />
                     <SolidColorBrush x:Key="CaptionButtonBackground" Color="#E2E2E2" />
@@ -41,5 +45,12 @@
     </Application.Resources>
     <Application.Styles>
         <FluentTheme />
+        <!--
+            The full-screen popover titlebar takes the default height, not the window's hint; at
+            Fluent's 30 it is shorter than the window's titlebar and its caption buttons stick out.
+        -->
+        <Style Selector="WindowDrawnDecorations">
+            <Setter Property="DefaultTitleBarHeight" Value="{StaticResource CaptionButtonHeight}" />
+        </Style>
     </Application.Styles>
 </Application>

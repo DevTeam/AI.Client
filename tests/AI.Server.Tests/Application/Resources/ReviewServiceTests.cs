@@ -179,4 +179,27 @@ public sealed class ReviewServiceTests
         projected.ShouldContain("Please clarify.");
         projected.ShouldContain("Text");
     }
+
+    [Fact]
+    public async Task ShouldOmitReviewsEmptiedAfterTheyWereAttached()
+    {
+        var projectId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var messageReview = new ChatReview(Guid.NewGuid(), projectId, chatId, "Text review", Guid.NewGuid(),
+            DateTimeOffset.UnixEpoch, [], [], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 2,
+            ChatReviewKind.Message, []);
+        var diffReview = new ChatReview(Guid.NewGuid(), projectId, chatId, "Diff review", Guid.NewGuid(),
+            DateTimeOffset.UnixEpoch, ["src/file.cs"], [], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 2);
+        var reviews = new Mock<IReviewService>();
+        reviews.Setup(item => item.ListAsync(projectId, chatId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([messageReview, diffReview]);
+
+        var projected = await new ResourceModelProjection(reviews.Object).ProjectAsync(projectId, chatId,
+            "Please fix", [new ChatResourceRef(messageReview.Id, ChatResourceKind.Review, string.Empty,
+                messageReview.Name, ChatReviewKind.Message),
+                new ChatResourceRef(diffReview.Id, ChatResourceKind.Review, string.Empty, diffReview.Name)],
+            TestContext.Current.CancellationToken);
+
+        projected.ShouldBe("Please fix");
+    }
 }

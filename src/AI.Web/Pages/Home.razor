@@ -167,7 +167,7 @@
                                     }
                                     @if (_isConfirmingChatDelete)
                                     {
-                                        <div class="project-menu-confirm"><span>Delete this chat and all its branches?</span><button class="danger compact-action" type="button" @onclick="() => DeleteChatAsync(chat)">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelChatDelete">Cancel</button></div>
+                                        <div class="project-menu-confirm"><span>Delete this chat and all its branches?</span><button class="danger compact-action" type="button" disabled="@(_deletingChatId is not null)" @onclick="() => DeleteChatAsync(chat)">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelChatDelete">Cancel</button></div>
                                     }
                                     else
                                     {
@@ -673,6 +673,7 @@
     private bool _focusEditingInputPending;
     private IJSObjectReference? _inlineEditorModule;
     private bool _isConfirmingChatDelete;
+    private Guid? _deletingChatId;
     private Guid? _draggedProjectId;
     private Guid? _draggedChatId;
     private string _sidebarAnnouncement = string.Empty;
@@ -3556,6 +3557,24 @@
 
     private async Task DeleteChatAsync(ChatSummary chat)
     {
+        if (_selectedProject is null || _deletingChatId is not null) return;
+
+        // The confirm button stays on screen through three round trips. A second click used to
+        // start a second delete that found the chat already gone and reported the 404 as a
+        // conflict, leaving "changed elsewhere" under the composer for a chat that was deleted.
+        _deletingChatId = chat.Id;
+        try
+        {
+            await DeleteChatCoreAsync(chat);
+        }
+        finally
+        {
+            _deletingChatId = null;
+        }
+    }
+
+    private async Task DeleteChatCoreAsync(ChatSummary chat)
+    {
         if (_selectedProject is null) return;
 
         // Stopping the runs comes first, and the revision is read only afterwards: interrupting a
@@ -3578,7 +3597,9 @@
         }
 
         var result = await ChatHistoryApi.DeleteAsync(_selectedProject.Id, chat.Id, current.Revision, CancellationToken.None);
-        if (!result.IsDeleted)
+        // Revision 0 is the Host's NotFound: someone else already deleted it, which is the outcome
+        // asked for, not a conflict to report.
+        if (!result.IsDeleted && result.Revision != 0)
         {
             _chatError = "The chat changed elsewhere. Reload it before deleting.";
             CloseContextMenus();
@@ -3588,17 +3609,18 @@
         if (_selectedChat?.Id == chat.Id)
         {
             _selectedChat = null;
-        _selectedBranchId = null;
+            _selectedBranchId = null;
             _branchLeafId = null;
             SetJustArrivedLeaf(null);
             _wasGeneratingByBranch.Clear();
             _chat.Message = string.Empty;
+            _chatError = null;
             _composerNeedsResize = true;
         }
 
         CloseContextMenus();
         await LoadChatsAsync(_selectedProject.Id);
-        Notifications.ShowSuccess("Chat deleted.");
+        if (result.IsDeleted) Notifications.ShowSuccess("Chat deleted.");
     }
 
     private async Task OpenProjectSettings()

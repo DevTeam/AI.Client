@@ -41,10 +41,35 @@ public class ProjectServiceTests
         project.Description.ShouldBe("Description");
         project.CreatedAt.ShouldBe(_now);
         project.Revision.ShouldBe(1);
+        project.ConnectionId.ShouldBeNull();
         _repository.Verify(i => i.SaveAsync(
-            It.Is<Project>(j => j.Id == _projectId),
+            It.Is<Project>(j => j.Id == _projectId && j.ConnectionId == null),
             0,
             CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
+    public async Task ShouldCreateProjectWithoutPinningToGlobalDefault()
+    {
+        // Given — the global default exists, but a new project must not adopt it, otherwise the
+        // user has to overwrite the field the moment they want to follow the global default.
+        var service = CreateInstance();
+        _idGenerator.Setup(i => i.Create()).Returns(_projectId.Value);
+        _clock.SetupGet(i => i.UtcNow).Returns(_now);
+        _repository
+            .Setup(i => i.SaveAsync(It.IsAny<Project>(), 0, CancellationToken.None))
+            .ReturnsAsync(ProjectSaveResult.Saved(1));
+        _globalSettingsRepository.Setup(i => i.LoadAsync(CancellationToken.None))
+            .ReturnsAsync(new GlobalSettings(
+                Connections: [new ConnectionSettings(Guid.Parse("019f0000-0000-7000-8000-0000000000aa"), "Default", "https://example", "m", true, true, false)],
+                McpServers: [],
+                ToolPolicies: []));
+
+        // When
+        var project = await service.CreateAsync(new CreateProjectRequest("P", "D"), CancellationToken.None);
+
+        // Then
+        project.ConnectionId.ShouldBeNull();
     }
 
     [Fact]

@@ -147,7 +147,7 @@ public sealed class ChatSearchServiceTests
         var projects = new Mock<IProjectService>(MockBehavior.Strict);
         var service = new Mock<IChatService>(MockBehavior.Strict);
         projects.Setup(item => item.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync(chats
-            .Select(chat => new ProjectSummary(chat.ProjectId, chat.ProjectName, string.Empty, DateTimeOffset.UnixEpoch, 1))
+            .Select(chat => new ProjectSummary(chat.ProjectId, chat.ProjectName, string.Empty, DateTimeOffset.UnixEpoch, 1, null))
             .DistinctBy(project => project.Id).ToArray());
         foreach (var project in chats.DistinctBy(chat => chat.ProjectId))
             projects.Setup(item => item.GetAsync(project.ProjectId, It.IsAny<CancellationToken>()))

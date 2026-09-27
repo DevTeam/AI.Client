@@ -18,6 +18,7 @@
 @inject IRunStateService RunState
 @inject IChatComposerService Composer
 @inject AI.Client.Web.Resources.IResourceApi ResourceApi
+@inject AI.Client.Web.Resources.IDropAccessPlanner DropAccessPlanner
 @inject AI.Client.Web.Resources.IReviewApi ReviewApi
 @inject IChatFeedProjection Feed
 @inject INotificationService Notifications
@@ -2157,7 +2158,8 @@
         await PersistDirectoryGrantsAsync();
     }
 
-    private async Task<bool> PersistDirectoryGrantsAsync(string? successMessage = null)
+    /// <param name="announce">False when the caller reports the outcome in its own notification.</param>
+    private async Task<bool> PersistDirectoryGrantsAsync(string? successMessage = null, bool announce = true)
     {
         if (_selectedProject is null) return false;
 
@@ -2165,7 +2167,7 @@
         if (result.Status != ProjectUpdateStatus.Updated || result.Project is null)
         {
             await LoadSecurityAsync(_selectedProject.Id);
-            Notifications.ShowError("Directory changes were not saved. Reload the project and try again.");
+            if (announce) Notifications.ShowError("Directory changes were not saved. Reload the project and try again.");
             return false;
         }
 
@@ -2174,7 +2176,7 @@
         // SaveSecurityAsync is the "Save" of the project settings panel, so it gets the same toast
         // as the project form itself — otherwise the one panel with a dozen fields is the one that
         // stays silent about whether the write landed.
-        Notifications.ShowSuccess(successMessage ?? "Project settings saved.");
+        if (announce) Notifications.ShowSuccess(successMessage ?? "Project settings saved.");
         return true;
     }
 
@@ -4141,30 +4143,107 @@
         await AddDraftResourceAsync(mode == DirectoryPickerMode.File ? [ChatResourceKind.File] : [ChatResourceKind.Directory], path);
     }
 
+    /// <summary>
+    /// Adds dropped files and directories to the message. What the project cannot read yet is made
+    /// readable first: one grant over the directory they share, subdirectories included (see
+    /// <see cref="AI.Client.Web.Resources.DropAccessPlanner"/>). One notification sums it all up.
+    /// </summary>
     [JSInvokable]
     public async Task OnComposerFilesDropped(string[] paths)
     {
         if (_selectedProject is null || paths.Length == 0) return;
-        var before = _draftResources.Count;
-        var failures = 0;
-        _chatError = null;
-        var comparison = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-        foreach (var path in paths.Where(path => !string.IsNullOrWhiteSpace(path)).Distinct(comparison).Take(20))
+        var projectId = _selectedProject.Id;
+        var dropped = paths.Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(20).ToArray();
+        IReadOnlyList<ResolvedPath> resolved;
+        try
         {
-            if (_draftResources.Count >= 20)
-            {
-                _chatError = "A message can reference at most 20 resources.";
-                failures++;
-                break;
-            }
-            _chatError = null;
-            await AddDraftResourceAsync([ChatResourceKind.File], path, notifyErrors: false);
-            if (_chatError is not null) failures++;
+            resolved = await ResourceApi.ResolveAsync(projectId, dropped, CancellationToken.None);
         }
-        var added = _draftResources.Count - before;
-        if (added > 0)
-            Notifications.ShowSuccess(added == 1 ? "File added to the message." : $"{added} files added to the message.");
-        if (failures > 0) Notifications.ShowError($"Could not add {failures} dropped file(s). {_chatError}");
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            Notifications.ShowError($"Could not check the dropped files: {error.Message}");
+            return;
+        }
+        if (_selectedProject?.Id != projectId) return;
+
+        var missing = resolved.Where(item => item.Path is null || item.Kind is null).Select(item => item.Input).ToArray();
+        var found = resolved.Where(item => item.Path is not null && item.Kind is not null).ToList();
+        var plan = DropAccessPlanner.Plan(found.Where(item => item.Access == PathAccess.None).ToArray());
+        var notGranted = new List<ResolvedPath>(plan.Refused);
+        var granted = false;
+        if (plan.Folders.Count > 0)
+        {
+            granted = await GrantDroppedFoldersAsync(plan.Folders);
+            if (!granted) notGranted.AddRange(found.Where(item => item.Access == PathAccess.None && !plan.Refused.Contains(item)));
+        }
+
+        var before = _draftResources.Count;
+        var failures = new List<string>();
+        foreach (var item in found.Except(notGranted))
+        {
+            _chatError = null;
+            await AddDraftResourceAsync([item.Kind!.Value], item.Path!, notifyErrors: false);
+            if (_chatError is not null) failures.Add($"{GetDirectoryDisplayNameSuggestion(item.Path!)} ({_chatError})");
+        }
+        _chatError = null;
+        var added = _draftResources.Skip(before).ToArray();
+
+        var summary = new List<string>();
+        if (added.Length > 0)
+            summary.Add(added.All(item => item.Kind == ChatResourceKind.File)
+                ? added.Length == 1 ? "File added to the message." : $"{added.Length} files added to the message."
+                : added.Length == 1 ? "Folder added to the message." : $"{added.Length} items added to the message.");
+        if (granted)
+            summary.Add(plan.Folders.Count == 1
+                ? $"The project can now read {plan.Folders[0]} and its subfolders."
+                : $"The project can now read {string.Join(", ", plan.Folders)} and their subfolders.");
+        if (missing.Length > 0)
+            summary.Add($"Not found, it may have been moved or deleted: {DroppedNames(missing)}.");
+        if (plan.Refused.Count > 0)
+            summary.Add($"Not added, a whole drive is never granted: {DroppedNames(plan.Refused.Select(item => item.Path!))}. Add a folder under Directories to use them.");
+        if (!granted && plan.Folders.Count > 0)
+            summary.Add($"Access could not be granted, so these were not added: {DroppedNames(notGranted.Except(plan.Refused).Select(item => item.Path!))}.");
+        if (failures.Count > 0)
+            summary.Add($"Could not add {string.Join("; ", failures)}.");
+        if (summary.Count == 0) return;
+
+        var text = string.Join(" ", summary);
+        if (missing.Length + notGranted.Count + failures.Count > 0) Notifications.ShowError(text);
+        else Notifications.ShowSuccess(text);
+    }
+
+    /// <summary>A few names are enough to recognise a drop; the rest are counted.</summary>
+    private static string DroppedNames(IEnumerable<string> paths)
+    {
+        var names = paths.Select(GetDirectoryDisplayNameSuggestion).ToArray();
+        return names.Length <= 3 ? string.Join(", ", names) : $"{string.Join(", ", names.Take(3))} and {names.Length - 3} more";
+    }
+
+    /// <summary>
+    /// Read grants, with subdirectories, over <paramref name="folders"/>. A directory granted
+    /// already only gains its subdirectories, so a drop never creates a second row for one root.
+    /// </summary>
+    private async Task<bool> GrantDroppedFoldersAsync(IReadOnlyList<string> folders)
+    {
+        foreach (var folder in folders)
+        {
+            if (_security.DirectoryGrants.Find(item =>
+                    string.Equals(item.CanonicalRoot, folder, StringComparison.OrdinalIgnoreCase)) is { } existing)
+            {
+                existing.Recursive = true;
+                continue;
+            }
+            _security.DirectoryGrants.Add(new DirectoryGrantEditor
+            {
+                ToolNames = "read",
+                CanonicalRoot = folder,
+                DisplayName = GetDirectoryDisplayNameSuggestion(folder),
+                Recursive = true
+            });
+        }
+        _directoriesExpanded = true;
+        return await PersistDirectoryGrantsAsync(announce: false);
     }
 
     [JSInvokable]

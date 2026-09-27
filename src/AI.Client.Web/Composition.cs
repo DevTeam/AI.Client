@@ -53,6 +53,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<INotificationService>()
             .Root<IChatRunsApi>()
             .Root<IResourceApi>()
+            .RootBind<IDropAccessPlanner>().To<DropAccessPlanner>()
             .Root<IReviewApi>()
             .Root<IMemoryApi>()
             .Root<IRunStateService>()

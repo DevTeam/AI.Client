@@ -16,7 +16,7 @@ internal sealed class BuildApplication(
 {
     public Task<int> RunAsync()
     {
-        var root = new RootCommand("AI.Client build automation");
+        var root = new RootCommand("AI build automation");
         RegisterBuild(root);
         RegisterTest(root);
         RegisterVerify(root);
@@ -28,7 +28,7 @@ internal sealed class BuildApplication(
 
     private void RegisterBuild(RootCommand root)
     {
-        var command = new Command("build", "Build the AI.Client solution.");
+        var command = new Command("build", "Build the AI solution.");
         command.SetAction(_ => buildSolutionTarget.RunAsync(cancellationToken));
         root.Subcommands.Add(command);
     }
@@ -59,7 +59,7 @@ internal sealed class BuildApplication(
         {
             Description = "Directory for the published desktop app. Defaults to artifacts/desktop/<runtime>."
         };
-        var command = new Command("publish-desktop", "Publish the self-contained AI.Client desktop app for one platform.");
+        var command = new Command("publish-desktop", "Publish the self-contained AI desktop app for one platform.");
         command.Options.Add(runtime);
         command.Options.Add(output);
         command.SetAction(parseResult =>
@@ -78,7 +78,7 @@ internal sealed class BuildApplication(
             Description = "Directory for the published Host application.",
             DefaultValueFactory = _ => "artifacts/publish"
         };
-        var command = new Command("publish", "Publish the local AI.Client Host application.");
+        var command = new Command("publish", "Publish the local AI Host application.");
         command.Options.Add(output);
         command.SetAction(parseResult => publishTarget.RunAsync(
             parseResult.GetValue(output)!,
@@ -91,11 +91,11 @@ internal sealed class BuildApplication(
         // `host` is the legacy name for the run target. Renamed to `run` everywhere else, but kept
         // here as an alias so existing `.run` files and muscle memory continue to work until they
         // get updated.
-        var hostCommand = new Command("host", "Alias for `run`. Publish AI.Client.Host to artifacts/host/ and run it without blocking source-tree builds and tests.");
+        var hostCommand = new Command("host", "Alias for `run`. Publish AI.Host to artifacts/host/ and run it without blocking source-tree builds and tests.");
         hostCommand.SetAction(_ => runTarget.RunAsync(cancellationToken));
         root.Subcommands.Add(hostCommand);
 
-        var runCommand = new Command("run", "Publish AI.Client.Host to artifacts/host/ and run it. The frontend is started separately (see AI.Client Backend.run.xml).");
+        var runCommand = new Command("run", "Publish AI.Host to artifacts/host/ and run it. The frontend is started separately (see AI Backend.run.xml).");
         runCommand.SetAction(_ => runTarget.RunAsync(cancellationToken));
         root.Subcommands.Add(runCommand);
 
@@ -124,7 +124,7 @@ internal sealed class BuildApplication(
         };
         var runBothCommand = new Command(
             "run-both",
-            "Publish AI.Client.Host, then run the host and the web dev server in parallel. CORS is configured automatically.");
+            "Publish AI.Host, then run the host and the web dev server in parallel. CORS is configured automatically.");
         runBothCommand.Options.Add(hostUrls);
         runBothCommand.Options.Add(webUrls);
         runBothCommand.Options.Add(corsOrigins);

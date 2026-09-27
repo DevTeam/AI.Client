@@ -13,14 +13,14 @@ internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths bu
         var publish = await processRunner.RunAsync(
             "Publish host",
             "dotnet",
-            ["publish", "src/AI.Client.Host/AI.Client.Host.csproj", "--nologo", "--output", hostOutput],
+            ["publish", "src/AI.Host/AI.Host.csproj", "--nologo", "--output", hostOutput],
             cancellationToken);
         if (publish != 0)
         {
             return publish;
         }
 
-        var hostExe = Path.Combine(hostOutput, "AI.Client.Host.exe");
+        var hostExe = Path.Combine(hostOutput, "AI.Host.exe");
         if (!File.Exists(hostExe))
         {
             await Console.Error.WriteLineAsync($"Host executable was not produced at {hostExe}.");
@@ -64,7 +64,7 @@ internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths bu
         };
         webStart.ArgumentList.Add("run");
         webStart.ArgumentList.Add("--project");
-        webStart.ArgumentList.Add("src/AI.Client.Web/AI.Client.Web.csproj");
+        webStart.ArgumentList.Add("src/AI.Web/AI.Web.csproj");
         webStart.ArgumentList.Add("--no-launch-profile");
         webStart.ArgumentList.Add("--urls");
         webStart.ArgumentList.Add(webUrls);

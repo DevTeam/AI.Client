@@ -1,0 +1,271 @@
+@using AI.Contracts.Resources
+@using AI.Contracts.Workspace
+@using AI.Web.Resources
+@using Microsoft.AspNetCore.Components.Web
+@inject IReviewApi ReviewsApi
+@inject INotificationService Notifications
+@inject IUnifiedDiffParser DiffParser
+
+<div class="review-diff-content">
+    @if (SourceMessageId != Guid.Empty)
+    {
+        <button class="review-file-comment-action" type="button" @onclick="BeginFileComment">Comment on file</button>
+    }
+    @if (DiffParser.Parse(File.Diff) is { Count: > 0 } lines)
+    {
+        @foreach (var line in lines.Take(MaxLines))
+        {
+            <WorkspaceDiffLine Line="@line" ReviewMode="@(SourceMessageId != Guid.Empty)"
+                               Commented="@HasSavedComment(line)"
+                               Selected="@IsInPendingRange(line)"
+                               OnComment="args => BeginLineComment(line, args.ShiftKey)"
+                               OnLineClick="args => HandleLineClick(line, args)" />
+            @if (line.Kind is not (DiffLineKind.Hunk or DiffLineKind.Note))
+            {
+                @foreach (var comment in CommentsAt(line)) { @CommentCard(comment) }
+                @if (_editingCommentId is null && PendingEndsAt(line)) { @CommentEditor() }
+            }
+        }
+        @if (lines.Count > MaxLines) { <div class="diff-note">… @(lines.Count - MaxLines) more lines not shown</div> }
+    }
+    else { <p class="workspace-change-unavailable">@UnavailableReason(File)</p> }
+    @foreach (var comment in (_current?.Comments ?? []).Where(item => item.Path == File.Path && item.OldStart is null && item.NewStart is null))
+    { @CommentCard(comment) }
+    @if (_editingCommentId is null && _pending && _pendingOldStart is null && _pendingNewStart is null) { @CommentEditor() }
+    @if (_error is not null) { <p class="review-error" role="alert">@_error</p> }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FileChange File { get; set; } = default!;
+    [Parameter] public IReadOnlyList<FileChange> SourceFiles { get; set; } = [];
+    [Parameter] public Guid ProjectId { get; set; }
+    [Parameter] public Guid ChatId { get; set; }
+    [Parameter] public Guid SourceMessageId { get; set; }
+    [Parameter] public ChatReview? Review { get; set; }
+    [Parameter] public EventCallback<ChatReview> OnChanged { get; set; }
+    [Parameter] public int MaxLines { get; set; } = 1500;
+
+    private ChatReview? _current;
+    private Guid? _editingCommentId;
+    private int? _pendingOldStart, _pendingOldEnd, _pendingNewStart, _pendingNewEnd;
+    private string _commentBody = string.Empty;
+    private ElementReference _commentEditor;
+    private bool _focusCommentEditor;
+    private (int? Old, int? New)? _rangeStart;
+    private string? _error;
+    private bool _pending, _saving;
+
+    protected override void OnParametersSet()
+    {
+        if (Review is not null && (_current is null || Review.Revision >= _current.Revision)) _current = Review;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusCommentEditor || !_pending) return;
+        _focusCommentEditor = false;
+        await _commentEditor.FocusAsync();
+    }
+
+    private void BeginFileComment() => BeginComment(null, null);
+
+    private void HandleLineClick(DiffLine line, MouseEventArgs args)
+    {
+        if (args.ShiftKey && SourceMessageId != Guid.Empty)
+            BeginLineComment(line, shift: true);
+    }
+
+    private void BeginLineComment(DiffLine line, bool shift)
+    {
+        var oldLine = line.Kind == DiffLineKind.Removed ? line.OldLine : null;
+        var newLine = line.Kind == DiffLineKind.Removed ? null : line.NewLine;
+        if (shift && _rangeStart is { } start)
+        {
+            if (start.New is { } newStart && newLine is { } newEnd)
+            {
+                _pendingOldStart = _pendingOldEnd = null;
+                _pendingNewStart = Math.Min(newStart, newEnd);
+                _pendingNewEnd = Math.Max(newStart, newEnd);
+                _error = null;
+            }
+            else if (start.Old is { } oldStart && oldLine is { } oldEnd)
+            {
+                _pendingNewStart = _pendingNewEnd = null;
+                _pendingOldStart = Math.Min(oldStart, oldEnd);
+                _pendingOldEnd = Math.Max(oldStart, oldEnd);
+                _error = null;
+            }
+            else
+            {
+                _error = "Select lines on the same side of the diff.";
+            }
+        }
+        else
+        {
+            BeginComment(oldLine, newLine);
+            _rangeStart = (oldLine, newLine);
+        }
+    }
+
+    private bool IsInPendingRange(DiffLine line) => _pending &&
+        (line.Kind == DiffLineKind.Removed
+            ? line.OldLine is { } oldLine && _pendingOldStart <= oldLine && oldLine <= _pendingOldEnd
+            : line.NewLine is { } newLine && _pendingNewStart <= newLine && newLine <= _pendingNewEnd);
+
+    private bool HasSavedComment(DiffLine line) => (_current?.Comments ?? []).Any(comment =>
+        comment.Path == File.Path && (line.Kind == DiffLineKind.Removed
+            ? line.OldLine is { } oldLine && comment.OldStart <= oldLine && oldLine <= comment.OldEnd
+            : line.NewLine is { } newLine && comment.NewStart <= newLine && newLine <= comment.NewEnd));
+
+    private void BeginComment(int? oldLine, int? newLine)
+    {
+        _editingCommentId = null;
+        _pending = true;
+        _pendingOldStart = _pendingOldEnd = oldLine;
+        _pendingNewStart = _pendingNewEnd = newLine;
+        _commentBody = string.Empty;
+        _error = null;
+        _focusCommentEditor = true;
+    }
+
+    private bool PendingEndsAt(DiffLine line) => _pending &&
+        (_pendingOldEnd is { } oldLine && line.OldLine == oldLine && line.Kind == DiffLineKind.Removed
+         || _pendingNewEnd is { } newLine && line.NewLine == newLine && line.Kind != DiffLineKind.Removed);
+
+    private IReadOnlyList<ReviewComment> CommentsAt(DiffLine line) => (_current?.Comments ?? [])
+        .Where(item => item.Path == File.Path && (line.Kind == DiffLineKind.Removed
+            ? item.OldEnd == line.OldLine && item.NewStart is null
+            : item.NewEnd == line.NewLine && item.OldStart is null)).ToArray();
+
+    private RenderFragment CommentCard(ReviewComment comment) => @<div class="review-comment @(_editingCommentId == comment.Id ? "is-editing" : null)" @key="comment.Id">
+        @if (RangeLabel(comment) is { } label) { <div class="review-comment-anchor">@label</div> }
+        @if (_editingCommentId == comment.Id) { @CommentEditor() }
+        else
+        {
+            <button class="review-comment-body" type="button" title="Edit comment" aria-label="Edit comment" @onclick="() => EditComment(comment)">@comment.Body</button>
+            <div class="review-comment-actions">
+                <button class="review-comment-icon-action" type="button" title="Edit comment" aria-label="Edit comment" @onclick="() => EditComment(comment)"><AppIcon Name="edit" /></button>
+                <button class="review-comment-icon-action is-danger" type="button" title="Delete comment" aria-label="Delete comment" @onclick="() => DeleteCommentAsync(comment)"><AppIcon Name="trash" /></button>
+            </div>
+        }
+    </div>;
+
+    private static string? RangeLabel(ReviewComment comment) => comment switch
+    {
+        { NewStart: { } start, NewEnd: { } end } when start != end => $"New lines {start}–{end}",
+        { OldStart: { } start, OldEnd: { } end } when start != end => $"Old lines {start}–{end}",
+        _ => null,
+    };
+
+    private RenderFragment CommentEditor() => @<div class="review-comment-editor" @onkeydown="HandleCommentKeyDown">
+        @if (_rangeStart is not null && _pendingOldStart == _pendingOldEnd && _pendingNewStart == _pendingNewEnd)
+        {
+            <small class="review-comment-range-hint">Shift-click another line to select a range.</small>
+        }
+        <textarea @ref="_commentEditor" data-review-comment aria-label="Review comment" value="@_commentBody" @oninput="e => _commentBody = e.Value?.ToString() ?? string.Empty" @onkeydown="HandleCommentTextKeyDownAsync"></textarea>
+        <div class="review-comment-actions">
+            <button class="review-comment-icon-action is-save" type="button" title="Save comment (Enter)" aria-label="Save comment" aria-keyshortcuts="Enter" disabled="@(_saving || string.IsNullOrWhiteSpace(_commentBody))" @onclick="SaveCommentAsync"><AppIcon Name="check" /></button>
+            <button class="review-comment-icon-action" type="button" title="Cancel (Esc)" aria-label="Cancel comment" aria-keyshortcuts="Escape" @onclick="CancelComment"><AppIcon Name="x" /></button>
+        </div>
+    </div>;
+
+    private void EditComment(ReviewComment comment)
+    {
+        _editingCommentId = comment.Id;
+        _pending = true;
+        _pendingOldStart = comment.OldStart; _pendingOldEnd = comment.OldEnd;
+        _pendingNewStart = comment.NewStart; _pendingNewEnd = comment.NewEnd;
+        _commentBody = comment.Body;
+        _focusCommentEditor = true;
+    }
+
+    private void HandleCommentKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") CancelComment();
+    }
+
+    private Task HandleCommentTextKeyDownAsync(KeyboardEventArgs args) =>
+        args is { Key: "Enter", ShiftKey: false, CtrlKey: false, AltKey: false, MetaKey: false }
+            ? SaveCommentAsync() : Task.CompletedTask;
+
+    private void CancelComment()
+    {
+        _editingCommentId = null;
+        _pending = false;
+        _pendingOldStart = _pendingOldEnd = _pendingNewStart = _pendingNewEnd = null;
+        _rangeStart = null;
+        _focusCommentEditor = false;
+        _commentBody = string.Empty;
+        _error = null;
+    }
+
+    private async Task SaveCommentAsync()
+    {
+        if (!_pending || string.IsNullOrWhiteSpace(_commentBody) || _saving) return;
+        var editing = _editingCommentId is not null;
+        var comment = new ReviewComment(_editingCommentId ?? Guid.CreateVersion7(), File.Path,
+            _pendingOldStart, _pendingOldEnd, _pendingNewStart, _pendingNewEnd, _commentBody.Trim());
+        _saving = true;
+        try
+        {
+            if (_current is null)
+            {
+                if (SourceMessageId == Guid.Empty || SourceFiles.Count == 0) return;
+                _current = await ReviewsApi.CreateAsync(ProjectId, ChatId,
+                    new CreateReviewRequest(SourceMessageId, $"Review {DateTime.Now:g}",
+                        SourceFiles.Select(item => item.Path).ToArray(), Comments: [comment]), CancellationToken.None);
+            }
+            else
+            {
+                var files = _current.Files.Contains(File.Path, StringComparer.Ordinal)
+                    ? _current.Files : _current.Files.Append(File.Path).ToArray();
+                _current = await ReviewsApi.UpdateAsync(ProjectId, ChatId, _current.Id,
+                    new UpdateReviewRequest(_current.Name, files,
+                        _current.Comments.Where(item => item.Id != comment.Id).Append(comment).ToArray(),
+                        _current.Revision), CancellationToken.None);
+            }
+            _error = null;
+            CancelComment();
+            await OnChanged.InvokeAsync(_current);
+            Notifications.ShowSuccess(editing ? "Review comment updated." : "Review comment added.");
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
+        {
+            _error = error.Message;
+            Notifications.ShowError($"Could not save review comment: {error.Message}");
+        }
+        finally { _saving = false; }
+    }
+
+    private async Task DeleteCommentAsync(ReviewComment comment)
+    {
+        if (_current is null || _saving) return;
+        _saving = true;
+        try
+        {
+            var updated = await ReviewsApi.UpdateAsync(ProjectId, ChatId, _current.Id,
+                new UpdateReviewRequest(_current.Name, _current.Files,
+                    _current.Comments.Where(item => item.Id != comment.Id).ToArray(), _current.Revision),
+                CancellationToken.None);
+            _current = updated.Comments.Count == 0 ? null : updated;
+            _error = null;
+            CancelComment();
+            await OnChanged.InvokeAsync(updated);
+            Notifications.ShowSuccess("Review comment deleted.");
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
+        {
+            _error = error.Message;
+            Notifications.ShowError($"Could not delete review comment: {error.Message}");
+        }
+        finally { _saving = false; }
+    }
+
+    private static string UnavailableReason(FileChange file) => file switch
+    {
+        { IsBinary: true } => "Binary file — there are no lines to compare.",
+        { Kind: FileChangeKind.Deleted } => "The file was deleted; its former contents are not kept.",
+        { Confidence: FileChangeConfidence.Approximate } => "Exact line differences were not available for this file.",
+        _ => "No differences were recorded for this file.",
+    };
+}

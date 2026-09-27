@@ -1,4 +1,4 @@
-# AI.Client Documentation
+# AI Documentation
 
 The documents describe the agreed-upon architecture and are the source of truth for implementation. When a key decision changes, the corresponding ADR is created or updated first, then the affected documents are updated in lockstep.
 

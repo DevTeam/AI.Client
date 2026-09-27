@@ -1,0 +1,415 @@
+@* One run of tool activity, rendered as calm compact rows rather than a wall of JSON.
+
+   Every label here is derived deterministically from the call name, its arguments and its actual
+   result (see ToolPresentations) — never from a second model call, and never counted from
+   anything the Host did not observe. Raw arguments and bulk output stay out of the DOM until a
+   row is expanded, so a 10MB stdout costs nothing to scroll past. *@
+@using AI.Contracts.Tools
+@inject IToolPresentations Presentations
+@inject IChatFeedProjection Feed
+@inject IToolResultCodec ToolResultCodec
+@inject IChatHistoryApi ChatHistoryApi
+@implements IDisposable
+
+<div class="tool-activity">
+    @{
+        var invocations = _invocations;
+        TrackArrivals(invocations);
+        // Result presentation can parse megabytes of stored output. Do not inspect any result
+        // merely to mount this collapsed summary. The exact count becomes known once the user
+        // opens the batch and its rows have been materialised in small chunks; afterwards the
+        // presentations are cached and the count remains available when the batch is collapsed.
+        var hasCompleteFailureCount = _allResultsDescribed
+            || (_batchExpanded && _visibleRowCount >= invocations.Count);
+        if (hasCompleteFailureCount) _allResultsDescribed = true;
+        var failed = hasCompleteFailureCount
+            ? invocations.Count(item => item.Result is not null && Describe(item).Severity == ToolResultSeverity.Error)
+            : 0;
+        var unfinished = invocations.Count(item => item.Result is null);
+        var pending = invocations.Count(item => item.Result is null
+            && (IsLive || _activeByCallId.ContainsKey(item.Call.Id)));
+    }
+    @* Always one summary line. Settled history stays collapsed, including for a single call;
+       only the currently running row is exposed automatically. Folding used to depend on how
+       many calls there were and whether any failed, which made the transcript's shape
+       unpredictable: one failure expanded seven unrelated successes alongside it. *@
+    <details class="tool-activity-batch @(failed > 0 ? "tool-row-failed" : string.Empty)"
+             open="@(_batchExpanded || _activeByCallId.Count > 0)">
+        <summary class="tool-row" @onclick="ToggleBatch" @onclick:preventDefault="true">
+            <span class="tool-row-glyph" aria-hidden="true">
+                @if (pending > 0) { <AppIcon Name="spinner" Class="tool-row-spinner" /> }
+                else if (failed > 0) { <AppIcon Name="error" /> }
+                else { <AppIcon Name="check" /> }
+            </span>
+            <span class="tool-row-title">@(pending > 0 ? "Running tools" : "Tools finished")</span>
+            <span class="tool-row-detail">@invocations.Count @(invocations.Count == 1 ? "tool call" : "tool calls")@(pending == 0 && unfinished > 0 ? $" · {unfinished} without a result" : string.Empty)</span>
+            @* The failure count travels with the duration as one trailing group, pinned to the
+               right edge. Kept apart they could be laid out separately, which is how a failed
+               group ended up stacked over three lines. The count, not just a colour: a collapsed
+               group has to say how much went wrong before anyone decides whether to open it. *@
+            <span class="tool-row-meta">
+                @if (failed > 0) { <span class="tool-row-failure-count">@failed failed</span> }
+                @FormatDuration(TotalDuration(invocations))
+            </span>
+        </summary>
+        @if (_batchExpanded)
+        {
+            <div class="tool-activity-rows">
+                @foreach (var invocation in invocations.Take(_visibleRowCount)) { @RenderRow(invocation) }
+            </div>
+        }
+        else if (_activeByCallId.Count > 0)
+        {
+            @* A running call is useful without another click. Keep it under the very same batch
+               header that will represent it after completion; settled historical rows remain
+               lazy and appear only when the user explicitly opens the batch. *@
+            <div class="tool-activity-rows" role="status" aria-live="polite">
+                @foreach (var invocation in invocations.Where(item => _activeByCallId.ContainsKey(item.Call.Id)))
+                {
+                    @RenderRow(invocation)
+                }
+            </div>
+        }
+    </details>
+</div>
+
+@code {
+    [Parameter] [EditorRequired] public IReadOnlyList<ChatMessageView> Group { get; set; } = [];
+    [Parameter] public Guid ProjectId { get; set; }
+    [Parameter] public Guid ChatId { get; set; }
+    [Parameter] public long ChatRevision { get; set; }
+
+    /// <summary>
+    /// Whether this group belongs to a run that is still going. A call with no result is only
+    /// "running" while that is true; in settled history the same shape means the run ended before
+    /// the result was recorded, and showing it as a spinner forever would be a lie.
+    /// </summary>
+    [Parameter] public bool IsLive { get; set; }
+
+    [Parameter] public IReadOnlyList<ActiveToolInvocation>? ActiveTools { get; set; }
+
+    private const int RowRenderBatchSize = 5;
+    private bool _batchExpanded;
+    private int _visibleRowCount;
+    private bool _rowExpansionPending;
+    private bool _disposed;
+    private bool _allResultsDescribed;
+    private List<ToolInvocation> _invocations = [];
+    private readonly Dictionary<string, ActiveToolInvocation> _activeByCallId = new(StringComparer.Ordinal);
+    private GroupVersion _groupVersion;
+
+    private readonly record struct GroupVersion(int Count, Guid FirstId, Guid LastId);
+
+    protected override void OnParametersSet()
+    {
+        _activeByCallId.Clear();
+        foreach (var active in ActiveTools ?? []) _activeByCallId[active.CallId] = active;
+
+        var version = Group.Count == 0
+            ? default
+            : new GroupVersion(Group.Count, Group[0].Id, Group[^1].Id);
+        var invocations = Feed.BuildInvocations(Group);
+        for (var index = 0; index < invocations.Count; index++)
+        {
+            if (invocations[index].Result is not { ContentOmitted: true } result
+                || !_loadedResultContent.TryGetValue(result.Id, out var content)) continue;
+            invocations[index] = invocations[index] with
+            {
+                Result = result with { Content = content, ContentOmitted = false }
+            };
+        }
+        var knownCallIds = invocations.Select(item => item.Call.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var active in _activeByCallId.Values)
+        {
+            if (!knownCallIds.Add(active.CallId)) continue;
+            invocations.Add(new ToolInvocation(
+                new ChatToolCall(active.CallId, active.Name, active.Arguments),
+                null,
+                active.StartedAt,
+                null));
+        }
+        _invocations = invocations;
+
+        if (version != _groupVersion)
+        {
+            _groupVersion = version;
+            _allResultsDescribed = false;
+            if (_batchExpanded)
+                _visibleRowCount = Math.Min(_visibleRowCount, _invocations.Count);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed) return;
+
+        if (!_batchExpanded || _visibleRowCount >= _invocations.Count || _rowExpansionPending) return;
+        _rowExpansionPending = true;
+        await Task.Delay(TimeSpan.FromMilliseconds(16));
+        _rowExpansionPending = false;
+        if (_disposed || !_batchExpanded) return;
+        _visibleRowCount = Math.Min(_visibleRowCount + RowRenderBatchSize, _invocations.Count);
+        StateHasChanged();
+    }
+
+    private void ToggleBatch()
+    {
+        _batchExpanded = !_batchExpanded;
+        _visibleRowCount = _batchExpanded ? Math.Min(RowRenderBatchSize, _invocations.Count) : 0;
+    }
+
+    private RenderFragment RenderRow(ToolInvocation invocation) => @<text>
+        @{
+            var call = Presentations.DescribeCall(invocation.Call.Name, invocation.Call.Arguments);
+            var active = _activeByCallId.GetValueOrDefault(invocation.Call.Id);
+            var running = invocation.Result is null && (active is not null || IsLive);
+            var abandoned = invocation.Result is null && active is null && !IsLive;
+            var result = invocation.Result is null ? null : Describe(invocation);
+            var severity = abandoned
+                ? ToolResultSeverity.Warning
+                : result?.Severity ?? ToolResultSeverity.Ok;
+            // Every row starts collapsed, failures included. A failure used to open itself, which
+            // made a batch jump around as results landed and buried the rows either side of it in
+            // output nobody asked for; the row's icon, severity colour and summary already say it
+            // failed, and opening it is the user's call.
+            var open = _expanded.Contains(invocation.Call.Id);
+            // Set only for a row that showed up while the group was already on screen (see
+            // TrackArrivals); its value staggers the row against the others that landed with it.
+            var arriving = _arriving.TryGetValue(invocation.Call.Id, out var index) ? index : (int?)null;
+        }
+        <details class="tool-row-item @SeverityClass(severity) @(arriving is null ? string.Empty : "tool-row-arriving") @(_resolved.Contains(invocation.Call.Id) ? "tool-row-resolved" : string.Empty)"
+                 style="@(arriving is { } order ? $"--arrive-index: {order}" : null)"
+                 open="@open">
+            <summary class="tool-row" @onclick="() => ToggleAsync(invocation)" @onclick:preventDefault="true">
+                <span class="tool-row-glyph" aria-hidden="true">
+                    @if (running) { <AppIcon Name="spinner" Class="tool-row-spinner" /> }
+                    else if (severity == ToolResultSeverity.Error) { <AppIcon Name="error" /> }
+                    else if (abandoned) { <AppIcon Name="interrupted" /> }
+                    else { <AppIcon Name="check" /> }
+                </span>
+                <span class="tool-row-title">@call.Title</span>
+                @if (call.Detail is { Length: > 0 } detail)
+                {
+                    <span class="tool-row-detail" title="@detail">@detail</span>
+                }
+                @if (SafetyLabel(call.Safety) is { } safety)
+                {
+                    <span class="tool-row-safety">@safety</span>
+                }
+                <span class="tool-row-meta">
+                    @if (result is not null) { @result.Summary }
+                    else if (active is not null) { <span>@(FormatProgress(active) ?? "Running…")</span> }
+                    else if (abandoned) { <span>No result recorded</span> }
+                    @if (FormatDuration(invocation.Duration) is { } elapsed) { <span class="tool-row-elapsed">@elapsed</span> }
+                </span>
+            </summary>
+            @if (open)
+            {
+            <div class="tool-row-body">
+                @if (result is { Facts.Count: > 0 })
+                {
+                    <dl class="tool-row-facts">
+                        @foreach (var fact in result.Facts)
+                        {
+                            <dt>@fact.Label</dt>
+                            <dd>@fact.Value</dd>
+                        }
+                    </dl>
+                }
+                @if (FormatArguments(invocation.Call.Arguments) is { Length: > 0 } arguments)
+                {
+                    <pre class="tool-row-args">@arguments</pre>
+                }
+                @if (result?.Body is { Length: > 0 } body)
+                {
+                    <pre class="tool-row-output @(result.BodyFormat == ToolBodyFormat.Diff ? "tool-row-diff" : string.Empty)">@body</pre>
+                }
+                else if (_loadingResults.Contains(invocation.Call.Id))
+                {
+                    <p class="tool-row-running">Loading result…</p>
+                }
+                else if (running)
+                {
+                    <p class="tool-row-running">Waiting for the result…</p>
+                }
+                else if (abandoned)
+                {
+                    <p class="tool-row-running">The run ended before this call reported back. Its effects may still have happened.</p>
+                }
+            </div>
+            }
+        </details>
+    </text>;
+
+    // Which rows the user opened, by call id. Nothing else opens a row, so one set is enough —
+    // there is no default-open state left to remember an override for.
+    private readonly HashSet<string> _expanded = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _loadingResults = new(StringComparer.Ordinal);
+    private readonly Dictionary<Guid, string> _loadedResultContent = [];
+
+    private async Task ToggleAsync(ToolInvocation invocation)
+    {
+        var id = invocation.Call.Id;
+        if (_expanded.Remove(id)) return;
+        _expanded.Add(id);
+        if (invocation.Result is not { ContentOmitted: true } result
+            || ProjectId == Guid.Empty || ChatId == Guid.Empty) return;
+
+        _loadingResults.Add(id);
+        try
+        {
+            var content = await ChatHistoryApi.GetMessageContentAsync(
+                ProjectId,
+                ChatId,
+                result.Id,
+                CancellationToken.None);
+            if (_disposed || content is null || content.Revision < ChatRevision) return;
+            _loadedResultContent[result.Id] = content.Content;
+            var loadedResult = result with { Content = content.Content, ContentOmitted = false };
+            var index = _invocations.FindIndex(item => item.Call.Id == id);
+            if (index >= 0) _invocations[index] = _invocations[index] with { Result = loadedResult };
+            _described.Remove(result.Id);
+        }
+        catch (HttpRequestException)
+        {
+        }
+        finally
+        {
+            _loadingResults.Remove(id);
+        }
+    }
+
+    // Calls this group has rendered at least once, so a row can tell "just arrived" from "was
+    // always here". Without it the first render of an old group would animate every row at once.
+    private readonly HashSet<string> _known = new(StringComparer.Ordinal);
+
+    // The arrivals that earned an entry animation, each with its position within the batch it
+    // landed in. A CSS animation only plays when the element enters the DOM, so the marks are
+    // never cleared: dropping one on a later render would cut the animation off mid-flight, and
+    // keeping it costs one dictionary entry per call.
+    private readonly Dictionary<string, int> _arriving = new(StringComparer.Ordinal);
+
+    // Calls seen without a result that later got one, i.e. the ones whose row changed under the
+    // user's eyes from spinner to outcome. Only those cross-fade; a row rendered as finished from
+    // the start has nothing to fade between.
+    private readonly HashSet<string> _pending = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _resolved = new(StringComparer.Ordinal);
+
+    private bool _primed;
+
+    /// <summary>
+    /// Notes which calls are new since the previous render. Runs on every render, collapsed group
+    /// included: a call that lands while the group is folded is absorbed silently, so unfolding it
+    /// later shows a settled list instead of replaying a cascade the user never watched happen.
+    /// </summary>
+    private void TrackArrivals(IReadOnlyList<ToolInvocation> invocations)
+    {
+        var batch = 0;
+        foreach (var invocation in invocations)
+        {
+            var id = invocation.Call.Id;
+            // A group's very first render is the baseline, never an arrival — it is transcript
+            // that was already there, whether it was written a second or a week ago.
+            if (_known.Add(id) && _primed && _batchExpanded) _arriving[id] = batch++;
+            if (invocation.Result is null)
+            {
+                if (IsLive) _pending.Add(id);
+            }
+            else if (_pending.Remove(id))
+            {
+                _resolved.Add(id);
+            }
+        }
+        _primed = true;
+    }
+
+    // Parsing a result and describing it is not free — a single process_run can carry megabytes of
+    // stdout — and Blazor re-renders this subtree whenever the run snapshot changes. Results are
+    // immutable once written, so the message id is a sound cache key.
+    private readonly Dictionary<Guid, ToolResultPresentation> _described = [];
+
+    private ToolResultPresentation Describe(ToolInvocation invocation)
+    {
+        if (invocation.Result is not { } message) return EmptyResult;
+        if (message.ContentOmitted) return CompletedResult;
+        if (_described.TryGetValue(message.Id, out var cached)) return cached;
+        var described = Presentations.DescribeResult(
+            invocation.Call.Name, invocation.Call.Arguments, ToolResultCodec.Read(message.Content));
+        _described[message.Id] = described;
+        return described;
+    }
+
+    private static readonly ToolResultPresentation EmptyResult = new("", ToolResultSeverity.Ok, [], null);
+    private static readonly ToolResultPresentation CompletedResult = new("Completed", ToolResultSeverity.Ok, [], null);
+
+    /// <summary>Sums only what was actually observed; an unfinished call contributes nothing.</summary>
+    private static TimeSpan? TotalDuration(IReadOnlyList<ToolInvocation> invocations)
+    {
+        var total = TimeSpan.Zero;
+        var any = false;
+        foreach (var invocation in invocations)
+        {
+            if (invocation.Duration is not { } duration) continue;
+            total += duration;
+            any = true;
+        }
+        return any ? total : null;
+    }
+
+    private static string? FormatDuration(TimeSpan? duration) => duration switch
+    {
+        null => null,
+        { TotalSeconds: < 1 } value => $"{value.TotalMilliseconds:F0} ms",
+        { TotalSeconds: < 60 } value => $"{value.TotalSeconds:F1} s",
+        { } value => $"{(int)value.TotalMinutes}m {value.Seconds}s",
+    };
+
+    // Progress is whatever the tool server reported: a message, a fraction when a total exists,
+    // or a bare count. Do not invent a percentage when the server supplied no denominator.
+    private static string? FormatProgress(ActiveToolInvocation active)
+    {
+        if (active.Message is { Length: > 0 } message) return message;
+        if (active.Progress is not { } progress) return null;
+        return active.Total is { } total and > 0
+            ? $"{progress / total:P0}"
+            : progress.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    // Only the two states worth a badge. "Mutating" is the unremarkable default for anything that
+    // writes, and Unknown means the server said nothing — neither earns visual weight.
+    private static string? SafetyLabel(ToolSafety safety) => safety switch
+    {
+        ToolSafety.Destructive => "destructive",
+        _ => null,
+    };
+
+    private static string SeverityClass(ToolResultSeverity severity) => severity switch
+    {
+        ToolResultSeverity.Error => "tool-row-failed",
+        ToolResultSeverity.Warning => "tool-row-warned",
+        _ => string.Empty,
+    };
+
+    // Renders a call's JSON arguments as "param: value" lines instead of raw JSON, so the common
+    // case (a flat object of scalar args) reads like a short form rather than a payload.
+    private static string FormatArguments(string arguments)
+    {
+        if (ToolPresentations.ParseArguments(arguments) is not { } input) return arguments;
+        if (input.ValueKind != System.Text.Json.JsonValueKind.Object) return arguments;
+        var properties = input.EnumerateObject().ToList();
+        if (properties.Count == 0) return string.Empty;
+        return string.Join("\n", properties.Select(property => $"{property.Name}: {FormatArgumentValue(property.Value)}"));
+    }
+
+    private static string FormatArgumentValue(System.Text.Json.JsonElement value) => value.ValueKind switch
+    {
+        System.Text.Json.JsonValueKind.String => value.GetString() ?? string.Empty,
+        System.Text.Json.JsonValueKind.Null => "null",
+        _ => value.GetRawText(),
+    };
+
+    public void Dispose()
+    {
+        _disposed = true;
+    }
+}

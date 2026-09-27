@@ -1,0 +1,121 @@
+@* The run's net file changes, as one card at the end of the turn rather than repeated inside
+   every tool row. The numbers are measured by the Host against content captured before the run
+   first touched each path, so repeated edits to one file collapse into a single net difference
+   and anything the user changed beforehand is never counted here. *@
+@using AI.Contracts.Workspace
+@using AI.Contracts.Resources
+
+@if (Changes is { IsEmpty: false } changes)
+{
+    <section class="workspace-changes @(_showDetails ? "is-expanded" : "is-collapsed") @(_suppressPreview ? "is-preview-suppressed" : null)"
+             aria-label="Files changed by this run" @onmouseleave="EnablePreview">
+        <div class="workspace-changes-preview" id="@_previewId" role="tooltip">
+            <ul>
+                @foreach (var file in changes.Files)
+                {
+                    var dragPath = file.Kind == FileChangeKind.Deleted ? null : file.Path;
+                    <li @key="file.Path" draggable="@(dragPath is null ? "false" : "true")" data-drag-path="@dragPath" data-drag-kind="File">
+                        <span class="workspace-changes-preview-path" title="@file.Path">@PreviewDisplay(file)</span>
+                        @if (CommentCount(file.Path) is > 0 and var count)
+                        {
+                            <span class="workspace-change-comments" title="@count @(count == 1 ? "comment" : "comments")" aria-label="@count @(count == 1 ? "comment" : "comments")"><AppIcon Name="message-circle" />@count</span>
+                        }
+                        <span class="workspace-changes-preview-counts">
+                            @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
+                            @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
+                            @if (file.IsBinary) { <span class="workspace-change-binary">binary</span> }
+                        </span>
+                    </li>
+                }
+            </ul>
+        </div>
+        <div class="workspace-changes-top">
+        <button class="workspace-changes-header" type="button" aria-expanded="@_showDetails"
+                aria-describedby="@(!_showDetails ? _previewId : null)"
+                title="@(_showDetails ? "Collapse file changes" : "Expand file changes")" @onclick="ToggleDetails">
+            <span class="workspace-changes-icon" aria-hidden="true"><AppIcon Name="diff" /></span>
+            <span class="workspace-changes-title">@changes.Files.Count @(changes.Files.Count == 1 ? "file" : "files") changed</span>
+            @* The sign carries the meaning, not the colour: red/green alone fails for anyone who
+               cannot tell them apart, and in a diff the direction is the whole point. *@
+            <span class="workspace-changes-chevron" aria-hidden="true"><AppIcon Name="chevron-down" /></span>
+        </button>
+        @if (SourceMessageId is { } sourceId)
+        {
+            <button class="workspace-review-action" type="button" title="Review these changes" @onclick="() => OnReview.InvokeAsync(sourceId)">Review</button>
+        }
+        <span class="workspace-changes-totals" aria-label="@changes.Additions additions, @changes.Deletions deletions">
+            <span class="workspace-added">+@changes.Additions</span>
+            <span class="workspace-removed">−@changes.Deletions</span>
+        </span>
+        </div>
+        <div class="workspace-changes-details" aria-hidden="@(!_showDetails)">
+            <div class="workspace-changes-details-inner">
+            <ul class="workspace-changes-list">
+                @foreach (var file in changes.Files)
+                {
+                    var expanded = _expanded.Contains(file.Path);
+                    var bodyId = $"diff-{file.Path.GetHashCode(StringComparison.Ordinal):x8}";
+                    <li @key="file.Path">
+                        @* Expansion is tracked here rather than left to <details>, which keeps its
+                           contents in the DOM whether open or shut. A diff can run to thousands of
+                           lines, and several closed files would each be paying for one. *@
+                        <WorkspaceChangeFileHeader File="@file" Expanded="@expanded" CommentCount="@CommentCount(file.Path)" OnToggle="() => Toggle(file.Path)" />
+                        @if (expanded)
+                        {
+                            <div class="workspace-change-body" id="@bodyId">
+                                <div class="workspace-change-diff">
+                                    <ReviewDiffFile File="@file" SourceFiles="@changes.Files" ProjectId="@ProjectId" ChatId="@ChatId"
+                                                    SourceMessageId="@(SourceMessageId ?? Guid.Empty)" Review="@Review"
+                                                    OnChanged="OnReviewChanged" />
+                                </div>
+                            </div>
+                        }
+                    </li>
+                }
+            </ul>
+            </div>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter] public WorkspaceChangeSet? Changes { get; set; }
+    [Parameter] public Guid ProjectId { get; set; }
+    [Parameter] public Guid ChatId { get; set; }
+    [Parameter] public Guid? SourceMessageId { get; set; }
+    [Parameter] public ChatReview? Review { get; set; }
+    [Parameter] public EventCallback<Guid> OnReview { get; set; }
+    [Parameter] public EventCallback<ChatReview> OnReviewChanged { get; set; }
+
+    private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
+    private readonly string _previewId = $"workspace-changes-preview-{Guid.NewGuid():N}";
+    private bool _showDetails;
+    private bool _suppressPreview;
+
+    private void ToggleDetails()
+    {
+        _suppressPreview = _showDetails;
+        _showDetails = !_showDetails;
+    }
+
+    private void EnablePreview() => _suppressPreview = false;
+
+    private int CommentCount(string path) => Review?.Comments.Count(comment => comment.Path == path) ?? 0;
+
+    private void Toggle(string path)
+    {
+        if (!_expanded.Add(path)) _expanded.Remove(path);
+    }
+
+    private static string PreviewDisplay(FileChange file) =>
+        file is { Kind: FileChangeKind.Renamed, PreviousPath: { } previous }
+            ? $"{FileName(previous)} → {FileName(file.Path)}"
+            : FileName(file.Path);
+
+    private static string FileName(string path)
+    {
+        var segments = path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+        return segments.Length == 0 ? path : segments[^1];
+    }
+
+}

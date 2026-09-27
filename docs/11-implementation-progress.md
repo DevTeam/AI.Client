@@ -41,7 +41,7 @@ State: completed
 
 ### Implemented
 
-- Created the `AI.Client.slnx` solution and the Domain, Contracts, Application, Infrastructure, Host, Web, History MCP, and FileSystem MCP projects.
+- Created the `AI.slnx` solution and the Domain, Contracts, Application, Infrastructure, Host, Web, History MCP, and FileSystem MCP projects.
 - Configured .NET 10, nullable reference types, latest recommended analyzers, warnings as errors, and central package management.
 - Connected Pure.DI and Pure.DI.MS; separate composition roots were created for Host and Web.
 - Implemented the Project aggregate with ID, name, timestamps, allowed directories, and MCP server bindings.
@@ -62,8 +62,8 @@ State: completed
 
 | Check | Result |
 |---|---|
-| `dotnet build AI.Client.slnx --nologo` | Success, 0 warnings, 0 errors |
-| `dotnet test AI.Client.slnx --no-build --nologo` | Success, 8 of 8 tests |
+| `dotnet build AI.slnx --nologo` | Success, 0 warnings, 0 errors |
+| `dotnet test AI.slnx --no-build --nologo` | Success, 8 of 8 tests |
 | Development: `/api/health` | HTTP 200 |
 | Development: `/` and `/_framework/blazor.webassembly.js` | HTTP 200 |
 | Published Production: `/api/health` | HTTP 200 |
@@ -104,7 +104,7 @@ Local JSON project storage:
 | 2026-08-12 | Начат workspace foundation: project inspector разделён на вкладки General/Endpoints/Security/MCP, endpoint editor переведён на master-detail, добавлены Save/Cancel и минимальный локальный Lucide-like SVG component для icon-only actions. Host/Web build выполнен в изолированный output без warnings/errors. |
 | 2026-08-12 | Workspace foundation продолжен: старая prototype-разметка физически удалена, проект получил сохраняемый default endpoint, чат — собственный сохраняемый `EndpointProfileId`, а новый чат наследует проектный default. Добавлены resize-разделители панелей с сохранением layout в `localStorage`, клавиатурный контракт composer (`Enter`, `Shift+Enter`, IME-safe), очистка и возврат focus после отправки. Pure.DI получает `IJSRuntime` как внешнюю Blazor dependency; статические application services не добавлялись. |
 | 2026-08-12 | Проверка workspace slice: Host/Web build — 0 warnings, 0 errors; Domain — 10/10, Application — 8/8, Infrastructure — 13/13. Новые unit tests проверяют инвариант default endpoint и JSON round-trip выбранного endpoint проекта и чата; тесты не используют сеть, процессы или реальную файловую систему. |
-| 2026-08-12 | Повторный `dotnet run --project build -- verify` не завершился из-за запущенного пользователем `AI.Client.Host` (PID 53148), удерживающего DLL в стандартном `bin`. Процесс не останавливался. Для независимой проверки использованы отдельные `BaseOutputPath`: сборка и все 31 unit tests прошли успешно. |
+| 2026-08-12 | Повторный `dotnet run --project build -- verify` не завершился из-за запущенного пользователем `AI.Host` (PID 53148), удерживающего DLL в стандартном `bin`. Процесс не останавливался. Для независимой проверки использованы отдельные `BaseOutputPath`: сборка и все 31 unit tests прошли успешно. |
 | 2026-08-12 | Реализован следующий Codex-like UX slice: обе боковые панели сворачиваются и восстанавливаются, ширина и collapsed state сохраняются в `localStorage`; повреждённое layout-значение безопасно сбрасывается. Добавлен общий toast feedback для основных project/chat/endpoint/security операций. В endpoint master-detail добавлен `Test connection`: короткий `chat/completions` запрос проходит через тот же Host gateway и credential store, что и реальный чат, но не записывается в историю. Изолированная сборка прошла с 0 warnings/errors; Domain 10/10, Application 8/8, Infrastructure 13/13. |
 | 2026-08-12 | Реализован OpenAI-compatible streaming: Infrastructure отправляет `stream: true`, отдельный SSE parser извлекает `choices[0].delta.content` до `[DONE]`, Host проксирует безопасные chunks в WASM. Composer отображает постепенный Markdown и кнопку Stop. User message сохраняется перед генерацией; завершённый, остановленный или оборванный assistant response сохраняется после неё, для последних двух выставляется `Incomplete`. JSON schema остаётся backward-compatible за счёт optional поля. Изолированная сборка — 0 warnings/errors; Domain 10/10, Application 8/8, Infrastructure 16/16. |
 | 2026-08-12 | Завершён базовый chat management UX: New chat стал несохранённым draft до первой отправки; добавлены revision-safe Rename/Delete API и inline подтверждение удаления, Copy Markdown, Edit and branch и sibling branch switcher. Выбор sibling разворачивается до наиболее свежего leaf. UI actions используют локальные SVG icons и английские tooltip/aria-label. Изолированная сборка — 0 warnings/errors; Domain 12/12, Application 10/10, Infrastructure 16/16. |
@@ -116,7 +116,7 @@ Local JSON project storage:
 | 2026-08-12 | Project settings actions were unified: a single fixed footer with `Save` and `Cancel` is used by all tabs. The endpoint-specific `Test connection` action stays next to the editable profile. |
 | 2026-08-12 | Project settings was enlarged to `42rem × 52rem` with viewport clamping, so the endpoint form fits without unnecessary vertical scrolling on a standard screen. The add-endpoint button is aligned in height with the profile selector. |
 | 2026-08-12 | Endpoint removal was moved next to the profile selector: a compact `−` button sits beside `+`, has a tooltip, and is disabled when no profile is selected. The bottom text remove button was removed. |
-| 2026-08-12 | The decorative `AI.Client / Foundation` block was removed from the sidebar. The sidebar hide/restore buttons got the same control row height and the same vertical position in both states. |
+| 2026-08-12 | The decorative `AI / Foundation` block was removed from the sidebar. The sidebar hide/restore buttons got the same control row height and the same vertical position in both states. |
 | 2026-08-12 | After a visual review the sidebar toggle positioning was refined: the restore button is positioned absolutely with the same top offset `0.45rem` as the hide button, and is centered inside the collapsed column. |
 | 2026-08-12 | Lazy chat creation was implemented: the user can type a message right after selecting or creating a project, and the chat is created on first send and gets its title from the message text. The empty screen explains this behavior. If no endpoint is configured, sending no longer fails silently — the composer shows a specific error. |
 | 2026-08-12 | The actions of the selected project were moved to compact SVG buttons: `+` creates a new chat, sliders opens the settings menu. The global text button `New chat` was removed. Send was replaced with a round light button with an up arrow. `Test connection` was shortened to `Test` while preserving the full tooltip. |
@@ -138,8 +138,8 @@ Local JSON project storage:
 | 2026-08-13 | The composer auto-grows up to 14 rows. Before reaching the threshold the vertical scrollbar is forcibly hidden; after the threshold the height is fixed and inner scrolling is enabled. Recalculation runs on input, initial attach, focus, and programmatic text insertion. |
 | 2026-08-13 | Fixed a WebAssembly crash on an empty or stale `chatComposer.js` static asset: JS enhancement is no longer a critical dependency of the first render, and import/attach errors are caught. Enter is handled directly by Blazor, while CSS `field-sizing: content` preserves the basic auto-grow without JS. |
 | 2026-08-13 | For user and assistant messages the `Fork from here` action was added with a separate SVG icon. It selects the message as the leaf of a new branch, clears and focuses the composer; the next send creates a child branch without modifying the original history. |
-| 2026-08-12 | Добавлено постоянное структурированное логирование Host на `Microsoft.Extensions.Logging`: Console и ежедневные JSONL в `%LocalAppData%\AI.Client\logs`, retention 14 дней, streaming event IDs `1001–1005`, без prompt/token content и credentials. |
-| 2026-08-12 | Added `AI.Client.Cli` for headless LLM testing: separate multi-step sessions, real Host SSE route, project endpoint/protected credential, JSON stdout, `session.json`, and append-only `transcript.jsonl`. MCP/security snapshot is recorded, but `agent` honestly returns `not_supported` until the general Agent Runtime is implemented. Build automation received the `chat` command. |
+| 2026-08-12 | Добавлено постоянное структурированное логирование Host на `Microsoft.Extensions.Logging`: Console и ежедневные JSONL в `%LocalAppData%\AI\logs`, retention 14 дней, streaming event IDs `1001–1005`, без prompt/token content и credentials. |
+| 2026-08-12 | Added `AI.Cli` for headless LLM testing: separate multi-step sessions, real Host SSE route, project endpoint/protected credential, JSON stdout, `session.json`, and append-only `transcript.jsonl`. MCP/security snapshot is recorded, but `agent` honestly returns `not_supported` until the general Agent Runtime is implemented. Build automation received the `chat` command. |
 | 2026-08-12 | The headless CLI was extended with a reproducible Stop check via `session send --cancel-after-ms`: the same downstream HTTP streaming request is cancelled, the result is returned as `cancelled`, and partial text is recorded only in the transcript without polluting further session context. |
 | 2026-08-12 | A real smoke test revealed that the ASP.NET logging state can contain a non-serializable `RuntimeMethodInfo`. The JSONL provider was made fail-safe: property values are normalized to primitives/strings, and provider exceptions cannot return HTTP 500 to the application. |
 | 2026-08-12 | A real check with Qwen3-Coder-480B confirmed end-to-end Stop: Host received 135 chunks and recorded `ChatStreamCancelled` after 2898 ms. Buffering behavior of `PostAsJsonAsync` was found in the headless CLI; streaming was switched to `SendAsync(..., ResponseHeadersRead)` so the transcript sees chunks and the partial response before cancellation. |
@@ -248,7 +248,7 @@ The built-in server now ships 13 tools: in addition to `process_run`, it include
 
 The project's directory grants have gained executable meaning for the first time. `IToolSessionFactory.OpenAsync` accepts grants; `DefaultToolSessionFactory` passes them to the server via `AI_CLIENT_DIRECTORY_GRANTS`; the server-side `PathGuard` checks path absoluteness, strips `..`, resolves reparse points across the entire chain of existing components, verifies containment, and enforces the required capability. No grants mean denial, not full access. Host canonicalizes path arguments before confirmation, so user and server evaluate the same path.
 
-Check: 93 tests in four test projects, solution compilation without warnings. A full `verify` that copies Host output files was not run — the running `AI.Client.Host` instance was holding its own assemblies.
+Check: 93 tests in four test projects, solution compilation without warnings. A full `verify` that copies Host output files was not run — the running `AI.Host` instance was holding its own assemblies.
 
 ## 2026-09-17 — file and directory deletion in the built-in MCP
 
@@ -258,7 +258,7 @@ The tools are split by path kind. `delete_file` deletes only a file, `delete_dir
 
 The call presentation marks recursion directly in the row title ("Delete directory (recursive)"), and the result — the deleted file size. `WorkspaceChangeTracker` watches both tools: a deleted file appears in the run changes as `Deleted` with the line count taken from the content captured before the run.
 
-Check: 395 tests in four test projects — 120 Application, 178 Infrastructure, 67 Web, 30 Domain — with no failures, solution and test projects compilation without warnings. The full `dotnet run --project build -- verify` was not run: the running `AI.Client.Host` instance was holding the assemblies in its `bin`, so the test assemblies were run directly.
+Check: 395 tests in four test projects — 120 Application, 178 Infrastructure, 67 Web, 30 Domain — with no failures, solution and test projects compilation without warnings. The full `dotnet run --project build -- verify` was not run: the running `AI.Host` instance was holding the assemblies in its `bin`, so the test assemblies were run directly.
 
 ## 2026-09-23 — explicit context checkpoint in expanded turns
 

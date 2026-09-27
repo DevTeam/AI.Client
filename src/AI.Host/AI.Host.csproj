@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\AI.Mcp.BuiltIn\AI.Mcp.BuiltIn.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\AI.Contracts\AI.Contracts.csproj" />
+    <ProjectReference Include="..\AI.Server\AI.Server.csproj" />
+    <ProjectReference Include="..\AI.Web\AI.Web.csproj"
+                      Aliases="AIWeb" />
+    <Compile Include="..\AI.Contracts\Composition.cs" Link="Contracts\Composition.cs" />
+    <Compile Include="..\AI.Server\Composition.cs" Link="Server\Composition.cs" />
+    <Compile Include="..\AI.Server\CommandLine\Composition.cs" Link="Server\CommandLine\Composition.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Pure.DI" PrivateAssets="all" />
+    <PackageReference Include="Pure.DI.MS" />
+  </ItemGroup>
+  <Import Project="..\..\build\McpBuiltIn.targets" />
+</Project>

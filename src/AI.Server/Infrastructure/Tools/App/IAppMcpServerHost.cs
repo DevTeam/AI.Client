@@ -1,0 +1,11 @@
+namespace AI.Mcp.App;
+
+using AI.Application.Tools;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+
+/// <summary>Builds the application's own MCP server over a transport the caller supplies.</summary>
+public interface IAppMcpServerHost
+{
+    McpServer Create(ITransport transport, ToolRunContext run);
+}

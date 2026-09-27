@@ -10,7 +10,7 @@ internal sealed class PublishDesktopTarget(IProcessRunner processRunner) : IPubl
         processRunner.RunAsync(
             $"Publish desktop ({runtime})",
             "dotnet",
-            ["publish", "src/AI.Client.Desktop/AI.Client.Desktop.csproj", "--nologo", "-c", "Release",
+            ["publish", "src/AI.Desktop/AI.Desktop.csproj", "--nologo", "-c", "Release",
                 "-r", runtime, "--self-contained", "--output", outputDirectory],
             cancellationToken);
 }

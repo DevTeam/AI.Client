@@ -1,0 +1,45 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AI.Desktop.App"
+             RequestedThemeVariant="Dark">
+    <!--
+        The drawn titlebar is not a child of the window, so its brushes resolve here, not in
+        Window.Resources. Caption* and TitleBarBackgroundBrush are the names Fluent's
+        WindowDrawnDecorations theme looks up; the rest are the window's own. The values follow
+        the page's tokens (app.css): App.ApplyTheme switches between the two sets when the page
+        changes its theme.
+    -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#202020" />
+                    <SolidColorBrush x:Key="TitleBarBorderBrush" Color="#2E2E2E" />
+                    <SolidColorBrush x:Key="CaptionButtonForeground" Color="#ECECEC" />
+                    <SolidColorBrush x:Key="CaptionButtonBackground" Color="#2B2B2B" />
+                    <SolidColorBrush x:Key="CaptionButtonBorderBrush" Color="#454545" />
+                    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#171717" />
+                    <SolidColorBrush x:Key="WindowFrameBrush" Color="#3A3A3A" />
+                    <SolidColorBrush x:Key="StatusTitleBrush" Color="#E5E5E5" />
+                    <SolidColorBrush x:Key="StatusDetailBrush" Color="#A3A3A3" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#F3F3F3" />
+                    <SolidColorBrush x:Key="TitleBarBorderBrush" Color="#E0E0E0" />
+                    <SolidColorBrush x:Key="CaptionButtonForeground" Color="#1F1F1F" />
+                    <SolidColorBrush x:Key="CaptionButtonBackground" Color="#E2E2E2" />
+                    <SolidColorBrush x:Key="CaptionButtonBorderBrush" Color="#CFCFCF" />
+                    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="WindowFrameBrush" Color="#CFCFCF" />
+                    <SolidColorBrush x:Key="StatusTitleBrush" Color="#1F1F1F" />
+                    <SolidColorBrush x:Key="StatusDetailBrush" Color="#575757" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+            <x:Double x:Key="CaptionButtonWidth">46</x:Double>
+            <x:Double x:Key="CaptionButtonHeight">38</x:Double>
+        </ResourceDictionary>
+    </Application.Resources>
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+</Application>

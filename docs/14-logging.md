@@ -7,7 +7,7 @@ The Host uses the standard `Microsoft.Extensions.Logging` abstractions and two p
 - Console — interactive diagnostics in Rider;
 - a persistent JSONL file provider.
 
-Logs are located in `%LocalAppData%\AI.Client\logs` and are named `ai-client-YYYYMMDD.jsonl`. Retention is 14 days; stale files are deleted when the Host starts.
+Logs are located in `%LocalAppData%\AI\logs` and are named `ai-client-YYYYMMDD.jsonl`. Retention is 14 days; stale files are deleted when the Host starts.
 
 ## Streaming events
 
@@ -26,7 +26,7 @@ The provider is fail-safe: complex values of system ASP.NET events are normalize
 After reproducing, check the latest file:
 
 ```powershell
-Get-Content "$env:LOCALAPPDATA\AI.Client\logs\ai-client-$(Get-Date -Format yyyyMMdd).jsonl" | Select-Object -Last 100
+Get-Content "$env:LOCALAPPDATA\AI\logs\ai-client-$(Get-Date -Format yyyyMMdd).jsonl" | Select-Object -Last 100
 ```
 
 If there are chunks but no `ChatStreamCompleted`, `ChatStreamCancelled` or `ChatStreamFailed`, the upstream enumeration did not finish. If `ChatStreamCompleted` is present but the Web stays in `Generating`, the problem is in the downstream/Web path.

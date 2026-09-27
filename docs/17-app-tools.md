@@ -16,8 +16,8 @@ The code is laid out as follows:
 
 | Project | Contents |
 |---|---|
-| `AI.Client.Server/Infrastructure/Tools/App` | five tools, `AppMcpServerHost`, shared mutation and pagination plumbing |
-| `AI.Client.Server/Infrastructure/Tools` | `McpToolSession` (shared by all servers), `DefaultToolSessionFactory`, `AppToolSessionFactory`, `CompositeToolSessionFactory` |
+| `AI.Server/Infrastructure/Tools/App` | five tools, `AppMcpServerHost`, shared mutation and pagination plumbing |
+| `AI.Server/Infrastructure/Tools` | `McpToolSession` (shared by all servers), `DefaultToolSessionFactory`, `AppToolSessionFactory`, `CompositeToolSessionFactory` |
 
 `IToolSessionFactory.OpenAsync` accepts a set of server IDs. `ChatAgent` computes it by the same rule for all servers — enabled globally, policy not `Deny`, not disabled in the project — so a disabled server is not started at all rather than started and filtered out.
 

@@ -1,0 +1,1873 @@
+@* Split out of Home.razor so that typing in the composer doesn't re-render the whole message
+   list: Blazor only re-renders a child component if ShouldRender() says so, so this component
+   can be skipped entirely on renders where none of its parameters actually changed (see
+   ShouldRender below). Without this boundary, every keystroke in the composer (which lives in
+   Home and calls StateHasChanged on the whole page) also rebuilt and diffed this list. *@
+@inject IMarkdownRenderer MarkdownRenderer
+@inject IChatFeedProjection Feed
+@inject IJSRuntime JsRuntime
+@inject IChatRunsApi RunsApi
+@inject IChatHistoryApi ChatHistoryApi
+@inject IRunStatusPresentation StatusPresentation
+@inject ITurnLiveText LiveText
+@inject IToolPresentations Presentations
+@inject INotificationService Notifications
+@inject IApiBaseUrl ApiBaseUrl
+@implements IAsyncDisposable
+@using AI.Contracts.Tools
+@using AI.Contracts.Resources
+
+<div class="messages-area">
+@if (SelectedChat is not null)
+{
+    <nav class="history-markers" aria-hidden="true" @ref="_historyMarkers">
+        <TranscriptRenderBoundary ChatId="@SelectedChat.Id"
+                                  ChatRevision="@SelectedChat.Revision"
+                                  BranchLeafId="@BranchLeafId"
+                                  ForkSourceId="@ForkSourceId"
+                                  BranchMenuId="@MessageBranchMenuId"
+                                  RunPresentationVersion="@TranscriptRunPresentationVersion">
+        @{
+            var forkPoints = GetForkPointIds();
+            var historyEntries = BuildHistoryEntries(GetVisibleBranchMessages(), forkPoints);
+        }
+        @for (var index = 0; index < historyEntries.Count; index++)
+        {
+            var entry = historyEntries[index];
+            var isLast = index == historyEntries.Count - 1 && SelectedRun is not { Status: ChatRunStatus.Generating };
+            <button class="history-marker @GetHistoryMarkerClass(entry, isLast)" type="button" tabindex="-1"
+                    data-target="message-@entry.Question.Id"
+                    data-question-target="message-@entry.Question.Id"
+                    data-answer-target="@(entry.Answer is { } answer ? $"message-{answer.Id}" : string.Empty)"
+                    data-fork="@(entry.HasFork ? "true" : string.Empty)"
+                    data-created="@entry.Question.CreatedAt.ToString("o")"></button>
+        }
+        @if (SelectedRun is { Status: ChatRunStatus.Generating })
+        {
+            <button class="history-marker history-marker-assistant history-marker-generating" type="button" tabindex="-1" data-target="@GetGeneratingMarkerTarget()" data-question-text="Generating…" data-fork=""></button>
+        }
+        </TranscriptRenderBoundary>
+    </nav>
+    <div class="history-marker-tip" role="tooltip" aria-hidden="true"></div>
+    <div class="history-scroll-hint history-scroll-hint-up" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 14 5-5 5 5" /></svg></div>
+    <div class="history-scroll-hint history-scroll-hint-down" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5" /></svg></div>
+}
+<div class="workspace-messages" @ref="_messagesContainer">
+    @if (!HasSelectedProject)
+    {
+        <div class="workspace-empty"><h2>Select a project</h2><p>Choose a project on the left or create a new one.</p></div>
+    }
+    else if (SelectedChat is null)
+    {
+        <div class="workspace-empty"><h2>Start a conversation</h2><p>Write a message below. A new chat will be created in <strong>@SelectedProjectName</strong>.</p></div>
+    }
+    else
+    {
+        RenderFragment<ChatMessageView> renderBranchPicker = pickerMessage =>
+        @<text>
+                @if (GetBranchOptions(pickerMessage).Count > 1 || ForkSourceId == pickerMessage.Id)
+                {
+                    <div class="message-branch-indicator" @onkeydown="args => OnBranchPickerKeyDown.InvokeAsync(args)">
+                        <span class="branch-connector" aria-hidden="true"></span>
+                        @if (ForkSourceId == pickerMessage.Id)
+                        {
+                            <span class="branch-pending" title="The branch will be created after you send its first message"><AppIcon Name="git-branch" /><span>New branch</span></span>
+                        }
+                        else
+                        {
+                            var options = GetBranchOptions(pickerMessage);
+                            <button class="branch-picker-trigger" type="button" title="Choose branch" aria-label="Choose branch" aria-expanded="@(MessageBranchMenuId == pickerMessage.Id ? "true" : "false")" @onclick="() => OnToggleBranchMenu.InvokeAsync(pickerMessage.Id)"><AppIcon Name="git-branch" /><span>Branch @GetActiveBranchPosition(options) of @options.Count</span></button>
+                            @if (MessageBranchMenuId == pickerMessage.Id)
+                            {
+                                <span class="branch-picker-menu" role="menu">
+                                    @foreach (var option in options)
+                                    {
+                                        var selected = IsMessageInActiveBranch(option.Id);
+                                        var optionStatusTooltip = GetOptionStatusTooltip(option);
+                                        <button class="@(selected ? "selected" : string.Empty)" type="button" role="menuitem" title="@(optionStatusTooltip is null ? GetBranchOptionTitle(option) : $"{GetBranchOptionTitle(option)} · {optionStatusTooltip}")" @onclick="() => OnSelectBranch.InvokeAsync(option.Id)">@if (selected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }<span class="status-dot @GetOptionStatusClass(option)"></span><span class="branch-option-label">@GetBranchOptionTitle(option)</span></button>
+                                    }
+                                </span>
+                            }
+                        }
+                    </div>
+                }
+            </text>;
+        <TranscriptRenderBoundary ChatId="@SelectedChat.Id"
+                                  ChatRevision="@SelectedChat.Revision"
+                                  BranchLeafId="@BranchLeafId"
+                                  JustArrivedLeafId="@JustArrivedLeafId"
+                                  ForkSourceId="@ForkSourceId"
+                                  BranchMenuId="@MessageBranchMenuId"
+                                  RunPresentationVersion="@TranscriptRunPresentationVersion"
+                                  ExpandedTurnsVersion="@_expandedTurnsVersion"
+                                  ReviewVersion="@ReviewVersion"
+                                  TurnElapsedSeconds="@GetGeneratingElapsedSeconds()"
+                                  LiveTextVersion="@GetLiveTextInputVersion()">
+        @foreach (var entry in GetRenderedFeedItems())
+        {
+            var item = entry.Item;
+            @if (entry.Summary is { } summary)
+            {
+                var turnId = summary.Id!.Value;
+                var expanded = IsTurnExpanded(summary);
+                var canExpand = CanExpandTurn(summary);
+                var summaryKey = (turnId, "turn-summary");
+                RenderFragment summaryContent = @<text>
+                    @if (IsRunningTurn(summary) || _loadingTurnIds.Contains(turnId))
+                    {
+                        <span class="turn-summary-spinner" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
+                    }
+                    <span class="turn-summary-text">@(_loadingTurnIds.Contains(turnId) ? "Loading details…" : GetTurnSummaryText(summary))</span>
+                    @if (canExpand)
+                    {
+                        <span class="turn-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-right" /></span>
+                    }
+                </text>;
+                @if (canExpand)
+                {
+                    <button @key="summaryKey" id="turn-summary-@turnId" type="button"
+                            class="turn-summary @(expanded ? "is-expanded" : string.Empty) @GetTurnSummaryStateClasses(summary)"
+                            aria-expanded="@(expanded ? "true" : "false")"
+                            @onclick="() => ToggleTurnAsync(turnId)">
+                        @summaryContent
+                    </button>
+                }
+                else
+                {
+                    <div @key="summaryKey" id="turn-summary-@turnId"
+                         class="turn-summary is-static @GetTurnSummaryStateClasses(summary)">
+                        @summaryContent
+                    </div>
+                }
+            }
+            else if (entry.ChangesMessage is { WorkspaceChanges: { IsEmpty: false } collapsedChanges })
+            {
+                var changesKey = (entry.ChangesMessage.Id, "workspace-changes-collapsed");
+                <WorkspaceChanges @key="changesKey" Changes="@collapsedChanges" SourceMessageId="@entry.ChangesMessage.Id"
+                                  ProjectId="@SelectedChat.ProjectId" ChatId="@SelectedChat.Id"
+                                  Review="@(DiffReviews?.GetValueOrDefault(entry.ChangesMessage.Id))"
+                                  OnReview="OnReviewChanges" OnReviewChanged="OnDiffReviewChanged" />
+            }
+            else if (entry.ActiveTools is { Count: > 0 } activeTools)
+            {
+                var activeToolsKey = (entry.TurnId, "active-tools");
+                @* The assistant/tool-call message can trail the run snapshot by one event. Use
+                   the same component and visual position meanwhile; once persistence catches up,
+                   the matching call moves into the durable group instead of changing UI shape. *@
+                <article @key="activeToolsKey" class="workspace-message tool-group" role="status" aria-live="polite">
+                    <ToolActivityGroup Group="@(Array.Empty<ChatMessageView>())" ActiveTools="activeTools" IsLive="true" />
+                </article>
+            }
+            else if (entry.CollapseTurnId is { } collapseTurnId)
+            {
+                var collapseKey = (collapseTurnId, "turn-collapse");
+                <button @key="collapseKey"
+                        id="turn-collapse-@collapseTurnId"
+                        class="turn-collapse-footer"
+                        type="button"
+                        title="Collapse intermediate steps"
+                        aria-label="Collapse intermediate steps"
+                        @onclick="() => CollapseTurnFromEndAsync(collapseTurnId)">
+                    <AppIcon Name="chevron-up" />
+                </button>
+            }
+            else if (entry.LiveText is { } liveText)
+            {
+                @* What the running turn is saying right now, in full. Keyed by the text's version,
+                   not the turn: a replacement mounts a fresh element, which is what plays the
+                   entry animation, while growth of the same text only patches it. *@
+                var liveKey = (entry.TurnId, "live-text", entry.LiveVersion);
+                <article @key="liveKey" id="message-live"
+                         class="workspace-message assistant live-text streaming"
+                         @onmouseenter="() => SetLiveTextHeld(true)"
+                         @onmouseleave="() => SetLiveTextHeld(false)">
+                    <div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(liveText))</div>
+                </article>
+            }
+            else if (entry.StreamingRun is { } streamingRun)
+            {
+                @* StreamingContent contains publishable final text only. Provisional model prose
+                   remains inside the agent until it either becomes durable tool intent or is
+                   accepted through the completion protocol. *@
+                <article id="message-streaming" class="workspace-message assistant @(streamingRun.Status == ChatRunStatus.Generating ? "streaming" : string.Empty)">
+                    @if (streamingRun.Status != ChatRunStatus.Generating) { <span class="message-status">Incomplete</span> }
+                    <div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(streamingRun.StreamingContent))</div>
+                </article>
+            }
+            else if (item?.Message is { } message)
+            {
+                <article @key="message.Id" id="message-@message.Id"
+                         class="workspace-message @message.Role.ToLowerInvariant() @(message.Role == "User" && string.IsNullOrWhiteSpace(message.Content) ? "resource-only" : string.Empty) @(entry.RevealIndex is null ? string.Empty : "turn-message-arriving") @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)"
+                         style="@(entry.RevealIndex is { } messageRevealIndex ? $"--turn-arrive-delay: {messageRevealIndex * 60}ms" : null)">
+                    @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
+                    @if (message.Role == "User" && string.IsNullOrWhiteSpace(message.Content)
+                        && message.Resources is not { Count: > 0 })
+                    {
+                        <span class="message-empty-label">Empty message</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(message.Content))
+                    {
+                        @if (message.Role is "User" or "Assistant" && message.ToolCalls is null)
+                        {
+                            <MessageReviewText @key="message.Id" ProjectId="SelectedChat.ProjectId" ChatId="SelectedChat.Id"
+                                               MessageId="message.Id" Content="@((MarkupString)RenderMarkdownCached(message.Id, message.Content))"
+                                               Review="@(MessageReviews?.GetValueOrDefault(message.Id))"
+                                               OnChanged="OnMessageReviewChanged" OnAttach="OnAttachMessageReview" />
+                        }
+                        else { <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div> }
+                    }
+                    @if (message.Resources is { Count: > 0 })
+                    {
+                        <div class="message-resource-list" aria-label="Workspace references">
+                            @foreach (var resource in message.Resources)
+                            {
+                                <span class="message-resource-chip" @key="resource.Id" title="@ResourceLabel(resource)">
+                                    @if (resource.Kind == ChatResourceKind.Review)
+                                    {
+                                        <button class="message-resource-open" type="button" title="Open review" @onclick="() => OnOpenReview.InvokeAsync(resource)"><AppIcon Name="diff" /><span>@ResourceLabel(resource)</span></button>
+                                    }
+                                    else
+                                    {
+                                        <span class="message-resource-content"><AppIcon Name="@(resource.Kind == ChatResourceKind.File ? "file" : "folder")" /><span>@ResourceLabel(resource)</span></span>
+                                    }
+                                    @if (message.Role == "User")
+                                    {
+                                        <button class="message-resource-remove" type="button" title="Remove reference" aria-label="Remove @ResourceLabel(resource)" @onclick="() => OnRemoveResource.InvokeAsync((message.Id, resource.Id))"><AppIcon Name="x" /></button>
+                                    }
+                                </span>
+                            }
+                        </div>
+                    }
+                    <div class="message-actions">
+                        @if (!string.IsNullOrWhiteSpace(message.Content)) { <button class="icon-action" type="button" title="Copy Markdown" aria-label="Copy Markdown" @onclick="() => OnCopyMessage.InvokeAsync(message.Content)"><AppIcon Name="copy" /></button> }
+                        <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
+                        @if (message.Role == "User") { <button class="icon-action" type="button" title="Edit and branch" aria-label="Edit and branch" @onclick="() => OnEditAndBranch.InvokeAsync(message)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Edit and replace branch" aria-label="Edit and replace branch" @onclick="() => OnEditAndReplaceBranch.InvokeAsync(message)"><AppIcon Name="edit-replace" /></button> }
+                    </div>
+                    @renderBranchPicker(message)
+                </article>
+                @if (message.WorkspaceChanges is { IsEmpty: false } messageChanges)
+                {
+                    var changesKey = (message.Id, "workspace-changes");
+                    <WorkspaceChanges @key="changesKey" Changes="@messageChanges" SourceMessageId="@message.Id"
+                                      ProjectId="@SelectedChat.ProjectId" ChatId="@SelectedChat.Id"
+                                      Review="@(DiffReviews?.GetValueOrDefault(message.Id))"
+                                      OnReview="OnReviewChanges" OnReviewChanged="OnDiffReviewChanged" />
+                }
+            }
+            else if (item?.ToolGroup is { } group)
+            {
+                var anchor = group[^1];
+                var preamble = Feed.PreambleOf(group);
+                @* One block per cycle: the assistant's explanation, then the tools it announced.
+                   They were two articles with a boundary between them, which read as unrelated
+                   cards; together they read as intent followed by actions. The preamble needs no
+                   id of its own here — the block already has the anchor's.
+
+                   The key is the group's *first* message, not the anchor: a live group grows as
+                   each call lands, so keying it by the last one handed Blazor a new identity on
+                   every result and threw away ToolActivityGroup's state — an expanded group
+                   snapped shut each time a tool reported back. The first message is what opened
+                   the group and never changes while it grows. *@
+                <article @key="group[0].Id" id="message-@anchor.Id"
+                         class="workspace-message tool-group @(entry.RevealIndex is null ? string.Empty : "turn-message-arriving") @(anchor.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(anchor.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(anchor.Id == ForkSourceId ? "fork-source" : string.Empty)"
+                         style="@(entry.RevealIndex is { } groupRevealIndex ? $"--turn-arrive-delay: {groupRevealIndex * 60}ms" : null)">
+                    @if (preamble is not null)
+                    {
+                        @if (preamble.IsIncomplete) { <span class="message-status">Incomplete</span> }
+                        <div class="markdown-content preamble-content">@((MarkupString)RenderMarkdownCached(preamble.Id, preamble.Content))</div>
+                    }
+                    <ToolActivityGroup Group="group"
+                                       ProjectId="@SelectedChat.ProjectId"
+                                       ChatId="@SelectedChat.Id"
+                                       ChatRevision="@SelectedChat.Revision"
+                                       ActiveTools="@GetActiveToolsForGroup(group)"
+                                       IsLive="@(IsBranchGenerating() && anchor.Id == BranchLeafId)" />
+                    <div class="message-actions">
+                        <button class="icon-action" type="button" title="Copy" aria-label="Copy" @onclick="() => OnCopyMessage.InvokeAsync(BuildToolGroupSummaryText(group))"><AppIcon Name="copy" /></button>
+                        <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(anchor) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(anchor)" @onclick="() => OnForkFromMessage.InvokeAsync(anchor)"><AppIcon Name="fork" /></button>
+                    </div>
+                    @renderBranchPicker(anchor)
+                </article>
+                @if (entry.IsExpandedIntermediate)
+                {
+                    @foreach (var checkpoint in Feed.CheckpointsOf(group))
+                    {
+                        <div @key="checkpoint.CallId" class="context-checkpoint" role="note">
+                            <span class="context-checkpoint-mark" aria-hidden="true"><AppIcon Name="check" /></span>
+                            <span>Context checkpoint</span>
+                            <span class="context-checkpoint-detail">@checkpoint.CoveredMessages earlier messages summarized for this run</span>
+                        </div>
+                    }
+                }
+            }
+        }
+        </TranscriptRenderBoundary>
+        @if (SelectedRun is { Status: not ChatRunStatus.Completed, WorkspaceChanges: { IsEmpty: false } liveChanges }
+            && !Feed.LastTurnHasWorkspaceReceipt(GetVisibleBranchMessages()))
+        {
+            <WorkspaceChanges Changes="@liveChanges" />
+        }
+        @* Why the turn stopped, and what can be done about it. Only for a turn that is NOT
+           running: while it generates, the composer already says so and already offers Stop, and
+           a second copy of both here was pure duplication. Placed after the file-change summary
+           so the receipt for what the run did reads before the question of what to do next. *@
+        @if (GetTurnState() is { } turn)
+        {
+            <section class="turn-status turn-status-@turn.Kind" role="status">
+                <span class="turn-status-icon" aria-hidden="true"><AppIcon Name="@turn.Icon" /></span>
+                <span class="turn-status-text">@turn.Text</span>
+                <button class="icon-action turn-status-copy" type="button" title="Copy error" aria-label="Copy error" @onclick="() => OnCopyMessage.InvokeAsync(turn.Text)"><AppIcon Name="copy" /></button>
+                <span class="turn-status-actions">
+                    @if (turn.CanResume)
+                    {
+                        <button type="button" class="turn-status-action turn-status-primary" title="Run this message again" @onclick="() => OnResumeRun.InvokeAsync()">@(turn.Kind == "failed" ? "Retry" : "Continue")</button>
+                    }
+                    @if (turn.CanRebase)
+                    {
+                        <button type="button" class="turn-status-action" title="Continue this message from the current branch head" @onclick="() => OnRebaseRun.InvokeAsync()">From branch head</button>
+                    }
+                    <button type="button" class="turn-status-action destructive-action" title="Drop this message from the queue and let the rest of it continue" @onclick="() => OnDiscardRun.InvokeAsync()">Discard</button>
+                </span>
+            </section>
+        }
+        @* A question the model asked, in the same place and for the same reason as an approval:
+           it is what the person has to do next, so it is what they should end up looking at. *@
+        @if (SelectedRun is { PendingPrompt: { } prompt } promptRun)
+        {
+            <UserPromptCard Prompt="prompt"
+                            OnAnswer="response => RunsApi.AnswerPromptAsync(promptRun.ProjectId, promptRun.ChatId, promptRun.BranchId, response, CancellationToken.None)" />
+        }
+        @* Last in the transcript, after the workspace-changes summary: an approval is the user's
+           next action, so it has to be the thing they end up looking at, not something they have
+           to scroll past the receipt to reach. *@
+        @if (SelectedRun is { PendingApproval: { } approval } approvalRun)
+        {
+            <section class="tool-approval" role="region" aria-label="Tool approval">
+                <strong>Allow @approval.Name?</strong>
+                @if (approval.BatchSize > 1)
+                {
+                    @* Each call is confirmed on its own, so say up front how many follow. *@
+                    <p class="tool-approval-batch">Call @approval.CallIndex of @approval.BatchSize the model asked for; each is confirmed separately.</p>
+                }
+                <pre>@approval.Arguments</pre>
+                <p>Timeout: @approval.TimeoutSeconds seconds. The process runs with your account's permissions; the working directory is not a sandbox.</p>
+                <div class="tool-approval-actions">
+                    <button class="secondary-action" type="button" disabled="@(_decidingApproval == approval.Id)" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.Deny)">Deny</button>
+                    <button type="button" disabled="@(_decidingApproval == approval.Id)" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.Allow)">Allow</button>
+                    <details class="tool-approval-more">
+                        <summary class="icon-action" aria-label="More allow options"><AppIcon Name="chevron-down" /></summary>
+                        <div class="tool-approval-menu">
+                            <button type="button" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.AllowForChat)"><strong>Allow for this chat</strong><span>Remember in @SelectedChat?.Title</span></button>
+                            <button type="button" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.AllowForProject)"><strong>Allow for this project</strong><span>Use in every chat in this project</span></button>
+                            @if (_confirmGlobalApprovalId == approval.Id)
+                            {
+                                <div class="tool-approval-global-confirm"><span>Allow <code>@approval.Name</code> in every project?</span><div><button class="secondary-action" type="button" @onclick="CancelGlobalApproval">Cancel</button><button type="button" @onclick="() => DecideToolAsync(approvalRun, approval.Id, ToolApprovalAction.AllowGlobally)">Always allow</button></div></div>
+                            }
+                            else
+                            {
+                                <button type="button" @onclick="() => BeginGlobalApproval(approval.Id)"><strong>Always allow this tool</strong><span>Apply to every project</span></button>
+                            }
+                        </div>
+                    </details>
+                </div>
+                @if (_approvalError is not null) { <p role="alert">@_approvalError</p> }
+            </section>
+        }
+    }
+</div>
+@* Only shown when the feed is NOT following the bottom and there is in fact something down
+   there to go to — a new answer, or one being written. A permanent "scroll down" control would
+   duplicate the history-marker strip on the left, which already exists to move around the
+   transcript; this one exists to say "the thing you were waiting for arrived elsewhere". *@
+@if (SelectedChat is not null && !_pinned && (_newBelow || SelectedRun is { Status: ChatRunStatus.Generating }))
+{
+    <button type="button" class="messages-jump @(SelectedRun is { Status: ChatRunStatus.Generating } ? "messages-jump-live" : string.Empty)"
+            title="Jump to the latest message (End)" aria-label="Jump to the latest message"
+            @onclick="JumpToBottomAsync">
+        <AppIcon Name="chevron-down" />
+        <span class="messages-jump-dot" aria-hidden="true"></span>
+    </button>
+}
+</div>
+
+@code {
+    // Copy yields the raw calls and results, not the rendered summaries: someone copying tool
+    // activity wants the payload to paste into a bug report, not the UI's wording of it. The
+    // preamble leads, because the block is one thing on screen and should be one thing on the
+    // clipboard.
+    private string BuildToolGroupSummaryText(IReadOnlyList<ChatMessageView> group)
+    {
+        var parts = Feed.BuildInvocations(group).Select(invocation =>
+            $"{invocation.Call.Name}({invocation.Call.Arguments})"
+            + (invocation.Result is { } result ? $"\n=> {result.Content}" : string.Empty));
+        if (Feed.PreambleOf(group) is { } preamble) parts = parts.Prepend(preamble.Content);
+        return string.Join("\n\n", parts);
+    }
+
+    private Guid? _decidingApproval;
+    private Guid? _confirmGlobalApprovalId;
+    private string? _approvalError;
+    private void BeginGlobalApproval(Guid approvalId)
+    {
+        _confirmGlobalApprovalId = approvalId;
+        _renderedSelectedRun = null;
+    }
+
+    private void CancelGlobalApproval()
+    {
+        _confirmGlobalApprovalId = null;
+        _renderedSelectedRun = null;
+    }
+
+    public bool CancelTransientUi()
+    {
+        if (_confirmGlobalApprovalId is null) return false;
+        CancelGlobalApproval();
+        return true;
+    }
+
+    private async Task DecideToolAsync(ChatRunSnapshot run, Guid approvalId, ToolApprovalAction action)
+    {
+        _decidingApproval = approvalId;
+        _renderedSelectedRun = null;
+        _approvalError = null;
+        _confirmGlobalApprovalId = null;
+        try
+        {
+            await RunsApi.DecideToolAsync(run.ProjectId, run.ChatId, run.BranchId,
+                new ToolApprovalDecision(approvalId, action), CancellationToken.None);
+            var message = action switch
+            {
+                ToolApprovalAction.AllowForChat => "Tool permission saved for this chat.",
+                ToolApprovalAction.AllowForProject => "Tool permission saved for this project.",
+                ToolApprovalAction.AllowGlobally => "Tool permission saved globally.",
+                _ => null
+            };
+            if (message is not null) Notifications.ShowSuccess(message);
+        }
+        catch (HttpRequestException)
+        {
+            _approvalError = "This approval is no longer available. Refresh the chat.";
+            Notifications.ShowError(_approvalError);
+        }
+        finally { _decidingApproval = null; }
+        _renderedSelectedRun = null;
+    }
+    [Parameter] public bool HasSelectedProject { get; set; }
+    [Parameter] public string? SelectedProjectName { get; set; }
+
+    /// <summary>
+    /// Current search query from the sidebar search box, used to highlight matching text inside
+    /// rendered messages. An empty/short value clears any existing highlight; the same minimum
+    /// length the sidebar enforces (2 characters) is mirrored on the JS side so a render pass
+    /// never wastes a DOM walk on something the sidebar would not even send to the server.
+    /// </summary>
+    [Parameter] public string? SearchQuery { get; set; }
+    [Parameter] public ChatDetails? SelectedChat { get; set; }
+    /// <summary>
+    /// Stable identity of the selected main/fork transcript. Unlike <see cref="BranchLeafId"/>,
+    /// this does not advance whenever another message is appended to the same branch.
+    /// </summary>
+    [Parameter] public Guid? TranscriptId { get; set; }
+    [Parameter] public Guid? BranchLeafId { get; set; }
+    /// <summary>
+    /// When set to the same id as <see cref="BranchLeafId"/>, marks the leaf message as
+    /// "just arrived" — i.e. an assistant response has just landed on it. Drives the
+    /// transient draw-and-fade accent line. Set by the parent only for the single
+    /// snapshot transition that produced the new leaf, then cleared.
+    /// </summary>
+    [Parameter] public Guid? JustArrivedLeafId { get; set; }
+    [Parameter] public Guid? ForkSourceId { get; set; }
+    [Parameter] public Guid? MessageBranchMenuId { get; set; }
+    [Parameter] public ChatRunSnapshot? SelectedRun { get; set; }
+    [Parameter] public TimeSpan? GeneratingElapsed { get; set; }
+    [Parameter] public int TranscriptRunPresentationVersion { get; set; }
+    /// <summary>
+    /// Looks up the run governing an arbitrary message's branch — given ANY message id (not
+    /// necessarily a fork root), resolves to whichever run actually covers it (its own run if
+    /// it's a fork root, or an ancestor's) and returns that run. Used to show a status dot per
+    /// option in the branch picker, for branches other than the currently active one (which
+    /// already has its own run available via <see cref="SelectedRun"/>).
+    /// </summary>
+    [Parameter] public Func<Guid, ChatRunSnapshot?>? GetRunForBranch { get; set; }
+    [Parameter] public EventCallback<string> OnCopyMessage { get; set; }
+    [Parameter] public EventCallback<Guid> OnReviewChanges { get; set; }
+    [Parameter] public EventCallback<ChatReview> OnDiffReviewChanged { get; set; }
+    [Parameter] public EventCallback<ChatResourceRef> OnOpenReview { get; set; }
+    [Parameter] public EventCallback<(Guid MessageId, Guid ResourceId)> OnRemoveResource { get; set; }
+    [Parameter] public EventCallback<FileLinkMenuRequest> OnFileLinkMenu { get; set; }
+    [Parameter] public IReadOnlyDictionary<Guid, string>? ReviewNames { get; set; }
+    [Parameter] public IReadOnlySet<Guid>? MessageReviewIds { get; set; }
+    [Parameter] public IReadOnlyDictionary<Guid, ChatReview>? MessageReviews { get; set; }
+    [Parameter] public IReadOnlyDictionary<Guid, ChatReview>? DiffReviews { get; set; }
+    [Parameter] public EventCallback<ChatReview> OnMessageReviewChanged { get; set; }
+    [Parameter] public EventCallback<ChatReview> OnAttachMessageReview { get; set; }
+    [Parameter] public int ReviewVersion { get; set; }
+    [Parameter] public EventCallback<ChatMessageView> OnForkFromMessage { get; set; }
+    [Parameter] public EventCallback<ChatMessageView> OnEditAndBranch { get; set; }
+    [Parameter] public EventCallback<ChatMessageView> OnEditAndReplaceBranch { get; set; }
+    [Parameter] public EventCallback<Guid> OnToggleBranchMenu { get; set; }
+    [Parameter] public EventCallback<Guid> OnSelectBranch { get; set; }
+    [Parameter] public EventCallback<KeyboardEventArgs> OnBranchPickerKeyDown { get; set; }
+    [Parameter] public EventCallback OnResumeRun { get; set; }
+    [Parameter] public EventCallback OnRebaseRun { get; set; }
+    [Parameter] public EventCallback OnDiscardRun { get; set; }
+    [Parameter] public EventCallback<bool> OnCurrentTurnSummaryVisibilityChanged { get; set; }
+
+    private readonly record struct TurnState(string Kind, string Icon, string Text, bool CanResume, bool CanRebase);
+
+    /// <summary>
+    /// Why the turn at the head of this branch's queue stopped, or null when there is nothing to
+    /// answer for. A generating run is deliberately not one of these: the composer already shows
+    /// its elapsed time and its Stop button, and repeating them here said nothing new. Only a
+    /// command that already reached the transcript gets a status - a message still waiting its
+    /// turn is a queue row, not a state.
+    /// </summary>
+    private TurnState? GetTurnState()
+    {
+        if (SelectedRun is not { } run) return null;
+        var committed = run.ActiveMessageId is not null
+            || run.Queue.Any(item => item.Stage == QueuedMessageStage.UserCommitted);
+        // A failure always gets a chip, committed command or not: its text is the only place the
+        // reason is shown now that the composer line no longer repeats it.
+        if (!committed && run.Status != ChatRunStatus.Failed) return null;
+        var canResume = run.RecoveryActions?.Any(action => action is RunRecoveryAction.Retry or RunRecoveryAction.Resume) == true;
+        var canRebase = run.RecoveryActions?.Contains(RunRecoveryAction.Rebase) == true;
+        return run.Status switch
+        {
+            ChatRunStatus.Failed => new TurnState("failed", "error", $"Failed: {run.Error}", canResume, canRebase),
+            ChatRunStatus.Interrupted => new TurnState("stopped", "interrupted", "Interrupted before it finished", canResume, canRebase),
+            ChatRunStatus.Paused => new TurnState("stopped", "interrupted", "Stopped before it finished", canResume, canRebase),
+            _ => null
+        };
+    }
+
+    private ElementReference _historyMarkers;
+    private ElementReference _messagesContainer;
+    private IJSObjectReference? _historyMarkersModule;
+    private IJSObjectReference? _historyMarkersHandle;
+    private IJSObjectReference? _scrollModule;
+    private IJSObjectReference? _messageScrollModule;
+    private IJSObjectReference? _messageScrollHandle;
+    // Mermaid fence rendering watches the same container as the scroll anchor: every streaming
+    // token Blazor diffs into the feed produces DOM mutations, and that is exactly when a newly
+    // completed ```mermaid block needs to be drawn. The handle owns a MutationObserver and a
+    // microtask-batched render loop; disposing it on chat switch (or on component teardown)
+    // stops the loop without leaving a dangling observer against a detached subtree.
+    private IJSObjectReference? _mermaidBlocksModule;
+    private IJSObjectReference? _mermaidBlocksHandle;
+    private IJSObjectReference? _svgBlocksModule;
+    private IJSObjectReference? _svgBlocksHandle;
+    private IJSObjectReference? _fileLinksModule;
+    private IJSObjectReference? _fileLinksHandle;
+    // The project the file-link module's cache belongs to; a switch empties it.
+    private Guid? _fileLinkScope;
+    private DotNetObjectReference<MessageFeed>? _selfReference;
+    // Mirrors the JS side's "the user is at the bottom" state, which is the only thing that
+    // decides whether new content scrolls the feed. Starts true: an empty feed is at its bottom.
+    private bool _pinned = true;
+    // Something arrived below the viewport while the user was reading further up. Cleared as soon
+    // as they are back at the bottom, by whatever means.
+    private bool _newBelow;
+    private Guid? _scrollResetChatId;
+    private Guid? _scrollResetTranscriptId;
+    private int _historyMarkerCount = -1;
+    private string? _historyMarkerScrollKey;
+    private bool _disposed;
+
+    // Everything above is set by Home on every one of its renders (i.e. on every composer
+    // keystroke), since Blazor always calls SetParametersAsync on a child regardless of whether
+    // the values actually changed. ShouldRender is what turns "parameters were reassigned" into
+    // "parameters actually changed" — without it, this component would rebuild and diff its own
+    // render tree (the whole message list) just as often as before the split.
+    private ChatDetails? _renderedSelectedChat;
+    private Guid? _renderedTranscriptId;
+    private Guid? _renderedBranchLeafId;
+    private Guid? _renderedJustArrivedLeafId;
+    private Guid? _renderedForkSourceId;
+    private Guid? _renderedMessageBranchMenuId;
+    private ChatRunSnapshot? _renderedSelectedRun;
+    private TimeSpan? _renderedGeneratingElapsed;
+    private int _renderedTranscriptRunPresentationVersion;
+    private int _renderedReviewVersion;
+    private int _renderedExpandedTurnsVersion;
+    private bool _renderedHasSelectedProject;
+    private string? _renderedSelectedProjectName;
+    private bool _renderedPinned = true;
+    private string? _renderedSearchQuery;
+    private bool _renderedNewBelow;
+    private int _renderedLiveTextTick;
+
+    protected override bool ShouldRender()
+    {
+        var changed = !ReferenceEquals(_renderedSelectedChat, SelectedChat)
+            || _renderedTranscriptId != TranscriptId
+            || _renderedBranchLeafId != BranchLeafId
+            || _renderedJustArrivedLeafId != JustArrivedLeafId
+            || _renderedForkSourceId != ForkSourceId
+            || _renderedMessageBranchMenuId != MessageBranchMenuId
+            || !ReferenceEquals(_renderedSelectedRun, SelectedRun)
+            || _renderedGeneratingElapsed != GeneratingElapsed
+            || _renderedTranscriptRunPresentationVersion != TranscriptRunPresentationVersion
+            || _renderedReviewVersion != ReviewVersion
+            || _renderedExpandedTurnsVersion != _expandedTurnsVersion
+            || _renderedHasSelectedProject != HasSelectedProject
+            || _renderedSelectedProjectName != SelectedProjectName
+            || !string.Equals(_renderedSearchQuery ?? string.Empty, SearchQuery ?? string.Empty, StringComparison.Ordinal)
+            // The jump affordance lives entirely in this component's own state, and ShouldRender
+            // is what decides whether its StateHasChanged reaches the DOM at all.
+            || _renderedPinned != _pinned
+            || _renderedNewBelow != _newBelow
+            || _renderedLiveTextTick != _liveTextTick;
+
+        _renderedSelectedChat = SelectedChat;
+        _renderedTranscriptId = TranscriptId;
+        _renderedBranchLeafId = BranchLeafId;
+        _renderedJustArrivedLeafId = JustArrivedLeafId;
+        _renderedForkSourceId = ForkSourceId;
+        _renderedMessageBranchMenuId = MessageBranchMenuId;
+        _renderedSelectedRun = SelectedRun;
+        _renderedGeneratingElapsed = GeneratingElapsed;
+        _renderedTranscriptRunPresentationVersion = TranscriptRunPresentationVersion;
+        _renderedReviewVersion = ReviewVersion;
+        _renderedExpandedTurnsVersion = _expandedTurnsVersion;
+        _renderedHasSelectedProject = HasSelectedProject;
+        _renderedSelectedProjectName = SelectedProjectName;
+        _renderedSearchQuery = SearchQuery;
+        _renderedPinned = _pinned;
+        _renderedNewBelow = _newBelow;
+        _renderedLiveTextTick = _liveTextTick;
+
+        return changed;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed) return;
+
+        if (firstRender)
+        {
+            try
+            {
+                _historyMarkersModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/historyMarkers.js");
+                _scrollModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
+                _messageScrollModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/messageScroll.js");
+                _mermaidBlocksModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/mermaidBlocks.js");
+                _svgBlocksModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/svgBlocks.js");
+                _fileLinksModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/fileLinks.js");
+                // The scroller element is part of this component's fixed markup, so it outlives
+                // every chat switch — one attach for the lifetime of the feed.
+                _selfReference = DotNetObjectReference.Create(this);
+                _messageScrollHandle = await _messageScrollModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer, _selfReference);
+                // Same lifetime as the scroller. attach() runs the first render pass for any
+                // fences already in the feed so opening a long transcript after a reload still
+                // shows diagrams without requiring the user to scroll to the bottom.
+                _mermaidBlocksHandle = await _mermaidBlocksModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer);
+                _svgBlocksHandle = await _svgBlocksModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer);
+                _fileLinksHandle = await _fileLinksModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer, _selfReference);
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException)
+            {
+                _historyMarkersModule = null;
+                _mermaidBlocksModule = null;
+                _svgBlocksModule = null;
+                _fileLinksModule = null;
+            }
+        }
+
+        await SyncFileLinkScopeAsync();
+        await SyncCurrentTurnSummaryVisibilityAsync();
+
+        if (await AdvanceTurnExpansionAsync()) return;
+
+        await ApplyDeferredScrollAsync();
+        await SyncHistoryMarkersAsync();
+        await ApplySearchHighlightAsync();
+    }
+
+    private string? _watchedTurnSummaryElementId;
+
+    private async Task SyncCurrentTurnSummaryVisibilityAsync()
+    {
+        if (_messageScrollHandle is not { } handle) return;
+        var elementId = GetCurrentTurnSummaryElementId();
+        if (_watchedTurnSummaryElementId == elementId) return;
+        _watchedTurnSummaryElementId = elementId;
+        try { await handle.InvokeVoidAsync("watchElementVisibility", elementId); }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+    }
+
+    private string? GetCurrentTurnSummaryElementId()
+    {
+        if (SelectedRun is not { Status: ChatRunStatus.Generating } run) return null;
+        var activeMessageId = run.ActiveMessageId
+            ?? run.Queue.FirstOrDefault(item => item.Stage == QueuedMessageStage.UserCommitted)?.Id;
+        return activeMessageId is { } id ? $"turn-summary-{id}" : null;
+    }
+
+    [JSInvokable]
+    public Task OnTurnSummaryVisibilityChanged(bool visible) =>
+        OnCurrentTurnSummaryVisibilityChanged.InvokeAsync(visible);
+
+    /// <summary>A right-click on a link to a local file or directory in a rendered message.</summary>
+    [JSInvokable]
+    public Task OnFileLinkContextMenu(string path, double clientX, double clientY, string? kind, bool? readable) =>
+        OnFileLinkMenu.InvokeAsync(new FileLinkMenuRequest(path, clientX, clientY,
+            Enum.TryParse<ChatResourceKind>(kind, out var parsed) ? parsed : null, readable));
+
+    /// <summary>What the project may read changed, so every path in the transcript is checked again.</summary>
+    public async Task RefreshFileLinksAsync()
+    {
+        if (_fileLinksHandle is null) return;
+        try
+        {
+            await _fileLinksHandle.InvokeVoidAsync("refresh");
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+        }
+    }
+
+    private async Task SyncFileLinkScopeAsync()
+    {
+        var scope = SelectedChat?.ProjectId;
+        if (_fileLinksHandle is null || scope == _fileLinkScope) return;
+        _fileLinkScope = scope;
+        try
+        {
+            // The module asks the Host itself: a batch of a hundred paths marshalled through .NET
+            // and parsed by the WebAssembly runtime blocked the page for about 150 ms, while a
+            // browser fetch parses the same answer off the main thread's critical path.
+            await _fileLinksHandle.InvokeVoidAsync("setScope", scope?.ToString(),
+                scope is { } projectId ? new Uri(ApiBaseUrl.Value, $"api/projects/{projectId}/resources/resolve").ToString() : null);
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Pushes the current SearchQuery to the JS side. Called from OnAfterRenderAsync on every
+    /// render that touched the transcript, so a streaming token that diffs in new text also
+    /// re-walks it for highlights — the wrappers themselves died with whatever Blazor rebuilt.
+    /// The DOM walk is skipped when the query did not change since the last render, which is by
+    /// far the common case.
+    /// </summary>
+    private async Task ApplySearchHighlightAsync()
+    {
+        if (_disposed || _messageScrollHandle is not { } handle) return;
+        var chatId = SelectedChat?.Id;
+        var normalized = (SearchQuery ?? string.Empty).Trim();
+        if (_appliedSearchChatId == chatId
+            && string.Equals(_appliedSearchQuery, normalized, StringComparison.Ordinal)) return;
+        _appliedSearchChatId = chatId;
+        _appliedSearchQuery = normalized;
+        try
+        {
+            await handle.InvokeVoidAsync("applySearchHighlight", normalized);
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+    }
+
+    private async Task ApplyDeferredScrollAsync()
+    {
+        if (_pendingScrollToMessageId is { } targetId && _messageScrollHandle is { } handle)
+        {
+            _pendingScrollToMessageId = null;
+            try
+            {
+                if (await handle.InvokeAsync<bool>("scrollMessageIntoView", targetId)) return;
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+        }
+    }
+
+
+    /// <summary>
+    /// Scrolls the feed to a specific message — the one the user picked from a search result.
+    /// If the target message is not in the DOM yet, the request is replayed after the next render.
+    /// </summary>
+    public async Task ScrollToMessageAsync(Guid messageId)
+    {
+        if (_disposed || messageId == Guid.Empty) return;
+        if (_messageScrollHandle is { } handle)
+        {
+            try
+            {
+                if (await handle.InvokeAsync<bool>("scrollMessageIntoView", messageId)) return;
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+        }
+
+        // Search can land on a progress note or tool result. Compact transcripts contain its
+        // lightweight message shell, but the corresponding DOM node intentionally does not exist
+        // until that turn is expanded. Load the one owning turn before scheduling the scroll.
+        var owner = Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer())
+            .FirstOrDefault(turn => turn.Id is not null
+                && turn.IntermediateMessages.Any(message => message.Id == messageId));
+        if (owner?.Id is { } turnId && !_expandedTurns.Contains(turnId))
+            await ToggleTurnAsync(turnId);
+
+        var targetItem = owner?.IntermediateItems
+            .FirstOrDefault(item => ChatFeed.MessagesOf(item).Any(message => message.Id == messageId));
+        var renderedTargetId = targetItem is { ToolGroup: { Count: > 0 } group }
+            ? group[^1].Id
+            : messageId;
+
+        // The JS side can run before a just-selected transcript reaches the DOM. Queue one retry
+        // for the next render in that case.
+        _pendingScrollToMessageId = renderedTargetId;
+        _expandedTurnsVersion++;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Goes to the bottom and starts following again, regardless of where the user was. Reserved
+    /// for what the user themselves just asked for — sending a message, or opening a chat with no
+    /// remembered position. New content arriving on its own goes through
+    /// <see cref="FollowNewContentAsync"/> instead.
+    /// </summary>
+    public async Task ScrollToBottomAsync()
+    {
+        if (_disposed) return;
+        ClearNewBelow();
+        if (_messageScrollHandle is { } handle)
+        {
+            try
+            {
+                await handle.InvokeVoidAsync("scrollToBottom");
+                return;
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException)
+            {
+                return;
+            }
+        }
+        var module = _scrollModule;
+        if (module is null) return;
+        try
+        {
+            await module.InvokeVoidAsync("scrollToBottom", _messagesContainer);
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+            // The parent can request a scroll while this feed is being replaced by a settings view.
+        }
+    }
+
+    /// <summary>
+    /// Reports that new content has just been rendered at the end of the transcript. The feed
+    /// follows it only if the user was already at the bottom; otherwise their position is left
+    /// exactly where it was and the jump affordance is lit instead.
+    /// </summary>
+    public async Task FollowNewContentAsync()
+    {
+        if (_disposed || _messageScrollHandle is not { } handle) return;
+        try
+        {
+            if (await handle.InvokeAsync<bool>("followIfPinned")) return;
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+            return;
+        }
+        if (_newBelow) return;
+        _newBelow = true;
+        StateHasChanged();
+    }
+
+    private async Task JumpToBottomAsync()
+    {
+        if (_disposed || _messageScrollHandle is not { } handle) return;
+        ClearNewBelow();
+        try { await handle.InvokeVoidAsync("jumpToBottom"); }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+    }
+
+    /// <summary>Called from messageScroll.js whenever the user enters or leaves the bottom.</summary>
+    [JSInvokable]
+    public void OnPinnedChanged(bool pinned)
+    {
+        if (_pinned == pinned) return;
+        _pinned = pinned;
+        // Back at the bottom means everything below has been seen, whatever put them there.
+        if (pinned) _newBelow = false;
+        StateHasChanged();
+    }
+
+    private void ClearNewBelow()
+    {
+        _pinned = true;
+        _newBelow = false;
+    }
+
+    // A different chat or branch is a different transcript: whatever was waiting below in the old
+    // one says nothing about this one. The pinned flag is left to the JS side, which recomputes it
+    // from the position this feed is restored to.
+    protected override void OnParametersSet()
+    {
+        if (_activityChatId != SelectedChat?.Id)
+        {
+            _activityCancellation?.Cancel();
+            _activityCancellation?.Dispose();
+            _activityCancellation = null;
+            _activityChatId = SelectedChat?.Id;
+            _activityMessages.Clear();
+            _loadingTurnIds.Clear();
+            _activityVersion++;
+        }
+
+        if (_expandedTurnsChatId != SelectedChat?.Id)
+        {
+            _expandedTurnsChatId = SelectedChat?.Id;
+            _expandedTurnItemLimits.Clear();
+            _turnExpansionsPending.Clear();
+            if (_expandedTurns.Count > 0)
+            {
+                _expandedTurns.Clear();
+                _expandedTurnsVersion++;
+            }
+        }
+
+        if (_scrollResetChatId == SelectedChat?.Id && _scrollResetTranscriptId == TranscriptId) return;
+        _scrollResetChatId = SelectedChat?.Id;
+        _scrollResetTranscriptId = TranscriptId;
+        _newBelow = false;
+    }
+
+    // Restores the last-viewed message for `key` (as persisted by historyMarkers.js while the
+    // user scrolls), falling back to the bottom of the feed when there's nothing saved for it
+    // yet (a chat/branch never viewed before) — same default as the old unconditional
+    // scroll-to-bottom this replaced.
+    public async Task RestoreScrollPositionAsync(string key)
+    {
+        var module = _historyMarkersModule;
+        if (_disposed) return;
+        if (module is null)
+        {
+            await ScrollToBottomAsync();
+            return;
+        }
+        try
+        {
+            // Anchoring off for the duration: it holds the position the feed is being moved AWAY
+            // from, and the rest of a transcript landing above the tail gives it every excuse to
+            // put it back. Back on at the restored position — see SetScrollAnchoringAsync.
+            await SetScrollAnchoringAsync(false);
+            bool restored;
+            try
+            {
+                restored = await module.InvokeAsync<bool>("restoreScrollPosition", _messagesContainer, key);
+            }
+            finally
+            {
+                await SetScrollAnchoringAsync(true);
+            }
+
+            if (!restored) await ScrollToBottomAsync();
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+            await ScrollToBottomAsync();
+        }
+    }
+
+    // The scroll anchor is the transcript's memory of what the user was reading, held against
+    // anything that changes height above it. Turning it back on re-reads that memory from where
+    // the feed now is, so a deliberate move becomes the position being defended rather than the
+    // one being corrected away.
+    private async Task SetScrollAnchoringAsync(bool enabled)
+    {
+        if (_disposed || _messageScrollHandle is not { } handle) return;
+        try { await handle.InvokeVoidAsync("setAnchoring", enabled); }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+    }
+
+    public async Task SaveScrollPositionAsync(string key)
+    {
+        var module = _historyMarkersModule;
+        if (_disposed || module is null) return;
+        try
+        {
+            await module.InvokeVoidAsync("saveScrollPosition", _messagesContainer, key);
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+            // The feed can disappear while navigation is completing.
+        }
+    }
+
+    // Identifies the (chat, branch) pair whose scroll position historyMarkers.js should persist
+    // while attached — null while no chat is open (nothing to track).
+    private string? GetScrollKey() => SelectedChat is null ? null : $"{SelectedChat.Id}:{BranchLeafId}";
+
+    // The strip is attached only while a chat is open, and re-measured whenever the number of
+    // markers changes: the marker elements themselves are re-created by Blazor on every such change.
+    private async Task SyncHistoryMarkersAsync()
+    {
+        if (_disposed || _historyMarkersModule is null) return;
+        if (SelectedChat is null)
+        {
+            await DisposeHistoryMarkersAsync();
+            _historyMarkerCount = -1;
+            _historyMarkerScrollKey = null;
+            return;
+        }
+
+        var count = GetVisibleBranchMessages().Count;
+        var scrollKey = GetScrollKey();
+        if (_historyMarkersHandle is not null
+            && count == _historyMarkerCount
+            && scrollKey == _historyMarkerScrollKey) return;
+
+        _historyMarkerCount = count;
+        await DisposeHistoryMarkersAsync();
+        _historyMarkerScrollKey = scrollKey;
+        try
+        {
+            _historyMarkersHandle = await _historyMarkersModule.InvokeAsync<IJSObjectReference>("attach", _historyMarkers, _messagesContainer, scrollKey);
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+            _historyMarkersHandle = null;
+        }
+    }
+
+    private async Task DisposeHistoryMarkersAsync()
+    {
+        if (_historyMarkersHandle is not { } handle) return;
+        // Clear the shared reference before yielding. Component disposal can overlap an in-flight
+        // render callback, and both paths may otherwise dispose (and mutate) the same handle.
+        _historyMarkersHandle = null;
+        try
+        {
+            await handle.InvokeVoidAsync("dispose");
+            await handle.DisposeAsync();
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+        }
+    }
+
+    // _selectedChat is always replaced wholesale rather than mutated, so a reference check on it
+    // (plus the branch leaf) is a cheap, correct invalidation key for the message chain, the
+    // fork-point set, and the per-message sibling lookup used by the branch picker.
+    private object? _branchCacheChat;
+    private Guid? _branchCacheBranchLeafId;
+    private int _branchCacheActivityVersion = -1;
+    private IReadOnlyList<ChatMessageView> _branchCacheMessages = [];
+    private HashSet<Guid> _branchCacheMessageIds = [];
+    private Dictionary<Guid, List<ChatMessageView>> _branchCacheChildrenByParent = [];
+    private HashSet<Guid> _branchCacheForkPoints = [];
+
+    // The last query that has been pushed to JS. The transcript re-renders on a stream token or a
+    // branch switch and our <mark> wrappers die with it; remembering what is already in the DOM
+    // means a follow-up render only re-walks when the query itself actually changed.
+    private string? _appliedSearchQuery;
+
+    // A scroll target that arrived while only the tail of the transcript was rendered. A message
+    // outside the tail is not in the DOM yet, so the first scroll attempt is replayed once the
+    // full chain lands - the same loop used for the saved-position restore.
+    private Guid? _pendingScrollToMessageId;
+
+    // Chat whose messages the last applySearchHighlight walked. Blazor drops our <mark> wrappers
+    // when it rebuilds the transcript for a chat/branch switch, so a "nothing changed, skip the
+    // JS call" optimisation keyed on the query alone would silently leave the new chat with no
+    // highlights. Resetting on chat id forces a re-walk the first time OnAfterRenderAsync runs
+    // after the switch.
+    private Guid? _appliedSearchChatId;
+    private readonly record struct RenderedFeedEntry(
+        FeedItem? Item = null,
+        FeedTurn? Summary = null,
+        ChatMessageView? ChangesMessage = null,
+        int? RevealIndex = null,
+        bool IsExpandedIntermediate = false,
+        IReadOnlyList<ActiveToolInvocation>? ActiveTools = null,
+        Guid? TurnId = null,
+        Guid? CollapseTurnId = null,
+        ChatRunSnapshot? StreamingRun = null,
+        string? LiveText = null,
+        int LiveVersion = 0);
+
+    private readonly HashSet<Guid> _expandedTurns = [];
+    private readonly Dictionary<Guid, int> _expandedTurnItemLimits = [];
+    private readonly HashSet<Guid> _turnExpansionsPending = [];
+    private int _expandedTurnsVersion;
+    private Guid? _expandedTurnsChatId;
+    private const int InitialExpandedTurnItemCount = 0;
+    private const int ExpandedTurnBatchSize = 2;
+    private readonly Dictionary<Guid, ChatMessageView> _activityMessages = [];
+    private readonly HashSet<Guid> _loadingTurnIds = [];
+    private CancellationTokenSource? _activityCancellation;
+    private Guid? _activityChatId;
+    private int _activityVersion;
+
+    private List<RenderedFeedEntry> GetRenderedFeedItems()
+    {
+        var entries = new List<RenderedFeedEntry>();
+        var liveTurnPresented = false;
+        foreach (var turn in Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer()))
+        {
+            IReadOnlyList<FeedItem> visibleIntermediateItems = [];
+            if (turn.UserMessage is { } user)
+            {
+                entries.Add(new RenderedFeedEntry(Item: new FeedItem(user, null)));
+            }
+
+            // Orphaned legacy messages have no stable turn id and therefore keep their existing
+            // presentation. Normal turns get one summary when there is something to fold. A run
+            // which has only just started is the sole zero-item exception: "Working for ..."
+            // gives it a stable place before the first progress note lands.
+            if (turn.Id is null)
+            {
+                entries.AddRange(turn.IntermediateItems.Select(item => new RenderedFeedEntry(Item: item)));
+            }
+            else if (turn.IntermediateItems.Count > 0 || IsCurrentUnfinishedTurn(turn))
+            {
+                entries.Add(new RenderedFeedEntry(Summary: turn));
+                if (IsTurnExpanded(turn))
+                {
+                    var visibleCount = Math.Min(GetExpandedTurnItemLimit(turn.Id!.Value), turn.IntermediateItems.Count);
+                    visibleIntermediateItems = turn.IntermediateItems.Take(visibleCount).ToArray();
+                    entries.AddRange(visibleIntermediateItems
+                        .Select((item, index) => new RenderedFeedEntry(
+                            Item: item,
+                            RevealIndex: index % ExpandedTurnBatchSize,
+                            IsExpandedIntermediate: true)));
+                    // File-change receipts from later chunks stay visible while the detailed
+                    // blocks are mounted over several frames.
+                    entries.AddRange(turn.IntermediateItems.Skip(visibleCount)
+                        .SelectMany(ChatFeed.MessagesOf)
+                        .Where(message => message.WorkspaceChanges is { IsEmpty: false })
+                        .Select(message => new RenderedFeedEntry(ChangesMessage: message)));
+                }
+                else
+                {
+                    // The message itself is folded, not its durable workspace receipt.
+                    entries.AddRange(turn.IntermediateMessages
+                        .Where(message => message.WorkspaceChanges is { IsEmpty: false })
+                        .Select(message => new RenderedFeedEntry(ChangesMessage: message)));
+                }
+
+                // The final answer arriving as StreamingContent is shown below as it is; the live
+                // text steps aside at once rather than making the reader wait for it.
+                if (IsRunningTurn(turn) && string.IsNullOrWhiteSpace(SelectedRun?.StreamingContent))
+                {
+                    liveTurnPresented = true;
+                    _liveFrame = LiveText.Present(turn.Id, GetLiveTextCandidate(turn), _liveTextHeld, DateTimeOffset.UtcNow);
+                    ScheduleLiveTextCheck(_liveFrame.NextCheck);
+                    if (!IsTurnExpanded(turn))
+                    {
+                        if (_liveFrame.Text is { } liveText)
+                            entries.Add(new RenderedFeedEntry(LiveText: liveText, LiveVersion: _liveFrame.Version, TurnId: turn.Id));
+                    }
+                    // Expanded, the notes are already there as themselves; only the step still in
+                    // flight has nowhere else to appear.
+                    else if (SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft))
+                    {
+                        entries.Add(new RenderedFeedEntry(LiveText: draft, LiveVersion: -1, TurnId: turn.Id));
+                    }
+                }
+
+                if (IsRunningTurn(turn) && IsTurnExpanded(turn)
+                    && SelectedRun?.ActiveTools is { Count: > 0 } activeTools)
+                {
+                    var representedCallIds = visibleIntermediateItems
+                        .Where(item => item.ToolGroup is not null)
+                        .SelectMany(item => item.ToolGroup!)
+                        .SelectMany(message => message.ToolCalls ?? [])
+                        .Select(call => call.Id)
+                        .ToHashSet(StringComparer.Ordinal);
+                    var unrepresented = activeTools
+                        .Where(active => !representedCallIds.Contains(active.CallId))
+                        .ToArray();
+                    if (unrepresented.Length > 0)
+                        entries.Add(new RenderedFeedEntry(ActiveTools: unrepresented, TurnId: turn.Id));
+                }
+
+                // Once every progressively mounted intermediate block is present, close the
+                // expanded region with a second affordance. A long turn can put its summary far
+                // above the viewport, so requiring the user to find that first button again
+                // defeats the purpose of folding the detail.
+                if (_expandedTurns.Contains(turn.Id.Value)
+                    && !_turnExpansionsPending.Contains(turn.Id.Value))
+                {
+                    entries.Add(new RenderedFeedEntry(CollapseTurnId: turn.Id));
+                }
+
+                if (IsCurrentTurn(turn) && turn.FinalAnswer is null && SelectedRun is { } streamingRun
+                    && !string.IsNullOrWhiteSpace(streamingRun.StreamingContent))
+                {
+                    entries.Add(new RenderedFeedEntry(StreamingRun: streamingRun, TurnId: turn.Id));
+                }
+            }
+
+            if (turn.FinalAnswer is { } answer)
+            {
+                entries.Add(new RenderedFeedEntry(Item: answer));
+            }
+        }
+
+        if (!liveTurnPresented)
+        {
+            _liveFrame = LiveText.Present(null, null, false, DateTimeOffset.UtcNow);
+            // The element under the pointer can go without a mouseleave; the next turn must not
+            // inherit a hold nobody is exerting.
+            _liveTextHeld = false;
+        }
+
+        return entries;
+    }
+
+    private LiveTextFrame _liveFrame;
+    private bool _liveTextHeld;
+    private int _liveTextTick;
+    private CancellationTokenSource? _liveTextTimer;
+    private DateTimeOffset? _liveTextTimerDue;
+
+    /// <summary>The step in flight when the model is writing, else the turn's latest note.</summary>
+    private string? GetLiveTextCandidate(FeedTurn turn) =>
+        SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft)
+            ? draft
+            : turn.IntermediateMessages
+                .LastOrDefault(message => message.Role == "Assistant" && !string.IsNullOrWhiteSpace(message.Content))
+                ?.Content;
+
+    // Everything the live text is computed from that the transcript boundary does not already
+    // watch: the draft growing, the final answer starting, a reading delay running out, the hold.
+    private int GetLiveTextInputVersion() => HashCode.Combine(
+        SelectedRun?.DraftContent?.Length,
+        string.IsNullOrEmpty(SelectedRun?.StreamingContent),
+        _liveTextTick,
+        _liveTextHeld);
+
+    private void SetLiveTextHeld(bool held)
+    {
+        if (_liveTextHeld == held) return;
+        _liveTextHeld = held;
+        _liveTextTick++;
+    }
+
+    /// <summary>
+    /// Wakes the transcript when a waiting text becomes due. Nothing else would: the run may be
+    /// quiet (a tool running, the model thinking) exactly while the reader finishes the old text.
+    /// </summary>
+    private void ScheduleLiveTextCheck(DateTimeOffset? due)
+    {
+        if (due is null || due == _liveTextTimerDue) return;
+        _liveTextTimerDue = due;
+        _liveTextTimer?.Cancel();
+        _liveTextTimer?.Dispose();
+        var timer = _liveTextTimer = new CancellationTokenSource();
+        var delay = due.Value - DateTimeOffset.UtcNow;
+        _ = FireAsync(delay > TimeSpan.Zero ? delay : TimeSpan.Zero);
+
+        async Task FireAsync(TimeSpan wait)
+        {
+            try { await Task.Delay(wait + TimeSpan.FromMilliseconds(20), timer.Token); }
+            catch (OperationCanceledException) { return; }
+            if (_disposed) return;
+            _liveTextTimerDue = null;
+            _liveTextTick++;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private bool LastTurnEndedWithoutFinalAnswer()
+    {
+        if (SelectedRun is not { } run
+            || run.Status is not (ChatRunStatus.Generating or ChatRunStatus.Failed
+                or ChatRunStatus.Interrupted or ChatRunStatus.Paused)) return false;
+
+        var activeMessageId = run.ActiveMessageId
+            ?? run.Queue.FirstOrDefault(item => item.Stage == QueuedMessageStage.UserCommitted)?.Id;
+        if (activeMessageId is null) return false;
+
+        // Chat persistence and run-state publication are separate event streams. The final
+        // assistant message can therefore reach the UI one frame before the Completed snapshot.
+        // A complete plain assistant message is authoritative: keeping it "intermediate" during
+        // that frame makes the UI claim that an already answered turn is still working.
+        if (Feed.LastTurnHasCompleteAnswer(GetVisibleBranchMessages())) return false;
+
+        return GetVisibleBranchMessages().LastOrDefault(message => message.Role == "User")?.Id
+            == activeMessageId;
+    }
+
+    private bool IsTurnExpanded(FeedTurn turn) =>
+        turn.Id is { } id
+        && (_expandedTurns.Contains(id)
+            || (ForkSourceId is { } forkSource
+                && turn.IntermediateMessages.Any(message => message.Id == forkSource)));
+
+    private bool CanExpandTurn(FeedTurn turn) =>
+        turn.IntermediateItems.Count > 0
+        || IsCurrentTurn(turn) && SelectedRun?.ActiveTools is { Count: > 0 };
+
+    private async Task ToggleTurnAsync(Guid turnId)
+    {
+        if (_messageScrollHandle is { } handle)
+        {
+            try { await handle.InvokeVoidAsync("anchorElement", $"turn-summary-{turnId}"); }
+            catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+        }
+
+        if (_expandedTurns.Remove(turnId))
+        {
+            _expandedTurnItemLimits.Remove(turnId);
+            _turnExpansionsPending.Remove(turnId);
+        }
+        else
+        {
+            _expandedTurns.Add(turnId);
+            _expandedTurnItemLimits[turnId] = InitialExpandedTurnItemCount;
+            var turn = Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer())
+                .FirstOrDefault(item => item.Id == turnId);
+            if (turn is not null && NeedsActivity(turn))
+            {
+                _loadingTurnIds.Add(turnId);
+                _expandedTurnsVersion++;
+                StateHasChanged();
+                if (!await LoadTurnActivityAsync(turnId))
+                {
+                    _expandedTurns.Remove(turnId);
+                    _expandedTurnItemLimits.Remove(turnId);
+                }
+            }
+            if (_expandedTurns.Contains(turnId)) _turnExpansionsPending.Add(turnId);
+        }
+        _expandedTurnsVersion++;
+    }
+
+    private static bool NeedsActivity(FeedTurn turn) => turn.IntermediateMessages.Any(message =>
+        message.ContentOmitted
+        || message.ToolCalls?.Any(call => call.Arguments.Length == 0) == true);
+
+    private async Task<bool> LoadTurnActivityAsync(Guid turnId)
+    {
+        if (SelectedChat is not { } chat || BranchLeafId is not { } branchLeafId) return false;
+        _activityCancellation?.Cancel();
+        _activityCancellation?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        _activityCancellation = cancellation;
+        try
+        {
+            var activity = await ChatHistoryApi.GetTurnActivityAsync(
+                chat.ProjectId,
+                chat.Id,
+                turnId,
+                branchLeafId,
+                cancellation.Token);
+            if (activity is null || cancellation.IsCancellationRequested
+                || SelectedChat?.Id != chat.Id || BranchLeafId != branchLeafId
+                || activity.Revision != SelectedChat.Revision) return false;
+            foreach (var message in activity.Messages) _activityMessages[message.Id] = message;
+            _activityVersion++;
+            _appliedSearchChatId = null;
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (ReferenceEquals(_activityCancellation, cancellation))
+            {
+                _activityCancellation.Dispose();
+                _activityCancellation = null;
+            }
+            _loadingTurnIds.Remove(turnId);
+        }
+    }
+
+    private async Task CollapseTurnFromEndAsync(Guid turnId)
+    {
+        if (!_expandedTurns.Contains(turnId)) return;
+
+        if (_messageScrollHandle is { } handle)
+        {
+            try
+            {
+                // Keep the content following the expanded region in place. This lets the final
+                // answer rise naturally into view instead of jumping back to the summary at the
+                // beginning of a potentially very long turn. Focus still returns to that summary
+                // for keyboard users, without changing the scroll position.
+                await handle.InvokeVoidAsync("anchorFollowingElement", $"turn-collapse-{turnId}");
+                await handle.InvokeVoidAsync("focusElement", $"turn-summary-{turnId}");
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+        }
+
+        _expandedTurns.Remove(turnId);
+        _expandedTurnItemLimits.Remove(turnId);
+        _turnExpansionsPending.Remove(turnId);
+        _expandedTurnsVersion++;
+    }
+
+    private int GetExpandedTurnItemLimit(Guid turnId) =>
+        _expandedTurnItemLimits.GetValueOrDefault(turnId, int.MaxValue);
+
+    private async Task<bool> AdvanceTurnExpansionAsync()
+    {
+        if (_turnExpansionsPending.Count == 0) return false;
+
+        // Yield between batches so the chevron paints immediately instead of one click paying
+        // for every accumulated tool-result presentation in a single UI-thread task.
+        await Task.Delay(TimeSpan.FromMilliseconds(16));
+        if (_disposed) return true;
+
+        var turns = Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer())
+            .Where(turn => turn.Id is not null)
+            .ToDictionary(turn => turn.Id!.Value);
+        foreach (var turnId in _turnExpansionsPending.ToArray())
+        {
+            if (!turns.TryGetValue(turnId, out var turn) || !_expandedTurns.Contains(turnId))
+            {
+                _turnExpansionsPending.Remove(turnId);
+                _expandedTurnItemLimits.Remove(turnId);
+                continue;
+            }
+
+            var next = GetExpandedTurnItemLimit(turnId) + ExpandedTurnBatchSize;
+            if (next >= turn.IntermediateItems.Count)
+            {
+                _expandedTurnItemLimits[turnId] = int.MaxValue;
+                _turnExpansionsPending.Remove(turnId);
+            }
+            else
+            {
+                _expandedTurnItemLimits[turnId] = next;
+            }
+        }
+
+        _expandedTurnsVersion++;
+        StateHasChanged();
+        return true;
+    }
+
+    private bool IsCurrentTurn(FeedTurn turn)
+    {
+        if (turn.Id is not { } id) return false;
+        return GetVisibleBranchMessages().LastOrDefault(message => message.Role == "User")?.Id == id;
+    }
+
+    private bool IsRunningTurn(FeedTurn turn) =>
+        IsCurrentTurn(turn) && turn.FinalAnswer is null
+        && SelectedRun?.Status == ChatRunStatus.Generating;
+
+    private bool IsCurrentUnfinishedTurn(FeedTurn turn) =>
+        IsCurrentTurn(turn) && LastTurnEndedWithoutFinalAnswer();
+
+    private string GetGeneratingMarkerTarget()
+    {
+        if (SelectedRun is { } run
+            && !string.IsNullOrWhiteSpace(run.StreamingContent)) return "message-streaming";
+        var turnId = GetVisibleBranchMessages().LastOrDefault(message => message.Role == "User")?.Id;
+        return turnId is { } id ? $"turn-summary-{id}" : "message-streaming";
+    }
+
+    private string GetTurnSummaryText(FeedTurn turn)
+    {
+        var elapsed = GetTurnDuration(turn);
+        var duration = Feed.FormatDuration(elapsed);
+        if (IsRunningTurn(turn))
+        {
+            // The model's words are under the row in full now; the row says what it is doing
+            // with its hands, or just that it is at work.
+            if (SelectedRun?.ActiveTools is { Count: > 0 } tools)
+                return $"{Presentations.DescribeCall(tools[^1].Name, tools[^1].Arguments).Title} · {duration}";
+            return $"Working for {duration}";
+        }
+
+        if (IsCurrentTurn(turn))
+        {
+            return SelectedRun?.Status switch
+            {
+                ChatRunStatus.Failed => $"Failed after {duration}",
+                ChatRunStatus.Interrupted or ChatRunStatus.Paused => $"Stopped after {duration}",
+                _ => $"Worked for {duration}"
+            };
+        }
+
+        return $"Worked for {duration}";
+    }
+
+    private TimeSpan GetTurnDuration(FeedTurn turn)
+    {
+        if (IsRunningTurn(turn) && GeneratingElapsed is { } generating) return generating;
+        if (turn.UserMessage is not { } user || turn.LastMessage is not { } last) return TimeSpan.Zero;
+        return last.CreatedAt > user.CreatedAt ? last.CreatedAt - user.CreatedAt : TimeSpan.Zero;
+    }
+
+    private int? GetGeneratingElapsedSeconds() => GeneratingElapsed is { } elapsed
+        ? Math.Max(0, (int)elapsed.TotalSeconds)
+        : null;
+
+    private string GetTurnSummaryStateClasses(FeedTurn turn)
+    {
+        var messages = turn.IntermediateMessages.ToArray();
+        return string.Join(' ', new[]
+        {
+            messages.Any(message => message.Id == BranchLeafId) ? "branch-leaf" : null,
+            messages.Any(message => message.Id == JustArrivedLeafId) ? "branch-leaf-arrived" : null,
+            messages.Any(message => message.Id == ForkSourceId) ? "fork-source" : null
+        }.Where(value => value is not null));
+    }
+
+    private void EnsureBranchCache()
+    {
+        if (ReferenceEquals(_branchCacheChat, SelectedChat)
+            && _branchCacheBranchLeafId == BranchLeafId
+            && _branchCacheActivityVersion == _activityVersion)
+        {
+            return;
+        }
+
+        // Keep the previous chat's rendered markdown warm as well as the current chat's. Chat
+        // switching commonly alternates between two transcripts, and reparsing/sanitizing every
+        // large message made that path needlessly expensive. The two-chat LRU keeps that common
+        // path fast without retaining every transcript opened during the app's lifetime.
+        if (!ReferenceEquals(_branchCacheChat, SelectedChat))
+        {
+            ActivateMarkdownCache();
+        }
+
+        _branchCacheChat = SelectedChat;
+        _branchCacheBranchLeafId = BranchLeafId;
+        _branchCacheActivityVersion = _activityVersion;
+        _branchCacheMessages = ComputeVisibleBranchMessages();
+        _branchCacheMessageIds = BranchLeafId is null
+            ? []
+            : _branchCacheMessages.Select(message => message.Id).ToHashSet();
+
+        var childrenByParent = new Dictionary<Guid, List<ChatMessageView>>();
+        if (SelectedChat is not null)
+        {
+            foreach (var stored in SelectedChat.Messages)
+            {
+                var item = _activityMessages.GetValueOrDefault(stored.Id, stored);
+                if (item.ParentId is not { } parentId) continue;
+                if (!childrenByParent.TryGetValue(parentId, out var siblings))
+                {
+                    siblings = [];
+                    childrenByParent[parentId] = siblings;
+                }
+                siblings.Add(item);
+            }
+            foreach (var siblings in childrenByParent.Values)
+            {
+                siblings.Sort((a, b) => a.CreatedAt.CompareTo(b.CreatedAt));
+            }
+        }
+        _branchCacheChildrenByParent = childrenByParent;
+        _branchCacheForkPoints = childrenByParent
+            .Where(pair => pair.Value.Count > 1)
+            .Select(pair => pair.Key)
+            // ReSharper disable once UseCollectionExpression
+            .ToHashSet();
+    }
+
+    private IReadOnlyList<ChatMessageView> GetVisibleBranchMessages()
+    {
+        EnsureBranchCache();
+        return _branchCacheMessages;
+    }
+
+    private IReadOnlyList<ChatMessageView> ComputeVisibleBranchMessages()
+    {
+        if (SelectedChat is null) return [];
+        var messages = SelectedChat.Messages
+            .Select(message => _activityMessages.GetValueOrDefault(message.Id, message))
+            .ToArray();
+        return Feed.BuildBranch(messages, BranchLeafId);
+    }
+
+    private HashSet<Guid> GetForkPointIds()
+    {
+        EnsureBranchCache();
+        return _branchCacheForkPoints;
+    }
+
+    private List<ChatMessageView> GetBranchOptions(ChatMessageView message)
+    {
+        EnsureBranchCache();
+        return _branchCacheChildrenByParent.TryGetValue(message.Id, out var options) ? options : [];
+    }
+
+    // The strip only shows the user's own questions (see BuildHistoryEntries), so every marker in
+    // the loop is "history-marker-user" — brightness-by-role no longer distinguishes anything
+    // there. Only the separate trailing "Generating" marker still uses history-marker-assistant.
+    private readonly record struct HistoryEntry(ChatMessageView Question, ChatMessageView? Answer, bool HasFork);
+
+    // chain is the full branch (user + assistant, root to leaf); a question's answer is simply
+    // the next message in the chain when that next message is the assistant's reply to it.
+    private static List<HistoryEntry> BuildHistoryEntries(IReadOnlyList<ChatMessageView> chain, HashSet<Guid> forkPoints)
+    {
+        var entries = new List<HistoryEntry>();
+        for (var index = 0; index < chain.Count; index++)
+        {
+            if (chain[index].Role != "User") continue;
+            ChatMessageView? answer = null;
+            var hasFork = forkPoints.Contains(chain[index].Id);
+            for (var next = index + 1; next < chain.Count && chain[next].Role != "User"; next++)
+            {
+                hasFork |= forkPoints.Contains(chain[next].Id);
+                if (chain[next].Role == "Assistant" && chain[next].ToolCalls is not { Count: > 0 }) answer = chain[next];
+            }
+            entries.Add(new HistoryEntry(chain[index], answer, hasFork));
+        }
+        return entries;
+    }
+
+    private string GetHistoryMarkerClass(HistoryEntry entry, bool isLast)
+    {
+        var classes = new List<string>(3) { "history-marker-user" };
+
+        if (entry.HasFork)
+        {
+            classes.Add("history-marker-fork");
+        }
+
+        // Only IsIncomplete is per-message; the run status describes the branch as a whole, so it
+        // can only be attributed to the last question's answer, not the question itself.
+        if (entry.Answer is { IsIncomplete: true })
+        {
+            classes.Add("history-marker-incomplete");
+        }
+        else if (isLast && SelectedRun is { } run)
+        {
+            switch (run.Status)
+            {
+                case ChatRunStatus.Failed:
+                    classes.Add("history-marker-failed");
+                    break;
+                case ChatRunStatus.Interrupted or ChatRunStatus.Paused:
+                    classes.Add("history-marker-incomplete");
+                    break;
+                default:
+                {
+                    if (run.HasUnreadResponse) classes.Add("history-marker-unread");
+                    break;
+                }
+            }
+        }
+
+        return string.Join(' ', classes);
+    }
+
+    private bool IsActiveBranchLeaf(ChatMessageView message) => message.Id == BranchLeafId;
+
+    // Every message rendered here is an ancestor of BranchLeafId, i.e. part of the same branch
+    // SelectedRun tracks — so "is this branch generating" is a single check, not per-message.
+    private bool IsBranchGenerating() => SelectedRun?.Status == ChatRunStatus.Generating;
+
+    private IReadOnlyList<ActiveToolInvocation> GetActiveToolsForGroup(IReadOnlyList<ChatMessageView> group)
+    {
+        if (SelectedRun?.ActiveTools is not { Count: > 0 } activeTools) return [];
+        var callIds = group
+            .SelectMany(message => message.ToolCalls ?? [])
+            .Select(call => call.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        return activeTools.Where(active => callIds.Contains(active.CallId)).ToArray();
+    }
+
+    // Matches the chat-details LRU in Home: the same five transcripts stay instant to switch
+    // between, and the rendered HTML for the rest is dropped rather than accumulated.
+    private const int RetainedMarkdownChatCount = 5;
+    private readonly Dictionary<Guid, (Guid ChatId, string Content, string Html)> _markdownCache = [];
+    private readonly LinkedList<Guid> _markdownChatLru = [];
+
+    // Markdig is not cheap; caching by message id means a re-render only
+    // re-parses messages whose content actually changed (in practice, just the one being edited).
+    private string RenderMarkdownCached(Guid messageId, string content)
+    {
+        var chatId = SelectedChat?.Id ?? Guid.Empty;
+        if (_markdownCache.TryGetValue(messageId, out var cached)
+            && cached.ChatId == chatId
+            && cached.Content == content)
+        {
+            return cached.Html;
+        }
+        var html = MarkdownRenderer.Render(content);
+        _markdownCache[messageId] = (chatId, content, html);
+        return html;
+    }
+
+    private static string GetMessagePreview(string content)
+    {
+        var text = content.ReplaceLineEndings(" ").Trim();
+        return text[..Math.Min(text.Length, 36)] + (text.Length > 36 ? "…" : string.Empty);
+    }
+
+    private string ResourceLabel(ChatResourceRef resource)
+    {
+        if (resource.Kind != ChatResourceKind.Review) return resource.Path;
+        if (resource.ReviewKind == ChatReviewKind.Message || MessageReviewIds?.Contains(resource.Id) == true)
+        {
+            var count = MessageReviews?.Values.FirstOrDefault(item => item.Id == resource.Id)?.MessageComments?.Count;
+            return count is > 0 ? $"Message comments · {count}" : "Message comments";
+        }
+        return ReviewNames?.GetValueOrDefault(resource.Id) ?? resource.Name ?? resource.Path;
+    }
+
+    private void ActivateMarkdownCache()
+    {
+        if (SelectedChat is not { } chat) return;
+
+        var existing = _markdownChatLru.Find(chat.Id);
+        if (existing is not null) _markdownChatLru.Remove(existing);
+        _markdownChatLru.AddFirst(chat.Id);
+
+        // A refreshed revision may have removed messages. Do not retain rendered content which
+        // is no longer part of the chat even while the chat itself remains in the LRU.
+        var liveIds = chat.Messages.Select(message => message.Id).ToHashSet();
+        foreach (var key in _markdownCache
+                     .Where(pair => pair.Value.ChatId == chat.Id && !liveIds.Contains(pair.Key))
+                     .Select(pair => pair.Key)
+                     .ToList())
+        {
+            _markdownCache.Remove(key);
+        }
+
+        while (_markdownChatLru.Count > RetainedMarkdownChatCount)
+        {
+            var expiredChatId = _markdownChatLru.Last!.Value;
+            _markdownChatLru.RemoveLast();
+            foreach (var key in _markdownCache
+                         .Where(pair => pair.Value.ChatId == expiredChatId)
+                         .Select(pair => pair.Key)
+                         .ToList())
+            {
+                _markdownCache.Remove(key);
+            }
+        }
+    }
+
+    private string GetBranchOptionTitle(ChatMessageView sibling)
+    {
+        EnsureBranchCache();
+        var siblings = sibling.ParentId is { } parentId
+            && _branchCacheChildrenByParent.TryGetValue(parentId, out var options)
+                ? options
+                : [];
+        if (siblings.Count > 0 && siblings[0].Id == sibling.Id)
+        {
+            return sibling.Role == "Assistant" ? "Original response" : "Original message";
+        }
+
+        return GetMessagePreview(sibling.Content);
+    }
+
+    // GetRunForBranch resolves any option's message id to its actual governing run branch
+    // (walking up to the nearest fork-root ancestor, or the chat's own id — see
+    // BranchLeafHelpers.RunBranchIdFor). For the currently active option specifically,
+    // SelectedRun already IS that exact run, so we use it directly rather than resolving from
+    // scratch — same result, cheaper.
+    private ChatRunSnapshot? GetOptionRun(ChatMessageView option) =>
+        IsMessageInActiveBranch(option.Id) ? SelectedRun : GetRunForBranch?.Invoke(option.Id);
+
+    // The active option's own content is the transcript rendered right below this picker, so its
+    // status is already visible there — showing it again here too would be the same redundant
+    // echo the sidebar avoids. Generating is kept even for the active option since it's live
+    // progress rather than a state the user has already seen.
+    private string GetOptionStatusClass(ChatMessageView option)
+    {
+        var run = GetOptionRun(option);
+        return IsMessageInActiveBranch(option.Id) && run?.Status != ChatRunStatus.Generating
+            ? string.Empty
+            : StatusPresentation.GetStatusClass(run);
+    }
+
+    private string? GetOptionStatusTooltip(ChatMessageView option)
+    {
+        var run = GetOptionRun(option);
+        if (run is null) return null;
+        if (IsMessageInActiveBranch(option.Id) && run.Status != ChatRunStatus.Generating) return null;
+        return StatusPresentation.GetStatusTooltip(run);
+    }
+
+    private bool IsMessageInActiveBranch(Guid messageId)
+    {
+        EnsureBranchCache();
+        return _branchCacheMessageIds.Contains(messageId);
+    }
+
+    private int GetActiveBranchPosition(IReadOnlyList<ChatMessageView> options)
+    {
+        for (var index = 0; index < options.Count; index++)
+        {
+            if (IsMessageInActiveBranch(options[index].Id)) return index + 1;
+        }
+        return 1;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _activityCancellation?.Cancel();
+        _activityCancellation?.Dispose();
+        _activityCancellation = null;
+        _liveTextTimer?.Cancel();
+        _liveTextTimer?.Dispose();
+        _liveTextTimer = null;
+        await DisposeHistoryMarkersAsync();
+        var historyMarkersModule = _historyMarkersModule;
+        var scrollModule = _scrollModule;
+        var messageScrollModule = _messageScrollModule;
+        var messageScrollHandle = _messageScrollHandle;
+        var mermaidBlocksModule = _mermaidBlocksModule;
+        var mermaidBlocksHandle = _mermaidBlocksHandle;
+        var svgBlocksModule = _svgBlocksModule;
+        var svgBlocksHandle = _svgBlocksHandle;
+        var fileLinksModule = _fileLinksModule;
+        var fileLinksHandle = _fileLinksHandle;
+        _historyMarkersModule = null;
+        _scrollModule = null;
+        _messageScrollModule = null;
+        _messageScrollHandle = null;
+        _mermaidBlocksModule = null;
+        _mermaidBlocksHandle = null;
+        _svgBlocksModule = null;
+        _svgBlocksHandle = null;
+        _fileLinksModule = null;
+        _fileLinksHandle = null;
+        try
+        {
+            if (messageScrollHandle is not null)
+            {
+                await messageScrollHandle.InvokeVoidAsync("dispose");
+                await messageScrollHandle.DisposeAsync();
+            }
+            // The mermaid handle holds a MutationObserver; disposing it first stops new renders
+            // from being scheduled, which lets the module itself be released even if a render
+            // is mid-flight on the rAF queue (the await below yields to the event loop).
+            if (mermaidBlocksHandle is not null)
+            {
+                await mermaidBlocksHandle.InvokeVoidAsync("dispose");
+                await mermaidBlocksHandle.DisposeAsync();
+            }
+            if (svgBlocksHandle is not null)
+            {
+                await svgBlocksHandle.InvokeVoidAsync("dispose");
+                await svgBlocksHandle.DisposeAsync();
+            }
+            if (fileLinksHandle is not null)
+            {
+                await fileLinksHandle.InvokeVoidAsync("dispose");
+                await fileLinksHandle.DisposeAsync();
+            }
+            if (historyMarkersModule is not null) await historyMarkersModule.DisposeAsync();
+            if (scrollModule is not null) await scrollModule.DisposeAsync();
+            if (messageScrollModule is not null) await messageScrollModule.DisposeAsync();
+            if (mermaidBlocksModule is not null) await mermaidBlocksModule.DisposeAsync();
+            if (svgBlocksModule is not null) await svgBlocksModule.DisposeAsync();
+            if (fileLinksModule is not null) await fileLinksModule.DisposeAsync();
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+        }
+        _selfReference?.Dispose();
+        _selfReference = null;
+    }
+}

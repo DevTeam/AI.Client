@@ -1,0 +1,14 @@
+namespace AI.Contracts.Chats;
+
+public sealed record ChatMessageView(
+    Guid Id,
+    Guid? ParentId,
+    string Role,
+    string Content,
+    DateTimeOffset CreatedAt,
+    bool IsIncomplete = false,
+    IReadOnlyList<Chat.ChatToolCall>? ToolCalls = null,
+    string? ToolCallId = null,
+    Workspace.WorkspaceChangeSet? WorkspaceChanges = null,
+    bool ContentOmitted = false,
+    IReadOnlyList<Resources.ChatResourceRef>? Resources = null);

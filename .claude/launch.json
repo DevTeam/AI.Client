@@ -7,7 +7,7 @@
       "runtimeArgs": [
         "run",
         "--project",
-        "src/AI.Client.Host"
+        "src/AI.Host"
       ],
       "port": 52173,
       "autoPort": true
@@ -18,7 +18,7 @@
       "runtimeArgs": [
         "run",
         "--project",
-        "src/AI.Client.Host",
+        "src/AI.Host",
         "--",
         "--data-dir",
         "C:/Users/PYANIK~1/AppData/Local/Temp/claude/C--Projects-DevTeam-AI-Client/5780f837-0f24-49a9-b5a9-2c3966ac3da9/scratchpad/data"
@@ -32,7 +32,7 @@
       "runtimeArgs": [
         "run",
         "--project",
-        "src/AI.Client.Host",
+        "src/AI.Host",
         "--no-launch-profile",
         "-p:BaseOutputPath=C:/Users/PYANIK~1/AppData/Local/Temp/claude/C--Projects-DevTeam-AI-Client/2ec20db7-c0dd-4c47-b1c8-6c787a0c8c7e/scratchpad/hostbin/",
         "--",

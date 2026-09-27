@@ -32,7 +32,7 @@ The following reference servers from `modelcontextprotocol/servers` are intentio
 The Host automatically registers `Default tools` with a stable ID. The built-in server ships with the application in the `mcp` directory and runs over stdio. By default it is enabled with the `Ask` policy, but it is not transmitted to the model and is not started until it is explicitly discovered and enabled in a specific project's settings.
 
 1. Select a connection that supports function calling in Chat Completions.
-2. In the chat, ask the model to run a program with a working directory, for example: `Run dotnet --info in C:\Projects\DevTeam\AI.Client`.
+2. In the chat, ask the model to run a program with a working directory, for example: `Run dotnet --info in C:\Projects\DevTeam\AI`.
 3. Review the program, arguments, directory, and timeout in the confirmation card. Click `Allow once` or `Deny`.
 4. The call, its result, and the model's final response appear in history. The chat's stop button cancels a pending confirmation or an in-flight execution.
 
@@ -48,7 +48,7 @@ Input:
 {
   "executable": "dotnet",
   "arguments": ["--info"],
-  "workingDirectory": "C:\\Projects\\DevTeam\\AI.Client",
+  "workingDirectory": "C:\\Projects\\DevTeam\\AI",
   "timeoutMs": 120000
 }
 ```
@@ -110,7 +110,7 @@ Each assistant tool call is recorded before execution, and the tool result befor
 `session send` returns `status: awaiting_approval` and an `approval` object if a decision is required. The run keeps waiting on the Host; confirmation can be given in the Web or through a separate command:
 
 ```powershell
-dotnet run --project src/AI.Client.Cli -- session approve --session <id> --approval <approval-id> --allow true
+dotnet run --project src/AI.Cli -- session approve --session <id> --approval <approval-id> --allow true
 ```
 
 To refuse, pass `--allow false`. The command returns the accepted decision; history can be read through `session show`. `GET /api/runs` contains the current state and new confirmation requests.

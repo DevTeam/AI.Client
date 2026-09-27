@@ -1,0 +1,303 @@
+@* The model has asked the person something and the run is holding still until they answer. It sits
+   inline at the end of the transcript rather than over it: the question belongs to this chat, and
+   the other chats in the window are still working. *@
+@using AI.Contracts.Runs
+@using AI.Web.FileSystem
+@using AI.Web.Markdown
+@inject IMarkdownRenderer MarkdownRenderer
+
+<section class="user-prompt" role="region" aria-label="Question from the assistant" @onkeydown="HandleKeyDownAsync">
+    <strong class="user-prompt-title">@(Prompt.Questions.Count > 1 ? $"Questions ({Prompt.Questions.Count})" : "Question")</strong>
+    @for (var index = 0; index < Prompt.Questions.Count; index++)
+    {
+        var questionIndex = index;
+        var question = Prompt.Questions[questionIndex];
+        <fieldset class="user-prompt-question">
+            <legend>
+                @if (question.Label is { Length: > 0 } label)
+                {
+                    <span class="user-prompt-chip">@label</span>
+                }
+                <span>@((MarkupString)MarkdownRenderer.RenderInline(question.Text))</span>
+            </legend>
+            @for (var option = 0; option < question.Options.Count; option++)
+            {
+                var optionIndex = option;
+                var choice = question.Options[optionIndex];
+                <label class="user-prompt-option">
+                    <input type="@(question.MultiSelect ? "checkbox" : "radio")"
+                           name="@($"{Prompt.Id}-{question.Id}")"
+                           checked="@IsSelected(questionIndex, optionIndex)"
+                           disabled="@_sending"
+                           @onchange="args => Select(questionIndex, optionIndex, question.MultiSelect, args)" />
+                    <span>
+                        <span class="user-prompt-option-label">@choice.Label</span>
+                        @if (choice.Description is { Length: > 0 } description)
+                        {
+                            <span class="user-prompt-option-description">@description</span>
+                        }
+                    </span>
+                </label>
+            }
+            @if (PathMode(question) is { } mode)
+            {
+                @if (IsMultiplePaths(question))
+                {
+                    <div class="user-prompt-paths">
+                        @if (_paths[questionIndex].Count > 0)
+                        {
+                            <ul>
+                                @foreach (var path in _paths[questionIndex])
+                                {
+                                    <li>
+                                        <span title="@path">@path</span>
+                                        <button class="icon-action" type="button" title="Remove directory"
+                                                aria-label="Remove directory @path" disabled="@_sending"
+                                                @onclick="() => RemovePath(questionIndex, path)"><AppIcon Name="x" /></button>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        <button class="secondary-action compact-action" type="button" disabled="@_sending"
+                                @onclick="() => OpenPicker(questionIndex, mode)" @onkeydown:stopPropagation="true">
+                            <AppIcon Name="folder-plus" /> Add directory
+                        </button>
+                    </div>
+                }
+                else
+                {
+                @* A path is the one answer nobody should be typing from memory, so the free-text
+                   slot becomes a box with the host's own file browser behind it. It still travels
+                   as free text, which is why the model needs no new answer shape to read it. *@
+                <label class="user-prompt-option user-prompt-other user-prompt-path">
+                    <input type="@(question.MultiSelect ? "checkbox" : "radio")"
+                           name="@($"{Prompt.Id}-{question.Id}")"
+                           checked="@(_other[questionIndex] is { Length: > 0 })"
+                           disabled="@_sending"
+                           @onchange="args => SelectOther(questionIndex, question.MultiSelect, args)" />
+                    <span>
+                        <span class="user-prompt-option-label">@(mode == DirectoryPickerMode.File ? "File" : "Directory")</span>
+                        <span class="user-prompt-path-row">
+                            <input class="user-prompt-other-input" type="text" disabled="@_sending"
+                                   placeholder="@(mode == DirectoryPickerMode.File ? "Path to a file" : "Path to a directory")"
+                                   aria-label="@(mode == DirectoryPickerMode.File ? "File path" : "Directory path")"
+                                   value="@_other[questionIndex]"
+                                   @oninput="args => TypeOther(questionIndex, args)" />
+                            <button class="secondary-action compact-action" type="button" disabled="@_sending"
+                                    @onclick="() => OpenPicker(questionIndex, mode)" @onkeydown:stopPropagation="true">Browse…</button>
+                        </span>
+                    </span>
+                </label>
+                }
+            }
+            else if (question.AllowOther)
+            {
+                <label class="user-prompt-option user-prompt-other">
+                    <input type="@(question.MultiSelect ? "checkbox" : "radio")"
+                           name="@($"{Prompt.Id}-{question.Id}")"
+                           checked="@(_other[questionIndex] is { Length: > 0 })"
+                           disabled="@_sending"
+                           @onchange="args => SelectOther(questionIndex, question.MultiSelect, args)" />
+                    <span>
+                        <span class="user-prompt-option-label">@(question.Options.Count == 0 ? "Your answer" : "Other")</span>
+                        <input class="user-prompt-other-input" type="text" disabled="@_sending"
+                               placeholder="Type your answer"
+                               value="@_other[questionIndex]"
+                               @oninput="args => TypeOther(questionIndex, args)" />
+                    </span>
+                </label>
+            }
+        </fieldset>
+    }
+    <p class="user-prompt-note @(IsReady ? "ready" : null)" role="status" aria-live="polite">
+        @if (IsReady)
+        {
+            <span>All questions answered. Press <kbd>Enter</kbd> to continue.</span>
+        }
+        else
+        {
+            <span>Answer what matters to you — anything you leave blank is left to the assistant to decide.</span>
+        }
+    </p>
+    <div class="user-prompt-actions">
+        <button class="secondary-action" type="button" disabled="@_sending" @onclick="DismissAsync" @onkeydown:stopPropagation="true"><span>Decide yourself</span></button>
+        <button type="button" disabled="@_sending" @onclick="AnswerAsync" @onkeydown:stopPropagation="true">
+            @if (_sending)
+            {
+                <span>Continuing…</span>
+            }
+            else if (IsReady)
+            {
+                <span>Continue <kbd aria-hidden="true">Enter ↵</kbd></span>
+            }
+            else
+            {
+                <span>Answer</span>
+            }
+        </button>
+    </div>
+    @if (_error is not null) { <p class="user-prompt-error" role="alert">@_error</p> }
+</section>
+
+@if (_pickerQuestion is { } picking)
+{
+    <DirectoryPickerDialog Mode="_pickerMode" StartPath="@PickerStartPath(picking)"
+                           Subtitle="@Prompt.Questions[picking].Label"
+                           Selected="path => PickedAsync(picking, path)" Cancelled="ClosePicker" />
+}
+
+@code {
+    [Parameter, EditorRequired] public UserPrompt Prompt { get; set; } = default!;
+
+    /// <summary>Sends the answer; returns false when the prompt is no longer the one being waited on.</summary>
+    [Parameter, EditorRequired] public Func<UserPromptResponse, Task<bool>> OnAnswer { get; set; } = default!;
+
+    private readonly Dictionary<int, HashSet<int>> _selected = [];
+    private readonly Dictionary<int, string> _other = [];
+    private readonly Dictionary<int, List<string>> _paths = [];
+    private bool _sending;
+    private string? _error;
+    private Guid _rendered;
+    private int? _pickerQuestion;
+    private DirectoryPickerMode _pickerMode;
+
+    /// <summary>Which picker a question wants, or null for a question that is not about a path.</summary>
+    private static DirectoryPickerMode? PathMode(UserPromptQuestion question) => question.PathKind switch
+    {
+        "directory" or "directories" => DirectoryPickerMode.Directory,
+        "file" => DirectoryPickerMode.File,
+        _ => null
+    };
+
+    private static bool IsMultiplePaths(UserPromptQuestion question) => question.PathKind == "directories";
+
+    private string? PickerStartPath(int question) => _paths.GetValueOrDefault(question)?.LastOrDefault()
+        ?? _other.GetValueOrDefault(question);
+
+    private void OpenPicker(int question, DirectoryPickerMode mode)
+    {
+        _pickerQuestion = question;
+        _pickerMode = mode;
+    }
+
+    private void ClosePicker() => _pickerQuestion = null;
+
+    /// <summary>
+    /// A picked path is an answer, not just text in a box: it goes in through the same door typing
+    /// does, so choosing it also ticks the question the way typing would.
+    /// </summary>
+    private Task PickedAsync(int question, string path)
+    {
+        _pickerQuestion = null;
+        if (IsMultiplePaths(Prompt.Questions[question]))
+        {
+            if (!_paths[question].Contains(path, StringComparer.OrdinalIgnoreCase)) _paths[question].Add(path);
+            return Task.CompletedTask;
+        }
+
+        TypeOther(question, new ChangeEventArgs { Value = path });
+        return Task.CompletedTask;
+    }
+
+    private void RemovePath(int question, string path) =>
+        _paths[question].RemoveAll(item => string.Equals(item, path, StringComparison.OrdinalIgnoreCase));
+
+    private bool IsReady => Prompt.Questions
+        .Select((_, index) => _selected.GetValueOrDefault(index)?.Count > 0
+            || !string.IsNullOrWhiteSpace(_other.GetValueOrDefault(index))
+            || _paths.GetValueOrDefault(index)?.Count > 0)
+        .All(answered => answered);
+
+    protected override void OnParametersSet()
+    {
+        // A second question replacing the first is a different question: nothing typed for the one
+        // that has gone should be carried into the one that arrived.
+        if (_rendered == Prompt.Id) return;
+        _rendered = Prompt.Id;
+        _selected.Clear();
+        _other.Clear();
+        _paths.Clear();
+        for (var index = 0; index < Prompt.Questions.Count; index++)
+        {
+            _selected[index] = [];
+            _other[index] = string.Empty;
+            _paths[index] = [];
+        }
+
+        _sending = false;
+        _error = null;
+        _pickerQuestion = null;
+    }
+
+    private bool IsSelected(int question, int option) => _selected[question].Contains(option);
+
+    private void Select(int question, int option, bool multiSelect, ChangeEventArgs args)
+    {
+        var on = args.Value is true or "true" or "on";
+        if (!multiSelect)
+        {
+            _selected[question].Clear();
+            // Picking a listed option is also how you abandon the free-text one: with radios the
+            // browser clears its control but not what was typed into it, and a stale "other"
+            // travelling alongside a chosen option is an answer nobody gave.
+            _other[question] = string.Empty;
+        }
+
+        if (on) _selected[question].Add(option); else _selected[question].Remove(option);
+    }
+
+    private void SelectOther(int question, bool multiSelect, ChangeEventArgs args)
+    {
+        if (!multiSelect) _selected[question].Clear();
+        if (args.Value is false or "false") _other[question] = string.Empty;
+    }
+
+    /// <summary>Typing is choosing: reaching for the field and then having to tick it as well is a trap.</summary>
+    private void TypeOther(int question, ChangeEventArgs args)
+    {
+        var text = args.Value?.ToString() ?? string.Empty;
+        _other[question] = text;
+        if (text.Length > 0 && !Prompt.Questions[question].MultiSelect) _selected[question].Clear();
+    }
+
+    private Task AnswerAsync() => SendAsync(UserPromptOutcome.Answered);
+
+    private Task DismissAsync() => SendAsync(UserPromptOutcome.Dismissed);
+
+    private Task HandleKeyDownAsync(KeyboardEventArgs args) =>
+        args.Key == "Enter" && !args.AltKey && !args.CtrlKey && !args.MetaKey && !args.ShiftKey
+            && !args.IsComposing && IsReady && !_sending
+                ? AnswerAsync()
+                : Task.CompletedTask;
+
+    private async Task SendAsync(UserPromptOutcome outcome)
+    {
+        _sending = true;
+        _error = null;
+        try
+        {
+            var answers = outcome == UserPromptOutcome.Answered
+                ? Prompt.Questions
+                    .Select((question, index) => new UserPromptAnswer(question.Id,
+                        _selected[index].Order().ToArray(),
+                        string.IsNullOrWhiteSpace(_other[index]) ? null : _other[index].Trim(),
+                        _paths[index].Count == 0 ? null : _paths[index].ToArray()))
+                    .Where(answer => answer.Selected.Count > 0 || answer.Other is not null || answer.Paths is { Count: > 0 })
+                    .ToArray()
+                : [];
+            // Answering nothing at all is telling the assistant to decide, which is what the other
+            // button says. Sending it as an answer would have the same effect with a worse record.
+            if (answers.Length == 0) outcome = UserPromptOutcome.Dismissed;
+            if (!await OnAnswer(new UserPromptResponse(Prompt.Id, outcome, answers)))
+                _error = "This question is no longer available.";
+        }
+        catch (HttpRequestException)
+        {
+            _error = "The answer could not be sent. Try again.";
+        }
+        finally
+        {
+            _sending = false;
+        }
+    }
+}

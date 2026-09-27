@@ -6,12 +6,12 @@ Accepted, 2026-09-23.
 
 ## Context
 
-AI.Client ships as a standalone Host and must also ship as one desktop application for Windows, macOS and Linux. The UI is the existing Blazor WebAssembly app, and the Host-Web contract (HTTP + SSE over `AI.Client.Contracts`) must stay the only way the UI talks to the server. The main criterion is reliability.
+AI ships as a standalone Host and must also ship as one desktop application for Windows, macOS and Linux. The UI is the existing Blazor WebAssembly app, and the Host-Web contract (HTTP + SSE over `AI.Contracts`) must stay the only way the UI talks to the server. The main criterion is reliability.
 
 ## Decision
 
-- `AI.Client.Desktop` is an Avalonia 12 app whose window holds one `NativeWebView` (`Avalonia.Controls.WebView`, MIT). It uses the system engine — WebView2, WKWebView, WPE WebKit/WebKitGTK — and bundles no browser.
-- The desktop process runs the same server in-process (`AI.Client.Server`, same composition as the Host) on `127.0.0.1` with a port the OS picks, and the server also serves the UI. The UI and the API share one origin: no CORS, no custom scheme, identical on all three systems. Served that way, the server answers `/appsettings*.json` with its own origin, so the UI always calls the server that served it.
+- `AI.Desktop` is an Avalonia 12 app whose window holds one `NativeWebView` (`Avalonia.Controls.WebView`, MIT). It uses the system engine — WebView2, WKWebView, WPE WebKit/WebKitGTK — and bundles no browser.
+- The desktop process runs the same server in-process (`AI.Server`, same composition as the Host) on `127.0.0.1` with a port the OS picks, and the server also serves the UI. The UI and the API share one origin: no CORS, no custom scheme, identical on all three systems. Served that way, the server answers `/appsettings*.json` with its own origin, so the UI always calls the server that served it.
 - No JavaScript bridge. Anything desktop-specific becomes an endpoint in the contract.
 - The server listens on loopback only; no per-launch token (same exposure as the standalone Host).
 - One server per data directory, enforced by an unshared `<data>/.lock` that the OS releases on any exit.

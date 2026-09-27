@@ -1,0 +1,477 @@
+// ReSharper disable UseCollectionExpression
+namespace AI.Application.Chats;
+
+using Projects;
+using AI.Contracts.Chats;
+using AI.Contracts.Projects;
+using AI.Contracts.Tools;
+using AI.Contracts.Workspace;
+using AI.Domain.Chats;
+using AI.Domain.Projects;
+using AI.Application.Resources;
+
+public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, IChatSynchronization synchronization) : IChatService, IChatMutations
+{
+    public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken) =>
+        (await repository.ListSummariesAsync(new ProjectId(projectId), cancellationToken))
+        .OrderByDescending(item => item.IsPinned)
+        .ThenByDescending(item => item.LastActivityAt)
+        .Select(item => new ChatSummary(
+            item.Id.Value,
+            item.ProjectId.Value,
+            item.Title,
+            item.UpdatedAt,
+            item.Revision,
+            item.LastActivityAt,
+            item.IsPinned,
+            item.PinnedAt,
+            item.BranchCount))
+        .ToArray();
+
+    public async Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        return stored is null ? null : ToDetails(stored.Chat, stored.Revision);
+    }
+
+    public async Task<ChatDetails?> GetTranscriptAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        return stored is null ? null : ToTranscript(stored.Chat, stored.Revision);
+    }
+
+    public async Task<ChatTurnActivity?> GetTurnActivityAsync(
+        Guid projectId,
+        Guid chatId,
+        Guid turnId,
+        Guid branchLeafId,
+        CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+
+        IReadOnlyList<ChatMessage> branch;
+        try
+        {
+            branch = stored.Chat.GetBranch(new ChatMessageId(branchLeafId));
+        }
+        catch (AI.Domain.Common.DomainException)
+        {
+            return null;
+        }
+
+        var start = -1;
+        for (var index = 0; index < branch.Count; index++)
+        {
+            if (branch[index].Id.Value == turnId && branch[index].Role == ChatMessageRole.User)
+            {
+                start = index;
+                break;
+            }
+        }
+        if (start < 0) return null;
+
+        var end = start + 1;
+        while (end < branch.Count && branch[end].Role != ChatMessageRole.User) end++;
+        // A completed turn's last plain assistant message is already present in the compact
+        // transcript as the final answer. Everything before it is expandable activity.
+        if (end > start + 1 && IsPlainAssistant(branch[end - 1])) end--;
+
+        // The expanded feed needs the small checkpoint result to decide whether compaction
+        // actually applied. Other tool output remains lazy, even when the turn is expanded.
+        var compactCallIds = branch.Skip(start + 1).Take(end - start - 1)
+            .SelectMany(message => message.ToolCalls ?? [])
+            .Where(call => ToolRef.Parse(call.Name) is { IsApp: true, Name: "context_compact" })
+            .Select(call => call.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var messages = branch
+            .Skip(start + 1)
+            .Take(end - start - 1)
+            .Select(message => ToView(message, omitToolResultContent:
+                message.Role != ChatMessageRole.Tool
+                || message.ToolCallId is not { } callId
+                || !compactCallIds.Contains(callId)
+                || message.Content.Length > 4096))
+            .ToArray();
+        return new ChatTurnActivity(stored.Revision, turnId, messages);
+    }
+
+    public async Task<ChatMessageContent?> GetMessageContentAsync(
+        Guid projectId,
+        Guid chatId,
+        Guid messageId,
+        CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        var message = stored?.Chat.Messages.SingleOrDefault(item => item.Id.Value == messageId);
+        return message is null || message.Role != ChatMessageRole.Tool
+            ? null
+            : new ChatMessageContent(stored!.Revision, messageId, message.Content);
+    }
+
+    public async Task<ChatDetails?> RemoveReviewReferenceAsync(Guid projectId, Guid chatId,
+        Guid messageId, Guid reviewId, long revision, CancellationToken cancellationToken)
+        => await RemoveReferenceAsync(projectId, chatId, messageId, reviewId, revision, reviewOnly: true, cancellationToken);
+
+    public async Task<ChatDetails?> RemoveResourceReferenceAsync(Guid projectId, Guid chatId,
+        Guid messageId, Guid resourceId, long revision, CancellationToken cancellationToken)
+        => await RemoveReferenceAsync(projectId, chatId, messageId, resourceId, revision, reviewOnly: false, cancellationToken);
+
+    public async Task<ChatDetails?> RemoveReviewReferencesAsync(Guid projectId, Guid chatId,
+        Guid reviewId, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        if (!stored.Chat.RemoveReviewReferences(reviewId, clock.UtcNow)) return ToDetails(stored.Chat, stored.Revision);
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        if (!result.IsSaved) throw new InvalidOperationException("Could not remove review links from the chat.");
+        return ToDetails(stored.Chat, result.Revision);
+    }
+
+    private async Task<ChatDetails?> RemoveReferenceAsync(Guid projectId, Guid chatId,
+        Guid messageId, Guid resourceId, long revision, bool reviewOnly, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null || stored.Revision != revision) return null;
+        var removed = reviewOnly
+            ? stored.Chat.RemoveReviewReference(new ChatMessageId(messageId), resourceId, clock.UtcNow)
+            : stored.Chat.RemoveResourceReference(new ChatMessageId(messageId), resourceId, clock.UtcNow);
+        if (!removed)
+            return null;
+        var result = await repository.SaveAsync(stored.Chat, revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    public async Task<ChatDetails> CreateAsync(Guid projectId, CreateChatRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var now = clock.UtcNow;
+        var chat = new ChatThread(
+            new ChatId(idGenerator.Create()),
+            new ProjectId(projectId),
+            request.Title,
+            now,
+            request.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null);
+        var result = await repository.SaveAsync(chat, 0, cancellationToken);
+        return ToDetails(chat, result.Revision);
+    }
+
+    public async Task<ChatDetails?> AppendMessageAsync(Guid projectId, Guid chatId, AppendChatMessageRequest request, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        return await AppendMessageCoreAsync(projectId, chatId, request, new HashSet<Guid>(), cancellationToken);
+    }
+
+    public async Task<ChatDetails?> AppendMessageCoreAsync(
+        Guid projectId,
+        Guid chatId,
+        AppendChatMessageRequest request,
+        IReadOnlySet<Guid> retainedMessageIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null)
+        {
+            return null;
+        }
+
+        if (!Enum.TryParse<ChatMessageRole>(request.Role, true, out var role))
+        {
+            throw new ArgumentException($"Unsupported chat role '{request.Role}'.", nameof(request));
+        }
+
+        var now = clock.UtcNow;
+        var message = new ChatMessage(
+            new ChatMessageId(request.Id ?? idGenerator.Create()),
+            request.ParentId is { } parentId ? new ChatMessageId(parentId) : null,
+            role,
+            request.Content,
+            now,
+            request.IsIncomplete,
+            request.ToolCalls?.Select(call => new ChatToolCall(call.Id, call.Name, call.Arguments)).ToArray(),
+            request.ToolCallId,
+            ToDomain(request.WorkspaceChanges), ResourceReferences.ToDomain(request.Resources));
+        if (request.ReplaceSourceId is { } replaceId)
+        {
+            stored.Chat.ReplaceInBranch(request.BranchId ?? throw new ArgumentException("A replacement branch is required."),
+                new ChatMessageId(replaceId), message, now);
+            // Replace is destructive by contract: once the replacement and the new branch head
+            // are ready, the abandoned tail is no longer a user-visible version. Prune before the
+            // repository save so either the whole replacement is persisted or the original chat
+            // remains intact. Queued work may still own otherwise unreachable anchors, supplied by
+            // the dispatcher as retained roots.
+            stored.Chat.PruneUnreachableMessages(retainedMessageIds.Select(id => new ChatMessageId(id)));
+        }
+        else
+            stored.Chat.AddMessage(message, now, request.BranchId, request.ParentBranchId);
+        var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    /// <summary>
+    /// Moves a branch head back to <paramref name="headMessageId"/> and drops everything the
+    /// abandoned attempt left behind it. Callers hold the chat lease already.
+    /// </summary>
+    public async Task<ChatDetails?> RewindBranchCoreAsync(Guid projectId, Guid chatId, Guid branchId,
+        Guid headMessageId, IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        if (!stored.Chat.RewindBranchTo(branchId, new ChatMessageId(headMessageId), clock.UtcNow))
+            return ToDetails(stored.Chat, stored.Revision);
+        stored.Chat.PruneUnreachableMessages(retainedMessageIds.Select(id => new ChatMessageId(id)));
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    public async Task<ChatDetails?> PruneMessagesCoreAsync(Guid projectId, Guid chatId,
+        IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        if (!stored.Chat.PruneUnreachableMessages(retainedMessageIds.Select(id => new ChatMessageId(id))))
+            return ToDetails(stored.Chat, stored.Revision);
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    public async Task<ChatDetails?> UpdateEndpointAsync(
+        Guid projectId,
+        Guid chatId,
+        UpdateChatEndpointRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        ArgumentNullException.ThrowIfNull(request);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null)
+        {
+            return null;
+        }
+
+        stored.Chat.SetConnection(
+            request.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null,
+            clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    public async Task<ChatSummary?> PinAsync(
+        Guid projectId,
+        Guid chatId,
+        PinChatRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        ArgumentNullException.ThrowIfNull(request);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+
+        var now = clock.UtcNow;
+        if (request.IsPinned) stored.Chat.Pin(now);
+        else stored.Chat.Unpin(now);
+
+        var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
+        if (!result.IsSaved) return null;
+        return new ChatSummary(
+            stored.Chat.Id.Value,
+            stored.Chat.ProjectId.Value,
+            stored.Chat.Title,
+            stored.Chat.UpdatedAt,
+            result.Revision,
+            stored.Chat.LastActivityAt,
+            stored.Chat.IsPinned,
+            stored.Chat.PinnedAt,
+            stored.Chat.BranchCount);
+    }
+
+    public async Task<ChatDetails?> RenameAsync(
+        Guid projectId,
+        Guid chatId,
+        RenameChatRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        stored.Chat.Rename(request.Title, clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    public async Task<ChatDeleteResult> DeleteAsync(
+        Guid projectId,
+        Guid chatId,
+        long revision,
+        CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        return await repository.DeleteAsync(new ProjectId(projectId), new ChatId(chatId), revision, cancellationToken);
+    }
+
+    public async Task<ChatDetails?> RenameBranchAsync(Guid projectId, Guid chatId, Guid branchId, RenameChatBranchRequest request, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        stored.Chat.RenameBranch(new ChatMessageId(branchId), request.Title, clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    public async Task<ChatDetails?> SetToolPolicyAsync(Guid projectId, Guid chatId,
+        ToolPolicySettings policy, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        stored.Chat.SetToolPolicy(ToPolicy(policy), clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    public async Task<ChatDetails?> RemoveToolPolicyAsync(Guid projectId, Guid chatId,
+        Guid serverId, string name, string schemaHash, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        stored.Chat.RemoveToolPolicy(new ToolIdentity(new McpServerId(serverId), name, schemaHash), clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    public async Task<ChatBranchDeleteResult> DeleteBranchAsync(Guid projectId, Guid chatId, Guid branchId, long revision,
+        IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return new ChatBranchDeleteResult(false, 0, null, null);
+        var parent = stored.Chat.DeleteBranch(branchId, clock.UtcNow);
+        stored.Chat.PruneUnreachableMessages(retainedMessageIds.Select(id => new ChatMessageId(id)));
+        var result = await repository.SaveAsync(stored.Chat, revision, cancellationToken);
+        return new ChatBranchDeleteResult(result.IsSaved, result.Revision, parent.ParentBranchId,
+            parent.ParentHeadMessageId?.Value);
+    }
+
+    private static ChatDetails ToDetails(ChatThread chat, long revision) => new(
+        chat.Id.Value,
+        chat.ProjectId.Value,
+        chat.Title,
+        chat.CreatedAt,
+        chat.UpdatedAt,
+        revision,
+        chat.ConnectionId?.Value,
+        chat.Messages.OrderBy(item => item.CreatedAt).Select(message => ToView(message)).ToArray(),
+        chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
+            branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
+        chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
+            policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
+            policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray());
+
+    private static ChatDetails ToTranscript(ChatThread chat, long revision)
+    {
+        var messages = chat.Messages.OrderBy(item => item.CreatedAt).ToArray();
+        var branchHeads = chat.Branches
+            .Select(branch => branch.HeadMessageId)
+            .OfType<ChatMessageId>()
+            .ToHashSet();
+        var followedByUser = messages
+            .Where(message => message.Role == ChatMessageRole.User && message.ParentId is not null)
+            .Select(message => message.ParentId!.Value)
+            .ToHashSet();
+
+        var projected = messages.Select(message =>
+        {
+            var keepContent = message.Role == ChatMessageRole.User
+                || IsPlainAssistant(message)
+                && (branchHeads.Contains(message.Id) || followedByUser.Contains(message.Id));
+            // The feed renders each completed turn's file-change receipt from the transcript.
+            // Keep it even when the message body is folded; the live run stops carrying it on completion.
+            return ToView(message, omitContent: !keepContent, omitToolArguments: true);
+        }).ToArray();
+
+        return new ChatDetails(
+            chat.Id.Value,
+            chat.ProjectId.Value,
+            chat.Title,
+            chat.CreatedAt,
+            chat.UpdatedAt,
+            revision,
+            chat.ConnectionId?.Value,
+            projected,
+            chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
+                branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
+            chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
+                policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
+                policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray());
+    }
+
+    private static bool IsPlainAssistant(ChatMessage message) =>
+        message.Role == ChatMessageRole.Assistant && message.ToolCalls is not { Count: > 0 };
+
+    private static ChatMessageView ToView(
+        ChatMessage message,
+        bool omitContent = false,
+        bool omitToolArguments = false,
+        bool omitToolResultContent = false)
+    {
+        var contentOmitted = (omitContent || omitToolResultContent && message.Role == ChatMessageRole.Tool)
+            && message.Content.Length > 0;
+        return new ChatMessageView(
+            message.Id.Value,
+            message.ParentId?.Value,
+            message.Role.ToString(),
+            contentOmitted ? string.Empty : message.Content,
+            message.CreatedAt,
+            message.IsIncomplete,
+            message.ToolCalls?.Select(call => new Contracts.Chat.ChatToolCall(
+                call.Id,
+                call.Name,
+                omitToolArguments ? string.Empty : call.Arguments)).ToArray(),
+            message.ToolCallId,
+            ToContract(message.WorkspaceChanges),
+            contentOmitted,
+            ResourceReferences.ToContract(message.Resources));
+    }
+
+    private static ChatWorkspaceChangeSet? ToDomain(WorkspaceChangeSet? changes) => changes is null
+        ? null
+        : new ChatWorkspaceChangeSet(
+            changes.Files.Select(file => new ChatFileChange(
+                file.Path,
+                (ChatFileChangeKind)file.Kind,
+                file.Additions,
+                file.Deletions,
+                file.PreviousPath,
+                file.Diff,
+                file.IsBinary,
+                (ChatFileChangeConfidence)file.Confidence)).ToArray(),
+            changes.Additions,
+            changes.Deletions);
+
+    private static WorkspaceChangeSet? ToContract(ChatWorkspaceChangeSet? changes) => changes is null
+        ? null
+        : new WorkspaceChangeSet(
+            changes.Files.Select(file => new FileChange(
+                file.Path,
+                (FileChangeKind)file.Kind,
+                file.Additions,
+                file.Deletions,
+                file.PreviousPath,
+                file.Diff,
+                file.IsBinary,
+                (FileChangeConfidence)file.Confidence)).ToArray(),
+            changes.Additions,
+            changes.Deletions);
+
+    private static ToolPolicy ToPolicy(ToolPolicySettings policy) => new(
+        new ToolIdentity(new McpServerId(policy.ServerId), policy.Name, policy.SchemaHash),
+        Enum.TryParse<ToolPolicyDecision>(policy.Decision, true, out var decision)
+            ? decision : throw new ArgumentException($"Unsupported tool policy '{policy.Decision}'."),
+        policy.MaxCallsPerRun,
+        policy.TimeoutSeconds is { } timeout ? TimeSpan.FromSeconds(timeout) : null);
+}

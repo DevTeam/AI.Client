@@ -4,7 +4,7 @@ Status: Accepted
 
 ## Purpose
 
-AI.Client is a local user client for conversing with AI models and running agent scenarios. All external tools are connected through MCP. Work is performed within a project, which defines the context, available endpoints, MCP servers, and security rules.
+AI is a local user client for conversing with AI models and running agent scenarios. All external tools are connected through MCP. Work is performed within a project, which defines the context, available endpoints, MCP servers, and security rules.
 
 ## Functional requirements
 

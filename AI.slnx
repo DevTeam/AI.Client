@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/build/">
+    <Project Path="build/build.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/AI.Contracts/AI.Contracts.csproj" />
+    <Project Path="src/AI.Desktop/AI.Desktop.csproj" />
+    <Project Path="src/AI.Host/AI.Host.csproj" />
+    <Project Path="src/AI.Mcp.BuiltIn/AI.Mcp.BuiltIn.csproj" />
+    <Project Path="src/AI.Server/AI.Server.csproj" />
+    <Project Path="src/AI.Web/AI.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AI.Server.Tests/AI.Server.Tests.csproj" />
+    <Project Path="tests/AI.Web.Tests/AI.Web.Tests.csproj" />
+  </Folder>
+</Solution>

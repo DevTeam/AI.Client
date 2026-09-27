@@ -23,7 +23,7 @@ dotnet run --project build -- publish --output artifacts/publish
 
 ## Verifying an OpenAI-compatible endpoint
 
-1. Run `AI.Client Host` in Rider or `dotnet run --project src/AI.Client.Host`.
+1. Run `AI Host` in Rider or `dotnet run --project src/AI.Host`.
 2. Open `http://localhost:52173`.
 3. In the **Live chat** section, set the base URL in the form `https://host/v1`, a model, and, if the endpoint requires authentication, an API key.
 4. Send a short message.
@@ -34,15 +34,15 @@ The base URL must already contain the API version prefix if the corporate gatewa
 
 Versioned Rider configurations live in the `.run` directory and are available immediately after opening the solution:
 
-- `AI.Client Host` launches the Host in Development mode at `http://localhost:52173`;
-- `Verify AI.Client` runs the mandatory `verify` check;
-- `Publish AI.Client` publishes the Host to `artifacts/publish`.
+- `AI Host` launches the Host in Development mode at `http://localhost:52173`;
+- `Verify AI` runs the mandatory `verify` check;
+- `Publish AI` publishes the Host to `artifacts/publish`.
 
 Status: Accepted
 
 ## Local run
 
-The user launches `AI.Client.Host`. The Host:
+The user launches `AI.Host`. The Host:
 
 1. Acquires an exclusive lock on the data directory.
 2. Checks schema versions and unfinished atomic writes.

@@ -23,10 +23,24 @@
 // Errors stay visible on purpose: a model that produced broken mermaid needs to see the
 // diagnostic so its next response can fix it. The error block also preserves the source so a
 // human can copy it back to the editor without going through the chat history.
+//
+// A fence inside a message that is still being written is not rendered at all. Markdown closes an
+// unterminated fence at the end of the text, so while the answer streams, the feed holds a
+// ```mermaid block that is missing everything the model has not typed yet. Rendering it hands
+// mermaid half a diagram, and the reader gets a parse error mid-answer that disappears again a
+// second later — noise, not a diagnostic, and it also re-renders the same source once per token.
+// Such fences are skipped until the message stops streaming; the `streaming` class leaves the
+// message element at that moment, which is itself a DOM mutation that brings the pass back.
 
 const STATE_ATTR = "data-mermaid-state";
 const ID_ATTR = "data-mermaid-id";
 const RENDERED_CLASS = "mermaid-block";
+
+// Marked on the message element by the feed while the turn is still producing text (see
+// MessageFeed.razor: the live-text and streaming articles both carry it).
+const STREAMING_CLASS = "streaming";
+
+const isStreaming = node => node.closest(`.${STREAMING_CLASS}`) !== null;
 
 // SHA-256 of the source, hex. Used as the diagram id so re-renders of identical code are
 // idempotent. SubtleCrypto is available in every browser a Blazor WASM app runs in.
@@ -175,7 +189,11 @@ const renderAll = async root => {
     // Filter out fences whose parent wrapper already carries a state — these are wrappers that
     // were re-mounted by Blazor with the same id but a fresh inner structure. renderOne skips
     // them, but skipping here avoids even the attribute check on the hot path.
-    const pending = fences.filter(code => !code.closest(`.${RENDERED_CLASS}`));
+    // A fence in a still-streaming message waits for the turn to finish (see the note on
+    // STREAMING_CLASS at the top). It is left untouched rather than wrapped in an error state, so
+    // the observer's next pass — which the class removal triggers — sees a pristine fence.
+    const pending = fences.filter(code =>
+        !code.closest(`.${RENDERED_CLASS}`) && !isStreaming(code));
 
     // Sequential, not parallel. mermaid.render mutates a shared registry under the hood and the
     // official guidance is one render at a time; doing it in series also keeps memory bounded
@@ -219,7 +237,16 @@ export function attach(container) {
     };
 
     observer = new MutationObserver(schedule);
-    observer.observe(container, { childList: true, subtree: true, characterData: true });
+    // Class attributes are watched as well: a fence skipped while its message was streaming has
+    // to be picked up when that message stops, and the only mutation marking that is the removal
+    // of `streaming` from the article above it (the fence text itself does not change again).
+    observer.observe(container, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ["class"]
+    });
 
     // Render whatever was already in the feed when we attached — turning on mermaid in the
     // middle of a session must not require the user to scroll back to the top.

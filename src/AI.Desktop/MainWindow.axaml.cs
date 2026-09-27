@@ -2,20 +2,15 @@ namespace AI.Desktop;
 
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using System.Text.Json;
 
 internal sealed partial class MainWindow : Window
 {
     // Long enough for a cold WebView2 start on a slow disk; a missing engine never gets there.
     private static readonly TimeSpan EngineTimeout = TimeSpan.FromSeconds(20);
-    private const double TitlebarHeight = 38;
-    // Avalonia pops a full-screen window's titlebar up once the pointer reaches this top row.
-    private const double FullScreenTriggerHeight = 1;
     private readonly DesktopStart _start;
     private readonly IWindowPlacementStore _placements;
     private readonly IWorkspaceLocationStore _workspaceLocation;
@@ -66,7 +61,6 @@ internal sealed partial class MainWindow : Window
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
-        WatchFullScreenTitlebar();
         if (OperatingSystem.IsWindows()) _taskbarBadge.Attach(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero);
         if (_start.Address is null)
         {
@@ -302,36 +296,5 @@ internal sealed partial class MainWindow : Window
         var edge = WindowState is WindowState.Maximized or WindowState.FullScreen ? 0 : 1;
         Frame.BorderThickness = new Thickness(edge);
         Chrome.Margin = new Thickness(edge);
-        TitleBarFill.IsVisible = WindowState != WindowState.FullScreen;
-        RevealTitlebar(false);
-    }
-
-    /// <summary>
-    /// A full-screen window shows its titlebar only while the pointer is at the top: Avalonia pops
-    /// it over the top pixel row, so that row stays ours, and the row grows while the popover is up
-    /// so the WebView HWND does not cover it. The popover sits beside the window, so its pointer
-    /// events are watched on the host, where Avalonia watches them too.
-    /// </summary>
-    private void WatchFullScreenTitlebar()
-    {
-        if (this.GetVisualParent() is not InputElement host)
-        {
-            return;
-        }
-
-        host.AddHandler(PointerMovedEvent, (_, args) =>
-        {
-            var y = args.GetPosition(host).Y;
-            if (y <= FullScreenTriggerHeight) RevealTitlebar(true);
-            else if (y > TitlebarHeight) RevealTitlebar(false);
-        }, handledEventsToo: true);
-        host.AddHandler(PointerExitedEvent, (_, _) => RevealTitlebar(false), handledEventsToo: true);
-    }
-
-    private void RevealTitlebar(bool revealed)
-    {
-        var height = WindowState != WindowState.FullScreen || revealed ? TitlebarHeight : FullScreenTriggerHeight;
-        var row = Chrome.RowDefinitions[0];
-        if (row.Height.Value != height) row.Height = new GridLength(height);
     }
 }

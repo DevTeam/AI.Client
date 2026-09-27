@@ -29,7 +29,7 @@
 <PageTitle>@ClientMetadata.ProductName</PageTitle>
 
 <main class="workspace-shell" @ref="_workspace">
-    <aside class="workspace-sidebar">
+    <aside class="workspace-sidebar" id="workspace-sidebar">
         <div class="sidebar-projects">
         @* The projects list is the sidebar's top level now, so it has no heading of its own and
            nothing to collapse it into. Creating a project is an action row at the head of the
@@ -321,10 +321,18 @@
         </nav>
     </aside>
 
-    <div class="workspace-resizer" data-side="left" role="separator" aria-label="Resize project sidebar"></div>
+    <div class="workspace-resizer" data-side="left" role="separator" tabindex="0" aria-orientation="vertical"
+         aria-label="Resize project sidebar" aria-controls="workspace-sidebar" aria-valuemin="0" aria-valuemax="420"
+         title="Drag to resize, drag to the edge to hide · Double-click to hide or show"></div>
 
     <section class="workspace-conversation" aria-label="Chat">
         <header class="workspace-header">
+            @* Hiding the sidebar is a layout preference kept by workspaceLayout.js, which also
+               handles this button; the edge of a hidden sidebar is easy to miss, this is not. *@
+            <button class="icon-action sidebar-toggle-button" type="button" data-sidebar-toggle
+                    aria-controls="workspace-sidebar" aria-label="Toggle sidebar" title="Toggle sidebar (Ctrl+B)">
+                <AppIcon Name="panel-left" />
+            </button>
             <div class="notification-quick-access @(_hideNotificationPreview ? "preview-hidden" : null)" @onpointerleave="RestoreNotificationPreview">
                 <button class="history-notifications-button" type="button" aria-label="Notifications" aria-expanded="@_notificationsOpen" @onclick="ToggleNotificationsAsync">
                     <AppIcon Name="bell" />

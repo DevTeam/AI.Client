@@ -16,7 +16,7 @@
                 Avalonia handles the titlebar in this reserved row; the window background covers
                 its own titlebar fill, so the fill is drawn here and lets the pointer through.
             -->
-            <Border x:Name="TitleBarFill" Grid.Row="0" Background="{DynamicResource TitleBarBackgroundBrush}" BorderBrush="{DynamicResource TitleBarBorderBrush}" BorderThickness="0,0,0,1"
+            <Border Grid.Row="0" Background="{DynamicResource TitleBarBackgroundBrush}" BorderBrush="{DynamicResource TitleBarBorderBrush}" BorderThickness="0,0,0,1"
                     IsHitTestVisible="False" />
             <Grid Grid.Row="1">
                 <!-- A native WebView must stay below the titlebar; its HWND would cover Avalonia controls. -->

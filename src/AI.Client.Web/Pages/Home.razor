@@ -283,7 +283,7 @@
                         {
                             @foreach (var directory in _security.DirectoryGrants)
                             {
-                                <div class="directory-nav-row directory-nav-row-child">
+                                <div class="directory-nav-row directory-nav-row-child" draggable="true" data-drag-path="@directory.CanonicalRoot" data-drag-kind="Directory">
                                     <span class="directory-row-main">
                                         <span class="nav-item-label directory-name" title="@directory.CanonicalRoot">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
                                     </span>

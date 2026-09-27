@@ -2443,6 +2443,10 @@ body {
 .composer-resource-chip button:hover { color: var(--color-text-strong); }
 .composer-resource-chip button .app-icon { width: .8rem; height: .8rem; }
 .message-resource-list { margin-top: .5rem; }
+/* The picture under the pointer while any path is dragged (chatComposer.js): the chip it becomes
+   in the composer. Drawn off screen only for the browser's snapshot. */
+.path-drag-image { position: fixed; top: -1000px; left: -1000px; max-width: 18rem; pointer-events: none; }
+.path-drag-source { opacity: .45; }
 .message-resource-chip { max-width: min(100%, 25rem); }
 .message-resource-open { padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
 .message-resource-remove { display: inline-flex; flex: 0 0 auto; margin-left: .2rem; padding: 0; border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; }

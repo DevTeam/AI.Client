@@ -14,7 +14,7 @@
                 @foreach (var file in changes.Files)
                 {
                     var dragPath = file.Kind == FileChangeKind.Deleted ? null : file.Path;
-                    <li @key="file.Path" draggable="@(dragPath is null ? "false" : "true")" data-drag-path="@dragPath">
+                    <li @key="file.Path" draggable="@(dragPath is null ? "false" : "true")" data-drag-path="@dragPath" data-drag-kind="File">
                         <span class="workspace-changes-preview-path" title="@file.Path">@PreviewDisplay(file)</span>
                         @if (CommentCount(file.Path) is > 0 and var count)
                         {

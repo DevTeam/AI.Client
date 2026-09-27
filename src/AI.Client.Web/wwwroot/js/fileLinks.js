@@ -109,6 +109,8 @@ export function attach(container, dotnet) {
 
     const decorate = (element, resolved) => {
         element.classList.add('file-link');
+        // chatComposer.js drags every [data-file-path] as that path, like any other in the app.
+        element.draggable = true;
         element.dataset.filePath = resolved.path;
         if (resolved.kind) element.dataset.fileKind = resolved.kind;
         else delete element.dataset.fileKind;
@@ -128,6 +130,7 @@ export function attach(container, dotnet) {
             return;
         }
         element.classList.remove('file-link');
+        element.removeAttribute('draggable');
         delete element.dataset.filePath;
         delete element.dataset.fileKind;
         delete element.dataset.fileAccess;

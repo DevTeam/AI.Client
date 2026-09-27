@@ -3,7 +3,7 @@
 @* A file still on disk can be dragged into the composer to reference it; chatComposer.js reads
    data-drag-path. A deleted one has nothing left to reference. *@
 <button class="workspace-change-summary" type="button" aria-expanded="@Expanded" @onclick="OnToggle"
-        draggable="@(DragPath is null ? "false" : "true")" data-drag-path="@DragPath">
+        draggable="@(DragPath is null ? "false" : "true")" data-drag-path="@DragPath" data-drag-kind="File">
     <span class="workspace-change-kind" title="@KindTitle(File.Kind)">@KindGlyph(File.Kind)</span>
     <span class="workspace-change-path" title="@File.Path">@Display(File)</span>
     @if (File.Confidence == FileChangeConfidence.Approximate)

@@ -212,6 +212,24 @@ export function watchResourceDrop(dotNetReference) {
         return [...new Set(paths)];
     };
 
+    // Paths shown in the app (the files a run changed) drag as file URIs, which the drop below
+    // already reads, and which other apps understand too.
+    const toFileUri = path => {
+        const encode = value => value.split("/").map(encodeURIComponent).join("/");
+        const slashed = path.replaceAll("\\", "/");
+        if (slashed.startsWith("//")) return `file:${encode(slashed)}`;
+        if (/^[a-z]:\//i.test(slashed)) return `file:///${slashed.slice(0, 2)}${encode(slashed.slice(2))}`;
+        return `file://${encode(slashed)}`;
+    };
+    const onDragStart = event => {
+        const source = event.target instanceof Element ? event.target.closest("[data-drag-path]") : null;
+        const path = source?.getAttribute("data-drag-path");
+        if (!path || !event.dataTransfer) return;
+        event.dataTransfer.setData("text/uri-list", toFileUri(path));
+        event.dataTransfer.setData("text/plain", path);
+        event.dataTransfer.effectAllowed = "copy";
+    };
+
     const clearHighlight = () => {
         dragDepth = 0;
         composer.classList.remove("resource-drop-active");
@@ -276,6 +294,7 @@ export function watchResourceDrop(dotNetReference) {
     conversation.addEventListener("dragleave", onLeave);
     conversation.addEventListener("drop", onDrop);
     window.addEventListener("ai-client-files-dropped", onNativeDrop);
+    document.addEventListener("dragstart", onDragStart);
 
     return {
         dispose: () => {
@@ -286,6 +305,7 @@ export function watchResourceDrop(dotNetReference) {
             conversation.removeEventListener("dragleave", onLeave);
             conversation.removeEventListener("drop", onDrop);
             window.removeEventListener("ai-client-files-dropped", onNativeDrop);
+            document.removeEventListener("dragstart", onDragStart);
             clearHighlight();
         }
     };

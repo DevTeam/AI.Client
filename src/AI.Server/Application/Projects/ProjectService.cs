@@ -28,11 +28,10 @@ public sealed class ProjectService(
     {
         ArgumentNullException.ThrowIfNull(request);
         var project = new Project(new ProjectId(idGenerator.Create()), request.Name, request.Description, clock.UtcNow);
-        var defaultConnection = (await globalSettingsRepository.LoadAsync(cancellationToken)).Connections
-            .FirstOrDefault(item => item is { IsDefault: true, Enabled: true });
-        project.SetConnection(
-            defaultConnection is null ? null : new ConnectionId(defaultConnection.Id),
-            clock.UtcNow);
+        // New projects start with no explicit connection so new chats fall back to the global
+        // default. Pinning one here would force the user to overwrite the field the moment they
+        // want to follow the global default.
+        project.SetConnection(null, clock.UtcNow);
         var result = await repository.SaveAsync(project, 0, cancellationToken);
         return ToDetails(project, result.Revision);
     }
@@ -49,9 +48,16 @@ public sealed class ProjectService(
 
         var project = stored.Project;
         project.UpdateDetails(request.Name, request.Description, clock.UtcNow);
-        project.SetConnection(
-            request.ConnectionId is { } connectionId ? new ConnectionId(connectionId) : null,
-            clock.UtcNow);
+        // 'UseDefaultConnection' is the explicit way to clear an explicit choice; a null
+        // 'ConnectionId' on its own would still mean "leave the stored value untouched" so
+        // callers editing only the name do not accidentally flip the project onto the global
+        // default.
+        // The explicit type is needed: both branches can be null, so 'var' would refuse to
+        // resolve the type of the conditional. The setter accepts a nullable id.
+        ConnectionId? newConnection = request.UseDefaultConnection
+            ? null
+            : request.ConnectionId is { } connectionId ? new ConnectionId(connectionId) : null;
+        project.SetConnection(newConnection, clock.UtcNow);
         var result = await repository.SaveAsync(project, request.Revision, cancellationToken);
         return result.IsSaved
             ? ProjectUpdateResult.Updated(ToDetails(project, result.Revision))
@@ -132,7 +138,7 @@ public sealed class ProjectService(
     }
 
     private static ProjectSummary ToSummary(Project project, long revision) =>
-        new(project.Id.Value, project.Name, project.Description, project.UpdatedAt, revision);
+        new(project.Id.Value, project.Name, project.Description, project.UpdatedAt, revision, project.ConnectionId?.Value);
 
     private static ProjectDetails ToDetails(Project project, long revision) =>
         new(

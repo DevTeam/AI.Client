@@ -93,7 +93,7 @@
                        Without the same-project shortcut the user would have to reach for the
                        "+" button every time they wanted to start a new conversation in the
                        project they were already in. *@
-                    <button class="workspace-nav-item" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => HandleProjectItemClickAsync(project)"><span class="status-dot @GetProjectStatusClass(project.Id)"></span><span class="nav-item-label">@project.Name</span></button>
+                    <button class="workspace-nav-item" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => HandleProjectItemClickAsync(project)"><span class="status-dot @GetProjectStatusClass(project.Id)"></span><span class="nav-item-label">@project.Name</span>@if (project.ConnectionId is null) { <span class="project-default-badge" title="New chats follow the global default connection">Default</span> }</button>
                 }
                 <button class="icon-action project-action-button project-new-chat-button" type="button" title="New chat" aria-label="New chat" @onclick="() => CreateChatForProjectAsync(project)"><AppIcon Name="plus" /></button>
                 <button class="icon-action project-action-button project-rename-button" type="button" title="Rename" aria-label="Rename project" @onclick="() => BeginProjectRenameAsync(project)"><AppIcon Name="edit" /></button>
@@ -561,7 +561,7 @@
                     <DataAnnotationsValidator />
                     <label>Name<InputText @bind-Value="_editor.Name" /></label>
                     <label>Description<InputTextArea @bind-Value="_editor.Description" /></label>
-                    <label>Connection<select @bind="_editor.ConnectionId"><option value="">No connection</option>@foreach (var connection in _connections) { <option value="@connection.Id" disabled="@(!connection.Enabled)">@connection.Name@(!connection.Enabled ? " (Unavailable)" : string.Empty)</option> }</select></label>
+                    <label>Connection<select @bind="_editor.ConnectionId"><option value="">— Default —</option>@foreach (var connection in _connections) { <option value="@connection.Id" disabled="@(!connection.Enabled)">@connection.Name@(!connection.Enabled ? " (Unavailable)" : string.Empty)</option> }</select></label>
                 </EditForm>
                 <ProjectInstructionsEditor @ref="_instructionsEditor" ProjectId="@_selectedProject.Id" />
                 @if (!string.IsNullOrEmpty(_error)) { <p class="error" role="alert">@_error</p> }
@@ -1592,8 +1592,12 @@
 
         _security = ProjectSecurityEditor.From(details);
         _editor = new ProjectEditor(project.Name, project.Description, project.Revision);
-        _editor.ConnectionId = details.ConnectionId ?? GetDefaultConnection()?.Id;
-        _defaultConnectionId = _editor.ConnectionId;
+        // A null 'ConnectionId' on the stored project means "follow the global default", so we
+        // mirror that here instead of substituting the default's id — the user must opt in to a
+        // concrete connection by picking one in the drawer, otherwise the project keeps
+        // following whatever the global default is at the moment a new chat is created.
+        _editor.ConnectionId = details.ConnectionId;
+        _defaultConnectionId = details.ConnectionId ?? GetDefaultConnection()?.Id;
         if (_defaultConnectionId is { } defaultId) SelectGlobalConnection(defaultId);
         else if (GetDefaultConnection() is { } defaultConnection) SelectGlobalConnection(defaultConnection.Id);
 
@@ -1657,9 +1661,15 @@
             return;
         }
 
+        // 'UseDefaultConnection' is the explicit signal that a stored concrete connection should
+        // be cleared and the project should once again follow the global default. Sending it
+        // together with a null 'ConnectionId' only when the stored value was non-null avoids
+        // accidentally re-sending the flag on every save.
+        var useDefaultConnection = _editor.ConnectionId is null && _projectSettingsSnapshot.ConnectionId is not null;
+        var connectionId = useDefaultConnection ? null : _editor.ConnectionId;
         var result = await ProjectApi.UpdateAsync(
             _selectedProject.Id,
-            new UpdateProjectRequest(_editor.Name, _editor.Description, _editor.Revision, _editor.ConnectionId),
+            new UpdateProjectRequest(_editor.Name, _editor.Description, _editor.Revision, connectionId, useDefaultConnection),
             CancellationToken.None);
         if (result is { Status: ProjectUpdateStatus.Updated, Project: not null })
         {

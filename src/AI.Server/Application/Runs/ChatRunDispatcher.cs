@@ -388,9 +388,22 @@ public sealed class ChatRunDispatcher(
                     await SaveAsync(runtime, chat, token);
                     var project = await projects.GetAsync(chat.ProjectId, token) ?? throw new InvalidOperationException("Project not found.");
                     var global = await settings.LoadAsync(token);
-                    var connectionId = chat.ConnectionId ?? project.ConnectionId;
-                    var connection = global.Connections.SingleOrDefault(item => item.Id == connectionId && item.Enabled)
-                        ?? throw new InvalidOperationException("Choose an enabled connection for this chat.");
+                    // The chain honours a chat-level override first, then the project's
+                    // connection, then the global default. A project left on 'Default' (no
+                    // explicit connection) follows whatever the global default currently is, which
+                    // is the point of the feature. Falling back to the first enabled connection
+                    // keeps a chat runnable when the global default is stale or missing.
+                    var resolvedConnectionId = chat.ConnectionId
+                        ?? project.ConnectionId
+                        ?? global.Connections.FirstOrDefault(item => item is { IsDefault: true, Enabled: true })?.Id
+                        ?? global.Connections.FirstOrDefault(item => item.Enabled)?.Id;
+                    var connection = resolvedConnectionId is { } id
+                        ? global.Connections.SingleOrDefault(item => item.Id == id && item.Enabled)
+                        : null;
+                    if (connection is null)
+                    {
+                        throw new InvalidOperationException("Choose an enabled connection for this chat.");
+                    }
                     // Retaining the command until completion makes restart/resume safe: an already committed user message is reused.
                     if (chat.Messages.All(message => message.Id != queued.Id))
                     {

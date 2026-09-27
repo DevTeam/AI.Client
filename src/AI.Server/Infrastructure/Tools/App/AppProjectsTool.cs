@@ -59,6 +59,7 @@ public sealed class AppProjectsTool(IProjectService projects, IChatService chats
         string? name = null,
         string? description = null,
         Guid? connectionId = null,
+        bool useDefaultConnection = false,
         long revision = 0,
         bool? dryRun = null,
         CancellationToken cancellationToken = default) =>
@@ -68,7 +69,7 @@ public sealed class AppProjectsTool(IProjectService projects, IChatService chats
                 throw new ArgumentException(
                     $"'{operation}' cannot be rehearsed; only Delete honours 'dryRun'.", nameof(dryRun)),
             ProjectOperation.Create => CreateAsync(builder, name, description, cancellationToken),
-            ProjectOperation.Update => UpdateAsync(builder, projectId, name, description, connectionId, revision, cancellationToken),
+            ProjectOperation.Update => UpdateAsync(builder, projectId, name, description, connectionId, useDefaultConnection, revision, cancellationToken),
             ProjectOperation.Delete => DeleteAsync(builder, projectId, revision, dryRun ?? true, cancellationToken),
             _ => throw new ArgumentException("Unknown operation.", nameof(operation)),
         });
@@ -82,15 +83,20 @@ public sealed class AppProjectsTool(IProjectService projects, IChatService chats
     }
 
     private async Task<AppWriteResult> UpdateAsync(
-        AppWriteBuilder builder, Guid? projectId, string? name, string? description, Guid? connectionId, long revision,
+        AppWriteBuilder builder, Guid? projectId, string? name, string? description, Guid? connectionId, bool useDefaultConnection, long revision,
         CancellationToken cancellationToken)
     {
         var id = Required(projectId, nameof(projectId));
         var stored = await projects.GetAsync(id, cancellationToken) ?? throw new InvalidOperationException("Project not found.");
         // Unspecified fields keep their stored values, so a caller changing one thing need not
-        // re-send the rest and cannot blank it out by omission.
+        // re-send the rest and cannot blank it out by omission. 'useDefaultConnection' is the
+        // explicit way to ask for the global default — 'connectionId' alone cannot distinguish
+        // "leave it alone" from "switch back to default".
+        var resolvedConnection = useDefaultConnection
+            ? null
+            : connectionId ?? stored.ConnectionId;
         var result = await projects.UpdateAsync(id, new UpdateProjectRequest(
-            name ?? stored.Name, description ?? stored.Description, revision, connectionId ?? stored.ConnectionId), cancellationToken);
+            name ?? stored.Name, description ?? stored.Description, revision, resolvedConnection), cancellationToken);
         return Describe(builder, result, id, project => $"Updated project '{project.Name}'.", stored, reply.Json);
     }
 

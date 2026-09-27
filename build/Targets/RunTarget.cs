@@ -14,14 +14,14 @@ internal sealed class RunTarget(IProcessRunner processRunner, IBuildPaths buildP
         var publish = await processRunner.RunAsync(
             "Publish host",
             "dotnet",
-            ["publish", "src/AI.Client.Host/AI.Client.Host.csproj", "--nologo", "--output", output],
+            ["publish", "src/AI.Host/AI.Host.csproj", "--nologo", "--output", output],
             cancellationToken);
         if (publish != 0)
         {
             return publish;
         }
 
-        var exe = Path.Combine(output, "AI.Client.Host.exe");
+        var exe = Path.Combine(output, "AI.Host.exe");
         if (!File.Exists(exe))
         {
             await Console.Error.WriteLineAsync($"Host executable was not produced at {exe}.");

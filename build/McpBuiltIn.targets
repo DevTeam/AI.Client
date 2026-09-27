@@ -3,17 +3,17 @@
     The built-in MCP server is a separate executable that the server starts as a child process from
     <app directory>/mcp (see DefaultToolSessionFactory). Every project that runs the server — the
     executables and the integration tests — imports this file to put it there. The importing
-    project must also reference AI.Client.Mcp.BuiltIn.csproj so it is built first.
+    project must also reference AI.Mcp.BuiltIn.csproj so it is built first.
   -->
   <PropertyGroup>
-    <McpBuiltInProjectDirectory>$(MSBuildThisFileDirectory)..\src\AI.Client.Mcp.BuiltIn\</McpBuiltInProjectDirectory>
+    <McpBuiltInProjectDirectory>$(MSBuildThisFileDirectory)..\src\AI.Mcp.BuiltIn\</McpBuiltInProjectDirectory>
   </PropertyGroup>
   <Target Name="CopyDefaultMcpServer" AfterTargets="Build">
     <ItemGroup><DefaultMcpFiles Include="$(McpBuiltInProjectDirectory)bin\$(Configuration)\$(TargetFramework)\*" /></ItemGroup>
     <Copy SourceFiles="@(DefaultMcpFiles)" DestinationFolder="$(OutDir)mcp" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="PublishDefaultMcpServer" AfterTargets="Publish">
-    <MSBuild Projects="$(McpBuiltInProjectDirectory)AI.Client.Mcp.BuiltIn.csproj" Targets="Publish"
+    <MSBuild Projects="$(McpBuiltInProjectDirectory)AI.Mcp.BuiltIn.csproj" Targets="Publish"
              Properties="Configuration=$(Configuration);PublishDir=$(PublishDir)mcp\" />
   </Target>
 </Project>

@@ -1,12 +1,12 @@
-<!-- Generated for AI.Client -->
+<!-- Generated for AI -->
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Headless Chat - Create" type="DotNetProject" factoryName=".NET Project">
-    <option name="EXE_PATH" value="$PROJECT_DIR$/src/AI.Client.Cli/bin/Debug/net10.0/AI.Client.Cli.exe" />
+    <option name="EXE_PATH" value="$PROJECT_DIR$/src/AI.Cli/bin/Debug/net10.0/AI.Cli.exe" />
     <option name="PROGRAM_PARAMETERS" value="session create --project Uno --host http://localhost:52173" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <option name="PASS_PARENT_ENVS" value="1" />
     <option name="USE_EXTERNAL_CONSOLE" value="0" />
-    <option name="PROJECT_PATH" value="$PROJECT_DIR$/src/AI.Client.Cli/AI.Client.Cli.csproj" />
+    <option name="PROJECT_PATH" value="$PROJECT_DIR$/src/AI.Cli/AI.Cli.csproj" />
     <option name="PROJECT_EXE_PATH_TRACKING" value="1" />
     <option name="PROJECT_ARGUMENTS_TRACKING" value="1" />
     <option name="PROJECT_WORKING_DIRECTORY_TRACKING" value="0" />

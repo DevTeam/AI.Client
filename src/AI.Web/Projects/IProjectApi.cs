@@ -1,0 +1,25 @@
+namespace AI.Web.Projects;
+
+using AI.Contracts.Projects;
+
+public interface IProjectApi
+{
+    Task<IReadOnlyList<ProjectSummary>> ListAsync(CancellationToken cancellationToken);
+
+    Task<ProjectDetails?> GetAsync(Guid id, CancellationToken cancellationToken);
+
+    Task<ProjectDetails> CreateAsync(CreateProjectRequest request, CancellationToken cancellationToken);
+
+    Task<ProjectUpdateResult> UpdateAsync(Guid id, UpdateProjectRequest request, CancellationToken cancellationToken);
+
+    Task<ProjectUpdateResult> UpdateSecurityAsync(
+        Guid id,
+        UpdateProjectSecurityRequest request,
+        CancellationToken cancellationToken);
+
+
+
+    Task<ProjectDeleteResult> DeleteAsync(Guid id, long revision, CancellationToken cancellationToken);
+    Task<ProjectDetails?> SetToolPolicyAsync(Guid id, ToolPolicySettings policy, CancellationToken cancellationToken);
+    Task<ProjectDetails?> RemoveToolPolicyAsync(Guid id, Guid serverId, string name, string schemaHash, CancellationToken cancellationToken);
+}

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!--
+    The Web SDK, not the plain one: it is what carries the Blazor UI's static web assets from
+    AI.Web into this executable's build and publish output, exactly as for AI.Host.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AI.Mcp.BuiltIn\AI.Mcp.BuiltIn.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\AI.Contracts\AI.Contracts.csproj" />
+    <ProjectReference Include="..\AI.Server\AI.Server.csproj" />
+    <ProjectReference Include="..\AI.Web\AI.Web.csproj" Aliases="AIWeb" />
+    <Compile Include="..\AI.Contracts\Composition.cs" Link="Contracts\Composition.cs" />
+    <Compile Include="..\AI.Server\Composition.cs" Link="Server\Composition.cs" />
+    <Compile Include="..\AI.Server\CommandLine\Composition.cs" Link="Server\CommandLine\Composition.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\app-icon.png" />
+    <Content Include="Assets\Badges\*.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Controls.WebView" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Pure.DI" PrivateAssets="all" />
+    <PackageReference Include="Pure.DI.MS" />
+  </ItemGroup>
+  <Import Project="..\..\build\McpBuiltIn.targets" />
+</Project>

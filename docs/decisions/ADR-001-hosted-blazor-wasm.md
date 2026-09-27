@@ -10,7 +10,7 @@ Client-Side WebAssembly is needed as the UI platform, but the browser sandbox ca
 
 ## Decision
 
-Use a local ASP.NET Core `AI.Client.Host` that serves `AI.Client.Web` and exposes a same-origin API. The UI continues to run in the browser WASM. The Host stores credentials, calls AI endpoints, and manages MCP transports and processes.
+Use a local ASP.NET Core `AI.Host` that serves `AI.Web` and exposes a same-origin API. The UI continues to run in the browser WASM. The Host stores credentials, calls AI endpoints, and manages MCP transports and processes.
 
 ## Consequences
 

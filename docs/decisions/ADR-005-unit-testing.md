@@ -6,7 +6,7 @@ Date: 2026-08-11
 
 ## Context
 
-AI.Client has many external boundaries: OpenAI endpoints, MCP transports, processes, the file system, browser APIs, and the protected credential store. Tests that use these resources directly will be slow, flaky, and dependent on the environment.
+AI has many external boundaries: OpenAI endpoints, MCP transports, processes, the file system, browser APIs, and the protected credential store. Tests that use these resources directly will be slow, flaky, and dependent on the environment.
 
 ## Decision
 

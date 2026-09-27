@@ -1,0 +1,272 @@
+@using System.Linq.Expressions
+@using AI.Contracts.Settings
+@implements IAsyncDisposable
+@inject IJSRuntime JsRuntime
+
+<div class="model-picker" @ref="_root" @onclick:stopPropagation="true">
+    <input @ref="_input"
+           type="text"
+           autocomplete="off"
+           aria-label="@AriaLabel"
+           class="text-input model-picker-input @(Error is null ? string.Empty : "model-picker-input-error")"
+           disabled="@Disabled"
+           aria-invalid="@(Error is null ? "false" : "true")"
+           placeholder="@Placeholder"
+           value="@Value"
+           @oninput="OnInput"
+           @onfocus="Open"
+           @onblur="ScheduleClose"
+           @onkeydown="OnKeyDown" />
+    <button type="button"
+            class="model-picker-toggle icon-action"
+            tabindex="-1"
+            disabled="@Disabled"
+            aria-label="Show models"
+            title="@ToggleTitle"
+            @onmousedown:preventDefault
+            @onclick="Toggle">
+        @if (Loading)
+        {
+            <AppIcon Name="spinner" Class="tool-row-spinner" />
+        }
+        else
+        {
+            <AppIcon Name="@(_isOpen ? "chevron-up" : "chevron-down")" />
+        }
+    </button>
+    @if (_isOpen)
+    {
+        <ul class="model-picker-list" @onmousedown:preventDefault role="listbox" aria-label="Model catalog">
+            @if (Error is not null)
+            {
+                <li class="model-picker-error">
+                    <p class="model-picker-error-message">@Error</p>
+                    @if (OnRetry.HasDelegate)
+                    {
+                        <button type="button"
+                                class="secondary-action model-picker-retry"
+                                @onmousedown:preventDefault
+                                @onclick="OnRetry">
+                            Retry
+                        </button>
+                    }
+                </li>
+            }
+            else if (Models is null || Models.Count == 0)
+            {
+                <li class="model-picker-empty">@EmptyHint</li>
+            }
+            else
+            {
+                @foreach (var model in Models)
+                {
+                    <li>
+                        <button type="button"
+                                class="model-picker-option @(model.Id == Value ? "selected" : string.Empty)"
+                                title="@model.Id"
+                                @onmousedown:preventDefault
+                                @onclick="() => Select(model.Id)">
+                            <span class="model-picker-option-id">@model.Id</span>
+                            @if (!string.IsNullOrEmpty(model.DisplayName) && model.DisplayName != model.Id)
+                            {
+                                <small class="model-picker-option-name">@model.DisplayName</small>
+                            }
+                        </button>
+                    </li>
+                }
+            }
+        </ul>
+    }
+</div>
+@* A closed dropdown would leave only a red border to explain itself; the typical failure comes from
+   editing the Base URL, when the list is not open, so the reason is spelled out under the input too. *@
+@if (Error is not null && !_isOpen)
+{
+    <small class="model-picker-error-hint" role="alert">
+        @Error
+        @if (OnRetry.HasDelegate)
+        {
+            <button type="button" class="model-picker-retry-link" @onclick="OnRetry">Retry</button>
+        }
+    </small>
+}
+
+@code {
+    private ElementReference _root;
+    private ElementReference _input;
+    private bool _isOpen;
+    private CancellationTokenSource? _closeCts;
+    private DotNetObjectReference<ModelPicker>? _selfReference;
+    private IJSObjectReference? _outsidePressHandle;
+    private bool _disposed;
+
+    [Parameter]
+    public string? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> ValueChanged { get; set; }
+
+    [Parameter]
+    public Expression<Func<string?>>? ValueExpression { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<ResolvedModelInfo>? Models { get; set; }
+
+    [Parameter]
+    public bool Loading { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public string? Placeholder { get; set; }
+
+    [Parameter]
+    public string EmptyHint { get; set; } = "No models loaded yet";
+
+    /// <summary>Accessible name for the input, for callers that cannot wrap the picker in a
+    /// <c>label</c> (a label would refocus the input, and so reopen the list, on any click in it).</summary>
+    [Parameter]
+    public string? AriaLabel { get; set; }
+
+    /// <summary>Last failure for this catalog. When set, the picker shows the message inline and,
+    /// if <see cref="OnRetry"/> is provided, a Retry button alongside it. Null while the catalog
+    /// loads or has loaded successfully.</summary>
+    [Parameter]
+    public string? Error { get; set; }
+
+    /// <summary>Fired when the user clicks Retry, in the open list or under the input. The host
+    /// re-runs the catalog load; it is the caller's job to clear <see cref="Error"/> when the next
+    /// attempt starts.</summary>
+    [Parameter]
+    public EventCallback OnRetry { get; set; }
+
+    private string ToggleTitle => Loading
+        ? "Loading models…"
+        : _isOpen
+            ? "Hide models"
+            : $"Show all {Models?.Count ?? 0} model(s)";
+
+    private async Task OnInput(ChangeEventArgs args)
+    {
+        var text = args.Value?.ToString();
+        Value = text;
+        await ValueChanged.InvokeAsync(text);
+    }
+
+    private void Open()
+    {
+        _closeCts?.Cancel();
+        _isOpen = true;
+    }
+
+    private async Task ScheduleClose(FocusEventArgs _)
+    {
+        // Delay so a click on a dropdown option (which moves focus) is not cancelled by blur firing
+        // first. The option's mousedown handler sets preventDefault, so the input never loses focus
+        // when the user picks from the list — this delay only guards the outside-click case where
+        // focus moves elsewhere.
+        _closeCts?.Cancel();
+        _closeCts = new CancellationTokenSource();
+        var token = _closeCts.Token;
+        try
+        {
+            await Task.Delay(120, token);
+            _isOpen = false;
+        }
+        catch (OperationCanceledException)
+        {
+            // A click inside the picker cancelled the close.
+        }
+    }
+
+    private async Task Toggle()
+    {
+        if (_isOpen)
+        {
+            Close();
+            return;
+        }
+
+        Open();
+        // Opened from the chevron the input would stay unfocused: Escape would not reach it, and
+        // typing to filter would need another click. The outside-press watcher covers closing.
+        try { await _input.FocusAsync(); }
+        catch (Exception error) when (error is JSException or InvalidOperationException) { }
+    }
+
+    private void Close()
+    {
+        _closeCts?.Cancel();
+        _isOpen = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/modelPicker.js");
+            _selfReference = DotNetObjectReference.Create(this);
+            _outsidePressHandle = await module.InvokeAsync<IJSObjectReference>("attach", _root, _selfReference);
+            await module.DisposeAsync();
+            // Disposed while the import was in flight: nothing will dispose the watcher later.
+            if (_disposed) await DisposeOutsidePressAsync();
+        }
+        catch (Exception error) when (error is JSException or JSDisconnectedException or ObjectDisposedException)
+        {
+            // Without the watcher the list still closes on blur, Escape and the chevron.
+        }
+    }
+
+    /// <summary>A press outside the picker while the list is open; see <c>modelPicker.js</c>.</summary>
+    [JSInvokable]
+    public void OnOutsidePress()
+    {
+        if (!_isOpen) return;
+        Close();
+        StateHasChanged();
+    }
+
+    private async Task Select(string id)
+    {
+        Value = id;
+        await ValueChanged.InvokeAsync(id);
+        _isOpen = false;
+    }
+
+    private void OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape" && _isOpen)
+        {
+            Close();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        _closeCts?.Cancel();
+        _closeCts?.Dispose();
+        await DisposeOutsidePressAsync();
+    }
+
+    private async Task DisposeOutsidePressAsync()
+    {
+        var handle = _outsidePressHandle;
+        _outsidePressHandle = null;
+        try
+        {
+            if (handle is not null)
+            {
+                await handle.InvokeVoidAsync("dispose");
+                await handle.DisposeAsync();
+            }
+        }
+        catch (Exception error) when (error is JSException or JSDisconnectedException or ObjectDisposedException)
+        {
+        }
+        _selfReference?.Dispose();
+        _selfReference = null;
+    }
+}

@@ -8,7 +8,7 @@ Date: 2026-09-15
 
 The model needs access to the application's own data: create a chat from within a chat, set up a project for a repository, explain a tool denial, and maintain history. The data is available only through the Host's application services, which own revision checks, atomic writes, and event delivery.
 
-The built-in server `AI.Client.Mcp.BuiltIn` is a separate process that runs over stdio. It has no access to those services. The "child process talks back to the Host over loopback HTTP" option adds an authentication boundary in exactly the place where the [security model](../06-security.md) already calls the web-to-stdio bridge a privileged risk.
+The built-in server `AI.Mcp.BuiltIn` is a separate process that runs over stdio. It has no access to those services. The "child process talks back to the Host over loopback HTTP" option adds an authentication boundary in exactly the place where the [security model](../06-security.md) already calls the web-to-stdio bridge a privileged risk.
 
 A separate concern is self-escalation of privileges: a tool that changes directory grants and tool policies is, by default, a hole.
 
@@ -16,7 +16,7 @@ A separate concern is self-escalation of privileges: a tool that changes directo
 
 ### In-process server on the standard protocol
 
-The application tools live in a new MCP server `AI.Client.Mcp.App`, built on the `ModelContextProtocol` library. It speaks the regular protocol — `tools/list`, `tools/call`, JSON schemas, result validation against the output schema — and differs only in transport: a pair of in-memory `System.IO.Pipelines` channels instead of the standard child-process streams.
+The application tools live in a new MCP server `AI.Mcp.App`, built on the `ModelContextProtocol` library. It speaks the regular protocol — `tools/list`, `tools/call`, JSON schemas, result validation against the output schema — and differs only in transport: a pair of in-memory `System.IO.Pipelines` channels instead of the standard child-process streams.
 
 A hand-rolled `IToolSession` implementation that bypasses the protocol is rejected: it would introduce a second, divergent model of a tool and skip the schema validation that the policies rely on.
 

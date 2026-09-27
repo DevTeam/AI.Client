@@ -9,7 +9,7 @@ internal sealed class BuildPaths : IBuildPaths
             var directory = new DirectoryInfo(start);
             while (directory is not null)
             {
-                if (File.Exists(Path.Combine(directory.FullName, "AI.Client.slnx")))
+                if (File.Exists(Path.Combine(directory.FullName, "AI.slnx")))
                 {
                     SolutionDirectory = directory.FullName;
                     HostOutputPath = Path.Combine(SolutionDirectory, "artifacts", "host");
@@ -20,7 +20,7 @@ internal sealed class BuildPaths : IBuildPaths
             }
         }
 
-        throw new DirectoryNotFoundException("Could not find AI.Client.slnx.");
+        throw new DirectoryNotFoundException("Could not find AI.slnx.");
     }
 
     public string SolutionDirectory { get; }

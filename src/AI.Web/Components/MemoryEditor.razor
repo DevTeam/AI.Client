@@ -1,0 +1,246 @@
+@using AI.Contracts.Memory
+@using AI.Web.Memory
+@inject IMemoryApi MemoryApi
+@inject INotificationService Notifications
+
+@* One editor for both catalogs: the person's own and one project's. Like Connections and MCP it
+   keeps every edit locally and writes them all when the drawer closes. *@
+<div class="global-editor-layout memory-editor">
+    <div class="settings-list-column">
+        <nav class="settings-list" aria-label="Memory entries">
+            @if (_loaded && _items.Count == 0)
+            {
+                <p class="empty-hint">@(ProjectId is null ? "Nothing about you yet." : "Nothing about this project yet.")</p>
+            }
+            @foreach (var kind in Kinds)
+            {
+                var group = Group(kind.Value);
+                if (group.Count == 0) continue;
+                <div class="memory-group-label">@kind.Group</div>
+                @foreach (var item in group)
+                {
+                    <div class="settings-list-item @(item.Key == _selectedKey ? "selected" : string.Empty) @(item.Enabled ? string.Empty : "memory-disabled")">
+                        <button class="settings-list-select" type="button" @onclick="() => _selectedKey = item.Key">
+                            <span>@if (item.Pinned) { <AppIcon Name="pin" /> }@(string.IsNullOrWhiteSpace(item.Title) ? "New entry" : item.Title)</span>
+                            <small>@Summary(item)</small>
+                        </button>
+                        @if (item.Key == _selectedKey)
+                        {
+                            <button class="icon-action settings-item-remove" type="button" title="Remove entry" aria-label="Remove entry" @onclick="Remove"><AppIcon Name="trash" /></button>
+                        }
+                    </div>
+                }
+            }
+        </nav>
+        <button class="icon-action settings-list-add" type="button" title="Add entry" aria-label="Add entry" disabled="@(!_loaded)" @onclick="Add"><AppIcon Name="plus" /></button>
+    </div>
+    @if (Selected is { } entry)
+    {
+        <form class="global-form memory-form" autocomplete="off" @onsubmit:preventDefault="true">
+            <div class="connection-flags">
+                <label class="checkbox"><input type="checkbox" @bind="entry.Enabled" /> Enabled</label>
+                <label class="checkbox" title="A pinned entry reaches the model in full on every run"><input type="checkbox" @bind="entry.Pinned" @bind:after="() => Changed.InvokeAsync()" /> Pinned</label>
+            </div>
+            <div class="memory-kind" role="radiogroup" aria-label="Kind">
+                @foreach (var kind in Kinds)
+                {
+                    <label class="theme-option @(entry.Kind == kind.Value ? "selected" : string.Empty)" title="@kind.Hint"><input type="radio" name="memory-kind" checked="@(entry.Kind == kind.Value)" @onchange="() => entry.Kind = kind.Value" /><span>@kind.Label</span></label>
+                }
+            </div>
+            <label>Title<input class="text-input" maxlength="120" @bind="entry.Title" @bind:event="oninput" placeholder="@TitleHint(entry.Kind)" /></label>
+            <label>Text<textarea maxlength="4000" rows="7" @bind="entry.Body" @bind:event="oninput" placeholder="One fact per entry"></textarea></label>
+            <p class="memory-meta">@Meta(entry)</p>
+            @if (_error is { Length: > 0 })
+            {
+                <p class="settings-drawer-error" role="alert">@_error</p>
+            }
+        </form>
+    }
+    else
+    {
+        <div class="global-form">
+            <p class="empty-hint">@(ProjectId is null
+                ? "What every chat should know about you: name, languages, how you like answers. The assistant can also save entries here when you ask it to remember something."
+                : "Facts and decisions about this project that every chat in it should know. The assistant can also save entries here when you ask it to remember something.")</p>
+            @if (_error is { Length: > 0 })
+            {
+                <p class="settings-drawer-error" role="alert">@_error</p>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>The project whose memory is edited; null edits the person's own.</summary>
+    [Parameter] public Guid? ProjectId { get; set; }
+    /// <summary>Raised when the counts behind <see cref="Stats"/> change, so the drawer footer can follow.</summary>
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private static readonly (MemoryKind Value, string Label, string Group, string Hint)[] Kinds =
+    [
+        (MemoryKind.Profile, "Profile", "Profile", "Who you are or what the project is"),
+        (MemoryKind.Preference, "Preference", "Preferences", "How things should be done"),
+        (MemoryKind.Fact, "Fact", "Facts", "Anything else worth keeping")
+    ];
+
+    private readonly List<Item> _items = [];
+    private readonly List<MemoryEntry> _removed = [];
+    private Guid? _selectedKey;
+    private bool _loaded;
+    private string? _error;
+
+    private Item? Selected => _items.FirstOrDefault(item => item.Key == _selectedKey);
+
+    /// <summary>The footer line of the drawer.</summary>
+    public string Stats
+    {
+        get
+        {
+            var pinned = _items.Count(item => item.Pinned);
+            var count = _items.Count;
+            return $"{count} {(count == 1 ? "entry" : "entries")} · {pinned} pinned · "
+                   + (ProjectId is null ? "seen in every chat" : "seen in this project's chats");
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var entries = await MemoryApi.ListAsync(ProjectId, CancellationToken.None);
+            var scope = ProjectId is null ? MemoryScope.User : MemoryScope.Project;
+            _items.AddRange(entries.Where(entry => entry.Scope == scope).Select(Item.From));
+            _selectedKey = Group(MemoryKind.Profile).Concat(Group(MemoryKind.Preference)).Concat(Group(MemoryKind.Fact))
+                .FirstOrDefault()?.Key;
+            _loaded = true;
+            await Changed.InvokeAsync();
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Memory could not be loaded.";
+        }
+    }
+
+    /// <summary>
+    /// Writes every change made since the drawer opened. Returns false and keeps the edits when
+    /// anything fails, so the drawer stays open with its "Discard changes" way out.
+    /// </summary>
+    public async Task<bool> SaveAsync()
+    {
+        if (!_loaded) return true;
+        _items.RemoveAll(item => item.Stored is null && item.IsBlank);
+        if (_items.FirstOrDefault(item => string.IsNullOrWhiteSpace(item.Title)) is { } untitled)
+        {
+            _selectedKey = untitled.Key;
+            _error = "Every entry needs a title.";
+            Notifications.ShowError(_error);
+            // The drawer calls this from outside the editor's own events, so nothing else re-renders it.
+            StateHasChanged();
+            return false;
+        }
+        if (_removed.Count == 0 && !_items.Any(item => item.IsDirty)) return true;
+        var removedCount = _removed.Count;
+        var savedCount = _items.Count(item => item.IsDirty);
+        _error = null;
+        try
+        {
+            foreach (var entry in _removed.ToArray())
+            {
+                await MemoryApi.DeleteAsync(entry, CancellationToken.None);
+                _removed.Remove(entry);
+            }
+            foreach (var item in _items.Where(item => item.IsDirty).ToArray())
+            {
+                var saved = item.Stored is { } stored
+                    ? await MemoryApi.UpdateAsync(stored, item.ToUpdate(stored.Revision), CancellationToken.None)
+                    : await MemoryApi.CreateAsync(new CreateMemoryEntryRequest(
+                        ProjectId is null ? MemoryScope.User : MemoryScope.Project, ProjectId, item.Kind, item.Title,
+                        item.Body, null, item.Pinned), CancellationToken.None);
+                // A new entry is always created enabled; switching it off is a second write.
+                if (!item.Enabled && saved.Enabled)
+                    saved = await MemoryApi.UpdateAsync(saved, item.ToUpdate(saved.Revision), CancellationToken.None);
+                item.Stored = saved;
+            }
+            Notifications.ShowSuccess(removedCount > 0 && savedCount == 0
+                ? removedCount == 1 ? "Memory entry deleted." : "Memory entries deleted."
+                : "Memory saved.");
+            return true;
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _error = error.Message;
+            Notifications.ShowError($"Memory was not saved: {error.Message}");
+            StateHasChanged();
+            return false;
+        }
+    }
+
+    private IReadOnlyList<Item> Group(MemoryKind kind) => _items.Where(item => item.Kind == kind)
+        .OrderByDescending(item => item.Pinned).ThenBy(item => item.Stored is null)
+        .ThenBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase).ToArray();
+
+    private async Task Add()
+    {
+        var kind = Selected?.Kind ?? (ProjectId is null ? MemoryKind.Profile : MemoryKind.Fact);
+        var item = new Item(null) { Kind = kind };
+        _items.Add(item);
+        _selectedKey = item.Key;
+        await Changed.InvokeAsync();
+    }
+
+    private async Task Remove()
+    {
+        if (Selected is not { } item) return;
+        var index = _items.IndexOf(item);
+        _items.Remove(item);
+        if (item.Stored is { } stored) _removed.Add(stored);
+        _selectedKey = _items.Count == 0 ? null : _items[Math.Min(index, _items.Count - 1)].Key;
+        await Changed.InvokeAsync();
+    }
+
+    private static string Summary(Item item)
+    {
+        var text = item.Body.ReplaceLineEndings(" ");
+        var parts = new List<string>();
+        if (text.Length > 0) parts.Add(text);
+        if (!item.Enabled) parts.Add("off");
+        if (item.Stored?.Author == MemoryAuthor.Model) parts.Add("by assistant");
+        return parts.Count == 0 ? "Empty" : string.Join(" · ", parts);
+    }
+
+    private string TitleHint(MemoryKind kind) => (kind, ProjectId is null) switch
+    {
+        (MemoryKind.Profile, true) => "Name, languages, role",
+        (MemoryKind.Preference, true) => "Answer style",
+        (MemoryKind.Profile, false) => "Stack, purpose",
+        (MemoryKind.Preference, false) => "Code style, commands",
+        _ => "Short title"
+    };
+
+    private static string Meta(Item item) => item.Stored is not { } stored
+        ? "New entry · saved when the drawer closes"
+        : $"{(stored.Author == MemoryAuthor.Model ? "Saved by the assistant" : "Saved by you")} · {stored.UpdatedAt.LocalDateTime:g}";
+
+    /// <summary>An editable copy; <see cref="IsDirty"/> compares it with what is stored.</summary>
+    private sealed class Item(MemoryEntry? stored)
+    {
+        public Guid Key { get; } = stored?.Id ?? Guid.NewGuid();
+        public MemoryEntry? Stored { get; set; } = stored;
+        public MemoryKind Kind { get; set; } = stored?.Kind ?? MemoryKind.Fact;
+        public string Title { get; set; } = stored?.Title ?? string.Empty;
+        public string Body { get; set; } = stored?.Body ?? string.Empty;
+        public bool Pinned { get; set; } = stored?.Pinned ?? false;
+        public bool Enabled { get; set; } = stored?.Enabled ?? true;
+
+        public bool IsBlank => string.IsNullOrWhiteSpace(Title) && string.IsNullOrWhiteSpace(Body);
+
+        public bool IsDirty => Stored is not { } entry
+            || entry.Kind != Kind || entry.Title != Title.Trim() || entry.Body != Body.Trim()
+            || entry.Pinned != Pinned || entry.Enabled != Enabled;
+
+        public UpdateMemoryEntryRequest ToUpdate(long revision) =>
+            new(Kind, Title, Body, Stored?.Tags, Pinned, Enabled, revision);
+
+        public static Item From(MemoryEntry entry) => new(entry);
+    }
+}

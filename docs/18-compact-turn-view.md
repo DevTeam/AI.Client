@@ -12,11 +12,11 @@ Requirement: by default, show only the dialog — the user message, the final re
 
 ## What already exists
 
-- [`ChatFeed.BuildFeedItems`](../src/AI.Client.Web/Components/ChatFeed.cs) projects the flat chain of branch messages onto feed items: either a single message or a "preamble + tool calls" group.
-- [`MessageFeed.razor`](../src/AI.Client.Web/Components/MessageFeed.razor) renders these items; `GetRenderedFeedItems()` takes the tail of the list by `_renderedItemLimit`.
-- [`ToolActivityGroup`](../src/AI.Client.Web/Components/ToolActivityGroup.razor) already collapses a batch of calls into a one-line summary and expands the rows on click. **This component is not changed.**
-- [`WorkspaceChanges`](../src/AI.Client.Web/Components/WorkspaceChanges.razor) is the "N files changed" card. **Not changed.**
-- `composer-status` in [`Home.razor`](../src/AI.Client.Web/Pages/Home.razor) shows `Generating… 12s` and hints about Enter. **Not changed, nothing new is added above the input area.**
+- [`ChatFeed.BuildFeedItems`](../src/AI.Web/Components/ChatFeed.cs) projects the flat chain of branch messages onto feed items: either a single message or a "preamble + tool calls" group.
+- [`MessageFeed.razor`](../src/AI.Web/Components/MessageFeed.razor) renders these items; `GetRenderedFeedItems()` takes the tail of the list by `_renderedItemLimit`.
+- [`ToolActivityGroup`](../src/AI.Web/Components/ToolActivityGroup.razor) already collapses a batch of calls into a one-line summary and expands the rows on click. **This component is not changed.**
+- [`WorkspaceChanges`](../src/AI.Web/Components/WorkspaceChanges.razor) is the "N files changed" card. **Not changed.**
+- `composer-status` in [`Home.razor`](../src/AI.Web/Pages/Home.razor) shows `Generating… 12s` and hints about Enter. **Not changed, nothing new is added above the input area.**
 
 ## Decisions
 

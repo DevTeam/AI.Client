@@ -1,0 +1,24 @@
+// ReSharper disable NotAccessedPositionalProperty.Global
+namespace AI.Web.Composer;
+
+using AI.Contracts.Chats;
+using AI.Contracts.Runs;
+
+/// <summary>
+/// Snapshot of the composer + chat state at the moment the user pressed Enter. Passed to the
+/// composer service so the decision logic stays independent from the Razor component's fields.
+/// </summary>
+public sealed record ComposerSubmitRequest(
+    ComposerSubmitMode Mode,
+    Guid? ProjectId,
+    ChatDetails? SelectedChat,
+    Guid? BranchLeafId,
+    Guid? ForkSourceId,
+    Guid? ReplaceSourceId,
+    Guid? CredentialProfileId,
+    string? EndpointBaseUrl,
+    string? EndpointModel,
+    string Message,
+    ChatRunSnapshot? SelectedRun,
+    Guid? SelectedBranchId = null,
+    IReadOnlyList<AI.Contracts.Resources.ChatResourceRef>? Resources = null);

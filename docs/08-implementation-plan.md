@@ -39,7 +39,7 @@ Current progress: project metadata and security settings CRUD, revision conflict
 
 ## Stage 2. Hosted WASM shell
 
-- Create AI.Client.Host and AI.Client.Web.
+- Create AI.Host and AI.Web.
 - The Host serves WASM from the same origin.
 - Configure Pure.DI composition roots following the Matrix.Web model.
 - Implement the project list/settings UI.

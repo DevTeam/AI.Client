@@ -1,0 +1,73 @@
+namespace AI.Web.Runs;
+
+using AI.Contracts.Runs;
+
+/// <summary>
+/// Single source of truth for "what color/class does this run's status get" — shared between
+/// Home.razor (project/chat/branch-tree rows) and MessageFeed.razor (the in-message branch
+/// picker), so a run in the same state always reads the same regardless of which UI surface
+/// shows it.
+/// </summary>
+public sealed class RunStatusPresentation : IRunStatusPresentation
+{
+    /// <summary>
+    /// Indicates a run that cannot make further progress until the user acts. This is a derived
+    /// presentation state: an approval can be pending while the run remains Generating.
+    /// </summary>
+    public bool NeedsAttention(ChatRunSnapshot run) => run switch
+    {
+        { PendingApproval: not null } => true,
+        { PendingPrompt: not null } => true,
+        { Status: ChatRunStatus.Paused or ChatRunStatus.Interrupted } => true,
+        { Status: ChatRunStatus.Failed, RecoveryActions: { Count: > 0 } } => true,
+        _ => false
+    };
+
+    /// <summary>
+    /// Whether the attention state should still be surfaced. A pending tool approval always is —
+    /// the run is live-blocked right now and can't proceed until it's resolved. A dormant
+    /// attention state (paused, interrupted, or failed-with-recovery) only is until the chat has
+    /// been visited: the run's own `Status` stays Paused/Interrupted/Failed until the user
+    /// actually resumes/retries it, but the sidebar/badge stop nagging once seen — same rule as
+    /// an unread completion.
+    /// </summary>
+    public bool HasVisibleAttention(ChatRunSnapshot run) =>
+        run.PendingApproval is not null || run.PendingPrompt is not null
+        || (NeedsAttention(run) && run.HasUnreadResponse);
+
+    public string GetStatusTooltip(ChatRunSnapshot run) =>
+        GetAttentionTooltip(run) ?? GetNonAttentionStatusTooltip(run);
+
+#pragma warning disable CA1822
+    // Calls HasVisibleAttention, an instance member, so it cannot be static; the warning fires
+    // because the helper itself only reads its argument. Kept as a method rather than inlined so
+    // the four-line switch remains a named unit with a doc-friendly shape.
+    private string? GetAttentionTooltip(ChatRunSnapshot run) => run switch
+    {
+        _ when !HasVisibleAttention(run) => null,
+        { PendingApproval: not null } => "Waiting for tool approval",
+        { PendingPrompt: not null } => "Waiting for your answer",
+        { Status: ChatRunStatus.Paused } => "Queue paused - action required",
+        { Status: ChatRunStatus.Interrupted } => "Run interrupted - action required",
+        { Status: ChatRunStatus.Failed, RecoveryActions: { Count: > 0 } } => "Recovery action required",
+        _ => null
+    };
+#pragma warning restore CA1822
+
+    public string GetStatusClass(ChatRunSnapshot? run) => run switch
+    {
+        // A property pattern never matches null, so without this explicit case a null run
+        // fell through to the `_` arm below and was incorrectly classified as unread instead
+        // of "no status at all".
+        null => string.Empty,
+        _ when HasVisibleAttention(run) => "run-status-attention",
+        { Status: ChatRunStatus.Generating } => "run-status-generating",
+        { HasUnreadResponse: false } => string.Empty,
+        { Status: ChatRunStatus.Failed } => "run-status-failed",
+        { Status: ChatRunStatus.Interrupted or ChatRunStatus.Paused } => "run-status-interrupted",
+        _ => "run-status-unread"
+    };
+
+    private static string GetNonAttentionStatusTooltip(ChatRunSnapshot run) =>
+        run.HasUnreadResponse ? $"{run.Status} · unread response" : run.Status.ToString();
+}

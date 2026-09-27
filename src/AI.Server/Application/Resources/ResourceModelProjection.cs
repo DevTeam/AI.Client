@@ -28,7 +28,7 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
             ? (await (reviews ?? throw new InvalidOperationException("Review service is required."))
                 .ListAsync(projectId, chatId, cancellationToken)).ToDictionary(item => item.Id)
             : [];
-        var lines = new List<string> { content, "Attached workspace references:" };
+        var lines = new List<string>();
         foreach (var reference in references)
         {
             if (reference.Kind != ChatResourceKind.Review)
@@ -41,6 +41,11 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
                 lines.Add($"- review {reference.Id}: unavailable");
                 continue;
             }
+            // A review emptied after it was sent has nothing to act on. Listing it anyway made the
+            // model treat the old message as a pending, contentless request and ask what to do.
+            if (review.Kind == ChatReviewKind.Message ? review.MessageComments is not { Count: > 0 }
+                : review.Comments.Count == 0)
+                continue;
             if (review.Kind == ChatReviewKind.Message)
             {
                 lines.Add($"- message review: {JsonSerializer.Serialize(review.Name)} [resource {review.Id}; source message {review.SourceMessageId}; current mutable state]");
@@ -61,6 +66,8 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
             if (review.Files.Count > 20) lines.Add($"  - {review.Files.Count - 20} more files; use app_read to inspect the resource.");
             if (review.Comments.Count > 10) lines.Add($"  - {review.Comments.Count - 10} more comments; use app_read to inspect the resource.");
         }
-        return string.Join('\n', lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+        if (lines.Count == 0) return content;
+        return string.Join('\n', new[] { content, "Attached workspace references:" }.Concat(lines)
+            .Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 }

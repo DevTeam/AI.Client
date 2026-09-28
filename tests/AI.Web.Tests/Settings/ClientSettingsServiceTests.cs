@@ -40,6 +40,7 @@ public class ClientSettingsServiceTests
 
         (await service.GetAsync()).Theme.ShouldBe(ThemePreference.System);
         (await service.GetAsync()).Accent.ShouldBe(AccentColor.Blue);
+        (await service.GetAsync()).NotificationSoundEnabled.ShouldBeTrue();
     }
 
     [Fact]
@@ -52,6 +53,7 @@ public class ClientSettingsServiceTests
 
         settings.Theme.ShouldBe(ThemePreference.Light);
         settings.Accent.ShouldBe(AccentColor.Blue);
+        settings.NotificationSoundEnabled.ShouldBeTrue();
     }
 
     [Theory]
@@ -73,7 +75,7 @@ public class ClientSettingsServiceTests
 
         await service.UpdateAsync(settings => settings with { Theme = ThemePreference.Light, Accent = AccentColor.Teal });
 
-        js.Entries[StorageKey].ShouldBe("{\"theme\":\"light\",\"accent\":\"teal\"}");
+        js.Entries[StorageKey].ShouldBe("{\"theme\":\"light\",\"accent\":\"teal\",\"notificationSoundEnabled\":true}");
         (await new ClientSettingsService(js).GetAsync()).Theme.ShouldBe(ThemePreference.Light);
     }
 

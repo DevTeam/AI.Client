@@ -5,6 +5,7 @@
 @inject IConnectionContextLimitsResolver ContextLimits
 @inject INotificationService Notifications
 @inject IThemeService Theme
+@inject IClientSettingsService ClientSettings
 @inject IClientMode ClientMode
 @inject IHostConnection HostConnection
 @inject ISettingsTransferCodec TransferCodec
@@ -49,6 +50,10 @@
                                     <label class="accent-option @(_accent == accent ? "selected" : string.Empty)" style="--swatch: var(--accent-swatch-@name.ToLowerInvariant())" title="@name"><input type="radio" name="accent" aria-label="@name" checked="@(_accent == accent)" @onchange="() => SetAccentAsync(accent)" /></label>
                                 }
                             </div>
+                        </fieldset>
+                        <fieldset class="app-settings-group">
+                            <legend>Notifications</legend>
+                            <label class="checkbox"><input type="checkbox" checked="@_notificationSoundEnabled" @onchange="SetNotificationSoundAsync" /> Play a sound for new chat notifications</label>
                         </fieldset>
                         @if (ClientMode.PublicWeb)
                         {
@@ -222,6 +227,7 @@
     private Guid? _selectedMcpServerId;
     private ThemePreference _theme;
     private AccentColor _accent;
+    private bool _notificationSoundEnabled = true;
     private ElementReference _drawer;
     private IJSObjectReference? _transferModule;
     private IJSObjectReference? _transferSubscription;
@@ -238,6 +244,7 @@
         HostConnection.Changed += OnHostConnectionChanged;
         _theme = await Theme.GetAsync();
         _accent = await Theme.GetAccentAsync();
+        _notificationSoundEnabled = (await ClientSettings.GetAsync()).NotificationSoundEnabled;
         await LoadGlobalSettingsAsync();
     }
     private async Task LoadGlobalSettingsAsync()
@@ -281,7 +288,7 @@
 
     private string Description => Section switch
     {
-        "Settings" => ClientMode.PublicWeb ? "How the app looks, and the Host it works with." : "How the app looks on this device.",
+        "Settings" => ClientMode.PublicWeb ? "How the app looks and sounds, and the Host it works with." : "How the app looks and sounds on this device.",
         "Memory" => "What the assistant remembers about you in every project.",
         "ProjectMemory" => "What the assistant remembers about this project.",
         "Connections" => "OpenAI-compatible endpoints available to every project.",
@@ -302,6 +309,12 @@
     {
         _accent = accent;
         await Theme.SetAccentAsync(accent);
+    }
+
+    private async Task SetNotificationSoundAsync(ChangeEventArgs args)
+    {
+        _notificationSoundEnabled = args.Value is true;
+        await ClientSettings.UpdateAsync(current => current with { NotificationSoundEnabled = _notificationSoundEnabled });
     }
 
     private static string Plural(int count, string word) => $"{count} {word}{(count == 1 ? string.Empty : "s")}";

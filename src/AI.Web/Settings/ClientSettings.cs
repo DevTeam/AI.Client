@@ -10,4 +10,6 @@ public sealed record ClientSettings
     public ThemePreference Theme { get; init; } = ThemePreference.System;
 
     public AccentColor Accent { get; init; } = AccentColor.Blue;
+
+    public bool NotificationSoundEnabled { get; init; } = true;
 }

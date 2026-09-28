@@ -8,7 +8,7 @@ The Host starts in the background after user login. The page never asks what it 
 
 Open the public Web app with **HTTPS**. The Host deliberately rejects `http://ai.dev-team.org`, even if the Host is running. On Windows, the installer registers a per-user scheduled task named `AI.Client.Host`; no Start menu window is needed. If it is stopped, run `Start-ScheduledTask -TaskName AI.Client.Host` in PowerShell. `http://127.0.0.1:52173/api/health` should then return the Host's status in the same computer's browser.
 
-The Desktop app uses the installed Host when it is available. It shows an error if an installed Host is stopped or incompatible, instead of opening a second server on the same data directory. Without a separately installed Host, Desktop keeps its embedded server. Local Host and Web development keep their existing behavior.
+The Desktop app uses a running, compatible Host when it is available. If the installed Host is stopped, Desktop starts its embedded server with the same data directory. The data-directory lock prevents simultaneous writers; a background Host that starts later waits until Desktop closes. A running but incompatible Host is reported as an error. Local Host and Web development keep their existing behavior.
 
 ## Debugging the public Web app
 

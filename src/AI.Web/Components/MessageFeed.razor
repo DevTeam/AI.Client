@@ -305,7 +305,7 @@
         @if (SelectedRun is { Status: not ChatRunStatus.Completed, WorkspaceChanges: { IsEmpty: false } liveChanges }
             && !Feed.LastTurnHasWorkspaceReceipt(GetVisibleBranchMessages()))
         {
-            <WorkspaceChanges Changes="@liveChanges" />
+            <WorkspaceChanges Changes="@liveChanges" Live="true" />
         }
         @* Why the turn stopped, and what can be done about it. Only for a turn that is NOT
            running: while it generates, the composer already says so and already offers Stop, and

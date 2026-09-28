@@ -49,13 +49,79 @@
         }
     }
 
+    // A comment is drawn as spans around its text rather than as a CSS highlight: a highlight can
+    // set only colours and the underline, not the rounded corners .file-link has. The spans hold
+    // the same text nodes, so the text offsets comments are anchored by do not move.
+    const blockParents = new Set(["TABLE", "THEAD", "TBODY", "TFOOT", "TR", "UL", "OL", "DL"]);
+
+    function unwrapMarks() {
+        for (const mark of document.querySelectorAll(".review-comment-mark")) mark.replaceWith(...mark.childNodes);
+    }
+
+    function wrapRange(container, range) {
+        const root = range.commonAncestorContainer;
+        const pieces = [];
+        if (root.nodeType === Node.TEXT_NODE) {
+            pieces.push([root, range.startOffset, range.endOffset]);
+        } else {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            let node;
+            while ((node = walker.nextNode())) {
+                if (!range.intersectsNode(node)) continue;
+                // Layout whitespace between table rows or list items is not text of the comment.
+                if (!node.textContent.trim() && blockParents.has(node.parentNode.nodeName)) continue;
+                const start = node === range.startContainer ? range.startOffset : 0;
+                const end = node === range.endContainer ? range.endOffset : node.textContent.length;
+                if (start < end) pieces.push([node, start, end]);
+            }
+        }
+        // Split only once every piece is known: splitting moves the range's own boundaries.
+        const covered = new Set();
+        for (const [node, start, end] of pieces) {
+            if (end < node.textContent.length) node.splitText(end);
+            covered.add(start > 0 ? node.splitText(start) : node);
+        }
+        // Climb to the outermost inline element the comment covers whole, and give neighbours one
+        // span, so bold or a link inside a comment does not cut the mark into separately rounded bits.
+        const coversWhole = element => {
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+            let node;
+            while ((node = walker.nextNode())) if (node.textContent && !covered.has(node)) return false;
+            return true;
+        };
+        const tops = [];
+        for (const text of covered) {
+            let top = text;
+            while (top.parentNode !== container && top.parentNode instanceof HTMLElement
+                && getComputedStyle(top.parentNode).display === "inline" && coversWhole(top.parentNode))
+                top = top.parentNode;
+            if (tops.at(-1) !== top) tops.push(top);
+        }
+        const marks = [];
+        for (const top of tops) {
+            const last = marks.at(-1);
+            if (last && last.nextSibling === top) {
+                last.appendChild(top);
+                continue;
+            }
+            const mark = document.createElement("span");
+            mark.className = "review-comment-mark";
+            top.before(mark);
+            mark.appendChild(top);
+            marks.push(mark);
+        }
+        if (marks.length > 0) {
+            range.setStartBefore(marks[0]);
+            range.setEndAfter(marks.at(-1));
+        }
+    }
+
     function rebuild() {
         scheduled = false;
-        if (!CSS.highlights) return;
-        const ranges = [];
         // The comment on show may be gone or moved; the next pointer move shows what is there now.
         hideTooltip();
         drawnByContainer.clear();
+        unwrapMarks();
         for (const [messageId, comments] of commentsByMessage) {
             const container = containerFor(messageId);
             if (!container) continue;
@@ -65,11 +131,10 @@
                 if (range && range.toString() === comment.quote) own.push({ range, body: comment.body ?? "" });
             }
             own.sort((left, right) => left.range.compareBoundaryPoints(Range.END_TO_END, right.range));
+            for (const item of own) wrapRange(container, item.range);
             placeMarkers(container, own.map(item => item.range));
             if (own.length > 0) drawnByContainer.set(container, own);
-            ranges.push(...own.map(item => item.range));
         }
-        CSS.highlights.set("message-review", new Highlight(...ranges));
     }
 
     function schedule() {

@@ -42,6 +42,13 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTra
         return Task.CompletedTask;
     }
 
+    public Task UpdateGrantsAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(grants);
+        if (_runs.TryGetValue(run, out var state)) state.UpdateGrants(grants.Select(grant => grant.Root).ToArray());
+        return Task.CompletedTask;
+    }
+
     public Task RecordIntentAsync(WorkspaceRunKey run, ToolDescriptor tool, string arguments, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(tool);
@@ -120,10 +127,13 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTra
                 yield return path;
     }
 
-    private sealed class RunState(IReadOnlyList<string> grantRoots, WorkspaceRunKey? parent)
+    private sealed class RunState(string[] grantRoots, WorkspaceRunKey? parent)
     {
         private readonly Lock _gate = new();
         private readonly Dictionary<string, Baseline> _baselines = new(StringComparer.OrdinalIgnoreCase);
+        private string[] _grantRoots = grantRoots;
+
+        public void UpdateGrants(string[] roots) => Volatile.Write(ref _grantRoots, roots);
 
         /// <summary>The run that delegated this one, if any. Fixed at the run's start.</summary>
         public WorkspaceRunKey? Parent => parent;
@@ -263,7 +273,7 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTra
                 return null;
             }
 
-            foreach (var root in grantRoots)
+            foreach (var root in Volatile.Read(ref _grantRoots))
             {
                 string canonicalRoot;
                 try { canonicalRoot = Path.GetFullPath(root); }

@@ -238,6 +238,27 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
     }
 
     [Fact]
+    public async Task ShouldTrackAPathGrantedDuringTheRun()
+    {
+        var added = Directory.CreateTempSubdirectory("aiclient-added");
+        try
+        {
+            var file = System.IO.Path.Combine(added.FullName, "new.txt");
+            var tracker = await StartAsync();
+            await tracker.UpdateGrantsAsync(_run,
+                [new ToolDirectoryGrant(_root, true, ["edit"]),
+                    new ToolDirectoryGrant(added.FullName, true, ["edit"])],
+                TestContext.Current.CancellationToken);
+
+            await EditAsync(tracker, "write_file", file, () => File.WriteAllTextAsync(file, "written"));
+
+            (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken))
+                .Files.ShouldHaveSingleItem().Path.ShouldBe(file);
+        }
+        finally { added.Delete(true); }
+    }
+
+    [Fact]
     public async Task ShouldForgetARunOnceItCompletes()
     {
         var file = Path("a.txt");

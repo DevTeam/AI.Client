@@ -328,6 +328,37 @@ public sealed class AppToolTests
     }
 
     [Fact]
+    public async Task AddingDirectoryGrantPreservesServerBindingsAndPolicies()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        var original = (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!;
+        var seeded = await fixture.Projects.UpdateSecurityAsync(fixture.ProjectId,
+            new UpdateProjectSecurityRequest(original.Revision,
+                [new DirectoryGrantSettings(Guid.NewGuid(), "existing", @"C:\Projects\Existing", true, ["read"])],
+                [new AI.Contracts.Projects.McpServerSettings(DefaultMcpServer.Id, "Built-in tools", "Stdio", true)],
+                [new ToolPolicySettings(DefaultMcpServer.Id, "read_text_file", "schema", "Allow", 10, 60)]),
+            CancellationToken.None);
+        await using var session = await fixture.OpenAsync();
+
+        var result = await AppFixture.CallAsync(session, "app_security", new
+        {
+            operation = "AddDirectoryGrant", projectId = fixture.ProjectId,
+            operationId = Guid.NewGuid(), revision = seeded.Revision,
+            directoryGrant = new
+            {
+                id = Guid.NewGuid(), displayName = "sample", canonicalRoot = @"C:\Projects\Sample",
+                recursive = true, toolNames = ReadOnlyCapability,
+            },
+        });
+
+        result.GetProperty("applied").GetBoolean().ShouldBeTrue();
+        var updated = (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!;
+        updated.DirectoryGrants.Count.ShouldBe(2);
+        updated.McpServers.ShouldHaveSingleItem().Id.ShouldBe(DefaultMcpServer.Id);
+        updated.ToolPolicies.ShouldHaveSingleItem().Name.ShouldBe("read_text_file");
+    }
+
+    [Fact]
     public async Task ShouldFindMessagesWithoutReadingChatsOneByOne()
     {
         await using var fixture = await AppFixture.CreateAsync();

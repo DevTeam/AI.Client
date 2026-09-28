@@ -153,9 +153,9 @@ There is no prohibition: `SetProjectSecurity` accepts any root, and the domain o
 
 The real check lives elsewhere and works independently: `PathGuard` inside the built-in server's process refuses by default, requires a fully qualified path, canonicalizes it, resolves reparse points along the entire chain of existing components, and only then checks containment in the grant with the required capability. An empty grant set means refusal, not full access.
 
-**The grant takes effect from the next run.** The tool session is opened once per run, and the grants are sent to the built-in server as an environment variable when its process starts — the process is already running, the variable has already been read. Therefore an agent that has granted itself access cannot use it in the same run.
+**The grant takes effect before the next model step in the same run.** The Host re-reads project grants between model steps. When they change, it reopens the tool session so the built-in server receives the new grants at startup. Tool calls already submitted in the same batch finish with the previous session. A tool omitted from the model request because of the schema budget is a separate tool-discovery condition, not a directory-access failure.
 
-This is stated in the `app_security` description, because otherwise the model reads a `PathGuard` refusal as a wall and asks the user to go to settings — advice that is practically correct, but describes the wall where there is a door with a delay. It needs to know about both the door and the delay: without the second, it grants access and immediately tries to use it, gets the same refusal, and decides the grant did not work.
+For one directory, use `AddDirectoryGrant` with the project revision and a single grant. It leaves MCP server bindings and tool policies intact. `SetProjectSecurity` still replaces the full security document and should be reserved for intentional full replacements.
 
 ## Confirmations and call batches
 

@@ -109,6 +109,23 @@ public sealed class ProjectService(
             : ProjectUpdateResult.Conflict(result.Revision);
     }
 
+    public async Task<ProjectUpdateResult> AddDirectoryGrantAsync(
+        Guid id, long expectedRevision, DirectoryGrantSettings grant, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(grant);
+        var stored = await repository.GetAsync(new ProjectId(id), cancellationToken);
+        if (stored is null) return ProjectUpdateResult.NotFound();
+
+        var project = stored.Project;
+        project.AddDirectoryGrant(new DirectoryGrant(
+            new DirectoryGrantId(grant.Id), grant.DisplayName, grant.CanonicalRoot,
+            grant.Recursive, grant.ToolNames), clock.UtcNow);
+        var result = await repository.SaveAsync(project, expectedRevision, cancellationToken);
+        return result.IsSaved
+            ? ProjectUpdateResult.Updated(ToDetails(project, result.Revision))
+            : ProjectUpdateResult.Conflict(result.Revision);
+    }
+
     public async Task<ProjectDetails?> SetToolPolicyAsync(Guid id, ToolPolicySettings policy, CancellationToken cancellationToken)
     {
         var stored = await repository.GetAsync(new ProjectId(id), cancellationToken);

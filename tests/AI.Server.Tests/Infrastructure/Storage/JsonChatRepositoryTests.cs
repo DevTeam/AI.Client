@@ -1,3 +1,5 @@
+using Moq;
+
 namespace AI.Infrastructure.Tests.Storage;
 
 using AI.Domain.Projects;
@@ -14,7 +16,9 @@ public sealed class JsonChatRepositoryTests
     {
         var projectId = new ProjectId(Guid.NewGuid());
         var fs = new MemoryFileSystem();
-        var paths = new ChatStoragePaths("data");
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(i => i.RootDirectory).Returns("data");
+        var paths = new ChatStoragePaths(location.Object);
         fs.Files[Path.Combine(paths.GetChatsDirectory(projectId), "chat.run.json")] = "{}";
         using var repository = new JsonChatRepository(fs, paths, new ChatDocumentSerializer());
         (await repository.ListSummariesAsync(projectId, CancellationToken.None)).ShouldBeEmpty();
@@ -27,7 +31,9 @@ public sealed class JsonChatRepositoryTests
         var chatId = new ChatId(Guid.NewGuid());
         var now = DateTimeOffset.UtcNow;
         var fs = new MemoryFileSystem();
-        var paths = new ChatStoragePaths("data");
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(i => i.RootDirectory).Returns("data");
+        var paths = new ChatStoragePaths(location.Object);
         var chat = new ChatThread(chatId, projectId, "Large chat", now);
         chat.AddMessage(new ChatMessage(new ChatMessageId(Guid.NewGuid()), null, ChatMessageRole.User, "Question", now), now);
         using var repository = new JsonChatRepository(fs, paths, new ChatDocumentSerializer());
@@ -48,7 +54,9 @@ public sealed class JsonChatRepositoryTests
         var chatId = new ChatId(Guid.NewGuid());
         var now = DateTimeOffset.UtcNow;
         var fs = new MemoryFileSystem();
-        var paths = new ChatStoragePaths("data");
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(i => i.RootDirectory).Returns("data");
+        var paths = new ChatStoragePaths(location.Object);
         var chat = new ChatThread(chatId, projectId, "Branched chat", now);
         var root = new ChatMessage(new ChatMessageId(Guid.NewGuid()), null, ChatMessageRole.User, "Question", now);
         var branchHead = new ChatMessage(new ChatMessageId(Guid.NewGuid()), root.Id, ChatMessageRole.Assistant, "Alternative", now);
@@ -82,7 +90,9 @@ public sealed class JsonChatRepositoryTests
         var firstId = new ChatMessageId(Guid.NewGuid());
         var now = DateTimeOffset.UtcNow;
         var fs = new MemoryFileSystem();
-        var paths = new ChatStoragePaths("data");
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(i => i.RootDirectory).Returns("data");
+        var paths = new ChatStoragePaths(location.Object);
         var chat = new ChatThread(chatId, projectId, "Chat", now);
         chat.AddMessage(new ChatMessage(firstId, null, ChatMessageRole.User, "Question", now), now);
         using var repository = new JsonChatRepository(fs, paths, new ChatDocumentSerializer());

@@ -1,3 +1,6 @@
+using AI.Infrastructure.Storage;
+using Moq;
+
 namespace AI.Infrastructure.Tests.Storage;
 
 using AI.Infrastructure.Settings;
@@ -10,7 +13,9 @@ public sealed class JsonGlobalSettingsRepositoryTests
     public async Task ShouldLoadConnectionWrittenBeforeContextLimitOverridesExisted()
     {
         var fileSystem = new MemoryFileSystem();
-        var paths = new GlobalSettingsPaths("data");
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(i => i.RootDirectory).Returns("data");
+        var paths = new GlobalSettingsPaths(location.Object);
         fileSystem.Files[paths.SettingsPath] = """
             {
               "Connections": [{

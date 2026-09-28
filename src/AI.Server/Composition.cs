@@ -76,16 +76,9 @@ internal sealed class Composition
             .Root<IRunEventsPublisher>()
             .Root<IBrowserAccessService>()
             .Root<IInstalledDesktop>()
-            // Hosting
             .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, BrowserAccessService, InstalledDesktop>()
             .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, MemoryEndpoints, BrowserAccessEndpoints>(Tag.Unique)
-            // One storage root for data and logs: every path below and the file logger read it here.
-            .Singleton<ProjectStorageLocation, DataDirectoryLock>()
-            .Bind<ILoggerProvider>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new JsonLineFileLoggerProvider(location))
-            .Bind<IProjectStoragePaths>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new ProjectStoragePaths(location.RootDirectory))
-            .Bind<IChatStoragePaths>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new ChatStoragePaths(location.RootDirectory))
-            .Bind<IChatRunStoragePaths>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new ChatRunStoragePaths(location.RootDirectory))
-            .Bind<IGlobalSettingsPaths>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new GlobalSettingsPaths(location.RootDirectory))
+            .Singleton<ProjectStorageLocation, DataDirectoryLock, JsonLineFileLoggerProvider, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.
             .Bind<IUserDataProtector>().As(Lifetime.Singleton).To<IUserDataProtector>(ctx =>
@@ -115,15 +108,13 @@ internal sealed class Composition
                 Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization, PinOrderKeys,
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
                 JsonGlobalSettingsRepository, ProtectedGlobalSecretStore, ResourceService, ResourceModelProjection, JsonResourceRepository, ProjectPathAccess, WorkspacePathResolver,
-                ReviewService, JsonReviewRepository,
-                MemoryService, JsonMemoryRepository, ProjectInstructionsService, JsonProjectInstructionsRepository,
-                WorkspaceInstructionFileReader, StandingInstructions,
-                GlobalSettingsService, OpenAiCompatibleConnectionModelsResolver, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
-                ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService, KeyringOrFileMasterKeyStore,
+                ReviewService, JsonReviewRepository, MemoryService, JsonMemoryRepository, ProjectInstructionsService, JsonProjectInstructionsRepository,
+                WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService, OpenAiCompatibleConnectionModelsResolver, JsonChatRunRepository,
+                ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator, ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService, KeyringOrFileMasterKeyStore,
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff, MasterKeyFormat, ProcessCommandRunner,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
-            .Bind<IAppToolReply>().To<AppToolReply>()
+            .Transient<AppToolReply>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
             .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To((
                 [Tag("base")] IChatCompletionClient baseClient,

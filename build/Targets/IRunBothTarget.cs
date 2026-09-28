@@ -4,7 +4,8 @@ internal sealed record RunBothOptions(
     string? HostUrls,
     string? WebUrls,
     string? CorsOrigins,
-    string? Environment);
+    string? Environment,
+    bool PublicWeb = false);
 
 internal interface IRunBothTarget
 {

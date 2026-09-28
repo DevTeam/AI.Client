@@ -14,13 +14,17 @@ public sealed class BrowserAccessEndpoints(ServerOptions options) : IEndpointMod
     public void Map(IEndpointRouteBuilder routes)
     {
         if (!options.PublicWeb) return;
+        var origin = options.PublicOrigin.TrimEnd('/');
+        var escapedOrigin = WebUtility.HtmlEncode(origin);
 
         routes.MapGet("/connect", (HttpContext context) =>
         {
             var state = context.Request.Query["state"].ToString();
             if (!ValidState(state)) return Results.BadRequest();
             context.Response.Headers.CacheControl = "no-store";
-            context.Response.Headers["Referrer-Policy"] = "no-referrer";
+            // Not no-referrer: with it Chrome sends the form below with `Origin: null`, and the POST
+            // handler cannot tell it from a cross-site one. The page address holds only the state.
+            context.Response.Headers["Referrer-Policy"] = "same-origin";
             context.Response.Headers.ContentSecurityPolicy =
                 "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'";
             var escaped = WebUtility.HtmlEncode(state);
@@ -47,11 +51,11 @@ public sealed class BrowserAccessEndpoints(ServerOptions options) : IEndpointMod
                 <body><main><span class="eyebrow">AI Client Host · This computer</span>
                 <h1>Allow this browser to connect?</h1>
                 <p>The following website is requesting access to your local Host:</p>
-                <p class="origin"><strong>https://ai.dev-team.org</strong></p>
+                <p class="origin"><strong>{{{escapedOrigin}}}</strong></p>
                 <ul><li>View and change your projects and chats</li><li>Use saved connections and enabled tools</li></ul>
                 <form method="post" action="/connect"><input type="hidden" name="state" value="{{{escaped}}}">
                 <div class="actions"><button type="submit">Allow connection</button>
-                <a class="cancel" href="https://ai.dev-team.org/">Cancel</a></div></form>
+                <a class="cancel" href="{{{escapedOrigin}}}/#host_cancelled=1">Cancel</a></div></form>
                 <small>You can disconnect this browser later from the Web app.</small></main></body></html>
                 """, "text/html");
         });
@@ -73,7 +77,7 @@ public sealed class BrowserAccessEndpoints(ServerOptions options) : IEndpointMod
             // ASP.NET logs RedirectResult's full Location header. Keep the bearer grant in the
             // response body so it cannot appear in normal request/redirect diagnostics.
             var destination = JsonSerializer.Serialize(
-                $"https://ai.dev-team.org/#host_token={token}&host_state={state}");
+                $"{origin}/#host_token={token}&host_state={state}");
             return Results.Content($$"""
                 <!doctype html><html lang="en"><head><meta charset="utf-8"><title>Connecting</title></head>
                 <body><p>Returning to AI Client…</p>
@@ -81,12 +85,35 @@ public sealed class BrowserAccessEndpoints(ServerOptions options) : IEndpointMod
                 """, "text/html");
         });
 
-        routes.MapGet("/api/bridge/session", (IHostDescriptor host) => Results.Ok(new
+        routes.MapGet("/api/bridge/session", (IHostDescriptor host, IInstalledDesktop desktop) => Results.Ok(new
         {
             host.ProductName,
             host.Version,
-            HostProtocol.ApiVersion
+            HostProtocol.ApiVersion,
+            DesktopInstalled = desktop.IsInstalled
         }));
+
+        // `AI.Host open` asks for a code and opens the Web app with it, so the browser the user's
+        // own action started connects without a confirmation page. A browser always sends Origin or
+        // Sec-Fetch-Site; a request with neither comes from a program on this computer, and the
+        // Host header check already keeps out anything that is not addressed to loopback.
+        routes.MapPost("/api/bridge/launch", (HttpContext context, IBrowserAccessService access) =>
+        {
+            if (context.Request.Headers.ContainsKey("Origin") || context.Request.Headers.ContainsKey("Sec-Fetch-Site"))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.Ok(new { Url = $"{origin}/#host_pair={access.CreatePairingCode()}" });
+        });
+
+        routes.MapPost("/api/bridge/pair", (HttpContext context, PairingRequest request, IBrowserAccessService access) =>
+        {
+            if (!string.Equals(context.Request.Headers.Origin, origin, StringComparison.OrdinalIgnoreCase))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            context.Response.Headers.CacheControl = "no-store";
+            return access.RedeemPairingCode(request.Code) is { } token
+                ? Results.Ok(new { Token = token })
+                : Results.NotFound();
+        });
 
         routes.MapPost("/api/bridge/revoke", (HttpContext context, IBrowserAccessService access) =>
         {
@@ -100,4 +127,6 @@ public sealed class BrowserAccessEndpoints(ServerOptions options) : IEndpointMod
 
     private static bool ValidState(string value) =>
         value.Length == 32 && value.All(Uri.IsHexDigit);
+
+    private sealed record PairingRequest(string? Code);
 }

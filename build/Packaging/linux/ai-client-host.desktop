@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=AI Client in browser
+Exec=/opt/ai-client-host/AI.Host open
+Icon=ai-client-host
+Categories=Development;Utility;
+Terminal=false

@@ -129,17 +129,21 @@ internal sealed class BuildApplication(
         var hostUrls = new Option<string?>("--host-urls")
         {
             Description = "Kestrel URLs forwarded to the host as the --urls argument.",
-            DefaultValueFactory = _ => "http://localhost:52173"
+            DefaultValueFactory = _ => null
         };
         var webUrls = new Option<string?>("--web-urls")
         {
             Description = "URL for the Blazor WASM dev server.",
-            DefaultValueFactory = _ => "http://localhost:52174"
+            DefaultValueFactory = _ => null
         };
         var corsOrigins = new Option<string?>("--cors-origins")
         {
             Description = "Comma-separated origins allowed by CORS. Forwarded as Cors__AllowedOrigins.",
             DefaultValueFactory = _ => null
+        };
+        var publicWeb = new Option<bool>("--public-web")
+        {
+            Description = "Run the Host as the installed one (--public-web) and the Web app as the published one, on http://localhost:52175, to debug browser pairing."
         };
         var environment = new Option<string?>("--environment")
         {
@@ -153,12 +157,14 @@ internal sealed class BuildApplication(
         runBothCommand.Options.Add(webUrls);
         runBothCommand.Options.Add(corsOrigins);
         runBothCommand.Options.Add(environment);
+        runBothCommand.Options.Add(publicWeb);
         runBothCommand.SetAction(parseResult => runBothTarget.RunAsync(
             new RunBothOptions(
                 parseResult.GetValue(hostUrls),
                 parseResult.GetValue(webUrls),
                 parseResult.GetValue(corsOrigins),
-                parseResult.GetValue(environment)),
+                parseResult.GetValue(environment),
+                parseResult.GetValue(publicWeb)),
             cancellationToken));
         root.Subcommands.Add(runBothCommand);
     }

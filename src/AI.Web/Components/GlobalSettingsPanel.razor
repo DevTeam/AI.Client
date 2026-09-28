@@ -5,6 +5,8 @@
 @inject IConnectionContextLimitsResolver ContextLimits
 @inject INotificationService Notifications
 @inject IThemeService Theme
+@inject IClientMode ClientMode
+@inject IHostConnection HostConnection
 @implements IAsyncDisposable
 
 <div class="permissions-drawer-backdrop"></div>
@@ -38,6 +40,27 @@
                                 }
                             </div>
                         </fieldset>
+                        @if (ClientMode.PublicWeb)
+                        {
+                            var connected = HostConnection.Status == HostConnectionStatus.Connected;
+                            var session = HostConnection.Session;
+                            <fieldset class="app-settings-group">
+                                <legend>Host</legend>
+                                <div class="host-status-card">
+                                    <span class="host-status-dot @(connected ? "is-connected" : "is-offline")" aria-hidden="true"></span>
+                                    <div class="host-status-copy" role="status">
+                                        <strong>@(connected ? "Connected" : "Reconnecting…")</strong>
+                                        <span>@(session is null ? "AI Client Host" : $"AI Client Host {(Version.TryParse(session.Version, out var version) ? version.ToString(3) : session.Version)}") · @HostConnection.Address.Authority</span>
+                                    </div>
+                                    <button class="secondary-action" type="button" disabled="@_disconnectingHost" @onclick="DisconnectHostAsync">Disconnect</button>
+                                </div>
+                                <p class="host-status-note">Projects, chats and credentials stay on this computer. Disconnect removes this browser's access; connecting again takes one click.</p>
+                                @if (session is not { DesktopInstalled: true })
+                                {
+                                    <p class="host-status-note">Prefer a separate window? <a href="https://github.com/DevTeam/AI.Client/releases/latest" target="_blank" rel="noopener noreferrer">Get the Desktop app</a>. It shares projects and chats with this Host.</p>
+                                }
+                            </fieldset>
+                        }
                     </div>
                     break;
                 }
@@ -131,6 +154,7 @@
     [Parameter] public EventCallback Close { get; set; }
     private bool _loaded;
     private bool _saving;
+    private bool _disconnectingHost;
     private bool _saveFailed;
     // What was loaded, in the shape that is sent back; closing without edits must not write
     // (and toast) anything, and secrets never appear here, so they are checked separately.
@@ -171,6 +195,7 @@
     private AccentColor _accent;
     protected override async Task OnInitializedAsync()
     {
+        HostConnection.Changed += OnHostConnectionChanged;
         _theme = await Theme.GetAsync();
         _accent = await Theme.GetAccentAsync();
         await LoadGlobalSettingsAsync();
@@ -213,7 +238,7 @@
 
     private string Description => Section switch
     {
-        "Settings" => "How the app looks on this device.",
+        "Settings" => ClientMode.PublicWeb ? "How the app looks, and the Host it works with." : "How the app looks on this device.",
         "Memory" => "What the assistant remembers about you in every project.",
         "ProjectMemory" => "What the assistant remembers about this project.",
         "Connections" => "OpenAI-compatible endpoints available to every project.",
@@ -450,8 +475,21 @@
             : "No models loaded yet";
     }
 
+    private void OnHostConnectionChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task DisconnectHostAsync()
+    {
+        _disconnectingHost = true;
+        if (!await HostConnection.DisconnectAsync())
+        {
+            _disconnectingHost = false;
+            Notifications.ShowError("The Host could not revoke this browser's access. Try again when it is running.");
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
+        HostConnection.Changed -= OnHostConnectionChanged;
         // The Host keeps the previous request alive if we do not tell it to stop; this can fire
         // a toast into a drawer the user has already closed.
         _resolveCancellation?.Cancel();

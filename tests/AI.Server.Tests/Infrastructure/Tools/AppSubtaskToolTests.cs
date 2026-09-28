@@ -42,7 +42,7 @@ public sealed class AppSubtaskToolTests
         var result = await session.CallAsync(tool, fixture.Arguments("summarise the thing"), null,
             TestContext.Current.CancellationToken);
 
-        result.IsError.ShouldBeFalse();
+        result.IsError.ShouldBeFalse(result.ModelContent);
         var outcome = result.StructuredContent!.Value.GetProperty("results")[0];
         outcome.GetProperty("answer").GetString().ShouldBe("the subtask's conclusion");
         outcome.GetProperty("completed").GetBoolean().ShouldBeTrue();

@@ -16,8 +16,9 @@
     accent-color: var(--color-accent-strong);
 }
 
-/* The published app's connection page. One centered column: the page exists only for a browser
-   on a computer without a Host, so it offers one download for this computer and waits. */
+/* The published app's connection page also covers an open workspace while its Host is offline. */
+.host-workspace { display: contents; }
+.host-workspace-hidden { display: none; }
 .host-gate { box-sizing: border-box; max-width: 34rem; margin: min(14vh, 8rem) auto 3rem; padding: 0 1.5rem; }
 .host-gate-brand { display: flex; align-items: center; gap: .6rem; margin-bottom: 2.25rem; color: var(--color-text-strong); font-size: .95rem; font-weight: 600; }
 .host-gate-brand img { border-radius: .5rem; }
@@ -29,6 +30,8 @@
 .host-gate-primary { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-height: 2.6rem; padding: .5rem 1.1rem; border: 0; border-radius: .55rem; background: var(--color-accent-strong); color: var(--color-on-accent); font-weight: 600; text-decoration: none; cursor: pointer; }
 .host-gate-primary .app-icon { width: 1.05rem; height: 1.05rem; }
 .host-gate-primary:hover { filter: brightness(1.08); }
+.host-gate-download { display: inline-flex; align-items: center; gap: .4rem; color: var(--color-accent-text); font-size: .85rem; text-decoration: none; }
+.host-gate-download .app-icon { width: 1rem; height: 1rem; }
 .host-gate-meta { color: var(--color-text-subtle); font-size: .8rem; }
 .host-gate :is(button, a, summary):focus-visible { outline: 2px solid var(--color-accent-strong); outline-offset: 3px; border-radius: .4rem; }
 .host-gate-waiting { display: flex; align-items: center; gap: .6rem; margin: 1.6rem 0 0; padding: .7rem .9rem; border: 1px solid var(--color-border-subtle); border-radius: .6rem; background: var(--color-surface); color: var(--color-text-secondary); font-size: .85rem; }

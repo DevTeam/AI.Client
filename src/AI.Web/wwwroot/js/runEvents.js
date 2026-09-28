@@ -52,6 +52,7 @@ export function subscribe(baseUrl, dotNetReference) {
     // The stream is the one request that is always open, so it also tells the page whether the
     // Host is reachable. Only changes are reported.
     let reported = null;
+    let retryDelay = 2000;
     const report = status => {
         if (disposed || status === reported) return;
         reported = status;
@@ -69,6 +70,7 @@ export function subscribe(baseUrl, dotNetReference) {
                 if (response.status === 401) report("unauthorized");
                 if (!response.ok || !response.body) throw new Error(`Events returned ${response.status}`);
                 report("connected");
+                retryDelay = 2000;
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let pending = "";
@@ -88,11 +90,14 @@ export function subscribe(baseUrl, dotNetReference) {
                 }
             } catch (error) {
                 if (!disposed) {
-                    console.warn("Run events disconnected", error);
+                    if (reported === "connected" || reported === null) console.warn("Run events disconnected", error);
                     if (reported !== "unauthorized") report("offline");
                 }
             }
-            if (!disposed) await new Promise(resolve => setTimeout(resolve, 2000));
+            if (!disposed) {
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                retryDelay = Math.min(retryDelay * 2, 30000);
+            }
         }
     };
     void readEvents();

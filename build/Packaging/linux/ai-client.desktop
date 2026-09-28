@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=AI Client
+Exec=/opt/ai-client-desktop/AI.Desktop
+Icon=ai-client
+Categories=Development;Utility;
+Terminal=false

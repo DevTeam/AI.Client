@@ -10,6 +10,8 @@ internal sealed class BuildApplication(
     IVerifyTarget verifyTarget,
     IPublishTarget publishTarget,
     IPublishDesktopTarget publishDesktopTarget,
+    IPublishWebTarget publishWebTarget,
+    IPackageReleaseTarget packageReleaseTarget,
     IRunTarget runTarget,
     IRunBothTarget runBothTarget,
     CancellationToken cancellationToken)
@@ -22,6 +24,8 @@ internal sealed class BuildApplication(
         RegisterVerify(root);
         RegisterPublish(root);
         RegisterPublishDesktop(root);
+        RegisterPublishWeb(root);
+        RegisterPackageRelease(root);
         RegisterHost(root);
         return root.Parse(args).InvokeAsync();
     }
@@ -68,6 +72,26 @@ internal sealed class BuildApplication(
             return publishDesktopTarget.RunAsync(target,
                 parseResult.GetValue(output) ?? Path.Combine("artifacts", "desktop", target), cancellationToken);
         });
+        root.Subcommands.Add(command);
+    }
+
+    private void RegisterPublishWeb(RootCommand root)
+    {
+        var command = new Command("publish-web", "Prepare the public AI Web application for GitHub Pages.");
+        command.SetAction(_ => publishWebTarget.RunAsync(cancellationToken));
+        root.Subcommands.Add(command);
+    }
+
+    private void RegisterPackageRelease(RootCommand root)
+    {
+        var runtime = new Option<string>("--runtime") { Required = true };
+        runtime.AcceptOnlyFromAmong("win-x64", "win-arm64", "osx-x64", "osx-arm64", "linux-x64", "linux-arm64");
+        var version = new Option<string>("--version") { Required = true };
+        var command = new Command("package-release", "Publish self-contained Host and Desktop installers for one runtime.");
+        command.Options.Add(runtime);
+        command.Options.Add(version);
+        command.SetAction(parse => packageReleaseTarget.RunAsync(
+            parse.GetValue(runtime)!, parse.GetValue(version)!, cancellationToken));
         root.Subcommands.Add(command);
     }
 

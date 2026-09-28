@@ -5,6 +5,8 @@
 @using AI.Web.FileSystem
 @using AI.Contracts.Resources
 @inject IClientMetadata ClientMetadata
+@inject IClientMode ClientMode
+@inject HttpClient Http
 @inject IApiBaseUrl _apiBaseUrl
 @inject IProjectApi ProjectApi
 @inject IChatHistoryApi ChatHistoryApi
@@ -327,6 +329,11 @@
         <span class="visually-hidden" role="status" aria-live="polite">@_sidebarAnnouncement</span>
         </div>
         <nav class="global-nav root-nav sidebar-global-nav" aria-label="Application settings">
+            @if (ClientMode.PublicWeb)
+            {
+                <a class="workspace-nav-item" href="https://github.com/DevTeam/AI.Client/releases/latest" target="_blank" rel="noopener noreferrer">Get Desktop app</a>
+                <button class="workspace-nav-item" type="button" @onclick="DisconnectHostAsync">Disconnect Host</button>
+            }
             <button class="workspace-nav-item @(_globalSection == "Connections" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Connections")'><AppIcon Name="connection" /><span>Connections</span><span class="directory-count">@_connections.Count(item => item.Enabled)</span></button>
             <button class="workspace-nav-item @(_globalSection == "MCP" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("MCP")'><AppIcon Name="mcp" /><span>MCP</span><span class="directory-count">@_enabledMcpServerCount</span></button>
             <button class="workspace-nav-item @(_globalSection == "Memory" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Memory")'><AppIcon Name="memory" /><span>Memory</span><span class="directory-count">@_userMemoryCount</span></button>
@@ -4824,6 +4831,20 @@
         public Guid? CredentialProfileId { get; set; }
 
         public string Message { get; set; } = string.Empty;
+    }
+
+    private async Task DisconnectHostAsync()
+    {
+        try
+        {
+            using var response = await Http.PostAsync("api/bridge/revoke", null);
+            response.EnsureSuccessStatusCode();
+            await JsRuntime.InvokeVoidAsync("aiHostBridge.disconnect");
+        }
+        catch (HttpRequestException)
+        {
+            Notifications.ShowError("The Host could not revoke this browser's access. Try again when it is running.");
+        }
     }
 
     public async ValueTask DisposeAsync()

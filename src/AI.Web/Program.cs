@@ -6,7 +6,9 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
 // Приоритет: ?api= в URL → ApiBaseUrl в wwwroot/appsettings.json. Если обоих нет — падаем с
 // понятной ошибкой, потому что фронт без бэкенда всё равно бесполезен.
-var urlParameter = ReadApiUrlFromQuery(builder.HostEnvironment.BaseAddress);
+var publicWeb = string.Equals(builder.Configuration["ClientMode"], "PublicWeb", StringComparison.Ordinal);
+// A published page must never send its browser grant to a caller-supplied API address.
+var urlParameter = publicWeb ? null : ReadApiUrlFromQuery(builder.HostEnvironment.BaseAddress);
 var configUrl = builder.Configuration["ApiBaseUrl"];
 var apiBase = urlParameter ?? configUrl
     ?? throw new InvalidOperationException(
@@ -16,7 +18,7 @@ var apiBase = urlParameter ?? configUrl
 // Resolved once, then handed to the DI composition as a string. Pure.DI's source generator
 // builds a constructor for `Arg<string>("apiBaseUrl")`, so this is the only call site that
 // needs to know the value before the container starts resolving anything else.
-var composition = new Composition(apiBase);
+var composition = new Composition(apiBase, publicWeb);
 builder.ConfigureContainer(composition);
 
 builder.RootComponents.Add<App>("#app");

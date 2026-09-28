@@ -15,6 +15,7 @@ public sealed class HealthEndpoints : IEndpointModule
                 {
                     metadata.ProductName,
                     metadata.Version,
+                    ApiVersion = 1,
                     Status = "ready"
                 }));
     }

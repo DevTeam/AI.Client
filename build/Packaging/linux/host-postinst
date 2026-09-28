@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+for directory in /run/user/[0-9]*; do
+    [ -d "$directory" ] || continue
+    uid=${directory##*/}
+    user=$(getent passwd "$uid" | cut -d: -f1)
+    [ -n "$user" ] || continue
+    runuser -u "$user" -- env XDG_RUNTIME_DIR="$directory" DBUS_SESSION_BUS_ADDRESS="unix:path=$directory/bus" systemctl --user daemon-reload || true
+    runuser -u "$user" -- env XDG_RUNTIME_DIR="$directory" DBUS_SESSION_BUS_ADDRESS="unix:path=$directory/bus" systemctl --user start ai-client-host.service || true
+done

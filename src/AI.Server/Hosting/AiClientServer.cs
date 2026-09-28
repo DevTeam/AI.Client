@@ -4,6 +4,7 @@ using Endpoints;
 using Infrastructure.Storage;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -37,6 +38,14 @@ public sealed class AiClientServer(
 
     private WebApplication Build(IServiceProviderFactory<IServiceCollection> services)
     {
+        if (options.PublicWeb && (options.Urls is null || options.Urls.Split(';').Any(url =>
+                !Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                || uri.Scheme != Uri.UriSchemeHttp
+                || !uri.IsLoopback)))
+        {
+            throw new InvalidOperationException("Public Web mode must listen on HTTP loopback only.");
+        }
+
         // The command line has already been parsed into `options`; ASP.NET gets no arguments, so
         // there is exactly one parser. appsettings.json and environment variables still apply.
         // Content lives next to the executable, not in whatever directory it was started from: a
@@ -75,6 +84,10 @@ public sealed class AiClientServer(
         // SSE can be added later without rewriting the policy.
         var corsOrigins = builder.Configuration
             .GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+        if (options.PublicWeb)
+        {
+            corsOrigins = [.. corsOrigins, "https://ai.dev-team.org"];
+        }
         builder.Services.AddCors(cors =>
         {
             cors.AddDefaultPolicy(policy => policy
@@ -87,9 +100,64 @@ public sealed class AiClientServer(
         var app = builder.Build();
         app.Use(exceptionHandler.InvokeAsync);
 
+        if (options.PublicWeb)
+        {
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Host.Host is not ("127.0.0.1" or "localhost" or "[::1]"))
+                {
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    return;
+                }
+
+                await next(context);
+            });
+        }
+
         // CORS runs before endpoint routing so preflight OPTIONS requests are handled before any
         // endpoint binding refuses to route them. WebApplication wires the rest of the pipeline itself.
         app.UseCors();
+
+        if (options.PublicWeb)
+        {
+            app.Use(async (context, next) =>
+            {
+                var origin = context.Request.Headers.Origin.ToString();
+                if (origin.Length > 0)
+                {
+                    var localOrigin = $"{context.Request.Scheme}://{context.Request.Host}";
+                    if (string.Equals(origin, "https://ai.dev-team.org", StringComparison.Ordinal))
+                    {
+                        if (context.Request.Path.StartsWithSegments("/api")
+                            && !context.Request.Path.Equals("/api/health", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var authorization = context.Request.Headers.Authorization.ToString();
+                            var token = authorization.StartsWith("Bearer ", StringComparison.Ordinal)
+                                ? authorization[7..]
+                                : null;
+                            if (!app.Services.GetRequiredService<IBrowserAccessService>().Allows(token))
+                            {
+                                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                                return;
+                            }
+                        }
+                    }
+                    else if (!string.Equals(origin, localOrigin, StringComparison.OrdinalIgnoreCase))
+                    {
+                        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                        return;
+                    }
+                }
+                else if (context.Request.Path.StartsWithSegments("/api")
+                         && string.Equals(context.Request.Headers["Sec-Fetch-Site"], "cross-site", StringComparison.OrdinalIgnoreCase))
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    return;
+                }
+
+                await next(context);
+            });
+        }
 
         foreach (var module in endpoints)
         {

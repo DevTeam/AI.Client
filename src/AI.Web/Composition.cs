@@ -23,6 +23,7 @@ using AI.Contracts.Settings;
 using Pure.DI;
 using Pure.DI.MS;
 using System.Diagnostics;
+using Microsoft.JSInterop;
 
 internal sealed partial class Composition : ServiceProviderFactory<Composition>
 {
@@ -33,7 +34,9 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Hint(Hint.ThreadSafe, "Off")
             .Hint(Hint.OnCannotResolveContractTypeNameWildcard, "Microsoft.JSInterop.*")
             .Arg<string>("apiBaseUrl")
+            .Arg<bool>("publicWeb")
             .Root<IApiBaseUrl>()
+            .Root<IClientMode>()
             .Root<IClientMetadata>()
             .Root<IProjectApi>()
             .Root<IFileSystemApi>()
@@ -66,8 +69,12 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IComposerContextPresentation>().To<ComposerContextPresentation>()
             .RootBind<IDelayedBusyIndicatorFactory>().To<DelayedBusyIndicatorFactory>()
             .Bind<INotificationService>("base").As(Lifetime.Singleton).To<NotificationService>()
-            .Singleton<DesktopBadgeNotificationService, DesktopUnreadCountPublisher, ApiBaseUrl, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService,
+            .Singleton<DesktopBadgeNotificationService, DesktopUnreadCountPublisher, ApiBaseUrl, ClientMode, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService,
                 WorkspaceStateService, ChatComposerService, RunStateService, ChatMessageDeltaMerger, ClientSettingsService, ThemeService>()
             .Transient<ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi, ResourceApi, ReviewApi, MemoryApi>()
-            .Transient((IApiBaseUrl arg) => new HttpClient { BaseAddress = arg.Value });
+            .Transient((IApiBaseUrl arg, IClientMode mode, IJSRuntime jsRuntime) =>
+                new HttpClient(new BridgeAuthorizationHandler(mode, jsRuntime)
+                {
+                    InnerHandler = new HttpClientHandler()
+                }) { BaseAddress = arg.Value });
 }

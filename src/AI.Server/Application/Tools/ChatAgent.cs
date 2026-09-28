@@ -31,7 +31,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IModelContentCheckpointService checkpoints, IModelInstructionRegistry instructions,
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
     IRunCompletionProtocol completionProtocol, IToolSearchDefinitionEnricher toolSearchEnricher,
-    IStandingInstructions standingInstructions) : IChatAgent
+    IStandingInstructions standingInstructions, IContextTokenEstimator estimator) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -42,13 +42,23 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         CancellationToken cancellationToken,
         bool interactive = true,
         Guid? parentBranchId = null,
-        Func<string?, CancellationToken, Task>? draft = null)
+        Func<string?, CancellationToken, Task>? draft = null,
+        Func<ContextUsage, CancellationToken, Task>? contextUsage = null)
     {
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var transportScope = transport.BeginScope(transportActivity);
         var deadline = new TurnDeadline(source, TimeSpan.FromMinutes(60));
         var token = source.Token;
         Task Draft(string? content) => draft?.Invoke(content, token) ?? Task.CompletedTask;
+        ContextPlan? lastPlan = null;
+        Task Usage(ContextPlan plan, long answerTokens = 0) =>
+            contextUsage?.Invoke(ToUsage(plan, answerTokens), token) ?? Task.CompletedTask;
+        async Task Answer(string answer)
+        {
+            if (lastPlan is not null)
+                await Usage(lastPlan, estimator.EstimateMessages([new ChatCompletionMessage("assistant", answer)]));
+            await text(answer, token);
+        }
         var global = await settings.LoadAsync(token);
         var configuredConnection = request.CredentialProfileId is { } connectionId
             ? global.Connections.SingleOrDefault(item => item.Id == connectionId)
@@ -142,6 +152,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var plan = await contextPlanner.PlanAsync(configuredConnection, request.Model, composition.Messages, available,
                 new CompletionClientSummarizer(completion, request), SummaryTargetTokens, token);
             contextDiagnostics.Record(request.Model, plan, composition.Messages.Count, available.Length);
+            lastPlan = plan;
+            await Usage(plan);
             if (!plan.Fits) throw new ContextWindowExceededException(plan);
             await foreach (var chunk in completion.StreamAsync(
                                request with { ContextMessages = plan.Messages, Tools = available }, token))
@@ -174,7 +186,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 if (attempt > MaxEmptyTurns && completionRequired && provisionalAnswer is { Length: > 0 } fallback)
                 {
                     await Draft(null);
-                    await text(fallback, token);
+                    await Answer(fallback);
                     var fallbackChanges = await workspace.SnapshotAsync(runKey, token);
                     await workspace.CompleteRunAsync(runKey, CancellationToken.None);
                     return fallbackChanges;
@@ -229,7 +241,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 // run would throw away an answer the model has repeated several times, so its latest
                 // text is published instead.
                 await Draft(null);
-                await text(continuedAnswer.ToString() + content, token);
+                await Answer(continuedAnswer.ToString() + content);
                 continuedAnswer.Clear();
                 var changes = await workspace.SnapshotAsync(runKey, token);
                 await workspace.CompleteRunAsync(runKey, CancellationToken.None);
@@ -268,7 +280,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 if (decision.Status is RunCompletionStatus.Complete or RunCompletionStatus.Blocked)
                 {
                     await Draft(null);
-                    await text(decision.FinalAnswer!, token);
+                    await Answer(decision.FinalAnswer!);
                     var changes = await workspace.SnapshotAsync(runKey, token);
                     await workspace.CompleteRunAsync(runKey, CancellationToken.None);
                     return changes;
@@ -502,6 +514,17 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// OpenAI-compatible endpoints report the ceiling as "length"; several report the Anthropic
     /// spelling instead, and a gateway in front of either may pass through whichever it received.
     /// </summary>
+    private static ContextUsage ToUsage(ContextPlan plan, long answerTokens) => new(
+        plan.ContextWindowTokens,
+        plan.ContextWindowSource,
+        plan.InstructionTokens,
+        plan.ToolDefinitionTokens,
+        Math.Max(0, plan.EstimatedInputTokens - plan.InstructionTokens) + answerTokens,
+        plan.ReservedOutputTokens,
+        plan.OverheadTokens,
+        plan.WasCompacted,
+        plan.OmittedMessages);
+
     private static bool Truncated(string? finishReason) =>
         finishReason is "length" or "max_tokens";
 

@@ -53,6 +53,26 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task RunShouldPublishHowTheContextWindowIsFilledIncludingTheAnswer()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Hello"));
+
+        var call = await fixture.NextCallAsync();
+        var measured = await fixture.WaitAsync(run => run.Context is not null);
+        var request = measured.Context!;
+        request.ContextWindowTokens.ShouldBeGreaterThan(0);
+        request.InstructionTokens.ShouldBeGreaterThan(0);
+        request.HistoryTokens.ShouldBeGreaterThan(0);
+        request.ReservedOutputTokens.ShouldBeGreaterThan(0);
+        request.OverheadTokens.ShouldBeGreaterThan(0);
+
+        call.Answer.SetResult(new string('a', 2_000));
+        var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        completed.Context.ShouldNotBeNull().HistoryTokens.ShouldBeGreaterThanOrEqualTo(request.HistoryTokens + 1_000);
+    }
+
+    [Fact]
     public async Task StepInFlightShouldBeLiveAndHandOverToItsPreambleInOnePublication()
     {
         await using var fixture = await Fixture.CreateAsync();

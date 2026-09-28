@@ -13,7 +13,11 @@ public sealed record ContextPlan(
     ContextLimitSource ReservedOutputSource,
     bool WasCompacted,
     int OmittedMessages,
-    IReadOnlyList<ChatCompletionMessage> Messages)
+    IReadOnlyList<ChatCompletionMessage> Messages,
+    // The part of EstimatedInputTokens spent on system instructions; the rest is conversation.
+    long InstructionTokens = 0,
+    // Protocol framing and the tokenizer safety margin, held back like the output reserve.
+    long OverheadTokens = 0)
 {
     public bool Fits => EstimatedInputTokens <= InputLimit;
 }

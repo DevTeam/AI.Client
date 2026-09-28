@@ -30,5 +30,8 @@ public interface IChatAgent
         // The prose of the model step in flight, chunk by chunk; null starts a new step. It is a
         // live view only: what survives is whatever the step turns into — a preamble, the final
         // answer, or nothing when the protocol rejects the step.
-        Func<string?, CancellationToken, Task>? draft = null);
+        Func<string?, CancellationToken, Task>? draft = null,
+        // How each model request fills the context window, and once more with the final answer
+        // counted, so the composer can show what the next request will start from.
+        Func<ContextUsage, CancellationToken, Task>? contextUsage = null);
 }

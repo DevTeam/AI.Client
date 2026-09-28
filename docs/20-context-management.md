@@ -191,6 +191,28 @@ Prompt content and tool result contents are not logged. The projection size, not
 
 When the connection has no explicit override, the connection card shows `Context window: Default (16k)`. When an override is set, the card shows `Context window: Override (N tokens)`. The diagnostic toast after a failure shows the cause and the recommended action without revealing prompt content.
 
+### Context ring in the composer
+
+The send button carries a ring that shows how the last request of the branch filled the context
+window; the button's tooltip repeats it as a donut with a legend above the keyboard shortcuts.
+100% is the effective `ContextWindowTokens` of the connection selected in the composer. Layers,
+clockwise from 12 o'clock:
+
+| Layer | Source |
+|---|---|
+| Instructions | `system` messages of the planned request (`ContextPlan.InstructionTokens`) |
+| Tools | `ContextPlan.ToolDefinitionTokens` |
+| Conversation | the rest of `EstimatedInputTokens`, plus the final answer once the run ends |
+| Your message | the composer text, estimated on the client with the same UTF-8 rule |
+| Answer reserve | `ReservedOutputTokens` of the selected connection (drawn translucent) |
+| Overhead | protocol overhead and safety margin (drawn translucent) |
+
+The Host publishes the measurement as `ChatRunSnapshot.Context` every time the planner runs and
+once more when the answer is published. It is kept in memory only: after a Host restart, or on a
+branch that has not sent anything yet, the measured layers read as unknown until the next request.
+The ring is grey at rest, takes the layer colours on hover, turns amber from 75% and red with a
+slow pulse from 90%.
+
 ## Verification
 
 - unit tests of `IToolResultProjector` on fixtures of saved results;

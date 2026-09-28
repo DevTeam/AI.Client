@@ -28,6 +28,19 @@ public sealed class ChatContextPlannerTests
     }
 
     [Fact]
+    public void ShouldSplitInstructionTokensFromConversation()
+    {
+        ChatCompletionMessage[] system = [new("system", new string('s', 400))];
+        ChatCompletionMessage[] messages = [.. system, new("user", "Hello"), new("assistant", "Hi")];
+
+        var plan = Planner().Plan(null, "unknown-model", messages, []);
+
+        plan.InstructionTokens.ShouldBe(_estimator.EstimateMessages(system));
+        plan.EstimatedInputTokens.ShouldBeGreaterThan(plan.InstructionTokens);
+        plan.OverheadTokens.ShouldBe(256 + 1_024);
+    }
+
+    [Fact]
     public void ShouldSubtractToolDefinitionsFromInputLimit()
     {
         var planner = Planner();

@@ -21,8 +21,8 @@ public sealed class ChatContextPlanner(
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(tools);
 
-        var (effective, inputLimit, toolTokens, compaction) = PlanCore(connection, messages, tools);
-        return BuildPlan(effective, inputLimit, toolTokens, compaction);
+        var (effective, limits, inputLimit, toolTokens, compaction) = PlanCore(connection, messages, tools);
+        return BuildPlan(effective, limits, inputLimit, toolTokens, compaction);
     }
 
     public async Task<ContextPlan> PlanAsync(
@@ -38,17 +38,17 @@ public sealed class ChatContextPlanner(
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(tools);
 
-        var (effective, inputLimit, toolTokens, compaction) = PlanCore(connection, messages, tools);
+        var (effective, limits, inputLimit, toolTokens, compaction) = PlanCore(connection, messages, tools);
         if (estimator.EstimateMessages(compaction.Messages) > inputLimit && summarizer is not null)
         {
             compaction = await compactor.CompactWithLlmAsync(messages, inputLimit, summaryTargetTokens,
                 summarizer, cancellationToken);
         }
 
-        return BuildPlan(effective, inputLimit, toolTokens, compaction);
+        return BuildPlan(effective, limits, inputLimit, toolTokens, compaction);
     }
 
-    private (ResolvedConnectionContextLimits Effective, long InputLimit, long ToolTokens,
+    private (ResolvedConnectionContextLimits Effective, ChatContextLimits Limits, long InputLimit, long ToolTokens,
         ContextCompactionResult Compaction) PlanCore(
         ConnectionSettings? connection,
         IReadOnlyList<ChatCompletionMessage> messages,
@@ -68,11 +68,11 @@ public sealed class ChatContextPlanner(
         var compaction = estimated > inputLimit
             ? compactor.Compact(messages, inputLimit)
             : new ContextCompactionResult(messages, 0, false);
-        return (effective, inputLimit, toolTokens, compaction);
+        return (effective, limits, inputLimit, toolTokens, compaction);
     }
 
-    private ContextPlan BuildPlan(ResolvedConnectionContextLimits effective, long inputLimit, long toolTokens,
-        ContextCompactionResult compaction) =>
+    private ContextPlan BuildPlan(ResolvedConnectionContextLimits effective, ChatContextLimits limits,
+        long inputLimit, long toolTokens, ContextCompactionResult compaction) =>
         new(
             inputLimit,
             estimator.EstimateMessages(compaction.Messages),
@@ -83,7 +83,9 @@ public sealed class ChatContextPlanner(
             effective.ReservedOutputSource,
             compaction.WasCompacted,
             compaction.OmittedMessages,
-            compaction.Messages);
+            compaction.Messages,
+            estimator.EstimateMessages(compaction.Messages.Where(message => message.Role == "system").ToArray()),
+            Add(limits.ProtocolOverheadTokens, limits.SafetyMarginTokens));
 
     private static long Add(params long[] values)
     {

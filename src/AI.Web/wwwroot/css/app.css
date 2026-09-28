@@ -86,6 +86,12 @@
     /* A finished run with an unread response. Its own token, not the accent: the accent is the
        user's to pick, and must not make "done" read like "needs you" or "failed". */
     --color-unread: #4f91dc;
+    /* The user's own messages: a tint of the accent the user picked, with a hairline of it, so a
+       question stands apart from the answers without shouting. -inset is for what sits inside
+       the bubble (code blocks, reference chips) and has to read on any accent. */
+    --color-user-bubble: color-mix(in srgb, var(--color-accent-strong) 16%, var(--color-bg));
+    --color-user-bubble-border: color-mix(in srgb, var(--color-accent-strong) 30%, transparent);
+    --color-user-bubble-inset: rgb(0 0 0 / 28%);
     --color-diff-added-bg: color-mix(in srgb, var(--color-success) 10%, transparent);
     --color-diff-removed-bg: color-mix(in srgb, var(--color-danger) 10%, transparent);
     /* Search hits and the line under a review comment. */
@@ -151,6 +157,9 @@
     --color-success-text: #17703a;
     --color-success-border: #9ed4b0;
     --color-unread: #2a78d0;
+    --color-user-bubble: color-mix(in srgb, var(--color-accent-strong) 13%, var(--color-bg));
+    --color-user-bubble-border: color-mix(in srgb, var(--color-accent-strong) 22%, transparent);
+    --color-user-bubble-inset: rgb(255 255 255 / 60%);
     --color-highlight-bg: #ffe08a;
     --color-highlight-fg: #1f1f1f;
     --shadow-scale: 0.3;
@@ -1918,8 +1927,27 @@ body {
     max-width: 75%;
     margin-right: 0;
     padding: 0.45rem 0.8rem;
+    border: 1px solid var(--color-user-bubble-border);
     border-radius: 1rem;
-    background: var(--color-fill);
+    background: var(--color-user-bubble);
+}
+
+/* What the bubble holds is drawn for the plain transcript; on the accent tint each piece needs
+   its own step. Links and review marks are accent tints themselves and would melt into the
+   bubble at their usual strength; greys (chips, code) would look like grime on a coloured
+   surface, so they sit on a translucent inset instead. */
+.workspace-message.user .markdown-content .file-link {
+    background: color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+.workspace-message.user *::highlight(message-review) {
+    background-color: color-mix(in srgb, var(--color-accent) 38%, transparent);
+}
+.workspace-message.user .message-resource-chip {
+    border-color: var(--color-user-bubble-border);
+    background: var(--color-user-bubble-inset);
+}
+.workspace-message.user .markdown-content pre {
+    background: var(--color-user-bubble-inset);
 }
 
 .workspace-message.user.resource-only .message-actions {
@@ -2087,7 +2115,7 @@ body {
 .workspace-message.user .message-actions {
     right: 0.1rem;
     bottom: 0.1rem;
-    background: linear-gradient(to right, transparent, var(--color-fill) 1.8rem);
+    background: linear-gradient(to right, transparent, var(--color-user-bubble) 1.8rem);
 }
 
 /* A short user bubble can be narrower than its four-button toolbar. Keep the bubble sized to its

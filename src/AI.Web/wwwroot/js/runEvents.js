@@ -152,7 +152,7 @@ export function watchDrawerDismiss(dotNetReference) {
         if (event.button !== 0) return;
         const drawer = document.querySelector(".permissions-drawer, .review-workspace");
         const target = event.target instanceof Element ? event.target : null;
-        if (!drawer || !target || target.closest(".permissions-drawer, .review-workspace, .sidebar-global-nav, .toast-region, .history-notifications-button")) return;
+        if (!drawer || !target || target.closest(".permissions-drawer, .review-workspace, .settings-transfer-backdrop, .sidebar-global-nav, .toast-region, .history-notifications-button")) return;
         // Same reason as on Escape: commit the focused field before the settings drawer saves.
         if (document.activeElement instanceof HTMLElement && drawer.contains(document.activeElement)) document.activeElement.blur();
         void dotNetReference.invokeMethodAsync("OnDrawerDismissed");

@@ -13,4 +13,6 @@ public sealed record StoredChatSummary(
     bool IsPinned,
     DateTimeOffset? PinnedAt,
     int BranchCount = 0,
-    bool HasStoredBranchCount = true);
+    bool HasStoredBranchCount = true,
+    string? PinOrder = null,
+    bool IsEmpty = false);

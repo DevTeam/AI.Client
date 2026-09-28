@@ -487,7 +487,15 @@ public sealed class ChatRunDispatcher(
             // branch) can never run again and leaves nothing for the user to resume, retry or
             // rebase, so its entry is dropped instead of blocking the queue. Any message queued
             // behind it then starts normally from the finally block below.
-            else runtime.State.FailUnrecoverable(Describe(error), FailureKind(error));
+            else
+            {
+                runtime.State.FailUnrecoverable(Describe(error), FailureKind(error));
+                // A failure writes no message, yet it is the outcome the user has to look at, so
+                // it lifts the chat in the sidebar the same way a finished reply does.
+                try { await chatMutations.MarkActivityCoreAsync(runtime.State.ProjectId, runtime.State.ChatId, CancellationToken.None); }
+                catch (Exception markError) when (markError is IOException or UnauthorizedAccessException
+                    or InvalidOperationException or Domain.Common.DomainException) { }
+            }
             if (error is OperationCanceledException && runtime.ResumeRequested && !_shutdown.IsCancellationRequested) runtime.State.Resume();
             try { await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, CancellationToken.None), CancellationToken.None); }
             catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException)

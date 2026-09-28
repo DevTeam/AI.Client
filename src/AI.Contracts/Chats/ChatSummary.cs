@@ -12,4 +12,6 @@ public sealed record ChatSummary(
     bool IsPinned = false,
     DateTimeOffset? PinnedAt = null,
     // Alternative branches only: the main branch is the chat itself and is never counted.
-    int BranchCount = 0);
+    int BranchCount = 0,
+    // No message has been written yet: the sidebar hides such a chat until its first message.
+    bool IsEmpty = false);

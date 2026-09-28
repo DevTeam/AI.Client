@@ -36,7 +36,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             policy.Tool.SchemaHash, policy.Decision, policy.MaxCallsPerRun, policy.Timeout)).ToArray(),
         chat.IsPinned,
         chat.PinnedAt,
-        chat.LastActivityAt), Options);
+        chat.LastActivityAt,
+        chat.PinOrder), Options);
 
     public string SerializeSummary(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatSummaryDocument(
         SchemaVersion,
@@ -48,7 +49,9 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         chat.IsPinned,
         chat.PinnedAt,
         chat.LastActivityAt,
-        chat.BranchCount), Options);
+        chat.BranchCount,
+        chat.PinOrder,
+        chat.Messages.Count == 0), Options);
 
     public StoredChat Deserialize(string json)
     {
@@ -84,7 +87,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             chat.SetToolPolicy(new ToolPolicy(new ToolIdentity(new McpServerId(policy.ServerId), policy.Name,
                 policy.SchemaHash), policy.Decision, policy.MaxCallsPerRun, policy.Timeout), document.UpdatedAt);
         chat.Rename(document.Title, document.UpdatedAt);
-        chat.RestorePinState(document.IsPinned, document.PinnedAt);
+        chat.RestorePinState(document.IsPinned, document.PinnedAt, document.PinOrder);
+        chat.RestoreActivity(document.LastActivityAt);
 
         return new StoredChat(chat, document.Revision);
     }
@@ -108,7 +112,9 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             document.IsPinned,
             document.PinnedAt,
             document.BranchCount ?? 0,
-            document.BranchCount is not null);
+            document.BranchCount is not null,
+            document.IsPinned ? document.PinOrder : null,
+            document.IsEmpty);
     }
 
     private sealed record ChatDocument(
@@ -126,7 +132,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         ToolPolicyDocument[]? ToolPolicies = null,
         bool IsPinned = false,
         DateTimeOffset? PinnedAt = null,
-        DateTimeOffset LastActivityAt = default);
+        DateTimeOffset LastActivityAt = default,
+        string? PinOrder = null);
 
     // Deliberately contains only sidebar fields. System.Text.Json skips MessageIds without
     // materialising message nodes, so listing chats stays proportional to the small manifests
@@ -144,7 +151,11 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         // Only ever "alternative branches" — the main branch is the chat itself. Null identifies
         // a summary written before this field existed, allowing the repository to migrate only
         // those manifests without loading full documents for chats that genuinely have no forks.
-        int? BranchCount = null);
+        int? BranchCount = null,
+        string? PinOrder = null,
+        // A chat is created before its first message is written. Manifests from before this
+        // field existed read as non-empty, so no old chat disappears from the sidebar.
+        bool IsEmpty = false);
 
     private sealed record ToolPolicyDocument(Guid ServerId, string Name, string SchemaHash,
         ToolPolicyDecision Decision, int? MaxCallsPerRun, TimeSpan? Timeout);

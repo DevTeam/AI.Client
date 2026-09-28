@@ -1034,7 +1034,22 @@
         StateHasChanged();
     });
     private void OnNotificationsChanged() => _ = InvokeAsync(StateHasChanged);
-    private void OnHostStatusChanged() => _ = InvokeAsync(StateHasChanged);
+    private bool _hostWasOffline;
+
+    private void OnHostStatusChanged() => _ = InvokeAsync(async () =>
+    {
+        if (HostConnection.Status == HostConnectionStatus.Offline)
+        {
+            _hostWasOffline = true;
+        }
+        else if (_hostWasOffline && HostConnection.Status == HostConnectionStatus.Connected)
+        {
+            _hostWasOffline = false;
+            await OnApplicationDataChanged();
+            Notifications.ShowSuccess("Reconnected to the Host");
+        }
+        StateHasChanged();
+    });
 
     protected override async Task OnInitializedAsync()
     {
@@ -2533,6 +2548,13 @@
             }
             catch (OperationCanceledException)
             {
+                return;
+            }
+            catch (HttpRequestException)
+            {
+                _pendingChatId = null;
+                if (!ClientMode.PublicWeb || HostConnection.Status == HostConnectionStatus.Connected)
+                    Notifications.ShowError("The chat could not be loaded. Try again.");
                 return;
             }
 
@@ -4858,14 +4880,7 @@
             return;
         }
 
-        var before = HostConnection.Status;
         await HostConnection.ReportAsync(status == "connected");
-        var after = HostConnection.Status;
-        if (before == HostConnectionStatus.Connected && after == HostConnectionStatus.Offline)
-            Notifications.ShowError("Lost the connection to the Host on this computer. Reconnecting…");
-        else if (before == HostConnectionStatus.Offline && after == HostConnectionStatus.Connected)
-            Notifications.ShowSuccess("Reconnected to the Host");
-        StateHasChanged();
     }
 
     public async ValueTask DisposeAsync()

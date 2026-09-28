@@ -8,8 +8,9 @@
 @inject IJSRuntime Js
 @inject NavigationManager Navigation
 
-@if (!ClientMode.PublicWeb || _stage == Stage.Ready)
+@if (!ClientMode.PublicWeb || _stage == Stage.Ready || _workspaceOpened)
 {
+    <div class="@(_stage == Stage.Ready ? "host-workspace" : "host-workspace host-workspace-hidden")" aria-hidden="@(_stage != Stage.Ready)">
     <Router AppAssembly="@typeof(App).Assembly">
         <Found Context="routeData">
             <RouteView RouteData="@routeData" />
@@ -22,8 +23,9 @@
     </Router>
 
     <ToastRegion />
+    </div>
 }
-else if (_stage is Stage.Checking or Stage.Redirecting)
+@if (ClientMode.PublicWeb && (_stage is Stage.Checking or Stage.Redirecting))
 {
     @* The same splash as index.html, so a browser that is already connected, or is about to be,
        never sees a page asking it anything. *@
@@ -33,7 +35,7 @@ else if (_stage is Stage.Checking or Stage.Redirecting)
         <div class="app-loading-track" role="progressbar" aria-label="Connecting" aria-valuetext="Connecting to Host"><span></span></div>
     </main>
 }
-else
+else if (ClientMode.PublicWeb && _stage != Stage.Ready)
 {
     <PageTitle>AI Client</PageTitle>
     <main class="host-gate">
@@ -60,17 +62,18 @@ else
                 break;
 
             default:
-                <h1>@(_stage switch { Stage.Update => "Update AI Client Host", Stage.OtherApp => "The Host address is taken", _ => "Use AI Client in this browser" })</h1>
+                <h1>@(_stage switch { Stage.Update => "Update AI Client Host", Stage.OtherApp => "The Host address is taken", _ when _workspaceOpened => "AI Client Host is unavailable", _ => "Use AI Client in this browser" })</h1>
                 <p class="host-gate-lead">@(_stage switch
                 {
                     Stage.Update => "This Web app and the Host on this computer speak different versions. Install the latest Host; your projects and chats stay where they are.",
                     Stage.OtherApp => $"Another application answers at {HostAuthority}. Close it and AI Client Host can start.",
+                    _ when _workspaceOpened => "Start AI Client Host on this computer. Your workspace will return automatically when the connection is restored.",
                     _ => "A small background Host keeps your projects, chats and credentials on this computer. Install it once, and this page connects by itself."
                 })</p>
                 @if (_stage != Stage.OtherApp)
                 {
                     <div class="host-gate-actions">
-                        <a class="host-gate-primary" href="@AssetUrl("AI.Host", _runtime)"><AppIcon Name="download" />Download for @OsName(_runtime)</a>
+                        <a class="@(_workspaceOpened && _stage == Stage.Install ? "host-gate-download" : "host-gate-primary")" href="@AssetUrl("AI.Host", _runtime)"><AppIcon Name="download" />@(_workspaceOpened && _stage == Stage.Install ? "Install Host" : $"Download for {OsName(_runtime)}")</a>
                         <span class="host-gate-meta">@ArchitectureName(_runtime) · @Extension(_runtime)</span>
                     </div>
                 }
@@ -105,6 +108,9 @@ else
 
     private readonly CancellationTokenSource _disposed = new();
     private Stage _stage = Stage.Checking;
+    private bool _workspaceOpened;
+    private CancellationTokenSource? _offlineDelay;
+    private bool _waitingForHost;
     private string? _error;
     private string _runtime = "win-x64";
 
@@ -123,6 +129,8 @@ else
             _stage = Stage.Ready;
             return;
         }
+
+        HostConnection.Changed += OnHostConnectionChanged;
 
         _runtime = await Js.InvokeAsync<string>("aiHostBridge.platform");
         // A grant sent over plain HTTP could be read on the way; the Host refuses such an origin.
@@ -143,13 +151,48 @@ else
         _ = WaitForHostAsync(_disposed.Token);
     }
 
+    private void OnHostConnectionChanged() => _ = InvokeAsync(async () =>
+    {
+        if (!_workspaceOpened) return;
+        if (HostConnection.Status == HostConnectionStatus.Connected)
+        {
+            _offlineDelay?.Cancel();
+            _error = null;
+            _stage = Stage.Ready;
+            StateHasChanged();
+        }
+        else if (HostConnection.Status == HostConnectionStatus.Offline && _stage == Stage.Ready)
+        {
+            _offlineDelay?.Cancel();
+            var delay = CancellationTokenSource.CreateLinkedTokenSource(_disposed.Token);
+            _offlineDelay = delay;
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), delay.Token);
+                if (HostConnection.Status != HostConnectionStatus.Offline) return;
+                _stage = Stage.Install;
+                StateHasChanged();
+                _ = WaitForHostAsync(_disposed.Token);
+            }
+            catch (OperationCanceledException) when (delay.IsCancellationRequested) { }
+            finally
+            {
+                if (ReferenceEquals(_offlineDelay, delay)) _offlineDelay = null;
+                delay.Dispose();
+            }
+        }
+    });
+
     /// <summary>Checks now and then every <see cref="PollInterval"/> while the page waits for an install or update.</summary>
     private async Task WaitForHostAsync(CancellationToken cancellationToken)
     {
+        if (_waitingForHost) return;
+        _waitingForHost = true;
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
+                if (_workspaceOpened && HostConnection.Status == HostConnectionStatus.Connected) return;
                 var probe = await ProbeAsync(cancellationToken);
                 var next = probe switch
                 {
@@ -158,9 +201,11 @@ else
                     Probe.OtherApp => Stage.OtherApp,
                     _ => await IsLocalNetworkAccessDeniedAsync() ? Stage.Blocked : Stage.Install
                 };
+                if (_workspaceOpened && HostConnection.Status == HostConnectionStatus.Connected) return;
                 if (next != _stage)
                 {
                     _stage = next;
+                    if (next == Stage.Ready) _workspaceOpened = true;
                     StateHasChanged();
                 }
 
@@ -170,6 +215,10 @@ else
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+        }
+        finally
+        {
+            _waitingForHost = false;
         }
     }
 
@@ -294,6 +343,8 @@ else
 
     public void Dispose()
     {
+        HostConnection.Changed -= OnHostConnectionChanged;
+        _offlineDelay?.Cancel();
         _disposed.Cancel();
         _disposed.Dispose();
     }

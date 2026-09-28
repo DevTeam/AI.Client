@@ -3534,6 +3534,11 @@ button:active:not(:disabled) {
     padding-left: 1.4em;
 }
 
+.markdown-content ol {
+    /* Outside markers need more room once the list reaches two-digit numbers. */
+    padding-left: 2.5em;
+}
+
 .markdown-content li { margin: 0.15em 0; }
 
 .markdown-content blockquote {

@@ -1,13 +1,14 @@
 namespace AI.Web.Notifications;
 
 using System.Text.Json;
+using AI.Web.Settings;
 using Microsoft.JSInterop;
 
 /// <summary>
 /// App-wide notification store. The latest event is shown briefly; a bounded history is kept
 /// in browser storage so dismissing a popup never discards the event.
 /// </summary>
-public sealed class NotificationService(IJSRuntime jsRuntime) : INotificationService, IDisposable
+public sealed class NotificationService(IJSRuntime jsRuntime, IClientSettingsService settings) : INotificationService, IDisposable
 {
     // Same four seconds Home.razor's old in-place toast used. Tuned for a glance, not for reading —
     // Longer explanations remain available in the history drawer.
@@ -60,8 +61,24 @@ public sealed class NotificationService(IJSRuntime jsRuntime) : INotificationSer
 
     public void ShowInfo(string message) => Show(new NotificationMessage(message, NotificationKind.Info));
 
-    public void ShowChatEvent(string message, NotificationKind kind, Guid projectId, Guid chatId, Guid branchId, bool requiresAction = false, Guid? messageId = null) =>
+    public void ShowChatEvent(string message, NotificationKind kind, Guid projectId, Guid chatId, Guid branchId, bool requiresAction = false, Guid? messageId = null)
+    {
         Show(new NotificationMessage(message, kind, ProjectId: projectId, ChatId: chatId, BranchId: branchId, MessageId: messageId, RequiresAction: requiresAction));
+        _ = PlayChatEventSoundAsync();
+    }
+
+    private async Task PlayChatEventSoundAsync()
+    {
+        try
+        {
+            if (!(await settings.GetAsync()).NotificationSoundEnabled) return;
+            await jsRuntime.InvokeVoidAsync("aiClientPlayNotificationDing");
+        }
+        catch (JSException)
+        {
+            // Audio may be unavailable or blocked by the browser; the notification still appears.
+        }
+    }
 
     public void MarkSeen(Guid id)
     {

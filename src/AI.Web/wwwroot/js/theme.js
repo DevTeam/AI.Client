@@ -46,13 +46,20 @@
         document.documentElement.dataset.accent = accents.includes(value) ? value : "blue";
     }
 
+    function applyCornerRoundness(value) {
+        const percent = Number(value);
+        const clamped = Number.isFinite(percent) ? Math.max(0, Math.min(200, percent)) : 100;
+        document.documentElement.style.setProperty("--corner-scale", String(clamped / 100));
+    }
+
     let saved;
     try { saved = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { saved = null; }
     applyAccent(saved?.accent);
+    applyCornerRoundness(saved?.cornerRoundnessPercent);
     apply(saved?.theme);
     systemLight.addEventListener("change", () => { if (preference === "system") render(); });
     // The bridge may not be injected yet while <head> runs; catch up once the document is parsed.
     document.addEventListener("DOMContentLoaded", tellHost);
 
-    globalThis.aiClientTheme = { apply, applyAccent };
+    globalThis.aiClientTheme = { apply, applyAccent, applyCornerRoundness };
 })();

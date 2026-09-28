@@ -11,5 +11,7 @@ public sealed record ClientSettings
 
     public AccentColor Accent { get; init; } = AccentColor.Blue;
 
+    public int CornerRoundnessPercent { get; init; } = 100;
+
     public bool NotificationSoundEnabled { get; init; } = true;
 }

@@ -52,6 +52,15 @@
                             </div>
                         </fieldset>
                         <fieldset class="app-settings-group">
+                            <legend>Corner roundness</legend>
+                            <div class="corner-roundness-control">
+                                <input type="range" min="0" max="200" step="25" value="@_cornerRoundnessPercent"
+                                       aria-label="Corner roundness" aria-valuetext="@($"{_cornerRoundnessPercent}%")"
+                                       @oninput="SetCornerRoundnessAsync" />
+                                <output>@_cornerRoundnessPercent%</output>
+                            </div>
+                        </fieldset>
+                        <fieldset class="app-settings-group">
                             <legend>Notifications</legend>
                             <label class="checkbox"><input type="checkbox" checked="@_notificationSoundEnabled" @onchange="SetNotificationSoundAsync" /> Play a sound for new chat notifications</label>
                         </fieldset>
@@ -227,6 +236,7 @@
     private Guid? _selectedMcpServerId;
     private ThemePreference _theme;
     private AccentColor _accent;
+    private int _cornerRoundnessPercent = 100;
     private bool _notificationSoundEnabled = true;
     private ElementReference _drawer;
     private IJSObjectReference? _transferModule;
@@ -244,6 +254,7 @@
         HostConnection.Changed += OnHostConnectionChanged;
         _theme = await Theme.GetAsync();
         _accent = await Theme.GetAccentAsync();
+        _cornerRoundnessPercent = await Theme.GetCornerRoundnessAsync();
         _notificationSoundEnabled = (await ClientSettings.GetAsync()).NotificationSoundEnabled;
         await LoadGlobalSettingsAsync();
     }
@@ -309,6 +320,13 @@
     {
         _accent = accent;
         await Theme.SetAccentAsync(accent);
+    }
+
+    private async Task SetCornerRoundnessAsync(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var percent)) return;
+        _cornerRoundnessPercent = Math.Clamp(percent, 0, 200);
+        await Theme.SetCornerRoundnessAsync(_cornerRoundnessPercent);
     }
 
     private async Task SetNotificationSoundAsync(ChangeEventArgs args)

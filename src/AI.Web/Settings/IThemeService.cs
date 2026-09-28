@@ -11,4 +11,9 @@ public interface IThemeService
 
     /// <summary>Saves the accent and recolours the page with it right away.</summary>
     ValueTask SetAccentAsync(AccentColor accent);
+
+    ValueTask<int> GetCornerRoundnessAsync();
+
+    /// <summary>Saves the corner roundness and updates the page right away.</summary>
+    ValueTask SetCornerRoundnessAsync(int percent);
 }

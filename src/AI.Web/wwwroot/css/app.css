@@ -2832,10 +2832,17 @@ body {
     display: inline-flex;
 }
 
+/* The hint waits a moment before it appears, so a pointer that only passes by to click Send
+   does not flash it; it leaves at once. The ring takes its layer colours after the same pause. */
+.composer-send-wrapper {
+    --composer-send-hint-delay: 600ms;
+}
+
 .composer-send-wrapper:hover .composer-send-tooltip,
 .composer-send-wrapper:focus-within .composer-send-tooltip {
     opacity: 1;
     transform: translateY(0);
+    transition-delay: var(--composer-send-hint-delay);
 }
 
 /* Context ring. The halo around the send button is grey at rest, so the composer stays calm, and
@@ -2871,7 +2878,10 @@ body {
 .composer-send-wrapper.context-critical .composer-send-ring .context-ring-segment { stroke: var(--color-danger); }
 .composer-send-wrapper.context-critical .composer-send-ring { animation: context-ring-breathe 2.4s ease-in-out infinite; }
 .composer-send-wrapper:hover .composer-send-ring .context-ring-segment,
-.composer-send-wrapper:focus-within .composer-send-ring .context-ring-segment { stroke: var(--context-color); }
+.composer-send-wrapper:focus-within .composer-send-ring .context-ring-segment {
+    stroke: var(--context-color);
+    transition-delay: 0s, 0s, var(--composer-send-hint-delay), 0s;
+}
 .composer-send-wrapper:has(.composer-send:hover:not(:disabled)) .composer-send-ring { transform: translateY(-1px); }
 @keyframes context-ring-breathe { 50% { opacity: 0.55; } }
 

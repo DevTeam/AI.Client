@@ -38,6 +38,12 @@ public interface IChatMutations
     Task<ChatDetails?> PruneMessagesCoreAsync(
         Guid projectId, Guid chatId, IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Lifts the chat in the sidebar for something that happened without a message, such as a
+    /// failed run. The caller must already hold the chat's lease.
+    /// </summary>
+    Task<ChatDetails?> MarkActivityCoreAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
+
     /// <summary>Deletes a chat at the revision the caller read, taking the lease itself.</summary>
     Task<ChatDeleteResult> DeleteAsync(Guid projectId, Guid chatId, long revision, CancellationToken cancellationToken);
 

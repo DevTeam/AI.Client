@@ -39,6 +39,9 @@ public sealed class ChatThread
     public DateTimeOffset LastActivityAt { get; private set; }
     public bool IsPinned { get; private set; }
     public DateTimeOffset? PinnedAt { get; private set; }
+    /// <summary>The chat's place among the pinned chats of its project, as a key made by <c>IPinOrderKeys</c>;
+    /// null when unpinned, and for chats pinned before manual ordering existed.</summary>
+    public string? PinOrder { get; private set; }
     public IReadOnlyCollection<ChatMessage> Messages => _messages.Values;
     public ConnectionId? ConnectionId { get; private set; }
     public IReadOnlyCollection<ChatBranch> Branches => _branches.Values;
@@ -125,11 +128,14 @@ public sealed class ChatThread
         UpdatedAt = updatedAt;
     }
 
-    public void Pin(DateTimeOffset pinnedAt)
+    public void Pin(string order, DateTimeOffset pinnedAt)
     {
         EnsureTimestampDoesNotMoveBackwards(pinnedAt);
+        if (string.IsNullOrWhiteSpace(order)) throw new DomainException("A pin order cannot be empty.");
+        // Moving a chat that is already pinned keeps the moment it was first pinned.
+        if (!IsPinned) PinnedAt = pinnedAt;
         IsPinned = true;
-        PinnedAt = pinnedAt;
+        PinOrder = order;
         UpdatedAt = pinnedAt;
     }
 
@@ -138,15 +144,45 @@ public sealed class ChatThread
         EnsureTimestampDoesNotMoveBackwards(updatedAt);
         IsPinned = false;
         PinnedAt = null;
+        PinOrder = null;
         UpdatedAt = updatedAt;
     }
 
     /// <summary>Restores persisted pin state during deserialization, bypassing timestamp and revision bookkeeping.</summary>
-    public void RestorePinState(bool isPinned, DateTimeOffset? pinnedAt)
+    public void RestorePinState(bool isPinned, DateTimeOffset? pinnedAt, string? pinOrder = null)
     {
         IsPinned = isPinned;
         PinnedAt = isPinned ? pinnedAt : null;
+        PinOrder = isPinned ? pinOrder : null;
     }
+
+    /// <summary>
+    /// Restores the persisted activity time. Replaying messages re-derives it, but a failed run
+    /// marks activity without writing a message, and that moment exists only in the document.
+    /// </summary>
+    public void RestoreActivity(DateTimeOffset lastActivityAt)
+    {
+        if (lastActivityAt > LastActivityAt) LastActivityAt = lastActivityAt;
+    }
+
+    /// <summary>
+    /// Records that something the user should look at happened without a message being written —
+    /// a run that failed. It lifts the chat in the sidebar exactly like a reply would.
+    /// </summary>
+    public void MarkActivity(DateTimeOffset at)
+    {
+        EnsureTimestampDoesNotMoveBackwards(at);
+        UpdatedAt = at;
+        LastActivityAt = at;
+    }
+
+    /// <summary>
+    /// Tool calls and their results are the agent's working steps, not something that happened in
+    /// the conversation. Letting them count as activity made a long run keep jumping its chat to
+    /// the top of the sidebar on every step; the user's message and the final reply mark it instead.
+    /// </summary>
+    private static bool IsActivity(ChatMessage message) =>
+        message.Role != ChatMessageRole.Tool && message.ToolCalls is not { Count: > 0 };
 
     public void AddMessage(ChatMessage message, DateTimeOffset updatedAt, Guid? branchId = null, Guid? parentBranchId = null)
     {
@@ -185,7 +221,7 @@ public sealed class ChatThread
         }
         _branches[branch.Id] = branch with { HeadMessageId = message.Id, Revision = checked(branch.Revision + 1) };
         UpdatedAt = updatedAt;
-        LastActivityAt = updatedAt;
+        if (IsActivity(message)) LastActivityAt = updatedAt;
     }
 
     public bool RemoveReviewReference(ChatMessageId messageId, Guid reviewId, DateTimeOffset updatedAt)
@@ -243,7 +279,7 @@ public sealed class ChatThread
             HeadMessageId = replacement.Id, RootMessageId = rootMessageId, Revision = checked(branch.Revision + 1)
         };
         UpdatedAt = updatedAt;
-        LastActivityAt = updatedAt;
+        if (IsActivity(replacement)) LastActivityAt = updatedAt;
     }
 
     /// <summary>

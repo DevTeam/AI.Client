@@ -104,24 +104,30 @@
             </div>
             @if (project.Id == _selectedProject?.Id)
             {
-                <nav class="workspace-chat-list" aria-label="Chats in @project.Name" @onkeydown="OnChatListKeyDown">
+                <nav class="workspace-chat-list" aria-label="Chats in @project.Name" @onkeydown="OnChatListKeyDown" @onpointerenter="OnChatListPointerEnter" @onpointerleave="OnChatListPointerLeave">
                     @{
                         var orderedChats = GetOrderedChats();
                         var visibleChatCount = GetVisibleChatCount(orderedChats);
                         var hiddenChatCount = orderedChats.Count - visibleChatCount;
                         var hiddenChatAttention = hiddenChatCount > 0 ? CountHiddenChatsNeedingAttention(orderedChats, visibleChatCount) : 0;
+                        var pinnedChatCount = orderedChats.Count(item => item.IsPinned);
                     }
-                    @foreach (var chat in orderedChats.Take(visibleChatCount))
+                    @if (pinnedChatCount == 0 && _isChatDragActive)
                     {
+                        <div @key="PinDividerKey" class="chat-pin-divider empty" aria-hidden="true"><span>Drop here to pin</span></div>
+                    }
+                    @for (var chatIndex = 0; chatIndex < visibleChatCount; chatIndex++)
+                    {
+                        var chat = orderedChats[chatIndex];
                         var branchCount = GetBranchCount(chat);
-                        <div @key="chat.Id" class="chat-nav-row @(chat.Id == GetActiveChatId() && GetSelectedBranchId() is null ? "selected" : string.Empty) @(_draggedChatId == chat.Id ? "dragging" : string.Empty)" title="@GetRunTitle(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" draggable="true" @ondragstart="() => OnChatDragStart(chat.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnChatDrop(chat)" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
+                        <div @key="chat.Id" class="chat-nav-row @(chat.Id == GetActiveChatId() && GetSelectedBranchId() is null ? "selected" : string.Empty)" data-chat-id="@chat.Id" data-pinned="@(chat.IsPinned ? "true" : "false")" title="@GetRunTitle(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
                             @if (_editingChatId == chat.Id)
                             {
                                 <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveChatTitleAsync(chat))" @onblur="() => SaveChatTitleAsync(chat)" aria-label="Chat name" />
                             }
                             else
                             {
-                                <button class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }</button>
+                                <button class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P" : "Alt+P")" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }</button>
                             }
                             <button class="icon-action chat-row-action chat-pin-button" type="button" title="@(chat.IsPinned ? "Unpin chat" : "Pin chat")" aria-label="@(chat.IsPinned ? "Unpin chat" : "Pin chat")" @onclick="() => ToggleChatPinAsync(chat)"><AppIcon Name="@(chat.IsPinned ? "unpin" : "pin")" /></button>
                             <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat)"><AppIcon Name="edit" /></button>
@@ -237,6 +243,10 @@
                                     }
                                 </div>
                             }
+                        }
+                        @if (chatIndex == pinnedChatCount - 1)
+                        {
+                            <div @key="PinDividerKey" class="chat-pin-divider" aria-hidden="true"></div>
                         }
                     }
                     @if (hiddenChatCount > 0 || _visibleChatCount > ChatPageSize)
@@ -686,7 +696,16 @@
     private bool _isConfirmingChatDelete;
     private Guid? _deletingChatId;
     private Guid? _draggedProjectId;
-    private Guid? _draggedChatId;
+    private IJSObjectReference? _chatListDragModule;
+    private IJSObjectReference? _chatListDragHandle;
+    // A chat is being dragged, or a mouse is over the chat list: a background refresh of the order
+    // waits in _deferredChats until neither is true, so no row moves out from under the pointer.
+    private bool _isChatDragActive;
+    private bool _isChatListHovered;
+    private IReadOnlyList<ChatSummary>? _deferredChats;
+    private bool _playChatListMove;
+    private Guid? _focusChatAfterRender;
+    private static readonly object PinDividerKey = new();
     private string _sidebarAnnouncement = string.Empty;
     private string? _globalSection;
     private IJSObjectReference? _navigationModule;
@@ -1105,6 +1124,8 @@
                 _drawerDismissSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchDrawerDismiss", _dotNetReference);
                 _queueDragSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchQueueDrag", _dotNetReference);
                 _applicationFocused = await _runEventsModule.InvokeAsync<bool>("isFocused");
+                _chatListDragModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatListDrag.js");
+                _chatListDragHandle = await _chatListDragModule.InvokeAsync<IJSObjectReference>("attach", _workspace, _dotNetReference);
                 _navigationModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/workspaceNavigation.js");
                 _navigationHandle = await _navigationModule.InvokeAsync<IJSObjectReference>("attach", _dotNetReference);
                 _scrollbarGutterModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatScrollbarGutter.js");
@@ -1120,6 +1141,18 @@
             }
 
             StateHasChanged();
+        }
+
+        if (_chatListDragHandle is not null && (_playChatListMove || _focusChatAfterRender is not null))
+        {
+            var focus = _focusChatAfterRender;
+            _focusChatAfterRender = null;
+            if (_playChatListMove)
+            {
+                _playChatListMove = false;
+                await _chatListDragHandle.InvokeVoidAsync("playPositions");
+            }
+            if (focus is { } chatId) await _chatListDragHandle.InvokeVoidAsync("focusChat", chatId);
         }
 
         if (_pendingReviewSubmenu is { } submenu && _runEventsModule is not null)
@@ -1321,9 +1354,11 @@
 
         var updatedSnapshots = snapshots.Concat(update.StreamingAppends.Select(append =>
             RunState.Runs.GetValueOrDefault(new RunKey(append.ChatId, append.BranchId))).OfType<ChatRunSnapshot>());
+        var chatOrderChanged = false;
         foreach (var snapshot in updatedSnapshots)
         {
             var previous = GetRun(snapshot.ChatId, snapshot.BranchId);
+            chatOrderChanged |= MovesChatInList(previous, snapshot);
             await ShowRunNotificationAsync(previous, snapshot);
             StoreRun(snapshot);
             if (snapshot.ChatId == _selectedChat?.Id)
@@ -1369,7 +1404,99 @@
             }
             _wasGeneratingByBranch[snapshot.BranchId] = isGenerating;
         }
+        if (chatOrderChanged) await RefreshChatOrderAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Whether this run event is one of the moments that lift a chat in the sidebar: a message
+    /// started a run, or the run ended with a reply, a pause or a failure. Tool steps in between
+    /// do not count, which is also what the Host records as the chat's activity.
+    /// </summary>
+    private bool MovesChatInList(ChatRunSnapshot? previous, ChatRunSnapshot current)
+    {
+        if (_selectedProject?.Id != current.ProjectId) return false;
+        if (_chats.All(chat => chat.Id != current.ChatId)) return true;
+        if (previous is null || previous.Status == current.Status) return false;
+        return current.Status == ChatRunStatus.Generating || previous.Status == ChatRunStatus.Generating
+            || current.Status == ChatRunStatus.Failed;
+    }
+
+    /// <summary>
+    /// Re-reads the order of the chat list after activity elsewhere. While the user is pointing at
+    /// the list or dragging a chat the new order waits, and it is applied the moment they stop.
+    /// </summary>
+    private async Task RefreshChatOrderAsync()
+    {
+        if (_selectedProject is not { } project) return;
+        IReadOnlyList<ChatSummary> chats;
+        try { chats = await ChatHistoryApi.ListAsync(project.Id, CancellationToken.None); }
+        catch (HttpRequestException) { return; }
+        if (_selectedProject?.Id != project.Id) return;
+        if (_isChatDragActive || _isChatListHovered)
+        {
+            _deferredChats = chats;
+            return;
+        }
+
+        await ApplyChatOrderAsync(chats);
+    }
+
+    private async Task ApplyChatOrderAsync(IReadOnlyList<ChatSummary> chats)
+    {
+        _deferredChats = null;
+        if (_chatListDragHandle is not null && !_chats.Select(chat => chat.Id).SequenceEqual(chats.Select(chat => chat.Id)))
+        {
+            await _chatListDragHandle.InvokeVoidAsync("capturePositions");
+            _playChatListMove = true;
+        }
+
+        _chats.Clear();
+        _chats.AddRange(chats);
+    }
+
+    private async Task ApplyDeferredChatOrderAsync()
+    {
+        if (_deferredChats is not { } chats || _isChatDragActive || _isChatListHovered) return;
+        await ApplyChatOrderAsync(chats);
+        StateHasChanged();
+    }
+
+    // Touch has no hover: a finger lifting off the list must not count as the pointer leaving it
+    // with a reorder waiting, or the list would move under the tap it just made.
+    private void OnChatListPointerEnter(PointerEventArgs args)
+    {
+        if (args.PointerType == "mouse") _isChatListHovered = true;
+    }
+
+    private async Task OnChatListPointerLeave(PointerEventArgs args)
+    {
+        _isChatListHovered = false;
+        await ApplyDeferredChatOrderAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnChatDragStateChanged(bool isActive)
+    {
+        _isChatDragActive = isActive;
+        if (!isActive) await ApplyDeferredChatOrderAsync();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// A chat was dropped. Inside the pinned zone it takes the place in front of
+    /// <paramref name="beforeChatId"/> (last when null), pinning it if it was not; anywhere below
+    /// the zone it is unpinned and goes back to its place by activity.
+    /// </summary>
+    [JSInvokable]
+    public async Task OnChatDropped(string chatId, bool pinned, string? beforeChatId)
+    {
+        if (!Guid.TryParse(chatId, out var id) || _chats.Find(chat => chat.Id == id) is not { } chat) return;
+        Guid? before = Guid.TryParse(beforeChatId, out var beforeId) ? beforeId : null;
+        if (await PinChatAsync(chat, pinned, before))
+            _sidebarAnnouncement = pinned == chat.IsPinned ? $"Moved chat {chat.Title}."
+                : pinned ? $"Pinned chat {chat.Title}." : $"Unpinned chat {chat.Title}.";
+        StateHasChanged();
     }
 
     private async Task ShowRunNotificationAsync(ChatRunSnapshot? previous, ChatRunSnapshot current)
@@ -2781,6 +2908,7 @@
             _visibleChatCount = ChatPageSize;
         }
 
+        _deferredChats = null;
         _chats.Clear();
         _chats.AddRange(chats);
 
@@ -3289,9 +3417,11 @@
         await SaveOrderAsync(ProjectOrderKey, _projects.Select(p => p.Id));
     }
 
-    private void OnChatDragStart(Guid chatId) => _draggedChatId = chatId;
-
-    private List<ChatSummary> GetOrderedChats() => _chats.OrderByDescending(chat => chat.IsPinned).ToList();
+    // The Host already sends pinned chats first in their manual order and the rest by activity.
+    // A chat without messages stays out of the list until its first message, except the open one:
+    // its first message may still be on the way to the Host when the list is re-read.
+    private List<ChatSummary> GetOrderedChats() =>
+        _chats.Where(chat => !chat.IsEmpty || chat.Id == GetActiveChatId()).OrderByDescending(chat => chat.IsPinned).ToList();
 
     // The sidebar shows one page of chats at a time: a long-lived project accumulates dozens of
     // them and the directory/settings groups below the list get pushed off-screen otherwise.
@@ -3353,34 +3483,59 @@
         {
             await ToggleChatPinAsync(chat);
         }
+        else if (args.Key is "ArrowUp" or "ArrowDown" && chat.IsPinned)
+        {
+            await MovePinnedChatAsync(chat, args.Key == "ArrowUp" ? -1 : 1);
+        }
+    }
+
+    /// <summary>Moves a pinned chat one place up or down among the pinned chats; it never leaves the zone.</summary>
+    private async Task MovePinnedChatAsync(ChatSummary chat, int direction)
+    {
+        var pinned = GetOrderedChats().Where(item => item.IsPinned).ToList();
+        var index = pinned.FindIndex(item => item.Id == chat.Id);
+        var target = index + direction;
+        if (index < 0 || target < 0 || target >= pinned.Count) return;
+        // Up: in front of the previous chat. Down: in front of the chat after the next one, or last.
+        Guid? before = direction < 0 ? pinned[target].Id : target + 1 < pinned.Count ? pinned[target + 1].Id : null;
+        if (await PinChatAsync(chat, true, before))
+        {
+            _focusChatAfterRender = chat.Id;
+            _sidebarAnnouncement = $"Moved chat {chat.Title} {GetMoveDirection(direction)}, {target + 1} of {pinned.Count} pinned.";
+        }
     }
 
     private async Task ToggleChatPinAsync(ChatSummary chat)
     {
-        if (_selectedProject is null)
-        {
-            return;
-        }
-
         _chatMenuId = null;
         // The pin button performs an instant toggle with no follow-up UI (unlike rename or the
         // chat menu), so it must give up keyboard focus itself — otherwise :focus-within would
         // keep the whole row's actions visible after the click, even once the pointer moves away.
         await WorkspaceLayoutService.BlurActiveElementAsync();
-        var updated = await ChatHistoryApi.PinAsync(_selectedProject.Id, chat.Id, new PinChatRequest(!chat.IsPinned, chat.Revision), CancellationToken.None);
+        // Pinning from the button, the menu or Alt+P puts the chat last among the pinned ones:
+        // the order the user already gave them stays as it was.
+        if (await PinChatAsync(chat, !chat.IsPinned, null))
+            _sidebarAnnouncement = chat.IsPinned ? $"Unpinned chat {chat.Title}." : $"Pinned chat {chat.Title}.";
+    }
+
+    /// <summary>Pins, moves or unpins a chat and re-reads the list, animating the rows that moved.</summary>
+    private async Task<bool> PinChatAsync(ChatSummary chat, bool isPinned, Guid? beforeChatId)
+    {
+        if (_selectedProject is not { } project) return false;
+        var updated = await ChatHistoryApi.PinAsync(project.Id, chat.Id, new PinChatRequest(isPinned, chat.Revision, beforeChatId), CancellationToken.None);
         if (updated is null)
         {
             Notifications.ShowError("Chat pin state was not saved. Reload and try again.");
-            return;
+            return false;
         }
 
-        var index = _chats.FindIndex(item => item.Id == chat.Id);
-        if (index >= 0)
-        {
-            _chats[index] = updated;
-        }
-
-        _sidebarAnnouncement = updated.IsPinned ? $"Pinned chat {updated.Title}." : $"Unpinned chat {updated.Title}.";
+        // Placing a chat can give keys to chats pinned before manual ordering existed, which moves
+        // their revisions too, so the whole list is re-read rather than patching this one row.
+        IReadOnlyList<ChatSummary> chats;
+        try { chats = await ChatHistoryApi.ListAsync(project.Id, CancellationToken.None); }
+        catch (HttpRequestException) { return true; }
+        if (_selectedProject?.Id == project.Id) await ApplyChatOrderAsync(chats);
+        return true;
     }
 
     private async Task<bool> MoveItemAsync<T>(List<T> items, Guid id, int direction, string orderKey, Func<T, Guid> idSelector)
@@ -3400,34 +3555,6 @@
     }
 
     private static string GetMoveDirection(int direction) => direction < 0 ? "up" : "down";
-
-    /// <summary>Dropping a chat onto another only ever pins/unpins it to match the target's zone — the
-    /// list itself always follows the server's pinned-then-recent order, so there is nothing else to persist.</summary>
-    private async Task OnChatDrop(ChatSummary targetChat)
-    {
-        var draggedId = _draggedChatId;
-        _draggedChatId = null;
-        if (draggedId is not { } id || id == targetChat.Id || _selectedProject is null)
-        {
-            return;
-        }
-
-        var dragged = _chats.Find(c => c.Id == id);
-        if (dragged is null || dragged.IsPinned == targetChat.IsPinned)
-        {
-            return;
-        }
-
-        var updated = await ChatHistoryApi.PinAsync(_selectedProject.Id, dragged.Id, new PinChatRequest(targetChat.IsPinned, dragged.Revision), CancellationToken.None);
-        if (updated is null)
-        {
-            Notifications.ShowError("Chat pin state was not saved. Reload and try again.");
-            return;
-        }
-
-        var index = _chats.FindIndex(item => item.Id == id);
-        _chats[index] = updated;
-    }
 
     private const string ProjectOrderKey = "ai-client.project-order.v1";
 
@@ -4723,6 +4850,9 @@
         }
 
         await DisposeComposerHandleAsync();
+
+        if (_chatListDragHandle is not null) { await _chatListDragHandle.InvokeVoidAsync("dispose"); await _chatListDragHandle.DisposeAsync(); }
+        if (_chatListDragModule is not null) await _chatListDragModule.DisposeAsync();
 
         if (_resourceDropSubscription is not null) { await _resourceDropSubscription.InvokeVoidAsync("dispose"); await _resourceDropSubscription.DisposeAsync(); }
         if (_composerModule is not null)

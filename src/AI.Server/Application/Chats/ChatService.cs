@@ -10,23 +10,40 @@ using AI.Domain.Chats;
 using AI.Domain.Projects;
 using AI.Application.Resources;
 
-public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, IChatSynchronization synchronization) : IChatService, IChatMutations
+public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, IChatSynchronization synchronization, IPinOrderKeys pinOrderKeys) : IChatService, IChatMutations
 {
-    public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken) =>
-        (await repository.ListSummariesAsync(new ProjectId(projectId), cancellationToken))
-        .OrderByDescending(item => item.IsPinned)
-        .ThenByDescending(item => item.LastActivityAt)
-        .Select(item => new ChatSummary(
-            item.Id.Value,
-            item.ProjectId.Value,
-            item.Title,
-            item.UpdatedAt,
-            item.Revision,
-            item.LastActivityAt,
-            item.IsPinned,
-            item.PinnedAt,
-            item.BranchCount))
-        .ToArray();
+    public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken)
+    {
+        var summaries = await repository.ListSummariesAsync(new ProjectId(projectId), cancellationToken);
+        return OrderPinned(summaries.Where(item => item.IsPinned))
+            .Concat(summaries.Where(item => !item.IsPinned).OrderByDescending(item => item.LastActivityAt))
+            .Select(ToSummary)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Pinned chats keep the order the user gave them; activity never reorders them. Chats pinned
+    /// before manual ordering existed have no key yet and come first, in the order they were
+    /// pinned, which is also where a newly pinned chat would have gone.
+    /// </summary>
+    private static IEnumerable<StoredChatSummary> OrderPinned(IEnumerable<StoredChatSummary> pinned) =>
+        pinned
+            .OrderBy(item => item.PinOrder is not null)
+            .ThenBy(item => item.PinOrder, StringComparer.Ordinal)
+            .ThenBy(item => item.PinnedAt)
+            .ThenBy(item => item.Id.Value);
+
+    private static ChatSummary ToSummary(StoredChatSummary item) => new(
+        item.Id.Value,
+        item.ProjectId.Value,
+        item.Title,
+        item.UpdatedAt,
+        item.Revision,
+        item.LastActivityAt,
+        item.IsPinned,
+        item.PinnedAt,
+        item.BranchCount,
+        item.IsEmpty);
 
     public async Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
     {
@@ -265,13 +282,18 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         PinChatRequest request,
         CancellationToken cancellationToken)
     {
-        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         ArgumentNullException.ThrowIfNull(request);
+        // The key is computed before this chat's lease is taken: placing it in front of a chat
+        // pinned before manual ordering existed first gives those chats keys, one lease at a time.
+        var order = request.IsPinned
+            ? await PlacePinnedAsync(new ProjectId(projectId), new ChatId(chatId), request.BeforeChatId, cancellationToken)
+            : null;
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
         if (stored is null) return null;
 
         var now = clock.UtcNow;
-        if (request.IsPinned) stored.Chat.Pin(now);
+        if (order is not null) stored.Chat.Pin(order, now);
         else stored.Chat.Unpin(now);
 
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
@@ -285,7 +307,62 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             stored.Chat.LastActivityAt,
             stored.Chat.IsPinned,
             stored.Chat.PinnedAt,
-            stored.Chat.BranchCount);
+            stored.Chat.BranchCount,
+            stored.Chat.Messages.Count == 0);
+    }
+
+    /// <summary>Returns the key that puts <paramref name="chatId"/> in front of <paramref name="beforeChatId"/>
+    /// among the project's pinned chats, or last when that chat is not pinned or not given.</summary>
+    private async Task<string> PlacePinnedAsync(
+        ProjectId projectId, ChatId chatId, Guid? beforeChatId, CancellationToken cancellationToken)
+    {
+        var pinned = await ListPinnedExceptAsync(projectId, chatId, cancellationToken);
+        var index = beforeChatId is { } before ? pinned.FindIndex(item => item.Id.Value == before) : -1;
+        if (index >= 0 && pinned[index].PinOrder is null)
+        {
+            await AssignPinOrderAsync(projectId, pinned, cancellationToken);
+            pinned = await ListPinnedExceptAsync(projectId, chatId, cancellationToken);
+            index = pinned.FindIndex(item => item.Id.Value == beforeChatId);
+        }
+
+        return index < 0
+            ? pinOrderKeys.Between(pinned.LastOrDefault()?.PinOrder, null)
+            : pinOrderKeys.Between(index > 0 ? pinned[index - 1].PinOrder : null, pinned[index].PinOrder);
+    }
+
+    private async Task<List<StoredChatSummary>> ListPinnedExceptAsync(
+        ProjectId projectId, ChatId chatId, CancellationToken cancellationToken) =>
+        OrderPinned((await repository.ListSummariesAsync(projectId, cancellationToken))
+            .Where(item => item.IsPinned && item.Id != chatId)).ToList();
+
+    /// <summary>
+    /// Gives keys to the pinned chats that predate manual ordering, keeping the order they are
+    /// shown in: they all sit in front of the keyed ones, so each takes a key below the first key.
+    /// </summary>
+    private async Task AssignPinOrderAsync(
+        ProjectId projectId, IReadOnlyList<StoredChatSummary> pinned, CancellationToken cancellationToken)
+    {
+        var upper = pinned.FirstOrDefault(item => item.PinOrder is not null)?.PinOrder;
+        string? previous = null;
+        foreach (var item in pinned.Where(item => item.PinOrder is null))
+        {
+            var order = pinOrderKeys.Between(previous, upper);
+            using var lease = await synchronization.EnterAsync(item.Id.Value, cancellationToken);
+            var stored = await repository.GetAsync(projectId, item.Id, cancellationToken);
+            // Unpinned or already keyed by a concurrent move in the meantime: leave it be.
+            if (stored is null || !stored.Chat.IsPinned || stored.Chat.PinOrder is not null) continue;
+            stored.Chat.Pin(order, clock.UtcNow);
+            if ((await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken)).IsSaved) previous = order;
+        }
+    }
+
+    public async Task<ChatDetails?> MarkActivityCoreAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        stored.Chat.MarkActivity(clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
 
     public async Task<ChatDetails?> RenameAsync(

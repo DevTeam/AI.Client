@@ -168,5 +168,72 @@ public class ChatServiceTests
         activity.Messages.Single(message => message.Id == otherResultId.Value).ContentOmitted.ShouldBeTrue();
     }
 
-    private ChatService CreateInstance() => new(_repository.Object, _idGenerator.Object, _clock.Object, new ChatSynchronization());
+    [Fact]
+    public async Task ShouldListPinnedChatsInManualOrderAndTheRestByActivity()
+    {
+        StoredChatSummary Summary(string title, int activityMinute, bool pinned = false, string? order = null, int pinnedMinute = 0) =>
+            new(new ChatId(Guid.CreateVersion7()), _projectId, title, _now, 1, _now.AddMinutes(activityMinute),
+                pinned, pinned ? _now.AddMinutes(pinnedMinute) : null, PinOrder: order);
+        _repository.Setup(i => i.ListSummariesAsync(_projectId, CancellationToken.None)).ReturnsAsync([
+            Summary("old", 1),
+            Summary("pinned-k", 9, pinned: true, order: "k"),
+            Summary("recent", 5),
+            Summary("legacy-late", 8, pinned: true, pinnedMinute: 2),
+            Summary("pinned-V", 3, pinned: true, order: "V"),
+            Summary("legacy-early", 1, pinned: true, pinnedMinute: 1)
+        ]);
+
+        var chats = await CreateInstance().ListAsync(_projectId.Value, CancellationToken.None);
+
+        chats.Select(chat => chat.Title).ShouldBe(["legacy-early", "legacy-late", "pinned-V", "pinned-k", "recent", "old"]);
+    }
+
+    [Fact]
+    public async Task ShouldPlacePinnedChatBeforeTheRequestedChat()
+    {
+        var first = new ChatId(Guid.CreateVersion7());
+        var second = new ChatId(Guid.CreateVersion7());
+        var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
+        _repository.Setup(i => i.ListSummariesAsync(_projectId, CancellationToken.None)).ReturnsAsync([
+            new StoredChatSummary(first, _projectId, "First", _now, 1, _now, true, _now, PinOrder: "V"),
+            new StoredChatSummary(second, _projectId, "Second", _now, 1, _now, true, _now, PinOrder: "k"),
+            new StoredChatSummary(_chatId, _projectId, "Chat", _now, 2, _now, false, null)
+        ]);
+        _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None)).ReturnsAsync(new StoredChat(chat, 2));
+        _clock.SetupGet(i => i.UtcNow).Returns(_now.AddMinutes(1));
+        _repository.Setup(i => i.SaveAsync(chat, 2, CancellationToken.None)).ReturnsAsync(ChatSaveResult.Saved(3));
+
+        var result = await CreateInstance().PinAsync(_projectId.Value, _chatId.Value,
+            new PinChatRequest(true, 2, second.Value), CancellationToken.None);
+
+        result.ShouldNotBeNull().IsPinned.ShouldBeTrue();
+        string.CompareOrdinal("V", chat.PinOrder).ShouldBeLessThan(0);
+        string.CompareOrdinal(chat.PinOrder, "k").ShouldBeLessThan(0);
+    }
+
+    [Fact]
+    public async Task ShouldKeyLegacyPinnedChatsBeforePlacingInFrontOfOne()
+    {
+        var legacyId = new ChatId(Guid.CreateVersion7());
+        var legacy = new ChatThread(legacyId, _projectId, "Legacy", _now);
+        legacy.RestorePinState(true, _now);
+        var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
+        var legacySummary = new StoredChatSummary(legacyId, _projectId, "Legacy", _now, 4, _now, true, _now);
+        _repository.SetupSequence(i => i.ListSummariesAsync(_projectId, CancellationToken.None))
+            .ReturnsAsync([legacySummary])
+            .ReturnsAsync([legacySummary with { PinOrder = "V", Revision = 5 }]);
+        _repository.Setup(i => i.GetAsync(_projectId, legacyId, CancellationToken.None)).ReturnsAsync(new StoredChat(legacy, 4));
+        _repository.Setup(i => i.SaveAsync(legacy, 4, CancellationToken.None)).ReturnsAsync(ChatSaveResult.Saved(5));
+        _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None)).ReturnsAsync(new StoredChat(chat, 1));
+        _repository.Setup(i => i.SaveAsync(chat, 1, CancellationToken.None)).ReturnsAsync(ChatSaveResult.Saved(2));
+        _clock.SetupGet(i => i.UtcNow).Returns(_now.AddMinutes(1));
+
+        await CreateInstance().PinAsync(_projectId.Value, _chatId.Value,
+            new PinChatRequest(true, 1, legacyId.Value), CancellationToken.None);
+
+        legacy.PinOrder.ShouldBe("V");
+        string.CompareOrdinal(chat.PinOrder, "V").ShouldBeLessThan(0);
+    }
+
+    private ChatService CreateInstance() => new(_repository.Object, _idGenerator.Object, _clock.Object, new ChatSynchronization(), new PinOrderKeys());
 }

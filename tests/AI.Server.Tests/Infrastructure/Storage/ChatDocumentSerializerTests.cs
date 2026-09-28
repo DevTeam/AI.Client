@@ -29,6 +29,30 @@ public class ChatDocumentSerializerTests
     }
 
     [Fact]
+    public void ShouldRoundTripPinOrderActivityAndEmptiness()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", now);
+
+        _serializer.DeserializeSummary(_serializer.SerializeSummary(chat, 1)).IsEmpty.ShouldBeTrue();
+
+        chat.AddMessage(new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null,
+            ChatMessageRole.User, "Question", now.AddMinutes(1)), now.AddMinutes(1));
+        chat.Pin("V", now.AddMinutes(2));
+        // A failed run leaves no message behind, so only the document remembers this moment.
+        chat.MarkActivity(now.AddMinutes(3));
+
+        var restored = _serializer.Deserialize(_serializer.Serialize(chat, 2)).Chat;
+        var summary = _serializer.DeserializeSummary(_serializer.SerializeSummary(chat, 2));
+
+        restored.PinOrder.ShouldBe("V");
+        restored.LastActivityAt.ShouldBe(now.AddMinutes(3));
+        summary.PinOrder.ShouldBe("V");
+        summary.IsEmpty.ShouldBeFalse();
+        summary.LastActivityAt.ShouldBe(now.AddMinutes(3));
+    }
+
+    [Fact]
     public void RemovingAReviewLinkShouldKeepTheMessageAndOtherReferencesAfterReload()
     {
         var now = DateTimeOffset.UnixEpoch;

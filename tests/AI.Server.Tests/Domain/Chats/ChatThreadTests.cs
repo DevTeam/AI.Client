@@ -197,6 +197,47 @@ public class ChatThreadTests
         Should.NotThrow(action);
     }
 
+    [Fact]
+    public void ShouldNotCountToolTrafficAsActivity()
+    {
+        var chat = CreateChat();
+        var question = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User, "Question", _now.AddMinutes(1));
+        var call = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), question.Id, ChatMessageRole.Assistant, string.Empty,
+            _now.AddMinutes(2), toolCalls: [new ChatToolCall("call", "read", "{}")]);
+        var result = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), call.Id, ChatMessageRole.Tool, "Done",
+            _now.AddMinutes(3), toolCallId: "call");
+        var answer = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), result.Id, ChatMessageRole.Assistant, "Answer", _now.AddMinutes(4));
+
+        chat.AddMessage(question, _now.AddMinutes(1));
+        chat.AddMessage(call, _now.AddMinutes(2));
+        chat.AddMessage(result, _now.AddMinutes(3));
+
+        chat.LastActivityAt.ShouldBe(_now.AddMinutes(1));
+        chat.UpdatedAt.ShouldBe(_now.AddMinutes(3));
+
+        chat.AddMessage(answer, _now.AddMinutes(4));
+
+        chat.LastActivityAt.ShouldBe(_now.AddMinutes(4));
+    }
+
+    [Fact]
+    public void ShouldKeepFirstPinTimeWhenMovingAPinnedChat()
+    {
+        var chat = CreateChat();
+
+        chat.Pin("V", _now.AddMinutes(1));
+        chat.Pin("k", _now.AddMinutes(2));
+
+        chat.PinOrder.ShouldBe("k");
+        chat.PinnedAt.ShouldBe(_now.AddMinutes(1));
+        chat.LastActivityAt.ShouldBe(_now);
+
+        chat.Unpin(_now.AddMinutes(3));
+
+        chat.PinOrder.ShouldBeNull();
+        chat.PinnedAt.ShouldBeNull();
+    }
+
     private ChatThread CreateChat() => new(
         new ChatId(Guid.CreateVersion7()),
         new ProjectId(Guid.CreateVersion7()),

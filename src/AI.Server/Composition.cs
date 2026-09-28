@@ -110,7 +110,7 @@ internal sealed class Composition
             })
             .Bind<IFileMasterKeyStore>().As(Lifetime.Singleton).To<FileMasterKeyStore>()
             .Singleton<PhysicalTextFileSystem, PhysicalDirectoryBrowser, JsonProjectRepository, ProjectDocumentSerializer,
-                Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
+                Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization, PinOrderKeys,
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
                 JsonGlobalSettingsRepository, ProtectedGlobalSecretStore, ResourceService, ResourceModelProjection, JsonResourceRepository, ProjectPathAccess, WorkspacePathResolver,
                 ReviewService, JsonReviewRepository,

@@ -1981,8 +1981,11 @@ body {
 
 .workspace-message {
     /* Long pre/table inside .markdown-content already get overflow-x:auto via .markdown-content
-       > pre / > table. This is the safety net for any other content we forget to wrap. */
-    overflow-x: hidden;
+       > pre / > table. This is the safety net for any other content we forget to wrap.
+       `clip`, not `hidden`: hidden turns the other axis into `auto` as well, so anything drawn a
+       pixel past the article's bottom — the hover toolbar, centred on the last line — gave every
+       message its own vertical scrollbar. Clip trims the width and leaves the height alone. */
+    overflow-x: clip;
 }
 
 .workspace-message {
@@ -2245,14 +2248,22 @@ body {
     content-visibility: visible;
 }
 
+/* An answer's chip stays in its corner, but centring it on the last line lets its hover fill
+   reach a couple of pixels below the article, which paint containment would cut off. The width
+   clip stays, so wide content still cannot spill sideways. */
+.workspace-message.assistant:hover,
+.workspace-message.assistant:has(:focus-visible) {
+    content-visibility: visible;
+}
+
 /* Keep the branch control as its own row. The actions are anchored to the article, so without
    this offset they cover the branch trigger as soon as the message is hovered. */
 .workspace-message:has(.message-branch-indicator) .message-actions {
     bottom: 1.9rem;
 }
 
-/* An open picker is deliberately drawn outside the message. `overflow-x: hidden` makes the
-   other axis scrollable, while content visibility adds paint containment; together they turn
+/* An open picker is deliberately drawn outside the message. The horizontal clip cuts it at the
+   sides, while content visibility adds paint containment; together they turned
    the menu into the tiny nested scroller shown inside a user bubble. Relax both only while the
    dropdown exists, keeping long-content containment and virtualization for the normal feed. */
 .workspace-message:has(.branch-picker-menu) {

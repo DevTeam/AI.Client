@@ -1952,7 +1952,7 @@ body {
 .workspace-message.user .markdown-content .file-link {
     background: color-mix(in srgb, var(--color-accent) 35%, transparent);
 }
-.workspace-message.user *::highlight(message-review) {
+.workspace-message.user .review-comment-mark {
     background-color: color-mix(in srgb, var(--color-accent) 38%, transparent);
 }
 .workspace-message.user .message-resource-chip {
@@ -2593,9 +2593,17 @@ body {
 .message-resource-remove { display: inline-flex; flex: 0 0 auto; margin-left: .2rem; padding: 0; border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; }
 .message-resource-remove:hover { color: var(--color-text-strong); }
 .message-resource-remove .app-icon { width: .75rem; height: .75rem; }
-/* Comments and local-path links share one mark — see .file-link. A highlight can only set
-   colours and the underline, so the shared mark is exactly that, and the icon tells them apart. */
-::highlight(message-review) { background-color: color-mix(in srgb, var(--color-accent) 22%, transparent); text-decoration: underline solid color-mix(in srgb, var(--color-accent) 80%, transparent); }
+/* Comments and local-path links share one mark — see .file-link: the same tint, underline and
+   rounded corners, and the icon tells them apart. Clone keeps the corners on every line a mark
+   wraps onto; a comment inside another is not tinted twice. */
+.review-comment-mark {
+    background-color: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    text-decoration: underline solid color-mix(in srgb, var(--color-accent) 80%, transparent);
+    border-radius: .25rem;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+}
+.review-comment-mark .review-comment-mark { background-color: transparent; }
 /* The comment icon of the edit statistics (.workspace-change-comments): the same AppIcon markup,
    colour and size, so a comment looks the same wherever it is counted or marked. */
 .review-comment-marker {
@@ -5104,6 +5112,9 @@ textarea {
 .markdown-content .file-link {
     background: color-mix(in srgb, var(--color-accent) 22%, transparent);
     text-decoration: underline solid color-mix(in srgb, var(--color-accent) 80%, transparent);
+    border-radius: .25rem;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
     cursor: context-menu;
 }
 .markdown-content .file-link[data-file-access="none"] {

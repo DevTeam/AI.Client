@@ -4,6 +4,7 @@
 @inject IClientMode ClientMode
 @inject HttpClient Http
 @inject IApiBaseUrl ApiBaseUrl
+@inject IHostConnection HostConnection
 @inject IJSRuntime Js
 @inject NavigationManager Navigation
 
@@ -213,6 +214,9 @@ else
                 if (session.IsSuccessStatusCode)
                 {
                     await Js.InvokeVoidAsync("aiHostBridge.connected");
+                    // Just proven reachable: the workspace shows it connected from its first frame
+                    // instead of waiting for the event stream to say so.
+                    _ = HostConnection.ReportAsync(true);
                     return Stage.Ready;
                 }
 

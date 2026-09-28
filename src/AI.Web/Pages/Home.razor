@@ -337,8 +337,13 @@
                 {
                     @* The only place the published app shows its link to the Host; details and
                        Disconnect are in Settings. *@
-                    var connected = HostConnection.Status == HostConnectionStatus.Connected;
-                    <span class="host-status-dot @(connected ? "is-connected" : "is-offline")" role="img" aria-label="@(connected ? "Host connected" : "Reconnecting to Host")" title="@(connected ? "Host connected" : "Reconnecting to Host…")"></span>
+                    var (hostState, hostLabel) = HostConnection.Status switch
+                    {
+                        HostConnectionStatus.Connected => ("is-connected", "Host connected"),
+                        HostConnectionStatus.Offline => ("is-offline", "Reconnecting to Host…"),
+                        _ => ("is-connecting", "Connecting to Host…")
+                    };
+                    <span class="host-status-dot @hostState" role="img" aria-label="@hostLabel" title="@hostLabel"></span>
                 }</button>
         </nav>
     </aside>
@@ -1029,10 +1034,12 @@
         StateHasChanged();
     });
     private void OnNotificationsChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnHostStatusChanged() => _ = InvokeAsync(StateHasChanged);
 
     protected override async Task OnInitializedAsync()
     {
         Notifications.Changed += OnNotificationsChanged;
+        HostConnection.Changed += OnHostStatusChanged;
         Notifications.OpenRequested += OnNotificationOpenRequested;
         Notifications.CenterRequested += OnNotificationCenterRequested;
         await Notifications.InitializeAsync();
@@ -4864,6 +4871,7 @@
     public async ValueTask DisposeAsync()
     {
         Notifications.Changed -= OnNotificationsChanged;
+        HostConnection.Changed -= OnHostStatusChanged;
         Notifications.OpenRequested -= OnNotificationOpenRequested;
         Notifications.CenterRequested -= OnNotificationCenterRequested;
         CancelChatSelection();

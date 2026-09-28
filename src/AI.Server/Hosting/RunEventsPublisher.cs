@@ -16,6 +16,10 @@ public sealed class RunEventsPublisher(
     {
         response.ContentType = "text/event-stream";
         response.Headers.CacheControl = "no-cache";
+        // Send the headers now rather than with the first event, which may be minutes away: the
+        // client learns from them that the Host is reachable, and fetch resolves only on headers.
+        await response.StartAsync(cancellationToken);
+        await response.Body.FlushAsync(cancellationToken);
         // One response, two sources. Frames are funnelled through a channel so that only this loop
         // ever writes to the body: two producers writing to one HTTP response would interleave.
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

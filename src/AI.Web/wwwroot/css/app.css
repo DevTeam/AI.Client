@@ -1494,6 +1494,8 @@ body {
 }
 
 .workspace-messages {
+    /* Message chrome that has to fit beside a bubble asks this width, not the window's. */
+    container: feed / inline-size;
     height: 100%;
     box-sizing: border-box;
     overflow-y: auto;
@@ -1936,10 +1938,13 @@ body {
 }
 
 .workspace-message.user {
+    /* Named so the toolbar can centre on the last line; .branch-leaf trims it below. */
+    --bubble-padding-end: 0.45rem;
     width: fit-content;
     max-width: 75%;
     margin-right: 0;
     padding: 0.45rem 0.8rem;
+    padding-bottom: var(--bubble-padding-end);
     border: 1px solid var(--color-user-bubble-border);
     border-radius: 1rem;
     background: var(--color-user-bubble);
@@ -1987,6 +1992,11 @@ body {
    so static visits to a chat don't trigger an animation. */
 .workspace-message.branch-leaf {
     padding-bottom: 0.3rem;
+}
+
+.workspace-message.user.branch-leaf {
+    --bubble-padding-end: 0.3rem;
+    padding-bottom: var(--bubble-padding-end);
 }
 
 /* Drawn left-to-right, held, then faded out in place, on the instant the leaf becomes
@@ -2124,19 +2134,46 @@ body {
     transition: opacity 140ms ease;
 }
 
-/* The question bubble is its own surface, so the fade has to land on that colour instead. */
+/* A question is right-aligned and at most 75% wide, so the feed is always empty to its left: the
+   toolbar sits there, beside the bubble's last line, and covers none of its text. Inside the
+   bubble it hid a short question whole — and with it the text a comment is made by selecting.
+   The right padding, not a margin, keeps the pointer over the article on its way to the buttons. */
 .workspace-message.user .message-actions {
-    right: 0.1rem;
-    bottom: 0.1rem;
-    background: linear-gradient(to right, transparent, var(--color-user-bubble) 1.8rem);
+    right: 100%;
+    /* Centred on the bubble's last line, not sat on its bottom edge: the chip's font matches the
+       text's, so 1lh is that line, and the bubble's bottom padding is what lies beneath it. */
+    bottom: calc(var(--bubble-padding-end) + (1lh - 1.7rem) / 2);
+    padding: 0 0.3rem 0 0;
+    background: none;
+    font-size: var(--message-font-size);
+    line-height: 1.5;
 }
 
-/* A short user bubble can be narrower than its four-button toolbar. Keep the bubble sized to its
-   text and let the visible toolbar open into the ample space on its left instead of clipping its
-   first actions. `content-visibility:auto` also applies paint containment, so both constraints
-   have to be relaxed while the toolbar is actually on screen. */
+/* The branch control is a row of its own under the text; the chip centres on the line above it. */
+.workspace-message.user:has(.message-branch-indicator) .message-actions {
+    bottom: calc(1.9rem + (1lh - 1.7rem) / 2);
+}
+
+/* Too narrow a feed leaves no room beside the bubble. The chip then straddles the bubble's top
+   edge, in the gap above it, as a pill of its own — still off the text, and taking no height. */
+@container feed (max-width: 30rem) {
+    .workspace-message.user:not(.resource-only) .message-actions,
+    .workspace-message.user:not(.resource-only):has(.message-branch-indicator) .message-actions {
+        top: -1.1rem;
+        right: 0.6rem;
+        bottom: auto;
+        padding: 0.05rem;
+        border: 1px solid var(--color-border);
+        border-radius: 999px;
+        background: var(--color-surface-raised);
+    }
+}
+
+/* The toolbar is drawn outside the bubble. `content-visibility:auto` also applies paint
+   containment, so both constraints have to be relaxed while the toolbar is actually on screen. */
 .workspace-message.user:hover,
-.workspace-message.user:has(:focus-visible) {
+.workspace-message.user:has(:focus-visible),
+.workspace-message.user:has(.message-more-menu:popover-open) {
     overflow: visible;
     content-visibility: visible;
 }
@@ -2162,17 +2199,47 @@ body {
    `:has(:focus-visible)` matches only focus the browser judges worth showing, which is what a
    Tab arrival is and what a click is not. */
 .workspace-message:hover .message-actions,
-.workspace-message:has(:focus-visible) .message-actions {
+.workspace-message:has(:focus-visible) .message-actions,
+.workspace-message:has(.message-more-menu:popover-open) .message-actions {
     opacity: 1;
     pointer-events: auto;
 }
 
+/* One quiet colour for every action; the pointer brings it up. Colour is left to the one
+   destructive action, in the More menu. */
 .message-actions .icon-action {
     width: 1.7rem;
     height: 1.7rem;
     border-color: transparent;
     background: transparent;
+    color: var(--color-text-muted);
 }
+
+.message-actions .icon-action:hover:not(:disabled),
+.message-actions .icon-action.menu-open {
+    background: var(--color-fill);
+    color: var(--color-text);
+}
+
+.message-copy-action .copied-icon,
+.message-copy-action.is-copied .app-icon:not(.copied-icon) { display: none; }
+.message-copy-action.is-copied .copied-icon { display: block; color: var(--color-success); }
+
+/* A popover, so the top layer keeps it clear of the feed's scroller and the bubble's
+   containment; messageActions.js pins it to its button. The shared .chat-menu look applies, but
+   its display would otherwise keep a closed popover on screen. */
+.message-more-menu {
+    position: fixed;
+    inset: auto;
+    width: max-content;
+    min-width: 13rem;
+    margin: 0;
+    color: var(--color-text);
+}
+.message-more-menu:not(:popover-open) { display: none; }
+.message-more-menu:focus { outline: none; }
+.message-more-menu > hr { margin: 0.25rem 0.2rem; border: 0; border-top: 1px solid var(--color-border); }
+.message-more-menu > button:disabled { opacity: 0.45; cursor: default; }
 
 /* Hover does not exist on touch, and an action nobody can reach is worse than one that takes
    room, so there they stay visible. */

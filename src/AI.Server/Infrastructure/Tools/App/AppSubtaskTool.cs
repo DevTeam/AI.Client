@@ -297,13 +297,17 @@ public sealed class AppSubtaskTool(
         // for subtasks — the whole point of that mark is that delegated work need not cost what the
         // conversation costs — and only then to whatever the conversation itself runs on.
         var marked = global.Connections.Where(item => item.ForSubtasks && item.Enabled).ToArray();
+        var inheritedConnectionId = chat.ConnectionId ?? project.ConnectionId;
         var connection = requested is { } named
             ? global.Connections.SingleOrDefault(item => item.Id == named && item.Enabled)
               ?? throw new InvalidOperationException("No enabled connection has that id. Read the settings to see which exist.")
             : marked.Length > 0
                 ? marked[turn % marked.Length]
-                : global.Connections.SingleOrDefault(item => item.Id == (chat.ConnectionId ?? project.ConnectionId) && item.Enabled)
-                  ?? throw new InvalidOperationException("The calling chat has no enabled connection.");
+                : inheritedConnectionId is { } inherited
+                    ? global.Connections.SingleOrDefault(item => item.Id == inherited && item.Enabled)
+                      ?? throw new InvalidOperationException("The calling chat has no enabled connection.")
+                    : global.Connections.SingleOrDefault(item => item.IsDefault && item.Enabled)
+                      ?? throw new InvalidOperationException("The calling chat has no enabled connection.");
         return (new ChatCompletionRequest(connection.BaseUrl, connection.Model,
             await secrets.GetAsync("connection", connection.Id, cancellationToken), string.Empty, connection.Id, []),
             connection.Name);

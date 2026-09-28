@@ -87,10 +87,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 ContextMessages = [new ChatCompletionMessage("user", prompt)],
                 Tools = []
             }, ct)).Content);
-        var sessionFactory = sessions();
-        await using var session = servers.Count > 0
-            ? new RefreshableToolSession(sessionFactory, await sessionFactory.OpenAsync(grants, servers, run, token),
-                grants, servers, run)
+        var sessionFactory = servers.Count > 0 ? sessions() : null;
+        var initialSession = sessionFactory is not null
+            ? await sessionFactory.OpenAsync(grants, servers, run, token)
+            : null;
+        await using var session = initialSession is not null
+            ? new RefreshableToolSession(sessionFactory!, initialSession, grants, servers, run)
             : null;
         var runKey = new WorkspaceRunKey(projectId, chatId, branchId);
         await workspace.BeginRunAsync(runKey, grants,

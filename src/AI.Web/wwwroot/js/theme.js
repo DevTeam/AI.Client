@@ -1,7 +1,8 @@
 // Sets <html data-theme="light|dark"> from the saved preference. Loaded as a plain script in
-// <head>, ahead of the stylesheet, so the attribute is in place before the first paint and there
-// is no flash of the wrong theme while Blazor boots. The entry is the one ClientSettingsService
-// writes: "ai-client.settings" = {"theme":"system|light|dark","accent":"blue|teal|..."}.
+// <head>, ahead of the stylesheet, so browser preferences apply before the first paint. The entry
+// is the one ClientSettingsService
+// writes: "ai-client.settings" = {"theme":"system|light|dark","accent":"blue|teal|...",
+// "cornerRoundnessPercent":100,...}. Desktop restores the entry from its profile before Blazor starts.
 // data-theme-preference keeps the choice itself, for styles that care whether the theme was
 // picked or inherited; data-accent picks the accent palette in app.css.
 (function () {
@@ -34,10 +35,10 @@
         toldHost = preference;
     }
 
-    function apply(value) {
+    function apply(value, notifyHost = true) {
         preference = value === "light" || value === "dark" ? value : "system";
         render();
-        tellHost();
+        if (notifyHost) tellHost();
     }
 
     // Must match AccentColor; anything else (an older or newer build's value) falls back to blue.
@@ -52,14 +53,45 @@
         document.documentElement.style.setProperty("--corner-scale", String(clamped / 100));
     }
 
+    let ready;
+    globalThis.aiClientSettingsReady = new Promise(resolve => { ready = resolve; });
+
+    function saveClientSettings(json) {
+        localStorage.setItem(storageKey, json);
+        if (typeof globalThis.invokeCSharpAction === "function") {
+            globalThis.invokeCSharpAction(JSON.stringify({ type: "client-settings-save", settings: json }));
+        }
+    }
+
+    function restoreClientSettings(json) {
+        // On first use there is no desktop file yet: keep any preferences already on this origin.
+        if (json !== null) localStorage.setItem(storageKey, json);
+        else if (localStorage.getItem(storageKey)) saveClientSettings(localStorage.getItem(storageKey));
+        let restored;
+        try { restored = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { restored = null; }
+        applyAccent(restored?.accent);
+        applyCornerRoundness(restored?.cornerRoundnessPercent);
+        apply(restored?.theme);
+        ready();
+    }
+
     let saved;
     try { saved = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { saved = null; }
     applyAccent(saved?.accent);
     applyCornerRoundness(saved?.cornerRoundnessPercent);
-    apply(saved?.theme);
+    apply(saved?.theme, false);
     systemLight.addEventListener("change", () => { if (preference === "system") render(); });
-    // The bridge may not be injected yet while <head> runs; catch up once the document is parsed.
-    document.addEventListener("DOMContentLoaded", tellHost);
+    // The bridge may not be injected yet while <head> runs. Wait for it before Blazor reads the
+    // settings; Desktop's server gets a new port on each start, so its localStorage origin changes.
+    document.addEventListener("DOMContentLoaded", () => {
+        if (typeof globalThis.invokeCSharpAction === "function") {
+            globalThis.invokeCSharpAction(JSON.stringify({ type: "client-settings-request" }));
+            setTimeout(ready, 2000);
+        } else {
+            tellHost();
+            ready();
+        }
+    });
 
-    globalThis.aiClientTheme = { apply, applyAccent, applyCornerRoundness };
+    globalThis.aiClientTheme = { apply, applyAccent, applyCornerRoundness, saveClientSettings, restoreClientSettings };
 })();

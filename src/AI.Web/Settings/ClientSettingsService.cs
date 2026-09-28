@@ -6,8 +6,8 @@ using Microsoft.JSInterop;
 
 public sealed class ClientSettingsService(IJSRuntime jsRuntime) : IClientSettingsService
 {
-    // js/theme.js reads this entry before Blazor starts so the first paint is already in the right
-    // theme: the key and the camelCase shape (`{"theme":"light","accent":"teal"}`) are shared with it.
+    // js/theme.js reads this entry before Blazor starts; on Desktop it first restores the entry
+    // from the profile because the embedded server's port, and thus the localStorage origin, changes.
     internal const string StorageKey = "ai-client.settings";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -22,7 +22,7 @@ public sealed class ClientSettingsService(IJSRuntime jsRuntime) : IClientSetting
     public async ValueTask<ClientSettings> UpdateAsync(Func<ClientSettings, ClientSettings> update)
     {
         var next = update(await GetAsync());
-        await jsRuntime.InvokeVoidAsync("localStorage.setItem", StorageKey, JsonSerializer.Serialize(next, JsonOptions));
+        await jsRuntime.InvokeVoidAsync("aiClientTheme.saveClientSettings", JsonSerializer.Serialize(next, JsonOptions));
         _current = next;
         return next;
     }

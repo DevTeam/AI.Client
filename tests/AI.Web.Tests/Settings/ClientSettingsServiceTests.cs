@@ -28,6 +28,9 @@ public class ClientSettingsServiceTests
                 case "localStorage.setItem":
                     Entries[(string)args![0]!] = (string)args[1]!;
                     break;
+                case "aiClientTheme.saveClientSettings":
+                    Entries[StorageKey] = (string)args![0]!;
+                    break;
             }
             return ValueTask.FromResult(default(TValue)!);
         }
@@ -78,6 +81,7 @@ public class ClientSettingsServiceTests
         await service.UpdateAsync(settings => settings with { Theme = ThemePreference.Light, Accent = AccentColor.Teal });
 
         js.Entries[StorageKey].ShouldBe("{\"theme\":\"light\",\"accent\":\"teal\",\"cornerRoundnessPercent\":100,\"notificationSoundEnabled\":true}");
+        js.Calls.ShouldContain(call => call.Identifier == "aiClientTheme.saveClientSettings");
         (await new ClientSettingsService(js).GetAsync()).Theme.ShouldBe(ThemePreference.Light);
     }
 

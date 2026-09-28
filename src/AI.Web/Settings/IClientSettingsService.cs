@@ -1,6 +1,6 @@
 namespace AI.Web.Settings;
 
-/// <summary>The one place client preferences are read and written, persisted to localStorage.</summary>
+/// <summary>The one place client preferences are read and written; Desktop also keeps a copy in its profile.</summary>
 public interface IClientSettingsService
 {
     /// <summary>The saved settings, or the defaults when nothing (or nothing readable) is saved.</summary>

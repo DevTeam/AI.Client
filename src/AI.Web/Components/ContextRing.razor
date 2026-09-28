@@ -1,0 +1,47 @@
+@using System.Globalization
+@* The context window as a ring: 100% is the whole window, each arc a layer of the request, from
+   12 o'clock clockwise in the order the layers are listed. Arcs are measured with pathLength, so
+   the geometry is the same at every size and only the stroke changes. Every layer keeps its
+   element even at zero tokens, so a layer that appears grows out of its neighbour instead of
+   popping in. *@
+<svg class="context-ring @Class" viewBox="0 0 @Number(Size) @Number(Size)" width="@Number(Size)" height="@Number(Size)" aria-hidden="true">
+    <circle class="context-ring-track" cx="@Number(Center)" cy="@Number(Center)" r="@Number(Radius)" stroke-width="@Number(Thickness)" pathLength="@Number(Length)" />
+    <g transform="rotate(-90 @Number(Center) @Number(Center))">
+        @{ var start = 0d; }
+        @foreach (var layer in Context.Layers)
+        {
+            // An overfull window stops at 100% rather than wrapping past 12 o'clock.
+            var span = Math.Min(Span(layer.Tokens), Math.Max(0, Length - start));
+            var visible = Math.Max(0, span - Gap);
+            <circle @key="layer.Kind" class="context-ring-segment context-layer-@layer.CssName @(layer.Reserved ? "reserved" : null)"
+                    cx="@Number(Center)" cy="@Number(Center)" r="@Number(Radius)" stroke-width="@Number(Thickness)" pathLength="@Number(Length)"
+                    stroke-dasharray="@Number(visible) @Number(Length)" stroke-dashoffset="@Number(-start)" />
+            start += span;
+        }
+    </g>
+</svg>
+
+@code {
+    private const double Length = 1000;
+
+    [Parameter, EditorRequired] public ComposerContext Context { get; set; } = null!;
+
+    /// <summary>Outer size in CSS pixels.</summary>
+    [Parameter] public double Size { get; set; } = 48;
+
+    [Parameter] public double Thickness { get; set; } = 2.5;
+
+    /// <summary>The space between arcs, in thousandths of the circumference.</summary>
+    [Parameter] public double Gap { get; set; } = 6;
+
+    [Parameter] public string? Class { get; set; }
+
+    private double Center => Size / 2;
+
+    private double Radius => (Size - Thickness) / 2;
+
+    private double Span(long tokens) =>
+        Context.CapacityTokens <= 0 ? 0 : Math.Min(Length, tokens * Length / Context.CapacityTokens);
+
+    private string Number(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+}

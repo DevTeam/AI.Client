@@ -13,7 +13,10 @@ public sealed record ChatRunSnapshot(Guid ProjectId, Guid ChatId, Guid BranchId,
     // The prose of the model step in flight. Unlike StreamingContent it is never persisted and
     // is not the answer: it lets the transcript show what the model is saying before the step
     // ends and becomes a preamble, the final answer, or nothing.
-    string? DraftContent = null);
+    string? DraftContent = null,
+    // How the last request of this branch filled the model's context window. It lives with the
+    // run rather than the chat, so a Host restart forgets it until the branch sends again.
+    ContextUsage? Context = null);
 
 /// <summary>
 /// A bounded, self-contained tail of messages persisted while a run is active. Every append names

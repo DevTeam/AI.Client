@@ -444,7 +444,8 @@ public sealed class ChatRunDispatcher(
                     (activity, ct) => ReportToolActivityAsync(runtime, activity, ct),
                     (wait, ct) => ReportTransportActivityAsync(runtime, wait, ct),
                     (tool, arguments, timeout, position, ct) => ApproveAsync(runtime, tool, arguments, timeout, position, ct), token,
-                    draft: (chunk, ct) => ReportDraftAsync(runtime, chunk, ct));
+                    draft: (chunk, ct) => ReportDraftAsync(runtime, chunk, ct),
+                    contextUsage: (usage, ct) => ReportContextAsync(runtime, usage, ct));
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
                 {
                     token.ThrowIfCancellationRequested();
@@ -492,7 +493,7 @@ public sealed class ChatRunDispatcher(
             catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException)
             {
                 runtime.State.Fail(saveError.Message, RunFailureKind.Storage);
-                runtime.Snapshot = Snapshot(runtime.State, null, runtime.ActiveMessageId);
+                runtime.Snapshot = Snapshot(runtime.State, null, runtime.ActiveMessageId) with { Context = runtime.Context };
                 Publish();
             }
         }
@@ -751,6 +752,14 @@ public sealed class ChatRunDispatcher(
         Publish();
     }
 
+    private async Task ReportContextAsync(Runtime runtime, ContextUsage usage, CancellationToken token)
+    {
+        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
+        runtime.Context = usage;
+        runtime.Snapshot = runtime.Snapshot with { Context = usage };
+        Publish();
+    }
+
     private async Task ReportTransportActivityAsync(Runtime runtime, ChatTransportWait? wait, CancellationToken token)
     {
         using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
@@ -962,7 +971,8 @@ public sealed class ChatRunDispatcher(
             WorkspaceChanges = runtime.WorkspaceChanges,
             Wait = runtime.Wait,
             MessageDelta = runtime.MessageDelta,
-            DraftContent = runtime.DraftContent
+            DraftContent = runtime.DraftContent,
+            Context = runtime.Context
         };
         if (chat is not null)
             foreach (var other in _runtimes.Values.Where(item => item.State.ChatId == chat.Id && item != runtime))
@@ -1261,6 +1271,8 @@ public sealed class ChatRunDispatcher(
         public bool ResumeRequested { get; set; }
         public DateTimeOffset LastPublished { get; set; }
         public ChatRunWait? Wait { get; set; }
+        /// <summary>The last measured context of this branch; kept in memory only.</summary>
+        public ContextUsage? Context { get; set; }
 
         /// <summary>The prose of the model step in flight; never persisted.</summary>
         public System.Text.StringBuilder Draft { get; } = new();

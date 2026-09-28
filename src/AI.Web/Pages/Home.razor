@@ -24,6 +24,7 @@
 @inject INotificationService Notifications
 @inject IRunStatusPresentation StatusPresentation
 @inject IComposerHistoryNavigator _composerHistoryNavigator
+@inject IComposerContextPresentation ContextPresentation
 @inject IDelayedBusyIndicatorFactory BusyIndicatorFactory
 @inject NavigationManager Navigation
 @implements IAsyncDisposable
@@ -491,7 +492,7 @@
                     }
                 </div>
                 @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation" aria-label="Stop generation" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> }
-                <ComposerSendButton ActiveMode="@GetComposerSendMode()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" />
+                <ComposerSendButton ActiveMode="@GetComposerSendMode()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
             </div>
             @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
         </footer>
@@ -2035,6 +2036,9 @@
         if (_composerCtrlDown) return "Queue on Enter, stays paused";
         return run.Queue.Count > 0 ? "Resume queue and send on Enter" : "Resume and send on Enter";
     }
+
+    private ComposerContext GetComposerContext() => ContextPresentation.Build(GetSelectedRun()?.Context,
+        _connections.SingleOrDefault(item => item.Id == _chat.CredentialProfileId) ?? GetDefaultConnection(), _chat.Message);
 
     private ComposerSendButton.SendMode GetComposerSendMode() =>
         _replaceSourceId is not null

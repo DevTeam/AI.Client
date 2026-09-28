@@ -1,8 +1,41 @@
-<span class="composer-send-wrapper">
+@inject IComposerContextPresentation ContextPresentation
+<span class="composer-send-wrapper @(Context is { } ringContext ? $"has-context context-{ringContext.Level.ToString().ToLowerInvariant()}" : null)">
+    @* The ring sits around the button as a quiet halo, grey at rest and in the layer colours
+       while the tooltip explains them; only a filling window colours it on its own. *@
+    @if (Context is not null) { <ContextRing Context="@Context" Size="50" Thickness="2.5" Gap="9" Class="composer-send-ring" /> }
     <button class="composer-send" type="button" disabled="@Disabled" aria-label="@GetAriaLabel()" @onclick="OnClick">
         <AppIcon Name="@GetIcon()" Class="@(Busy ? "tool-row-spinner" : null)" />
     </button>
     <span class="composer-send-tooltip" role="tooltip">
+        @if (Context is { } context)
+        {
+            <span class="composer-send-context">
+                <span class="composer-send-context-chart">
+                    <ContextRing Context="@context" Size="92" Thickness="8" Gap="5" />
+                    <span class="composer-send-context-center">
+                        <span class="composer-send-context-percent"><AnimatedCount Value="@context.Percent" />%</span>
+                        <span class="composer-send-context-total">@ContextPresentation.FormatTokens(context.UsedTokens) / @(context.IsDefaultCapacity ? "~" : null)@ContextPresentation.FormatTokens(context.CapacityTokens)</span>
+                    </span>
+                </span>
+                <span class="composer-send-context-legend">
+                    @foreach (var layer in context.Layers)
+                    {
+                        <span @key="layer.Kind" class="composer-send-context-row @(layer.Reserved ? "reserved" : null)">
+                            <span class="context-swatch context-layer-@layer.CssName"></span>
+                            <span class="composer-send-context-label">@layer.Label</span>
+                            <span class="composer-send-context-value">@(IsKnown(context, layer) ? ContextPresentation.FormatTokens(layer.Tokens) : "—")</span>
+                        </span>
+                    }
+                    <span class="composer-send-context-row free">
+                        <span class="context-swatch"></span>
+                        <span class="composer-send-context-label">Free</span>
+                        <span class="composer-send-context-value">@ContextPresentation.FormatTokens(Math.Max(0, context.CapacityTokens - context.UsedTokens))</span>
+                    </span>
+                </span>
+            </span>
+            @if (GetContextNote(context) is { } note) { <span class="composer-send-context-note context-note-@context.Level.ToString().ToLowerInvariant()">@note</span> }
+            <span class="composer-send-tooltip-divider"></span>
+        }
         @if (ActiveMode == SendMode.EditFork)
         {
             <span class="composer-send-tooltip-row active"><kbd>Enter</kbd><span class="composer-send-tooltip-label">Create edited branch</span></span>
@@ -34,7 +67,31 @@
     [Parameter, EditorRequired]
     public EventCallback OnClick { get; set; }
 
-    private string GetAriaLabel() => ActiveMode switch
+    /// <summary>How the context window is filled; no ring is drawn without it.</summary>
+    [Parameter]
+    public ComposerContext? Context { get; set; }
+
+    // Before the first measured request only the draft and the reserves are known; the layers the
+    // Host measures read as unknown rather than as an empty 0.
+    private static bool IsKnown(ComposerContext context, ContextLayer layer) =>
+        context.IsMeasured || layer.Reserved || layer.Kind == ContextLayerKind.Draft;
+
+    private static string? GetContextNote(ComposerContext context) => context switch
+    {
+        { Level: ContextFillLevel.Critical } => "Almost full: the next request compacts older turns",
+        { Level: ContextFillLevel.Warning } => "Filling up: older turns will be compacted soon",
+        { WasCompacted: true, OmittedMessages: > 0 } => $"Older turns compacted to fit ({context.OmittedMessages} messages)",
+        { WasCompacted: true } => "Older turns compacted to fit",
+        { IsMeasured: false } => "Measured with the next request",
+        { IsDefaultCapacity: true } => "Default window size; set the real one in Connections",
+        _ => null
+    };
+
+    private string GetAriaLabel() => Context is { } context
+        ? $"{GetActionLabel()}, context {context.Percent}% full"
+        : GetActionLabel();
+
+    private string GetActionLabel() => ActiveMode switch
     {
         SendMode.SendNow => "Interrupt and send now",
         SendMode.EditFork => "Create edited branch",

@@ -63,6 +63,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IDirectoryPickerState>().To<DirectoryPickerState>()
             .RootBind<IRunStatusPresentation>().To<RunStatusPresentation>()
             .RootBind<IComposerHistoryNavigator>().To<ComposerHistoryNavigator>()
+            .RootBind<IComposerContextPresentation>().To<ComposerContextPresentation>()
             .RootBind<IDelayedBusyIndicatorFactory>().To<DelayedBusyIndicatorFactory>()
             .Bind<INotificationService>("base").As(Lifetime.Singleton).To<NotificationService>()
             .Singleton<DesktopBadgeNotificationService, DesktopUnreadCountPublisher, ApiBaseUrl, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService,

@@ -18,17 +18,13 @@ internal sealed class Composition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup(kind: CompositionKind.Internal)
-            .Bind<IToolPresentations>().As(Lifetime.Singleton).To((
-                GenericToolPresentationAdapter genericAdapter,
-                FileToolPresentationAdapter fileAdapter,
-                ProcessToolPresentationAdapter processAdapter,
-                WebToolPresentationAdapter webAdapter,
-                AppReadPresentationAdapter readAdapter,
-                AppWritePresentationAdapter writeAdapter,
-                AppSubtaskPresentationAdapter subtaskAdapter,
-                AskUserPresentationAdapter askAdapter)
-                => new ToolPresentations(genericAdapter,
-                    [fileAdapter, processAdapter, webAdapter, readAdapter, writeAdapter, subtaskAdapter, askAdapter]))
-            .Singleton<GenericToolPresentationAdapter, ToolResultModelProjector, ToolResultCodec,
-                ConnectionContextLimitsResolver, UnifiedDiff>();
+            .Singleton((GenericToolPresentationAdapter genericAdapter, IReadOnlyCollection<IToolPresentationAdapter> adapters) => new ToolPresentations(genericAdapter, adapters))
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<FileToolPresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<ProcessToolPresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<WebToolPresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppReadPresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppWritePresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppSubtaskPresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AskUserPresentationAdapter>()
+            .Singleton<ToolResultModelProjector, ToolResultCodec, ConnectionContextLimitsResolver, UnifiedDiff>();
 }

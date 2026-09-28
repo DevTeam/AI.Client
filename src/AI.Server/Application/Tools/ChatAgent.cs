@@ -87,7 +87,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 ContextMessages = [new ChatCompletionMessage("user", prompt)],
                 Tools = []
             }, ct)).Content);
-        await using var session = servers.Count > 0 ? await sessions().OpenAsync(grants, servers, run, token) : null;
+        var sessionFactory = sessions();
+        await using var session = servers.Count > 0
+            ? new RefreshableToolSession(sessionFactory, await sessionFactory.OpenAsync(grants, servers, run, token),
+                grants, servers, run)
+            : null;
         var runKey = new WorkspaceRunKey(projectId, chatId, branchId);
         await workspace.BeginRunAsync(runKey, grants,
             parentBranchId is { } parent ? new WorkspaceRunKey(projectId, chatId, parent) : null, token);
@@ -119,6 +123,16 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var completionRequired = counts.Count > 0;
         while (true)
         {
+            if (session is not null)
+            {
+                var latestProject = await projects.GetAsync(projectId, token)
+                                    ?? throw new InvalidOperationException("Project not found.");
+                var latestGrants = latestProject.DirectoryGrants
+                    .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
+                if (await session.RefreshAsync(latestGrants, token))
+                    await workspace.UpdateGrantsAsync(runKey, latestGrants, token);
+            }
+
             // A continuation after truncation is the same answer carrying on, so its draft keeps
             // growing instead of starting over.
             if (truncated == 0) await Draft(null);

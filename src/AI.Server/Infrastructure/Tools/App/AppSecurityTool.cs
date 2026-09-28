@@ -12,6 +12,9 @@ using System.Text.Json;
 
 public enum SecurityOperation
 {
+    /// <summary>Add one directory grant without changing other project security settings.</summary>
+    AddDirectoryGrant,
+
     /// <summary>Replace a project's whole access state at once. Needs 'projectId', 'revision' and 'security'.</summary>
     SetProjectSecurity,
 
@@ -57,13 +60,13 @@ public sealed class AppSecurityTool(
         {
             SerializerOptions = reply.Json,
             Description = "Change this application's access settings: directory grants, MCP server bindings, per-tool policies and "
-                          + "connection credentials. 'SetProjectSecurity' and 'SaveGlobalSettings' replace the whole state they cover, so "
+                          + "connection credentials. Use 'AddDirectoryGrant' with 'projectId', 'revision' and 'directoryGrant' "
+                          + "to add one directory without changing server bindings or policies. "
+                          + "'SetProjectSecurity' and 'SaveGlobalSettings' replace the whole state they cover, so "
                           + "read it with 'app_read' first and send it back with your change applied — anything you leave out is removed. "
                           + "Secrets are write-only: a key can be stored and never read back, and passing null clears it. 'operationId' "
-                          + "must be a fresh UUID per distinct change. You may grant a directory to your own project with "
-                          + "'SetProjectSecurity' rather than asking the user to do it in the settings — but a grant reaches the file "
-                          + "system tools only when their session next opens, so it takes effect from the following run and not from this "
-                          + "one. Say that you have added it and what it will allow, instead of reporting that you have no access."
+                          + "must be a fresh UUID per distinct change. Use AddDirectoryGrant to grant one directory in your project; "
+                          + "the file tools refresh before the next model step. Calls already submitted in the same batch keep the old grants."
         });
 
     [McpServerTool(Name = "app_security", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false,
@@ -74,6 +77,7 @@ public sealed class AppSecurityTool(
         Guid? projectId = null,
         Guid? chatId = null,
         long revision = 0,
+        DirectoryGrantPayload? directoryGrant = null,
         ProjectSecurityPayload? security = null,
         ToolPolicyPayload? toolPolicy = null,
         GlobalSettingsPayload? settings = null,
@@ -84,6 +88,7 @@ public sealed class AppSecurityTool(
         CancellationToken cancellationToken = default) =>
         writes.RunAsync(operation.ToString(), operationId, builder => operation switch
         {
+            SecurityOperation.AddDirectoryGrant => AddDirectoryGrantAsync(builder, projectId, revision, directoryGrant, cancellationToken),
             SecurityOperation.SetProjectSecurity => SetProjectSecurityAsync(builder, projectId, revision, security, cancellationToken),
             SecurityOperation.SetProjectToolPolicy => SetProjectToolPolicyAsync(builder, projectId, toolPolicy, cancellationToken),
             SecurityOperation.RemoveProjectToolPolicy => RemoveProjectToolPolicyAsync(builder, projectId, serverId, name, schemaHash, cancellationToken),
@@ -96,6 +101,19 @@ public sealed class AppSecurityTool(
             SecurityOperation.SetMcpCredential => SetCredentialAsync(builder, serverId, secret, false, cancellationToken),
             _ => throw new ArgumentException("Unknown operation.", nameof(operation)),
         });
+
+    private async Task<AppWriteResult> AddDirectoryGrantAsync(
+        AppWriteBuilder builder, Guid? projectId, long revision, DirectoryGrantPayload? directoryGrant,
+        CancellationToken cancellationToken)
+    {
+        var id = Required(projectId, nameof(projectId));
+        var grant = Required(directoryGrant, nameof(directoryGrant));
+        var current = await projects.GetAsync(id, cancellationToken);
+        var result = await projects.AddDirectoryGrantAsync(id, revision, new DirectoryGrantSettings(
+            grant.Id, grant.DisplayName, grant.CanonicalRoot, grant.Recursive, grant.ToolNames), cancellationToken);
+        return AppProjectsTool.Describe(builder, result, id,
+            project => $"Granted access to '{grant.CanonicalRoot}' in '{project.Name}'.", current, reply.Json);
+    }
 
     private async Task<AppWriteResult> SetProjectSecurityAsync(
         AppWriteBuilder builder, Guid? projectId, long revision, ProjectSecurityPayload? security, CancellationToken cancellationToken)

@@ -17,6 +17,9 @@ public interface IProjectService
         UpdateProjectSecurityRequest request,
         CancellationToken cancellationToken);
 
+    Task<ProjectUpdateResult> AddDirectoryGrantAsync(
+        Guid id, long expectedRevision, DirectoryGrantSettings grant, CancellationToken cancellationToken);
+
     Task<ProjectDetails?> SetToolPolicyAsync(Guid id, ToolPolicySettings policy, CancellationToken cancellationToken);
     Task<ProjectDetails?> RemoveToolPolicyAsync(Guid id, Guid serverId, string name, string schemaHash, CancellationToken cancellationToken);
 

@@ -32,6 +32,9 @@ public interface IWorkspaceChangeTracker
     Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, WorkspaceRunKey? parent,
         CancellationToken cancellationToken);
 
+    /// <summary>Updates the paths the tracker may observe after grants change during a run.</summary>
+    Task UpdateGrantsAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, CancellationToken cancellationToken);
+
     /// <summary>
     /// Called before a call that may modify the workspace, so a baseline exists to compare against.
     /// </summary>

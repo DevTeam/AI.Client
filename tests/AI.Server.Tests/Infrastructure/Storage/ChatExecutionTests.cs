@@ -31,6 +31,29 @@ public sealed class ChatExecutionTests
 {
 
     [Fact]
+    public async Task DirectoryGrantAddedDuringRunReopensToolSessionBeforeNextModelStep()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Read another project"));
+
+        var first = await fixture.NextCallAsync();
+        fixture.Tools.OpenCount.ShouldBe(1);
+        await fixture.AddGrantAsync(@"C:\Projects\DevTeam\dotnet-matrix");
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+
+        var next = await fixture.NextCallAsync();
+        fixture.Tools.OpenCount.ShouldBe(2);
+        fixture.Tools.Grants.ShouldHaveSingleItem().Root.ShouldBe(@"C:\Projects\DevTeam\dotnet-matrix");
+        next.ToolCalls = [new ChatToolCall("call-2", "mcp_built_in__process_run", "{}")];
+        next.Answer.SetResult("");
+        (await fixture.NextCallAsync()).Answer.SetResult("Read complete");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        fixture.Tools.CallCount.ShouldBe(2);
+    }
+
+    [Fact]
     public async Task ToolMessagesShouldBePublishedAsAContiguousChatDelta()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -1540,6 +1563,14 @@ public sealed class ChatExecutionTests
             return fixture;
         }
         public Task<ChatRunSnapshot> SubmitAsync(SubmitChatMessageRequest request) => Dispatcher.SubmitAsync(ProjectId, ChatId, request, CancellationToken.None);
+
+        public async Task AddGrantAsync(string root)
+        {
+            var project = (await Projects.GetAsync(ProjectId, CancellationToken.None))!;
+            var result = await Projects.AddDirectoryGrantAsync(ProjectId, project.Revision,
+                new DirectoryGrantSettings(Guid.NewGuid(), "sample", root, true, ["read"]), CancellationToken.None);
+            result.Status.ShouldBe(ProjectUpdateStatus.Updated);
+        }
         public async Task SetConnectionLimitsAsync(long contextWindowTokens, long reservedOutputTokens)
         {
             var current = await Settings.LoadAsync(CancellationToken.None);
@@ -1646,6 +1677,9 @@ public sealed class ChatExecutionTests
         }
 
         public Task RecordIntentAsync(WorkspaceRunKey run, ToolDescriptor tool, string arguments, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task UpdateGrantsAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
         public Task RecordEffectAsync(WorkspaceRunKey run, ToolDescriptor tool, string arguments, CancellationToken cancellationToken) =>

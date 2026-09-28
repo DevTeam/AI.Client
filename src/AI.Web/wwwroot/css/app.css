@@ -5356,3 +5356,221 @@ textarea {
 .markdown-content .file-link[data-file-access="none"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M5.6 5.6l12.8 12.8'/%3E%3C/svg%3E"); --file-access-color: var(--color-danger-text); }
 .file-link-menu { position: fixed; top: auto; right: auto; }
 .file-link-menu-path { overflow: hidden; padding: 0.35rem 0.9rem 0.2rem; color: var(--color-text-faint); font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Settings import and export ------------------------------------------- */
+
+/* Opened from the settings drawer, so it has to sit above it (45). */
+.modal-backdrop.settings-transfer-backdrop { z-index: 46; }
+
+.settings-drawer-header-actions {
+    display: flex;
+    flex: none;
+    gap: 0.15rem;
+}
+
+.settings-drawer-header-actions .icon-action {
+    border-color: transparent;
+    background: transparent;
+}
+
+/* Copy and remove sit together on the selected row; the column is sized by them. */
+.settings-item-actions {
+    display: flex;
+    margin-right: 0.4rem;
+}
+
+.settings-item-actions .settings-item-remove { margin-right: 0; }
+
+.settings-item-copy {
+    border-color: transparent;
+    background: transparent;
+}
+
+.global-form input.needs-key { border-color: var(--color-warning); }
+
+.settings-needs-key-hint {
+    color: var(--color-warning-text);
+    font-size: 0.75rem;
+}
+
+.settings-transfer-modal {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: min(38rem, calc(100vw - 2rem));
+    max-height: min(40rem, calc(100vh - 2rem));
+    box-sizing: border-box;
+    padding: 1.1rem;
+    overflow: hidden;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 1rem;
+    background: var(--color-surface);
+    box-shadow: 0 1.5rem 5rem rgb(0 0 0 / calc(60% * var(--shadow-scale)));
+}
+
+.settings-transfer-modal:focus { outline: none; }
+
+.settings-import-modal { grid-template-rows: auto auto minmax(0, 1fr) auto; height: min(40rem, calc(100vh - 2rem)); }
+.settings-export-modal { grid-template-rows: auto minmax(0, 1fr) auto; width: min(30rem, calc(100vw - 2rem)); }
+
+.settings-transfer-modal > header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    margin-bottom: 0.8rem;
+    padding-bottom: 0.7rem;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.settings-transfer-modal > header div { display: grid; gap: 0.2rem; }
+.settings-transfer-modal > header span { color: var(--color-text-faint); font-size: 0.8rem; }
+
+.settings-import-source { display: grid; gap: 0.45rem; margin-bottom: 0.7rem; }
+
+textarea.settings-import-text {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 6.5rem;
+    max-height: 12rem;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.settings-import-source-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.75rem;
+    color: var(--color-text-faint);
+    font-size: 0.75rem;
+}
+
+/* The file input stays in the label, so clicking the button text opens the picker. */
+.settings-import-file { position: relative; overflow: hidden; cursor: pointer; }
+.settings-import-file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.settings-import-body { min-width: 0; min-height: 0; overflow-y: auto; }
+.settings-import-body > .empty-hint, .settings-import-body > .error { margin: 0.5rem 0; }
+
+.settings-import-warning {
+    display: flex;
+    gap: 0.45rem;
+    align-items: start;
+    margin: 0 0 0.6rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+    color: var(--color-warning-text);
+    font-size: 0.8rem;
+}
+
+.settings-import-warning .app-icon { margin-top: 0.1rem; }
+
+.settings-import-list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    list-style: none;
+}
+
+.settings-import-row {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+    padding: 0.55rem 0.7rem;
+}
+
+.settings-import-row + .settings-import-row { border-top: 1px solid var(--color-border); }
+.settings-import-row.is-skipped { opacity: 0.6; }
+
+.settings-import-row-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.settings-import-row-head input[type="checkbox"] { width: auto; margin: 0; }
+
+.settings-import-name {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-import-kind { flex: none; color: var(--color-text-faint); font-size: 0.75rem; }
+
+.settings-import-badge {
+    flex: none;
+    margin-left: auto;
+    padding: 0.05rem 0.45rem;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 999px;
+    color: var(--color-text-muted);
+    font-size: 0.7rem;
+}
+
+.settings-import-badge.is-new { border-color: var(--color-success-border); color: var(--color-success-text); }
+.settings-import-badge.is-conflict { border-color: color-mix(in srgb, var(--color-warning) 55%, transparent); color: var(--color-warning-text); }
+
+select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem; font-size: 0.78rem; }
+
+.settings-import-detail,
+.settings-import-note {
+    margin: 0;
+    overflow: hidden;
+    color: var(--color-text-subtle);
+    font-size: 0.75rem;
+    text-overflow: ellipsis;
+}
+
+.settings-import-detail { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
+
+.settings-import-note.is-key {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+    color: var(--color-warning-text);
+}
+
+.settings-import-note .app-icon { width: 0.8rem; height: 0.8rem; }
+
+.settings-import-summary {
+    flex: 1;
+    margin-right: auto;
+    align-self: center;
+    color: var(--color-text-faint);
+    font-size: 0.78rem;
+}
+
+.settings-export-body { display: grid; align-content: start; gap: 0.8rem; min-height: 0; overflow-y: auto; }
+
+.settings-export-group {
+    display: grid;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0.55rem 0.7rem 0.65rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+}
+
+.settings-export-group legend { padding: 0 0.3rem; font-weight: 600; }
+.settings-export-group > .checkbox { padding-left: 1.2rem; }
+.settings-export-group > .checkbox span { overflow: hidden; text-overflow: ellipsis; }
+
+.settings-export-note {
+    display: flex;
+    gap: 0.45rem;
+    align-items: start;
+    margin: 0;
+    color: var(--color-text-faint);
+    font-size: 0.75rem;
+}
+
+.settings-export-note .app-icon { flex: none; width: 0.85rem; height: 0.85rem; margin-top: 0.1rem; }

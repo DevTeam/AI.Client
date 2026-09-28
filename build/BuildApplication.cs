@@ -14,6 +14,7 @@ internal sealed class BuildApplication(
     IPackageReleaseTarget packageReleaseTarget,
     IRunTarget runTarget,
     IRunBothTarget runBothTarget,
+    IReadmeTarget readmeTarget,
     CancellationToken cancellationToken)
 {
     public Task<int> RunAsync()
@@ -27,6 +28,7 @@ internal sealed class BuildApplication(
         RegisterPublishWeb(root);
         RegisterPackageRelease(root);
         RegisterHost(root);
+        RegisterReadme(root);
         return root.Parse(args).InvokeAsync();
     }
 
@@ -34,6 +36,13 @@ internal sealed class BuildApplication(
     {
         var command = new Command("build", "Build the AI solution.");
         command.SetAction(_ => buildSolutionTarget.RunAsync(cancellationToken));
+        root.Subcommands.Add(command);
+    }
+
+    private void RegisterReadme(RootCommand root)
+    {
+        var command = new Command("readme", "Generate README.md from its Razor template.");
+        command.SetAction(_ => readmeTarget.RunAsync(cancellationToken));
         root.Subcommands.Add(command);
     }
 

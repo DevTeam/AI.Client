@@ -35,6 +35,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Hint(Hint.OnCannotResolveContractTypeNameWildcard, "Microsoft.JSInterop.*")
             .Arg<string>("apiBaseUrl")
             .Arg<bool>("publicWeb")
+            .Root<HttpClient>()
             .Root<IApiBaseUrl>()
             .Root<IClientMode>()
             .Root<IClientMetadata>()

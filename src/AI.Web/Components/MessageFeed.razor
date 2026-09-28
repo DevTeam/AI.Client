@@ -395,7 +395,7 @@
    transcript; this one exists to say "the thing you were waiting for arrived elsewhere". *@
 @if (SelectedChat is not null && !_pinned && (_newBelow || SelectedRun is { Status: ChatRunStatus.Generating }))
 {
-    <button type="button" class="messages-jump @(SelectedRun is { Status: ChatRunStatus.Generating } ? "messages-jump-live" : string.Empty)"
+    <button type="button" class="messages-jump"
             title="Jump to the latest message (End)" aria-label="Jump to the latest message"
             @onclick="JumpToBottomAsync">
         <AppIcon Name="chevron-down" />

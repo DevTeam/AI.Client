@@ -38,6 +38,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<HttpClient>()
             .Root<IApiBaseUrl>()
             .Root<IClientMode>()
+            .Root<IHostConnection>()
             .Root<IClientMetadata>()
             .Root<IProjectApi>()
             .Root<IFileSystemApi>()
@@ -70,7 +71,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IComposerContextPresentation>().To<ComposerContextPresentation>()
             .RootBind<IDelayedBusyIndicatorFactory>().To<DelayedBusyIndicatorFactory>()
             .Bind<INotificationService>("base").As(Lifetime.Singleton).To<NotificationService>()
-            .Singleton<DesktopBadgeNotificationService, DesktopUnreadCountPublisher, ApiBaseUrl, ClientMode, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService,
+            .Singleton<DesktopBadgeNotificationService, DesktopUnreadCountPublisher, ApiBaseUrl, ClientMode, HostConnection, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService,
                 WorkspaceStateService, ChatComposerService, RunStateService, ChatMessageDeltaMerger, ClientSettingsService, ThemeService>()
             .Transient<ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi, ResourceApi, ReviewApi, MemoryApi>()
             .Transient((IApiBaseUrl arg, IClientMode mode, IJSRuntime jsRuntime) =>

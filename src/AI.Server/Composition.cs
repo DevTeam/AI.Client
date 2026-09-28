@@ -75,8 +75,9 @@ internal sealed class Composition
             .Root<IAppDataChangeSignal>()
             .Root<IRunEventsPublisher>()
             .Root<IBrowserAccessService>()
+            .Root<IInstalledDesktop>()
             // Hosting
-            .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, BrowserAccessService>()
+            .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, BrowserAccessService, InstalledDesktop>()
             .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, MemoryEndpoints, BrowserAccessEndpoints>(Tag.Unique)
             // One storage root for data and logs: every path below and the file logger read it here.
             .Singleton<ProjectStorageLocation, DataDirectoryLock>()

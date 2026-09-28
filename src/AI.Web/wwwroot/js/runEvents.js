@@ -49,6 +49,14 @@ export function subscribe(baseUrl, dotNetReference) {
     };
     // fetch can send the browser grant in a header; EventSource cannot. The same parser is used
     // for the local UI, the development server, and the published website.
+    // The stream is the one request that is always open, so it also tells the page whether the
+    // Host is reachable. Only changes are reported.
+    let reported = null;
+    const report = status => {
+        if (disposed || status === reported) return;
+        reported = status;
+        void dotNetReference.invokeMethodAsync("OnHostConnectionChanged", status);
+    };
     const readEvents = async () => {
         while (!disposed) {
             try {
@@ -58,7 +66,9 @@ export function subscribe(baseUrl, dotNetReference) {
                     signal: controller.signal,
                     cache: "no-store"
                 });
+                if (response.status === 401) report("unauthorized");
                 if (!response.ok || !response.body) throw new Error(`Events returned ${response.status}`);
+                report("connected");
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let pending = "";
@@ -77,7 +87,10 @@ export function subscribe(baseUrl, dotNetReference) {
                     }
                 }
             } catch (error) {
-                if (!disposed) console.warn("Run events disconnected", error);
+                if (!disposed) {
+                    console.warn("Run events disconnected", error);
+                    if (reported !== "unauthorized") report("offline");
+                }
             }
             if (!disposed) await new Promise(resolve => setTimeout(resolve, 2000));
         }

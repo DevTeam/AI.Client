@@ -1,5 +1,7 @@
 namespace AI.Server.Hosting;
 
+using AI.Contracts;
+
 /// <summary>What an entry point decided about the server before starting it.</summary>
 /// <param name="DataDirectory">Absolute root for projects, chats, settings and logs.</param>
 /// <param name="Urls">
@@ -16,6 +18,10 @@ namespace AI.Server.Hosting;
 /// The desktop app always does; the standalone host does when asked, and otherwise leaves the
 /// UI to its own dev server.
 /// </param>
+/// <param name="PublicOrigin">
+/// The origin of the Web app that paired browsers come from in <paramref name="PublicWeb"/> mode.
+/// The published site by default; a development machine points it at its own Web dev server.
+/// </param>
 /// <param name="StopOnProcessSignals">
 /// Whether the server stops by itself on Ctrl+C or SIGTERM. True for the standalone host. The
 /// desktop app turns it off and closes its window on those signals instead, which then stops the
@@ -27,4 +33,5 @@ public sealed record ServerOptions(
     bool BrowseEnabled,
     bool ServeWeb = false,
     bool StopOnProcessSignals = true,
-    bool PublicWeb = false);
+    bool PublicWeb = false,
+    string PublicOrigin = HostProtocol.PublicWebOrigin);

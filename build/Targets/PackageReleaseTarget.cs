@@ -115,6 +115,15 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
         var link = Path.Combine(enabled, "ai-client-host.service");
         if (File.Exists(link)) File.Delete(link);
         File.CreateSymbolicLink(link, "/usr/lib/systemd/user/ai-client-host.service");
+        // The launcher runs `AI.Host open`: the browser opens already connected to this Host.
+        var hostApplications = Path.Combine(hostRoot, "usr", "share", "applications");
+        Directory.CreateDirectory(hostApplications);
+        File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "linux", "ai-client-host.desktop"),
+            Path.Combine(hostApplications, "ai-client-host.desktop"), true);
+        var hostPixmaps = Path.Combine(hostRoot, "usr", "share", "pixmaps");
+        Directory.CreateDirectory(hostPixmaps);
+        File.Copy(Path.Combine(paths.SolutionDirectory, "src", "AI.Desktop", "Assets", "app-icon.png"),
+            Path.Combine(hostPixmaps, "ai-client-host.png"), true);
         WriteDebControl(hostRoot, "ai-client-host", version, architecture,
             "Local AI Client Host for the browser application");
         var postinst = Path.Combine(hostRoot, "DEBIAN", "postinst");

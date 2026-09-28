@@ -46,6 +46,16 @@ public sealed class AiClientServer(
             throw new InvalidOperationException("Public Web mode must listen on HTTP loopback only.");
         }
 
+        // A grant sent to plain HTTP could be read on the network; only a Web dev server on this
+        // computer may use it.
+        var publicOrigin = options.PublicOrigin.TrimEnd('/');
+        if (options.PublicWeb && (!Uri.TryCreate(publicOrigin, UriKind.Absolute, out var originUri)
+                || originUri.GetLeftPart(UriPartial.Authority) != publicOrigin
+                || (originUri.Scheme != Uri.UriSchemeHttps && !(originUri.Scheme == Uri.UriSchemeHttp && originUri.IsLoopback))))
+        {
+            throw new InvalidOperationException("The public Web origin must be an HTTPS origin, or an HTTP loopback origin for development.");
+        }
+
         // The command line has already been parsed into `options`; ASP.NET gets no arguments, so
         // there is exactly one parser. appsettings.json and environment variables still apply.
         // Content lives next to the executable, not in whatever directory it was started from: a
@@ -86,7 +96,7 @@ public sealed class AiClientServer(
             .GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
         if (options.PublicWeb)
         {
-            corsOrigins = [.. corsOrigins, "https://ai.dev-team.org"];
+            corsOrigins = [.. corsOrigins, publicOrigin];
         }
         builder.Services.AddCors(cors =>
         {
@@ -126,10 +136,13 @@ public sealed class AiClientServer(
                 if (origin.Length > 0)
                 {
                     var localOrigin = $"{context.Request.Scheme}://{context.Request.Host}";
-                    if (string.Equals(origin, "https://ai.dev-team.org", StringComparison.Ordinal))
+                    if (string.Equals(origin, publicOrigin, StringComparison.OrdinalIgnoreCase))
                     {
+                        // Health says only whether a compatible Host runs; pairing exchanges a
+                        // one-time code that only a browser the Host opened itself can know.
                         if (context.Request.Path.StartsWithSegments("/api")
-                            && !context.Request.Path.Equals("/api/health", StringComparison.OrdinalIgnoreCase))
+                            && !context.Request.Path.Equals("/api/health", StringComparison.OrdinalIgnoreCase)
+                            && !context.Request.Path.Equals("/api/bridge/pair", StringComparison.OrdinalIgnoreCase))
                         {
                             var authorization = context.Request.Headers.Authorization.ToString();
                             var token = authorization.StartsWith("Bearer ", StringComparison.Ordinal)

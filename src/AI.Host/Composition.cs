@@ -15,6 +15,8 @@ internal sealed partial class CommandLineComposition
             .Hint(Hint.Resolve, "Off")
             .DependsOn("AI.Server.CommandLine.Composition")
             .Singleton<StandaloneCommand>(Tag.Unique)
+            .Singleton<OpenCommand>(Tag.Unique)
+            .Transient<BrowserOpener, HostProcess>()
             .Transient<ServerRunner>();
 }
 

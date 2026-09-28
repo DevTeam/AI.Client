@@ -6,6 +6,7 @@
 @using AI.Contracts.Resources
 @inject IClientMetadata ClientMetadata
 @inject IClientMode ClientMode
+@inject IHostConnection HostConnection
 @inject HttpClient Http
 @inject IApiBaseUrl _apiBaseUrl
 @inject IProjectApi ProjectApi
@@ -329,15 +330,16 @@
         <span class="visually-hidden" role="status" aria-live="polite">@_sidebarAnnouncement</span>
         </div>
         <nav class="global-nav root-nav sidebar-global-nav" aria-label="Application settings">
-            @if (ClientMode.PublicWeb)
-            {
-                <a class="workspace-nav-item" href="https://github.com/DevTeam/AI.Client/releases/latest" target="_blank" rel="noopener noreferrer">Get Desktop app</a>
-                <button class="workspace-nav-item" type="button" @onclick="DisconnectHostAsync">Disconnect Host</button>
-            }
             <button class="workspace-nav-item @(_globalSection == "Connections" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Connections")'><AppIcon Name="connection" /><span>Connections</span><span class="directory-count">@_connections.Count(item => item.Enabled)</span></button>
             <button class="workspace-nav-item @(_globalSection == "MCP" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("MCP")'><AppIcon Name="mcp" /><span>MCP</span><span class="directory-count">@_enabledMcpServerCount</span></button>
             <button class="workspace-nav-item @(_globalSection == "Memory" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Memory")'><AppIcon Name="memory" /><span>Memory</span><span class="directory-count">@_userMemoryCount</span></button>
-            <button class="workspace-nav-item @(_globalSection == "Settings" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Settings")'><AppIcon Name="settings" /><span>Settings</span></button>
+            <button class="workspace-nav-item @(_globalSection == "Settings" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Settings")'><AppIcon Name="settings" /><span>Settings</span>@if (ClientMode.PublicWeb)
+                {
+                    @* The only place the published app shows its link to the Host; details and
+                       Disconnect are in Settings. *@
+                    var connected = HostConnection.Status == HostConnectionStatus.Connected;
+                    <span class="host-status-dot @(connected ? "is-connected" : "is-offline")" role="img" aria-label="@(connected ? "Host connected" : "Reconnecting to Host")" title="@(connected ? "Host connected" : "Reconnecting to Host…")"></span>
+                }</button>
         </nav>
     </aside>
 
@@ -4833,18 +4835,30 @@
         public string Message { get; set; } = string.Empty;
     }
 
-    private async Task DisconnectHostAsync()
+    /// <summary>
+    /// From the run event stream: "connected", "offline" or "unauthorized". The local UI and the
+    /// Desktop app share their Host's lifetime, so only the published app shows it.
+    /// </summary>
+    [JSInvokable]
+    public async Task OnHostConnectionChanged(string status)
     {
-        try
+        if (!ClientMode.PublicWeb) return;
+        if (status == "unauthorized")
         {
-            using var response = await Http.PostAsync("api/bridge/revoke", null);
-            response.EnsureSuccessStatusCode();
-            await JsRuntime.InvokeVoidAsync("aiHostBridge.disconnect");
+            // The grant was revoked elsewhere or the Host lost it; the connection page gets a new one.
+            await JsRuntime.InvokeVoidAsync("aiHostBridge.forget");
+            Navigation.Refresh(forceReload: true);
+            return;
         }
-        catch (HttpRequestException)
-        {
-            Notifications.ShowError("The Host could not revoke this browser's access. Try again when it is running.");
-        }
+
+        var before = HostConnection.Status;
+        await HostConnection.ReportAsync(status == "connected");
+        var after = HostConnection.Status;
+        if (before == HostConnectionStatus.Connected && after == HostConnectionStatus.Offline)
+            Notifications.ShowError("Lost the connection to the Host on this computer. Reconnecting…");
+        else if (before == HostConnectionStatus.Offline && after == HostConnectionStatus.Connected)
+            Notifications.ShowSuccess("Reconnected to the Host");
+        StateHasChanged();
     }
 
     public async ValueTask DisposeAsync()

@@ -30,12 +30,19 @@ internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths bu
         // 2. Resolve final URLs. The defaults are the same as the legacy `.run.xml` files so an
         //    unchanged developer machine keeps working; CORS is required because the frontend now
         //    lives on a separate origin and the host no longer serves it.
-        var hostUrls = string.IsNullOrWhiteSpace(options.HostUrls) ? "http://localhost:52173" : options.HostUrls;
-        var webUrls = string.IsNullOrWhiteSpace(options.WebUrls) ? "http://localhost:52174" : options.WebUrls;
+        //    With --public-web the pair behaves as an installed Host and the published site: the
+        //    Web app's appsettings.Development.json switches to that mode on port 52175, where it
+        //    talks to http://127.0.0.1:52173/ with a browser grant, as ai.dev-team.org does.
+        var hostUrls = string.IsNullOrWhiteSpace(options.HostUrls)
+            ? options.PublicWeb ? "http://127.0.0.1:52173" : "http://localhost:52173"
+            : options.HostUrls;
+        var webUrls = string.IsNullOrWhiteSpace(options.WebUrls)
+            ? options.PublicWeb ? "http://localhost:52175" : "http://localhost:52174"
+            : options.WebUrls;
         var corsOrigins = string.IsNullOrWhiteSpace(options.CorsOrigins) ? webUrls : options.CorsOrigins;
 
-        Console.WriteLine($"Host: {hostUrls}");
-        Console.WriteLine($"Web:  {webUrls}/?api={hostUrls}/");
+        Console.WriteLine($"Host: {hostUrls}{(options.PublicWeb ? " (public Web mode)" : string.Empty)}");
+        Console.WriteLine(options.PublicWeb ? $"Web:  {webUrls}/" : $"Web:  {webUrls}/?api={hostUrls}/");
         Console.WriteLine($"CORS: {corsOrigins}");
         Console.WriteLine();
 
@@ -51,6 +58,12 @@ internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths bu
         };
         hostStart.ArgumentList.Add("--urls");
         hostStart.ArgumentList.Add(hostUrls);
+        if (options.PublicWeb)
+        {
+            hostStart.ArgumentList.Add("--public-web");
+            hostStart.ArgumentList.Add("--public-origin");
+            hostStart.ArgumentList.Add(webUrls.Split(';')[0]);
+        }
         if (!string.IsNullOrWhiteSpace(options.Environment))
         {
             hostStart.Environment["ASPNETCORE_ENVIRONMENT"] = options.Environment;

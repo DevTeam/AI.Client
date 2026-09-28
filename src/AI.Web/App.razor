@@ -1,11 +1,13 @@
 @using System.Net.Http.Json
 @using AI.Contracts
+@implements IDisposable
 @inject IClientMode ClientMode
 @inject HttpClient Http
+@inject IApiBaseUrl ApiBaseUrl
 @inject IJSRuntime Js
 @inject NavigationManager Navigation
 
-@if (!ClientMode.PublicWeb || _ready)
+@if (!ClientMode.PublicWeb || _stage == Stage.Ready)
 {
     <Router AppAssembly="@typeof(App).Assembly">
         <Found Context="routeData">
@@ -20,154 +22,279 @@
 
     <ToastRegion />
 }
+else if (_stage is Stage.Checking or Stage.Redirecting)
+{
+    @* The same splash as index.html, so a browser that is already connected, or is about to be,
+       never sees a page asking it anything. *@
+    <main class="app-loading" aria-label="Connecting to Host" aria-live="polite">
+        <img class="app-loading-mark" src="app-icon.svg" width="48" height="48" alt="" />
+        <div class="app-loading-copy"><strong>AI Client</strong><span>@(_stage == Stage.Redirecting ? "Opening Host confirmation" : "Connecting to Host")</span></div>
+        <div class="app-loading-track" role="progressbar" aria-label="Connecting" aria-valuetext="Connecting to Host"><span></span></div>
+    </main>
+}
 else
 {
-    <PageTitle>Connect AI Client</PageTitle>
+    <PageTitle>AI Client</PageTitle>
     <main class="host-gate">
-        <header class="host-gate-heading">
-            <div class="host-gate-brand"><img src="app-icon.svg" width="40" height="40" alt="" /><span>AI Client</span></div>
-            <span class="host-gate-eyebrow">Web app · This computer</span>
-            <h1>Choose how to use AI Client</h1>
-            <p>The Web app needs a local Host. Your projects, chats and credentials stay on this computer.</p>
-        </header>
+        <div class="host-gate-brand"><img src="app-icon.svg" width="32" height="32" alt="" /><span>AI Client</span></div>
 
-        <section class="host-gate-status" aria-label="Host connection">
-            <div class="host-gate-status-copy" role="status" aria-live="polite">
-                <span class="host-gate-status-icon @(_checking ? "is-checking" : _hostFound ? "is-found" : "")" aria-hidden="true"></span>
-                <div>
-                    <h2>@(_insecurePublicOrigin ? "Open the secure site" : _checking ? "Checking for Host" : _hostFound ? "Host is ready" : _incompatibleHost ? "Host update needed" : _otherApp ? "Host address in use" : _checked ? "Host not found" : "Already have Host?")</h2>
-                    <p>@(_insecurePublicOrigin ? "The Host accepts this Web app only over HTTPS. Open the secure address to connect." : _checking ? "Looking for the background Host on this computer." : _hostFound ? "Approve this browser on the local confirmation page." : _incompatibleHost ? "Install the latest Host below, then check again." : _otherApp ? "Close the other application and check again." : _checked ? "Start the installed Host, or download it below." : "Check whether Host is running and connect this browser.")</p>
-                </div>
-            </div>
-            @if (_insecurePublicOrigin)
-            {
-                <a class="host-gate-primary" href="https://ai.dev-team.org/">Open HTTPS site</a>
-            }
-            else if (_hostFound && !_checking)
-            {
-                <button class="host-gate-primary" type="button" @onclick="ConnectHost">Approve connection</button>
-            }
-            else
-            {
-                <button class="host-gate-primary" type="button" disabled="@_checking" @onclick="CheckHostAsync">@(_checked ? "Check again" : "Find Host")</button>
-            }
-        </section>
+        @switch (_stage)
+        {
+            case Stage.Insecure:
+                <h1>Open the secure site</h1>
+                <p class="host-gate-lead">The Host on this computer accepts this Web app only over HTTPS.</p>
+                <div class="host-gate-actions"><a class="host-gate-primary" href="@SecureAddress">Open HTTPS site</a></div>
+                break;
+
+            case Stage.Connect:
+                <h1>Connect this browser</h1>
+                <p class="host-gate-lead">AI Client Host is running on this computer. Confirm once on its local page, and this browser opens your projects and chats.</p>
+                <div class="host-gate-actions"><button class="host-gate-primary" type="button" @onclick="ConnectAsync">Connect to Host</button></div>
+                break;
+
+            case Stage.Blocked:
+                <h1>Allow local network access</h1>
+                <p class="host-gate-lead">The browser blocks this site from reaching the Host on this computer. Select the icon to the left of the address, allow <strong>Local network access</strong>, and reload the page.</p>
+                <div class="host-gate-actions"><button class="host-gate-primary" type="button" @onclick="Reload">Reload</button></div>
+                break;
+
+            default:
+                <h1>@(_stage switch { Stage.Update => "Update AI Client Host", Stage.OtherApp => "The Host address is taken", _ => "Use AI Client in this browser" })</h1>
+                <p class="host-gate-lead">@(_stage switch
+                {
+                    Stage.Update => "This Web app and the Host on this computer speak different versions. Install the latest Host; your projects and chats stay where they are.",
+                    Stage.OtherApp => $"Another application answers at {HostAuthority}. Close it and AI Client Host can start.",
+                    _ => "A small background Host keeps your projects, chats and credentials on this computer. Install it once, and this page connects by itself."
+                })</p>
+                @if (_stage != Stage.OtherApp)
+                {
+                    <div class="host-gate-actions">
+                        <a class="host-gate-primary" href="@AssetUrl("AI.Host", _runtime)"><AppIcon Name="download" />Download for @OsName(_runtime)</a>
+                        <span class="host-gate-meta">@ArchitectureName(_runtime) · @Extension(_runtime)</span>
+                    </div>
+                }
+                <p class="host-gate-waiting" role="status"><span aria-hidden="true"></span>@(_stage == Stage.OtherApp ? "Waiting for the address to free up…" : "Waiting for Host on this computer…")</p>
+                @if (_stage != Stage.OtherApp)
+                {
+                    <details class="host-gate-more">
+                        <summary>Other platforms</summary>
+                        <ul>
+                            @foreach (var runtime in Runtimes)
+                            {
+                                <li><a href="@AssetUrl("AI.Host", runtime)">@OsName(runtime) · @ArchitectureName(runtime)</a><span>@Extension(runtime)</span></li>
+                            }
+                        </ul>
+                    </details>
+                    <p class="host-gate-note">Prefer a separate window? <a href="@AssetUrl("AI.Desktop", _runtime)">Get the Desktop app</a>. It shares projects and chats with the Host.</p>
+                    <p class="host-gate-note">If the browser asks to access devices on your local network, allow it.</p>
+                }
+                break;
+        }
+
         @if (_error is not null)
         {
             <p class="host-gate-error" role="alert">@_error</p>
         }
-
-        <div class="host-gate-platform">
-            <div><label for="download-runtime">Choose your system</label><span>Check the processor type before downloading.</span></div>
-            <select id="download-runtime" @bind="_runtime">
-                <option value="win-x64">Windows · x64</option>
-                <option value="win-arm64">Windows · ARM64</option>
-                <option value="osx-x64">macOS · Intel</option>
-                <option value="osx-arm64">macOS · Apple silicon</option>
-                <option value="linux-x64">Ubuntu/Debian · x64</option>
-                <option value="linux-arm64">Ubuntu/Debian · ARM64</option>
-            </select>
-        </div>
-        <div class="host-gate-downloads">
-            <section>
-                <span class="host-gate-card-label">Use this browser</span>
-                <h2>Install Host</h2>
-                <p>Runs in the background after sign in. Return here to connect and work in Chrome or Edge.</p>
-                <a class="host-gate-download" href="@AssetUrl("AI.Host")">Download Host <span aria-hidden="true">↗</span></a>
-                <small>@InstallerLabel</small>
-            </section>
-            <section>
-                <span class="host-gate-card-label">Native window</span>
-                <h2>Install Desktop</h2>
-                <p>Opens AI Client in its own window. If Host is installed, both apps share your projects and chats.</p>
-                <a class="host-gate-download" href="@AssetUrl("AI.Desktop")">Download Desktop <span aria-hidden="true">↗</span></a>
-                <small>@InstallerLabel</small>
-            </section>
-        </div>
-        <p class="host-gate-footnote">After installing Host, start it if needed, then check the connection above. Your browser may ask for local network access.</p>
     </main>
 }
 
 @code {
-    private bool _ready;
-    private bool _checking;
-    private bool _checked;
-    private bool _hostFound;
-    private bool _incompatibleHost;
-    private bool _otherApp;
-    private bool _insecurePublicOrigin;
+    private readonly string[] Runtimes = ["win-x64", "win-arm64", "osx-arm64", "osx-x64", "linux-x64", "linux-arm64"];
+    private readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
+
+    private readonly CancellationTokenSource _disposed = new();
+    private Stage _stage = Stage.Checking;
     private string? _error;
     private string _runtime = "win-x64";
+
+    private enum Stage { Checking, Redirecting, Ready, Insecure, Install, Update, OtherApp, Blocked, Connect }
+
+    private enum Probe { Missing, Ready, Incompatible, OtherApp }
+
+    private string SecureAddress => new UriBuilder(Navigation.BaseUri) { Scheme = Uri.UriSchemeHttps, Port = -1 }.Uri.ToString();
+
+    private string HostAuthority => ApiBaseUrl.Value.Authority;
 
     protected override async Task OnInitializedAsync()
     {
         if (!ClientMode.PublicWeb)
         {
-            _ready = true;
+            _stage = Stage.Ready;
             return;
         }
 
         _runtime = await Js.InvokeAsync<string>("aiHostBridge.platform");
-        _insecurePublicOrigin = new Uri(Navigation.Uri).Scheme != Uri.UriSchemeHttps;
-        if (_insecurePublicOrigin) return;
-        if (await Js.InvokeAsync<string>("aiHostBridge.consumeReturn") is "invalid")
-            _error = "The connection could not be verified. Select Find Host to try again.";
-        if (await Js.InvokeAsync<string?>("aiHostBridge.token") is not null)
-            await CheckHostAsync();
+        // A grant sent over plain HTTP could be read on the way; the Host refuses such an origin.
+        // Only a development server on this computer may use HTTP.
+        var page = new Uri(Navigation.Uri);
+        if (page.Scheme != Uri.UriSchemeHttps && !page.IsLoopback)
+        {
+            _stage = Stage.Insecure;
+            return;
+        }
+
+        var returned = await Js.InvokeAsync<string>("aiHostBridge.consumeReturn");
+        if (returned == "invalid")
+            _error = "The connection could not be verified. Connect again.";
+        if (returned.StartsWith("pair:", StringComparison.Ordinal))
+            await PairAsync(returned[5..]);
+
+        _ = WaitForHostAsync(_disposed.Token);
     }
 
-    private async Task CheckHostAsync()
+    /// <summary>Checks now and then every <see cref="PollInterval"/> while the page waits for an install or update.</summary>
+    private async Task WaitForHostAsync(CancellationToken cancellationToken)
     {
-        _checking = true;
-        _checked = true;
-        _error = null;
-        _hostFound = false;
-        _incompatibleHost = false;
-        _otherApp = false;
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-            var health = await Http.GetFromJsonAsync<HostHealth>("api/health", timeout.Token);
-            if (health?.ProductName != HostProtocol.ProductName)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                _otherApp = true;
-                _error = "Another application answered at the Host address. Close it and try again.";
-                return;
-            }
-            if (health.ApiVersion != HostProtocol.ApiVersion)
-            {
-                _incompatibleHost = true;
-                _error = "This Host uses a different API version. Install the latest Host to use this Web app.";
-                return;
-            }
-            _hostFound = true;
+                var probe = await ProbeAsync(cancellationToken);
+                var next = probe switch
+                {
+                    Probe.Ready => await OpenAsync(),
+                    Probe.Incompatible => Stage.Update,
+                    Probe.OtherApp => Stage.OtherApp,
+                    _ => await IsLocalNetworkAccessDeniedAsync() ? Stage.Blocked : Stage.Install
+                };
+                if (next != _stage)
+                {
+                    _stage = next;
+                    StateHasChanged();
+                }
 
-            using var session = await Http.GetAsync("api/bridge/session", timeout.Token);
-            _ready = session.IsSuccessStatusCode;
-            if (!_ready && session.StatusCode != System.Net.HttpStatusCode.Unauthorized)
-                _error = "Host responded, but the connection failed. Try approving this browser again.";
+                if (next is not (Stage.Install or Stage.Update or Stage.OtherApp)) return;
+                await Task.Delay(PollInterval, cancellationToken);
+            }
         }
-        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _error = "If the browser blocked the check, allow local network access and try again.";
-        }
-        finally
-        {
-            _checking = false;
         }
     }
 
-    private async Task ConnectHost() => await Js.InvokeVoidAsync("aiHostBridge.connect");
-
-    private string AssetUrl(string product)
+    private async Task<Probe> ProbeAsync(CancellationToken cancellationToken)
     {
-        var extension = _runtime.StartsWith("win-", StringComparison.Ordinal) ? "exe"
-            : _runtime.StartsWith("osx-", StringComparison.Ordinal) ? "pkg" : "deb";
-        return $"https://github.com/DevTeam/AI.Client/releases/latest/download/{product}-{_runtime}.{extension}";
+        try
+        {
+            // Long enough for the user to answer the browser's local network access prompt: the
+            // request waits for it. A Host that is not running refuses the connection at once.
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            var health = await Http.GetFromJsonAsync<HostHealth>("api/health", timeout.Token);
+            if (health?.ProductName != HostProtocol.ProductName) return Probe.OtherApp;
+            return health.ApiVersion == HostProtocol.ApiVersion ? Probe.Ready : Probe.Incompatible;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return Probe.OtherApp;
+        }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return Probe.Missing;
+        }
     }
 
-    private string InstallerLabel => _runtime.StartsWith("win-", StringComparison.Ordinal) ? "Windows installer · .exe"
-        : _runtime.StartsWith("osx-", StringComparison.Ordinal) ? "macOS installer · .pkg" : "Ubuntu/Debian package · .deb";
+    /// <summary>
+    /// Local Network Access guards only a public site reaching loopback; a dev server on this
+    /// computer is not subject to it, and some embedded browsers report "denied" there regardless.
+    /// </summary>
+    private async Task<bool> IsLocalNetworkAccessDeniedAsync() =>
+        !new Uri(Navigation.Uri).IsLoopback
+        && await Js.InvokeAsync<string>("aiHostBridge.localNetworkAccess") == "denied";
+
+    /// <summary>With a compatible Host running: opens the workspace, or goes to the Host for a grant.</summary>
+    private async Task<Stage> OpenAsync()
+    {
+        if (await Js.InvokeAsync<string?>("aiHostBridge.token") is not null)
+        {
+            try
+            {
+                using var session = await Http.GetAsync("api/bridge/session");
+                if (session.IsSuccessStatusCode)
+                {
+                    await Js.InvokeVoidAsync("aiHostBridge.connected");
+                    return Stage.Ready;
+                }
+
+                // Revoked, or granted by a Host whose data directory has since been replaced.
+                if (session.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    await Js.InvokeVoidAsync("aiHostBridge.forget");
+                else
+                    _error = "The Host answered, but the connection failed. Connect again.";
+            }
+            catch (HttpRequestException)
+            {
+                _error = "The Host stopped answering. Connect again.";
+            }
+        }
+
+        if (_error is null && await Js.InvokeAsync<bool>("aiHostBridge.mayConnectAutomatically"))
+        {
+            await ConnectAsync();
+            return Stage.Redirecting;
+        }
+
+        return Stage.Connect;
+    }
+
+    private async Task PairAsync(string code)
+    {
+        try
+        {
+            using var response = await Http.PostAsJsonAsync("api/bridge/pair", new { Code = code });
+            if (response.IsSuccessStatusCode && await response.Content.ReadFromJsonAsync<Pairing>() is { Token: { } token })
+            {
+                await Js.InvokeVoidAsync("aiHostBridge.store", token);
+                return;
+            }
+        }
+        catch (Exception error) when (error is HttpRequestException or System.Text.Json.JsonException)
+        {
+        }
+
+        _error = "The link from the Host has expired. Connect again.";
+    }
+
+    private async Task ConnectAsync()
+    {
+        _stage = Stage.Redirecting;
+        await Js.InvokeVoidAsync("aiHostBridge.connect", ApiBaseUrl.Value.ToString());
+    }
+
+    private void Reload() => Navigation.Refresh(forceReload: true);
+
+    private string AssetUrl(string product, string runtime) =>
+        $"https://github.com/DevTeam/AI.Client/releases/latest/download/{product}-{runtime}.{Extension(runtime).TrimStart('.')}";
+
+    private string Extension(string runtime) => runtime.Split('-')[0] switch
+    {
+        "win" => ".exe",
+        "osx" => ".pkg",
+        _ => ".deb"
+    };
+
+    private string OsName(string runtime) => runtime.Split('-')[0] switch
+    {
+        "win" => "Windows",
+        "osx" => "macOS",
+        _ => "Ubuntu/Debian"
+    };
+
+    private string ArchitectureName(string runtime) => runtime switch
+    {
+        "osx-arm64" => "Apple silicon",
+        "osx-x64" => "Intel",
+        _ when runtime.EndsWith("arm64", StringComparison.Ordinal) => "ARM64",
+        _ => "x64"
+    };
+
+    public void Dispose()
+    {
+        _disposed.Cancel();
+        _disposed.Dispose();
+    }
 
     private sealed record HostHealth(string ProductName, int ApiVersion);
+
+    private sealed record Pairing(string? Token);
 }

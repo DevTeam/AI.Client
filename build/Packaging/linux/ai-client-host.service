@@ -1,0 +1,12 @@
+[Unit]
+Description=AI Client local Host
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/ai-client-host/AI.Host --public-web
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

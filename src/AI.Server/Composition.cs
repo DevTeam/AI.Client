@@ -74,9 +74,10 @@ internal sealed class Composition
             .Root<IToolSessionFactory>()
             .Root<IAppDataChangeSignal>()
             .Root<IRunEventsPublisher>()
+            .Root<IBrowserAccessService>()
             // Hosting
-            .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer>()
-            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, MemoryEndpoints>(Tag.Unique)
+            .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, BrowserAccessService>()
+            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, MemoryEndpoints, BrowserAccessEndpoints>(Tag.Unique)
             // One storage root for data and logs: every path below and the file logger read it here.
             .Singleton<ProjectStorageLocation, DataDirectoryLock>()
             .Bind<ILoggerProvider>().As(Lifetime.Singleton).To((IProjectStorageLocation location) => new JsonLineFileLoggerProvider(location))

@@ -1,6 +1,6 @@
 # Desktop app
 
-`AI.Desktop` is the Blazor UI in a native window, with the server running inside the same process. Decision and alternatives: [ADR-008](decisions/ADR-008-desktop-app.md).
+`AI.Desktop` is the Blazor UI in a native window. It uses the separately installed Host when available; otherwise the server runs inside the Desktop process. Decision and alternatives: [ADR-008](decisions/ADR-008-desktop-app.md).
 
 ## Run and publish
 

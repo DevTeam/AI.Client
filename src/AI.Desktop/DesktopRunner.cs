@@ -3,10 +3,33 @@ namespace AI.Desktop;
 using Avalonia;
 using Server.Hosting;
 
-internal sealed class DesktopRunner : IDesktopRunner
+internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator) : IDesktopRunner
 {
     public int Run(ServerOptions options, bool devTools)
     {
+        // A separately installed Host owns the shared data directory. Reuse its UI and API so
+        // Desktop and the public Web application see the same projects at the same time.
+        var sharedHost = sharedHostLocator.Find();
+        if (sharedHost.Address is { } sharedAddress)
+        {
+            var sharedUi = new UiComposition(new DesktopStart(sharedAddress, null, options.DataDirectory, devTools));
+            return AppBuilder.Configure(() => sharedUi.App)
+                .UsePlatformDetect()
+                .WithInterFont()
+                .LogToTrace()
+                .StartWithClassicDesktopLifetime([]);
+        }
+
+        if (sharedHost.Installed)
+        {
+            var failedUi = new UiComposition(new DesktopStart(null, sharedHost.Error, options.DataDirectory, devTools));
+            return AppBuilder.Configure(() => failedUi.App)
+                .UsePlatformDetect()
+                .WithInterFont()
+                .LogToTrace()
+                .StartWithClassicDesktopLifetime([]);
+        }
+
         // The server graph depends on the options, so it gets a container of its own, which is
         // also ASP.NET's service provider factory and lives exactly as long as the server.
         using var server = new ServerComposition(options);
@@ -44,4 +67,5 @@ internal sealed class DesktopRunner : IDesktopRunner
             }
         }
     }
+
 }

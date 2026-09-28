@@ -14,7 +14,8 @@ internal sealed partial class CommandLineComposition
             .Hint(Hint.Resolve, "Off")
             .DependsOn("AI.Server.CommandLine.Composition")
             .Singleton<DesktopCommand>(Tag.Unique)
-            .Transient<DesktopRunner>();
+            .Transient<DesktopRunner>()
+            .Transient<SharedHostLocator>();
 }
 
 /// <summary>The server graph for one run; also ASP.NET's service provider factory.</summary>

@@ -26,4 +26,5 @@ public sealed record ServerOptions(
     string? Urls,
     bool BrowseEnabled,
     bool ServeWeb = false,
-    bool StopOnProcessSignals = true);
+    bool StopOnProcessSignals = true,
+    bool PublicWeb = false);

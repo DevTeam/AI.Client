@@ -1,19 +1,137 @@
-<Router AppAssembly="@typeof(App).Assembly">
-    <Found Context="routeData">
-        <RouteView RouteData="@routeData" />
-        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-    </Found>
-    <NotFound>
-        <PageTitle>Not found</PageTitle>
-        <main class="shell">
-            <h1>Page not found</h1>
-        </main>
-    </NotFound>
-</Router>
+@using System.Net.Http.Json
+@inject IClientMode ClientMode
+@inject HttpClient Http
+@inject IJSRuntime Js
 
-@* Global toast region: lives at the app shell so any page (Home, GlobalSettingsPanel,
-   ToolPermissionsDrawer, anything that saves settings) can pop a notification and have it
-   appear in the same place. Subscription to NotificationService.Changed is set up inside the
-   component, not here, so disposing/recreating it on navigation does not happen — the router
-   only swaps the RouteView, this fragment is rendered once. *@
-<ToastRegion />
+@if (!ClientMode.PublicWeb || _ready)
+{
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="@routeData" />
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <PageTitle>Not found</PageTitle>
+            <main class="shell"><h1>Page not found</h1></main>
+        </NotFound>
+    </Router>
+
+    <ToastRegion />
+}
+else
+{
+    <PageTitle>Connect AI Client</PageTitle>
+    <main class="host-gate">
+        <img src="app-icon.svg" width="48" height="48" alt="" />
+        <h1>AI Client</h1>
+        <p>Your projects and credentials stay in the local Host on this computer.</p>
+        @if (_checking)
+        {
+            <p role="status">Checking the local Host…</p>
+        }
+        else if (!_checked)
+        {
+            <p>Already installed the Host? Connect it to this browser.</p>
+            <button type="button" @onclick="CheckHostAsync">Find Host</button>
+        }
+        else if (_hostFound)
+        {
+            <p role="status">Host found. Allow this browser to use it.</p>
+            <button type="button" @onclick="ConnectHost">Connect Host</button>
+        }
+        else
+        {
+            <p role="status">The local Host is unavailable. Start it, or install one of the applications below.</p>
+            <button type="button" @onclick="CheckHostAsync">Check again</button>
+        }
+        @if (_error is not null)
+        {
+            <p class="host-gate-error" role="alert">@_error</p>
+        }
+        <div class="host-gate-downloads">
+            <section>
+                <h2>Use in this browser</h2>
+                <p>Install the background Host. Keep using AI Client at this address.</p>
+                <a href="@AssetUrl("AI.Host")">Download Host</a>
+            </section>
+            <section>
+                <h2>Use the Desktop app</h2>
+                <p>Install the native window with the same projects and chats.</p>
+                <a href="@AssetUrl("AI.Desktop")">Download Desktop</a>
+            </section>
+        </div>
+        <label for="download-runtime">Platform</label>
+        <select id="download-runtime" @bind="_runtime">
+            <option value="win-x64">Windows x64</option>
+            <option value="win-arm64">Windows ARM64</option>
+            <option value="osx-x64">macOS Intel</option>
+            <option value="osx-arm64">macOS Apple silicon</option>
+            <option value="linux-x64">Linux x64</option>
+            <option value="linux-arm64">Linux ARM64</option>
+        </select>
+    </main>
+}
+
+@code {
+    private bool _ready;
+    private bool _checking;
+    private bool _checked;
+    private bool _hostFound;
+    private string? _error;
+    private string _runtime = "win-x64";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!ClientMode.PublicWeb)
+        {
+            _ready = true;
+            return;
+        }
+
+        _runtime = await Js.InvokeAsync<string>("aiHostBridge.platform");
+        await Js.InvokeVoidAsync("aiHostBridge.consumeReturn");
+        if (await Js.InvokeAsync<string?>("aiHostBridge.token") is not null)
+            await CheckHostAsync();
+    }
+
+    private async Task CheckHostAsync()
+    {
+        _checking = true;
+        _checked = true;
+        _error = null;
+        _hostFound = false;
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            var health = await Http.GetFromJsonAsync<HostHealth>("api/health", timeout.Token);
+            _hostFound = health is { ProductName: "AI Client", ApiVersion: 1 };
+            if (!_hostFound)
+            {
+                _error = "The response is not from a compatible AI Host.";
+                return;
+            }
+
+            using var session = await Http.GetAsync("api/bridge/session", timeout.Token);
+            _ready = session.IsSuccessStatusCode;
+        }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        {
+            _error = "Check that the Host is running and allow local network access if your browser asks.";
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
+
+    private async Task ConnectHost() => await Js.InvokeVoidAsync("aiHostBridge.connect");
+
+    private string AssetUrl(string product)
+    {
+        var extension = _runtime.StartsWith("win-", StringComparison.Ordinal) ? "exe"
+            : _runtime.StartsWith("osx-", StringComparison.Ordinal) ? "pkg" : "deb";
+        return $"https://github.com/DevTeam/AI.Client/releases/latest/download/{product}-{_runtime}.{extension}";
+    }
+
+    private sealed record HostHealth(string ProductName, int ApiVersion);
+}

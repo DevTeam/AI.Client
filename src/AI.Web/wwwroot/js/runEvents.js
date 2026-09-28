@@ -5,7 +5,7 @@
 export function subscribe(baseUrl, dotNetReference) {
     const trimmed = (baseUrl || "").replace(/\/+$/, "");
     const url = trimmed + "/api/runs/events";
-    const source = new EventSource(url);
+    const controller = new AbortController();
     let latest = null;
     let dispatching = false;
     let disposed = false;
@@ -24,10 +24,7 @@ export function subscribe(baseUrl, dotNetReference) {
             dispatching = false;
         }
     };
-    source.addEventListener("snapshot", event => {
-        latest = event.data;
-        void dispatch();
-    });
+    const onSnapshot = data => { latest = data; void dispatch(); };
     // The Host says only that something changed, never what. One pending reload is enough however
     // many signals arrive while it runs, so they collapse into a flag rather than a queue.
     let reloadPending = false;
@@ -46,11 +43,47 @@ export function subscribe(baseUrl, dotNetReference) {
             reloading = false;
         }
     };
-    source.addEventListener("data-changed", () => {
+    const onDataChanged = () => {
         reloadPending = true;
         void reload();
-    });
-    return { dispose: () => { disposed = true; latest = null; reloadPending = false; source.close(); } };
+    };
+    // fetch can send the browser grant in a header; EventSource cannot. The same parser is used
+    // for the local UI, the development server, and the published website.
+    const readEvents = async () => {
+        while (!disposed) {
+            try {
+                const token = window.aiHostBridge?.token();
+                const response = await fetch(url, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    signal: controller.signal,
+                    cache: "no-store"
+                });
+                if (!response.ok || !response.body) throw new Error(`Events returned ${response.status}`);
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let pending = "";
+                while (!disposed) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    pending = (pending + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
+                    let end;
+                    while ((end = pending.indexOf("\n\n")) >= 0) {
+                        const frame = pending.slice(0, end);
+                        pending = pending.slice(end + 2);
+                        const event = frame.split("\n").find(line => line.startsWith("event: "))?.slice(7);
+                        const data = frame.split("\n").filter(line => line.startsWith("data: ")).map(line => line.slice(6)).join("\n");
+                        if (event === "snapshot") onSnapshot(data);
+                        else if (event === "data-changed") onDataChanged();
+                    }
+                }
+            } catch (error) {
+                if (!disposed) console.warn("Run events disconnected", error);
+            }
+            if (!disposed) await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+    };
+    void readEvents();
+    return { dispose: () => { disposed = true; latest = null; reloadPending = false; controller.abort(); } };
 }
 export function isFocused() { return document.visibilityState === "visible" && document.hasFocus(); }
 

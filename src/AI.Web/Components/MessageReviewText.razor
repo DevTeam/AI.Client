@@ -117,16 +117,21 @@
         if (hit is null) return;
         if (hit.End > hit.Start)
         {
-            _selection = hit;
-            Position(hit);
-            _editingId = null;
-            _body = string.Empty;
-            _editing = true;
-            _error = null;
+            BeginComment(hit);
         }
         else if (hit.Hit is { } position && _current?.MessageComments?.FirstOrDefault(item =>
                      item.Start <= position && position < item.End) is { } comment)
             await EditAsync(comment);
+    }
+
+    private void BeginComment(MessageTextHit hit)
+    {
+        _selection = hit;
+        Position(hit);
+        _editingId = null;
+        _body = string.Empty;
+        _editing = true;
+        _error = null;
     }
 
     private async Task EditAsync(MessageReviewComment comment)

@@ -1939,12 +1939,12 @@ body {
 
 .workspace-message.user {
     /* Named so the toolbar can centre on the last line; .branch-leaf trims it below. */
-    --bubble-padding-end: 0.45rem;
+    --message-padding-end: 0.45rem;
     width: fit-content;
     max-width: 75%;
     margin-right: 0;
     padding: 0.45rem 0.8rem;
-    padding-bottom: var(--bubble-padding-end);
+    padding-bottom: var(--message-padding-end);
     border: 1px solid var(--color-user-bubble-border);
     border-radius: 1rem;
     background: var(--color-user-bubble);
@@ -1991,12 +1991,9 @@ body {
    separately by .branch-leaf-arrived at the moment an assistant response lands,
    so static visits to a chat don't trigger an animation. */
 .workspace-message.branch-leaf {
-    padding-bottom: 0.3rem;
-}
-
-.workspace-message.user.branch-leaf {
-    --bubble-padding-end: 0.3rem;
-    padding-bottom: var(--bubble-padding-end);
+    /* Declared after .workspace-message.user, so it trims a question's bubble too. */
+    --message-padding-end: 0.3rem;
+    padding-bottom: var(--message-padding-end);
 }
 
 /* Drawn left-to-right, held, then faded out in place, on the instant the leaf becomes
@@ -2140,18 +2137,24 @@ body {
    The right padding, not a margin, keeps the pointer over the article on its way to the buttons. */
 .workspace-message.user .message-actions {
     right: 100%;
-    /* Centred on the bubble's last line, not sat on its bottom edge: the chip's font matches the
-       text's, so 1lh is that line, and the bubble's bottom padding is what lies beneath it. */
-    bottom: calc(var(--bubble-padding-end) + (1lh - 1.7rem) / 2);
     padding: 0 0.3rem 0 0;
     background: none;
+}
+
+/* Centred on the message's last line of text, not sat on the article's bottom edge, which the
+   taller buttons and the bottom padding put below the text. The chip takes the text's font, so
+   1lh is that line, and the padding is what lies beneath it. */
+.workspace-message.user .message-actions,
+.workspace-message.assistant .message-actions {
+    bottom: calc(var(--message-padding-end, 0px) + (1lh - 1.7rem) / 2);
     font-size: var(--message-font-size);
     line-height: 1.5;
 }
 
 /* The branch control is a row of its own under the text; the chip centres on the line above it. */
-.workspace-message.user:has(.message-branch-indicator) .message-actions {
-    bottom: calc(1.9rem + (1lh - 1.7rem) / 2);
+.workspace-message.user:has(.message-branch-indicator) .message-actions,
+.workspace-message.assistant:has(.message-branch-indicator) .message-actions {
+    bottom: calc(var(--message-padding-end, 0px) + 1.9rem + (1lh - 1.7rem) / 2);
 }
 
 /* Too narrow a feed leaves no room beside the bubble. The chip then straddles the bubble's top

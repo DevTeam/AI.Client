@@ -10,8 +10,8 @@ public sealed class RunCompletionProtocol : IRunCompletionProtocol
     {
         var schema = JsonSerializer.Deserialize<JsonElement>(Schema);
         var definition = new ChatToolDefinition(Name,
-            "Report whether the user's request is complete. This is the only way to publish a final answer after using tools. "
-            + "Use continue when work remains, complete only when the definition of done is satisfied, and blocked only when progress requires user input or an external change.",
+            "Finish the run. Use complete when the request is satisfied, or blocked when you cannot proceed or "
+            + "answer reliably. Explain the result in finalAnswer.",
             schema);
         Tool = new AgentTool(definition,
             ToolDescriptor.Basic(Name, OriginalName, definition.Description, schema),
@@ -32,25 +32,13 @@ public sealed class RunCompletionProtocol : IRunCompletionProtocol
         var status = statusText switch
         {
             "complete" => RunCompletionStatus.Complete,
-            "continue" => RunCompletionStatus.Continue,
             "blocked" => RunCompletionStatus.Blocked,
-            _ => throw new ArgumentException("Completion status must be complete, continue, or blocked.")
+            _ => throw new ArgumentException("Completion status must be complete or blocked. Call an ordinary tool to continue working.")
         };
-        var decision = new RunCompletionDecision(status, OptionalString(root, "finalAnswer"),
-            Strings(root, "completed"), Strings(root, "evidence"), Strings(root, "remaining"),
-            OptionalString(root, "nextAction"));
-        Validate(decision);
-        return decision;
+        var answer = OptionalString(root, "finalAnswer")
+            ?? throw new ArgumentException("A completion decision requires a user-facing finalAnswer.");
+        return new RunCompletionDecision(status, answer);
     }
-
-    public string ContinueResult(RunCompletionDecision decision) => JsonSerializer.Serialize(new
-    {
-        accepted = true,
-        status = "continue",
-        remaining = decision.Remaining,
-        nextAction = decision.NextAction,
-        instruction = "Continue the work. Call app_finish_run again after the next meaningful step."
-    });
 
     public string RejectResult(string reason) => JsonSerializer.Serialize(new
     {
@@ -58,30 +46,6 @@ public sealed class RunCompletionProtocol : IRunCompletionProtocol
         error = reason,
         instruction = "Correct the decision and call app_finish_run again."
     });
-
-    private static void Validate(RunCompletionDecision decision)
-    {
-        if (decision.Status == RunCompletionStatus.Complete)
-        {
-            if (string.IsNullOrWhiteSpace(decision.FinalAnswer))
-                throw new ArgumentException("A complete result requires finalAnswer.");
-            if (decision.Completed.Count == 0)
-                throw new ArgumentException("A complete result requires at least one completed item.");
-            if (decision.Remaining.Count > 0)
-                throw new ArgumentException("A complete result cannot contain remaining work.");
-        }
-        else if (decision.Status == RunCompletionStatus.Continue)
-        {
-            if (decision.Remaining.Count == 0)
-                throw new ArgumentException("A continue result requires remaining work.");
-            if (string.IsNullOrWhiteSpace(decision.NextAction))
-                throw new ArgumentException("A continue result requires nextAction.");
-        }
-        else if (string.IsNullOrWhiteSpace(decision.FinalAnswer))
-        {
-            throw new ArgumentException("A blocked result requires a user-facing finalAnswer.");
-        }
-    }
 
     private static string RequiredString(JsonElement root, string name) =>
         OptionalString(root, name) ?? throw new ArgumentException($"Completion argument '{name}' is required.");
@@ -91,39 +55,6 @@ public sealed class RunCompletionProtocol : IRunCompletionProtocol
             ? NullIfWhiteSpace(property.GetString())
             : null;
 
-    /// <summary>
-    /// The schema asks for an array of strings, but models get the shape wrong in harmless ways: a
-    /// single string, an object such as <c>{"item": "..."}</c>, or an array of such objects. The
-    /// content is what the protocol needs, so every string found at any depth is taken, in order.
-    /// Rejecting these would only teach a weaker model to give up on the protocol.
-    /// </summary>
-    private static string[] Strings(JsonElement root, string name)
-    {
-        if (!root.TryGetProperty(name, out var property)) return [];
-        var values = new List<string>();
-        Collect(property, values);
-        return values.ToArray();
-    }
-
-    private static void Collect(JsonElement element, List<string> values)
-    {
-        switch (element.ValueKind)
-        {
-            case JsonValueKind.String when NullIfWhiteSpace(element.GetString()) is { } text:
-                values.Add(text);
-                break;
-            case JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False:
-                values.Add(element.GetRawText());
-                break;
-            case JsonValueKind.Array:
-                foreach (var item in element.EnumerateArray()) Collect(item, values);
-                break;
-            case JsonValueKind.Object:
-                foreach (var item in element.EnumerateObject()) Collect(item.Value, values);
-                break;
-        }
-    }
-
     private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     public const string Name = "app_finish_run";
@@ -132,14 +63,10 @@ public sealed class RunCompletionProtocol : IRunCompletionProtocol
         {
           "type": "object",
           "properties": {
-            "status": { "type": "string", "enum": ["complete", "continue", "blocked"] },
-            "finalAnswer": { "type": "string", "description": "User-facing answer in Markdown; link files as in your normal answers. Required for complete and blocked; omitted for continue." },
-            "completed": { "type": "array", "items": { "type": "string" } },
-            "evidence": { "type": "array", "items": { "type": "string" } },
-            "remaining": { "type": "array", "items": { "type": "string" } },
-            "nextAction": { "type": "string", "description": "The next concrete action. Required for continue." }
+            "status": { "type": "string", "enum": ["complete", "blocked"] },
+            "finalAnswer": { "type": "string", "description": "User-facing answer in Markdown. For blocked, explain the limitation and any partial result." }
           },
-          "required": ["status", "completed", "evidence", "remaining"],
+          "required": ["status", "finalAnswer"],
           "additionalProperties": false
         }
         """;

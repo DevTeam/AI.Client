@@ -20,7 +20,7 @@ internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator) : IDes
                 .StartWithClassicDesktopLifetime([]);
         }
 
-        if (sharedHost.Installed)
+        if (sharedHost.Error is not null)
         {
             var failedUi = new UiComposition(new DesktopStart(null, sharedHost.Error, options.DataDirectory, devTools));
             return AppBuilder.Configure(() => failedUi.App)

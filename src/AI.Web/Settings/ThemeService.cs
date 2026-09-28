@@ -23,4 +23,13 @@ public sealed class ThemeService(IClientSettingsService settings, IJSRuntime jsR
         await settings.UpdateAsync(current => current with { Accent = accent });
         await jsRuntime.InvokeVoidAsync("aiClientTheme.applyAccent", accent.ToString().ToLowerInvariant());
     }
+
+    public async ValueTask<int> GetCornerRoundnessAsync() => (await settings.GetAsync()).CornerRoundnessPercent;
+
+    public async ValueTask SetCornerRoundnessAsync(int percent)
+    {
+        percent = Math.Clamp(percent, 0, 200);
+        await settings.UpdateAsync(current => current with { CornerRoundnessPercent = percent });
+        await jsRuntime.InvokeVoidAsync("aiClientTheme.applyCornerRoundness", percent);
+    }
 }

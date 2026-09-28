@@ -40,6 +40,7 @@ public class ClientSettingsServiceTests
 
         (await service.GetAsync()).Theme.ShouldBe(ThemePreference.System);
         (await service.GetAsync()).Accent.ShouldBe(AccentColor.Blue);
+        (await service.GetAsync()).CornerRoundnessPercent.ShouldBe(100);
         (await service.GetAsync()).NotificationSoundEnabled.ShouldBeTrue();
     }
 
@@ -53,6 +54,7 @@ public class ClientSettingsServiceTests
 
         settings.Theme.ShouldBe(ThemePreference.Light);
         settings.Accent.ShouldBe(AccentColor.Blue);
+        settings.CornerRoundnessPercent.ShouldBe(100);
         settings.NotificationSoundEnabled.ShouldBeTrue();
     }
 
@@ -75,7 +77,7 @@ public class ClientSettingsServiceTests
 
         await service.UpdateAsync(settings => settings with { Theme = ThemePreference.Light, Accent = AccentColor.Teal });
 
-        js.Entries[StorageKey].ShouldBe("{\"theme\":\"light\",\"accent\":\"teal\",\"notificationSoundEnabled\":true}");
+        js.Entries[StorageKey].ShouldBe("{\"theme\":\"light\",\"accent\":\"teal\",\"cornerRoundnessPercent\":100,\"notificationSoundEnabled\":true}");
         (await new ClientSettingsService(js).GetAsync()).Theme.ShouldBe(ThemePreference.Light);
     }
 
@@ -114,5 +116,18 @@ public class ClientSettingsServiceTests
 
         (await theme.GetAccentAsync()).ShouldBe(AccentColor.Purple);
         js.Calls.ShouldContain(call => call.Identifier == "aiClientTheme.applyAccent" && Equals(call.Args[0], "purple"));
+    }
+
+    [Fact]
+    public async Task ThemeServiceShouldSaveAndApplyCornerRoundness()
+    {
+        var js = new FakeJSRuntime();
+        var theme = new ThemeService(new ClientSettingsService(js), js);
+
+        await theme.SetCornerRoundnessAsync(175);
+
+        (await theme.GetCornerRoundnessAsync()).ShouldBe(175);
+        js.Calls.ShouldContain(call => call.Identifier == "aiClientTheme.applyCornerRoundness" && Equals(call.Args[0], 175));
+        (await new ClientSettingsService(js).GetAsync()).CornerRoundnessPercent.ShouldBe(175);
     }
 }

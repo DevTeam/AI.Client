@@ -40,34 +40,32 @@ than add special branches to persistence or UI code.
 `RunCompletionProtocol` and injected into `ChatAgent`; it is not an MCP side effect and does not pass
 through tool permissions or execution.
 
-The structured decision contains:
-
-- `status`: `complete`, `continue`, or `blocked`;
-- `finalAnswer`: required for `complete` and `blocked`;
-- `completed` and `evidence`;
-- `remaining`;
-- `nextAction`: required for `continue`.
+The decision contains only `status` (`complete` or `blocked`) and a user-facing `finalAnswer`.
+Ordinary tool calls already continue the run, so the control tool has no `continue` status. The
+former `completed`, `evidence`, `remaining`, and `nextAction` fields were model-written claims that
+the application could not verify; old calls carrying those fields are still parsed. `blocked`
+includes missing information, unavailable capabilities, and questions the model cannot answer
+reliably. Its answer reports partial work, if any, and the limitation.
 
 After the run has used a normal tool, ordinary model prose is provisional. A plain response cannot
-complete the run: the agent adds a transient hidden correction and asks the model to continue. Only
-`complete.finalAnswer` or `blocked.finalAnswer` becomes the durable final assistant message.
-`continue` is returned to the model as an internal tool result and starts the next step. Three
-consecutive invalid completion decisions fail the run instead of looping indefinitely; before that
-limit, malformed decisions receive a hidden structured rejection and correction request. A missing
-decision is corrected three times — after the first correction the request offers only
-`app_finish_run` — and if the model still answers in prose, that latest text is published as the
-final answer rather than failing the run. Some OpenAI-compatible endpoints never emit the control
-call; losing an answer the model repeated several times is worse than accepting it. The same prose is the
-fallback when the model then returns only empty responses. The parser accepts harmless shape
-mistakes in the list fields — a single string, an object such as `{"item": "..."}`, or an array of
-objects — as well as a capitalised status and arguments encoded once more as a JSON string.
+complete the run: the agent adds a transient hidden correction and asks the model to continue with
+an ordinary tool or call `app_finish_run`. The first correction still offers ordinary tools; later
+corrections offer only `app_finish_run`. Three consecutive invalid decisions fail the run. If an
+OpenAI-compatible endpoint never emits the control call, its latest prose is published after three
+corrections rather than discarded. The same prose is the fallback after repeated empty responses.
+The parser accepts a capitalised status and arguments encoded once more as a JSON string.
+
+The agent counts tool errors and repeated identical tool results as steps without new information.
+A new successful result, including a new answer to a user question, resets the count. After four stalled steps,
+the next request offers only `app_finish_run` and asks for an honest `complete` or `blocked` answer.
+If the model calls another tool, the agent stops with a deterministic explanation instead of
+continuing the loop.
 
 An empty provider response does not acknowledge model-only instructions. The agent retains every
 pending correction and adds `response.empty`. When completion is already required, the recovery
-request advertises only `app_finish_run`, forcing an explicit `complete`, `continue`, or `blocked`
-decision before the normal tool catalogue is restored. Diagnostics record the retry number,
-`finish_reason`, chunk count, and whether this restricted recovery mode was active, without logging
-model or instruction content.
+request advertises only `app_finish_run`, forcing an explicit `complete` or `blocked` decision.
+Diagnostics record the retry number, `finish_reason`, chunk count, and whether this restricted
+recovery mode was active, without logging model or instruction content.
 
 For a direct answer which used no tools, the existing plain-text completion remains supported for
 OpenAI-compatible endpoints with incomplete tool-call support.

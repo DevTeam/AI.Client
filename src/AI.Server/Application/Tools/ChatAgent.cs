@@ -97,6 +97,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var runKey = new WorkspaceRunKey(projectId, chatId, branchId);
         await workspace.BeginRunAsync(runKey, grants,
             parentBranchId is { } parent ? new WorkspaceRunKey(projectId, chatId, parent) : null, token);
+        async Task<WorkspaceChangeSet> FinishAsync(string answer)
+        {
+            await Draft(null);
+            await Answer(answer);
+            var changes = await workspace.SnapshotAsync(runKey, token);
+            await workspace.CompleteRunAsync(runKey, CancellationToken.None);
+            return changes;
+        }
         var context = request.ContextMessages?.ToList() ?? [new ChatCompletionMessage("user", request.Message)];
         var runStart = context.FindLastIndex(message => message.Role == "user");
         var counts = context.Skip(Math.Max(0, runStart)).SelectMany(message => message.ToolCalls ?? [])
@@ -119,6 +127,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var truncated = 0;
         var continuedAnswer = new StringBuilder();
         var missingCompletion = 0;
+        var invalidCompletion = false;
+        var stalledSteps = 0;
+        var observedResults = new HashSet<(string Name, string Arguments, string Result)>();
         // The latest prose the model gave while a completion decision was required. It is not
         // published at once, but it is the answer to fall back on if the model then stops answering.
         string? provisionalAnswer = null;
@@ -146,7 +157,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     if ((await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") permitted.Add(tool);
             permitted.Add(completionProtocol.Tool);
             toolCatalog.Update(run, permitted);
-            var completionToolForced = completionRequired && (empty > 0 || missingCompletion > 0);
+            var stalled = stalledSteps >= MaxStalledSteps;
+            if (stalled)
+                instructions.Upsert(run, new ModelInstruction("run.stalled",
+                    "Several tool calls produced no new information. Call app_finish_run alone now: complete if done, "
+                    + "or blocked with the partial result and limitation. Do not call another tool.",
+                    970, ModelInstructionLifetime.Request));
+            var completionToolForced = completionRequired && (empty > 0 || invalidCompletion || missingCompletion >= 2 || stalled);
             IReadOnlyList<AgentTool> requestTools = completionToolForced ? [completionProtocol.Tool] : permitted;
             var selection = toolSelector.Choose(configuredConnection, request.Message, modelContext, requestTools,
                 toolCatalog.GetPinned(run));
@@ -188,25 +205,17 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 // turn. Keep every unacknowledged instruction: an empty provider response did not
                 // act on it. The next request explicitly describes the missing protocol result;
                 // after tools were used it also advertises only app_finish_run, so the endpoint has
-                // one unambiguous way to say complete, continue, or blocked.
+                // one unambiguous way to say complete or blocked.
                 var attempt = ++empty;
                 instructionDiagnostics.RecordEmptyResponse(request.Model, attempt, finish, chunkCount,
                     completionRequired, completionToolForced);
                 instructions.Upsert(run, new ModelInstruction("response.empty",
                     completionRequired
-                        ? $"Your previous response contained neither text nor a tool call and was not accepted. "
-                          + $"Call {completionProtocol.Tool.ModelDefinition.Name} now with status complete, continue, or blocked."
-                        : "Your previous response contained neither text nor a tool call and was not accepted. "
-                          + "Return a non-empty answer or call an available tool.",
+                        ? $"Your last response was empty. Call {completionProtocol.Tool.ModelDefinition.Name} with complete or blocked."
+                        : "Your last response was empty. Answer or call a tool.",
                     980, ModelInstructionLifetime.UntilAcknowledged));
                 if (attempt > MaxEmptyTurns && completionRequired && provisionalAnswer is { Length: > 0 } fallback)
-                {
-                    await Draft(null);
-                    await Answer(fallback);
-                    var fallbackChanges = await workspace.SnapshotAsync(runKey, token);
-                    await workspace.CompleteRunAsync(runKey, CancellationToken.None);
-                    return fallbackChanges;
-                }
+                    return await FinishAsync(fallback);
                 if (attempt > MaxEmptyTurns)
                     throw new InvalidOperationException(
                         $"The model returned an empty response {attempt} times "
@@ -244,9 +253,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     context.Add(new ChatCompletionMessage("assistant", provisionalAnswer));
                     continuedAnswer.Clear();
                     instructions.Upsert(run, new ModelInstruction("run.completion-required",
-                        $"Your previous response was provisional and was not published. Work is not finished until you call "
-                        + $"{completionProtocol.Tool.ModelDefinition.Name}. Continue the work, or call it now with status complete, "
-                        + "continue, or blocked. Do not repeat the provisional response.",
+                        $"Your previous text was provisional and was not published. Call an ordinary tool to continue, "
+                        + $"or {completionProtocol.Tool.ModelDefinition.Name} to finish. Do not repeat the text.",
                         950, ModelInstructionLifetime.UntilAcknowledged));
                     continue;
                 }
@@ -256,15 +264,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 // prose. Some OpenAI-compatible endpoints never emit a tool call for it. Failing the
                 // run would throw away an answer the model has repeated several times, so its latest
                 // text is published instead.
-                await Draft(null);
-                await Answer(continuedAnswer.ToString() + content);
+                var finalText = continuedAnswer.ToString() + content;
                 continuedAnswer.Clear();
-                var changes = await workspace.SnapshotAsync(runKey, token);
-                await workspace.CompleteRunAsync(runKey, CancellationToken.None);
-                return changes;
+                return await FinishAsync(finalText);
             }
 
             var completionCalls = calls.Where(call => IsCompletionCall(call.Name)).ToArray();
+            if (stalled && completionCalls.Length == 0)
+                return await FinishAsync(StalledAnswer);
             if (completionCalls.Length > 0)
             {
                 // Once the model has entered the structured completion protocol, every correction
@@ -280,6 +287,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 }
                 catch (Exception error) when (error is ArgumentException or JsonException)
                 {
+                    invalidCompletion = true;
                     if (++missingCompletion > MaxMissingCompletionTurns)
                         throw new InvalidOperationException(
                             $"The model repeatedly returned an invalid {completionProtocol.Tool.ModelDefinition.Name} decision.", error);
@@ -287,30 +295,18 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     context.Add(new ChatCompletionMessage("tool", completionProtocol.RejectResult(error.Message),
                         ToolCallId: completionCalls[0].Id));
                     instructions.Upsert(run, new ModelInstruction("run.completion-invalid",
-                        $"The previous {completionProtocol.Tool.ModelDefinition.Name} decision was rejected. "
-                        + "Correct its structured arguments using the tool result; do not replace it with ordinary prose.",
+                        $"The previous {completionProtocol.Tool.ModelDefinition.Name} call was rejected. "
+                        + "Correct its arguments using the tool result and retry; do not answer in prose.",
                         960, ModelInstructionLifetime.UntilAcknowledged));
                     continue;
                 }
                 missingCompletion = 0;
-                if (decision.Status is RunCompletionStatus.Complete or RunCompletionStatus.Blocked)
-                {
-                    await Draft(null);
-                    await Answer(decision.FinalAnswer!);
-                    var changes = await workspace.SnapshotAsync(runKey, token);
-                    await workspace.CompleteRunAsync(runKey, CancellationToken.None);
-                    return changes;
-                }
-
-                var assistantDecision = new ChatCompletionMessage("assistant", content.ToString(), calls.ToArray());
-                context.Add(assistantDecision);
-                context.Add(new ChatCompletionMessage("tool", completionProtocol.ContinueResult(decision),
-                    ToolCallId: completionCalls[0].Id));
-                continue;
+                return await FinishAsync(decision.FinalAnswer);
             }
 
             completionRequired = true;
             missingCompletion = 0;
+            invalidCompletion = false;
             // Prose written before new work began no longer describes where the work stands.
             provisionalAnswer = null;
             continuedAnswer.Clear();
@@ -432,6 +428,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 await persist(message, token);
                 context.Add(message);
                 await activity(null, token);
+                if (!result.IsError && observedResults.Add((call.Name, call.Arguments, result.ModelContent)))
+                    stalledSteps = 0;
+                else
+                    stalledSteps++;
             }
         }
     }
@@ -464,6 +464,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// conversation whose result can never be published.
     /// </summary>
     private const int MaxMissingCompletionTurns = 3;
+
+    private const int MaxStalledSteps = 4;
+    private const string StalledAnswer =
+        "I stopped after several steps produced no new information. The request may be incomplete. "
+        + "Please review the tool results and provide missing information or a different approach.";
 
     /// <summary>
     /// Registered as a model-only system instruction after a truncated response. It never reaches
@@ -511,20 +516,15 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// answer once the run has used a side-effect or information-gathering tool.
     /// </summary>
     private const string CompletionInstruction =
-        "The application provides app_finish_run as a control tool. After you use any other tool, "
-        + "ordinary assistant text is provisional and is not the final answer. Use app_finish_run "
-        + "with status=continue when work remains and give remaining plus one concrete nextAction. "
-        + "Use status=complete only after checking the user's request and definition of done: include "
-        + "a concise finalAnswer, at least one completed item, relevant evidence, and an empty remaining list. "
-        + "Use status=blocked only when progress requires user input or an external state change, and explain "
-        + "that requirement in finalAnswer. Never call app_finish_run in the same batch as another tool.";
+        "After using a tool, ordinary text is provisional. Keep working with ordinary tools. To finish, call "
+        + "app_finish_run alone with complete if the request is satisfied, or blocked if available information or "
+        + "tools cannot support further progress or a reliable answer. For blocked, explain any partial result and "
+        + "the limitation in finalAnswer.";
 
     private static string ToolDiscoveryInstruction(int availableCount, int selectedCount) =>
-        $"The application has {availableCount} permitted tools, but only {selectedCount} definitions fit in this request. "
-        + "The visible tool list is incomplete. If the capability needed for the user's task is absent, call app_tool_search "
-        + "with a short English capability description before concluding that the operation is unavailable or cannot be done. "
-        + "Examples: 'read text file', 'list directory', 'search text in files', 'fetch web page'. "
-        + "Do not invent tool names. Tools returned by app_tool_search become available on the next model step.";
+        $"Only {selectedCount} of {availableCount} permitted tools are shown. If a needed capability is missing, "
+        + "call app_tool_search with a short English description before concluding it is unavailable. "
+        + "Call only tools shown in this request; search results become callable on the next step.";
 
     /// <summary>
     /// OpenAI-compatible endpoints report the ceiling as "length"; several report the Anthropic

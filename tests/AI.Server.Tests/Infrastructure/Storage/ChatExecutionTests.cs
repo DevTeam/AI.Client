@@ -131,6 +131,7 @@ public sealed class ChatExecutionTests
         premature.Answer.SetResult("I will now verify the result.");
 
         var corrective = await fixture.NextCallAsync();
+        corrective.Request.Tools!.ShouldContain(tool => tool.Name == "mcp_built_in__process_run");
         var generating = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Generating);
         generating.StreamingContent.ShouldBeEmpty();
         corrective.Request.ContextMessages!.Where(message => message.Role == "system")
@@ -170,6 +171,90 @@ public sealed class ChatExecutionTests
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
             .ShouldHaveSingleItem().Content.ShouldBe("Your name is Kolya.");
+    }
+
+    [Fact]
+    public async Task RepeatedToolResultsRequireAnHonestFinalDecision()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Completion.AdaptLegacyFinalAnswers = false;
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Find information"));
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var work = await fixture.NextCallAsync();
+            work.ToolCalls = [new ChatToolCall($"call-{attempt}", "mcp_built_in__process_run", "{}")];
+            work.Answer.SetResult("");
+        }
+
+        var finish = await fixture.NextCallAsync();
+        finish.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
+        finish.Request.ContextMessages!.Where(message => message.Role == "system")
+            .ShouldContain(message => message.Content.Contains("no new information", StringComparison.Ordinal));
+        finish.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
+            {"status":"blocked","finalAnswer":"I could not find the answer with the available tools."}
+            """)];
+        finish.Answer.SetResult("");
+
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        fixture.Tools.CallCount.ShouldBe(5);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
+            .ShouldHaveSingleItem().Content.ShouldBe("I could not find the answer with the available tools.");
+    }
+
+    [Fact]
+    public async Task StalledRunDoesNotExecuteAnotherToolCall()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Completion.AdaptLegacyFinalAnswers = false;
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Find information"));
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var work = await fixture.NextCallAsync();
+            work.ToolCalls = [new ChatToolCall($"call-{attempt}", "mcp_built_in__process_run", "{}")];
+            work.Answer.SetResult("");
+        }
+
+        var ignored = await fixture.NextCallAsync();
+        ignored.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
+        ignored.ToolCalls = [new ChatToolCall("call-ignored", "mcp_built_in__process_run", "{}")];
+        ignored.Answer.SetResult("");
+
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        fixture.Tools.CallCount.ShouldBe(5);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
+            .ShouldHaveSingleItem().Content.ShouldContain("stopped after several steps");
+    }
+
+    [Fact]
+    public async Task LegacyContinueDecisionIsRejected()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Completion.AdaptLegacyFinalAnswers = false;
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Find information"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
+            {"status":"continue","nextAction":"Try again"}
+            """)];
+        first.Answer.SetResult("");
+
+        var corrected = await fixture.NextCallAsync();
+        corrected.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
+        corrected.ToolCalls = [new ChatToolCall("finish-2", RunCompletionProtocol.Name, """
+            {"status":"blocked","finalAnswer":"I cannot find the answer with the available tools."}
+            """)];
+        corrected.Answer.SetResult("");
+
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
+            .ShouldHaveSingleItem().Content.ShouldBe("I cannot find the answer with the available tools.");
     }
 
     [Fact]
@@ -234,7 +319,7 @@ public sealed class ChatExecutionTests
 
         var invalid = await fixture.NextCallAsync();
         invalid.ToolCalls = [new ChatToolCall("finish-invalid", RunCompletionProtocol.Name, """
-            {"status":"complete","finalAnswer":"Done","completed":[],"evidence":[],"remaining":[]}
+            {"status":"complete"}
             """)];
         invalid.Answer.SetResult("");
 
@@ -247,8 +332,8 @@ public sealed class ChatExecutionTests
         corrected.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
         var hidden = corrected.Request.ContextMessages!.Where(message => message.Role == "system")
             .Select(message => message.Content).ToArray();
-        hidden.ShouldContain(message => message.Contains("decision was rejected", StringComparison.Ordinal));
-        hidden.ShouldContain(message => message.Contains("neither text nor a tool call", StringComparison.Ordinal));
+        hidden.ShouldContain(message => message.Contains("call was rejected", StringComparison.Ordinal));
+        hidden.ShouldContain(message => message.Contains("last response was empty", StringComparison.Ordinal));
         corrected.ToolCalls = [new ChatToolCall("finish-valid", RunCompletionProtocol.Name, """
             {"status":"complete","finalAnswer":"Done and verified.","completed":["Changed the file"],"evidence":[],"remaining":[]}
             """)];

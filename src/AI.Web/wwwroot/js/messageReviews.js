@@ -58,7 +58,7 @@
         for (const mark of document.querySelectorAll(".review-comment-mark")) mark.replaceWith(...mark.childNodes);
     }
 
-    function wrapRange(container, range) {
+    function wrapRange(container, range, commentId) {
         const root = range.commonAncestorContainer;
         const pieces = [];
         if (root.nodeType === Node.TEXT_NODE) {
@@ -106,6 +106,7 @@
             }
             const mark = document.createElement("span");
             mark.className = "review-comment-mark";
+            if (commentId) mark.dataset.reviewCommentId = commentId;
             top.before(mark);
             mark.appendChild(top);
             marks.push(mark);
@@ -128,10 +129,10 @@
             const own = [];
             for (const comment of comments) {
                 const range = offsetRange(container, comment.start, comment.end);
-                if (range && range.toString() === comment.quote) own.push({ range, body: comment.body ?? "" });
+                if (range && range.toString() === comment.quote) own.push({ range, id: comment.id, body: comment.body ?? "" });
             }
             own.sort((left, right) => left.range.compareBoundaryPoints(Range.END_TO_END, right.range));
-            for (const item of own) wrapRange(container, item.range);
+            for (const item of own) wrapRange(container, item.range, item.id);
             placeMarkers(container, own.map(item => item.range));
             if (own.length > 0) drawnByContainer.set(container, own);
         }
@@ -189,6 +190,29 @@
     }, { passive: true });
     // Clicks, scrolling and losing focus already hide the shared tooltip; this only forgets it.
     for (const type of ["pointerdown", "scroll"]) document.addEventListener(type, () => { shownFor = null; }, { capture: true, passive: true });
+
+    // Pointing at a comment in a message's comment list brightens its mark in the text, so the
+    // user sees which fragment it is about without opening it.
+    function emphasize(commentId) {
+        for (const mark of document.querySelectorAll(".review-comment-mark.is-emphasized")) mark.classList.remove("is-emphasized");
+        if (!commentId) return;
+        for (const mark of document.querySelectorAll(`.review-comment-mark[data-review-comment-id="${CSS.escape(commentId)}"]`))
+            mark.classList.add("is-emphasized");
+    }
+
+    for (const type of ["pointerover", "focusin"]) {
+        document.addEventListener(type, event => {
+            const row = event.target instanceof Element ? event.target.closest("[data-review-comment-id]") : null;
+            if (row?.closest(".message-review-comments")) emphasize(row.dataset.reviewCommentId);
+        }, { passive: true });
+    }
+    for (const type of ["pointerout", "focusout"]) {
+        document.addEventListener(type, event => {
+            const row = event.target instanceof Element ? event.target.closest(".message-review-comments [data-review-comment-id]") : null;
+            const next = event.relatedTarget instanceof Element ? event.relatedTarget.closest(".message-review-comments [data-review-comment-id]") : null;
+            if (row && row !== next) emphasize(next?.dataset.reviewCommentId ?? null);
+        }, { passive: true });
+    }
 
     function offsetAt(container, node, nodeOffset) {
         const range = document.createRange();

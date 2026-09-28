@@ -29,19 +29,30 @@
 {
     <button type="button" class="message-review-toggle" aria-expanded="@_showComments" @onclick="() => _showComments = !_showComments" @onkeydown="HandleCommentsKeyDown">
         <AppIcon Name="message-circle" /> @comments.Count @(comments.Count == 1 ? "comment" : "comments")
+        <AppIcon Name="@(_showComments ? "chevron-up" : "chevron-down")" />
     </button>
     @if (_showComments)
     {
-        <div class="message-review-comments" @onkeydown="HandleCommentsKeyDown">
-            @foreach (var comment in comments)
-            {
-                <button type="button" class="message-review-comment" @key="comment.Id" title="Open comment on selected text"
-                        @onclick="() => EditAsync(comment)">
-                    <span class="message-review-quote">“@comment.Quote”</span>
-                    <span class="message-review-body">@comment.Body</span>
-                </button>
-            }
-            <button type="button" class="message-review-attach" @onclick="() => OnAttach.InvokeAsync(_current)">Add to message</button>
+        <div class="message-review-comments" data-review-message="@MessageId" @onkeydown="HandleCommentsKeyDown">
+            <ul class="message-review-comment-list">
+                @foreach (var comment in comments.OrderBy(item => item.Start))
+                {
+                    <li class="message-review-comment" @key="comment.Id" data-review-comment-id="@comment.Id">
+                        <button type="button" class="message-review-comment-open" title="Edit comment" @onclick="() => EditAsync(comment)">
+                            <span class="message-review-quote">@comment.Quote</span>
+                            <span class="message-review-body">@comment.Body</span>
+                        </button>
+                        <span class="message-review-comment-actions">
+                            <button class="review-comment-icon-action" type="button" title="Edit comment" aria-label="Edit comment" disabled="@_saving" @onclick="() => EditAsync(comment)"><AppIcon Name="edit" /></button>
+                            <button class="review-comment-icon-action is-danger" type="button" title="Delete comment" aria-label="Delete comment" disabled="@_saving" @onclick="() => DeleteAsync(comment)"><AppIcon Name="trash" /></button>
+                        </span>
+                    </li>
+                }
+            </ul>
+            <div class="message-review-comments-footer">
+                <button type="button" class="message-review-attach" title="Attach these comments to the message you're writing"
+                        @onclick="() => OnAttach.InvokeAsync(_current)"><AppIcon Name="plus" />Add to message</button>
+            </div>
         </div>
     }
 }
@@ -87,7 +98,7 @@
         try
         {
             await JsRuntime.InvokeVoidAsync("messageReviews.setComments", MessageId,
-                (_current?.MessageComments ?? []).Select(item => new { item.Start, item.End, item.Quote, item.Body }).ToArray());
+                (_current?.MessageComments ?? []).Select(item => new { item.Id, item.Start, item.End, item.Quote, item.Body }).ToArray());
         }
         catch (Exception error) when (error is JSException or ObjectDisposedException) { }
     }

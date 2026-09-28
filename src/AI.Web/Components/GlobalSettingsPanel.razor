@@ -42,14 +42,19 @@
                         </fieldset>
                         @if (ClientMode.PublicWeb)
                         {
-                            var connected = HostConnection.Status == HostConnectionStatus.Connected;
+                            var (hostState, hostLabel) = HostConnection.Status switch
+                            {
+                                HostConnectionStatus.Connected => ("is-connected", "Connected"),
+                                HostConnectionStatus.Offline => ("is-offline", "Reconnecting…"),
+                                _ => ("is-connecting", "Connecting…")
+                            };
                             var session = HostConnection.Session;
                             <fieldset class="app-settings-group">
                                 <legend>Host</legend>
                                 <div class="host-status-card">
-                                    <span class="host-status-dot @(connected ? "is-connected" : "is-offline")" aria-hidden="true"></span>
+                                    <span class="host-status-dot @hostState" aria-hidden="true"></span>
                                     <div class="host-status-copy" role="status">
-                                        <strong>@(connected ? "Connected" : "Reconnecting…")</strong>
+                                        <strong>@hostLabel</strong>
                                         <span>@(session is null ? "AI Client Host" : $"AI Client Host {(Version.TryParse(session.Version, out var version) ? version.ToString(3) : session.Version)}") · @HostConnection.Address.Authority</span>
                                     </div>
                                     <button class="secondary-action" type="button" disabled="@_disconnectingHost" @onclick="DisconnectHostAsync">Disconnect</button>

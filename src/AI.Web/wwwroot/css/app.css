@@ -52,6 +52,7 @@
 /* The link to the local Host in the published app: a dot on Settings, details inside it. */
 .host-status-dot { flex: none; width: .45rem; height: .45rem; margin-left: auto; border-radius: 50%; background: var(--color-success); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--color-success) 18%, transparent); }
 .host-status-dot.is-offline { background: var(--color-warning); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--color-warning) 22%, transparent); animation: host-pulse 1.2s ease-in-out infinite alternate; }
+.host-status-dot.is-connecting { background: var(--color-text-faint); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--color-text-faint) 18%, transparent); }
 .host-status-card { display: flex; align-items: center; gap: .75rem; padding: .75rem .85rem; border: 1px solid var(--color-border-subtle); border-radius: .6rem; background: var(--color-surface); }
 .host-status-card .host-status-dot { margin-left: .2rem; }
 .host-status-copy { display: grid; flex: 1; gap: .1rem; min-width: 0; }

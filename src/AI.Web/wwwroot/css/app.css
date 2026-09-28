@@ -2604,6 +2604,8 @@ body {
     box-decoration-break: clone;
 }
 .review-comment-mark .review-comment-mark { background-color: transparent; }
+/* The comment under the pointer in the message's comment list. */
+.review-comment-mark.is-emphasized, .workspace-message.user .review-comment-mark.is-emphasized { background-color: color-mix(in srgb, var(--color-accent) 50%, transparent); }
 /* The comment icon of the edit statistics (.workspace-change-comments): the same AppIcon markup,
    colour and size, so a comment looks the same wherever it is counted or marked. */
 .review-comment-marker {
@@ -2639,6 +2641,8 @@ body {
 .message-review-text { cursor: text; }
 .message-review-toggle { display: inline-flex; align-items: center; gap: .3rem; margin-top: .25rem; padding: .1rem 0; border: 0; background: transparent; color: var(--color-accent); font-size: .8rem; cursor: pointer; }
 .message-review-toggle .app-icon { width: .85rem; height: .85rem; }
+.message-review-toggle .app-icon:last-child { width: .75rem; height: .75rem; opacity: .75; }
+.message-review-toggle:hover, .message-review-toggle:focus-visible { color: var(--color-accent-text); }
 .message-review-editor { position: fixed; inset: auto; z-index: 110; width: min(17rem, calc(100vw - 1.5rem)); margin: 0; padding: .4rem; transform: translate(-50%, -100%); border: 1px solid var(--color-border-stronger); border-radius: .45rem; background: var(--color-fill-hover); box-shadow: 0 .5rem 1.5rem rgb(0 0 0 / calc(60% * var(--shadow-scale))); }
 .message-review-editor.is-below { transform: translateX(-50%); }
 .message-review-editor small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-accent); font-size: .7rem; }
@@ -2646,12 +2650,24 @@ body {
 .message-review-editor-actions { display: flex; gap: .25rem; justify-content: flex-end; }
 .message-review-editor-actions button { padding: .2rem .4rem; font-size: .72rem; }
 .message-review-editor .error { margin: .35rem 0 0; }
-.message-review-comments { display: grid; gap: .1rem; max-width: 32rem; max-height: 15rem; margin-top: .2rem; padding: .3rem; overflow-y: auto; border: 1px solid var(--color-border-strong); border-radius: .5rem; background: var(--color-fill-hover); }
-.message-review-comment { display: grid; grid-template-columns: minmax(5rem, 35%) minmax(0, 1fr); gap: .5rem; width: 100%; padding: .3rem .4rem; border: 0; border-radius: .3rem; background: transparent; color: inherit; text-align: left; font-size: .93rem; line-height: 1.5; cursor: pointer; }
-.message-review-comment:hover, .message-review-comment:focus-visible { background: var(--color-fill-strong); }
-.message-review-quote { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-accent); }
-.message-review-body { white-space: pre-wrap; overflow-wrap: anywhere; }
-.message-review-attach { justify-self: end; padding: .2rem .4rem; border: 0; background: transparent; color: var(--color-accent); font-size: .75rem; cursor: pointer; }
+/* A message's comment list: one quiet panel of rows, not a card per comment. Each row is the
+   quoted fragment (one line, under the accent rule the editor and marks use) over the comment
+   itself; edit and delete appear on the row under the pointer or focus. */
+.message-review-comments { display: grid; max-width: 32rem; margin-top: .25rem; border: 1px solid var(--color-border-strong); border-radius: .5rem; background: var(--color-fill-hover); overflow: hidden; }
+.message-review-comment-list { display: grid; gap: 1px; max-height: 15rem; margin: 0; padding: .25rem; overflow-y: auto; list-style: none; }
+.message-review-comment { position: relative; display: flex; align-items: flex-start; gap: .25rem; border-radius: .35rem; }
+.message-review-comment:hover, .message-review-comment:focus-within { background: var(--color-fill-strong); }
+.message-review-comment-open { display: grid; gap: .15rem; flex: 1; min-width: 0; padding: .35rem .5rem; border: 0; border-radius: inherit; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.message-review-comment-open:focus-visible { outline: none; }
+.message-review-quote { overflow: hidden; padding-left: .45rem; border-left: 2px solid var(--color-accent); color: var(--color-text-muted); font-size: .78rem; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.message-review-body { color: var(--color-text-strong); font-size: .9rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.message-review-comment-actions { display: flex; gap: .1rem; padding: .25rem .25rem 0 0; opacity: 0; transition: opacity .12s ease; }
+.message-review-comment:hover .message-review-comment-actions, .message-review-comment:focus-within .message-review-comment-actions { opacity: 1; }
+@media (hover: none) { .message-review-comment-actions { opacity: 1; } }
+.message-review-comments-footer { display: flex; justify-content: flex-end; padding: .25rem .35rem; border-top: 1px solid var(--color-border-strong); }
+.message-review-attach { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .5rem; border: 0; border-radius: .3rem; background: transparent; color: var(--color-accent); font-size: .78rem; cursor: pointer; }
+.message-review-attach .app-icon { width: .8rem; height: .8rem; }
+.message-review-attach:hover, .message-review-attach:focus-visible { background: var(--color-accent-bg); color: var(--color-accent-text); }
 .queue-resource-count { color: var(--color-text-muted); white-space: nowrap; }
 
 .composer-resource-menu-anchor { position: relative; display: inline-flex; margin-right: auto; }

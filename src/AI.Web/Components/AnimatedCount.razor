@@ -1,0 +1,28 @@
+@* A line count that rolls to its new value instead of jumping. The number lives in the registered
+   integer property --count (app.css), so the browser interpolates it and ::before prints it with
+   counter(); Blazor only rewrites the style attribute. A value that arrives where there was none
+   (a count still being measured, or a live card appearing) rolls up from zero; one that was
+   already known when the element was first drawn, as in a transcript loaded from history,
+   appears as is. *@
+@if (Value is { } value)
+{
+    <span class="@Class animated-count @(_countIn ? "count-in" : null)" style="--count: @value" data-sign="@Sign"></span>
+}
+
+@code {
+    [Parameter] public int? Value { get; set; }
+    [Parameter] public string Sign { get; set; } = string.Empty;
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Roll the first value up from zero too, for a count that is new to the user.</summary>
+    [Parameter] public bool CountIn { get; set; }
+
+    private bool _sawEmpty;
+    private bool _countIn;
+
+    protected override void OnParametersSet()
+    {
+        if (Value is null) _sawEmpty = true;
+        else if (_sawEmpty || CountIn) _countIn = true;
+    }
+}

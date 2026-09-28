@@ -15,8 +15,8 @@
         <span class="workspace-change-comments" title="@CommentCount @(CommentCount == 1 ? "comment" : "comments")" aria-label="@CommentCount @(CommentCount == 1 ? "comment" : "comments")"><AppIcon Name="message-circle" />@CommentCount</span>
     }
     <span class="workspace-change-counts">
-        @if (File.Additions is { } added) { <span class="workspace-added">+@added</span> }
-        @if (File.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
+        <AnimatedCount Value="@File.Additions" Sign="+" Class="workspace-added" CountIn="@Live" />
+        <AnimatedCount Value="@File.Deletions" Sign="−" Class="workspace-removed" CountIn="@Live" />
         @if (File.IsBinary) { <span class="workspace-change-binary">binary</span> }
     </span>
 </button>
@@ -25,6 +25,7 @@
     [Parameter, EditorRequired] public FileChange File { get; set; } = default!;
     [Parameter] public bool Expanded { get; set; }
     [Parameter] public int CommentCount { get; set; }
+    [Parameter] public bool Live { get; set; }
     [Parameter] public EventCallback OnToggle { get; set; }
 
     private string? DragPath => File.Kind == FileChangeKind.Deleted ? null : File.Path;

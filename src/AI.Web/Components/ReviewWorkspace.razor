@@ -185,8 +185,8 @@
                     <span class="workspace-change-comments review-tree-comments" title="@count @(count == 1 ? "comment" : "comments")" aria-label="@count @(count == 1 ? "comment" : "comments")"><AppIcon Name="message-circle" />@count</span>
                 }
                 <span class="review-tree-counts">
-                    @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
-                    @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
+                    <AnimatedCount Value="@file.Additions" Sign="+" Class="workspace-added" />
+                    <AnimatedCount Value="@file.Deletions" Sign="−" Class="workspace-removed" />
                 </span>
             </div>
         }

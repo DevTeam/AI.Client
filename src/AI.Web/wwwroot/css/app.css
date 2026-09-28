@@ -4077,6 +4077,17 @@ textarea {
 .workspace-added { text-align: right; }
 .workspace-removed { text-align: left; }
 
+/* Line counts roll between values (AnimatedCount.razor). --count is registered as an integer so
+   the browser interpolates it in whole steps; ::before prints it. The ease-out spends most of
+   the time near the target, so a large jump still settles on a readable number. */
+@property --count { syntax: "<integer>"; inherits: false; initial-value: 0; }
+.animated-count { counter-reset: count var(--count); transition: --count 700ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.animated-count::before { content: attr(data-sign) counter(count); }
+@starting-style { .animated-count.count-in { --count: 0; } }
+/* Deliberately kept under prefers-reduced-motion: nothing moves, only the digits in place change,
+   which is not the kind of motion that setting guards against. Windows turns it on for everyone
+   who switches off "Show animations in Windows", so honouring it here hid the effect entirely. */
+
 .workspace-changes-list {
     margin: 0;
     padding: 0.25rem 0;

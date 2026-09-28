@@ -21,8 +21,8 @@
                             <span class="workspace-change-comments" title="@count @(count == 1 ? "comment" : "comments")" aria-label="@count @(count == 1 ? "comment" : "comments")"><AppIcon Name="message-circle" />@count</span>
                         }
                         <span class="workspace-changes-preview-counts">
-                            @if (file.Additions is { } added) { <span class="workspace-added">+@added</span> }
-                            @if (file.Deletions is { } removed) { <span class="workspace-removed">−@removed</span> }
+                            <AnimatedCount Value="@file.Additions" Sign="+" Class="workspace-added" CountIn="@Live" />
+                            <AnimatedCount Value="@file.Deletions" Sign="−" Class="workspace-removed" CountIn="@Live" />
                             @if (file.IsBinary) { <span class="workspace-change-binary">binary</span> }
                         </span>
                     </li>
@@ -44,8 +44,8 @@
             <button class="workspace-review-action" type="button" title="Review these changes" @onclick="() => OnReview.InvokeAsync(sourceId)">Review</button>
         }
         <span class="workspace-changes-totals" aria-label="@changes.Additions additions, @changes.Deletions deletions">
-            <span class="workspace-added">+@changes.Additions</span>
-            <span class="workspace-removed">−@changes.Deletions</span>
+            <AnimatedCount Value="@changes.Additions" Sign="+" Class="workspace-added" CountIn="@Live" />
+            <AnimatedCount Value="@changes.Deletions" Sign="−" Class="workspace-removed" CountIn="@Live" />
         </span>
         </div>
         <div class="workspace-changes-details" aria-hidden="@(!_showDetails)">
@@ -59,7 +59,7 @@
                         @* Expansion is tracked here rather than left to <details>, which keeps its
                            contents in the DOM whether open or shut. A diff can run to thousands of
                            lines, and several closed files would each be paying for one. *@
-                        <WorkspaceChangeFileHeader File="@file" Expanded="@expanded" CommentCount="@CommentCount(file.Path)" OnToggle="() => Toggle(file.Path)" />
+                        <WorkspaceChangeFileHeader File="@file" Expanded="@expanded" CommentCount="@CommentCount(file.Path)" OnToggle="() => Toggle(file.Path)" Live="@Live" />
                         @if (expanded)
                         {
                             <div class="workspace-change-body" id="@bodyId">
@@ -80,6 +80,12 @@
 
 @code {
     [Parameter] public WorkspaceChangeSet? Changes { get; set; }
+
+    /// <summary>
+    /// The card of a run still in progress: its counts are news, so they roll up from zero when
+    /// they first appear. A receipt in the transcript shows its numbers as they are.
+    /// </summary>
+    [Parameter] public bool Live { get; set; }
     [Parameter] public Guid ProjectId { get; set; }
     [Parameter] public Guid ChatId { get; set; }
     [Parameter] public Guid? SourceMessageId { get; set; }

@@ -1,37 +1,42 @@
+using Pure.DI;
+
 namespace AI.Web.Notifications;
 
 /// <summary>Preserves the notification store while mirroring count changes to the desktop host.</summary>
-internal sealed class DesktopBadgeNotificationService(NotificationService inner, IUnreadCountPublisher publisher)
+internal sealed class DesktopBadgeNotificationService(
+    [Tag("base")] INotificationService baseNotificationService,
+    IUnreadCountPublisher publisher)
     : INotificationService, IDisposable
 {
     private int _queuedCount = -1;
     private Task _lastPublish = Task.CompletedTask;
     private bool _subscribed;
 
-    public NotificationMessage? Current => inner.Current;
-    public IReadOnlyList<NotificationMessage> History => inner.History;
-    public int UnreadCount => inner.UnreadCount;
+    public NotificationMessage? Current => baseNotificationService.Current;
+    public IReadOnlyList<NotificationMessage> History => baseNotificationService.History;
+    public int UnreadCount => baseNotificationService.UnreadCount;
 
     public event Action? Changed;
     public event Action<NotificationMessage>? OpenRequested
     {
-        add => inner.OpenRequested += value;
-        remove => inner.OpenRequested -= value;
+        add => baseNotificationService.OpenRequested += value;
+        remove => baseNotificationService.OpenRequested -= value;
     }
+
     public event Action? CenterRequested
     {
-        add => inner.CenterRequested += value;
-        remove => inner.CenterRequested -= value;
+        add => baseNotificationService.CenterRequested += value;
+        remove => baseNotificationService.CenterRequested -= value;
     }
 
     public async Task InitializeAsync()
     {
         if (!_subscribed)
         {
-            inner.Changed += OnChanged;
+            baseNotificationService.Changed += OnChanged;
             _subscribed = true;
         }
-        await inner.InitializeAsync();
+        await baseNotificationService.InitializeAsync();
         if (_queuedCount < 0) QueueCount();
         await _lastPublish;
     }
@@ -44,28 +49,28 @@ internal sealed class DesktopBadgeNotificationService(NotificationService inner,
 
     private void QueueCount()
     {
-        var count = inner.UnreadCount;
+        var count = baseNotificationService.UnreadCount;
         if (_queuedCount == count) return;
         _queuedCount = count;
         _lastPublish = publisher.PublishAsync(count);
     }
 
-    public void Open(NotificationMessage message) => inner.Open(message);
-    public void OpenCenter() => inner.OpenCenter();
-    public void MarkAllSeen() => inner.MarkAllSeen();
-    public void MarkSeen(Guid id) => inner.MarkSeen(id);
-    public void ResolveChatAttention(Guid chatId, Guid branchId) => inner.ResolveChatAttention(chatId, branchId);
+    public void Open(NotificationMessage message) => baseNotificationService.Open(message);
+    public void OpenCenter() => baseNotificationService.OpenCenter();
+    public void MarkAllSeen() => baseNotificationService.MarkAllSeen();
+    public void MarkSeen(Guid id) => baseNotificationService.MarkSeen(id);
+    public void ResolveChatAttention(Guid chatId, Guid branchId) => baseNotificationService.ResolveChatAttention(chatId, branchId);
     public void ShowChatEvent(string message, NotificationKind kind, Guid projectId, Guid chatId, Guid branchId, bool requiresAction = false, Guid? messageId = null) =>
-        inner.ShowChatEvent(message, kind, projectId, chatId, branchId, requiresAction, messageId);
-    public void ShowSuccess(string message) => inner.ShowSuccess(message);
-    public void ShowError(string message) => inner.ShowError(message);
-    public void ShowInfo(string message) => inner.ShowInfo(message);
-    public void Dismiss() => inner.Dismiss();
-    public void PauseAutoDismiss() => inner.PauseAutoDismiss();
-    public void ResumeAutoDismiss() => inner.ResumeAutoDismiss();
+        baseNotificationService.ShowChatEvent(message, kind, projectId, chatId, branchId, requiresAction, messageId);
+    public void ShowSuccess(string message) => baseNotificationService.ShowSuccess(message);
+    public void ShowError(string message) => baseNotificationService.ShowError(message);
+    public void ShowInfo(string message) => baseNotificationService.ShowInfo(message);
+    public void Dismiss() => baseNotificationService.Dismiss();
+    public void PauseAutoDismiss() => baseNotificationService.PauseAutoDismiss();
+    public void ResumeAutoDismiss() => baseNotificationService.ResumeAutoDismiss();
 
     public void Dispose()
     {
-        if (_subscribed) inner.Changed -= OnChanged;
+        if (_subscribed) baseNotificationService.Changed -= OnChanged;
     }
 }

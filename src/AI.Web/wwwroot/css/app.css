@@ -12,7 +12,12 @@
     --branch-leaf-draw: 0.6s;
     --branch-leaf-hold: 5s;
     --branch-leaf-fade: 0.8s;
+    /* Native checkboxes, radios, ranges and progress bars take the accent the user picked. */
+    accent-color: var(--color-accent-strong);
 }
+
+/* Selected text carries the accent too; a tint rather than a fill, so it reads in either theme. */
+::selection { background: color-mix(in srgb, var(--color-accent-strong) 35%, transparent); }
 
 :root,
 :root[data-theme="dark"] {
@@ -78,6 +83,9 @@
     --color-success: #5dc97c;
     --color-success-text: #a6dcb1;
     --color-success-border: #39744b;
+    /* A finished run with an unread response. Its own token, not the accent: the accent is the
+       user's to pick, and must not make "done" read like "needs you" or "failed". */
+    --color-unread: #4f91dc;
     --color-diff-added-bg: color-mix(in srgb, var(--color-success) 10%, transparent);
     --color-diff-removed-bg: color-mix(in srgb, var(--color-danger) 10%, transparent);
     /* Search hits and the line under a review comment. */
@@ -142,10 +150,53 @@
     --color-success: #1f8f4a;
     --color-success-text: #17703a;
     --color-success-border: #9ed4b0;
+    --color-unread: #2a78d0;
     --color-highlight-bg: #ffe08a;
     --color-highlight-fg: #1f1f1f;
     --shadow-scale: 0.3;
     --scrim-scale: 0.55;
+}
+
+/* Accent colour (Settings → Accent color). js/theme.js puts data-accent on <html>. Blue is the
+   hand-tuned palette in the theme blocks above; every other accent takes one swatch per hue and
+   derives the --color-accent-* tokens from it, so the two themes stay in step without a second
+   table of values. The swatches are also what the Settings picker paints. */
+:root {
+    --accent-swatch-blue: #2a78d0;
+    --accent-swatch-teal: #0b7d89;
+    --accent-swatch-green: #178760;
+    --accent-swatch-amber: #9e670d;
+    --accent-swatch-orange: #bd5a07;
+    --accent-swatch-pink: #cc3494;
+    --accent-swatch-purple: #9b4fcf;
+    --accent-swatch-indigo: #6b58f5;
+}
+:root[data-accent="teal"] { --accent-swatch: var(--accent-swatch-teal); }
+:root[data-accent="green"] { --accent-swatch: var(--accent-swatch-green); }
+:root[data-accent="amber"] { --accent-swatch: var(--accent-swatch-amber); }
+:root[data-accent="orange"] { --accent-swatch: var(--accent-swatch-orange); }
+:root[data-accent="pink"] { --accent-swatch: var(--accent-swatch-pink); }
+:root[data-accent="purple"] { --accent-swatch: var(--accent-swatch-purple); }
+:root[data-accent="indigo"] { --accent-swatch: var(--accent-swatch-indigo); }
+
+:root[data-accent]:not([data-accent="blue"]) {
+    --color-accent: color-mix(in srgb, var(--accent-swatch) 60%, #ffffff);
+    --color-accent-strong: color-mix(in srgb, var(--accent-swatch) 80%, #ffffff);
+    --color-accent-text: color-mix(in srgb, var(--accent-swatch) 30%, #ffffff);
+    --color-accent-bg: color-mix(in srgb, var(--accent-swatch) 14%, var(--color-bg));
+    --color-accent-bg-hover: color-mix(in srgb, var(--accent-swatch) 24%, var(--color-bg));
+    --color-accent-bg-active: color-mix(in srgb, var(--accent-swatch) 32%, var(--color-bg));
+    --color-accent-fill: color-mix(in srgb, var(--accent-swatch) 75%, #000000);
+}
+
+:root[data-theme="light"][data-accent]:not([data-accent="blue"]) {
+    --color-accent: color-mix(in srgb, var(--accent-swatch) 82%, #000000);
+    --color-accent-strong: var(--accent-swatch);
+    --color-accent-text: color-mix(in srgb, var(--accent-swatch) 72%, #000000);
+    --color-accent-bg: color-mix(in srgb, var(--accent-swatch) 9%, var(--color-bg));
+    --color-accent-bg-hover: color-mix(in srgb, var(--accent-swatch) 15%, var(--color-bg));
+    --color-accent-bg-active: color-mix(in srgb, var(--accent-swatch) 21%, var(--color-bg));
+    --color-accent-fill: var(--accent-swatch);
 }
 
 .app-loading { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 1rem; background: var(--color-bg-sunken); color: var(--color-text); }
@@ -154,7 +205,7 @@
 .app-loading-copy strong { font-size: 1.05rem; font-weight: 500; letter-spacing: 0.01em; }
 .app-loading-copy span { color: var(--color-text-subtle); font-size: 0.85rem; }
 .app-loading-track { width: min(15rem, 58vw); height: 0.2rem; overflow: hidden; border-radius: 1rem; background: var(--color-fill-active); }
-.app-loading-track span { display: block; width: 42%; height: 100%; border-radius: inherit; background: var(--color-inverse); animation: app-loading-progress 1.4s ease-in-out infinite; }
+.app-loading-track span { display: block; width: 42%; height: 100%; border-radius: inherit; background: var(--color-accent-strong); animation: app-loading-progress 1.4s ease-in-out infinite; }
 
 @keyframes app-loading-progress { 0% { transform: translateX(-110%); } 55% { transform: translateX(95%); } 100% { transform: translateX(245%); } }
 
@@ -394,7 +445,7 @@ body {
     inset: 0 0 0 auto;
     width: 7.5rem;
     border-radius: inherit;
-    background: linear-gradient(to right, transparent, var(--color-fill-hover) 2.5rem);
+    background: linear-gradient(to right, transparent, var(--row-bg, var(--color-fill-hover)) 2.5rem);
     opacity: 0;
     pointer-events: none;
     transition: opacity 140ms ease;
@@ -730,6 +781,13 @@ body {
 .theme-option.selected { background: var(--color-fill-strong); color: var(--color-text-strong); }
 .theme-option > input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
 .theme-option:has(> input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+/* Accent picker: a row of swatches; the chosen one carries a white square, as a checkmark would. */
+.accent-options { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.accent-option { position: relative; display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 0.45rem; background: var(--swatch); cursor: pointer; }
+.accent-option:hover { box-shadow: 0 0 0 2px var(--color-border-stronger); }
+.accent-option.selected::after { content: ""; width: 0.8rem; height: 0.8rem; border-radius: 0.2rem; background: #ffffff; }
+.accent-option > input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+.accent-option:has(> input:focus-visible) { outline: 2px solid var(--color-text); outline-offset: 2px; }
 
 .global-editor-layout {
     display: grid;
@@ -959,10 +1017,15 @@ body {
     }
 }
 
-.chat-nav-row.selected,
 .chat-nav-row:hover {
     background: var(--color-fill-hover);
 }
+
+/* The open chat is "you are here", not a hover that stuck: an accent tint keeps it apart from
+   the row under the pointer. --row-bg carries the tint into the fade under the row buttons. */
+.chat-nav-row.selected { --row-bg: var(--color-accent-bg-hover); background: var(--row-bg); }
+.chat-nav-row.selected:is(:hover, :focus-within, :has(.menu-open)) { --row-bg: var(--color-accent-bg-active); }
+.chat-nav-row.selected .nav-item-label { color: var(--color-text-strong); }
 
 .chat-nav-row .workspace-nav-item {
     grid-column: 1 / -1;
@@ -1247,7 +1310,7 @@ body {
 }
 
 .chat-link > .app-icon.run-status-unread,
-.chat-icon-with-branch-count > .app-icon.run-status-unread { color: var(--color-accent-strong); }
+.chat-icon-with-branch-count > .app-icon.run-status-unread { color: var(--color-unread); }
 .chat-link > .app-icon.run-status-attention,
 .chat-icon-with-branch-count > .app-icon.run-status-attention { color: var(--color-warning); }
 .chat-link > .app-icon.run-status-failed,
@@ -1285,7 +1348,7 @@ body {
 }
 
 .chat-branch-count.run-status-generating { color: var(--color-text-strong); }
-.chat-branch-count.run-status-unread { color: var(--color-accent-strong); }
+.chat-branch-count.run-status-unread { color: var(--color-unread); }
 .chat-branch-count.run-status-attention { color: var(--color-warning); }
 .chat-branch-count.run-status-failed { color: var(--color-danger); }
 .chat-branch-count.run-status-interrupted { color: var(--color-text-faint); }
@@ -1816,6 +1879,9 @@ body {
     text-align: center;
 }
 
+/* The project the new chat will land in: the accent ties the name to the choice the user made. */
+.workspace-empty strong { color: var(--color-accent); font-weight: 600; }
+
 .workspace-message,
 .markdown-content {
     /* Without min-width:0 in a grid/flex track, an unbreakable child (long token, wide table)
@@ -2173,7 +2239,7 @@ body {
     background: var(--color-inverse-hover);
 }
 
-.status-dot.run-status-unread { border-color: var(--color-accent-strong); background: var(--color-accent-strong); }
+.status-dot.run-status-unread { border-color: var(--color-unread); background: var(--color-unread); }
 
 .status-dot.run-status-attention { border-color: var(--color-warning); background: var(--color-warning); }
 
@@ -2433,7 +2499,7 @@ body {
     border: 0;
     background: transparent;
     color: var(--color-text-strong);
-    caret-color: var(--color-text-strong);
+    caret-color: var(--color-accent);
     outline: none;
     overflow-y: hidden;
     resize: none;

@@ -28,6 +28,16 @@
                                 }
                             </div>
                         </fieldset>
+                        <fieldset class="app-settings-group">
+                            <legend>Accent color</legend>
+                            <div class="accent-options">
+                                @foreach (var accent in Enum.GetValues<AccentColor>())
+                                {
+                                    var name = accent.ToString();
+                                    <label class="accent-option @(_accent == accent ? "selected" : string.Empty)" style="--swatch: var(--accent-swatch-@name.ToLowerInvariant())" title="@name"><input type="radio" name="accent" aria-label="@name" checked="@(_accent == accent)" @onchange="() => SetAccentAsync(accent)" /></label>
+                                }
+                            </div>
+                        </fieldset>
                     </div>
                     break;
                 }
@@ -158,9 +168,11 @@
     private Guid? _selectedConnectionId;
     private Guid? _selectedMcpServerId;
     private ThemePreference _theme;
+    private AccentColor _accent;
     protected override async Task OnInitializedAsync()
     {
         _theme = await Theme.GetAsync();
+        _accent = await Theme.GetAccentAsync();
         await LoadGlobalSettingsAsync();
     }
     private async Task LoadGlobalSettingsAsync()
@@ -216,6 +228,12 @@
     {
         _theme = preference;
         await Theme.SetAsync(preference);
+    }
+
+    private async Task SetAccentAsync(AccentColor accent)
+    {
+        _accent = accent;
+        await Theme.SetAccentAsync(accent);
     }
 
     private static string Plural(int count, string word) => $"{count} {word}{(count == 1 ? string.Empty : "s")}";

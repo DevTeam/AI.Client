@@ -15,4 +15,12 @@ public sealed class ThemeService(IClientSettingsService settings, IJSRuntime jsR
         await settings.UpdateAsync(current => current with { Theme = preference });
         await jsRuntime.InvokeVoidAsync("aiClientTheme.apply", preference.ToString().ToLowerInvariant());
     }
+
+    public async ValueTask<AccentColor> GetAccentAsync() => (await settings.GetAsync()).Accent;
+
+    public async ValueTask SetAccentAsync(AccentColor accent)
+    {
+        await settings.UpdateAsync(current => current with { Accent = accent });
+        await jsRuntime.InvokeVoidAsync("aiClientTheme.applyAccent", accent.ToString().ToLowerInvariant());
+    }
 }

@@ -7,7 +7,8 @@ using Storage;
 /// machine without a working keyring: weaker than the OS store, because anything running as this
 /// user can read the file, but it keeps credentials working instead of refusing them.
 /// </summary>
-public sealed class FileMasterKeyStore(IProjectStorageLocation location, IMasterKeyFormat format) : IFileMasterKeyStore
+public sealed class FileMasterKeyStore(IProjectStorageLocation location, IMasterKeyFormat format)
+    : IFileMasterKeyStore
 {
     private string KeyDirectory => Path.Combine(location.RootDirectory, "keys");
 

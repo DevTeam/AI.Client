@@ -1,8 +1,9 @@
 // Sets <html data-theme="light|dark"> from the saved preference. Loaded as a plain script in
 // <head>, ahead of the stylesheet, so the attribute is in place before the first paint and there
 // is no flash of the wrong theme while Blazor boots. The entry is the one ClientSettingsService
-// writes: "ai-client.settings" = {"theme":"system|light|dark"}. data-theme-preference keeps the
-// choice itself, for styles that care whether the theme was picked or inherited.
+// writes: "ai-client.settings" = {"theme":"system|light|dark","accent":"blue|teal|..."}.
+// data-theme-preference keeps the choice itself, for styles that care whether the theme was
+// picked or inherited; data-accent picks the accent palette in app.css.
 (function () {
     const storageKey = "ai-client.settings";
     const systemLight = matchMedia("(prefers-color-scheme: light)");
@@ -39,12 +40,19 @@
         tellHost();
     }
 
+    // Must match AccentColor; anything else (an older or newer build's value) falls back to blue.
+    const accents = ["blue", "teal", "green", "amber", "orange", "pink", "purple", "indigo"];
+    function applyAccent(value) {
+        document.documentElement.dataset.accent = accents.includes(value) ? value : "blue";
+    }
+
     let saved;
-    try { saved = JSON.parse(localStorage.getItem(storageKey) || "null")?.theme; } catch { saved = undefined; }
-    apply(saved);
+    try { saved = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { saved = null; }
+    applyAccent(saved?.accent);
+    apply(saved?.theme);
     systemLight.addEventListener("change", () => { if (preference === "system") render(); });
     // The bridge may not be injected yet while <head> runs; catch up once the document is parsed.
     document.addEventListener("DOMContentLoaded", tellHost);
 
-    globalThis.aiClientTheme = { apply };
+    globalThis.aiClientTheme = { apply, applyAccent };
 })();

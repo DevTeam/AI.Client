@@ -23,6 +23,8 @@
 @inject IChatFeedProjection Feed
 @inject INotificationService Notifications
 @inject IRunStatusPresentation StatusPresentation
+@inject IComposerHistoryNavigator _composerHistoryNavigator
+@inject IDelayedBusyIndicatorFactory BusyIndicatorFactory
 @inject NavigationManager Navigation
 @implements IAsyncDisposable
 
@@ -784,10 +786,10 @@
     // wait feel long. Created lazily because a field initializer cannot capture `this`.
     private const int SkeletonProjectRows = 5;
     private const int SkeletonChatRows = 4;
-    private DelayedBusyIndicator? _projectsBusy;
-    private DelayedBusyIndicator? _chatsBusy;
-    private DelayedBusyIndicator ProjectsBusy => _projectsBusy ??= new DelayedBusyIndicator(() => InvokeAsync(StateHasChanged));
-    private DelayedBusyIndicator ChatsBusy => _chatsBusy ??= new DelayedBusyIndicator(() => InvokeAsync(StateHasChanged));
+    private IDelayedBusyIndicator? _projectsBusy;
+    private IDelayedBusyIndicator? _chatsBusy;
+    private IDelayedBusyIndicator ProjectsBusy => _projectsBusy ??= BusyIndicatorFactory.Create(() => InvokeAsync(StateHasChanged));
+    private IDelayedBusyIndicator ChatsBusy => _chatsBusy ??= BusyIndicatorFactory.Create(() => InvokeAsync(StateHasChanged));
     private readonly ChatEditor _chat = new();
     private string? _chatError;
 
@@ -825,7 +827,7 @@
     private IJSObjectReference? _escapeSubscription;
     private IJSObjectReference? _drawerDismissSubscription;
     private IJSObjectReference? _queueDragSubscription;
-    private readonly ComposerHistoryNavigator _composerHistoryNavigator = new();
+
     private bool _composerCtrlDown;
     private bool _composerAltDown;
     private bool _composerShiftDown;

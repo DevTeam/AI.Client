@@ -8,4 +8,6 @@ namespace AI.Web.Settings;
 public sealed record ClientSettings
 {
     public ThemePreference Theme { get; init; } = ThemePreference.System;
+
+    public AccentColor Accent { get; init; } = AccentColor.Blue;
 }

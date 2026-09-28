@@ -39,6 +39,19 @@ public class ClientSettingsServiceTests
         var service = new ClientSettingsService(new FakeJSRuntime());
 
         (await service.GetAsync()).Theme.ShouldBe(ThemePreference.System);
+        (await service.GetAsync()).Accent.ShouldBe(AccentColor.Blue);
+    }
+
+    [Fact]
+    public async Task ShouldReadAnEntryWrittenBeforeAccentExisted()
+    {
+        var js = new FakeJSRuntime();
+        js.Entries[StorageKey] = "{\"theme\":\"light\"}";
+
+        var settings = await new ClientSettingsService(js).GetAsync();
+
+        settings.Theme.ShouldBe(ThemePreference.Light);
+        settings.Accent.ShouldBe(AccentColor.Blue);
     }
 
     [Theory]
@@ -58,9 +71,9 @@ public class ClientSettingsServiceTests
         var js = new FakeJSRuntime();
         var service = new ClientSettingsService(js);
 
-        await service.UpdateAsync(settings => settings with { Theme = ThemePreference.Light });
+        await service.UpdateAsync(settings => settings with { Theme = ThemePreference.Light, Accent = AccentColor.Teal });
 
-        js.Entries[StorageKey].ShouldBe("{\"theme\":\"light\"}");
+        js.Entries[StorageKey].ShouldBe("{\"theme\":\"light\",\"accent\":\"teal\"}");
         (await new ClientSettingsService(js).GetAsync()).Theme.ShouldBe(ThemePreference.Light);
     }
 
@@ -87,5 +100,17 @@ public class ClientSettingsServiceTests
 
         (await theme.GetAsync()).ShouldBe(ThemePreference.Dark);
         js.Calls.ShouldContain(call => call.Identifier == "aiClientTheme.apply" && Equals(call.Args[0], "dark"));
+    }
+
+    [Fact]
+    public async Task ThemeServiceShouldSaveAndApplyTheAccent()
+    {
+        var js = new FakeJSRuntime();
+        var theme = new ThemeService(new ClientSettingsService(js), js);
+
+        await theme.SetAccentAsync(AccentColor.Purple);
+
+        (await theme.GetAccentAsync()).ShouldBe(AccentColor.Purple);
+        js.Calls.ShouldContain(call => call.Identifier == "aiClientTheme.applyAccent" && Equals(call.Args[0], "purple"));
     }
 }

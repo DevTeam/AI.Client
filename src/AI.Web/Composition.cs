@@ -66,6 +66,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IChatFeedProjection>().To<ChatFeed>()
             .RootBind<ITurnLiveText>().To<TurnLiveText>()
             .RootBind<IDirectoryPickerState>().To<DirectoryPickerState>()
+            .RootBind<ISettingsTransferCodec>().To<SettingsTransferCodec>()
+            .RootBind<ISettingsImportPlanner>().To<SettingsImportPlanner>()
             .RootBind<IRunStatusPresentation>().To<RunStatusPresentation>()
             .RootBind<IComposerHistoryNavigator>().To<ComposerHistoryNavigator>()
             .RootBind<IComposerContextPresentation>().To<ComposerContextPresentation>()

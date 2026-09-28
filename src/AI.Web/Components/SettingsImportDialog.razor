@@ -1,0 +1,265 @@
+@using AI.Contracts.Settings
+@using McpServerSettings = AI.Contracts.Settings.McpServerSettings
+@inject ISettingsTransferCodec Codec
+@inject ISettingsImportPlanner Planner
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
+
+@* One preview for every way in — the Paste button, Ctrl+V on the drawer, a dropped or loaded
+   file — so what is about to change is always shown before it does. Nothing is saved here: the
+   chosen items join the drawer's edits and are saved, like any other edit, when it closes. *@
+<div class="modal-backdrop settings-transfer-backdrop" @onclick="CancelAsync">
+    <section class="settings-transfer-modal settings-import-modal" role="dialog" aria-modal="true" aria-labelledby="settings-import-title"
+             @ref="_dialog" @onclick:stopPropagation="true" @onkeydown="OnKeyDownAsync">
+        <header>
+            <div><strong id="settings-import-title">Import settings</strong><span>@Subtitle</span></div>
+            <button class="icon-action" type="button" title="Close" aria-label="Close import" @onclick="CancelAsync"><AppIcon Name="x" /></button>
+        </header>
+        <div class="settings-import-source">
+            <textarea @ref="_textArea" class="settings-import-text" spellcheck="false" aria-label="Settings JSON"
+                      placeholder="Paste mcpServers or connections JSON here, or drop a .json file"
+                      value="@_text" @oninput="OnTextInput"></textarea>
+            <div class="settings-import-source-actions">
+                <label class="secondary-action compact-action settings-import-file">
+                    Load file…
+                    <InputFile accept=".json,application/json,text/plain" OnChange="LoadFileAsync" />
+                </label>
+                <span>Keys and secret values are never imported. You type them in afterwards.</span>
+            </div>
+        </div>
+        <div class="settings-import-body">
+            @if (_error is not null)
+            {
+                <p class="error" role="alert">@_error</p>
+            }
+            else if (_plan is null)
+            {
+                <p class="empty-hint">@(_readingClipboard ? "Reading the clipboard…" : "Paste settings above to see what will change.")</p>
+            }
+            else
+            {
+                @if (_plan.SecretValuesDropped)
+                {
+                    <p class="settings-import-warning" role="status"><AppIcon Name="lock" /> The text contained a key or token. It was not imported, but it is still in your clipboard or file.</p>
+                }
+                <ul class="settings-import-list">
+                    @foreach (var row in _connectionRows)
+                    {
+                        <SettingsImportRowView T="ConnectionSettings" Row="row" Name="@row.Candidate.AddAs.Name" Kind="Connection" Detail="@ConnectionDetail(row.Candidate.AddAs)" Changed="StateHasChanged" />
+                    }
+                    @foreach (var row in _mcpRows)
+                    {
+                        <SettingsImportRowView T="McpServerSettings" Row="row" Name="@row.Candidate.AddAs.Name" Kind="MCP server" Detail="@McpDetail(row.Candidate.AddAs)" Changed="StateHasChanged" />
+                    }
+                    @foreach (var skipped in _plan.Skipped)
+                    {
+                        <li class="settings-import-row is-skipped">
+                            <div class="settings-import-row-head"><span class="settings-import-name">@skipped.Name</span><span class="settings-import-badge">Not imported</span></div>
+                            <p class="settings-import-note">@skipped.Reason</p>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+        <footer class="settings-modal-actions settings-import-actions">
+            <span class="settings-import-summary">@Summary</span>
+            <button type="button" disabled="@(ChosenCount == 0)" @onclick="ApplyAsync">@(ChosenCount == 0 ? "Import" : $"Import {ChosenCount}")</button>
+            <button type="button" class="secondary-action" @onclick="CancelAsync">Cancel</button>
+        </footer>
+    </section>
+</div>
+
+@code {
+    /// <summary>Text already in hand (a paste or a dropped file); null reads the clipboard.</summary>
+    [Parameter] public string? InitialText { get; set; }
+
+    /// <summary>Where <see cref="InitialText"/> came from, shown under the title.</summary>
+    [Parameter] public string? Source { get; set; }
+
+    [Parameter, EditorRequired] public IReadOnlyList<ConnectionSettings> Connections { get; set; } = [];
+
+    [Parameter, EditorRequired] public IReadOnlyList<McpServerSettings> McpServers { get; set; } = [];
+
+    [Parameter] public EventCallback<SettingsImportSelection> Applied { get; set; }
+
+    [Parameter] public EventCallback Cancelled { get; set; }
+
+    // Large enough for any settings file, small enough that a wrong file cannot hang the tab.
+    private const long MaxFileBytes = 1024 * 1024;
+
+    private ElementReference _dialog;
+    private ElementReference _textArea;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _dropSubscription;
+    private DotNetObjectReference<SettingsImportDialog>? _reference;
+    private string _text = string.Empty;
+    private string? _source;
+    private string? _error;
+    private bool _readingClipboard;
+    private SettingsImportPlan? _plan;
+    private List<SettingsImportRow<ConnectionSettings>> _connectionRows = [];
+    private List<SettingsImportRow<McpServerSettings>> _mcpRows = [];
+
+    private string Subtitle => _source switch
+    {
+        null => "From text you paste or a file",
+        "clipboard" => "From the clipboard",
+        _ => $"From {_source}"
+    };
+
+    private int ChosenCount => _connectionRows.Count(row => row.Action != SettingsImportAction.Skip)
+        + _mcpRows.Count(row => row.Action != SettingsImportAction.Skip);
+
+    private string Summary
+    {
+        get
+        {
+            if (_plan is null) return string.Empty;
+            var actions = _connectionRows.Select(row => row.Action).Concat(_mcpRows.Select(row => row.Action)).ToArray();
+            var parts = new List<string>(3);
+            var added = actions.Count(action => action is SettingsImportAction.Add or SettingsImportAction.KeepBoth);
+            var replaced = actions.Count(action => action == SettingsImportAction.Replace);
+            if (added > 0) parts.Add($"{added} to add");
+            if (replaced > 0) parts.Add($"{replaced} to update");
+            return parts.Count == 0 ? "Nothing selected" : string.Join(" · ", parts);
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        _source = Source;
+        if (InitialText is not null) SetText(InitialText);
+        else _readingClipboard = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/settingsTransfer.js");
+            _reference = DotNetObjectReference.Create(this);
+            _dropSubscription = await _module.InvokeAsync<IJSObjectReference>("watchDialogDrop", _dialog, _reference);
+            if (_readingClipboard)
+            {
+                // Only text that reads as settings fills the box; anything else on the clipboard
+                // (the last thing copied from a chat, say) would just be in the way.
+                var clipboard = await _module.InvokeAsync<string?>("readClipboardText");
+                _readingClipboard = false;
+                if (clipboard is not null && Codec.Parse(clipboard).Error is null)
+                {
+                    _source = "clipboard";
+                    SetText(clipboard);
+                }
+
+                StateHasChanged();
+            }
+
+            if (_plan is null) await _textArea.FocusAsync();
+            else await _dialog.FocusAsync();
+        }
+        catch (JSException)
+        {
+            // The dialog closed before the browser got to it.
+            _readingClipboard = false;
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page is going away.
+        }
+    }
+
+    private void OnTextInput(ChangeEventArgs args)
+    {
+        _source = null;
+        SetText(args.Value?.ToString() ?? string.Empty);
+    }
+
+    [JSInvokable]
+    public Task OnFileTextAsync(string text, string fileName)
+    {
+        _source = fileName;
+        SetText(text);
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadFileAsync(InputFileChangeEventArgs args)
+    {
+        try
+        {
+            await using var stream = args.File.OpenReadStream(MaxFileBytes);
+            using var reader = new StreamReader(stream);
+            _source = args.File.Name;
+            SetText(await reader.ReadToEndAsync());
+        }
+        catch (IOException)
+        {
+            _plan = null;
+            _error = $"{args.File.Name} is larger than 1 MB; that is not a settings file.";
+        }
+    }
+
+    private void SetText(string text)
+    {
+        _text = text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            _plan = null;
+            _error = null;
+            _connectionRows = [];
+            _mcpRows = [];
+            return;
+        }
+
+        var parsed = Codec.Parse(text);
+        _error = parsed.Error;
+        if (parsed.Error is not null)
+        {
+            _plan = null;
+            _connectionRows = [];
+            _mcpRows = [];
+            return;
+        }
+
+        _plan = Planner.Plan(parsed, Connections, McpServers);
+        _connectionRows = [.. _plan.Connections.Select(candidate => new SettingsImportRow<ConnectionSettings>(candidate))];
+        _mcpRows = [.. _plan.McpServers.Select(candidate => new SettingsImportRow<McpServerSettings>(candidate))];
+    }
+
+    private static string ConnectionDetail(ConnectionSettings connection) =>
+        string.IsNullOrEmpty(connection.Model) ? connection.BaseUrl : $"{connection.BaseUrl} · {connection.Model}";
+
+    private static string McpDetail(McpServerSettings server) => server.Transport == "Stdio"
+        ? string.Join(' ', new[] { server.Command }.Concat(server.Arguments))
+        : server.Url ?? string.Empty;
+
+    private Task ApplyAsync() => Applied.InvokeAsync(new SettingsImportSelection(
+        [.. _connectionRows.Where(row => row.Action != SettingsImportAction.Skip).Select(row => new SettingsImportChoice<ConnectionSettings>(row.Candidate, row.Action))],
+        [.. _mcpRows.Where(row => row.Action != SettingsImportAction.Skip).Select(row => new SettingsImportChoice<McpServerSettings>(row.Candidate, row.Action))]));
+
+    private Task CancelAsync() => Cancelled.InvokeAsync();
+
+    private Task OnKeyDownAsync(KeyboardEventArgs args) =>
+        args.Key == "Escape" ? CancelAsync() : Task.CompletedTask;
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_dropSubscription is not null)
+            {
+                await _dropSubscription.InvokeVoidAsync("dispose");
+                await _dropSubscription.DisposeAsync();
+            }
+
+            if (_module is not null) await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page is already gone, and its listeners with it.
+        }
+
+        _reference?.Dispose();
+    }
+}

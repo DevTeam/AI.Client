@@ -1,0 +1,164 @@
+@using AI.Contracts.Settings
+@using McpServerSettings = AI.Contracts.Settings.McpServerSettings
+@using System.Globalization
+@inject ISettingsTransferCodec Codec
+@inject INotificationService Notifications
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
+
+@* The drawer's own section is ticked and the other one offered, so the common case — share
+   these MCP servers — is one click, and a full copy for another machine is two. *@
+<div class="modal-backdrop settings-transfer-backdrop" @onclick="CloseAsync">
+    <section class="settings-transfer-modal settings-export-modal" role="dialog" aria-modal="true" aria-labelledby="settings-export-title"
+             @ref="_dialog" tabindex="-1" @onclick:stopPropagation="true" @onkeydown="OnKeyDownAsync">
+        <header>
+            <div><strong id="settings-export-title">Export settings</strong><span>Copy as JSON or save to a file</span></div>
+            <button class="icon-action" type="button" title="Close" aria-label="Close export" @onclick="CloseAsync"><AppIcon Name="x" /></button>
+        </header>
+        <div class="settings-export-body">
+            @if (Connections.Count > 0)
+            {
+                @Group("Connections", _connections)
+            }
+            @if (McpServers.Count > 0)
+            {
+                @Group("MCP servers", _mcpServers)
+            }
+            @if (Connections.Count == 0 && McpServers.Count == 0)
+            {
+                <p class="empty-hint">Nothing to export yet.</p>
+            }
+            <p class="settings-export-note"><AppIcon Name="lock" /> Keys and secret values stay on this Host. The export lists which ones are needed, with empty values. MCP servers use the <code>mcpServers</code> format of Claude Desktop, Cursor and Claude Code.</p>
+        </div>
+        <footer class="settings-modal-actions">
+            <button type="button" disabled="@(SelectedCount == 0)" @onclick="CopyAsync">Copy</button>
+            <button type="button" class="secondary-action" disabled="@(SelectedCount == 0)" @onclick="SaveFileAsync">Save file</button>
+            <button type="button" class="secondary-action" @onclick="CloseAsync">Cancel</button>
+        </footer>
+    </section>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ConnectionSettings> Connections { get; set; } = [];
+
+    [Parameter, EditorRequired] public IReadOnlyList<McpServerSettings> McpServers { get; set; } = [];
+
+    /// <summary>Which drawer section the export was opened from; its items start ticked.</summary>
+    [Parameter] public string Section { get; set; } = "Connections";
+
+    [Parameter] public EventCallback Closed { get; set; }
+
+    private ElementReference _dialog;
+    private IJSObjectReference? _module;
+    private List<ExportItem> _connections = [];
+    private List<ExportItem> _mcpServers = [];
+
+    private int SelectedCount => _connections.Count(item => item.Selected) + _mcpServers.Count(item => item.Selected);
+
+    protected override void OnInitialized()
+    {
+        _connections = [.. Connections.Select(item => new ExportItem(item.Id, item.Name, Section == "Connections"))];
+        _mcpServers = [.. McpServers.Select(item => new ExportItem(item.Id, item.Name, Section != "Connections"))];
+        // The other section alone, when this one is empty: an empty tick list helps nobody.
+        if (SelectedCount == 0)
+            foreach (var item in _connections.Concat(_mcpServers)) item.Selected = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try { await _dialog.FocusAsync(); }
+        catch (JSException) { /* The dialog closed before the browser got to it. */ }
+    }
+
+    private RenderFragment Group(string title, List<ExportItem> items) =>
+        @<fieldset class="settings-export-group">
+            <legend><label class="checkbox"><input type="checkbox" checked="@items.All(item => item.Selected)" @onchange="args => SetAll(items, args.Value is true)" /> @title</label></legend>
+            @foreach (var item in items)
+            {
+                <label class="checkbox"><input type="checkbox" checked="@item.Selected" @onchange="args => item.Selected = args.Value is true" /> <span>@item.Name</span></label>
+            }
+        </fieldset>;
+
+    private static void SetAll(List<ExportItem> items, bool selected)
+    {
+        foreach (var item in items) item.Selected = selected;
+    }
+
+    private string Export(out bool hasConnections, out bool hasServers)
+    {
+        var connections = Connections.Where(item => _connections.Any(selected => selected.Selected && selected.Id == item.Id)).ToArray();
+        var servers = McpServers.Where(item => _mcpServers.Any(selected => selected.Selected && selected.Id == item.Id)).ToArray();
+        hasConnections = connections.Length > 0;
+        hasServers = servers.Length > 0;
+        return Codec.Export(connections, servers);
+    }
+
+    private string Described()
+    {
+        var parts = new List<string>(2);
+        var connections = _connections.Count(item => item.Selected);
+        var servers = _mcpServers.Count(item => item.Selected);
+        if (connections > 0) parts.Add($"{connections} connection{(connections == 1 ? string.Empty : "s")}");
+        if (servers > 0) parts.Add($"{servers} MCP server{(servers == 1 ? string.Empty : "s")}");
+        return string.Join(" and ", parts);
+    }
+
+    private async Task CopyAsync()
+    {
+        var json = Export(out _, out _);
+        try
+        {
+            _module ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/settingsTransfer.js");
+            await _module.InvokeVoidAsync("writeClipboardText", json);
+            Notifications.ShowSuccess($"Copied {Described()}. Keys are not included.");
+            await CloseAsync();
+        }
+        catch (JSException)
+        {
+            Notifications.ShowError("Could not copy to the clipboard. Try Save file instead.");
+        }
+    }
+
+    private async Task SaveFileAsync()
+    {
+        var json = Export(out var hasConnections, out var hasServers);
+        var kind = hasConnections && hasServers ? "settings" : hasConnections ? "connections" : "mcp";
+        var fileName = $"ai-client-{kind}-{DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}.json";
+        try
+        {
+            _module ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/settingsTransfer.js");
+            await _module.InvokeVoidAsync("downloadText", fileName, json);
+            Notifications.ShowSuccess($"Saved {Described()} to {fileName}. Keys are not included.");
+            await CloseAsync();
+        }
+        catch (JSException)
+        {
+            Notifications.ShowError("Could not save the file. Try Copy instead.");
+        }
+    }
+
+    private Task CloseAsync() => Closed.InvokeAsync();
+
+    private Task OnKeyDownAsync(KeyboardEventArgs args) =>
+        args.Key == "Escape" ? CloseAsync() : Task.CompletedTask;
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null) await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page is already gone.
+        }
+    }
+
+    public sealed class ExportItem(Guid id, string name, bool selected)
+    {
+        public Guid Id { get; } = id;
+        public string Name { get; } = name;
+        public bool Selected { get; set; } = selected;
+    }
+}

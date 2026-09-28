@@ -7,13 +7,23 @@
 @inject IThemeService Theme
 @inject IClientMode ClientMode
 @inject IHostConnection HostConnection
+@inject ISettingsTransferCodec TransferCodec
+@inject ISettingsImportPlanner ImportPlanner
+@inject IJSRuntime JsRuntime
 @implements IAsyncDisposable
 
 <div class="permissions-drawer-backdrop"></div>
-<aside class="permissions-drawer settings-drawer" aria-label="@Title" @onclick:stopPropagation="true">
+<aside class="permissions-drawer settings-drawer" aria-label="@Title" @ref="_drawer" @onclick:stopPropagation="true">
     <header>
         <div><h2>@Title</h2><p>@Description</p></div>
-        <button class="icon-action" type="button" title="Close" aria-label="Close @Title" disabled="@_saving" @onclick="RequestCloseAsync"><AppIcon Name="x" /></button>
+        <div class="settings-drawer-header-actions">
+            @if (CanTransfer)
+            {
+                <button class="icon-action" type="button" title="Import from clipboard or file (or press Ctrl+V here)" aria-label="Import settings" disabled="@(_saving || !_loaded)" @onclick="OpenImport"><AppIcon Name="import" /></button>
+                <button class="icon-action" type="button" title="Export to clipboard or file" aria-label="Export settings" disabled="@(_saving || !_loaded)" @onclick="OpenExport"><AppIcon Name="export" /></button>
+            }
+            <button class="icon-action" type="button" title="Close" aria-label="Close @Title" disabled="@_saving" @onclick="RequestCloseAsync"><AppIcon Name="x" /></button>
+        </div>
     </header>
     <div class="settings-drawer-content">
             @switch (Section)
@@ -79,12 +89,12 @@
                 {
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
-                            <nav class="settings-list">@foreach (var connectionItem in _connections) { <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span>@connectionItem.Name</span><small>@ConnectionStatus(connectionItem)</small></button>@if (connectionItem.Id == _selectedConnectionId) { <button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button> }</div> }</nav>
+                            <nav class="settings-list">@foreach (var connectionItem in _connections) { <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span>@connectionItem.Name</span><small>@ConnectionStatus(connectionItem)</small></button>@if (connectionItem.Id == _selectedConnectionId) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without the key)" aria-label="Copy connection as JSON" @onclick="() => CopyConnectionAsync(connectionItem)"><AppIcon Name="copy" /></button><button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button></span> }</div> }</nav>
                             <button class="icon-action settings-list-add" type="button" title="Add connection" aria-label="Add connection" @onclick="AddConnection"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedConnection() is { } connection)
                         {
-                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label><label class="checkbox"><input type="checkbox" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" /> For subtasks</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<input type="url" autocomplete="url" class="text-input" placeholder="https://api.openai.com/v1" @bind="connection.BaseUrl" @bind:event="oninput" @bind:after="() => OnEndpointChanged(connection.Id)" /></label><div class="model-field-row"><div class="model-field"><span>Model</span><ModelPicker @bind-Value="connection.Model" AriaLabel="Model" Models="@(_resolvedModels.TryGetValue(connection.Id, out var list) ? list : null)" Loading="@(_resolvingModelsForId == connection.Id)" Error="@(_resolvedErrors.TryGetValue(connection.Id, out var err) ? err : null)" OnRetry="@(() => LoadModelsIfStaleAsync(connection.Id, force: true))" Placeholder="@ModelPickerPlaceholder(connection)" EmptyHint="@ModelPickerEmptyHint(connection)" /></div>@if (_resolvingModelsForId == connection.Id) { <span class="model-loading" aria-label="Loading models" role="status"><AppIcon Name="spinner" Class="tool-row-spinner" /></span> }</div><div class="connection-ratings"><label>Context window tokens<input type="number" min="1024" max="4000000" step="1" @bind="connection.ContextWindowTokens" /><small>Effective: @EffectiveLimits(connection).ContextWindowTokens (@SourceLabel(EffectiveLimits(connection).ContextWindowSource))</small></label><label>Reserved output tokens<input type="number" min="256" max="1000000" step="1" @bind="connection.ReservedOutputTokens" /><small>Effective: @EffectiveLimits(connection).ReservedOutputTokens (@SourceLabel(EffectiveLimits(connection).ReservedOutputSource))</small></label></div><div class="connection-ratings"><label>Capability<input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><small>@RatingLabel(connection.Capability, Capabilities)</small></label><label>Cost<input type="range" min="0" max="5" step="1" @bind="connection.Cost" @bind:event="oninput" /><small>@RatingLabel(connection.Cost, Costs)</small></label></div><label>Good for<InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="What the ratings cannot say: vision, long context, local" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" @bind-Value:after="() => OnEndpointChanged(connection.Id)" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : "Optional")" /></label></form>
+                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label><label class="checkbox"><input type="checkbox" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" /> For subtasks</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<input type="url" autocomplete="url" class="text-input" placeholder="https://api.openai.com/v1" @bind="connection.BaseUrl" @bind:event="oninput" @bind:after="() => OnEndpointChanged(connection.Id)" /></label><div class="model-field-row"><div class="model-field"><span>Model</span><ModelPicker @bind-Value="connection.Model" AriaLabel="Model" Models="@(_resolvedModels.TryGetValue(connection.Id, out var list) ? list : null)" Loading="@(_resolvingModelsForId == connection.Id)" Error="@(_resolvedErrors.TryGetValue(connection.Id, out var err) ? err : null)" OnRetry="@(() => LoadModelsIfStaleAsync(connection.Id, force: true))" Placeholder="@ModelPickerPlaceholder(connection)" EmptyHint="@ModelPickerEmptyHint(connection)" /></div>@if (_resolvingModelsForId == connection.Id) { <span class="model-loading" aria-label="Loading models" role="status"><AppIcon Name="spinner" Class="tool-row-spinner" /></span> }</div><div class="connection-ratings"><label>Context window tokens<input type="number" min="1024" max="4000000" step="1" @bind="connection.ContextWindowTokens" /><small>Effective: @EffectiveLimits(connection).ContextWindowTokens (@SourceLabel(EffectiveLimits(connection).ContextWindowSource))</small></label><label>Reserved output tokens<input type="number" min="256" max="1000000" step="1" @bind="connection.ReservedOutputTokens" /><small>Effective: @EffectiveLimits(connection).ReservedOutputTokens (@SourceLabel(EffectiveLimits(connection).ReservedOutputSource))</small></label></div><div class="connection-ratings"><label>Capability<input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><small>@RatingLabel(connection.Capability, Capabilities)</small></label><label>Cost<input type="range" min="0" max="5" step="1" @bind="connection.Cost" @bind:event="oninput" /><small>@RatingLabel(connection.Cost, Costs)</small></label></div><label>Good for<InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="What the ratings cannot say: vision, long context, local" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" @bind-Value:after="() => OnEndpointChanged(connection.Id)" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : connection.KeyMissing ? "Needed: imported without its key" : "Optional")" class="@(connection.NeedsKey ? "needs-key" : null)" /></label></form>
                         }
                     </div>
                     break;
@@ -93,7 +103,7 @@
                 {
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
-                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => _selectedMcpServerId = serverItem.Id"><span>@serverItem.Name</span><small>@serverItem.Transport · @serverItem.Policy</small></button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</div> }</nav>
+                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => _selectedMcpServerId = serverItem.Id"><span>@serverItem.Name</span><small>@McpServerStatus(serverItem)</small></button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without secrets)" aria-label="Copy MCP server as JSON" @onclick="() => CopyMcpServerAsync(serverItem)"><AppIcon Name="copy" /></button><button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button></span> }</div> }</nav>
                             <button class="icon-action settings-list-add" type="button" title="Add MCP server" aria-label="Add MCP server" @onclick="AddGlobalMcpServer"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedMcpServer() is { } server)
@@ -125,11 +135,11 @@
                                 }
                                 else if (server.Transport == "StreamableHttp")
                                 {
-                                    <label>URL<InputText autocomplete="url" @bind-Value="server.Url" /></label><label>Credential<InputText type="password" autocomplete="new-password" @bind-Value="server.Secret" placeholder="@(server.HasCredential ? "Saved; enter to replace" : "Optional")" /></label>
+                                    <label>URL<InputText autocomplete="url" @bind-Value="server.Url" /></label><label>Credential<InputText type="password" autocomplete="new-password" @bind-Value="server.Secret" placeholder="@(server.HasCredential ? "Saved; enter to replace" : server.CredentialMissing ? "Needed: imported without it" : "Optional")" class="@(server.MissingSecrets.Count > 0 ? "needs-key" : null)" /></label>
                                 }
                                 else
                                 {
-                                    <label>Command<InputText @bind-Value="server.Command" /></label><label>Arguments<InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label><label>Working directory<InputText @bind-Value="server.WorkingDirectory" /></label><label>Environment variables<InputTextArea @bind-Value="server.EnvironmentText" placeholder="NAME=value" /></label>
+                                    <label>Command<InputText @bind-Value="server.Command" /></label><label>Arguments<InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label><label>Working directory<InputText @bind-Value="server.WorkingDirectory" /></label><label>Environment variables<InputTextArea @bind-Value="server.EnvironmentText" placeholder="NAME=value" />@if (server.MissingSecrets.Count > 0) { <small class="settings-needs-key-hint">Needs a value: @string.Join(", ", server.MissingSecrets). Type it after the = on its secret: line.</small> }</label>
                                 }
                             </form>
                         }
@@ -150,6 +160,20 @@
         }
     </footer>
 </aside>
+@if (_import is { } import)
+{
+    <SettingsImportDialog @key="import.Key" InitialText="@import.Text" Source="@import.Source"
+                          Connections="@(_connections.Select(item => item.ToSettings()).ToArray())"
+                          McpServers="@(_globalMcpServers.Select(item => item.ToSettings()).ToArray())"
+                          Applied="ApplyImport" Cancelled="() => _import = null" />
+}
+@if (_exportOpen)
+{
+    <SettingsExportDialog Section="@Section"
+                          Connections="@(_connections.Select(ExportSettings).ToArray())"
+                          McpServers="@(_globalMcpServers.Where(item => !IsHostProvided(item.Id)).Select(ExportSettings).ToArray())"
+                          Closed="() => _exportOpen = false" />
+}
 @code {
     [Parameter] public string Section { get; set; } = "Connections";
     [Parameter] public EventCallback Saved { get; set; }
@@ -198,6 +222,17 @@
     private Guid? _selectedMcpServerId;
     private ThemePreference _theme;
     private AccentColor _accent;
+    private ElementReference _drawer;
+    private IJSObjectReference? _transferModule;
+    private IJSObjectReference? _transferSubscription;
+    private DotNetObjectReference<GlobalSettingsPanel>? _transferReference;
+    private ImportRequest? _import;
+    private int _importCount;
+    private bool _exportOpen;
+
+    /// <summary>What the import dialog opens with; a new key each time so a second paste starts over.</summary>
+    private sealed record ImportRequest(int Key, string? Text, string? Source);
+
     protected override async Task OnInitializedAsync()
     {
         HostConnection.Changed += OnHostConnectionChanged;
@@ -240,6 +275,9 @@
     };
 
     private string Title => Section == "ProjectMemory" ? "Project memory" : Section;
+
+    /// <summary>Connections and MCP servers travel as text; the app's own look and memory do not.</summary>
+    private bool CanTransfer => Section is not ("Settings" or "Memory" or "ProjectMemory");
 
     private string Description => Section switch
     {
@@ -503,7 +541,22 @@
         // gone and overwrite state on a fresh drawer that has already taken its place.
         _autoLoadDebounce?.Cancel();
         _autoLoadDebounce?.Dispose();
-        await ValueTask.CompletedTask;
+        try
+        {
+            if (_transferSubscription is not null)
+            {
+                await _transferSubscription.InvokeVoidAsync("dispose");
+                await _transferSubscription.DisposeAsync();
+            }
+
+            if (_transferModule is not null) await _transferModule.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page is already gone, and its listeners with it.
+        }
+
+        _transferReference?.Dispose();
     }
 
     /// <summary>
@@ -512,8 +565,9 @@
     /// </summary>
     private static string ConnectionStatus(ConnectionEditor connection)
     {
-        if (!connection.Enabled) return "Unavailable";
-        var marks = new List<string>(2);
+        if (!connection.Enabled) return connection.NeedsKey ? "Unavailable · Needs key" : "Unavailable";
+        var marks = new List<string>(3);
+        if (connection.NeedsKey) marks.Add("Needs key");
         if (connection.IsDefault) marks.Add("Default");
         if (connection.ForSubtasks) marks.Add("Subtasks");
         return marks.Count == 0 ? "Enabled" : string.Join(" · ", marks);
@@ -551,6 +605,14 @@
         ContextLimitSource.Override => "override",
         _ => "default"
     };
+
+    private static string McpServerStatus(GlobalMcpServerEditor server)
+    {
+        var marks = new List<string>(4) { server.Transport, server.Policy };
+        if (!server.Enabled) marks.Add("Off");
+        if (server.MissingSecrets.Count > 0) marks.Add("Needs key");
+        return string.Join(" · ", marks);
+    }
 
     private void AddGlobalMcpServer()
     {
@@ -596,6 +658,143 @@
         catch (HttpRequestException)
         {
             Notifications.ShowError("Could not connect to the default tools server.");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _transferModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/settingsTransfer.js");
+            _transferReference = DotNetObjectReference.Create(this);
+            _transferSubscription = await _transferModule.InvokeAsync<IJSObjectReference>("watchTransfer", _drawer, _transferReference);
+        }
+        catch (JSException)
+        {
+            // The drawer closed before the module loaded; the buttons still work without it.
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page is going away.
+        }
+    }
+
+    private void OpenImport() => _import = new ImportRequest(++_importCount, null, null);
+
+    private void OpenExport() => _exportOpen = true;
+
+    /// <summary>Ctrl+V outside a field, or a file dropped on the drawer.</summary>
+    [JSInvokable]
+    public async Task OnTransferTextAsync(string text, string source)
+    {
+        if (!CanTransfer || !_loaded || _saving || _exportOpen) return;
+        _import = new ImportRequest(++_importCount, text, source);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// The chosen items join the drawer's unsaved edits, so closing saves them and Discard drops
+    /// them, exactly as if they had been typed in. A replaced item keeps its id, and with it any key
+    /// already saved for it on this Host.
+    /// </summary>
+    private void ApplyImport(SettingsImportSelection selection)
+    {
+        _import = null;
+        var importedConnections = new List<ConnectionEditor>();
+        var importedServers = new List<GlobalMcpServerEditor>();
+        foreach (var choice in selection.Connections)
+        {
+            var candidate = choice.Candidate;
+            var index = choice.Action == SettingsImportAction.Replace && candidate.ReplaceWith is { } replacement
+                ? _connections.FindIndex(item => item.Id == replacement.Id)
+                : -1;
+            ConnectionEditor editor;
+            if (index >= 0)
+            {
+                editor = ConnectionEditor.From(candidate.ReplaceWith!);
+                editor.Secret = _connections[index].Secret;
+                editor.KeyMissing = candidate.MissingIfReplaced.Count > 0;
+                _connections[index] = editor;
+            }
+            else
+            {
+                editor = ConnectionEditor.From(candidate.AddAs with { Name = ImportPlanner.UniqueName(candidate.AddAs.Name, _connections.Select(item => item.Name)) });
+                editor.KeyMissing = candidate.MissingIfAdded.Count > 0;
+                _connections.Add(editor);
+            }
+
+            importedConnections.Add(editor);
+        }
+
+        foreach (var choice in selection.McpServers)
+        {
+            var candidate = choice.Candidate;
+            var index = choice.Action == SettingsImportAction.Replace && candidate.ReplaceWith is { } replacement
+                ? _globalMcpServers.FindIndex(item => item.Id == replacement.Id)
+                : -1;
+            GlobalMcpServerEditor editor;
+            if (index >= 0)
+            {
+                editor = GlobalMcpServerEditor.From(candidate.ReplaceWith!);
+                editor.Secret = _globalMcpServers[index].Secret;
+                _globalMcpServers[index] = editor;
+            }
+            else
+            {
+                editor = GlobalMcpServerEditor.From(candidate.AddAs with { Name = ImportPlanner.UniqueName(candidate.AddAs.Name, _globalMcpServers.Select(item => item.Name)) });
+                _globalMcpServers.Add(editor);
+            }
+
+            editor.CredentialMissing = candidate.Imported.CredentialOmitted;
+            importedServers.Add(editor);
+        }
+
+        // Land on what came in, preferring one that still needs a key typed in.
+        if (Section == "Connections")
+        {
+            var target = importedConnections.FirstOrDefault(item => item.NeedsKey) ?? importedConnections.FirstOrDefault();
+            if (target is not null) SelectConnection(target.Id);
+        }
+        else
+        {
+            var target = importedServers.FirstOrDefault(item => item.MissingSecrets.Count > 0) ?? importedServers.FirstOrDefault();
+            if (target is not null) _selectedMcpServerId = target.Id;
+        }
+
+        var counts = new List<string>(2);
+        if (importedConnections.Count > 0) counts.Add(Plural(importedConnections.Count, "connection"));
+        if (importedServers.Count > 0) counts.Add(Plural(importedServers.Count, "MCP server"));
+        if (counts.Count == 0) return;
+        var needKeys = importedConnections.Count(item => item.NeedsKey) + importedServers.Count(item => item.MissingSecrets.Count > 0);
+        var keys = needKeys switch { 0 => string.Empty, 1 => " One needs a key.", _ => $" {needKeys} need keys." };
+        Notifications.ShowSuccess($"Imported {string.Join(" and ", counts)}.{keys} Saved when you close settings.");
+    }
+
+    /// <summary>A key typed but not saved yet still means the item has one; the export says so.</summary>
+    private static ConnectionSettings ExportSettings(ConnectionEditor connection) =>
+        connection.ToSettings() with { HasCredential = connection.HasCredential || !string.IsNullOrWhiteSpace(connection.Secret) };
+
+    private static AI.Contracts.Settings.McpServerSettings ExportSettings(GlobalMcpServerEditor server) =>
+        server.ToSettings() with { HasCredential = server.HasCredential || !string.IsNullOrWhiteSpace(server.Secret) };
+
+    private Task CopyConnectionAsync(ConnectionEditor connection) =>
+        CopyAsync(TransferCodec.Export([ExportSettings(connection)], []), connection.Name, "key");
+
+    private Task CopyMcpServerAsync(GlobalMcpServerEditor server) =>
+        CopyAsync(TransferCodec.Export([], [ExportSettings(server)]), server.Name, "secrets");
+
+    private async Task CopyAsync(string json, string name, string secrets)
+    {
+        try
+        {
+            _transferModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/settingsTransfer.js");
+            await _transferModule.InvokeVoidAsync("writeClipboardText", json);
+            Notifications.ShowSuccess($"Copied {name} as JSON, without its {secrets}.");
+        }
+        catch (JSException)
+        {
+            Notifications.ShowError("Could not copy to the clipboard.");
         }
     }
 
@@ -678,6 +877,10 @@
         public long? ReservedOutputTokens { get; set; }
         public bool HasCredential { get; set; }
         public string? Secret { get; set; }
+        // Came in from an import that named a key without its value. Only the import knows this:
+        // a key is optional for a local endpoint, so a missing one is not otherwise a problem.
+        public bool KeyMissing { get; set; }
+        public bool NeedsKey => KeyMissing && !HasCredential && string.IsNullOrWhiteSpace(Secret);
 
         public static ConnectionEditor From(ConnectionSettings item) => new()
         {
@@ -713,6 +916,30 @@
         public string EnvironmentText { get; set; } = string.Empty;
         public bool HasCredential { get; set; }
         public string? Secret { get; set; }
+        // Secret variables the Host holds a value for; the text shows them as "secret:NAME=".
+        public HashSet<string> SavedSecretNames { get; set; } = [];
+        public bool CredentialMissing { get; set; }
+
+        /// <summary>Secrets that have neither a saved value nor one typed in yet.</summary>
+        public IReadOnlyList<string> MissingSecrets
+        {
+            get
+            {
+                var missing = new List<string>();
+                if (Transport == "Stdio")
+                {
+                    missing.AddRange(ParseEnvironment()
+                        .Where(variable => variable.IsSecret && string.IsNullOrEmpty(variable.Value) && !SavedSecretNames.Contains(variable.Name))
+                        .Select(variable => variable.Name));
+                }
+                else if (Transport == "StreamableHttp" && CredentialMissing && !HasCredential && string.IsNullOrWhiteSpace(Secret))
+                {
+                    missing.Add("Credential");
+                }
+
+                return missing;
+            }
+        }
 
         public static GlobalMcpServerEditor From(AI.Contracts.Settings.McpServerSettings item) => new()
         {
@@ -722,23 +949,30 @@
             WorkingDirectory = item.WorkingDirectory,
             EnvironmentText = string.Join(Environment.NewLine, item.EnvironmentVariables.Select(variable =>
                 variable.IsSecret ? $"secret:{variable.Name}=" : $"{variable.Name}={variable.Value}")),
-            HasCredential = item.HasCredential
+            HasCredential = item.HasCredential,
+            SavedSecretNames = item.EnvironmentVariables.Where(variable => variable.IsSecret && variable.HasSecret)
+                .Select(variable => variable.Name).ToHashSet(StringComparer.Ordinal)
         };
 
         public AI.Contracts.Settings.McpServerSettings ToSettings() => new(
             Id, Name, Transport, Enabled, Policy, Url, Command,
             ArgumentsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             WorkingDirectory,
+            ParseEnvironment(),
+            HasCredential);
+
+        // HasSecret is the Host's to say, and it ignores what is sent; it is filled in here so an
+        // import can tell a server that already holds a key from one that does not.
+        private McpEnvironmentVariableSettings[] ParseEnvironment() =>
             EnvironmentText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(line => line.Split('=', 2))
                 .Where(parts => parts.Length == 2)
-                .Select(parts => new McpEnvironmentVariableSettings(
-                    parts[0].StartsWith("secret:", StringComparison.OrdinalIgnoreCase) ? parts[0][7..] : parts[0],
-                    parts[1],
-                    parts[0].StartsWith("secret:", StringComparison.OrdinalIgnoreCase),
-                    // ReSharper disable once UseCollectionExpression
-                    false)).ToArray(),
-            HasCredential);
+                .Select(parts =>
+                {
+                    var isSecret = parts[0].StartsWith("secret:", StringComparison.OrdinalIgnoreCase);
+                    var name = isSecret ? parts[0][7..] : parts[0];
+                    return new McpEnvironmentVariableSettings(name, parts[1], isSecret, isSecret && SavedSecretNames.Contains(name));
+                }).ToArray();
     }
 
     [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]

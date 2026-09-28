@@ -107,7 +107,7 @@ export function watchFocus(dotNetReference) {
 }
 
 export function watchEscape(dotNetReference) {
-    const locallyHandled = ".sidebar-search-input, .sidebar-inline-editor, .queue-item input, .message-branch-indicator, .message-review-editor, .message-review-toggle, .message-review-comments, .review-comment-editor";
+    const locallyHandled = ".sidebar-search-input, .sidebar-inline-editor, .queue-item input, .message-branch-indicator, .message-review-editor, .message-review-toggle, .message-review-comments, .review-comment-editor, .settings-transfer-modal";
     const handler = event => {
         if (event.key !== "Escape" || event.repeat || event.defaultPrevented) return;
         const target = event.target instanceof Element ? event.target : null;

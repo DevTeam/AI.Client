@@ -34,10 +34,10 @@
         "--project",
         "src/AI.Host",
         "--no-launch-profile",
-        "-p:BaseOutputPath=C:/Users/PYANIK~1/AppData/Local/Temp/claude/C--Projects-DevTeam-AI-Client/39fa7def-1b55-4b11-8a72-f11b3d925911/scratchpad/hostbin/",
+        "-p:BaseOutputPath=C:/Users/PYANIK~1/AppData/Local/Temp/claude/C--Projects-DevTeam-AI-Client/562982e2-d82b-4a2f-9fac-22e5852753bc/scratchpad/hostbin/",
         "--",
         "--data-dir",
-        "C:/Users/PYANIK~1/AppData/Local/Temp/claude/C--Projects-DevTeam-AI-Client/39fa7def-1b55-4b11-8a72-f11b3d925911/scratchpad/data",
+        "C:/Users/PYANIK~1/AppData/Local/Temp/claude/C--Projects-DevTeam-AI-Client/562982e2-d82b-4a2f-9fac-22e5852753bc/scratchpad/data",
         "--serve-web"
       ],
       "port": 52180,

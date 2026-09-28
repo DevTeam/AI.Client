@@ -1,0 +1,84 @@
+@typeparam T where T : class
+
+@{
+    var candidate = Row.Candidate;
+    var skipped = Row.Action == SettingsImportAction.Skip;
+    var (badgeClass, badge) = candidate.Match switch
+    {
+        SettingsImportMatch.New => ("is-new", "New"),
+        SettingsImportMatch.Same => ("is-same", "Unchanged"),
+        _ => ("is-conflict", "Exists")
+    };
+}
+<li class="settings-import-row @(skipped ? "is-skipped" : null)">
+    <div class="settings-import-row-head">
+        @if (candidate.Match == SettingsImportMatch.New)
+        {
+            <input type="checkbox" checked="@(!skipped)" aria-label="Import @Name" @onchange="OnToggleAsync" />
+        }
+        <span class="settings-import-name" title="@Name">@Name</span>
+        <span class="settings-import-kind">@Kind</span>
+        <span class="settings-import-badge @badgeClass">@badge</span>
+        @if (candidate.Match == SettingsImportMatch.Conflict)
+        {
+            <select class="settings-import-action" aria-label="What to do with @Name" value="@Row.Action" @onchange="OnActionAsync">
+                @if (candidate.CanReplace) { <option value="@SettingsImportAction.Replace">Replace</option> }
+                <option value="@SettingsImportAction.KeepBoth">Keep both</option>
+                <option value="@SettingsImportAction.Skip">Skip</option>
+            </select>
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(Detail)) { <p class="settings-import-detail" title="@Detail">@Detail</p> }
+    @if (candidate.Match == SettingsImportMatch.Same)
+    {
+        <p class="settings-import-note">Already set up exactly like this.</p>
+    }
+    else if (!skipped)
+    {
+        @if (Row.Missing.Count > 0)
+        {
+            <p class="settings-import-note is-key"><AppIcon Name="lock" /> Not imported, enter after import: @string.Join(", ", Row.Missing)</p>
+        }
+        else if (Row.Action == SettingsImportAction.Replace && candidate.MissingIfAdded.Count > 0)
+        {
+            <p class="settings-import-note">Keys already saved for it are kept.</p>
+        }
+        @if (Row.SwitchedOff)
+        {
+            <p class="settings-import-note">Comes in switched off: check the command, then enable it.</p>
+        }
+        @if (Row.Action == SettingsImportAction.KeepBoth)
+        {
+            <p class="settings-import-note">@(candidate.CanReplace ? "Added under a numbered name." : "A built-in server has this name; added under a numbered name.")</p>
+        }
+        @foreach (var note in candidate.Imported.Notes)
+        {
+            <p class="settings-import-note">@note</p>
+        }
+    }
+</li>
+
+@code {
+    [Parameter, EditorRequired] public SettingsImportRow<T> Row { get; set; } = null!;
+
+    [Parameter, EditorRequired] public string Name { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired] public string Kind { get; set; } = string.Empty;
+
+    [Parameter] public string? Detail { get; set; }
+
+    /// <summary>The dialog's footer counts the choices, so it re-renders on every change.</summary>
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private Task OnToggleAsync(ChangeEventArgs args)
+    {
+        Row.Action = args.Value is true ? SettingsImportAction.Add : SettingsImportAction.Skip;
+        return Changed.InvokeAsync();
+    }
+
+    private Task OnActionAsync(ChangeEventArgs args)
+    {
+        if (Enum.TryParse<SettingsImportAction>(args.Value?.ToString(), out var action)) Row.Action = action;
+        return Changed.InvokeAsync();
+    }
+}

@@ -24,9 +24,9 @@
             {
                 @Group("MCP servers", _mcpServers)
             }
-            @if (Connections.Count == 0 && McpServers.Count == 0)
+            @if (SelectedCount == 0)
             {
-                <p class="empty-hint">Nothing to export yet.</p>
+                <p class="empty-hint">No @(Section == "Connections" ? "connections" : "MCP servers") selected for export.</p>
             }
             <p class="settings-export-note"><AppIcon Name="lock" /> Keys and secret values stay on this Host. The export lists which ones are needed, with empty values. MCP servers use the <code>mcpServers</code> format of Claude Desktop, Cursor and Claude Code.</p>
         </div>
@@ -59,9 +59,6 @@
     {
         _connections = [.. Connections.Select(item => new ExportItem(item.Id, item.Name, Section == "Connections"))];
         _mcpServers = [.. McpServers.Select(item => new ExportItem(item.Id, item.Name, Section != "Connections"))];
-        // The other section alone, when this one is empty: an empty tick list helps nobody.
-        if (SelectedCount == 0)
-            foreach (var item in _connections.Concat(_mcpServers)) item.Selected = true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

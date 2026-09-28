@@ -1,4 +1,7 @@
 // ReSharper disable UseCollectionExpression
+
+using Moq;
+
 namespace AI.Infrastructure.Tests.Credentials;
 
 using AI.Domain.Projects;
@@ -14,7 +17,9 @@ public class ProtectedGlobalSecretStoreTests
     public async Task ShouldClearAbsentSecretInAFreshDataDirectory()
     {
         var directory = Path.Combine(Path.GetTempPath(), "ai-client-absent-" + Guid.NewGuid().ToString("N"));
-        var store = new ProtectedGlobalSecretStore(new PhysicalTextFileSystem(), new GlobalSettingsPaths(directory), new PrefixDataProtector());
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(i => i.RootDirectory).Returns(directory);
+        var store = new ProtectedGlobalSecretStore(new PhysicalTextFileSystem(), new GlobalSettingsPaths(location.Object), new PrefixDataProtector());
         await store.SetAsync("mcp-env", Guid.NewGuid(), null, CancellationToken.None);
         Directory.Exists(directory).ShouldBeFalse();
     }
@@ -51,12 +56,22 @@ public class ProtectedGlobalSecretStoreTests
         (await store.ExistsAsync("connection", _profileId.Value, CancellationToken.None)).ShouldBeFalse();
     }
 
-    private ProtectedGlobalSecretStore CreateInstance() => new(
-        _fileSystem,
-        new GlobalSettingsPaths("storage"),
-        new PrefixDataProtector());
+    private ProtectedGlobalSecretStore CreateInstance()
+    {
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(i => i.RootDirectory).Returns("storage");
+        return new ProtectedGlobalSecretStore(
+            _fileSystem,
+            new GlobalSettingsPaths(location.Object),
+            new PrefixDataProtector());
+    }
 
-    private string GetPath() => new GlobalSettingsPaths("storage").GetSecretPath("connection", _profileId.Value);
+    private string GetPath()
+    {
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(i => i.RootDirectory).Returns("storage");
+        return new GlobalSettingsPaths(location.Object).GetSecretPath("connection", _profileId.Value);
+    }
 
     private sealed class PrefixDataProtector : IUserDataProtector
     {

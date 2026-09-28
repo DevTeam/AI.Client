@@ -1,4 +1,7 @@
 // ReSharper disable UseCollectionExpression
+
+using Moq;
+
 namespace AI.Infrastructure.Tests.Storage;
 
 using AI.Application.Projects;
@@ -105,8 +108,12 @@ public class JsonProjectRepositoryTests
         Should.Throw<Exception>(action);
     }
 
-    private JsonProjectRepository CreateInstance() =>
-        new(_fileSystem, new ProjectStoragePaths("storage"), _serializer);
+    private JsonProjectRepository CreateInstance()
+    {
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(i => i.RootDirectory).Returns("storage");
+        return new JsonProjectRepository(_fileSystem, new ProjectStoragePaths(location.Object), _serializer);
+    }
 
     private Project CreateProject() => new(_projectId, "Project", "Description", _createdAt);
 
@@ -130,9 +137,19 @@ public class JsonProjectRepositoryTests
         return project;
     }
 
-    private string GetProjectPath() => new ProjectStoragePaths("storage").GetProjectPath(_projectId);
+    private string GetProjectPath()
+    {
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(i => i.RootDirectory).Returns("storage");
+        return new ProjectStoragePaths(location.Object).GetProjectPath(_projectId);
+    }
 
-    private string GetTemporaryPath() => new ProjectStoragePaths("storage").GetTemporaryProjectPath(_projectId);
+    private string GetTemporaryPath()
+    {
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(i => i.RootDirectory).Returns("storage");
+        return new ProjectStoragePaths(location.Object).GetTemporaryProjectPath(_projectId);
+    }
 
     private sealed class InMemoryTextFileSystem : ITextFileSystem
     {

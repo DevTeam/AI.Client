@@ -1,9 +1,11 @@
+using AI.Infrastructure.Storage;
+
 namespace AI.Infrastructure.Settings;
 
-public sealed class GlobalSettingsPaths(string rootDirectory) : IGlobalSettingsPaths
+public sealed class GlobalSettingsPaths(IProjectStorageLocation location) : IGlobalSettingsPaths
 {
-    public string SettingsPath { get; } = Path.Combine(rootDirectory, "settings.json");
+    public string SettingsPath { get; } = Path.Combine(location.RootDirectory, "settings.json");
 
     public string GetSecretPath(string scope, Guid id) =>
-        Path.Combine(rootDirectory, "credentials", $"{scope}-{id:N}.protected");
+        Path.Combine(location.RootDirectory, "credentials", $"{scope}-{id:N}.protected");
 }

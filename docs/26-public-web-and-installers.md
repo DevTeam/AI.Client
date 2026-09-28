@@ -6,7 +6,15 @@
 
 The Host starts in the background after user login. The user opens the local confirmation page and grants the published origin access. The Host issues a random browser grant, stores only its hash in the local data directory, and requires it for public-origin API calls. Disconnect in the Web app revokes that grant. No .NET runtime installation is needed: all packages publish self-contained binaries.
 
+Open the public Web app with **HTTPS**. The Host deliberately rejects `http://ai.dev-team.org`, even if the Host is running. On Windows, the installer registers a per-user scheduled task named `AI.Client.Host`; no Start menu window is needed. If it is stopped, run `Start-ScheduledTask -TaskName AI.Client.Host` in PowerShell. `http://127.0.0.1:52173/api/health` should then return the Host's status in the same computer's browser.
+
 The Desktop app uses the installed Host when it is available. It shows an error if an installed Host is stopped or incompatible, instead of opening a second server on the same data directory. Without a separately installed Host, Desktop keeps its embedded server. Local Host and Web development keep their existing behavior.
+
+## Compatibility
+
+The Web and Desktop clients check the Host's product name and `ApiVersion` before opening the workspace. The first public HTTP contract is version **1**. A client and Host with the same API version can work together even when their installer release numbers differ; new endpoints and fields within that version must remain backward compatible. Any breaking API change must increment `HostProtocol.ApiVersion` in the shared contracts and ship a matching Host before the changed Web UI is deployed. An incompatible Host is shown as an update problem rather than an empty workspace. Desktop without a separately installed Host continues to use its bundled server.
+
+First-release browser support is Chrome and Edge. Installer targets are Windows x64/ARM64, macOS Intel/Apple silicon, and Ubuntu/Debian x64/ARM64. The selected package determines the processor architecture; the user can change the detected choice before downloading. Desktop additionally needs the platform WebView dependency described below. Other browsers and Linux package formats are outside the first-release support matrix.
 
 ## Packages
 

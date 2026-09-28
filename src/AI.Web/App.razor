@@ -1,7 +1,9 @@
 @using System.Net.Http.Json
+@using AI.Contracts
 @inject IClientMode ClientMode
 @inject HttpClient Http
 @inject IJSRuntime Js
+@inject NavigationManager Navigation
 
 @if (!ClientMode.PublicWeb || _ready)
 {
@@ -22,53 +24,67 @@ else
 {
     <PageTitle>Connect AI Client</PageTitle>
     <main class="host-gate">
-        <img src="app-icon.svg" width="48" height="48" alt="" />
-        <h1>AI Client</h1>
-        <p>Your projects and credentials stay in the local Host on this computer.</p>
-        @if (_checking)
-        {
-            <p role="status">Checking the local Host…</p>
-        }
-        else if (!_checked)
-        {
-            <p>Already installed the Host? Connect it to this browser.</p>
-            <button type="button" @onclick="CheckHostAsync">Find Host</button>
-        }
-        else if (_hostFound)
-        {
-            <p role="status">Host found. Allow this browser to use it.</p>
-            <button type="button" @onclick="ConnectHost">Connect Host</button>
-        }
-        else
-        {
-            <p role="status">The local Host is unavailable. Start it, or install one of the applications below.</p>
-            <button type="button" @onclick="CheckHostAsync">Check again</button>
-        }
+        <header class="host-gate-heading">
+            <div class="host-gate-brand"><img src="app-icon.svg" width="40" height="40" alt="" /><span>AI Client</span></div>
+            <span class="host-gate-eyebrow">Web app · This computer</span>
+            <h1>Choose how to use AI Client</h1>
+            <p>The Web app needs a local Host. Your projects, chats and credentials stay on this computer.</p>
+        </header>
+
+        <section class="host-gate-status" aria-label="Host connection">
+            <div class="host-gate-status-copy" role="status" aria-live="polite">
+                <span class="host-gate-status-icon @(_checking ? "is-checking" : _hostFound ? "is-found" : "")" aria-hidden="true"></span>
+                <div>
+                    <h2>@(_insecurePublicOrigin ? "Open the secure site" : _checking ? "Checking for Host" : _hostFound ? "Host is ready" : _incompatibleHost ? "Host update needed" : _otherApp ? "Host address in use" : _checked ? "Host not found" : "Already have Host?")</h2>
+                    <p>@(_insecurePublicOrigin ? "The Host accepts this Web app only over HTTPS. Open the secure address to connect." : _checking ? "Looking for the background Host on this computer." : _hostFound ? "Approve this browser on the local confirmation page." : _incompatibleHost ? "Install the latest Host below, then check again." : _otherApp ? "Close the other application and check again." : _checked ? "Start the installed Host, or download it below." : "Check whether Host is running and connect this browser.")</p>
+                </div>
+            </div>
+            @if (_insecurePublicOrigin)
+            {
+                <a class="host-gate-primary" href="https://ai.dev-team.org/">Open HTTPS site</a>
+            }
+            else if (_hostFound && !_checking)
+            {
+                <button class="host-gate-primary" type="button" @onclick="ConnectHost">Approve connection</button>
+            }
+            else
+            {
+                <button class="host-gate-primary" type="button" disabled="@_checking" @onclick="CheckHostAsync">@(_checked ? "Check again" : "Find Host")</button>
+            }
+        </section>
         @if (_error is not null)
         {
             <p class="host-gate-error" role="alert">@_error</p>
         }
+
+        <div class="host-gate-platform">
+            <div><label for="download-runtime">Choose your system</label><span>Check the processor type before downloading.</span></div>
+            <select id="download-runtime" @bind="_runtime">
+                <option value="win-x64">Windows · x64</option>
+                <option value="win-arm64">Windows · ARM64</option>
+                <option value="osx-x64">macOS · Intel</option>
+                <option value="osx-arm64">macOS · Apple silicon</option>
+                <option value="linux-x64">Ubuntu/Debian · x64</option>
+                <option value="linux-arm64">Ubuntu/Debian · ARM64</option>
+            </select>
+        </div>
         <div class="host-gate-downloads">
             <section>
-                <h2>Use in this browser</h2>
-                <p>Install the background Host. Keep using AI Client at this address.</p>
-                <a href="@AssetUrl("AI.Host")">Download Host</a>
+                <span class="host-gate-card-label">Use this browser</span>
+                <h2>Install Host</h2>
+                <p>Runs in the background after sign in. Return here to connect and work in Chrome or Edge.</p>
+                <a class="host-gate-download" href="@AssetUrl("AI.Host")">Download Host <span aria-hidden="true">↗</span></a>
+                <small>@InstallerLabel</small>
             </section>
             <section>
-                <h2>Use the Desktop app</h2>
-                <p>Install the native window with the same projects and chats.</p>
-                <a href="@AssetUrl("AI.Desktop")">Download Desktop</a>
+                <span class="host-gate-card-label">Native window</span>
+                <h2>Install Desktop</h2>
+                <p>Opens AI Client in its own window. If Host is installed, both apps share your projects and chats.</p>
+                <a class="host-gate-download" href="@AssetUrl("AI.Desktop")">Download Desktop <span aria-hidden="true">↗</span></a>
+                <small>@InstallerLabel</small>
             </section>
         </div>
-        <label for="download-runtime">Platform</label>
-        <select id="download-runtime" @bind="_runtime">
-            <option value="win-x64">Windows x64</option>
-            <option value="win-arm64">Windows ARM64</option>
-            <option value="osx-x64">macOS Intel</option>
-            <option value="osx-arm64">macOS Apple silicon</option>
-            <option value="linux-x64">Linux x64</option>
-            <option value="linux-arm64">Linux ARM64</option>
-        </select>
+        <p class="host-gate-footnote">After installing Host, start it if needed, then check the connection above. Your browser may ask for local network access.</p>
     </main>
 }
 
@@ -77,6 +93,9 @@ else
     private bool _checking;
     private bool _checked;
     private bool _hostFound;
+    private bool _incompatibleHost;
+    private bool _otherApp;
+    private bool _insecurePublicOrigin;
     private string? _error;
     private string _runtime = "win-x64";
 
@@ -89,7 +108,10 @@ else
         }
 
         _runtime = await Js.InvokeAsync<string>("aiHostBridge.platform");
-        await Js.InvokeVoidAsync("aiHostBridge.consumeReturn");
+        _insecurePublicOrigin = new Uri(Navigation.Uri).Scheme != Uri.UriSchemeHttps;
+        if (_insecurePublicOrigin) return;
+        if (await Js.InvokeAsync<string>("aiHostBridge.consumeReturn") is "invalid")
+            _error = "The connection could not be verified. Select Find Host to try again.";
         if (await Js.InvokeAsync<string?>("aiHostBridge.token") is not null)
             await CheckHostAsync();
     }
@@ -100,23 +122,34 @@ else
         _checked = true;
         _error = null;
         _hostFound = false;
+        _incompatibleHost = false;
+        _otherApp = false;
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             var health = await Http.GetFromJsonAsync<HostHealth>("api/health", timeout.Token);
-            _hostFound = health is { ProductName: "AI Client", ApiVersion: 1 };
-            if (!_hostFound)
+            if (health?.ProductName != HostProtocol.ProductName)
             {
-                _error = "The response is not from a compatible AI Host.";
+                _otherApp = true;
+                _error = "Another application answered at the Host address. Close it and try again.";
                 return;
             }
+            if (health.ApiVersion != HostProtocol.ApiVersion)
+            {
+                _incompatibleHost = true;
+                _error = "This Host uses a different API version. Install the latest Host to use this Web app.";
+                return;
+            }
+            _hostFound = true;
 
             using var session = await Http.GetAsync("api/bridge/session", timeout.Token);
             _ready = session.IsSuccessStatusCode;
+            if (!_ready && session.StatusCode != System.Net.HttpStatusCode.Unauthorized)
+                _error = "Host responded, but the connection failed. Try approving this browser again.";
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
         {
-            _error = "Check that the Host is running and allow local network access if your browser asks.";
+            _error = "If the browser blocked the check, allow local network access and try again.";
         }
         finally
         {
@@ -132,6 +165,9 @@ else
             : _runtime.StartsWith("osx-", StringComparison.Ordinal) ? "pkg" : "deb";
         return $"https://github.com/DevTeam/AI.Client/releases/latest/download/{product}-{_runtime}.{extension}";
     }
+
+    private string InstallerLabel => _runtime.StartsWith("win-", StringComparison.Ordinal) ? "Windows installer · .exe"
+        : _runtime.StartsWith("osx-", StringComparison.Ordinal) ? "macOS installer · .pkg" : "Ubuntu/Debian package · .deb";
 
     private sealed record HostHealth(string ProductName, int ApiVersion);
 }

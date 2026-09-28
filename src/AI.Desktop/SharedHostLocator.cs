@@ -1,5 +1,6 @@
 namespace AI.Desktop;
 
+using AI.Contracts;
 using System.Net.Http.Json;
 
 internal sealed class SharedHostLocator : ISharedHostLocator
@@ -11,20 +12,28 @@ internal sealed class SharedHostLocator : ISharedHostLocator
         try
         {
             using var client = new HttpClient { BaseAddress = address, Timeout = TimeSpan.FromSeconds(1) };
-            var session = client.GetFromJsonAsync<SharedHost>("api/bridge/session").GetAwaiter().GetResult();
-            if (session is { ProductName: "AI Client", ApiVersion: 1 })
+            using var response = client.GetAsync("api/bridge/session").GetAwaiter().GetResult();
+            if (!response.IsSuccessStatusCode)
+                return installed ? Incompatible() : new SharedHostState(null, false);
+            var session = response.Content.ReadFromJsonAsync<SharedHost>().GetAwaiter().GetResult();
+            if (session is { ProductName: HostProtocol.ProductName, ApiVersion: HostProtocol.ApiVersion })
                 return new SharedHostState(address, true);
-            return installed
-                ? new SharedHostState(null, true, "The installed Host is not compatible with this Desktop version.")
-                : new SharedHostState(null, false);
+            return installed ? Incompatible() : new SharedHostState(null, false);
         }
-        catch (Exception error) when (error is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        catch (System.Text.Json.JsonException)
+        {
+            return installed ? Incompatible() : new SharedHostState(null, false);
+        }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
         {
             return installed
                 ? new SharedHostState(null, true, "The installed Host is unavailable. Start the AI Client Host and try again.")
                 : new SharedHostState(null, false);
         }
     }
+
+    private static SharedHostState Incompatible() => new(null, true,
+        "The installed Host uses a different API version. Update Host and Desktop to compatible releases.");
 
     private static bool IsInstalled()
     {

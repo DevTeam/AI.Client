@@ -199,6 +199,7 @@
                 <article @key="message.Id" id="message-@message.Id"
                          class="workspace-message @message.Role.ToLowerInvariant() @(message.Role == "User" && string.IsNullOrWhiteSpace(message.Content) ? "resource-only" : string.Empty) @(entry.RevealIndex is null ? string.Empty : "turn-message-arriving") @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)"
                          style="@(entry.RevealIndex is { } messageRevealIndex ? $"--turn-arrive-delay: {messageRevealIndex * 60}ms" : null)">
+                    <div class="message-body">
                     @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
                     @if (message.Role == "User" && string.IsNullOrWhiteSpace(message.Content)
                         && message.Resources is not { Count: > 0 })
@@ -238,29 +239,18 @@
                             }
                         </div>
                     }
-                    @* Most used first. Comment used to be reachable only by selecting text, which a short
-                       bubble under the toolbar did not leave room for; the button comments on the
-                       selection, or on the whole message when nothing is selected. A question's
-                       rarer branch actions sit behind "More" so the chip stays four buttons wide. *@
+                    </div>
+                    @* Keep every action visible beneath the content. *@
                     <div class="message-actions">
                         @if (!string.IsNullOrWhiteSpace(message.Content))
                         {
                             <button class="icon-action message-copy-action" type="button" title="Copy Markdown" aria-label="Copy Markdown" @onclick="() => OnCopyMessage.InvokeAsync(message.Content)"><AppIcon Name="copy" /><AppIcon Name="check" Class="copied-icon" /></button>
-                            @if (message.Role is "User" or "Assistant" && message.ToolCalls is null)
-                            {
-                                <button class="icon-action" type="button" title="Comment (selected text or the whole message)" aria-label="Comment" @onmousedown:preventDefault="true" @onclick="() => CommentOnMessageAsync(message.Id)"><AppIcon Name="message-circle" /></button>
-                            }
                         }
                         @if (message.Role == "User")
                         {
-                            var menuId = $"message-menu-{message.Id}";
                             <button class="icon-action" type="button" title="Edit and branch" aria-label="Edit and branch" @onclick="() => OnEditAndBranch.InvokeAsync(message)"><AppIcon Name="edit" /></button>
-                            <button class="icon-action message-more-action" type="button" title="More" aria-label="More actions" aria-haspopup="menu" popovertarget="@menuId"><AppIcon Name="more" /></button>
-                            <div id="@menuId" class="chat-menu message-more-menu" role="menu" popover="auto" tabindex="-1">
-                                <button type="button" role="menuitem" disabled="@IsActiveBranchLeaf(message)" title="@(IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : null)" popovertarget="@menuId" popovertargetaction="hide" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /><span>Fork from here</span></button>
-                                <hr />
-                                <button type="button" role="menuitem" class="menu-danger" popovertarget="@menuId" popovertargetaction="hide" @onclick="() => OnEditAndReplaceBranch.InvokeAsync(message)"><AppIcon Name="edit-replace" /><span>Edit and replace branch…</span></button>
-                            </div>
+                            <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
+                            <button class="icon-action destructive-action" type="button" title="Edit and replace branch…" aria-label="Edit and replace branch" @onclick="() => OnEditAndReplaceBranch.InvokeAsync(message)"><AppIcon Name="edit-replace" /></button>
                         }
                         else
                         {
@@ -448,16 +438,6 @@
         if (_confirmGlobalApprovalId is null) return false;
         CancelGlobalApproval();
         return true;
-    }
-
-    // The comment editor lives in MessageReviewText and opens from a text selection; the script
-    // selects the whole message when nothing in it is selected and hands the selection over.
-    private async Task CommentOnMessageAsync(Guid messageId)
-    {
-        bool started;
-        try { started = await JsRuntime.InvokeAsync<bool>("messageReviews.commentMessage", messageId); }
-        catch (Exception error) when (error is JSException or ObjectDisposedException) { return; }
-        if (!started) Notifications.ShowInfo("Select the part of the message you want to comment on.");
     }
 
     private async Task DecideToolAsync(ChatRunSnapshot run, Guid approvalId, ToolApprovalAction action)
@@ -678,7 +658,6 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (_disposed) return;
-
         if (firstRender)
         {
             try

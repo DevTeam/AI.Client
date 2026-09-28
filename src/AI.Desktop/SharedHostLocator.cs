@@ -5,8 +5,14 @@ using System.Net.Http.Json;
 
 internal sealed class SharedHostLocator : ISharedHostLocator
 {
-    public SharedHostState Find()
+    public SharedHostState Find(string dataDirectory)
     {
+        var sharedDataDirectory = Environment.GetEnvironmentVariable("AI_CLIENT_DATA_DIRECTORY")
+            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AI");
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (!string.Equals(Path.GetFullPath(dataDirectory), Path.GetFullPath(sharedDataDirectory), comparison))
+            return new SharedHostState(null, false);
+
         var address = new Uri("http://127.0.0.1:52173/");
         var installed = IsInstalled();
         try
@@ -17,7 +23,13 @@ internal sealed class SharedHostLocator : ISharedHostLocator
                 return installed ? Incompatible() : new SharedHostState(null, false);
             var session = response.Content.ReadFromJsonAsync<SharedHost>().GetAwaiter().GetResult();
             if (session is { ProductName: HostProtocol.ProductName, ApiVersion: HostProtocol.ApiVersion })
-                return new SharedHostState(address, true);
+            {
+                using var page = client.GetAsync("").GetAwaiter().GetResult();
+                if (page.IsSuccessStatusCode && page.Content.Headers.ContentType?.MediaType == "text/html")
+                    return new SharedHostState(address, true);
+                return new SharedHostState(null, true,
+                    "The installed Host does not serve the Desktop interface. Reinstall AI Client Host.");
+            }
             return installed ? Incompatible() : new SharedHostState(null, false);
         }
         catch (System.Text.Json.JsonException)

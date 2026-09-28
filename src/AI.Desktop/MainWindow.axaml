@@ -20,10 +20,10 @@
                     IsHitTestVisible="False" />
             <Grid Grid.Row="1">
                 <!-- A native WebView must stay below the titlebar; its HWND would cover Avalonia controls. -->
-                <NativeWebView x:Name="WebView" Background="{DynamicResource WindowBackgroundBrush}" />
-                <Border x:Name="Status" Background="{DynamicResource WindowBackgroundBrush}" IsVisible="False">
+                <NativeWebView x:Name="WebView" Background="{DynamicResource WindowBackgroundBrush}" IsVisible="False" />
+                <Border x:Name="Status" Background="{DynamicResource WindowBackgroundBrush}" IsVisible="True">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="560">
-                        <TextBlock x:Name="StatusTitle" Text="AI Client" FontSize="18" Foreground="{DynamicResource StatusTitleBrush}"
+                        <TextBlock x:Name="StatusTitle" Text="Starting AI Client…" FontSize="18" Foreground="{DynamicResource StatusTitleBrush}"
                                    HorizontalAlignment="Center" />
                         <TextBlock x:Name="StatusDetail" Foreground="{DynamicResource StatusDetailBrush}" TextWrapping="Wrap" TextAlignment="Center"
                                    IsVisible="False" />

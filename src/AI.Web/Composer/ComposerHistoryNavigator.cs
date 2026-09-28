@@ -17,7 +17,7 @@ public sealed record ComposerHistoryMove(string Text, bool Active);
 /// that is easy to get wrong (losing the draft, walking past either end, resuming a stale index
 /// after the chat changed underneath).
 /// </remarks>
-public sealed class ComposerHistoryNavigator
+public sealed class ComposerHistoryNavigator : IComposerHistoryNavigator
 {
     // The text the composer held when browsing started. Kept here rather than in the drafts
     // store because browsing must not overwrite the saved draft: walking through history and

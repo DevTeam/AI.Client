@@ -13,7 +13,7 @@ using System.Diagnostics;
 /// Both ends of the window are therefore damped: nothing at all for loads nobody waits on, and a
 /// stable placeholder for the loads they do.
 /// </remarks>
-public sealed class DelayedBusyIndicator : IDisposable
+public sealed class DelayedBusyIndicator : IDelayedBusyIndicator
 {
     private readonly Func<Task> _notifyChanged;
     private readonly TimeSpan _showDelay;

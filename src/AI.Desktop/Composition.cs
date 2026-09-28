@@ -4,7 +4,6 @@ namespace AI.Desktop;
 using System.Diagnostics;
 using Pure.DI;
 using Pure.DI.MS;
-using Server.CommandLine;
 
 /// <summary>Parses the command line and starts the desktop app it describes.</summary>
 internal sealed partial class CommandLineComposition
@@ -14,8 +13,8 @@ internal sealed partial class CommandLineComposition
         DI.Setup()
             .Hint(Hint.Resolve, "Off")
             .DependsOn("AI.Server.CommandLine.Composition")
-            .Bind<IInitializable>(Tag.Unique).As(Lifetime.Singleton).To<DesktopCommand>()
-            .Bind<IDesktopRunner>().To<DesktopRunner>();
+            .Singleton<DesktopCommand>(Tag.Unique)
+            .Transient<DesktopRunner>();
 }
 
 /// <summary>The server graph for one run; also ASP.NET's service provider factory.</summary>
@@ -37,8 +36,7 @@ internal sealed partial class UiComposition
         DI.Setup()
             .Hint(Hint.Resolve, "Off")
             .Arg<DesktopStart>("start")
-            .Bind<ITaskbarBadge>().As(Lifetime.Singleton).To<WindowsTaskbarBadge>()
-            .Bind<IFileDropBridge>().As(Lifetime.Singleton).To<WebView2FileDropBridge>()
-            .Singleton<App, MainWindow, ProcessSignals, JsonWindowPlacementStore, JsonWorkspaceLocationStore, JsonThemePreferenceStore>()
-            .Root<App>("App");
+            .Singleton<App, MainWindow, ProcessSignals, JsonWindowPlacementStore, JsonWorkspaceLocationStore, JsonThemePreferenceStore, WindowsTaskbarBadge,
+                WebView2FileDropBridge>()
+            .Root<App>(nameof(App));
 }

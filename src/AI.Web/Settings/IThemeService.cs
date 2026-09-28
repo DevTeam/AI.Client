@@ -6,4 +6,9 @@ public interface IThemeService
 
     /// <summary>Saves the preference and repaints the page with it right away.</summary>
     ValueTask SetAsync(ThemePreference preference);
+
+    ValueTask<AccentColor> GetAccentAsync();
+
+    /// <summary>Saves the accent and recolours the page with it right away.</summary>
+    ValueTask SetAccentAsync(AccentColor accent);
 }

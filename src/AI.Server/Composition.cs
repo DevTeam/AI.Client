@@ -108,10 +108,7 @@ internal sealed class Composition
                 ctx.Inject<SecretServiceMasterKeyStore>(out var secretService);
                 return secretService;
             })
-            .Bind<IMasterKeyStore>().As(Lifetime.Singleton).To<KeyringOrFileMasterKeyStore>()
             .Bind<IFileMasterKeyStore>().As(Lifetime.Singleton).To<FileMasterKeyStore>()
-            .Singleton<MasterKeyFormat, ProcessCommandRunner>()
-            // Application and infrastructure
             .Singleton<PhysicalTextFileSystem, PhysicalDirectoryBrowser, JsonProjectRepository, ProjectDocumentSerializer,
                 Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization,
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
@@ -120,14 +117,20 @@ internal sealed class Composition
                 MemoryService, JsonMemoryRepository, ProjectInstructionsService, JsonProjectInstructionsRepository,
                 WorkspaceInstructionFileReader, StandingInstructions,
                 GlobalSettingsService, OpenAiCompatibleConnectionModelsResolver, JsonChatRunRepository, ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator,
-                ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService,
+                ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService, KeyringOrFileMasterKeyStore,
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,
-                ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff,
+                ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff, MasterKeyFormat, ProcessCommandRunner,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
             .Bind<IAppToolReply>().To<AppToolReply>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
-            .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To(([Tag("base")] IChatCompletionClient baseClient, ILogger<RetryingChatCompletionClient> retryLogger, IChatTransportPolicy transportPolicy, IChatTransportActivity transportActivity) => new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity))
-            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool, AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool>(Tag.Unique)
+            .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To((
+                [Tag("base")] IChatCompletionClient baseClient,
+                ILogger<RetryingChatCompletionClient> retryLogger,
+                IChatTransportPolicy transportPolicy,
+                IChatTransportActivity transportActivity) =>
+                new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity))
+            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool,
+                AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool>(Tag.Unique)
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
 }

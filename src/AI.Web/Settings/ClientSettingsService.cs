@@ -7,7 +7,7 @@ using Microsoft.JSInterop;
 public sealed class ClientSettingsService(IJSRuntime jsRuntime) : IClientSettingsService
 {
     // js/theme.js reads this entry before Blazor starts so the first paint is already in the right
-    // theme: the key and the camelCase shape (`{"theme":"light"}`) are shared with it.
+    // theme: the key and the camelCase shape (`{"theme":"light","accent":"teal"}`) are shared with it.
     internal const string StorageKey = "ai-client.settings";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)

@@ -14,8 +14,8 @@ internal sealed partial class CommandLineComposition
         DI.Setup()
             .Hint(Hint.Resolve, "Off")
             .DependsOn("AI.Server.CommandLine.Composition")
-            .Bind<IInitializable>(Tag.Unique).As(Lifetime.Singleton).To<StandaloneCommand>()
-            .Bind<IServerRunner>().To<ServerRunner>();
+            .Singleton<StandaloneCommand>(Tag.Unique)
+            .Transient<ServerRunner>();
 }
 
 /// <summary>The server graph for one run; also ASP.NET's service provider factory.</summary>

@@ -15,5 +15,5 @@ internal sealed partial class Composition
             .Root<BuildApplication>(nameof(Root))
             .Arg<string[]>("args")
             .Arg<CancellationToken>("cancellationToken")
-            .Singleton<BuildPaths, ProcessRunner, BuildSolutionTarget, TestSolutionTarget, VerifyTarget, PublishTarget, PublishDesktopTarget, PublishWebTarget, PackageReleaseTarget, RunTarget, RunBothTarget>();
+            .Singleton<BuildPaths, ProcessRunner, BuildSolutionTarget, TestSolutionTarget, VerifyTarget, PublishTarget, PublishDesktopTarget, PublishWebTarget, PackageReleaseTarget, RunTarget, RunBothTarget, RazorTemplateEngine, ReadmeTarget>();
 }

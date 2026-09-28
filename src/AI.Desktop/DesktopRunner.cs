@@ -9,7 +9,7 @@ internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator) : IDes
     {
         // A separately installed Host owns the shared data directory. Reuse its UI and API so
         // Desktop and the public Web application see the same projects at the same time.
-        var sharedHost = sharedHostLocator.Find();
+        var sharedHost = sharedHostLocator.Find(options.DataDirectory);
         if (sharedHost.Address is { } sharedAddress)
         {
             var sharedUi = new UiComposition(new DesktopStart(sharedAddress, null, options.DataDirectory, devTools));

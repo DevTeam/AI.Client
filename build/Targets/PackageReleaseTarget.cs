@@ -33,6 +33,13 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
                 "-r", runtime, "--self-contained", "--output", desktop, $"-p:Version={version}"], cancellationToken);
         if (result != 0) return result;
 
+        foreach (var (product, directory) in new[] { ("Host", host), ("Desktop", desktop) })
+        {
+            if (!File.Exists(Path.Combine(directory, "wwwroot", "index.html"))
+                || !File.Exists(Path.Combine(directory, "wwwroot", "_framework", "blazor.webassembly.js")))
+                throw new InvalidDataException($"{product} {runtime} publish does not contain the Web interface.");
+        }
+
         return prefix switch
         {
             "win" => await PackageWindowsAsync(runtime, version, host, desktop, packages, cancellationToken),

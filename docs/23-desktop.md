@@ -13,6 +13,8 @@ dotnet run --project build -- publish-desktop --runtime linux-x64
 
 The publish is self-contained (no .NET needed on the target) and lands in `artifacts/desktop/<runtime>`. Options: `--data-dir`, `--no-browse` (shared with the standalone Host) and `--dev-tools` (the web view's developer tools).
 
+For source debugging in Rider, use the shared **AI Desktop (local data)** run configuration. It keeps data in `artifacts/rider-desktop`, starts the server built from this checkout, and enables WebView developer tools. With the default data directory, Desktop instead connects to an installed Host; that Host must be running and contain the matching Web UI.
+
 ## Requirements on the target machine
 
 | System | Needs |

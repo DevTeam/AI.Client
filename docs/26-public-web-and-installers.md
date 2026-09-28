@@ -26,7 +26,7 @@ dotnet run --project build -- package-release --runtime osx-arm64 --version 1.0.
 dotnet run --project build -- package-release --runtime linux-x64 --version 1.0.0
 ```
 
-All six runtime combinations are in `.github/workflows/release.yml`. A `v*` tag builds the installers and attaches them to a GitHub Release. A manual workflow run builds downloadable CI artifacts without creating a Release. Production distribution of Windows and macOS installers still requires code signing; macOS notarization also requires Apple credentials. Those credentials are not configured in this repository.
+All six runtime combinations are in `.github/workflows/release.yml`. A `v*` tag builds the installers and attaches them to a GitHub Release. A manual workflow run uses its version input to create or update the same Release from the run's commit, so the Web download links can find the installers. Production distribution of Windows and macOS installers still requires code signing; macOS notarization also requires Apple credentials. Those credentials are not configured in this repository.
 
 ## Web publishing
 

@@ -241,7 +241,46 @@
             event.preventDefault();
     }, true);
 
+    // The whole message as a range, without the layout whitespace around its blocks, so the quote
+    // reads as the text and not as "\nок\n".
+    function trimmedContents(container) {
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+        let first = null;
+        let last = null;
+        let node;
+        while ((node = walker.nextNode())) {
+            if (!node.textContent.trim()) continue;
+            first ??= node;
+            last = node;
+        }
+        if (!first) return null;
+        const range = document.createRange();
+        range.setStart(first, first.textContent.search(/\S/));
+        range.setEnd(last, last.textContent.trimEnd().length);
+        return range;
+    }
+
     window.messageReviews = {
+        // The toolbar's Comment button. The editor opens from a selection (capture, on mouseup), so
+        // this makes one — the user's own if it is inside the message, else the whole message —
+        // and replays the mouseup Blazor listens for. False when the message is too long to quote
+        // whole: then the user has to pick the part they mean.
+        commentMessage(messageId) {
+            const container = containerFor(messageId);
+            if (!container) return false;
+            const selection = window.getSelection();
+            const own = selection && !selection.isCollapsed && selection.rangeCount
+                && container.contains(selection.getRangeAt(0).startContainer)
+                && container.contains(selection.getRangeAt(0).endContainer);
+            if (!own) {
+                const range = trimmedContents(container);
+                if (!range || range.toString().length > 2000) return false;
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+            container.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+            return true;
+        },
         showEditor(messageId) {
             const editor = document.getElementById(`review-editor-${messageId}`);
             if (editor && !editor.matches(":popover-open")) {

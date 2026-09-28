@@ -2794,11 +2794,16 @@
 
     private async Task CopyMessageAsync(string markdown)
     {
-        if (_composerModule is not null)
+        if (_composerModule is null) return;
+        // The Clipboard API refuses a page without focus or permission; unhandled, that refusal
+        // took down the whole app instead of this one action.
+        try { await _composerModule.InvokeVoidAsync("copyText", markdown); }
+        catch (JSException error)
         {
-            await _composerModule.InvokeVoidAsync("copyText", markdown);
-            Notifications.ShowSuccess("Markdown copied.");
+            Notifications.ShowError($"Could not copy: {error.Message}");
+            return;
         }
+        Notifications.ShowSuccess("Markdown copied.");
     }
 
     private async Task EditAndBranchAsync(ChatMessageView message)

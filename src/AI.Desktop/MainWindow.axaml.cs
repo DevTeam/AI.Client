@@ -14,6 +14,7 @@ internal sealed partial class MainWindow : Window
     private readonly DesktopStart _start;
     private readonly IWindowPlacementStore _placements;
     private readonly IWorkspaceLocationStore _workspaceLocation;
+    private readonly IClientSettingsStore _clientSettings;
     private readonly ITaskbarBadge _taskbarBadge;
     private readonly IFileDropBridge _fileDrop;
     private readonly DispatcherTimer _engineWatchdog;
@@ -25,11 +26,13 @@ internal sealed partial class MainWindow : Window
     public event Action<string>? ThemeRequested;
 
     public MainWindow(DesktopStart start, IWindowPlacementStore placements,
-        IWorkspaceLocationStore workspaceLocation, ITaskbarBadge taskbarBadge, IFileDropBridge fileDrop)
+        IWorkspaceLocationStore workspaceLocation, IClientSettingsStore clientSettings,
+        ITaskbarBadge taskbarBadge, IFileDropBridge fileDrop)
     {
         _start = start;
         _placements = placements;
         _workspaceLocation = workspaceLocation;
+        _clientSettings = clientSettings;
         _taskbarBadge = taskbarBadge;
         _fileDrop = fileDrop;
         InitializeComponent();
@@ -221,6 +224,18 @@ internal sealed partial class MainWindow : Window
                     && value.ValueKind == JsonValueKind.String && Guid.TryParse(value.GetString(), out var id)
                         ? id : null;
                 _workspaceLocation.Save(ReadId("project"), ReadId("chat"), ReadId("branch"));
+            }
+            else if (type.GetString() == "client-settings-request")
+            {
+                var saved = _clientSettings.Load();
+                WebView.InvokeScript($"window.aiClientTheme.restoreClientSettings({JsonSerializer.Serialize(saved)});");
+            }
+            else if (type.GetString() == "client-settings-save"
+                     && root.TryGetProperty("settings", out var settings)
+                     && settings.ValueKind == JsonValueKind.String
+                     && settings.GetString() is { } json)
+            {
+                _clientSettings.Save(json);
             }
             else if (OperatingSystem.IsWindows() && type.GetString() == "unread-count"
                      && root.TryGetProperty("count", out var value) && value.ValueKind == JsonValueKind.Number

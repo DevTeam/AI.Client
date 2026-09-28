@@ -37,7 +37,7 @@ internal sealed partial class UiComposition
         DI.Setup()
             .Hint(Hint.Resolve, "Off")
             .Arg<DesktopStart>("start")
-            .Singleton<App, MainWindow, ProcessSignals, JsonWindowPlacementStore, JsonWorkspaceLocationStore, JsonThemePreferenceStore, WindowsTaskbarBadge,
+            .Singleton<App, MainWindow, ProcessSignals, JsonWindowPlacementStore, JsonWorkspaceLocationStore, JsonThemePreferenceStore, JsonClientSettingsStore, WindowsTaskbarBadge,
                 WebView2FileDropBridge>()
             .Root<App>(nameof(App));
 }

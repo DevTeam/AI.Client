@@ -55,6 +55,7 @@
 
     private static string GroupLabel(ResourceMentionGroup group) => group switch
     {
+        ResourceMentionGroup.Directories => "Project directories",
         ResourceMentionGroup.Files => "Files",
         ResourceMentionGroup.Changes => "Uncommitted changes",
         ResourceMentionGroup.Chats => "Chats",

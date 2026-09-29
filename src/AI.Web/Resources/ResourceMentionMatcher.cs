@@ -65,6 +65,7 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
         var scoped = mention.Scope is not null;
         var groups = new List<(ResourceMentionGroup Group, List<(ResourceMentionItem Item, int Rank)> Rows)>
         {
+            (ResourceMentionGroup.Directories, Directories(sources, mention)),
             (ResourceMentionGroup.Files, Files(sources, mention)),
             (ResourceMentionGroup.Changes, In(mention, ChatResourceKind.Diff) ? Changes(sources, filter, scoped) : []),
             (ResourceMentionGroup.Chats, In(mention, ChatResourceKind.Chat) ? Chats(sources, filter) : []),
@@ -99,6 +100,7 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
 
     private static int Limit(ResourceMentionGroup group, string filter) => group switch
     {
+        ResourceMentionGroup.Directories => 10,
         ResourceMentionGroup.Files => filter.Length == 0 ? 5 : 8,
         ResourceMentionGroup.Chats => 5,
         _ => 3
@@ -127,7 +129,28 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
             var token = "@" + Quote(file.Kind == ChatResourceKind.Directory ? relative + "/" : relative)
                         + (mention.Lines is { } range ? $":{Range(range)}" : string.Empty);
             rows.Add((new ResourceMentionItem(ResourceMentionGroup.Files, file.Kind, shown,
-                slash < 0 ? null : relative[..slash], file.Path, ranked.Item2, attached, Lines: mention.Lines, Token: token), ranked.Item1));
+                slash < 0 ? null : relative[..slash], file.Path, ranked.Item2, attached, Lines: mention.Lines, Token: token,
+                OpenAs: file.Kind == ChatResourceKind.Directory ? relative : null), ranked.Item1));
+        }
+        return rows;
+    }
+
+    /// <summary>
+    /// The project's own directories, first and at once: the page has them already, so the list
+    /// has something to offer before the Host answers. Tab opens one by its name ("@App/").
+    /// </summary>
+    private static List<(ResourceMentionItem, int)> Directories(ResourceMentionSources sources, ResourceMention mention)
+    {
+        if (mention.Scope is not (null or ChatResourceKind.Directory) || mention.Lines is not null
+            || mention.Filter.Contains('/') || mention.Filter.Contains('\\')) return [];
+        var rows = new List<(ResourceMentionItem, int)>();
+        foreach (var directory in sources.Directories ?? [])
+        {
+            if (NameRank(directory.Name, mention.Filter) is not { } ranked) continue;
+            var attached = sources.Attached.Any(item => item.Kind == ChatResourceKind.Directory && SamePath(item.Path, directory.Path));
+            rows.Add((new ResourceMentionItem(ResourceMentionGroup.Directories, ChatResourceKind.Directory, directory.Name,
+                directory.Path, directory.Path, ranked.Highlights, attached, Token: "@" + Quote(directory.Name + "/"),
+                OpenAs: directory.Name), ranked.Rank));
         }
         return rows;
     }

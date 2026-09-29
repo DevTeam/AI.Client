@@ -44,7 +44,7 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
     {
         var project = await projects.GetAsync(projectId, cancellationToken)
             ?? throw new InvalidOperationException("Project not found.");
-        var result = new List<WorkspaceDiffSource>();
+        var candidates = new List<(string Path, string Name, string Location)>();
         foreach (var grant in project.DirectoryGrants.Where(grant => grant.ToolNames.Contains("read", StringComparer.OrdinalIgnoreCase)))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -55,12 +55,16 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
             var grantName = grant.DisplayName is { Length: > 0 } displayName ? displayName : DirectoryName(root);
             if (diffs.FindRepository(root) is not null) Add(root, grantName, grantName);
             foreach (var nested in diffs.FindNestedRepositories(root))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
                 Add(nested, DirectoryName(nested),
                     $"{grantName}/{Path.GetRelativePath(root, nested).Replace(Path.DirectorySeparatorChar, '/')}");
-            }
         }
+        // One git status per repository, all at once: a large work tree must not hold up the rest.
+        var counted = await Task.WhenAll(candidates.Select(candidate =>
+            Task.Run(() => (candidate, Changed: diffs.ChangedFiles(candidate.Path).Count), cancellationToken)));
+        var result = counted
+            .Where(item => item.Changed > 0)
+            .Select(item => new WorkspaceDiffSource(item.candidate.Path, item.candidate.Name, item.Changed, item.candidate.Location))
+            .ToArray();
         // Two checkouts of one name would be two identical links: the location tells them apart.
         return result
             .Select(item => result.Count(other => string.Equals(other.Name, item.Name, StringComparison.OrdinalIgnoreCase)) > 1
@@ -69,9 +73,7 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
 
         void Add(string path, string name, string location)
         {
-            if (result.Any(item => string.Equals(item.Path, path, PathComparison))) return;
-            var changed = diffs.ChangedFiles(path).Count;
-            if (changed > 0) result.Add(new WorkspaceDiffSource(path, name, changed, location));
+            if (!candidates.Any(item => string.Equals(item.Path, path, PathComparison))) candidates.Add((path, name, location));
         }
     }
 

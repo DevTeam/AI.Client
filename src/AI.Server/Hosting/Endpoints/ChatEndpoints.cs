@@ -23,6 +23,12 @@ public sealed class ChatEndpoints : IEndpointModule
         routes.MapGet("/api/projects/{projectId:guid}/resources/search",
             async (Guid projectId, string? query, int? limit, IWorkspaceFileSearch search, CancellationToken token) =>
                 Results.Ok(await search.SearchAsync(projectId, query ?? string.Empty, limit ?? 30, token)));
+        routes.MapPost("/api/projects/{projectId:guid}/resources/index",
+            async (Guid projectId, IWorkspaceFileSearch search, CancellationToken token) =>
+            {
+                await search.Warm(projectId, token);
+                return Results.Accepted();
+            });
         routes.MapGet("/api/projects/{projectId:guid}/resources/diffs",
             async (Guid projectId, IResourceService service, CancellationToken token) =>
                 Results.Ok(await service.ListDiffSourcesAsync(projectId, token)));

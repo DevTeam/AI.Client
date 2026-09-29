@@ -86,6 +86,24 @@ public sealed class ResourceMentionMatcherTests
         lines[0].Name.ShouldBe("a b.cs:3-4");
     }
 
+    [Fact]
+    public void ShouldOfferTheProjectDirectoriesFirstBeforeTheHostAnswers()
+    {
+        var sources = new ResourceMentionSources([], [], [], [], [], [], null, null,
+            [new ProjectDirectory("App", "C:\\work\\App"), new ProjectDirectory("Docs", "C:\\work\\Docs")]);
+
+        var all = _matcher.Match(sources, _matcher.GetMention("@", 1)!);
+        var narrowed = _matcher.Match(sources, _matcher.GetMention("@ap", 3)!);
+        var path = _matcher.Match(sources, _matcher.GetMention("@App/", 5)!);
+
+        all.Take(2).Select(item => (item.Group, item.Token, item.OpenAs))
+            .ShouldBe([(ResourceMentionGroup.Directories, "@App/", "App"), (ResourceMentionGroup.Directories, "@Docs/", "Docs")]);
+        narrowed[0].Name.ShouldBe("App");
+        narrowed.Count(item => item.Group == ResourceMentionGroup.Directories).ShouldBe(1);
+        // Inside a directory, its contents come from the Host instead.
+        path.ShouldNotContain(item => item.Group == ResourceMentionGroup.Directories);
+    }
+
     private static ChatSummary Chat(Guid id, string title) =>
         new(id, Guid.NewGuid(), title, DateTimeOffset.UnixEpoch, 1, DateTimeOffset.UnixEpoch);
 }

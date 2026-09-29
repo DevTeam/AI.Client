@@ -15,10 +15,10 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
         content = WithInvokedSkill(content, references);
         references = references.Where(item => item.Kind != ChatResourceKind.Skill).ToArray();
         if (references.Count == 0) return content;
-        var lines = references.Select(item =>
+        var lines = references.SelectMany(item =>
             item.Kind == ChatResourceKind.Review
-                ? $"- review: {JsonSerializer.Serialize(item.Name ?? item.Path)} [resource {item.Id}]"
-                : $"- {item.Kind.ToString().ToLowerInvariant()}: {JsonSerializer.Serialize(item.Path)} [resource {item.Id}; live path; contents not loaded]");
+                ? [$"- review: {JsonSerializer.Serialize(item.Name ?? item.Path)} [resource {item.Id}]"]
+                : Describe(item));
         return string.Join('\n', (new[] { content, "Attached workspace references:" }).Concat(lines)
             .Where(line => !string.IsNullOrWhiteSpace(line)));
     }
@@ -39,7 +39,7 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
         {
             if (reference.Kind != ChatResourceKind.Review)
             {
-                lines.Add($"- {reference.Kind.ToString().ToLowerInvariant()}: {JsonSerializer.Serialize(reference.Path)} [resource {reference.Id}; live path; contents not loaded]");
+                lines.AddRange(Describe(reference));
                 continue;
             }
             if (!reviewItems.TryGetValue(reference.Id, out var review))
@@ -61,7 +61,7 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
                     lines.Add($"  - {review.MessageComments!.Count - 10} more comments; use app_read to inspect the resource.");
                 continue;
             }
-            lines.Add($"- review: {JsonSerializer.Serialize(review.Name)} [resource {review.Id}; saved changes in message {review.SourceMessageId}; current mutable state]");
+            lines.Add($"- review: {JsonSerializer.Serialize(review.Name)}{Linked(reference)} [resource {review.Id}; saved changes in message {review.SourceMessageId}; current mutable state]");
             foreach (var file in review.Files.Take(20)) lines.Add($"  - selected file: {JsonSerializer.Serialize(file)}");
             foreach (var comment in review.Comments.Take(10))
             {
@@ -75,6 +75,60 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
         if (lines.Count == 0) return content;
         return string.Join('\n', new[] { content, "Attached workspace references:" }.Concat(lines)
             .Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
+    /// <summary>
+    /// Everything but a review, which needs the live review state. Files and directories stay live
+    /// paths; a line range and uncommitted changes carry the text captured when the message was sent.
+    /// </summary>
+    private static IEnumerable<string> Describe(ChatResourceRef reference)
+    {
+        var name = JsonSerializer.Serialize(reference.Name ?? reference.Path);
+        switch (reference.Kind)
+        {
+            case ChatResourceKind.Chat:
+                yield return $"- chat: {name}{Linked(reference)} [chat {reference.Path} in this project; read its messages with app_read "
+                             + $"resource Messages and chatId {reference.Path}]";
+                yield break;
+            case ChatResourceKind.Project:
+                yield return $"- project: {name}{Linked(reference)} [project {reference.Path}; read it with app_read resource Project "
+                             + $"and projectId {reference.Path}, its chats with Chats]";
+                yield break;
+            case ChatResourceKind.Diff:
+                yield return $"- uncommitted changes: {JsonSerializer.Serialize(reference.Path)}{Linked(reference)} [resource {reference.Id}; "
+                             + "git diff against HEAD captured when the message was sent; paths relative to that directory]";
+                foreach (var line in Fenced(reference.Excerpt ?? "No uncommitted changes.", "diff")) yield return line;
+                yield break;
+            case ChatResourceKind.File when reference.Lines is { } range:
+                yield return $"- file: {JsonSerializer.Serialize(reference.Path)} lines {range.Start}-{range.End}{Linked(reference)} "
+                             + $"[resource {reference.Id}; these lines as they were when the message was sent]";
+                if (reference.Excerpt is { } excerpt) foreach (var line in Fenced(excerpt, string.Empty)) yield return line;
+                yield break;
+            default:
+                yield return $"- {reference.Kind.ToString().ToLowerInvariant()}: {JsonSerializer.Serialize(reference.Path)}{Linked(reference)} "
+                             + $"[resource {reference.Id}; live path; contents not loaded]";
+                yield break;
+        }
+    }
+
+    /// <summary>Which "@" link in the text the reference is, so the model can tell them apart.</summary>
+    private static string Linked(ChatResourceRef reference) =>
+        reference.Mention is { } mention ? $" (linked in the message as {JsonSerializer.Serialize(mention)})" : string.Empty;
+
+    /// <summary>A fence longer than any backtick run inside, so captured text cannot close it early.</summary>
+    private static IEnumerable<string> Fenced(string text, string language)
+    {
+        var longest = 0;
+        var run = 0;
+        foreach (var character in text)
+        {
+            run = character == '`' ? run + 1 : 0;
+            longest = Math.Max(longest, run);
+        }
+        var fence = new string('`', Math.Max(3, longest + 1));
+        yield return $"  {fence}{language}";
+        foreach (var line in text.TrimEnd('\n').Split('\n')) yield return $"  {line.TrimEnd('\r')}";
+        yield return $"  {fence}";
     }
 
     /// <summary>

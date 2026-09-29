@@ -5348,6 +5348,41 @@ textarea {
 .markdown-content .file-link[data-file-access="read"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='10' width='16' height='11' rx='2' fill='black' stroke='none'/%3E%3Cpath d='M8 10V7a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E"); --file-access-color: var(--color-text-faint); }
 .markdown-content .file-link[data-file-access="write"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='11' width='15' height='10' rx='2' fill='black' stroke='none'/%3E%3Cpath d='M9 11V7a4 4 0 0 1 7.8-1.2'/%3E%3C/svg%3E"); --file-access-color: var(--color-accent); }
 .markdown-content .file-link[data-file-access="none"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M5.6 5.6l12.8 12.8'/%3E%3C/svg%3E"); --file-access-color: var(--color-danger-text); }
+/* "@" links in a user message: the same mark as a local-path link — accent text, tint and
+   underline from the theme — with the icon of what they name in front. A file or directory link
+   is also a .file-link, so it keeps that link's menu, drag and access icon after it. */
+.markdown-content a.mention-link {
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    text-decoration: underline solid color-mix(in srgb, var(--color-accent) 80%, transparent);
+    border-radius: calc(.25rem * var(--corner-scale));
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.markdown-content a.mention-link.file-link { cursor: context-menu; }
+.markdown-content a.mention-link:hover { color: var(--color-accent-strong); }
+.workspace-message.user .markdown-content a.mention-link {
+    background: color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+.markdown-content a.mention-link::before {
+    content: "";
+    display: inline-block;
+    width: .85em;
+    height: .85em;
+    margin: 0 .2em 0 .1em;
+    vertical-align: -.1em;
+    background-color: currentColor;
+    -webkit-mask: var(--mention-icon) center / contain no-repeat;
+    mask: var(--mention-icon) center / contain no-repeat;
+}
+.markdown-content a.mention-file { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z'/%3E%3Cpath d='M14 3v5h5'/%3E%3C/svg%3E"); }
+.markdown-content a.mention-directory { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'/%3E%3C/svg%3E"); }
+.markdown-content a.mention-chat { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-3.9-.94L3 20l1.06-3.98A8.5 8.5 0 1 1 21 11.5Z'/%3E%3C/svg%3E"); }
+.markdown-content a.mention-project { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 3 9 5-9 5-9-5Z'/%3E%3Cpath d='m3 13 9 5 9-5'/%3E%3C/svg%3E"); }
+.markdown-content a.mention-diff { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='5' r='2'/%3E%3Ccircle cx='18' cy='7' r='2'/%3E%3Ccircle cx='6' cy='19' r='2'/%3E%3Cpath d='M6 7v10M8 15h3a7 7 0 0 0 7-6'/%3E%3C/svg%3E"); }
+.markdown-content a.mention-review { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v6M9 7h6M9 17h6'/%3E%3C/svg%3E"); }
 .file-link-menu { position: fixed; top: auto; right: auto; }
 .file-link-menu-path { overflow: hidden; padding: 0.35rem 0.9rem 0.2rem; color: var(--color-text-faint); font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
 

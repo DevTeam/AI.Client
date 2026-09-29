@@ -65,6 +65,7 @@ internal sealed class Composition
             .Root<IResourceService>()
             .Root<IResourceRepository>()
             .Root<IWorkspacePathResolver>()
+            .Root<IWorkspaceFileSearch>()
             .Root<IReviewService>()
             .Root<IReviewRepository>()
             .Root<IMemoryService>()
@@ -117,6 +118,7 @@ internal sealed class Composition
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff, MasterKeyFormat, ProcessCommandRunner,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
+            .Singleton<WorkspaceFileSearch, GitWorkspaceDiffReader, FileExcerptReader>()
             .Transient<AppToolReply>()
             .Bind<BuiltInSkillCatalog>().As(Lifetime.Singleton).To<BuiltInSkillCatalog>()
             .Bind<ISkillCatalog>().As(Lifetime.Singleton).To<SkillCatalog>()

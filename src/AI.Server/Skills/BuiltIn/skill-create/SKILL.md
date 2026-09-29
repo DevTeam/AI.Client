@@ -23,8 +23,11 @@ Skill conventions:
   everything the playbook can ask for.
 - A playbook body is numbered steps. Every change is confirmed with `ask_user` unless the exact
   value came from the user; the recommended option comes first with " (Recommended)"; say what
-  dismissed, expired and interrupted answers do; finish with a one-line report without ids or
-  revisions.
+  dismissed, expired and interrupted answers do. A playbook whose result is something to read (a
+  report, a list, a draft) says in its last step that the final answer contains that result in
+  full; one that only changes something finishes with a one-line report without ids or revisions.
+  Never write "finish with one line" after a step that renders output: models then answer with the
+  line and drop the output.
 - Write the body in English. Quoted labels in it are examples: the calling model writes questions,
   options and answers in the user's language.
 

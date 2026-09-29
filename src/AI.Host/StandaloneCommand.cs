@@ -8,7 +8,7 @@ using Server.CommandLine;
 internal sealed class StandaloneCommand(
     RootCommand rootCommand,
     IServerCommandLine serverCommandLine,
-    IServerRunner serverRunner) : IInitializable
+    IHostRunner hostRunner) : IInitializable
 {
     private readonly Option<string?> _urls = new("--urls")
     {
@@ -31,6 +31,11 @@ internal sealed class StandaloneCommand(
         DefaultValueFactory = _ => HostProtocol.PublicWebOrigin
     };
 
+    private readonly Option<bool> _noTray = new("--no-tray")
+    {
+        Description = "With --public-web, do not show the icon in the notification area (the menu bar on macOS)."
+    };
+
     public Task InitializeAsync(CancellationToken cancellationToken)
     {
         rootCommand.Description = "AI standalone host.";
@@ -39,14 +44,18 @@ internal sealed class StandaloneCommand(
         rootCommand.Options.Add(_serveWeb);
         rootCommand.Options.Add(_publicWeb);
         rootCommand.Options.Add(_publicOrigin);
-        rootCommand.SetAction((result, token) =>
-            serverRunner.RunAsync(serverCommandLine.Bind(result,
+        rootCommand.Options.Add(_noTray);
+        // Synchronous, so the action runs on the main thread, which the tray icon's UI needs.
+        // The Host installed to run in the background (--public-web) shows an icon so the user
+        // knows it is there; a development run of the plain server does not.
+        rootCommand.SetAction(result => hostRunner.Run(serverCommandLine.Bind(result,
                 result.GetValue(_urls) ?? (result.GetValue(_publicWeb) ? HostProtocol.PublicHostAddress.TrimEnd('/') : null),
                 result.GetValue(_serveWeb) || result.GetValue(_publicWeb)) with
             {
                 PublicWeb = result.GetValue(_publicWeb),
                 PublicOrigin = result.GetValue(_publicOrigin)!
-            }, token));
+            },
+            showTray: result.GetValue(_publicWeb) && !result.GetValue(_noTray)));
         return Task.CompletedTask;
     }
 }

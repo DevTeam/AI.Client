@@ -13,8 +13,20 @@
     <Compile Include="..\AI.Server\CommandLine\Composition.cs" Link="Server\CommandLine\Composition.cs" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Only for the tray icon: no theme, fonts or web view, which only Desktop needs. -->
+    <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Pure.DI" PrivateAssets="all" />
     <PackageReference Include="Pure.DI.MS" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\AI.Desktop\Assets\app-icon.png" LogicalName="AI.Host.app-icon.png" />
+  </ItemGroup>
+  <!-- SkiaSharp and HarfBuzzSharp ship about 100 MB of native symbols next to their libraries. -->
+  <Target Name="DropNativeSymbolsFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(Extension)' == '.pdb' And ('%(Filename)' == 'libSkiaSharp' Or '%(Filename)' == 'libHarfBuzzSharp')" />
+    </ItemGroup>
+  </Target>
   <Import Project="..\..\build\McpBuiltIn.targets" />
 </Project>

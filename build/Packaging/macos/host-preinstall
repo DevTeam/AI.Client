@@ -1,0 +1,38 @@
+#!/bin/sh
+set -e
+
+executable='/Applications/AI Client Host/AI.Host'
+agent='/Library/LaunchAgents/org.devteam.ai-client-host.plist'
+
+# Unload the agent before stopping its process, or KeepAlive starts it again.
+uids=$(ps -axww -o uid= -o command= | while read -r uid command; do
+    case "$command" in
+        "$executable"|"$executable "*) echo "$uid" ;;
+    esac
+done)
+console_uid=$(stat -f %u /dev/console)
+for uid in $uids $console_uid; do
+    [ "$uid" -gt 0 ] || continue
+    launchctl bootout "gui/$uid" "$agent" 2>/dev/null || true
+done
+
+pids=$(ps -axww -o pid= -o command= | while read -r pid command; do
+    case "$command" in
+        "$executable"|"$executable "*) echo "$pid" ;;
+    esac
+done)
+for pid in $pids; do kill -TERM "$pid" 2>/dev/null || true; done
+
+attempt=0
+while [ "$attempt" -lt 15 ]; do
+    active=''
+    for pid in $pids; do
+        kill -0 "$pid" 2>/dev/null && active="$active $pid"
+    done
+    [ -z "$active" ] && exit 0
+    sleep 1
+    attempt=$((attempt + 1))
+done
+
+echo 'AI Client Host did not stop; close it and retry.' >&2
+exit 1

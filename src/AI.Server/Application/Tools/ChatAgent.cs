@@ -259,8 +259,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     context.Add(new ChatCompletionMessage("assistant", provisionalAnswer));
                     continuedAnswer.Clear();
                     instructions.Upsert(run, new ModelInstruction("run.completion-required",
-                        $"Your previous text was provisional and was not published. Call an ordinary tool to continue, "
-                        + $"or {completionProtocol.Tool.ModelDefinition.Name} to finish. Do not repeat the text.",
+                        // The user never saw that text, so a finalAnswer that points back at it
+                        // ("see above") would publish a reference to nothing.
+                        $"Your previous text was provisional and was not shown to the user. Call an ordinary tool to continue, "
+                        + $"or {completionProtocol.Tool.ModelDefinition.Name} to finish. Do not repeat it as plain text; "
+                        + "if it is your answer, put it in full into finalAnswer, never a reference to it.",
                         950, ModelInstructionLifetime.UntilAcknowledged));
                     continue;
                 }
@@ -525,7 +528,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         "After using a tool, ordinary text is provisional. Keep working with ordinary tools. To finish, call "
         + "app_finish_run alone with complete if the request is satisfied, or blocked if available information or "
         + "tools cannot support further progress or a reliable answer. For blocked, explain any partial result and "
-        + "the limitation in finalAnswer.";
+        + "the limitation in finalAnswer. The user sees only finalAnswer, so it must contain the complete answer, "
+        + "never a reference to earlier text.";
 
     private static string ToolDiscoveryInstruction(int availableCount, int selectedCount) =>
         $"Only {selectedCount} of {availableCount} permitted tools are shown. If a needed capability is missing, "

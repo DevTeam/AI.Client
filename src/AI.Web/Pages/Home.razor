@@ -4314,6 +4314,9 @@
             var opened = $"{text[..mention.Start]}@{relative}/";
             var edit = new AI.Web.Composer.ComposerTextEdit(opened + text[mention.End..], opened.Length);
             SetComposerText(edit.Text);
+            // chatComposer.js took the list for closed when it sent the key; the list stays open on
+            // the directory's contents, so the state goes to it again or it stops passing the keys.
+            _mentionListPushed = null;
             await OnComposerCaret(edit.Text, edit.Caret);
             return edit;
         }

@@ -4,6 +4,7 @@
    ShouldRender below). Without this boundary, every keystroke in the composer (which lives in
    Home and calls StateHasChanged on the whole page) also rebuilt and diffed this list. *@
 @inject IMarkdownRenderer MarkdownRenderer
+@inject AI.Web.Resources.IMentionLinkWriter MentionLinks
 @inject IChatFeedProjection Feed
 @inject IJSRuntime JsRuntime
 @inject IChatRunsApi RunsApi
@@ -216,25 +217,30 @@
                         @if (message.Role is "User" or "Assistant" && message.ToolCalls is null)
                         {
                             <MessageReviewText @key="message.Id" ProjectId="SelectedChat.ProjectId" ChatId="SelectedChat.Id"
-                                               MessageId="message.Id" Content="@((MarkupString)RenderMarkdownCached(message.Id, message.Content))"
+                                               MessageId="message.Id" Content="@((MarkupString)RenderMarkdownCached(message.Id, MessageMarkdown(message)))"
                                                Review="@(MessageReviews?.GetValueOrDefault(message.Id))"
                                                OnChanged="OnMessageReviewChanged" OnAttach="OnAttachMessageReview" />
                         }
                         else { <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div> }
                     }
-                    @if (message.Resources?.Any(item => item.Kind != ChatResourceKind.Skill) == true)
+                    @* A reference with an "@" link is drawn in the text, where the user wrote it. *@
+                    @if (message.Resources?.Any(item => item.Kind != ChatResourceKind.Skill && item.Mention is null) == true)
                     {
                         <div class="message-resource-list" aria-label="Workspace references">
-                            @foreach (var resource in message.Resources.Where(item => item.Kind != ChatResourceKind.Skill))
+                            @foreach (var resource in message.Resources.Where(item => item.Kind != ChatResourceKind.Skill && item.Mention is null))
                             {
                                 <span class="message-resource-chip" @key="resource.Id" title="@ResourceLabel(resource)">
                                     @if (resource.Kind == ChatResourceKind.Review)
                                     {
                                         <button class="message-resource-open" type="button" title="Open review" @onclick="() => OnOpenReview.InvokeAsync(resource)"><AppIcon Name="diff" /><span>@ResourceLabel(resource)</span></button>
                                     }
+                                    else if (resource.Kind == ChatResourceKind.Chat && Guid.TryParse(resource.Path, out var referencedChatId))
+                                    {
+                                        <button class="message-resource-open" type="button" title="Open chat" @onclick="() => OnOpenChat.InvokeAsync(referencedChatId)"><AppIcon Name="message-circle" /><span>@ResourceLabel(resource)</span></button>
+                                    }
                                     else
                                     {
-                                        <span class="message-resource-content"><AppIcon Name="@(resource.Kind == ChatResourceKind.File ? "file" : "folder")" /><span>@ResourceLabel(resource)</span></span>
+                                        <span class="message-resource-content" title="@ResourceTitle(resource)"><AppIcon Name="@ResourceMentionMenu.IconOf(resource.Kind)" /><span>@ResourceLabel(resource)</span></span>
                                     }
                                     @if (message.Role == "User")
                                     {
@@ -427,6 +433,7 @@
     [Parameter] public EventCallback<Guid> OnReviewChanges { get; set; }
     [Parameter] public EventCallback<ChatReview> OnDiffReviewChanged { get; set; }
     [Parameter] public EventCallback<ChatResourceRef> OnOpenReview { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpenChat { get; set; }
     [Parameter] public EventCallback<(Guid MessageId, Guid ResourceId)> OnRemoveResource { get; set; }
     [Parameter] public EventCallback<FileLinkMenuRequest> OnFileLinkMenu { get; set; }
     [Parameter] public IReadOnlyDictionary<Guid, string>? ReviewNames { get; set; }
@@ -645,6 +652,26 @@
     [JSInvokable]
     public Task OnTurnSummaryVisibilityChanged(bool visible) =>
         OnCurrentTurnSummaryVisibilityChanged.InvokeAsync(visible);
+
+    /// <summary>
+    /// A click on an "@" link to a chat or a review in a user message: it opens what it names.
+    /// Files and directories are ordinary local-path links and never get here.
+    /// </summary>
+    [JSInvokable]
+    public Task OnMentionLinkClicked(string resourceId)
+    {
+        if (!Guid.TryParse(resourceId, out var id) || SelectedChat is null) return Task.CompletedTask;
+        var reference = SelectedChat.Messages.SelectMany(item => item.Resources ?? []).FirstOrDefault(item => item.Id == id);
+        return reference switch
+        {
+            { Kind: ChatResourceKind.Chat } when Guid.TryParse(reference.Path, out var chatId) => OnOpenChat.InvokeAsync(chatId),
+            { Kind: ChatResourceKind.Review } => OnOpenReview.InvokeAsync(reference),
+            _ => Task.CompletedTask
+        };
+    }
+
+    private string MessageMarkdown(ChatMessageView message) =>
+        message.Role == "User" ? MentionLinks.Link(message.Content, message.Resources) : message.Content;
 
     /// <summary>A right-click on a link to a local file or directory in a rendered message.</summary>
     [JSInvokable]
@@ -1638,6 +1665,15 @@
 
     private string ResourceLabel(ChatResourceRef resource)
     {
+        switch (resource.Kind)
+        {
+            case ChatResourceKind.File when resource.Lines is { } lines:
+                return lines.Start == lines.End ? $"{resource.Path}:{lines.Start}" : $"{resource.Path}:{lines.Start}-{lines.End}";
+            case ChatResourceKind.Chat or ChatResourceKind.Project:
+                return resource.Name ?? resource.Path;
+            case ChatResourceKind.Diff:
+                return $"Changes · {resource.Name ?? resource.Path}";
+        }
         if (resource.Kind != ChatResourceKind.Review) return resource.Path;
         if (resource.ReviewKind == ChatReviewKind.Message || MessageReviewIds?.Contains(resource.Id) == true)
         {
@@ -1646,6 +1682,14 @@
         }
         return ReviewNames?.GetValueOrDefault(resource.Id) ?? resource.Name ?? resource.Path;
     }
+
+    private static string ResourceTitle(ChatResourceRef resource) => resource.Kind switch
+    {
+        ChatResourceKind.Diff => $"Uncommitted changes in {resource.Path}, as they were when the message was sent",
+        ChatResourceKind.File when resource.Lines is not null => "These lines as they were when the message was sent",
+        ChatResourceKind.Project => "Project",
+        _ => resource.Path
+    };
 
     private void ActivateMarkdownCache()
     {

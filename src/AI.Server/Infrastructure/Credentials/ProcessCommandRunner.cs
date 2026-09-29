@@ -2,6 +2,7 @@ namespace AI.Infrastructure.Credentials;
 
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text;
 
 public sealed class ProcessCommandRunner : ICommandRunner
 {
@@ -18,7 +19,10 @@ public sealed class ProcessCommandRunner : ICommandRunner
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            // git and the keyring tools write UTF-8; the console code page would garble non-ASCII paths.
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
         };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
 

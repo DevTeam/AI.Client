@@ -1,0 +1,82 @@
+@using AI.Web.Resources
+@using AI.Contracts.Resources
+@* The composer's "@" list: the "+" menu reached from the keyboard. It is drawn like the slash list
+   of skills and driven the same way — the page owns the selection (chatComposer.js hands it the
+   keys), rows only report pointer picks, on mousedown so the textarea keeps focus and the caret. *@
+<div class="skill-command-menu resource-mention-menu" role="listbox" aria-label="Add to chat" id="resource-mention-menu">
+    @for (var index = 0; index < Items.Count; index++)
+    {
+        var row = index;
+        var item = Items[row];
+        if (row == 0 || Items[row - 1].Group != item.Group)
+        {
+            <div class="skill-command-label" role="presentation">@GroupLabel(item.Group)</div>
+        }
+        <div @key="item.Key" id="resource-mention-@row" role="option" aria-selected="@(row == SelectedIndex ? "true" : "false")"
+             class="skill-command-item @(row == SelectedIndex ? "selected" : null) @(item.Attached ? "attached" : null)"
+             @onmousedown="() => OnPick.InvokeAsync(row)" @onmousedown:preventDefault
+             @onmousemove="() => Hover(row)">
+            <AppIcon Name="@IconOf(item)" />
+            <span class="skill-command-name">@foreach (var part in Parts(item)) { if (part.Matched) { <mark>@part.Text</mark> } else { @part.Text } }</span>
+            <span class="skill-command-description" title="@item.Detail">@item.Detail</span>
+            <span class="skill-command-source">@(item.Attached ? "Attached" : item.Kind == ChatResourceKind.Directory && item.Action == ResourceMentionAction.Attach ? "Tab to open" : null)</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ResourceMentionItem> Items { get; set; } = [];
+
+    [Parameter] public int SelectedIndex { get; set; }
+
+    [Parameter] public EventCallback<int> OnPick { get; set; }
+
+    [Parameter] public EventCallback<int> OnHover { get; set; }
+
+    /// <summary>The icon a reference of this kind has everywhere: its chip in the composer and in the transcript.</summary>
+    public static string IconOf(ChatResourceKind kind) => kind switch
+    {
+        ChatResourceKind.File => "file",
+        ChatResourceKind.Directory => "folder",
+        ChatResourceKind.Review => "diff",
+        ChatResourceKind.Skill => "skill",
+        ChatResourceKind.Chat => "message-circle",
+        ChatResourceKind.Project => "project",
+        ChatResourceKind.Diff => "git-branch",
+        _ => "file"
+    };
+
+    private static string IconOf(ResourceMentionItem item) => item.Action switch
+    {
+        ResourceMentionAction.BrowseFile => "file",
+        ResourceMentionAction.BrowseDirectory => "folder-plus",
+        _ => IconOf(item.Kind)
+    };
+
+    private static string GroupLabel(ResourceMentionGroup group) => group switch
+    {
+        ResourceMentionGroup.Files => "Files",
+        ResourceMentionGroup.Changes => "Uncommitted changes",
+        ResourceMentionGroup.Chats => "Chats",
+        ResourceMentionGroup.Reviews => "Reviews",
+        ResourceMentionGroup.Projects => "Projects",
+        _ => "Add"
+    };
+
+    // mousemove rather than mouseenter, as in the slash list: rows scrolled under a still pointer
+    // by the keyboard must not steal the selection back.
+    private Task Hover(int row) => row == SelectedIndex ? Task.CompletedTask : OnHover.InvokeAsync(row);
+
+    private static IEnumerable<(string Text, bool Matched)> Parts(ResourceMentionItem item)
+    {
+        var name = item.Name;
+        var highlighted = item.Highlights.ToHashSet();
+        var start = 0;
+        for (var index = 1; index <= name.Length; index++)
+        {
+            if (index < name.Length && highlighted.Contains(index) == highlighted.Contains(start)) continue;
+            yield return (name[start..index], highlighted.Contains(start));
+            start = index;
+        }
+    }
+}

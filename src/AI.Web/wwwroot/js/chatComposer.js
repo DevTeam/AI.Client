@@ -79,12 +79,61 @@ export function attach(textarea, dotNetReference) {
         return false;
     };
 
+    // The "@" list works like the slash list, with one difference: Tab on a directory opens it
+    // instead of attaching it. The page answers each accept with the new text and caret.
+    let mentionListOpen = false;
+
+    const applyTextEdit = edit => {
+        if (!edit) return;
+        textarea.value = edit.text;
+        textarea.setSelectionRange(edit.caret, edit.caret);
+        resize();
+    };
+
+    const handleMentionList = event => {
+        const plain = !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+        if ((event.key === "ArrowUp" || event.key === "ArrowDown") && plain) {
+            event.preventDefault();
+            dotNetReference.invokeMethodAsync("MoveMentionSuggestion", event.key === "ArrowUp" ? -1 : 1);
+            return true;
+        }
+        if ((event.key === "Enter" || event.key === "Tab") && plain) {
+            event.preventDefault();
+            mentionListOpen = false;
+            dotNetReference
+                .invokeMethodAsync("AcceptMentionSuggestion", textarea.value, textarea.selectionStart, event.key === "Tab")
+                .then(applyTextEdit);
+            return true;
+        }
+        if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            mentionListOpen = false;
+            dotNetReference.invokeMethodAsync("DismissMentionSuggestions");
+            return true;
+        }
+        return false;
+    };
+
+    // Every edit and caret move goes to the page while "@" is in the text, so the list follows
+    // the word the caret is in. Without an "@" there is nothing to follow, only a list to close.
+    let caretReported = false;
+    const reportCaret = () => {
+        const mentioned = textarea.value.includes("@");
+        if (!mentioned && !caretReported) return;
+        caretReported = mentioned;
+        dotNetReference.invokeMethodAsync("OnComposerCaret", textarea.value, textarea.selectionStart ?? 0);
+    };
+    const caretKeys = new Set(["ArrowLeft", "ArrowRight", "Home", "End"]);
+    const caretKeyHandler = event => { if (caretKeys.has(event.key)) reportCaret(); };
+
     const handler = event => {
         if (event.isComposing) {
             pushModifiers(event.ctrlKey, event.altKey, event.shiftKey);
             return;
         }
         if (skillListOpen && handleSkillList(event)) return;
+        if (mentionListOpen && handleMentionList(event)) return;
         // The skill chip sits before the text: Backspace with the caret at the very start removes
         // it whole, the way a chip inside the text would go.
         if (event.key === "Backspace" && textarea.selectionStart === 0 && textarea.selectionEnd === 0
@@ -169,6 +218,9 @@ export function attach(textarea, dotNetReference) {
         textarea.style.overflowY = textarea.scrollHeight > maxHeight + 1 ? "auto" : "hidden";
     };
     textarea.addEventListener("input", resize);
+    textarea.addEventListener("input", reportCaret);
+    textarea.addEventListener("keyup", caretKeyHandler);
+    textarea.addEventListener("click", reportCaret);
     resize();
 
     const detach = () => {
@@ -176,6 +228,9 @@ export function attach(textarea, dotNetReference) {
         textarea.removeEventListener("keyup", releaseHandler);
         textarea.removeEventListener("blur", blurHandler);
         textarea.removeEventListener("input", resize);
+        textarea.removeEventListener("input", reportCaret);
+        textarea.removeEventListener("keyup", caretKeyHandler);
+        textarea.removeEventListener("click", reportCaret);
         if (textarea.__composerDetach === detach) delete textarea.__composerDetach;
     };
     textarea.__composerDetach = detach;
@@ -187,6 +242,11 @@ export function attach(textarea, dotNetReference) {
         },
         resize,
         setSkillList: open => { skillListOpen = open; },
+        setMentionList: open => { mentionListOpen = open; },
+        setText: (text, caret) => {
+            applyTextEdit({ text, caret });
+            textarea.focus();
+        },
         scrollSkillSuggestionIntoView: () => {
             textarea.closest(".workspace-composer")
                 ?.querySelector(".skill-command-item.selected")
@@ -200,6 +260,8 @@ export function attach(textarea, dotNetReference) {
             textarea.value = "";
             historyActive = false;
             skillListOpen = false;
+            mentionListOpen = false;
+            caretReported = false;
             resize();
         },
         dispose: detach

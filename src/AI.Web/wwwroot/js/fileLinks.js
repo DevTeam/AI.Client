@@ -320,6 +320,12 @@ export function attach(container, dotnet) {
         const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
         if (!anchor || !container.contains(anchor)) return;
         const href = anchor.getAttribute('href') ?? '';
+        // An "@" link to a chat or a review opens it; the page knows the reference by its id.
+        if (href.startsWith('#mention-')) {
+            event.preventDefault();
+            dotnet.invokeMethodAsync('OnMentionLinkClicked', href.slice('#mention-'.length));
+            return;
+        }
         // A local path, or any relative link, would navigate the app itself; neither may.
         if (anchor.dataset.filePath || directPathOf(href) || relativeTargetOf(href)) event.preventDefault();
     };

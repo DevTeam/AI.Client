@@ -2376,10 +2376,12 @@ body {
     width: min(48rem, calc(100% - 3rem));
     margin: 0 auto 0.4rem;
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: .4rem;
 }
 
 .composer-status {
+    min-width: 0;
     color: var(--color-text-faint);
     font-size: 0.8rem;
 }

@@ -9,8 +9,8 @@ namespace AI.Infrastructure.Storage;
 
 public sealed class ChatDocumentSerializer : IChatDocumentSerializer
 {
-    private const int SchemaVersion = 6;
-    private const int PreviousSchemaVersion = 5;
+    private const int SchemaVersion = 7;
+    private const int PreviousSchemaVersion = 6;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
     public string Serialize(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatDocument(
@@ -37,7 +37,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         chat.IsPinned,
         chat.PinnedAt,
         chat.LastActivityAt,
-        chat.PinOrder), Options);
+        chat.PinOrder,
+        chat.AutoTitlePending), Options);
 
     public string SerializeSummary(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatSummaryDocument(
         SchemaVersion,
@@ -57,7 +58,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
     {
         var document = JsonSerializer.Deserialize<ChatDocument>(json, Options)
             ?? throw new JsonException("Chat document is empty.");
-        if (document.SchemaVersion is not (PreviousSchemaVersion or SchemaVersion) || document.Revision < 0)
+        if (document.SchemaVersion is not (5 or PreviousSchemaVersion or SchemaVersion) || document.Revision < 0)
         {
             throw new JsonException("Chat document schema or revision is invalid.");
         }
@@ -87,6 +88,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             chat.SetToolPolicy(new ToolPolicy(new ToolIdentity(new McpServerId(policy.ServerId), policy.Name,
                 policy.SchemaHash), policy.Decision, policy.MaxCallsPerRun, policy.Timeout), document.UpdatedAt);
         chat.Rename(document.Title, document.UpdatedAt);
+        chat.RestoreAutoTitlePending(document.AutoTitlePending);
         chat.RestorePinState(document.IsPinned, document.PinnedAt, document.PinOrder);
         chat.RestoreActivity(document.LastActivityAt);
 
@@ -97,7 +99,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
     {
         var document = JsonSerializer.Deserialize<ChatSummaryDocument>(json, Options)
             ?? throw new JsonException("Chat document is empty.");
-        if (document.SchemaVersion is not (PreviousSchemaVersion or SchemaVersion) || document.Revision < 0)
+        if (document.SchemaVersion is not (5 or PreviousSchemaVersion or SchemaVersion) || document.Revision < 0)
         {
             throw new JsonException("Chat document schema or revision is invalid.");
         }
@@ -133,7 +135,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         bool IsPinned = false,
         DateTimeOffset? PinnedAt = null,
         DateTimeOffset LastActivityAt = default,
-        string? PinOrder = null);
+        string? PinOrder = null,
+        bool AutoTitlePending = false);
 
     // Deliberately contains only sidebar fields. System.Text.Json skips MessageIds without
     // materialising message nodes, so listing chats stays proportional to the small manifests

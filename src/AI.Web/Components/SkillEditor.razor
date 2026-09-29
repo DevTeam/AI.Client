@@ -1,0 +1,69 @@
+@using AI.Contracts.Skills
+@using AI.Web.Skills
+@inject ISkillApi SkillApi
+
+<div class="global-editor-layout skill-editor">
+    <div class="settings-list-column">
+        <nav class="settings-list" aria-label="Skills">
+            @if (_loaded && _skills.Count == 0)
+            {
+                <p class="empty-hint">No skills are available.</p>
+            }
+            @foreach (var skill in _skills)
+            {
+                <div class="settings-list-item @(skill.Id == _selectedId ? "selected" : string.Empty)">
+                    <button class="settings-list-select" type="button" @onclick="() => _selectedId = skill.Id">
+                        <span>@skill.Name</span>
+                        <small>@skill.Description</small>
+                    </button>
+                </div>
+            }
+        </nav>
+    </div>
+    @if (Selected is { } selected)
+    {
+        <div class="global-form skill-form">
+            <div class="connection-flags">
+                <span class="skill-source">@selected.Source</span>
+                <span class="skill-state">@(selected.Enabled ? "Enabled" : "Disabled")</span>
+            </div>
+            <label>Name<input class="text-input" value="@selected.Name" readonly /></label>
+            <label>Description<textarea rows="2" readonly>@selected.Description</textarea></label>
+            <label>Parameters<textarea class="skill-content" rows="8" readonly spellcheck="false">@selected.ParametersSchema.GetRawText()</textarea></label>
+            <label>SKILL.md<textarea class="skill-content" rows="16" readonly spellcheck="false">@selected.Content</textarea></label>
+            <p class="memory-meta">Skill parameters are validated before execution. The project is supplied by the application as the execution scope.</p>
+        </div>
+    }
+    else
+    {
+        <div class="global-form">
+            <p class="empty-hint">@(_error ?? (_loaded ? "Select a skill to read its instructions." : "Loading skills…"))</p>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback Changed { get; set; }
+    private IReadOnlyList<SkillDefinition> _skills = [];
+    private string? _selectedId;
+    private bool _loaded;
+    private string? _error;
+    private SkillDefinition? Selected => _skills.FirstOrDefault(skill => skill.Id == _selectedId);
+    public string Stats => $"{_skills.Count} {(_skills.Count == 1 ? "skill" : "skills")} · {_skills.Count(skill => skill.Enabled)} enabled";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _skills = await SkillApi.ListAsync(CancellationToken.None);
+            _selectedId = _skills.FirstOrDefault()?.Id;
+            _loaded = true;
+            await Changed.InvokeAsync();
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Skills could not be loaded.";
+            await Changed.InvokeAsync();
+        }
+    }
+}

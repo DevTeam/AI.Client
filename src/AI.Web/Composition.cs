@@ -13,6 +13,7 @@ using Projects;
 using Runs;
 using Resources;
 using Memory;
+using Skills;
 using Settings;
 using State;
 using Notifications;
@@ -55,6 +56,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IResourceApi>()
             .Root<IReviewApi>()
             .Root<IMemoryApi>()
+            .Root<ISkillApi>()
             .Root<IRunStateService>()
             .Root<IChatComposerService>()
             .Root<IToolPresentations>()
@@ -75,7 +77,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Bind<INotificationService>("base").As(Lifetime.Singleton).To<NotificationService>()
             .Singleton<DesktopBadgeNotificationService, DesktopUnreadCountPublisher, ApiBaseUrl, ClientMode, HostConnection, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService,
                 WorkspaceStateService, ChatComposerService, RunStateService, ChatMessageDeltaMerger, ClientSettingsService, ThemeService>()
-            .Transient<ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi, ResourceApi, ReviewApi, MemoryApi>()
+            .Transient<ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi, ResourceApi, ReviewApi, MemoryApi, SkillApi>()
             .Transient((IApiBaseUrl arg, IClientMode mode, IJSRuntime jsRuntime) =>
                 new HttpClient(new BridgeAuthorizationHandler(mode, jsRuntime)
                 {

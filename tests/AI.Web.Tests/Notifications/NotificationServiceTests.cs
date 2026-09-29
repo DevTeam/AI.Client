@@ -41,6 +41,7 @@ public class NotificationServiceTests
             if (identifier == "localStorage.getItem")
                 return ValueTask.FromResult((TValue)(object?)Items.GetValueOrDefault(key)!);
             if (identifier == "localStorage.setItem") Items[key] = (string)args[1]!;
+            if (identifier == "aiClientTheme.saveClientSettings") Items["ai-client.settings"] = (string)args[0]!;
             return ValueTask.FromResult(default(TValue)!);
         }
     }

@@ -5211,6 +5211,10 @@ textarea {
 .memory-editor .settings-list-select > span { display: flex; gap: 0.35rem; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .memory-form textarea { min-height: 9rem; resize: vertical; }
 .memory-meta { margin: 0; color: var(--color-text-faint); font-size: 0.8rem; }
+.skill-editor .settings-list-select > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-source, .skill-state { color: var(--color-text-secondary); font-size: .8rem; }
+.skill-form textarea { resize: none; }
+.skill-form .skill-content { min-height: 18rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .78rem; line-height: 1.45; }
 
 /* Project instructions sit under the project's details in its settings drawer. */
 .project-instructions { display: grid; min-width: 0; gap: .55rem; margin-top: 1.15rem; padding-top: 1.1rem; border-top: 1px solid var(--color-border); }

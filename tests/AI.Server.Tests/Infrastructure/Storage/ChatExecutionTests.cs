@@ -137,7 +137,7 @@ public sealed class ChatExecutionTests
         corrective.Request.ContextMessages!.Where(message => message.Role == "system")
             .ShouldContain(message => message.Content.Contains("has not been published yet", StringComparison.Ordinal));
         corrective.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
-            {"status":"complete","finalAnswer":"Done and verified.","completed":["Changed and verified the file"],"evidence":["Command succeeded"],"remaining":[]}
+            {"status":"complete","finalAnswer":"Done and verified.","includePreviousText":false,"completed":["Changed and verified the file"],"evidence":["Command succeeded"],"remaining":[]}
             """)];
         corrective.Answer.SetResult("");
 
@@ -179,7 +179,7 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
-    public async Task CompletionMayPublishTheHeldBackTextWithoutRetypingIt()
+    public async Task CompletionMustPublishTheHeldBackTextUnlessTheModelDiscardsIt()
     {
         await using var fixture = await Fixture.CreateAsync();
         fixture.Completion.AdaptLegacyFinalAnswers = false;
@@ -192,9 +192,10 @@ public sealed class ChatExecutionTests
         (await fixture.NextCallAsync()).Answer.SetResult("## Report\n\n3 files.");
         var finish = await fixture.NextCallAsync();
         finish.Request.ContextMessages!.Where(message => message.Role == "system")
-            .ShouldContain(message => message.Content.Contains("includePreviousText true", StringComparison.Ordinal));
+            .ShouldContain(message => message.Content.Contains("published as written", StringComparison.Ordinal));
+        // As the model did: no flag, and a one-line summary claiming the report was already shown.
         finish.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
-            {"status":"complete","finalAnswer":"report printed.","includePreviousText":true}
+            {"status":"complete","finalAnswer":"report printed."}
             """)];
         finish.Answer.SetResult("");
 

@@ -56,12 +56,13 @@ answer" pointing at nothing. The correction leads with finishing: a wording that
 ordinary tool to continue" first read as a request for more work, and models that had finished redid
 their last steps or loaded the playbook they had just completed and started it over. If the model
 does continue with an ordinary tool, the held-back prose becomes that call's preamble and is published
-with it, so a report rendered before a follow-up question is not lost. To finish with that text,
-the model passes `includePreviousText: true`; the held-back text is published as written and a
-non-empty `finalAnswer` is appended after it. A playbook ending "finish with one line: report
-printed" had models publish only that line and drop the report, so the correction asks for this flag
-instead of a retyped answer, and the playbook result says a requested closing line never replaces
-what the instructions had the model show. `app_run_skill` also returns
+with it, so a report rendered before a follow-up question is not lost. When the model finishes
+right after such text, the held-back text is published as written with `finalAnswer` appended
+after it (unless `finalAnswer` repeats it); the model discards it only by passing
+`includePreviousText: false`. Opt-in was not enough: a playbook ending "finish with one line: report
+printed" had models publish only that line, and when asked for the flag they ignored it and wrote a
+summary claiming the report had been printed. The playbook result also says a requested closing
+line never replaces what the instructions had the model show. `app_run_skill` also returns
 `Skipped` without instructions when the same playbook with the same arguments was already loaded in
 the run. The first correction still offers ordinary tools; later
 corrections offer only `app_finish_run`. Three consecutive invalid decisions fail the run. If an

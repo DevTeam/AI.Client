@@ -264,9 +264,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                         // read as a request for more work: models that had finished redid their last
                         // steps, or loaded the skill they had just completed and started it over.
                         $"Your previous message ended without a tool call, so it has not been published yet. If it answers "
-                        + $"the request, call {completionProtocol.Tool.ModelDefinition.Name} with status complete and "
-                        + "includePreviousText true to publish it as written; finalAnswer then adds only a closing line, if any. "
-                        + "Do not retype it or replace it with a summary or a reference. Call an ordinary tool "
+                        + $"the request, call {completionProtocol.Tool.ModelDefinition.Name} with status complete: that text is "
+                        + "published as written ahead of finalAnswer, so finalAnswer adds only a closing line, if any; do not "
+                        + "retype or summarise it. Pass includePreviousText false only to discard it. Call an ordinary tool "
                         + "only if the request still needs work, and continue from the last step you finished: do not redo "
                         + "finished steps or start a skill over.",
                         950, ModelInstructionLifetime.UntilAcknowledged));
@@ -298,7 +298,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 try
                 {
                     decision = completionProtocol.Parse(completionCalls[0].Arguments);
-                    if (decision is { IncludePreviousText: true, FinalAnswer.Length: 0 } && provisionalAnswer is not { Length: > 0 })
+                    if (decision is { IncludePreviousText: not false, FinalAnswer.Length: 0 } && provisionalAnswer is not { Length: > 0 })
                         throw new ArgumentException("There is no unpublished previous text to include. Put the answer in finalAnswer.");
                 }
                 catch (Exception error) when (error is ArgumentException or JsonException)
@@ -318,9 +318,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 }
                 missingCompletion = 0;
                 // A playbook that ends "finish with one line" had the model publish that line and
-                // drop the report it had just written as plain text. Including the held-back text
-                // publishes it as it was, without asking the model to retype a long answer.
-                return await FinishAsync(decision is { IncludePreviousText: true } && provisionalAnswer is { Length: > 0 } unpublished
+                // drop the report it had just written as plain text; asked to retype it, models
+                // wrote a summary claiming the report was "printed above". The held-back text is
+                // therefore published unless the model explicitly discards it.
+                return await FinishAsync(decision is { IncludePreviousText: not false } && provisionalAnswer is { Length: > 0 } unpublished
                     ? decision.FinalAnswer.Length == 0 || unpublished.Contains(decision.FinalAnswer, StringComparison.Ordinal)
                         ? unpublished
                         : $"{unpublished}\n\n{decision.FinalAnswer}"

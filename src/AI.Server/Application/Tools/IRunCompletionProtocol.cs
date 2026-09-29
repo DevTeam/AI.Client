@@ -7,13 +7,14 @@ public enum RunCompletionStatus
 }
 
 /// <param name="IncludePreviousText">
-/// Publish the model's last unpublished message as the answer, followed by <paramref name="FinalAnswer"/>
-/// when it adds anything. Lets a long answer written as plain text be published without being retyped.
+/// Whether the model's last unpublished message is published ahead of <paramref name="FinalAnswer"/>.
+/// Null when the model did not say, which includes it: models asked to retype a long answer wrote a
+/// one-line summary of it instead, so the answer itself was lost.
 /// </param>
 public sealed record RunCompletionDecision(
     RunCompletionStatus Status,
     string FinalAnswer,
-    bool IncludePreviousText = false);
+    bool? IncludePreviousText = null);
 
 /// <summary>
 /// Model-facing definition-of-done protocol. It is an application control tool, not an MCP side

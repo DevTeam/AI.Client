@@ -2755,14 +2755,17 @@ body {
     color: var(--color-accent);
 }
 .workspace-composer .composer-skill-chip { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+/* A block of its own, so no line box adds space beneath it; the gap to the text goes when no text follows. */
 .message-skill-chip {
-    display: inline-flex;
+    display: flex;
+    width: fit-content;
     align-items: center;
     gap: .35rem;
     max-width: min(100%, 25rem);
     margin-bottom: .4rem;
     font-weight: 500;
 }
+.message-skill-chip:last-child { margin-bottom: 0; }
 .message-skill-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .message-skill-chip .app-icon { flex: none; width: 1rem; height: 1rem; }
 /* The slash list over the composer: one row per skill, name then description, source on the right. */

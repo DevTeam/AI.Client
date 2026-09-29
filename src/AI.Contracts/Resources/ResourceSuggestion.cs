@@ -6,5 +6,9 @@ namespace AI.Contracts.Resources;
 /// </summary>
 public sealed record ResourceSuggestion(ChatResourceKind Kind, string Path, string RelativePath, PathAccess Access);
 
-/// <summary>A repository under the project's directories with uncommitted changes, offered as "@diff".</summary>
-public sealed record WorkspaceDiffSource(string Path, string Name, int ChangedFiles);
+/// <summary>
+/// A repository with uncommitted changes, offered as "@diff:Name": a project directory inside a
+/// work tree, or a work tree found inside one. <paramref name="Location"/> says where it is —
+/// the project directory's name and the path below it — so two of the same name can be told apart.
+/// </summary>
+public sealed record WorkspaceDiffSource(string Path, string Name, int ChangedFiles, string? Location = null);

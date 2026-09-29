@@ -142,11 +142,14 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
             var byWord = DiffWords.Any(word => word.StartsWith(filter, StringComparison.OrdinalIgnoreCase)) ? 1 : (int?)null;
             if (!scoped && byName is null && byWord is null) continue;
             if (scoped && filter.Length > 0 && byName is null) continue;
-            var detail = diff.ChangedFiles == 1 ? "1 changed file" : $"{diff.ChangedFiles} changed files";
+            var count = diff.ChangedFiles == 1 ? "1 changed file" : $"{diff.ChangedFiles} changed files";
+            var detail = diff.Location is { } location && !location.Equals(diff.Name, StringComparison.Ordinal)
+                ? $"{location} · {count}" : count;
             rows.Add((new ResourceMentionItem(ResourceMentionGroup.Changes, ChatResourceKind.Diff, diff.Name, detail,
                     diff.Path, byName?.Highlights ?? [], sources.Attached.Any(item => item.Kind == ChatResourceKind.Diff
                         && SamePath(item.Path, diff.Path)),
-                    Token: sources.Diffs.Count == 1 ? "@diff" : "@diff:" + Quote(diff.Name)),
+                    // Always named: a bare "@diff" does not say which repository it was.
+                    Token: "@diff:" + Quote(diff.Name)),
                 Math.Min(byName?.Rank ?? int.MaxValue, byWord ?? int.MaxValue)));
         }
         return rows;

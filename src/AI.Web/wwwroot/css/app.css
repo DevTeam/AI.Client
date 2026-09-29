@@ -134,9 +134,8 @@
     --color-success: #5dc97c;
     --color-success-text: #a6dcb1;
     --color-success-border: #39744b;
-    /* A finished run with an unread response. Its own token, not the accent: the accent is the
-       user's to pick, and must not make "done" read like "needs you" or "failed". */
-    --color-unread: #4f91dc;
+    /* An unread response uses the user's accent; attention and failure retain status colours. */
+    --color-unread: var(--color-accent-strong);
     /* The user's own messages: a tint of the accent the user picked, with a hairline of it, so a
        question stands apart from the answers without shouting. -inset is for what sits inside
        the bubble (code blocks, reference chips) and has to read on any accent. */
@@ -146,16 +145,16 @@
     --color-diff-added-bg: color-mix(in srgb, var(--color-success) 10%, transparent);
     --color-diff-removed-bg: color-mix(in srgb, var(--color-danger) 10%, transparent);
     /* Search hits and the line under a review comment. */
-    --color-highlight-bg: #e6e6e6;
-    --color-highlight-fg: #202020;
-    /* Context window layers (the ring around the send button). Categorical, so they stay apart
-       from the status colours; the message being typed takes the user's accent. */
-    --color-context-instructions: #9a9a94;
-    --color-context-tools: #9d95e8;
-    --color-context-history: #3fb58e;
+    --color-highlight-bg: var(--color-accent-bg-active);
+    --color-highlight-fg: var(--color-accent-text);
+    /* Context window layers use neutral steps; the current draft uses the user's accent.
+       Warning and critical capacity remain status colours on the send-button ring. */
+    --color-context-instructions: var(--color-text-muted);
+    --color-context-tools: var(--color-text-subtle);
+    --color-context-history: var(--color-border-stronger);
     --color-context-draft: var(--color-accent-strong);
-    --color-context-reserve: #d9a441;
-    --color-context-overhead: #6f6f6a;
+    --color-context-reserve: var(--color-text-secondary);
+    --color-context-overhead: var(--color-border-strong);
     /* Shadow and backdrop alphas are written for the dark theme and scaled here. */
     --shadow-scale: 1;
     --scrim-scale: 1;
@@ -215,17 +214,9 @@
     --color-success: #1f8f4a;
     --color-success-text: #17703a;
     --color-success-border: #9ed4b0;
-    --color-unread: #2a78d0;
     --color-user-bubble: color-mix(in srgb, var(--color-accent-strong) 13%, var(--color-bg));
     --color-user-bubble-border: color-mix(in srgb, var(--color-accent-strong) 22%, transparent);
     --color-user-bubble-inset: rgb(255 255 255 / 60%);
-    --color-highlight-bg: #ffe08a;
-    --color-highlight-fg: #1f1f1f;
-    --color-context-instructions: #7d7c76;
-    --color-context-tools: #6a61d0;
-    --color-context-history: #16876a;
-    --color-context-reserve: #b57700;
-    --color-context-overhead: #b4b2a9;
     --shadow-scale: 0.3;
     --scrim-scale: 0.55;
 }
@@ -2434,7 +2425,7 @@ body {
 .queue-item > input { padding: .3rem; }
 .queue-item .icon-action { width: 1.4rem; height: 1.4rem; }
 .queue-item .icon-action .app-icon { width: .85rem; height: .85rem; }
-.queue-item .queue-send-now:hover { color: var(--color-warning-text); }
+.queue-item .queue-send-now:hover { color: var(--color-accent-text); }
 .queue-busy { pointer-events: none; }
 .queue-transition-status { display: inline-flex; align-items: center; gap: .35rem; color: var(--color-warning); }
 .queue-transition-status .app-icon { width: .9rem; height: .9rem; }
@@ -2455,7 +2446,7 @@ body {
 .queue-action-button .app-icon { width: 1rem; height: 1rem; }
 .queue-action-button:hover { background: var(--color-overlay-hover); }
 .queue-action-button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
-.queue-action-resume:hover { color: var(--color-success); border-color: var(--color-success-border); }
+.queue-action-resume:hover { color: var(--color-accent-text); border-color: var(--color-accent); }
 .queue-action-clear:hover { color: var(--color-danger); border-color: var(--color-danger-border); }
 .queue-clear-confirm { display: flex; align-items: center; gap: .4rem; color: var(--color-text-secondary); font-size: .85rem; }
 
@@ -2539,7 +2530,7 @@ body {
 
 .turn-status-action:hover { background: var(--color-fill); }
 .turn-status-action:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
-.turn-status-primary { border-color: var(--color-success-border); color: var(--color-success); }
+.turn-status-primary { border-color: var(--color-accent); color: var(--color-accent-text); }
 .turn-status-stopped .turn-status-icon { color: var(--color-warning); }
 .turn-status-failed .turn-status-icon { color: var(--color-danger); }
 .turn-status-failed .turn-status-text { color: var(--color-danger-text); }
@@ -3449,45 +3440,24 @@ button:active:not(:disabled) {
 .markdown-content pre .hljs-keyword,
 .markdown-content pre .hljs-selector-tag,
 .markdown-content pre .hljs-literal,
-.markdown-content pre .hljs-built_in { color: #c792ea; }
+.markdown-content pre .hljs-built_in { color: var(--color-accent-text); font-weight: 600; }
 .markdown-content pre .hljs-string,
 .markdown-content pre .hljs-regexp,
-.markdown-content pre .hljs-attr,
-.markdown-content pre .hljs-addition { color: #a6d98f; }
+.markdown-content pre .hljs-attr { color: var(--color-text-secondary); }
+.markdown-content pre .hljs-addition { color: var(--color-success-text); }
 .markdown-content pre .hljs-number,
 .markdown-content pre .hljs-symbol,
 .markdown-content pre .hljs-variable,
-.markdown-content pre .hljs-template-variable { color: #f6bc75; }
+.markdown-content pre .hljs-template-variable { color: var(--color-text-muted); }
 .markdown-content pre .hljs-title,
 .markdown-content pre .hljs-type,
 .markdown-content pre .hljs-class,
 .markdown-content pre .hljs-function,
-.markdown-content pre .hljs-attribute { color: #83c7ef; }
+.markdown-content pre .hljs-attribute { color: var(--color-accent-text); }
 .markdown-content pre .hljs-meta,
 .markdown-content pre .hljs-selector-id,
-.markdown-content pre .hljs-selector-class { color: #e9a0ba; }
+.markdown-content pre .hljs-selector-class { color: var(--color-text-subtle); }
 .markdown-content pre .hljs-deletion { color: var(--color-danger-text); }
-
-:root[data-theme="light"] .markdown-content pre .hljs-keyword,
-:root[data-theme="light"] .markdown-content pre .hljs-selector-tag,
-:root[data-theme="light"] .markdown-content pre .hljs-literal,
-:root[data-theme="light"] .markdown-content pre .hljs-built_in { color: #7139a4; }
-:root[data-theme="light"] .markdown-content pre .hljs-string,
-:root[data-theme="light"] .markdown-content pre .hljs-regexp,
-:root[data-theme="light"] .markdown-content pre .hljs-attr,
-:root[data-theme="light"] .markdown-content pre .hljs-addition { color: #23713b; }
-:root[data-theme="light"] .markdown-content pre .hljs-number,
-:root[data-theme="light"] .markdown-content pre .hljs-symbol,
-:root[data-theme="light"] .markdown-content pre .hljs-variable,
-:root[data-theme="light"] .markdown-content pre .hljs-template-variable { color: #99520a; }
-:root[data-theme="light"] .markdown-content pre .hljs-title,
-:root[data-theme="light"] .markdown-content pre .hljs-type,
-:root[data-theme="light"] .markdown-content pre .hljs-class,
-:root[data-theme="light"] .markdown-content pre .hljs-function,
-:root[data-theme="light"] .markdown-content pre .hljs-attribute { color: #17629d; }
-:root[data-theme="light"] .markdown-content pre .hljs-meta,
-:root[data-theme="light"] .markdown-content pre .hljs-selector-id,
-:root[data-theme="light"] .markdown-content pre .hljs-selector-class { color: #9a315c; }
 
 .security-editor h3 {
     margin: 1rem 0 0;
@@ -4563,7 +4533,7 @@ textarea {
     .workspace-change-summary { flex-wrap: wrap; }
 }
 
-/* Search matches use the same light surface and dark text as the diff comment action on hover. */
+/* Search matches and the diff comment action use the selected accent in either theme. */
 .search-highlight {
     background: var(--color-highlight-bg);
     color: var(--color-highlight-fg);

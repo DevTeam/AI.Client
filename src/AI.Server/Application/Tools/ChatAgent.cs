@@ -153,8 +153,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             }
 
             // A continuation after truncation is the same answer carrying on, so its draft keeps
-            // growing instead of starting over.
-            if (truncated == 0) await Draft(null);
+            // growing instead of starting over. Held-back prose stays on screen while the model is
+            // asked what it is: it is usually the answer, published as it stands a moment later, and
+            // clearing it made the answer vanish and come back.
+            var draftHeld = truncated == 0 && provisionalAnswer is { Length: > 0 };
+            if (truncated == 0 && !draftHeld) await Draft(null);
             checkpoints.Update(run, context);
             var modelContext = checkpoints.Apply(run, context);
             var permitted = new List<AgentTool>();
@@ -202,6 +205,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 if (chunk.FinishReason is { Length: > 0 } reason) finish = reason;
                 if (chunk.Content.Length == 0) continue;
                 content.Append(chunk.Content);
+                if (draftHeld)
+                {
+                    draftHeld = false;
+                    await Draft(null);
+                }
                 await Draft(chunk.Content);
             }
             if (calls.Count == 0 && content.Length == 0)

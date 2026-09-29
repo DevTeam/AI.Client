@@ -33,7 +33,12 @@ public sealed class DefaultToolSessionFactory(IToolResultModelProjector modelPro
         {
             Name = "Default tools", Command = executable,
             InheritEnvironmentVariables = false,
-            EnvironmentVariables = environment
+            EnvironmentVariables = environment,
+            // Closing the session waits this long for the process to exit, and the run's answer is
+            // not saved until it is closed. At the SDK's 5 s default every turn that used a tool sat
+            // finished but unsaved for five seconds, its answer shown as a live copy that was then
+            // replaced. Every call has returned by then, so there is nothing left to wait for.
+            ShutdownTimeout = TimeSpan.FromMilliseconds(500)
         });
         var client = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
         try

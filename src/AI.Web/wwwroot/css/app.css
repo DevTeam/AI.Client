@@ -3752,6 +3752,22 @@ textarea {
 /* Only a tint: presses go through to the page, and runEvents.watchDrawerDismiss closes the drawer. */
 .permissions-drawer-backdrop { position: fixed; z-index: 44; inset: 0; background: rgb(0 0 0 / calc(12% * var(--scrim-scale))); pointer-events: none; }
 .permissions-drawer { position: fixed; z-index: 45; top: 0; right: 0; bottom: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(26rem, 100vw); border-left: 1px solid var(--color-border); background: var(--color-surface); box-shadow: -1rem 0 2.5rem rgb(0 0 0 / calc(38% * var(--shadow-scale))); }
+
+/* Right-hand drawers slide in from the edge and back out to it; drawerTransitions.js keeps a closed
+   one on the page, marked is-leaving, for as long as its exit runs. A swap for another drawer
+   (is-swapped) does neither. */
+@keyframes drawer-enter { from { transform: translateX(100%); } }
+@keyframes drawer-leave { to { transform: translateX(100%); } }
+@keyframes drawer-backdrop-enter { from { opacity: 0; } }
+@keyframes drawer-backdrop-leave { to { opacity: 0; } }
+.permissions-drawer, .review-workspace { animation: drawer-enter 240ms cubic-bezier(.2, .8, .2, 1); }
+.permissions-drawer-backdrop { animation: drawer-backdrop-enter 240ms ease-out; }
+.permissions-drawer.is-leaving, .review-workspace.is-leaving { animation: drawer-leave 180ms cubic-bezier(.4, 0, 1, 1) forwards; pointer-events: none; }
+.permissions-drawer-backdrop.is-leaving { animation: drawer-backdrop-leave 180ms ease-in forwards; }
+.permissions-drawer.is-swapped, .review-workspace.is-swapped, .permissions-drawer-backdrop.is-swapped { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    .permissions-drawer, .review-workspace, .permissions-drawer-backdrop { animation: none; }
+}
 .permissions-drawer > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; padding: 1.2rem 1.2rem .9rem; border-bottom: 1px solid var(--color-border); }
 .permissions-drawer h2, .permissions-drawer h3, .permissions-drawer p { margin: 0; }
 .permissions-drawer h2 { font-size: 1.05rem; }

@@ -71,12 +71,32 @@ public sealed class SkillCommandMatcherTests
 
         var exact = _matcher.Match(skills, "compact", []);
         exact[0].Skill.Id.ShouldBe("chat-context-compact");
-        exact[0].Alias.ShouldBe("compact");
+        exact[0].Title.ShouldBe("compact");
+        exact[0].Highlights.ShouldBe([0, 1, 2, 3, 4, 5, 6]);
 
         var prefix = _matcher.Match(skills, "comp", []);
         prefix.Select(item => item.Skill.Id).ShouldBe(["compare", "chat-context-compact", "chat-compact"]);
-        prefix[1].Alias.ShouldBe("compact");
+        prefix[1].Title.ShouldBe("compact");
+        prefix[1].Highlights.ShouldBe([0, 1, 2, 3]);
         prefix[0].Alias.ShouldBeNull();
+        prefix[0].Title.ShouldBe("Compare files");
+    }
+
+    [Fact]
+    public void ShouldPreferAMistypedAliasToScatteredNameLetters()
+    {
+        var skills = new[]
+        {
+            Skill("chat-compact", "Chat compact"),
+            Skill("chat-context-compact", "Chat context compact", aliases: ["cc", "compact"])
+        };
+
+        var matches = _matcher.Match(skills, "coma", []);
+
+        matches.Select(item => item.Skill.Id).ShouldBe(["chat-context-compact", "chat-compact"]);
+        matches[0].Title.ShouldBe("compact");
+        matches[0].Highlights.ShouldBe([0, 1, 2, 4]);
+        matches[1].Alias.ShouldBeNull();
     }
 
     private static SkillDefinition Skill(string id, string name, string description = "Description",

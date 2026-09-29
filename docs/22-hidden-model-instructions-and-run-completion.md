@@ -52,7 +52,18 @@ complete the run: the agent adds a transient hidden correction and asks the mode
 an ordinary tool or call `app_finish_run`. The user never saw the provisional prose, so the correction
 and the protocol tell the model to put its answer in full into `finalAnswer` and never to refer back to
 earlier text; an earlier wording ("do not repeat the text") led models to publish "see the previous
-answer" pointing at nothing. The first correction still offers ordinary tools; later
+answer" pointing at nothing. The correction leads with finishing: a wording that offered "call an
+ordinary tool to continue" first read as a request for more work, and models that had finished redid
+their last steps or loaded the playbook they had just completed and started it over. If the model
+does continue with an ordinary tool, the held-back prose becomes that call's preamble and is published
+with it, so a report rendered before a follow-up question is not lost. To finish with that text,
+the model passes `includePreviousText: true`; the held-back text is published as written and a
+non-empty `finalAnswer` is appended after it. A playbook ending "finish with one line: report
+printed" had models publish only that line and drop the report, so the correction asks for this flag
+instead of a retyped answer, and the playbook result says a requested closing line never replaces
+what the instructions had the model show. `app_run_skill` also returns
+`Skipped` without instructions when the same playbook with the same arguments was already loaded in
+the run. The first correction still offers ordinary tools; later
 corrections offer only `app_finish_run`. Three consecutive invalid decisions fail the run. If an
 OpenAI-compatible endpoint never emits the control call, its latest prose is published after three
 corrections rather than discarded. The same prose is the fallback after repeated empty responses.

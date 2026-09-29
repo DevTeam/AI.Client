@@ -260,10 +260,15 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     continuedAnswer.Clear();
                     instructions.Upsert(run, new ModelInstruction("run.completion-required",
                         // The user never saw that text, so a finalAnswer that points back at it
-                        // ("see above") would publish a reference to nothing.
-                        $"Your previous text was provisional and was not shown to the user. Call an ordinary tool to continue, "
-                        + $"or {completionProtocol.Tool.ModelDefinition.Name} to finish. Do not repeat it as plain text; "
-                        + "if it is your answer, put it in full into finalAnswer, never a reference to it.",
+                        // ("see above") would publish a reference to nothing. Offering "continue" first
+                        // read as a request for more work: models that had finished redid their last
+                        // steps, or loaded the skill they had just completed and started it over.
+                        $"Your previous message ended without a tool call, so it has not been published yet. If it answers "
+                        + $"the request, call {completionProtocol.Tool.ModelDefinition.Name} with status complete and "
+                        + "includePreviousText true to publish it as written; finalAnswer then adds only a closing line, if any. "
+                        + "Do not retype it or replace it with a summary or a reference. Call an ordinary tool "
+                        + "only if the request still needs work, and continue from the last step you finished: do not redo "
+                        + "finished steps or start a skill over.",
                         950, ModelInstructionLifetime.UntilAcknowledged));
                     continue;
                 }
@@ -293,6 +298,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 try
                 {
                     decision = completionProtocol.Parse(completionCalls[0].Arguments);
+                    if (decision is { IncludePreviousText: true, FinalAnswer.Length: 0 } && provisionalAnswer is not { Length: > 0 })
+                        throw new ArgumentException("There is no unpublished previous text to include. Put the answer in finalAnswer.");
                 }
                 catch (Exception error) when (error is ArgumentException or JsonException)
                 {
@@ -310,18 +317,34 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     continue;
                 }
                 missingCompletion = 0;
-                return await FinishAsync(decision.FinalAnswer);
+                // A playbook that ends "finish with one line" had the model publish that line and
+                // drop the report it had just written as plain text. Including the held-back text
+                // publishes it as it was, without asking the model to retype a long answer.
+                return await FinishAsync(decision is { IncludePreviousText: true } && provisionalAnswer is { Length: > 0 } unpublished
+                    ? decision.FinalAnswer.Length == 0 || unpublished.Contains(decision.FinalAnswer, StringComparison.Ordinal)
+                        ? unpublished
+                        : $"{unpublished}\n\n{decision.FinalAnswer}"
+                    : decision.FinalAnswer);
             }
 
             completionRequired = true;
             missingCompletion = 0;
             invalidCompletion = false;
-            // Prose written before new work began no longer describes where the work stands.
+            // Held-back prose followed by more work is that work's preamble, and is published with
+            // it. Dropping it lost whole reports: a playbook that renders a report and then asks
+            // whether to save it went on to say "the report is above" about text nobody saw.
+            var preamble = content.ToString();
+            if (provisionalAnswer is { Length: > 0 } heldBack
+                && context is [.., { Role: "assistant", ToolCalls: null } last] && last.Content == heldBack)
+            {
+                context.RemoveAt(context.Count - 1);
+                preamble = preamble.Length == 0 ? heldBack : $"{heldBack}\n\n{preamble}";
+            }
             provisionalAnswer = null;
             continuedAnswer.Clear();
             if (calls.Any(call => !seenIds.Add(call.Id)))
                 throw new InvalidOperationException("Duplicate tool call IDs or excessive calls.");
-            var assistant = new ChatCompletionMessage("assistant", content.ToString(), calls.ToArray());
+            var assistant = new ChatCompletionMessage("assistant", preamble, calls.ToArray());
             // Cleared first so the publication that carries the preamble also drops its draft:
             // the text changes owner without a frame showing it twice or not at all.
             await Draft(null);

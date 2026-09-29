@@ -40,8 +40,24 @@ public sealed class AppSkillRunTool(ISkillRunner runner, IToolCatalogRegistry ca
             // A playbook's steps need the tools it declares; pinning them here saves the model a
             // tool_search before it can take the first step. Permissions are unaffected.
             if (result.Output is { ValueKind: JsonValueKind.Object } output && output.TryGetProperty("kind", out var kind)
-                && kind.GetString() == SkillKinds.Playbook && output.TryGetProperty("tools", out var tools))
-                catalog.Pin(run, tools.EnumerateArray().Select(tool => tool.GetString() ?? string.Empty));
+                && kind.GetString() == SkillKinds.Playbook)
+            {
+                // A model that has just followed a playbook to its last step sometimes loads it
+                // again and starts over, asking the user the same questions a second time. The
+                // instructions are already in its context, so the repeat gets none.
+                var arguments = output.TryGetProperty("arguments", out var given) ? given.GetRawText() : string.Empty;
+                if (!catalog.TryRecordPlaybook(run, result.SkillId, arguments))
+                    return reply.Reply(result with
+                    {
+                        Status = "Skipped",
+                        Message = "This playbook was already loaded in this turn with the same parameters; its instructions "
+                                  + "are in the earlier result. Do not start it over or repeat questions already answered: "
+                                  + "continue from the last step you finished, or call app_finish_run if every step is done.",
+                        Output = null
+                    }, false);
+                if (output.TryGetProperty("tools", out var tools))
+                    catalog.Pin(run, tools.EnumerateArray().Select(tool => tool.GetString() ?? string.Empty));
+            }
             return reply.Reply(result, result.Status is "Failed" or "Cancelled");
         }
     }

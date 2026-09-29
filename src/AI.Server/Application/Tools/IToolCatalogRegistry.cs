@@ -12,6 +12,12 @@ public interface IToolCatalogRegistry
     /// are in the next model step's schema. Returns the full names that were pinned.
     /// </summary>
     IReadOnlyList<string> Pin(ToolRunContext run, IEnumerable<string> names);
+
+    /// <summary>
+    /// Records that the run was handed this playbook with these arguments. False when it already
+    /// was: the model has its instructions and is starting the same work over.
+    /// </summary>
+    bool TryRecordPlaybook(ToolRunContext run, string skillId, string arguments);
 }
 
 public sealed record ToolCatalogMatch(string Name, string Description, string ServerId);

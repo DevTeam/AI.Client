@@ -155,7 +155,8 @@ export function hideReviewSubmenus() {
 export function watchDrawerDismiss(dotNetReference) {
     const handler = event => {
         if (event.button !== 0) return;
-        const drawer = document.querySelector(".permissions-drawer, .review-workspace");
+        // Not one that is only sliding out (drawerTransitions.js): it is closed already.
+        const drawer = document.querySelector(".permissions-drawer:not(.is-leaving), .review-workspace:not(.is-leaving)");
         const target = event.target instanceof Element ? event.target : null;
         if (!drawer || !target || target.closest(".permissions-drawer, .review-workspace, .settings-transfer-backdrop, .sidebar-global-nav, .toast-region, .history-notifications-button")) return;
         // Same reason as on Escape: commit the focused field before the settings drawer saves.

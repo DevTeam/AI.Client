@@ -22,7 +22,7 @@
             {
                 <span class="review-workspace-delete-confirm">Delete this review?</span>
                 <button class="review-workspace-delete-yes" type="button" @onclick="DeleteAsync">Delete</button>
-                <button class="review-workspace-delete-cancel" type="button" @onclick="() => _confirmingDelete = false">Cancel</button>
+                <button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="() => _confirmingDelete = false"><AppIcon Name="x" /></button>
             }
             else
             {

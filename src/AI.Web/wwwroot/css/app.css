@@ -5195,8 +5195,11 @@ textarea {
 .review-workspace-delete-confirm { color: var(--color-text-secondary); font-size: .76rem; white-space: nowrap; }
 .review-workspace-delete-yes { padding: .2rem .45rem; border: 0; border-radius: calc(.3rem * var(--corner-scale)); background: var(--color-danger-bg-hover); color: var(--color-danger-text); font-size: .76rem; cursor: pointer; }
 .review-workspace-delete-yes:hover { background: var(--color-danger-bg-active); }
-.review-workspace-delete-cancel { padding: .2rem .45rem; border: 0; border-radius: calc(.3rem * var(--corner-scale)); background: transparent; color: var(--color-text-muted); font-size: .76rem; cursor: pointer; }
-.review-workspace-delete-cancel:hover, .review-workspace-delete-cancel:focus-visible { background: var(--color-fill-active); color: var(--color-text-strong); }
+/* Backing out of an in-place confirmation: a quiet cross after the action, like the review menu's. */
+.confirm-cancel { display: grid; place-items: center; flex: 0 0 1.7rem; width: 1.7rem; height: 1.7rem; margin: 0; padding: 0; border: 0; border-radius: calc(.3rem * var(--corner-scale)); background: transparent; color: var(--color-text-muted); cursor: pointer; }
+.confirm-cancel:hover:not(:disabled), .confirm-cancel:focus-visible { background: var(--color-fill-active); color: var(--color-text-strong); }
+.confirm-cancel .app-icon { width: .9rem; height: .9rem; }
+.tool-approval-global-confirm > div .confirm-cancel { display: grid; align-self: center; width: 1.7rem; padding: 0; }
 .review-workspace-delete:hover, .review-workspace-delete:focus-visible { color: var(--color-danger-text); background: var(--color-danger-bg-hover); }
 .review-workspace-header .review-close { margin-left: auto; }
 .review-error { margin: .35rem 1rem; padding: .5rem .65rem; border: 1px solid var(--color-danger-border); border-radius: calc(.45rem * var(--corner-scale)); color: var(--color-danger-text); }

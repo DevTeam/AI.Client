@@ -37,7 +37,7 @@
                             <button type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.AllowForProject)"><strong>Allow for this project</strong><span>Use in every chat in this project</span></button>
                             @if (_confirmGlobal)
                             {
-                                <div class="tool-approval-global-confirm"><span>Allow <code>@Approval.Name</code> in every project?</span><div><button class="secondary-action" type="button" @onclick="CancelGlobalApproval">Cancel</button><button type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.AllowGlobally)">Always allow</button></div></div>
+                                <div class="tool-approval-global-confirm"><span>Allow <code>@Approval.Name</code> in every project?</span><div><button type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.AllowGlobally)">Always allow</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="CancelGlobalApproval"><AppIcon Name="x" /></button></div></div>
                             }
                             else
                             {

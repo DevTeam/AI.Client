@@ -5028,7 +5028,8 @@ textarea {
 }
 
 .directory-picker-item:hover,
-.directory-picker-item:focus-visible { background: var(--color-fill); }
+.directory-picker-item:focus-visible,
+.directory-picker-item.highlighted { background: var(--color-fill); }
 
 /* The icon keeps its size and the name gives way: a long file name is ellipsised rather than
    pushing the row wider than the list it sits in. */

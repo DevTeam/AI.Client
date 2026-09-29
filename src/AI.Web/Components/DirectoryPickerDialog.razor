@@ -1,13 +1,14 @@
 @using AI.Web.FileSystem
 @inject IDirectoryPickerState Picker
-@implements IDisposable
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
 
 @* Picking, not typing: the host walks its own file system for us because the browser cannot name
    an absolute path. The path box stays anyway — pasting a path is faster than clicking down to it,
    and it is the only way in when the list is long or the thing is not there yet. *@
 <div class="modal-backdrop" @onclick="CancelAsync">
     <section class="directory-picker-modal" role="dialog" aria-modal="true" aria-labelledby="directory-picker-title"
-             @onclick:stopPropagation="true" @onkeydown="OnKeyDownAsync">
+             @ref="_dialog" @onclick:stopPropagation="true">
         <header>
             <div><strong id="directory-picker-title">@Title</strong><span>@Subtitle</span></div>
             <button class="icon-action" type="button" title="Close" aria-label="Close picker" @onclick="CancelAsync"><AppIcon Name="x" /></button>
@@ -15,7 +16,7 @@
         <div class="directory-picker-toolbar">
             <button class="icon-action" type="button" title="Up one level" aria-label="Up one level" disabled="@(!Picker.CanGoUp || Picker.IsLoading)" @onclick="GoUpAsync"><AppIcon Name="arrow-up" /></button>
             <input class="directory-picker-path" @ref="_pathInput" value="@Picker.PathText" aria-label="@PathLabel" placeholder="Type or paste a path"
-                   @oninput="e => Picker.SetPathText(e.Value?.ToString() ?? string.Empty)" @onkeydown="OnPathKeyDownAsync" />
+                   @oninput="OnPathInput" />
             <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" @onclick="GoToTypedPathAsync">Go</button>
         </div>
         <div class="directory-picker-body">
@@ -30,7 +31,7 @@
             else
             {
                 <input class="directory-picker-filter" type="search" value="@Picker.Filter" aria-label="@FilterLabel" placeholder="Filter"
-                       @oninput="e => Picker.SetFilter(e.Value?.ToString() ?? string.Empty)" @onkeydown="OnFilterKeyDownAsync" />
+                       @oninput="OnFilterInput" />
                 @if (Picker.IsLoading && Picker.Listing is null)
                 {
                     <p class="empty-hint">Loading…</p>
@@ -41,11 +42,13 @@
                 }
                 else
                 {
-                    <ul class="directory-picker-list">
+                    var highlighted = HighlightedPath();
+                    <ul class="directory-picker-list" role="listbox" aria-label="@FilterLabel">
                         @foreach (var entry in Picker.VisibleDirectories)
                         {
                             <li>
-                                <button type="button" class="directory-picker-item" title="@entry.FullPath" @onclick="() => NavigateAsync(entry.FullPath)">
+                                <button type="button" class="directory-picker-item @(entry.FullPath == highlighted ? "highlighted" : null)" title="@entry.FullPath"
+                                        @onclick="() => NavigateAsync(entry.FullPath)">
                                     <AppIcon Name="folder" /><span>@entry.Name</span>
                                 </button>
                             </li>
@@ -55,7 +58,7 @@
                         @foreach (var entry in Picker.VisibleFiles)
                         {
                             <li>
-                                <button type="button" class="directory-picker-item directory-picker-file @(Picker.SelectedFile == entry.FullPath ? "selected" : null)"
+                                <button type="button" class="directory-picker-item directory-picker-file @(Picker.SelectedFile == entry.FullPath ? "selected" : null) @(entry.FullPath == highlighted ? "highlighted" : null)"
                                         title="@entry.FullPath" aria-pressed="@(Picker.SelectedFile == entry.FullPath)" @onclick="() => SelectFile(entry.FullPath)">
                                     <AppIcon Name="file" /><span>@entry.Name</span>
                                 </button>
@@ -91,7 +94,15 @@
 
     private readonly CancellationTokenSource _cancellation = new();
     private ElementReference _pathInput;
+    private ElementReference _dialog;
     private bool _focusPending = true;
+    private IJSObjectReference? _keys;
+    private DotNetObjectReference<DirectoryPickerDialog>? _self;
+    // The row the arrows moved to, by path so it survives a re-render; null is none. A row that is
+    // no longer listed — the filter changed, a folder opened — is not highlighted any more.
+    private string? _highlight;
+    private bool _scrollHighlight;
+    private bool _focusFilter;
 
     private bool IsFileMode => Mode == DirectoryPickerMode.File;
     private string Title => IsFileMode ? "Select file" : "Select directory";
@@ -107,17 +118,123 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!_focusPending) return;
-        _focusPending = false;
-        // The path box takes focus so a pasted path works without reaching for the mouse, and so
-        // Escape reaches the dialog's own key handler rather than the page behind it.
-        try { await _pathInput.FocusAsync(); }
-        catch (JSException) { /* The dialog closed before the browser got to it. */ }
+        try
+        {
+            if (firstRender)
+            {
+                _self = DotNetObjectReference.Create(this);
+                var module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/directoryPicker.js");
+                _keys = await module.InvokeAsync<IJSObjectReference>("attach", _dialog, _self);
+            }
+            if (_focusPending)
+            {
+                _focusPending = false;
+                // The path box takes focus so a pasted path works without reaching for the mouse.
+                await _pathInput.FocusAsync();
+            }
+            if (_keys is null) return;
+            if (_focusFilter) { _focusFilter = false; await _keys.InvokeVoidAsync("focusFilter"); }
+            if (_scrollHighlight) { _scrollHighlight = false; await _keys.InvokeVoidAsync("scrollHighlightIntoView"); }
+        }
+        catch (Exception error) when (error is JSException or JSDisconnectedException or TaskCanceledException)
+        {
+            // The dialog closed before the browser got to it.
+        }
+    }
+
+    /// <summary>
+    /// Every key the picker answers, wherever the focus is while it is open (see directoryPicker.js).
+    /// Up and Down move the highlight through folders then files; Enter opens the highlighted folder
+    /// or takes the highlighted file, and without a highlight goes to the typed path or selects;
+    /// Alt+Up goes up a level; Escape closes.
+    /// </summary>
+    [JSInvokable]
+    public async Task OnPickerKey(string key, string source, string? rowPath)
+    {
+        switch (key)
+        {
+            case "Escape":
+                await CancelAsync();
+                return;
+            case "Up":
+                if (Picker.CanGoUp && !Picker.IsLoading) await GoUpAsync();
+                return;
+            case "ArrowUp" or "ArrowDown":
+                MoveHighlight(key == "ArrowDown" ? 1 : -1);
+                StateHasChanged();
+                return;
+            case "Enter":
+                await EnterAsync(source, rowPath);
+                return;
+        }
+    }
+
+    private IReadOnlyList<string> Rows() =>
+        Picker.VisibleDirectories.Concat(Picker.VisibleFiles).Select(entry => entry.FullPath).ToArray();
+
+    /// <summary>The row that answers Enter: the one the arrows chose, or while filtering, the first match.</summary>
+    private string? HighlightedPath()
+    {
+        var rows = Rows();
+        if (_highlight is { } chosen && rows.Contains(chosen)) return chosen;
+        return Picker.Filter.Length > 0 ? rows.FirstOrDefault() : null;
+    }
+
+    private void MoveHighlight(int direction)
+    {
+        var rows = Rows();
+        if (rows.Count == 0) return;
+        var index = HighlightedPath() is { } current ? rows.ToList().IndexOf(current) : -1;
+        index = index < 0 ? (direction > 0 ? 0 : rows.Count - 1) : (index + direction + rows.Count) % rows.Count;
+        _highlight = rows[index];
+        _scrollHighlight = true;
+    }
+
+    private async Task EnterAsync(string source, string? rowPath)
+    {
+        // A row chosen with the arrows wins over the path box; typing a path clears that choice.
+        var chosen = _highlight is { } path && Rows().Contains(path) ? path : null;
+        var row = source == "row" ? rowPath : chosen ?? (source == "path" ? null : HighlightedPath());
+        if (row is not null)
+        {
+            if (Picker.VisibleDirectories.Any(entry => entry.FullPath == row)) { await NavigateAsync(row); return; }
+            if (Picker.VisibleFiles.Any(entry => entry.FullPath == row))
+            {
+                SelectFile(row);
+                await SelectAsync();
+                return;
+            }
+        }
+        // In the path box Enter first honours what was typed there — a pasted path is a
+        // destination, not a choice — and the Enter after that, with the box now naming what is
+        // picked, selects it.
+        if (source == "path" && !Picker.PathTextNamesSelection) await GoToTypedPathAsync();
+        else await SelectAsync();
+    }
+
+    private void OnPathInput(ChangeEventArgs args)
+    {
+        Picker.SetPathText(args.Value?.ToString() ?? string.Empty);
+        _highlight = null;
+    }
+
+    private void OnFilterInput(ChangeEventArgs args)
+    {
+        Picker.SetFilter(args.Value?.ToString() ?? string.Empty);
+        _scrollHighlight = true;
     }
 
     private async Task NavigateAsync(string path)
     {
         await Picker.NavigateAsync(path, _cancellation.Token);
+        OnLevelChanged();
+    }
+
+    /// <summary>A new level: nothing is highlighted yet, and the filter has the focus the gone row had.</summary>
+    private void OnLevelChanged()
+    {
+        _highlight = null;
+        _focusFilter = true;
         StateHasChanged();
     }
 
@@ -126,12 +243,13 @@
     private async Task GoUpAsync()
     {
         await Picker.GoUpAsync(_cancellation.Token);
-        StateHasChanged();
+        OnLevelChanged();
     }
 
     private async Task GoToTypedPathAsync()
     {
         await Picker.GoToTypedPathAsync(_cancellation.Token);
+        _highlight = null;
         StateHasChanged();
     }
 
@@ -139,34 +257,22 @@
 
     private Task CancelAsync() => Cancelled.InvokeAsync();
 
-    /// <summary>
-    /// Enter takes the path; Escape drops the whole thing. In the path box Enter first has to
-    /// honour what was typed there — a pasted path is a destination, not a choice — so it goes
-    /// there, and the Enter after that, with the box now naming what is picked, selects it.
-    /// </summary>
-    private async Task OnPathKeyDownAsync(KeyboardEventArgs args)
-    {
-        if (args.Key != "Enter") return;
-        if (Picker.PathTextNamesSelection) await SelectAsync();
-        else await GoToTypedPathAsync();
-    }
-
-    private async Task OnFilterKeyDownAsync(KeyboardEventArgs args)
-    {
-        if (args.Key == "Enter") await SelectAsync();
-    }
-
-    // Enter on a row in the list is that button's own click — it opens the folder, or picks the
-    // file. Only Escape is handled for the dialog as a whole, so the two never fire for one
-    // keystroke.
-    private async Task OnKeyDownAsync(KeyboardEventArgs args)
-    {
-        if (args.Key == "Escape") await CancelAsync();
-    }
-
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _cancellation.Cancel();
         _cancellation.Dispose();
+        if (_keys is not null)
+        {
+            try
+            {
+                await _keys.InvokeVoidAsync("dispose");
+                await _keys.DisposeAsync();
+            }
+            catch (Exception error) when (error is JSException or JSDisconnectedException)
+            {
+                // The page is going away with the dialog; its listener goes with it.
+            }
+        }
+        _self?.Dispose();
     }
 }

@@ -111,7 +111,6 @@ The goal of the interface is a compact desktop workspace, visually and behaviora
 - The full branch switcher and message action toolbar.
 - MCP template library, approvals, and grouped tool timeline.
 - FileSystem MCP changes/diff and native folder pickers.
-- The full lazy build of highlight.js.
 - Search, export, and attachments.
 
 ## Implementation order

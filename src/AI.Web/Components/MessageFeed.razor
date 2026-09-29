@@ -571,6 +571,8 @@
     private IJSObjectReference? _mermaidBlocksHandle;
     private IJSObjectReference? _svgBlocksModule;
     private IJSObjectReference? _svgBlocksHandle;
+    private IJSObjectReference? _codeHighlightModule;
+    private IJSObjectReference? _codeHighlightHandle;
     private IJSObjectReference? _fileLinksModule;
     private IJSObjectReference? _fileLinksHandle;
     // The project the file-link module's cache belongs to; a switch empties it.
@@ -666,6 +668,7 @@
                 _messageScrollModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/messageScroll.js");
                 _mermaidBlocksModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/mermaidBlocks.js");
                 _svgBlocksModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/svgBlocks.js");
+                _codeHighlightModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/codeHighlight.js");
                 _fileLinksModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/fileLinks.js");
                 // The scroller element is part of this component's fixed markup, so it outlives
                 // every chat switch — one attach for the lifetime of the feed.
@@ -676,6 +679,7 @@
                 // shows diagrams without requiring the user to scroll to the bottom.
                 _mermaidBlocksHandle = await _mermaidBlocksModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer);
                 _svgBlocksHandle = await _svgBlocksModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer);
+                _codeHighlightHandle = await _codeHighlightModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer);
                 _fileLinksHandle = await _fileLinksModule.InvokeAsync<IJSObjectReference>("attach", _messagesContainer, _selfReference);
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException)
@@ -683,6 +687,7 @@
                 _historyMarkersModule = null;
                 _mermaidBlocksModule = null;
                 _svgBlocksModule = null;
+                _codeHighlightModule = null;
                 _fileLinksModule = null;
             }
         }
@@ -1832,6 +1837,8 @@
         var mermaidBlocksHandle = _mermaidBlocksHandle;
         var svgBlocksModule = _svgBlocksModule;
         var svgBlocksHandle = _svgBlocksHandle;
+        var codeHighlightModule = _codeHighlightModule;
+        var codeHighlightHandle = _codeHighlightHandle;
         var fileLinksModule = _fileLinksModule;
         var fileLinksHandle = _fileLinksHandle;
         _historyMarkersModule = null;
@@ -1842,6 +1849,8 @@
         _mermaidBlocksHandle = null;
         _svgBlocksModule = null;
         _svgBlocksHandle = null;
+        _codeHighlightModule = null;
+        _codeHighlightHandle = null;
         _fileLinksModule = null;
         _fileLinksHandle = null;
         try
@@ -1864,6 +1873,11 @@
                 await svgBlocksHandle.InvokeVoidAsync("dispose");
                 await svgBlocksHandle.DisposeAsync();
             }
+            if (codeHighlightHandle is not null)
+            {
+                await codeHighlightHandle.InvokeVoidAsync("dispose");
+                await codeHighlightHandle.DisposeAsync();
+            }
             if (fileLinksHandle is not null)
             {
                 await fileLinksHandle.InvokeVoidAsync("dispose");
@@ -1874,6 +1888,7 @@
             if (messageScrollModule is not null) await messageScrollModule.DisposeAsync();
             if (mermaidBlocksModule is not null) await mermaidBlocksModule.DisposeAsync();
             if (svgBlocksModule is not null) await svgBlocksModule.DisposeAsync();
+            if (codeHighlightModule is not null) await codeHighlightModule.DisposeAsync();
             if (fileLinksModule is not null) await fileLinksModule.DisposeAsync();
         }
         catch (Exception error) when (error is JSException or ObjectDisposedException)

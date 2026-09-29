@@ -47,7 +47,8 @@ public sealed class StandingInstructions(
     /// </summary>
     private const string RenderingGuide =
         "\nYour answers are rendered as Markdown: headings, lists, tables, task lists and fenced code work, while raw HTML "
-        + "is shown as literal text, so use Markdown instead of HTML tags.\n"
+        + "is shown as literal text, so use Markdown instead of HTML tags. Specify the language after the opening fence "
+        + "for code blocks (for example, ```csharp).\n"
         + "- Link files and directories: whenever you mention paths you have read or listed, write them as links to their "
         + "absolute path as a file URI instead of bare code spans, for example [`Program.cs`](file:///C:/repo/src/Program.cs) "
         + "or [`src`](file:///C:/repo/src/), with spaces encoded as %20. The user can add a linked path to their next message.\n"

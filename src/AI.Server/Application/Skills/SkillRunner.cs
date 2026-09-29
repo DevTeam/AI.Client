@@ -115,7 +115,9 @@ public sealed class SkillRunner(ISkillCatalog catalog, ChatRenameSkill chatRenam
             "Loaded the playbook. Follow output.instructions now, in this turn, with your ordinary tools; "
             + "output.context holds the current project, chat and branch ids, so do not look them up. Write every "
             + "question, option label, title and answer in the user's language: quoted labels in the instructions, "
-            + "including the \"(Recommended)\" suffix, are examples to translate.",
+            + "including the \"(Recommended)\" suffix, are examples to translate. Anything the instructions have you "
+            + "show the user, such as a report, is part of your final answer; a closing line they ask for goes after "
+            + "it and never replaces it.",
             invocation.CurrentChatId, Output: output);
     }
 }

@@ -42,6 +42,22 @@ public sealed class ToolCatalogRegistryTests
         registry.GetPinned(run).ShouldNotContain("mcp_app__app_runs");
     }
 
+    [Fact]
+    public void ShouldRecordEachPlaybookOncePerRunAndArguments()
+    {
+        var registry = new ToolCatalogRegistry();
+        var run = new ToolRunContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), true);
+        using (registry.Begin(run))
+        {
+            registry.TryRecordPlaybook(run, "directory-analyze", "{}").ShouldBeTrue();
+            registry.TryRecordPlaybook(run, "directory-analyze", "{}").ShouldBeFalse();
+            registry.TryRecordPlaybook(run, "directory-analyze", """{"path":"D:\\Other"}""").ShouldBeTrue();
+        }
+
+        using (registry.Begin(run))
+            registry.TryRecordPlaybook(run, "directory-analyze", "{}").ShouldBeTrue();
+    }
+
     private static AgentTool Tool(string name, string description)
     {
         var schema = JsonDocument.Parse("{}" ).RootElement.Clone();

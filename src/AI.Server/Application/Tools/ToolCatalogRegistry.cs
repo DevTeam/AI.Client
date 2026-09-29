@@ -57,6 +57,9 @@ public sealed class ToolCatalogRegistry : IToolCatalogRegistry
         return pinned;
     }
 
+    public bool TryRecordPlaybook(ToolRunContext run, string skillId, string arguments) =>
+        !_entries.TryGetValue(Key.Of(run), out var entry) || entry.Playbooks.TryAdd((skillId, arguments), 0);
+
     private static string Short(string value) => value.Length <= 240 ? value : value[..240] + "…";
 
     private readonly record struct Key(Guid ProjectId, Guid ChatId, Guid BranchId)
@@ -68,6 +71,7 @@ public sealed class ToolCatalogRegistry : IToolCatalogRegistry
     {
         public IReadOnlyList<AgentTool> Tools { get; set; } = [];
         public ConcurrentDictionary<string, byte> Pinned { get; } = new(StringComparer.Ordinal);
+        public ConcurrentDictionary<(string SkillId, string Arguments), byte> Playbooks { get; } = new();
     }
 
     private sealed class Scope(Action dispose) : IDisposable

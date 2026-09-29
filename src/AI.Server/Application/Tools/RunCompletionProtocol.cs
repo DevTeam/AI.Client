@@ -35,9 +35,12 @@ public sealed class RunCompletionProtocol : IRunCompletionProtocol
             "blocked" => RunCompletionStatus.Blocked,
             _ => throw new ArgumentException("Completion status must be complete or blocked. Call an ordinary tool to continue working.")
         };
+        var includePrevious = root.TryGetProperty("includePreviousText", out var include)
+            && include.ValueKind == JsonValueKind.True;
         var answer = OptionalString(root, "finalAnswer")
-            ?? throw new ArgumentException("A completion decision requires a user-facing finalAnswer.");
-        return new RunCompletionDecision(status, answer);
+            ?? (includePrevious ? string.Empty
+                : throw new ArgumentException("A completion decision requires a user-facing finalAnswer."));
+        return new RunCompletionDecision(status, answer, includePrevious);
     }
 
     public string RejectResult(string reason) => JsonSerializer.Serialize(new
@@ -64,7 +67,8 @@ public sealed class RunCompletionProtocol : IRunCompletionProtocol
           "type": "object",
           "properties": {
             "status": { "type": "string", "enum": ["complete", "blocked"] },
-            "finalAnswer": { "type": "string", "description": "The complete user-facing answer in Markdown; the only answer text the user sees, so never refer to earlier text. For blocked, explain the limitation and any partial result." }
+            "finalAnswer": { "type": "string", "description": "The complete user-facing answer in Markdown; the only answer text the user sees, so never refer to earlier text. For blocked, explain the limitation and any partial result." },
+            "includePreviousText": { "type": "boolean", "description": "true publishes your previous unpublished plain-text message as the answer, so a long answer need not be retyped; finalAnswer is then optional and is appended after it." }
           },
           "required": ["status", "finalAnswer"],
           "additionalProperties": false

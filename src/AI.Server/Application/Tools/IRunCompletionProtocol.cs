@@ -6,9 +6,14 @@ public enum RunCompletionStatus
     Blocked
 }
 
+/// <param name="IncludePreviousText">
+/// Publish the model's last unpublished message as the answer, followed by <paramref name="FinalAnswer"/>
+/// when it adds anything. Lets a long answer written as plain text be published without being retyped.
+/// </param>
 public sealed record RunCompletionDecision(
     RunCompletionStatus Status,
-    string FinalAnswer);
+    string FinalAnswer,
+    bool IncludePreviousText = false);
 
 /// <summary>
 /// Model-facing definition-of-done protocol. It is an application control tool, not an MCP side

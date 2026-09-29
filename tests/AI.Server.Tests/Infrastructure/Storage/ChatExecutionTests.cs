@@ -135,7 +135,7 @@ public sealed class ChatExecutionTests
         var generating = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Generating);
         generating.StreamingContent.ShouldBeEmpty();
         corrective.Request.ContextMessages!.Where(message => message.Role == "system")
-            .ShouldContain(message => message.Content.Contains("was not published", StringComparison.Ordinal));
+            .ShouldContain(message => message.Content.Contains("was not shown to the user", StringComparison.Ordinal));
         corrective.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
             {"status":"complete","finalAnswer":"Done and verified.","completed":["Changed and verified the file"],"evidence":["Command succeeded"],"remaining":[]}
             """)];
@@ -145,7 +145,7 @@ public sealed class ChatExecutionTests
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
             .ShouldHaveSingleItem().Content.ShouldBe("Done and verified.");
-        chat.Messages.ShouldNotContain(message => message.Content.Contains("was not published", StringComparison.Ordinal));
+        chat.Messages.ShouldNotContain(message => message.Content.Contains("was not shown to the user", StringComparison.Ordinal));
         chat.Messages.ShouldNotContain(message => message.Content == "I will now verify the result.");
     }
 

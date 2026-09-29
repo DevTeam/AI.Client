@@ -49,7 +49,10 @@ reliably. Its answer reports partial work, if any, and the limitation.
 
 After the run has used a normal tool, ordinary model prose is provisional. A plain response cannot
 complete the run: the agent adds a transient hidden correction and asks the model to continue with
-an ordinary tool or call `app_finish_run`. The first correction still offers ordinary tools; later
+an ordinary tool or call `app_finish_run`. The user never saw the provisional prose, so the correction
+and the protocol tell the model to put its answer in full into `finalAnswer` and never to refer back to
+earlier text; an earlier wording ("do not repeat the text") led models to publish "see the previous
+answer" pointing at nothing. The first correction still offers ordinary tools; later
 corrections offer only `app_finish_run`. Three consecutive invalid decisions fail the run. If an
 OpenAI-compatible endpoint never emits the control call, its latest prose is published after three
 corrections rather than discarded. The same prose is the fallback after repeated empty responses.

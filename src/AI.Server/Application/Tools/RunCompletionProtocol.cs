@@ -64,7 +64,7 @@ public sealed class RunCompletionProtocol : IRunCompletionProtocol
           "type": "object",
           "properties": {
             "status": { "type": "string", "enum": ["complete", "blocked"] },
-            "finalAnswer": { "type": "string", "description": "User-facing answer in Markdown. For blocked, explain the limitation and any partial result." }
+            "finalAnswer": { "type": "string", "description": "The complete user-facing answer in Markdown; the only answer text the user sees, so never refer to earlier text. For blocked, explain the limitation and any partial result." }
           },
           "required": ["status", "finalAnswer"],
           "additionalProperties": false

@@ -81,7 +81,7 @@ else if (ClientMode.PublicWeb && _stage != Stage.Ready)
                 @if (_stage != Stage.OtherApp)
                 {
                     <details class="host-gate-more">
-                        <summary>Other platforms</summary>
+                        <summary><AppIcon Name="chevron-right" /><span>Other platforms</span></summary>
                         <ul>
                             @foreach (var runtime in Runtimes)
                             {

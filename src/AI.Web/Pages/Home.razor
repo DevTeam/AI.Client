@@ -17,6 +17,7 @@
 @inject IWorkspaceStateService WorkspaceStateService
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject AI.Web.Memory.IMemoryApi MemoryApi
+@inject AI.Web.Skills.ISkillApi SkillApi
 @inject IChatRunsApi ChatRunsApi
 @inject IRunStateService RunState
 @inject IChatComposerService Composer
@@ -334,7 +335,7 @@
             <button class="workspace-nav-item @(_globalSection == "Connections" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Connections")'><AppIcon Name="connection" /><span>Connections</span><span class="directory-count">@_connections.Count(item => item.Enabled)</span></button>
             <button class="workspace-nav-item @(_globalSection == "MCP" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("MCP")'><AppIcon Name="mcp" /><span>MCP</span><span class="directory-count">@_enabledMcpServerCount</span></button>
             <button class="workspace-nav-item @(_globalSection == "Memory" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Memory")'><AppIcon Name="memory" /><span>Memory</span><span class="directory-count">@_userMemoryCount</span></button>
-            <button class="workspace-nav-item @(_globalSection == "Skills" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Skills")'><AppIcon Name="skill" /><span>Skills</span></button>
+            <button class="workspace-nav-item @(_globalSection == "Skills" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Skills")'><AppIcon Name="skill" /><span>Skills</span><span class="directory-count">@_skillCount</span></button>
             <button class="workspace-nav-item @(_globalSection == "Settings" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Settings")'><AppIcon Name="settings" /><span>Settings</span>@if (ClientMode.PublicWeb)
                 {
                     @* The only place the published app shows its link to the Host; details and
@@ -543,6 +544,14 @@
                     <span class="menu-count">@_projectMemoryCount</span>
                 }
             </button>
+            <button type="button" role="menuitem" @onclick='() => OpenGlobalSection("ProjectSkills")'>
+                <AppIcon Name="skill" />
+                <span>Skills</span>
+                @if (_projectSkillCount > 0)
+                {
+                    <span class="menu-count">@_projectSkillCount</span>
+                }
+            </button>
             <button type="button" role="menuitem" @onclick="OpenProjectPermissions">
                 <AppIcon Name="tool" />
                 <span>Tool permissions</span>
@@ -642,7 +651,7 @@
 
 @if (_globalSection is not null)
 {
-    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "Skills" ? _selectedProject?.Id : null)" Section="@_globalSection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" ContextWindowUsageChanged="value => _showContextWindowUsage = value" />
+    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" ContextWindowUsageChanged="value => _showContextWindowUsage = value" />
 }
 
 @if (_permissionsScope is not null && _selectedProject is not null)
@@ -752,7 +761,9 @@
     private readonly List<ConnectionSettings> _connections = [];
     private int _enabledMcpServerCount;
     private int _userMemoryCount;
+    private int _skillCount;
     private int _projectMemoryCount;
+    private int _projectSkillCount;
     private ProjectEditor _editor = new();
     private ProjectSecurityEditor _security = new();
     private bool _directoriesExpanded;
@@ -3201,7 +3212,7 @@
             await SelectProjectAsync(project, restoreLastChat: false);
         }
 
-        if (!_isProjectMenuOpen) await LoadProjectMemoryCountAsync();
+        if (!_isProjectMenuOpen) await LoadProjectCountsAsync();
         ToggleProjectMenu();
     }
 
@@ -3384,7 +3395,7 @@
         {
             await SelectProjectAsync(project);
         }
-        await LoadProjectMemoryCountAsync();
+        await LoadProjectCountsAsync();
         _isProjectMenuOpen = true;
         _isConfirmingProjectDelete = false;
         _chatMenuId = null;
@@ -4655,7 +4666,7 @@
         if (_globalSettingsPanel is not null && !await _globalSettingsPanel.SaveAsync()) return;
         if (!await CloseDrawersExceptAsync(Drawer.GlobalSettings)) return;
         _globalSection = section;
-        await LoadMemoryCountAsync();
+        await LoadSidebarCountsAsync();
     }
 
     private async Task RequestCloseGlobalSettingsAsync()
@@ -4668,15 +4679,11 @@
     {
         _globalSection = null;
         _globalSettingsPanel = null;
-        await LoadMemoryCountAsync();
+        await LoadSidebarCountsAsync();
     }
 
-    /// <summary>
-    /// Enabled entries of the person's own memory, as MCP counts enabled servers. The editor saves
-    /// on close, so the count is refreshed whenever a settings drawer closes or changes section.
-    /// </summary>
-    /// <summary>Enabled entries of the selected project's memory, read when its popup menu opens.</summary>
-    private async Task LoadProjectMemoryCountAsync()
+    /// <summary>Enabled project memory entries and skills of the selected project, read when its popup menu opens.</summary>
+    private async Task LoadProjectCountsAsync()
     {
         if (_selectedProject is not { } project) return;
         try
@@ -4688,13 +4695,29 @@
         {
             _projectMemoryCount = 0;
         }
+        try
+        {
+            _projectSkillCount = (await SkillApi.ListAsync(project.Id, CancellationToken.None))
+                .Count(skill => skill is { Source: "Project", Enabled: true });
+        }
+        catch (HttpRequestException)
+        {
+            _projectSkillCount = 0;
+        }
     }
 
-    private async Task LoadMemoryCountAsync()
+    /// <summary>
+    /// Enabled memory entries and skills of the person's own, as MCP counts enabled servers. The
+    /// editors save on close, so the counts are refreshed whenever a settings drawer closes or
+    /// changes section.
+    /// </summary>
+    private async Task LoadSidebarCountsAsync()
     {
         try
         {
             _userMemoryCount = (await MemoryApi.ListAsync(null, CancellationToken.None)).Count(entry => entry.Enabled);
+            // What the Skills drawer lists: the built-in skills and the person's own, not a project's.
+            _skillCount = (await SkillApi.ListAsync(null, CancellationToken.None)).Count(skill => skill.Enabled);
         }
         catch (HttpRequestException)
         {
@@ -4708,7 +4731,7 @@
         _connections.Clear();
         _connections.AddRange(settings.Connections);
         _enabledMcpServerCount = settings.McpServers.Count(item => item.Enabled);
-        await LoadMemoryCountAsync();
+        await LoadSidebarCountsAsync();
     }
 
     private ConnectionSettings? GetDefaultConnection() =>

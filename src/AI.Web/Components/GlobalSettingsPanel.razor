@@ -104,8 +104,9 @@
                     break;
                 }
                 case "Skills":
+                case "ProjectSkills":
                 {
-                    <SkillEditor @ref="_skillEditor" ProjectId="ProjectId" Changed="StateHasChanged" />
+                    <SkillEditor @ref="_skillEditor" @key="Section" ProjectId="@(Section == "ProjectSkills" ? ProjectId : null)" Changed="StateHasChanged" />
                     break;
                 }
                 case "Connections":
@@ -201,7 +202,7 @@
     [Parameter] public string Section { get; set; } = "Connections";
     [Parameter] public EventCallback Saved { get; set; }
     [Parameter] public EventCallback<bool> ContextWindowUsageChanged { get; set; }
-    /// <summary>The project whose memory the ProjectMemory section edits.</summary>
+    /// <summary>The project whose memory and skills the ProjectMemory and ProjectSkills sections edit.</summary>
     [Parameter] public Guid? ProjectId { get; set; }
     private MemoryEditor? _memoryEditor;
     private SkillEditor? _skillEditor;
@@ -302,22 +303,28 @@
     {
         "Settings" => "Applied right away · stored on this device",
         "Memory" or "ProjectMemory" => _memoryEditor?.Stats ?? string.Empty,
-        "Skills" => _skillEditor?.Stats ?? string.Empty,
+        "Skills" or "ProjectSkills" => _skillEditor?.Stats ?? string.Empty,
         "Connections" => $"{Plural(_connections.Count, "connection")} · {_connections.Count(item => item.Enabled)} enabled",
         _ => $"{Plural(_globalMcpServers.Count, "server")} · {_globalMcpServers.Count(item => item.Enabled)} enabled · {Plural(_toolPolicies.Count, "tool default")}"
     };
 
-    private string Title => Section == "ProjectMemory" ? "Project memory" : Section;
+    private string Title => Section switch
+    {
+        "ProjectMemory" => "Project memory",
+        "ProjectSkills" => "Project skills",
+        _ => Section
+    };
 
     /// <summary>Connections and MCP servers travel as text; the app's own look and memory do not.</summary>
-    private bool CanTransfer => Section is not ("Settings" or "Memory" or "ProjectMemory" or "Skills");
+    private bool CanTransfer => Section is not ("Settings" or "Memory" or "ProjectMemory" or "Skills" or "ProjectSkills");
 
     private string Description => Section switch
     {
         "Settings" => ClientMode.PublicWeb ? "How the app looks and behaves, and the Host it works with." : "How the app looks and behaves on this device.",
         "Memory" => "What the assistant remembers about you in every project.",
         "ProjectMemory" => "What the assistant remembers about this project.",
-        "Skills" => "Instructions the assistant can use for focused tasks.",
+        "Skills" => "Instructions the assistant can use for focused tasks in every project.",
+        "ProjectSkills" => "Instructions the assistant can use for focused tasks in this project.",
         "Connections" => "OpenAI-compatible endpoints available to every project.",
         _ => "Global MCP servers available to every project."
     };
@@ -860,7 +867,7 @@
             _saveFailed = true;
             return false;
         }
-        if (_skillEditor is not null && !await _skillEditor.SavePendingAsync())
+        if (_skillEditor is not null && !await _skillEditor.SaveAsync())
         {
             _saveFailed = true;
             return false;

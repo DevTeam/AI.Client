@@ -99,7 +99,7 @@
                        Without the same-project shortcut the user would have to reach for the
                        "+" button every time they wanted to start a new conversation in the
                        project they were already in. *@
-                    <button class="workspace-nav-item" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => HandleProjectItemClickAsync(project)"><span class="status-dot @GetProjectStatusClass(project.Id)"></span><span class="nav-item-label">@project.Name</span>@if (project.ConnectionId is null) { <span class="project-default-badge" title="New chats follow the global default connection">Default</span> }</button>
+                    <button class="workspace-nav-item" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => HandleProjectItemClickAsync(project)"><span class="status-dot @GetProjectStatusClass(project.Id)"></span><span class="nav-item-label">@project.Name</span></button>
                 }
                 <button class="icon-action project-action-button project-new-chat-button" type="button" title="New chat" aria-label="New chat" @onclick="() => CreateChatForProjectAsync(project)"><AppIcon Name="plus" /></button>
                 <button class="icon-action project-action-button project-rename-button" type="button" title="Rename" aria-label="Rename project" @onclick="() => BeginProjectRenameAsync(project)"><AppIcon Name="edit" /></button>

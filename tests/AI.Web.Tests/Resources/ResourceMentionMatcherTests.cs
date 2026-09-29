@@ -74,10 +74,11 @@ public sealed class ResourceMentionMatcherTests
         var sources = new ResourceMentionSources(
             [new ResourceSuggestion(ChatResourceKind.Directory, "C:\\repo\\src", "src", PathAccess.Read),
                 new ResourceSuggestion(ChatResourceKind.File, "C:\\repo\\src\\a b.cs", "src/a b.cs", PathAccess.Read)],
-            [new WorkspaceDiffSource("C:\\repo", "repo", 1)], [], [], [], [], null, null);
+            [new WorkspaceDiffSource("C:\\repo", "repo", 1, "repo"),
+                new WorkspaceDiffSource("C:\\work\\tools", "tools", 2, "work/tools")], [], [], [], [], null, null);
 
         var diff = _matcher.Match(sources, _matcher.GetMention("@diff", 5)!);
-        diff[0].Token.ShouldBe("@diff");
+        diff[0].Token.ShouldBe("@diff:repo");
         diff[0].Detail.ShouldBe("1 changed file");
 
         var lines = _matcher.Match(sources, _matcher.GetMention("@a:3-4", 6)!);

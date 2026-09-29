@@ -237,6 +237,41 @@ public sealed class ResourceServiceTests
     }
 
     [Fact]
+    public async Task ShouldOfferEveryRepositoryWithChangesFoundInAProjectDirectory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ai-client-resources-" + Guid.NewGuid().ToString("N"));
+        var first = Path.Combine(root, "a", "app");
+        var second = Path.Combine(root, "b", "app");
+        var clean = Path.Combine(root, "clean");
+        foreach (var directory in new[] { first, second, clean }) Directory.CreateDirectory(directory);
+        try
+        {
+            var token = TestContext.Current.CancellationToken;
+            var projectId = Guid.CreateVersion7();
+            var diffs = new Mock<IWorkspaceDiffReader>();
+            // The granted folder holds checkouts but is none itself.
+            diffs.Setup(item => item.FindRepository(It.IsAny<string>())).Returns((string?)null);
+            diffs.Setup(item => item.FindNestedRepositories(It.IsAny<string>())).Returns([first, second, clean]);
+            diffs.Setup(item => item.ChangedFiles(first)).Returns(["x.cs"]);
+            diffs.Setup(item => item.ChangedFiles(second)).Returns(["y.cs", "z.cs"]);
+            diffs.Setup(item => item.ChangedFiles(clean)).Returns([]);
+            var service = new ResourceService(ProjectsWith(projectId, root).Object, new PhysicalDirectoryBrowser(),
+                new Mock<IResourceRepository>().Object, new Mock<IReviewService>().Object, new ProjectPathAccess(),
+                new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, diffs.Object, new FileExcerptReader());
+
+            var sources = await service.ListDiffSourcesAsync(projectId, token);
+
+            // Both are called "app", so each is named by where it is.
+            sources.Select(item => (item.Name, item.ChangedFiles)).ShouldBe([("Workspace/a/app", 1), ("Workspace/b/app", 2)]);
+        }
+        finally
+        {
+            // The target is generated below the explicitly chosen temporary test root.
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ShouldShowTheModelCapturedTextAndWhereEachLinkIs()
     {
         var chatId = Guid.NewGuid();

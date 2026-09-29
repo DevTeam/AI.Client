@@ -9,6 +9,12 @@ public interface IWorkspaceDiffReader
     /// <summary>The work tree that contains <paramref name="directory"/>, or null when it is not in one or git is not installed.</summary>
     string? FindRepository(string directory);
 
+    /// <summary>
+    /// Work trees below <paramref name="directory"/>, the directory itself excluded, looked for a
+    /// few levels deep: a folder of checkouts is granted as often as one checkout.
+    /// </summary>
+    IReadOnlyList<string> FindNestedRepositories(string directory);
+
     /// <summary>Paths git reports as changed or untracked under the directory.</summary>
     IReadOnlyList<string> ChangedFiles(string directory);
 

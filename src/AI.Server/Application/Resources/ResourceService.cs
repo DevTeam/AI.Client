@@ -51,16 +51,32 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
             string root;
             try { root = access.ResolveLinks(grant.CanonicalRoot); }
             catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException) { continue; }
-            if (!Directory.Exists(root) || result.Any(item => string.Equals(item.Path, root, PathComparison))
-                || diffs.FindRepository(root) is null) continue;
-            var changed = diffs.ChangedFiles(root).Count;
-            if (changed == 0) continue;
-            var name = grant.DisplayName is { Length: > 0 } displayName
-                ? displayName : Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar));
-            result.Add(new WorkspaceDiffSource(root, name, changed));
+            if (!Directory.Exists(root)) continue;
+            var grantName = grant.DisplayName is { Length: > 0 } displayName ? displayName : DirectoryName(root);
+            if (diffs.FindRepository(root) is not null) Add(root, grantName, grantName);
+            foreach (var nested in diffs.FindNestedRepositories(root))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Add(nested, DirectoryName(nested),
+                    $"{grantName}/{Path.GetRelativePath(root, nested).Replace(Path.DirectorySeparatorChar, '/')}");
+            }
         }
-        return result;
+        // Two checkouts of one name would be two identical links: the location tells them apart.
+        return result
+            .Select(item => result.Count(other => string.Equals(other.Name, item.Name, StringComparison.OrdinalIgnoreCase)) > 1
+                ? item with { Name = item.Location ?? item.Name } : item)
+            .ToArray();
+
+        void Add(string path, string name, string location)
+        {
+            if (result.Any(item => string.Equals(item.Path, path, PathComparison))) return;
+            var changed = diffs.ChangedFiles(path).Count;
+            if (changed > 0) result.Add(new WorkspaceDiffSource(path, name, changed, location));
+        }
     }
+
+    private static string DirectoryName(string path) =>
+        Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) is { Length: > 0 } name ? name : path;
 
     public async Task<IReadOnlyList<ChatResourceRef>> ValidateAsync(Guid projectId,
         IReadOnlyList<ChatResourceRef>? references, CancellationToken cancellationToken)

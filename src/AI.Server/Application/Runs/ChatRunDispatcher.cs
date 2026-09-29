@@ -27,7 +27,7 @@ public sealed class ChatRunDispatcher(
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies,
     IChatContextBuilder contextBuilder, IChatBranchIds branchIds, IResourceService resources, IReviewService reviews,
     IResourceModelProjection resourceProjection, IMemoryService memory, IProjectInstructionsService projectInstructions,
-    ISkillRunner skillRunner)
+    ISkillRunner skillRunner, ISkillCatalog skillCatalog)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -561,7 +561,7 @@ public sealed class ChatRunDispatcher(
         {
             if (_shutdown.IsCancellationRequested || _titleTasks.ContainsKey(chatId)) return;
             var invocation = new SkillInvocation("chat-title", projectId,
-                System.Text.Json.JsonSerializer.SerializeToElement(new { chat_id = chatId }));
+                System.Text.Json.JsonSerializer.SerializeToElement(new { chat_id = chatId, mode = "automatic" }), chatId);
             var task = Task.Run(() => skillRunner.RunAsync(invocation, _shutdown.Token));
             _titleTasks[chatId] = task;
             _ = task.ContinueWith(_ =>
@@ -1028,6 +1028,7 @@ public sealed class ChatRunDispatcher(
         await resources.DeleteProjectAsync(projectId, cancellationToken);
         await reviews.DeleteProjectAsync(projectId, cancellationToken);
         await memory.DeleteProjectAsync(projectId, cancellationToken);
+        await skillCatalog.DeleteProjectAsync(projectId, cancellationToken);
         await projectInstructions.DeleteProjectAsync(projectId, cancellationToken);
     }
 

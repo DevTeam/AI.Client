@@ -2879,7 +2879,8 @@ body {
     transform: translateY(2px);
     transition: opacity 120ms ease, transform 120ms ease;
     pointer-events: none;
-    z-index: 10;
+    /* Above .composer-prelude (30): the hint rises over the status line and the tool approval bar. */
+    z-index: 31;
 }
 
 .composer-send-wrapper {
@@ -5215,6 +5216,14 @@ textarea {
 .skill-source, .skill-state { color: var(--color-text-secondary); font-size: .8rem; }
 .skill-form textarea { resize: none; }
 .skill-form .skill-content { min-height: 18rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .78rem; line-height: 1.45; }
+.skill-form .skill-parameters { min-height: 7rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .78rem; line-height: 1.45; }
+.skill-runs-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.skill-runs { display: grid; gap: .5rem; }
+.skill-run { display: grid; gap: .2rem; padding: .6rem .75rem; border: 1px solid var(--color-border); border-radius: .5rem; font-size: .82rem; }
+.skill-run-status { font-weight: 600; }
+.skill-run small { color: var(--color-text-faint); overflow-wrap: anywhere; }
+.skill-run pre { margin: .25rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.skill-editor-actions { display: flex; gap: .5rem; }
 
 /* Project instructions sit under the project's details in its settings drawer. */
 .project-instructions { display: grid; min-width: 0; gap: .55rem; margin-top: 1.15rem; padding-top: 1.1rem; border-top: 1px solid var(--color-border); }

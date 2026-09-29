@@ -7,7 +7,7 @@
 <aside class="permissions-drawer" aria-label="Tool permissions" @onclick:stopPropagation="true">
     <header>
         <div><h2>Tool permissions</h2><p>@Scope · @Title</p></div>
-        <button class="icon-action" type="button" title="Close" aria-label="Close permissions" @onclick="() => Close.InvokeAsync()"><AppIcon Name="x" /></button>
+        <button class="icon-action" type="button" title="Close" aria-label="Close permissions" @onclick="() => Close.InvokeAsync()"><AppIcon Name="drawer-close" /></button>
     </header>
     <nav class="permissions-tabs" aria-label="Permission view">
         <button class="@(!_showAll ? "selected" : string.Empty)" type="button" @onclick="() => _showAll = false">Overrides <span>@Overrides.Count</span></button>

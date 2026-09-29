@@ -3,79 +3,64 @@
 @inject ISkillApi SkillApi
 @inject INotificationService Notifications
 
+@* One editor for both catalogs, like Memory: the person's own skills beside the built-in ones, or
+   one project's. It keeps every edit locally and writes them all when the drawer closes. *@
 <div class="global-editor-layout skill-editor">
     <div class="settings-list-column">
         <nav class="settings-list" aria-label="Skills">
-            @if (_loaded && _skills.Count == 0) { <p class="empty-hint">No skills are available.</p> }
-            @foreach (var source in new[] { "Built-in", "User", "Project" })
+            @if (_loaded && _items.Count == 0)
             {
-                var group = _skills.Where(skill => skill.Source == source).OrderBy(skill => skill.Name).ToArray();
-                if (group.Length == 0) continue;
-                <div class="memory-group-label">@source</div>
-                @foreach (var skill in group)
+                <p class="empty-hint">@(ProjectId is null ? "No skills are available." : "No skills in this project yet.")</p>
+            }
+            @foreach (var source in Sources)
+            {
+                var group = Group(source);
+                if (group.Count == 0) continue;
+                @if (ProjectId is null) { <div class="memory-group-label">@source</div> }
+                @foreach (var item in group)
                 {
-                    <div class="settings-list-item @(Key(skill) == _selectedKey && !_creating ? "selected" : string.Empty) @(skill.Enabled ? string.Empty : "memory-disabled")">
-                        <button class="settings-list-select" type="button" @onclick="() => TrySelect(skill)">
-                            <span>@skill.Name</span><small>@skill.Description</small>
+                    <div class="settings-list-item @(item.Key == _selectedKey ? "selected" : string.Empty) @(item.Enabled ? string.Empty : "memory-disabled")">
+                        <button class="settings-list-select" type="button" @onclick="() => _selectedKey = item.Key">
+                            <span>@item.Name</span>
+                            <small>@Summary(item)</small>
                         </button>
+                        @if (item.Key == _selectedKey && !item.ReadOnly)
+                        {
+                            <button class="icon-action settings-item-remove" type="button" title="Remove skill" aria-label="Remove skill" @onclick="Remove"><AppIcon Name="trash" /></button>
+                        }
                     </div>
                 }
             }
         </nav>
-        <button class="icon-action settings-list-add" type="button" title="Add skill" aria-label="Add skill"
-                disabled="@(!_loaded)" @onclick="Add"><AppIcon Name="plus" /></button>
+        <button class="icon-action settings-list-add" type="button" title="Add skill" aria-label="Add skill" disabled="@(!_loaded)" @onclick="Add"><AppIcon Name="plus" /></button>
     </div>
-    @if (_creating || Selected is not null)
+    @if (Selected is { } selected)
     {
-        var selected = Selected;
-        var readOnly = !_creating && selected?.Source == "Built-in";
-        <div class="global-form skill-form">
+        var stored = selected.Stored;
+        <form class="global-form skill-form" autocomplete="off" @onsubmit:preventDefault="true">
             <div class="connection-flags">
-                <span class="skill-source">@(_creating ? "New skill" : selected?.Source)</span>
-                @if (_creating)
+                @if (selected.ReadOnly)
                 {
-                    <label>Scope
-                        <select class="text-input" @bind="_scope">
-                            <option value="User">User</option>
-                            @if (ProjectId is not null) { <option value="Project">Project</option> }
-                        </select>
-                    </label>
+                    <span class="skill-state">@(selected.Enabled ? "Enabled" : "Disabled")</span>
                 }
-                else if (!readOnly)
+                else
                 {
-                    <label class="checkbox"><input type="checkbox" @bind="_enabled" /> Enabled</label>
+                    <label class="checkbox"><input type="checkbox" @bind="selected.Enabled" @bind:after="() => Changed.InvokeAsync()" /> Enabled</label>
                 }
-                else { <span class="skill-state">@(selected?.Enabled == true ? "Enabled" : "Disabled")</span> }
             </div>
-            @if (selected is not null)
+            @if (stored is not null)
             {
-                <label>Name<input class="text-input" value="@selected.Name" readonly /></label>
-                <label>Description<textarea rows="2" readonly>@selected.Description</textarea></label>
-                <label>Parameters<textarea class="skill-parameters" rows="8" readonly spellcheck="false">@FormatSchema(selected)</textarea></label>
+                <label>Description<textarea rows="2" readonly>@stored.Description</textarea></label>
+                <label>Parameters<textarea class="skill-parameters" rows="8" readonly spellcheck="false">@FormatSchema(stored)</textarea></label>
             }
-            <label>SKILL.md<textarea class="skill-content" rows="18" readonly="@readOnly" spellcheck="false"
-                                     @bind="_draft" @bind:event="oninput"></textarea></label>
-            <p class="memory-meta">@(_creating ? "Set the id, description, parameter schema and result schema in the frontmatter. The caller supplies data through parameters."
-                : readOnly ? "Built-in skills are part of the application and cannot be edited here."
-                : $"Revision {selected?.Revision}. Edit the SKILL.md text and save it here.")</p>
-            @if (!readOnly)
-            {
-                <div class="skill-editor-actions">
-                    <button class="secondary-action" type="button" disabled="@_saving" @onclick="SaveAsync">@(_saving ? "Saving…" : "Save skill")</button>
-                    <button class="secondary-action" type="button" disabled="@_saving" @onclick="DiscardEdits">Discard edits</button>
-                    @if (!_creating)
-                    {
-                        <button class="secondary-action" type="button" disabled="@_saving" @onclick="DeleteAsync">
-                            @(_confirmDelete ? "Confirm delete" : "Delete")
-                        </button>
-                    }
-                </div>
-            }
-            @if (selected is not null)
+            <label>SKILL.md<textarea class="skill-content" rows="18" readonly="@selected.ReadOnly" spellcheck="false"
+                                     @bind="selected.Content" @bind:event="oninput"></textarea></label>
+            <p class="memory-meta">@Meta(selected)</p>
+            @if (stored is not null)
             {
                 <div class="skill-runs-heading"><strong>Recent runs</strong>
                     <button class="secondary-action" type="button" @onclick="RefreshRunsAsync">Refresh</button></div>
-                @if (_runs.Where(run => run.SkillId == selected.Id).Take(10).ToArray() is { Length: > 0 } recent)
+                @if (_runs.Where(run => run.SkillId == stored.Id).Take(10).ToArray() is { Length: > 0 } recent)
                 {
                     <div class="skill-runs" aria-live="polite">
                         @foreach (var run in recent)
@@ -92,45 +77,76 @@
                 }
                 else { <p class="memory-meta">No runs recorded for this skill.</p> }
             }
-            @if (_error is { } error) { <p class="settings-drawer-error" role="alert">@error</p> }
-        </div>
+            @if (_error is { Length: > 0 })
+            {
+                <p class="settings-drawer-error" role="alert">@_error</p>
+            }
+        </form>
     }
     else
     {
-        <div class="global-form"><p class="empty-hint">@(_error ?? (_loaded ? "Select a skill or add one." : "Loading skills…"))</p></div>
+        <div class="global-form">
+            <p class="empty-hint">@(_loaded
+                ? ProjectId is null
+                    ? "Instructions the assistant can use for focused tasks in every project. Add a skill to write its SKILL.md."
+                    : "Instructions the assistant can use for focused tasks in this project. A project skill replaces a personal one with the same ID."
+                : _error is null ? "Loading skills…" : string.Empty)</p>
+            @if (_error is { Length: > 0 })
+            {
+                <p class="settings-drawer-error" role="alert">@_error</p>
+            }
+        </div>
     }
 </div>
 
 @code {
+    /// <summary>The project whose skills are edited; null edits the person's own beside the built-in ones.</summary>
     [Parameter] public Guid? ProjectId { get; set; }
+    /// <summary>Raised when the counts behind <see cref="Stats"/> change, so the drawer footer can follow.</summary>
     [Parameter] public EventCallback Changed { get; set; }
-    private IReadOnlyList<SkillDefinition> _skills = [];
+
+    private const string Template = """
+        ---
+        id: my-skill
+        name: My skill
+        description: Describe when this skill should be used.
+        parameters: {"type":"object","properties":{},"additionalProperties":false}
+        result: {"type":"string"}
+        tools: []
+        ---
+
+        Describe the task and return a JSON result matching the result schema.
+        """;
+
+    private readonly List<Item> _items = [];
+    private readonly List<SkillDefinition> _removed = [];
     private IReadOnlyList<SkillRunRecord> _runs = [];
-    private string? _selectedKey;
-    private string _draft = "";
-    private string _initialDraft = "";
-    private string _scope = "User";
-    private bool _enabled = true;
-    private bool _creating;
+    private Guid? _selectedKey;
     private bool _loaded;
-    private bool _saving;
-    private bool _confirmDelete;
     private string? _error;
-    private SkillDefinition? Selected => _skills.FirstOrDefault(skill => Key(skill) == _selectedKey);
-    private bool IsDirty => _creating ? _draft != _initialDraft
-        : Selected is { } selected && (_draft != selected.Content || _enabled != selected.Enabled);
-    private static string Key(SkillDefinition skill) => $"{skill.Source}:{skill.ProjectId}:{skill.Id}";
-    private static string FormatSchema(SkillDefinition skill) =>
-        System.Text.Json.JsonSerializer.Serialize(skill.ParametersSchema,
-            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-    public string Stats => $"{_skills.Count} {(_skills.Count == 1 ? "skill" : "skills")} · {_skills.Count(skill => skill.Enabled)} enabled";
+
+    private string Scope => ProjectId is null ? "User" : "Project";
+    private string[] Sources => ProjectId is null ? ["Built-in", "User"] : ["Project"];
+    private Item? Selected => _items.FirstOrDefault(item => item.Key == _selectedKey);
+
+    /// <summary>The footer line of the drawer.</summary>
+    public string Stats
+    {
+        get
+        {
+            var count = _items.Count;
+            return $"{count} {(count == 1 ? "skill" : "skills")} · {_items.Count(item => item.Enabled)} enabled · "
+                   + (ProjectId is null ? "available in every project" : "available in this project");
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            await ReloadAsync();
-            Select(_skills.FirstOrDefault());
+            var skills = await SkillApi.ListAsync(ProjectId, CancellationToken.None);
+            _items.AddRange(skills.Where(skill => Sources.Contains(skill.Source)).Select(skill => new Item(skill)));
+            _selectedKey = Sources.SelectMany(Group).FirstOrDefault()?.Key;
             _loaded = true;
             await RefreshRunsAsync();
             await Changed.InvokeAsync();
@@ -138,108 +154,124 @@
         catch (HttpRequestException)
         {
             _error = "Skills could not be loaded.";
-            await Changed.InvokeAsync();
         }
     }
 
-    private async Task ReloadAsync() => _skills = await SkillApi.ListAsync(ProjectId, CancellationToken.None);
-
-    private void Select(SkillDefinition? skill)
+    /// <summary>
+    /// Writes every change made since the drawer opened. Returns false and keeps the edits when
+    /// anything fails, so the drawer stays open with its "Discard changes" way out.
+    /// </summary>
+    public async Task<bool> SaveAsync()
     {
-        _creating = false;
-        _confirmDelete = false;
-        _selectedKey = skill is null ? null : Key(skill);
-        _draft = skill?.Content ?? "";
-        _initialDraft = _draft;
-        _enabled = skill?.Enabled ?? true;
+        if (!_loaded) return true;
+        _items.RemoveAll(item => item.Stored is null && item.IsUntouched);
+        if (_removed.Count == 0 && !_items.Any(item => item.IsDirty)) return true;
+        var removedCount = _removed.Count;
+        var savedCount = _items.Count(item => item.IsDirty);
         _error = null;
-    }
-
-    private void Add()
-    {
-        if (IsDirty) { _error = "Save or discard edits before opening another skill."; return; }
-        _creating = true;
-        _selectedKey = null;
-        _scope = ProjectId is null ? "User" : "Project";
-        _enabled = true;
-        _confirmDelete = false;
-        _error = null;
-        _draft = """
-            ---
-            id: my-skill
-            name: My skill
-            description: Describe when this skill should be used.
-            parameters: {"type":"object","properties":{},"additionalProperties":false}
-            result: {"type":"string"}
-            tools: []
-            ---
-
-            Describe the task and return a JSON result matching the result schema.
-            """;
-        _initialDraft = _draft;
-    }
-
-    private void TrySelect(SkillDefinition skill)
-    {
-        if (IsDirty) { _error = "Save or discard edits before opening another skill."; return; }
-        Select(skill);
-    }
-
-    private void DiscardEdits() => Select(Selected ?? _skills.FirstOrDefault());
-
-    public Task<bool> SavePendingAsync() => IsDirty ? SaveCoreAsync() : Task.FromResult(true);
-
-    private async Task SaveAsync() => await SaveCoreAsync();
-
-    private async Task<bool> SaveCoreAsync()
-    {
-        var selected = Selected;
-        _saving = true;
-        _error = null;
+        Item? failed = null;
         try
         {
-            var scope = _creating ? _scope : selected!.Source;
-            var saved = await SkillApi.SaveAsync(new SkillWriteRequest(scope,
-                scope == "Project" ? ProjectId : null, _draft, selected?.Revision ?? 0, _enabled), CancellationToken.None);
-            await ReloadAsync();
-            Select(_skills.First(skill => skill.Source == saved.Source && skill.ProjectId == saved.ProjectId && skill.Id == saved.Id));
-            Notifications.ShowSuccess("Skill saved.");
-            await Changed.InvokeAsync();
+            foreach (var skill in _removed.ToArray())
+            {
+                await SkillApi.DeleteAsync(skill, CancellationToken.None);
+                _removed.Remove(skill);
+            }
+            foreach (var item in _items.Where(item => item.IsDirty).ToArray())
+            {
+                failed = item;
+                // The id names the file, so a changed id is a new skill that replaces the old one.
+                var previous = item.Stored;
+                var renamed = previous is not null && item.Id != previous.Id;
+                item.Stored = await SkillApi.SaveAsync(new SkillWriteRequest(Scope, ProjectId, item.Content,
+                    renamed ? 0 : previous?.Revision ?? 0, item.Enabled), CancellationToken.None);
+                item.Content = item.Stored.Content;
+                if (renamed) await SkillApi.DeleteAsync(previous!, CancellationToken.None);
+            }
+            Notifications.ShowSuccess(removedCount > 0 && savedCount == 0
+                ? removedCount == 1 ? "Skill deleted." : "Skills deleted."
+                : "Skills saved.");
             return true;
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
         {
+            if (failed is not null) _selectedKey = failed.Key;
             _error = error.Message;
-            Notifications.ShowError("Skill was not saved.");
+            Notifications.ShowError($"Skills were not saved: {error.Message}");
+            // The drawer calls this from outside the editor's own events, so nothing else re-renders it.
+            StateHasChanged();
             return false;
         }
-        finally { _saving = false; }
     }
 
-    private async Task DeleteAsync()
+    private IReadOnlyList<Item> Group(string source) => _items.Where(item => item.Source == source)
+        .OrderBy(item => item.Stored is null).ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
+
+    private async Task Add()
     {
-        if (!_confirmDelete) { _confirmDelete = true; return; }
-        if (Selected is not { } skill) return;
-        _saving = true;
-        try
-        {
-            await SkillApi.DeleteAsync(skill, CancellationToken.None);
-            await ReloadAsync();
-            Select(_skills.FirstOrDefault());
-            Notifications.ShowSuccess("Skill deleted.");
-            await Changed.InvokeAsync();
-        }
-        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
-        {
-            _error = error.Message;
-            Notifications.ShowError("Skill was not deleted.");
-        }
-        finally { _saving = false; _confirmDelete = false; }
+        var item = new Item(null) { Source = Scope, Content = Template };
+        _items.Add(item);
+        _selectedKey = item.Key;
+        await Changed.InvokeAsync();
+    }
+
+    private async Task Remove()
+    {
+        if (Selected is not { ReadOnly: false } item) return;
+        var index = _items.IndexOf(item);
+        _items.Remove(item);
+        if (item.Stored is { } stored) _removed.Add(stored);
+        _selectedKey = _items.Count == 0 ? null : _items[Math.Min(index, _items.Count - 1)].Key;
+        await Changed.InvokeAsync();
     }
 
     private async Task RefreshRunsAsync()
     {
         try { _runs = await SkillApi.ListRunsAsync(CancellationToken.None); }
         catch (HttpRequestException) { _error = "Skill runs could not be loaded."; }
+    }
+
+    private static string Summary(Item item)
+    {
+        var parts = new List<string>();
+        if (item.Stored?.Description is { Length: > 0 } description) parts.Add(description);
+        if (!item.Enabled) parts.Add("off");
+        if (item.Stored is not null && item.IsDirty) parts.Add("edited");
+        return parts.Count == 0 ? "Not saved yet" : string.Join(" · ", parts);
+    }
+
+    private static string Meta(Item item) => item switch
+    {
+        { ReadOnly: true } => "Built-in skills are part of the application and cannot be edited here.",
+        { Stored: null } => "New skill · set the id, name, description, parameter and result schemas in the frontmatter · saved when the drawer closes",
+        { Stored: { } stored } => $"Revision {stored.Revision} · saved when the drawer closes"
+    };
+
+    private static string FormatSchema(SkillDefinition skill) =>
+        System.Text.Json.JsonSerializer.Serialize(skill.ParametersSchema,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+    /// <summary>An editable copy; <see cref="IsDirty"/> compares it with what is stored.</summary>
+    private sealed class Item(SkillDefinition? stored)
+    {
+        public Guid Key { get; } = Guid.NewGuid();
+        public SkillDefinition? Stored { get; set; } = stored;
+        public string Source { get; init; } = stored?.Source ?? "User";
+        public string Content { get; set; } = stored?.Content ?? string.Empty;
+        public bool Enabled { get; set; } = stored?.Enabled ?? true;
+
+        public bool ReadOnly => Source == "Built-in";
+
+        public string Name => FrontmatterValue("name") ?? Stored?.Name ?? "New skill";
+
+        public string? Id => FrontmatterValue("id");
+
+        public bool IsUntouched => string.IsNullOrWhiteSpace(Content) || Content == Template;
+
+        public bool IsDirty => !ReadOnly && (Stored is not { } skill || skill.Content != Content || skill.Enabled != Enabled);
+
+        private string? FrontmatterValue(string key) => Content.ReplaceLineEndings("\n").Split('\n')
+            .FirstOrDefault(line => line.StartsWith(key + ": ", StringComparison.Ordinal))?[(key.Length + 2)..].Trim() is { Length: > 0 } value
+            ? value : null;
     }
 }

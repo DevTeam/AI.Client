@@ -7,10 +7,13 @@ under the Host data directory:
 - `skills/projects/<projectId>/<id>/SKILL.md` is available in that project.
 
 When a user and project skill have the same ID, the project skill runs in that project. Built-in
-IDs are reserved. The Skills drawer uses Memory's two-column layout, groups skills by source,
-and edits the full SKILL.md for User and Project scopes. Saving checks the `revision` field and
-atomically replaces one file; a stale revision returns a conflict. Closing the drawer saves pending
-edits. Built-in skills stay read-only. Project skills are deleted with their project.
+IDs are reserved. Skills are edited like Memory: Settings → Skills shows the built-in and User
+skills, and the project's popup menu opens Skills for that project's own. Both use the same
+editor with the full SKILL.md; edits and removals stay local and are written when the drawer
+closes, and a failed save keeps the drawer open with "Discard changes". Saving checks the
+`revision` field and atomically replaces one file; a stale revision returns a conflict. Changing
+the `id` saves a new skill and deletes the old one. Built-in skills stay read-only. Project skills
+are deleted with their project.
 
 Frontmatter requires `id`, `name`, `description` and a JSON Schema object on the `parameters`
 line. Editable skills may also declare a JSON Schema `result`. The generic executor accepts

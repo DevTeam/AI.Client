@@ -46,6 +46,7 @@ public sealed class AppSkillSearchTool(ISkillCatalog catalog) : IAppTool
                     Skill = skill,
                     Score = words.Count(word => skill.Id.Contains(word, StringComparison.OrdinalIgnoreCase)
                         || skill.Name.Contains(word, StringComparison.OrdinalIgnoreCase)
+                        || skill.Aliases?.Any(alias => alias.Contains(word, StringComparison.OrdinalIgnoreCase)) == true
                         || skill.Description.Contains(word, StringComparison.OrdinalIgnoreCase))
                 })
                 .ToArray();

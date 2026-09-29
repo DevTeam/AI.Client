@@ -38,6 +38,16 @@ public class BuiltInSkillCatalogTests
     }
 
     [Fact]
+    public void ShouldGiveEveryAliasToOneSkillOnly()
+    {
+        var skills = new BuiltInSkillCatalog().List();
+        var commands = skills.SelectMany(skill => (skill.Aliases ?? []).Append(skill.Id)).ToArray();
+
+        commands.Distinct(StringComparer.Ordinal).Count().ShouldBe(commands.Length);
+        skills.Single(skill => skill.Id == "chat-context-compact").Aliases.ShouldBe(["compact"]);
+    }
+
+    [Fact]
     public void ShouldMakeEveryBundledSkillExceptChatRenameAPlaybookWithDeclaredTools()
     {
         var skills = new BuiltInSkillCatalog().List();

@@ -2795,6 +2795,7 @@ body {
 .skill-command-item.selected .skill-command-name { color: var(--color-text); }
 .workspace-composer .skill-command-description { overflow: hidden; color: var(--color-text-subtle); text-overflow: ellipsis; white-space: nowrap; }
 .workspace-composer .skill-command-source { color: var(--color-text-subtle); font-size: .78rem; }
+.workspace-composer .skill-command-alias { color: var(--color-text-subtle); font-weight: 400; }
 .composer-resource-menu button { display: flex; align-items: center; gap: .6rem; padding: .5rem .55rem; border: 0; border-radius: calc(.35rem * var(--corner-scale)); background: transparent; color: var(--color-text); text-align: left; }
 .composer-resource-menu button:hover,
 .composer-resource-menu button:focus-visible { background: var(--color-fill-stronger); }

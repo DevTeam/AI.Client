@@ -113,12 +113,14 @@ internal sealed class Composition
                 JsonGlobalSettingsRepository, ProtectedGlobalSecretStore, ResourceService, ResourceModelProjection, JsonResourceRepository, ProjectPathAccess, WorkspacePathResolver,
                 ReviewService, JsonReviewRepository, MemoryService, JsonMemoryRepository, ProjectInstructionsService, JsonProjectInstructionsRepository,
                 WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService, OpenAiCompatibleConnectionModelsResolver, JsonChatRunRepository,
-                ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator, ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService, KeyringOrFileMasterKeyStore, BuiltInSkillCatalog, ChatTitleSkill,
+                ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator, ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService, KeyringOrFileMasterKeyStore, ChatTitleSkill,
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff, MasterKeyFormat, ProcessCommandRunner,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
             .Transient<AppToolReply>()
-            .Singleton<SkillRunner>()
+            .Bind<BuiltInSkillCatalog>().As(Lifetime.Singleton).To<BuiltInSkillCatalog>()
+            .Bind<ISkillCatalog>().As(Lifetime.Singleton).To<SkillCatalog>()
+            .Singleton<SkillRunner, GenericSkillExecutor>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
             .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To((
                 [Tag("base")] IChatCompletionClient baseClient,
@@ -127,7 +129,7 @@ internal sealed class Composition
                 IChatTransportActivity transportActivity) =>
                 new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity))
             .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool,
-                AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool>(Tag.Unique)
+                AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool>(Tag.Unique)
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
 }

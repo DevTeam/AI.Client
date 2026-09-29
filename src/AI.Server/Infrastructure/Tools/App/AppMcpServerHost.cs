@@ -26,7 +26,8 @@ public sealed class AppMcpServerHost(IEnumerable<IAppTool> tools, IAppToolReply 
                                  + "fresh operationId for each distinct change. When a job would fill your context with detail you do not need to keep, "
                                  + "delegate it with spawn_subtask and keep only the answer. When a choice is genuinely the user's to make and "
                                  + "guessing wrong would waste real work, ask them with ask_user instead of guessing. The visible tool list may be "
-                                 + "a budgeted subset; when a required capability is absent, call app_tool_search before concluding it is unavailable.",
+                                 + "a budgeted subset; when a required capability is absent, call app_tool_search before concluding it is unavailable. "
+                                 + "Use app_skill_search to discover focused skills and their parameters, then app_run_skill to execute one.",
             ToolCollection = collection
         });
     }

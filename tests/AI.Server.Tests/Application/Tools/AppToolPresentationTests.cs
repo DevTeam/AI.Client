@@ -80,6 +80,25 @@ public sealed class AppToolPresentationTests
     }
 
     [Fact]
+    public void ShouldShowSkillTargetAndOutcome()
+    {
+        var call = _tools.Presentations.DescribeCall("mcp_app__run_skill",
+            """{"skillId":"chat-title","parameters":{"chat_id":"current","mode":"requested"}}""");
+        call.Title.ShouldBe("Run skill");
+        call.Detail.ShouldBe("chat-title");
+        call.Safety.ShouldBe(ToolSafety.Mutating);
+
+        var result = _tools.Presentations.DescribeResult("mcp_app__run_skill", null,
+            Structured("""{"status":"Completed","message":"Renamed chat to 'Dependency injection'.","chatId":"0199c0de-0000-7000-8000-000000000001"}"""));
+        result.Summary.ShouldBe("Renamed chat to 'Dependency injection'.");
+        result.Severity.ShouldBe(ToolResultSeverity.Ok);
+
+        var proposal = _tools.Presentations.DescribeResult("mcp_app__run_skill", null,
+            Structured("""{"status":"Completed","message":"Skill returned a result.","output":{"name":"C# assistant"}}"""));
+        proposal.Body.ShouldNotBeNull().ShouldContain("C# assistant");
+    }
+
+    [Fact]
     public void ShouldNotClaimAThirdPartyToolThatSharesAName()
     {
         // Tool names are unique only within a server, so the prefix is what decides ownership.

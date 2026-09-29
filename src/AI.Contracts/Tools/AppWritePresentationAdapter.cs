@@ -12,7 +12,7 @@ public sealed class AppWritePresentationAdapter : BuiltInToolPresentationAdapter
 {
     protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        "app_chats", "app_runs", "app_projects", "app_security", "app_memory", "app_instructions",
+        "app_chats", "app_runs", "app_projects", "app_security", "app_memory", "app_instructions", "app_skills",
     };
 
     protected override string Prefix => ToolRef.AppPrefix;

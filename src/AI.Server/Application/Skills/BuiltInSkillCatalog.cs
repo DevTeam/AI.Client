@@ -25,32 +25,29 @@ public sealed class BuiltInSkillCatalog : ISkillCatalog
 
     public SkillDefinition? GetById(string id) => _skills.FirstOrDefault(skill => skill.Id == id);
 
+    public Task<IReadOnlyList<SkillDefinition>> ListAsync(Guid? projectId, CancellationToken cancellationToken) =>
+        Task.FromResult(List());
+
+    public Task<SkillDefinition?> GetByIdAsync(string id, Guid? projectId, CancellationToken cancellationToken) =>
+        Task.FromResult(GetById(id));
+
+    public Task<SkillWriteResult> SaveAsync(SkillWriteRequest request, CancellationToken cancellationToken) =>
+        Task.FromResult(new SkillWriteResult("Rejected", Error: "Bundled skills are read-only."));
+
+    public Task<SkillWriteResult> DeleteAsync(string id, string scope, Guid? projectId, long revision,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new SkillWriteResult("Rejected", Error: "Bundled skills are read-only."));
+
+    public Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken) => Task.CompletedTask;
+
     private static SkillDefinition Read(Assembly assembly, string resource)
     {
         using var stream = assembly.GetManifestResourceStream(resource)
             ?? throw new InvalidOperationException($"Bundled skill '{resource}' is missing.");
         using var reader = new StreamReader(stream);
         var content = reader.ReadToEnd();
-        var lines = content.ReplaceLineEndings("\n").Split('\n');
-        if (lines.Length < 4 || lines[0] != "---")
-            throw new InvalidOperationException($"Bundled skill '{resource}' has no frontmatter.");
-        var end = Array.IndexOf(lines, "---", 1);
-        if (end < 2) throw new InvalidOperationException($"Bundled skill '{resource}' has invalid frontmatter.");
-        string Field(string key) => lines.Skip(1).Take(end - 1)
-            .FirstOrDefault(line => line.StartsWith(key + ": ", StringComparison.Ordinal))?[(key.Length + 2)..].Trim()
-            is { Length: > 0 } value ? value : throw new InvalidOperationException($"Bundled skill '{resource}' needs {key}.");
-        JsonElement parameters;
-        try
-        {
-            parameters = JsonSerializer.Deserialize<JsonElement>(Field("parameters"));
-            if (parameters.ValueKind != JsonValueKind.Object)
-                throw new JsonException("The parameters schema must be an object.");
-        }
-        catch (JsonException error)
-        {
-            throw new InvalidOperationException($"Bundled skill '{resource}' has invalid parameters.", error);
-        }
-        return new SkillDefinition(Field("id"), Field("name"), Field("description"), "Built-in", content, true,
-            parameters);
+        try { return SkillMarkdown.Parse(content, "Built-in"); }
+        catch (Exception error) when (error is ArgumentException or JsonException or FormatException)
+        { throw new InvalidOperationException($"Bundled skill '{resource}' is invalid.", error); }
     }
 }

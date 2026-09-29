@@ -105,7 +105,7 @@
                 }
                 case "Skills":
                 {
-                    <SkillEditor @ref="_skillEditor" Changed="StateHasChanged" />
+                    <SkillEditor @ref="_skillEditor" ProjectId="ProjectId" Changed="StateHasChanged" />
                     break;
                 }
                 case "Connections":
@@ -856,6 +856,11 @@
     public async Task<bool> SaveAsync()
     {
         if (_memoryEditor is not null && !await _memoryEditor.SaveAsync())
+        {
+            _saveFailed = true;
+            return false;
+        }
+        if (_skillEditor is not null && !await _skillEditor.SavePendingAsync())
         {
             _saveFailed = true;
             return false;

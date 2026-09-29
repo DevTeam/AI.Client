@@ -1,6 +1,9 @@
 namespace AI.Application.Skills;
 
+using AI.Contracts.Skills;
+
 public interface ISkillRunner
 {
-    Task RunAsync(SkillInvocation invocation, CancellationToken cancellationToken);
+    Task<SkillRunRecord> RunAsync(SkillInvocation invocation, CancellationToken cancellationToken);
+    IReadOnlyList<SkillRunRecord> ListRecent();
 }

@@ -1,0 +1,126 @@
+@inject IChatRunsApi RunsApi
+@inject INotificationService Notifications
+@inject IToolPresentations Presentations
+@using AI.Contracts.Tools
+
+@{ var presentation = Presentations.DescribeCall(Approval.Name, Approval.Arguments); }
+<section class="tool-approval-bar @(_detailsOpen ? "is-expanded" : "is-collapsed")" role="region" aria-label="Tool approval" aria-busy="@(_decidingApproval ? "true" : "false")">
+    <div class="tool-approval-main">
+        <button class="tool-approval-header" type="button" aria-expanded="@_detailsOpen" title="@(_detailsOpen ? "Collapse tool details" : "Expand tool details")" @onclick="ToggleDetails">
+            <span class="tool-approval-mark" aria-hidden="true"><AppIcon Name="shield" /></span>
+            <span class="tool-approval-copy">
+                <span class="tool-approval-heading">Tool needs permission</span>
+                <span class="tool-approval-summary" title="@presentation.Detail">
+                    <strong>@presentation.Title</strong>
+                    @if (presentation.Detail is { Length: > 0 } detail)
+                    {
+                        <span class="tool-approval-preview">@detail</span>
+                    }
+                    @if (Approval.BatchSize > 1)
+                    {
+                        <span class="tool-approval-count">Call @Approval.CallIndex of @Approval.BatchSize</span>
+                    }
+                </span>
+            </span>
+        </button>
+        <div class="tool-approval-actions">
+            <button class="secondary-action tool-approval-deny" type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Deny)">Deny</button>
+            <div class="tool-approval-allow">
+                <button class="tool-approval-once" type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Allow)">Allow once</button>
+                <div class="tool-approval-more @(_allowMenuOpen ? "is-open" : null)">
+                    <button type="button" title="More allow options" aria-label="More allow options" aria-expanded="@_allowMenuOpen" @onclick="ToggleAllowMenu"><AppIcon Name="chevron-down" /></button>
+                    @if (_allowMenuOpen)
+                    {
+                        <div class="tool-approval-menu-backdrop" @onclick="CloseAllowMenu"></div>
+                        <div class="tool-approval-menu">
+                            <button type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.AllowForChat)"><strong>Allow for this chat</strong><span>Remember in @ChatTitle</span></button>
+                            <button type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.AllowForProject)"><strong>Allow for this project</strong><span>Use in every chat in this project</span></button>
+                            @if (_confirmGlobal)
+                            {
+                                <div class="tool-approval-global-confirm"><span>Allow <code>@Approval.Name</code> in every project?</span><div><button class="secondary-action" type="button" @onclick="CancelGlobalApproval">Cancel</button><button type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.AllowGlobally)">Always allow</button></div></div>
+                            }
+                            else
+                            {
+                                <button type="button" @onclick="BeginGlobalApproval"><strong>Always allow this tool</strong><span>Apply to every project</span></button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <button class="tool-approval-details-toggle" type="button" title="@(_detailsOpen ? "Collapse tool details" : "Expand tool details")" aria-label="@(_detailsOpen ? "Collapse tool details" : "Expand tool details")" aria-expanded="@_detailsOpen" @onclick="ToggleDetails"><AppIcon Name="chevron-down" /></button>
+    </div>
+    <div class="tool-approval-details" aria-hidden="@(!_detailsOpen)">
+        <div class="tool-approval-details-inner">
+            <div class="tool-approval-details-content">
+                <div class="tool-approval-details-label">@Approval.Name · Arguments</div>
+                <pre>@Approval.Arguments</pre>
+                <p>Timeout: @Approval.TimeoutSeconds seconds. The process runs with your account's permissions; the working directory is not a sandbox.</p>
+                @if (Approval.BatchSize > 1)
+                {
+                    <p>Each call is confirmed separately.</p>
+                }
+            </div>
+        </div>
+    </div>
+    @if (_approvalError is not null) { <p class="tool-approval-error" role="alert">@_approvalError</p> }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public ChatRunSnapshot Run { get; set; } = null!;
+    [Parameter, EditorRequired] public ToolApproval Approval { get; set; } = null!;
+    [Parameter] public string? ChatTitle { get; set; }
+
+    private bool _decidingApproval;
+    private bool _confirmGlobal;
+    private bool _allowMenuOpen;
+    private bool _detailsOpen;
+    private string? _approvalError;
+
+    private void ToggleDetails() => _detailsOpen = !_detailsOpen;
+    private void ToggleAllowMenu()
+    {
+        if (_allowMenuOpen) CloseAllowMenu();
+        else _allowMenuOpen = true;
+    }
+    private void CloseAllowMenu()
+    {
+        _allowMenuOpen = false;
+        _confirmGlobal = false;
+    }
+    private void BeginGlobalApproval() => _confirmGlobal = true;
+    private void CancelGlobalApproval() => _confirmGlobal = false;
+
+    public bool CancelTransientUi()
+    {
+        if (_allowMenuOpen) { CloseAllowMenu(); return true; }
+        if (_detailsOpen) { _detailsOpen = false; return true; }
+        return false;
+    }
+
+    private async Task DecideAsync(ToolApprovalAction action)
+    {
+        _decidingApproval = true;
+        _approvalError = null;
+        CloseAllowMenu();
+        try
+        {
+            await RunsApi.DecideToolAsync(Run.ProjectId, Run.ChatId, Run.BranchId,
+                new ToolApprovalDecision(Approval.Id, action), CancellationToken.None);
+            var message = action switch
+            {
+                ToolApprovalAction.AllowForChat => "Tool permission saved for this chat.",
+                ToolApprovalAction.AllowForProject => "Tool permission saved for this project.",
+                ToolApprovalAction.AllowGlobally => "Tool permission saved globally.",
+                _ => null
+            };
+            if (message is not null) Notifications.ShowSuccess(message);
+        }
+        catch (HttpRequestException)
+        {
+            _approvalError = "This approval is no longer available. Refresh the chat.";
+            Notifications.ShowError(_approvalError);
+        }
+        finally { _decidingApproval = false; }
+    }
+}

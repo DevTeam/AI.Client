@@ -2377,11 +2377,18 @@ body {
     pointer-events: none;
 }
 
-.composer-status {
+.composer-prelude {
+    position: relative;
+    z-index: 30;
     grid-row: 4;
     grid-column: 1;
     width: min(48rem, calc(100% - 3rem));
     margin: 0 auto 0.4rem;
+    display: grid;
+    gap: .4rem;
+}
+
+.composer-status {
     color: var(--color-text-faint);
     font-size: 0.8rem;
 }
@@ -3640,21 +3647,51 @@ textarea {
     display: none;
 }
 
-.tool-approval { padding: 1rem; border: 1px solid currentColor; border-radius: calc(.5rem * var(--corner-scale)); }
-.tool-approval-batch { margin: .25rem 0 .5rem; opacity: .75; font-size: .875em; }
-.tool-invocation pre, .tool-approval pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
-.tool-approval-actions { position: relative; display: flex; justify-content: flex-end; gap: .45rem; align-items: center; }
-.tool-approval-actions > button { margin: 0; }
-.tool-approval-more { position: relative; }
-.tool-approval-more > summary { display: grid; width: 2.35rem; height: 2.35rem; padding: 0; place-items: center; list-style: none; }
-.tool-approval-more > summary::-webkit-details-marker { display: none; }
-.tool-approval-menu { position: absolute; z-index: 20; right: 0; bottom: calc(100% + .4rem); display: grid; width: 17rem; padding: .3rem; border: 1px solid var(--color-border); border-radius: calc(.65rem * var(--corner-scale)); background: var(--color-surface-raised); box-shadow: 0 .7rem 1.8rem rgb(0 0 0 / calc(40% * var(--shadow-scale))); }
+.tool-approval-bar { min-width: 0; border: 1px solid var(--color-border); border-radius: calc(.85rem * var(--corner-scale)); background: var(--color-surface); }
+.tool-approval-main { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; min-height: 3rem; padding: .4rem .75rem; border-radius: inherit; transition: background-color 140ms ease, border-color 180ms ease; }
+.tool-approval-main:hover { background: var(--color-fill); }
+.tool-approval-bar.is-expanded .tool-approval-main { border-bottom: 1px solid var(--color-border-subtle); border-radius: calc(.85rem * var(--corner-scale)) calc(.85rem * var(--corner-scale)) 0 0; }
+.tool-approval-header { display: flex; flex: 1; align-items: center; gap: .5rem; min-width: 12rem; padding: 0; border: 0; border-radius: 0; background: transparent; text-align: left; }
+.tool-approval-mark { display: inline-grid; flex: none; width: 1.6rem; height: 1.6rem; place-items: center; border: 1px solid var(--color-border); border-radius: calc(.45rem * var(--corner-scale)); background: var(--color-surface-raised); color: var(--color-accent-text); }
+.tool-approval-mark .app-icon { width: .9rem; height: .9rem; }
+.tool-approval-copy { display: grid; flex: 1; gap: .08rem; min-width: 0; }
+.tool-approval-heading { color: var(--color-text); font-size: .92rem; font-weight: 600; }
+.tool-approval-summary { display: flex; align-items: baseline; gap: .5rem; min-width: 0; overflow: hidden; color: var(--color-text-subtle); font-size: .74rem; white-space: nowrap; }
+.tool-approval-summary strong { flex: none; overflow: hidden; font-weight: 500; text-overflow: ellipsis; }
+.tool-approval-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tool-approval-count { flex: none; color: var(--color-text-faint); }
+.tool-approval-actions { display: flex; flex: none; align-items: center; gap: .25rem; margin-left: auto; }
+.tool-approval-actions > button { min-height: 2rem; margin: 0; padding: .35rem .6rem; font-size: .78rem; }
+.tool-approval-deny { color: var(--color-text-muted); }
+.tool-approval-allow { display: flex; align-items: stretch; border: 1px solid var(--color-border); border-radius: calc(.5rem * var(--corner-scale)); background: var(--color-fill-active); }
+.tool-approval-allow:hover { border-color: var(--color-border-strong); }
+.tool-approval-once { min-height: 2rem; padding: .35rem .6rem .35rem .75rem; border-radius: calc(.45rem * var(--corner-scale)) 0 0 calc(.45rem * var(--corner-scale)); color: var(--color-text-strong); font-size: .78rem; font-weight: 600; white-space: nowrap; }
+.tool-approval-more { position: relative; border-left: 1px solid var(--color-border); }
+.tool-approval-more.is-open { z-index: 31; }
+.tool-approval-more > button { position: relative; z-index: 31; display: grid; width: 1.8rem; height: 2rem; padding: 0; place-items: center; border-radius: 0 calc(.45rem * var(--corner-scale)) calc(.45rem * var(--corner-scale)) 0; color: var(--color-text-muted); }
+.tool-approval-more > button:hover, .tool-approval-more.is-open > button { color: var(--color-text-strong); background: var(--color-fill-hover); }
+.tool-approval-more .app-icon { width: .85rem; height: .85rem; }
+.tool-approval-menu-backdrop { position: fixed; z-index: 29; inset: 0; }
+.tool-approval-details-toggle { display: inline-grid; flex: none; width: 1.5rem; height: 2rem; padding: 0; place-items: center; color: var(--color-text-subtle); }
+.tool-approval-details-toggle:hover { color: var(--color-text-secondary); }
+.tool-approval-details-toggle .app-icon { width: .85rem; height: .85rem; transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1), color 140ms ease; }
+.tool-approval-bar.is-expanded .tool-approval-details-toggle .app-icon { transform: rotate(180deg); }
+.tool-approval-menu { position: absolute; z-index: 30; right: 0; bottom: calc(100% + .4rem); display: grid; width: min(17rem, calc(100vw - 2rem)); padding: .3rem; border: 1px solid var(--color-border); border-radius: calc(.65rem * var(--corner-scale)); background: var(--color-surface-raised); box-shadow: 0 .7rem 1.8rem rgb(0 0 0 / calc(40% * var(--shadow-scale))); }
 .tool-approval-menu button { display: grid; gap: .15rem; margin: 0; padding: .55rem .65rem; border-color: transparent; background: transparent; text-align: left; }
 .tool-approval-menu button:hover { background: var(--color-fill-active); }
 .tool-approval-menu button span { color: var(--color-text-subtle); font-size: .75rem; }
 .tool-approval-global-confirm { display: grid; gap: .55rem; padding: .65rem; border-top: 1px solid var(--color-border); font-size: .8rem; }
 .tool-approval-global-confirm > div { display: flex; justify-content: flex-end; gap: .4rem; }
 .tool-approval-global-confirm > div button { display: block; width: auto; padding: .4rem .55rem; }
+.tool-approval-details { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows 200ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 130ms ease, visibility 0s linear 200ms; }
+.tool-approval-details-inner { min-height: 0; overflow: hidden; transform: translateY(-.25rem); transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.tool-approval-details-content { display: grid; gap: .45rem; padding: .65rem .8rem .75rem; }
+.tool-approval-bar.is-expanded .tool-approval-details { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition-delay: 0s; }
+.tool-approval-bar.is-expanded .tool-approval-details-inner { transform: translateY(0); }
+.tool-approval-details-label { color: var(--color-text-muted); font-size: .72rem; font-weight: 600; }
+.tool-approval-details pre { max-height: 12rem; margin: 0; padding: .65rem; overflow: auto; border-radius: calc(.4rem * var(--corner-scale)); background: var(--color-bg-inset); font-size: .76rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tool-approval-details p { margin: 0; color: var(--color-text-subtle); font-size: .73rem; line-height: 1.4; }
+.tool-approval-error { margin: 0; padding: 0 .8rem .7rem; color: var(--color-danger-text); font-size: .75rem; }
 
 /* A question from the assistant. Built to read as one decision: the accent edge marks it as the
    thing to act on, and every option is a full-width hit target so choosing is one click anywhere
@@ -4511,7 +4548,11 @@ textarea {
     .workspace-changes-preview,
     .workspace-changes-chevron,
     .workspace-changes-details,
-    .workspace-changes-details-inner {
+    .workspace-changes-details-inner,
+    .tool-approval-main,
+    .tool-approval-details-toggle .app-icon,
+    .tool-approval-details,
+    .tool-approval-details-inner {
         transition: none;
     }
 }

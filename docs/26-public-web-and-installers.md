@@ -28,6 +28,17 @@ First-release browser support is Chrome and Edge. Installer targets are Windows 
 | macOS Intel, Apple silicon | `.pkg` | `.pkg` | Host per-user LaunchAgent at login |
 | Ubuntu/Debian x64, ARM64 | `.deb` | `.deb` | Host systemd user service at login |
 
+Install a newer package of the same product and architecture over the existing one to update it. The installer stops the running product before replacing its files, and the Host starts again after installation. The Web app currently offers the latest Host download when its API version is incompatible; there is no automatic update check. Project, chat, credential and preference data live outside the installation directory and are retained by update and uninstall.
+
+Uninstall Host or Desktop through Windows Installed Apps or the Linux package manager. On macOS, run the included uninstaller from Terminal:
+
+```sh
+sudo '/Applications/AI Client Host/uninstall.sh'
+sudo '/Applications/AI Client.app/Contents/MacOS/uninstall.sh'
+```
+
+Each macOS command stops its process and removes that product's installed files and package receipt. Run only the command for the product being removed. The uninstallers leave user data in place.
+
 Linux Desktop requires WebKitGTK (`libwebkit2gtk-4.1-0`) or WPE WebKit. Windows Desktop requires WebView2 Runtime. See [Desktop app](23-desktop.md) for the remaining platform requirements.
 
 Build one platform package on its matching OS:

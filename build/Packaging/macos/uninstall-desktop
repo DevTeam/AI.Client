@@ -1,0 +1,34 @@
+#!/bin/sh
+set -e
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo 'Run this script with sudo.' >&2
+    exit 1
+fi
+
+executable='/Applications/AI Client.app/Contents/MacOS/AI.Desktop'
+pids=$(ps -axww -o pid= -o command= | while read -r pid command; do
+    case "$command" in
+        "$executable"|"$executable "*) echo "$pid" ;;
+    esac
+done)
+for pid in $pids; do kill -TERM "$pid" 2>/dev/null || true; done
+attempt=0
+while [ "$attempt" -lt 15 ]; do
+    active=''
+    for pid in $pids; do
+        kill -0 "$pid" 2>/dev/null && active="$active $pid"
+    done
+    [ -z "$active" ] && break
+    sleep 1
+    attempt=$((attempt + 1))
+done
+for pid in $pids; do
+    if kill -0 "$pid" 2>/dev/null; then
+        echo 'AI Client Desktop did not stop; close it and retry.' >&2
+        exit 1
+    fi
+done
+
+rm -rf '/Applications/AI Client.app'
+pkgutil --forget org.devteam.aiclient.desktop >/dev/null 2>&1 || true

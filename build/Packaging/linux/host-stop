@@ -1,0 +1,37 @@
+#!/bin/sh
+set -e
+
+# Stop each running user's service before dpkg replaces or removes its executable.
+for directory in /run/user/[0-9]*; do
+    [ -d "$directory" ] || continue
+    uid=${directory##*/}
+    user=$(getent passwd "$uid" | cut -d: -f1)
+    [ -n "$user" ] || continue
+    runuser -u "$user" -- env XDG_RUNTIME_DIR="$directory" DBUS_SESSION_BUS_ADDRESS="unix:path=$directory/bus" systemctl --user stop ai-client-host.service || true
+done
+
+# The browser launcher can also start the Host without systemd. Limit this to
+# the executable owned by this package, leaving development Hosts alone.
+pids=''
+for executable in /proc/[0-9]*/exe; do
+    [ -e "$executable" ] || continue
+    [ "$(readlink "$executable" 2>/dev/null || true)" = /opt/ai-client-host/AI.Host ] || continue
+    pid=${executable#/proc/}
+    pid=${pid%/exe}
+    kill -TERM "$pid" 2>/dev/null || true
+    pids="$pids $pid"
+done
+
+attempt=0
+while [ "$attempt" -lt 15 ]; do
+    active=''
+    for pid in $pids; do
+        kill -0 "$pid" 2>/dev/null && active="$active $pid"
+    done
+    [ -z "$active" ] && exit 0
+    sleep 1
+    attempt=$((attempt + 1))
+done
+
+echo "AI Client Host did not stop; close it and retry." >&2
+exit 1

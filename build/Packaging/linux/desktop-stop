@@ -1,0 +1,26 @@
+#!/bin/sh
+set -e
+
+pids=''
+for executable in /proc/[0-9]*/exe; do
+    [ -e "$executable" ] || continue
+    [ "$(readlink "$executable" 2>/dev/null || true)" = /opt/ai-client-desktop/AI.Desktop ] || continue
+    pid=${executable#/proc/}
+    pid=${pid%/exe}
+    kill -TERM "$pid" 2>/dev/null || true
+    pids="$pids $pid"
+done
+
+attempt=0
+while [ "$attempt" -lt 15 ]; do
+    active=''
+    for pid in $pids; do
+        kill -0 "$pid" 2>/dev/null && active="$active $pid"
+    done
+    [ -z "$active" ] && exit 0
+    sleep 1
+    attempt=$((attempt + 1))
+done
+
+echo "AI Client Desktop did not stop; close it and retry." >&2
+exit 1

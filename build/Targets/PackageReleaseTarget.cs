@@ -55,9 +55,11 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
         var compiler = Environment.GetEnvironmentVariable("INNO_SETUP_COMPILER")
             ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Inno Setup 6", "ISCC.exe");
         if (!File.Exists(compiler)) throw new FileNotFoundException("Inno Setup 6 is required.", compiler);
-        foreach (var script in new[] { "install-host-task.ps1", "uninstall-host-task.ps1" })
+        foreach (var script in new[] { "install-host-task.ps1", "stop-installed-app.ps1" })
             File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "windows", script),
                 Path.Combine(host, script), true);
+        File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "windows", "stop-installed-app.ps1"),
+            Path.Combine(desktop, "stop-installed-app.ps1"), true);
         var architecture = runtime.EndsWith("arm64", StringComparison.Ordinal) ? "arm64" : "x64compatible";
         foreach (var (product, source) in new[] { ("Host", host), ("Desktop", desktop) })
         {
@@ -78,6 +80,9 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
         var hostApp = Path.Combine(hostRoot, "Applications", "AI Client Host");
         CopyTree(host, hostApp);
         MakeExecutable(Path.Combine(hostApp, "AI.Host"));
+        var uninstallHost = Path.Combine(hostApp, "uninstall.sh");
+        File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "macos", "uninstall-host"), uninstallHost, true);
+        MakeExecutable(uninstallHost);
         var agents = Path.Combine(hostRoot, "Library", "LaunchAgents");
         Directory.CreateDirectory(agents);
         File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "macos", "org.devteam.ai-client-host.plist"),
@@ -88,6 +93,10 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
         File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "macos", "host-postinstall"),
             postinstall, true);
         MakeExecutable(postinstall);
+        var preinstall = Path.Combine(hostScripts, "preinstall");
+        File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "macos", "host-preinstall"),
+            preinstall, true);
+        MakeExecutable(preinstall);
         var result = await processes.RunAsync($"Package Host {runtime}", "pkgbuild",
             ["--root", hostRoot, "--scripts", hostScripts,
                 "--identifier", "org.devteam.aiclient.host", "--version", version,
@@ -98,10 +107,21 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
         var app = Path.Combine(desktopRoot, "Applications", "AI Client.app", "Contents");
         CopyTree(desktop, Path.Combine(app, "MacOS"));
         MakeExecutable(Path.Combine(app, "MacOS", "AI.Desktop"));
+        var uninstallDesktop = Path.Combine(app, "MacOS", "uninstall.sh");
+        File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "macos", "uninstall-desktop"),
+            uninstallDesktop, true);
+        MakeExecutable(uninstallDesktop);
         File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "macos", "Desktop.Info.plist"),
             Path.Combine(app, "Info.plist"), true);
+        var desktopScripts = Path.Combine(stage, "desktop-scripts");
+        Directory.CreateDirectory(desktopScripts);
+        preinstall = Path.Combine(desktopScripts, "preinstall");
+        File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "macos", "desktop-preinstall"),
+            preinstall, true);
+        MakeExecutable(preinstall);
         return await processes.RunAsync($"Package Desktop {runtime}", "pkgbuild",
-            ["--root", desktopRoot, "--identifier", "org.devteam.aiclient.desktop", "--version", version,
+            ["--root", desktopRoot, "--scripts", desktopScripts,
+                "--identifier", "org.devteam.aiclient.desktop", "--version", version,
                 Path.Combine(packages, $"AI.Desktop-{runtime}.pkg")], token);
     }
 
@@ -137,6 +157,15 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
         File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "linux", "host-postinst"),
             postinst, true);
         MakeExecutable(postinst);
+        foreach (var script in new[] { "preinst", "prerm" })
+        {
+            var target = Path.Combine(hostRoot, "DEBIAN", script);
+            File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "linux", "host-stop"), target, true);
+            MakeExecutable(target);
+        }
+        var postrm = Path.Combine(hostRoot, "DEBIAN", "postrm");
+        File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "linux", "host-postrm"), postrm, true);
+        MakeExecutable(postrm);
         var result = await processes.RunAsync($"Package Host {runtime}", "dpkg-deb",
             ["--build", "--root-owner-group", hostRoot, Path.Combine(packages, $"AI.Host-{runtime}.deb")], token);
         if (result != 0) return result;
@@ -154,6 +183,12 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
             Path.Combine(pixmaps, "ai-client.png"), true);
         WriteDebControl(desktopRoot, "ai-client-desktop", version, architecture,
             "AI Client desktop application");
+        foreach (var script in new[] { "preinst", "prerm" })
+        {
+            var target = Path.Combine(desktopRoot, "DEBIAN", script);
+            File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "linux", "desktop-stop"), target, true);
+            MakeExecutable(target);
+        }
         return await processes.RunAsync($"Package Desktop {runtime}", "dpkg-deb",
             ["--build", "--root-owner-group", desktopRoot, Path.Combine(packages, $"AI.Desktop-{runtime}.deb")], token);
     }

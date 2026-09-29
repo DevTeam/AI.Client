@@ -1,0 +1,47 @@
+#!/bin/sh
+set -e
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo 'Run this script with sudo.' >&2
+    exit 1
+fi
+
+executable='/Applications/AI Client Host/AI.Host'
+agent='/Library/LaunchAgents/org.devteam.ai-client-host.plist'
+uids=$(ps -axww -o uid= -o command= | while read -r uid command; do
+    case "$command" in
+        "$executable"|"$executable "*) echo "$uid" ;;
+    esac
+done)
+console_uid=$(stat -f %u /dev/console)
+for uid in $uids $console_uid; do
+    [ "$uid" -gt 0 ] || continue
+    launchctl bootout "gui/$uid" "$agent" 2>/dev/null || true
+done
+
+pids=$(ps -axww -o pid= -o command= | while read -r pid command; do
+    case "$command" in
+        "$executable"|"$executable "*) echo "$pid" ;;
+    esac
+done)
+for pid in $pids; do kill -TERM "$pid" 2>/dev/null || true; done
+attempt=0
+while [ "$attempt" -lt 15 ]; do
+    active=''
+    for pid in $pids; do
+        kill -0 "$pid" 2>/dev/null && active="$active $pid"
+    done
+    [ -z "$active" ] && break
+    sleep 1
+    attempt=$((attempt + 1))
+done
+for pid in $pids; do
+    if kill -0 "$pid" 2>/dev/null; then
+        echo 'AI Client Host did not stop; close it and retry.' >&2
+        exit 1
+    fi
+done
+
+rm -f "$agent"
+rm -rf '/Applications/AI Client Host'
+pkgutil --forget org.devteam.aiclient.host >/dev/null 2>&1 || true

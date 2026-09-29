@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+executable='/Applications/AI Client.app/Contents/MacOS/AI.Desktop'
+pids=$(ps -axww -o pid= -o command= | while read -r pid command; do
+    case "$command" in
+        "$executable"|"$executable "*) echo "$pid" ;;
+    esac
+done)
+for pid in $pids; do kill -TERM "$pid" 2>/dev/null || true; done
+
+attempt=0
+while [ "$attempt" -lt 15 ]; do
+    active=''
+    for pid in $pids; do
+        kill -0 "$pid" 2>/dev/null && active="$active $pid"
+    done
+    [ -z "$active" ] && exit 0
+    sleep 1
+    attempt=$((attempt + 1))
+done
+
+echo 'AI Client Desktop did not stop; close it and retry.' >&2
+exit 1

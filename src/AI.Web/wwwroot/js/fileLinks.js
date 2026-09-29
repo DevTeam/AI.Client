@@ -117,7 +117,15 @@ export function attach(container, dotnet) {
         // The access shows as an icon after the link, drawn by CSS from this attribute.
         if (resolved.access) element.dataset.fileAccess = resolved.access;
         else delete element.dataset.fileAccess;
-        element.title = `${resolved.path}\n${ACCESS_TITLES[resolved.access] ?? 'Right-click to add it to the message'}`;
+        element.title = `${ownHintOf(element) ?? resolved.path}\n${ACCESS_TITLES[resolved.access] ?? 'Right-click to add it to the message'}`;
+    };
+
+    // An "@" link comes with its own hint — the token as written and the path — which the access
+    // line is added to rather than replacing it. tooltips.js may already have moved it.
+    const ownHintOf = element => {
+        if (!element.classList.contains('mention-link')) return null;
+        element.dataset.mentionHint ??= element.getAttribute('title') ?? element.dataset.tooltip ?? '';
+        return element.dataset.mentionHint || null;
     };
 
     // Decorates an element from the cache, or queues its path and marks it pending.

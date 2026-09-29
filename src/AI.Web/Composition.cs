@@ -75,6 +75,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<ISkillCommandMatcher>().To<SkillCommandMatcher>()
             .RootBind<IResourceMentionMatcher>().To<ResourceMentionMatcher>()
             .RootBind<IMentionLinkWriter>().To<MentionLinkWriter>()
+            .RootBind<IResourcePresenter>().To<ResourcePresenter>()
+            .Bind<IDiffSnapshotReader>().To<DiffSnapshotReader>()
             .RootBind<IComposerContextPresentation>().To<ComposerContextPresentation>()
             .RootBind<IDelayedBusyIndicatorFactory>().To<DelayedBusyIndicatorFactory>()
             .Bind<INotificationService>("base").As(Lifetime.Singleton).To<NotificationService>()

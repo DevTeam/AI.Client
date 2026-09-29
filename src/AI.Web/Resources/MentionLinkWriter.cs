@@ -3,7 +3,7 @@ namespace AI.Web.Resources;
 using System.Text;
 using AI.Contracts.Resources;
 
-public sealed class MentionLinkWriter : IMentionLinkWriter
+public sealed class MentionLinkWriter(IResourcePresenter presenter) : IMentionLinkWriter
 {
     private const string MarkdownPunctuation = "\\`*_{}[]()#+-.!<>|~";
 
@@ -29,8 +29,12 @@ public sealed class MentionLinkWriter : IMentionLinkWriter
                 else result.Append(markdown[index++]);
                 continue;
             }
-            result.Append('[').Append(Escape(match.Mention!)).Append("](<").Append(Target(match)).Append(">){.mention-link .mention-")
-                .Append(match.Kind.ToString().ToLowerInvariant()).Append('}');
+            // The link shows the name; the token as written stays in its tooltip and in the message.
+            result.Append('[').Append(Escape(presenter.Label(match))).Append("](<").Append(Target(match)).Append("> \"")
+                .Append(Title(presenter.Hint(match))).Append("\"){.mention-link .mention-")
+                .Append(match.Kind.ToString().ToLowerInvariant());
+            if (presenter.Summary(match) is { } summary) result.Append(" data-summary=\"").Append(summary).Append('"');
+            result.Append('}');
             index += match.Mention!.Length;
         }
         return result.ToString();
@@ -81,4 +85,14 @@ public sealed class MentionLinkWriter : IMentionLinkWriter
         }
         return escaped.ToString();
     }
+
+    /// <summary>
+    /// A link title on one line: a raw line break would end a table row or a list item's line, so
+    /// breaks go in as the entity markdown decodes in a title.
+    /// </summary>
+    private static string Title(string text) => text
+        .Replace("&", "&amp;", StringComparison.Ordinal)
+        .Replace("\\", "\\\\", StringComparison.Ordinal)
+        .Replace("\"", "\\\"", StringComparison.Ordinal)
+        .Replace("\n", "&#10;", StringComparison.Ordinal);
 }

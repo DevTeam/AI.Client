@@ -315,11 +315,11 @@
                                         <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
                                             @if (_isConfirmingDirectoryDelete)
                                             {
-                                                <div class="project-menu-confirm"><span>Remove this directory?</span><button class="danger compact-action" type="button" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Delete</button><button class="secondary-action compact-action" type="button" @onclick="CancelDirectoryDelete">Cancel</button></div>
+                                                <div class="project-menu-confirm neutral"><span>Remove access? Files stay on disk.</span><button class="compact-action" type="button" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Remove access</button><button class="secondary-action compact-action" type="button" @onclick="CancelDirectoryDelete">Cancel</button></div>
                                             }
                                             else
                                             {
-                                                <button class="menu-danger" type="button" role="menuitem" @onclick="ConfirmDirectoryDelete"><AppIcon Name="trash" />Remove directory</button>
+                                                <button type="button" role="menuitem" @onclick="ConfirmDirectoryDelete"><AppIcon Name="x" />Remove access</button>
                                             }
                                         </div>
                                     }

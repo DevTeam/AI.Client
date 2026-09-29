@@ -818,6 +818,8 @@
     private string? _mentionFilesQuery;
     private IReadOnlyList<WorkspaceDiffSource> _mentionDiffs = [];
     private int _mentionSearchVersion;
+    private Guid? _mentionDiffsLoadedFor;
+    private DateTimeOffset _mentionDiffsLoadedAt;
     private int? _pendingMentionAt;
     private readonly Dictionary<string, ChatResourceRef[]> _resourceDrafts = [];
     private readonly List<ChatReview> _reviews = [];
@@ -2061,6 +2063,8 @@
         if (project is not null && _selectedProject?.Id == id)
         {
             _security = ProjectSecurityEditor.From(project);
+            // The index behind the "@" list is built while the user is still reading, not on the first "@".
+            _ = WarmMentionSearchAsync(id);
             _editor.ConnectionId = project.ConnectionId ?? GetDefaultConnection()?.Id;
             _defaultConnectionId = _editor.ConnectionId;
             if (_defaultConnectionId is { } defaultId)
@@ -4209,22 +4213,53 @@
         _mentionDismissedAt = null;
     }
 
-    /// <summary>Changes and reviews can move between one "@" and the next, so they are read again each time a word starts.</summary>
+    private async Task WarmMentionSearchAsync(Guid projectId)
+    {
+        try { await ResourceApi.WarmAsync(projectId, CancellationToken.None); }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            // Only a head start: without it the first search starts the index itself.
+        }
+    }
+
+    /// <summary>
+    /// Changes and reviews can move between one "@" and the next, so they are read again when a word
+    /// starts — changes at most every few seconds, since git status over large trees takes a while.
+    /// Neither holds the list up: each group appears when its answer does.
+    /// </summary>
     private async Task LoadMentionSourcesAsync()
     {
         if (_selectedProject is not { } project) return;
-        try
-        {
-            var diffs = await ResourceApi.ListDiffsAsync(project.Id, CancellationToken.None);
-            if (_selectedProject?.Id != project.Id) return;
-            _mentionDiffs = diffs;
-        }
+        var diffs = _mentionDiffsLoadedFor == project.Id && DateTimeOffset.UtcNow - _mentionDiffsLoadedAt < TimeSpan.FromSeconds(10)
+            ? Task.CompletedTask : LoadMentionDiffsAsync(project.Id);
+        var reviews = _selectedChat is not null && _reviews.Count == 0 ? LoadMentionReviewsAsync() : Task.CompletedTask;
+        await Task.WhenAll(diffs, reviews);
+    }
+
+    private async Task LoadMentionDiffsAsync(Guid projectId)
+    {
+        IReadOnlyList<WorkspaceDiffSource> diffs;
+        try { diffs = await ResourceApi.ListDiffsAsync(projectId, CancellationToken.None); }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
             // Without git, or with the Host busy, the list just has no changes to offer.
-            _mentionDiffs = [];
+            diffs = [];
         }
-        if (_selectedChat is not null && _reviews.Count == 0) await LoadReviewsAsync();
+        if (_selectedProject?.Id != projectId) return;
+        _mentionDiffs = diffs;
+        _mentionDiffsLoadedFor = projectId;
+        _mentionDiffsLoadedAt = DateTimeOffset.UtcNow;
+        await RefreshMentionAsync();
+    }
+
+    private async Task LoadMentionReviewsAsync()
+    {
+        await LoadReviewsAsync();
+        await RefreshMentionAsync();
+    }
+
+    private async Task RefreshMentionAsync()
+    {
         if (_mention is null) return;
         RecomputeMentionItems();
         await InvokeAsync(StateHasChanged);
@@ -4235,21 +4270,31 @@
         if (_selectedProject is not { } project) return;
         var version = ++_mentionSearchVersion;
         _mentionFilesQuery = query;
-        IReadOnlyList<ResourceSuggestion> found;
+        ResourceSearchResult found;
         try
         {
             found = await ResourceApi.SearchAsync(project.Id, query, 40, CancellationToken.None);
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
-            found = [];
+            found = new ResourceSearchResult([], true);
         }
         // A later keystroke already asked again; its answer is the one to show.
         if (version != _mentionSearchVersion || _selectedProject?.Id != project.Id || _mention is null) return;
-        _mentionFiles = found;
+        _mentionFiles = found.Items;
         RecomputeMentionItems();
         await InvokeAsync(StateHasChanged);
+        if (found.Complete) return;
+        // The Host is still indexing: what it has is shown, and the same word is asked again shortly.
+        await Task.Delay(400);
+        if (version == _mentionSearchVersion && _mention?.Filter == query) await SearchMentionFilesAsync(query);
     }
+
+    private AI.Web.Resources.ProjectDirectory[] ProjectDirectories() => _security.DirectoryGrants
+        .Where(grant => grant.ToolNames.Contains("read", StringComparison.OrdinalIgnoreCase))
+        .Select(grant => new AI.Web.Resources.ProjectDirectory(
+            grant.DisplayName is { Length: > 0 } name ? name : ResourceDisplayName(grant.CanonicalRoot), grant.CanonicalRoot))
+        .ToArray();
 
     private void RecomputeMentionItems()
     {
@@ -4258,7 +4303,7 @@
         var reviews = ReviewsForComposer();
         _mentionItems = MentionMatcher.Match(new AI.Web.Resources.ResourceMentionSources(
             _mentionFiles, _mentionDiffs, _chats, reviews, _projects, _draftResources,
-            _selectedChat?.Id, _selectedProject?.Id), mention);
+            _selectedChat?.Id, _selectedProject?.Id, ProjectDirectories()), mention);
         var kept = selectedKey is null ? -1 : _mentionItems.ToList().FindIndex(item => item.Key == selectedKey);
         _mentionIndex = kept >= 0 && mention.Filter.Length > 0 ? kept : 0;
         _scrollMention = true;
@@ -4310,7 +4355,7 @@
         if (MentionMatcher.GetMention(text, caret) is not { } mention) return null;
         if (openDirectory && item is { Kind: ChatResourceKind.Directory, Action: AI.Web.Resources.ResourceMentionAction.Attach })
         {
-            var relative = item.Detail is { Length: > 0 } parent ? $"{parent}/{item.Name}" : item.Name;
+            var relative = item.OpenAs ?? (item.Detail is { Length: > 0 } parent ? $"{parent}/{item.Name}" : item.Name);
             var opened = $"{text[..mention.Start]}@{relative}/";
             var edit = new AI.Web.Composer.ComposerTextEdit(opened + text[mention.End..], opened.Length);
             SetComposerText(edit.Text);

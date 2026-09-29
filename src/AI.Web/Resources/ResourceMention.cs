@@ -14,7 +14,10 @@ public sealed record ResourceMention(int Start, int End, string Query, ChatResou
     ChatLineRange? Lines);
 
 /// <summary>The sections of the "@" list, in the order they are shown when nothing ranks them.</summary>
-public enum ResourceMentionGroup { Files, Changes, Chats, Reviews, Projects, Browse }
+public enum ResourceMentionGroup { Directories, Files, Changes, Chats, Reviews, Projects, Browse }
+
+/// <summary>A directory the project may read, as its sidebar lists it: known before the Host is asked anything.</summary>
+public sealed record ProjectDirectory(string Name, string Path);
 
 /// <summary>What choosing a row does: attach it, or open the file or directory picker of the "+" menu.</summary>
 public enum ResourceMentionAction { Attach, BrowseFile, BrowseDirectory }
@@ -25,6 +28,7 @@ public enum ResourceMentionAction { Attach, BrowseFile, BrowseDirectory }
 /// </summary>
 /// <param name="Highlights">Indexes into <see cref="Name"/>, ascending.</param>
 /// <param name="Token">The "@" link the row becomes in the message text, such as "@src/app.cs:12-40".</param>
+/// <param name="OpenAs">For a directory: the word Tab turns the "@" word into to list what is inside, without the "/".</param>
 public sealed record ResourceMentionItem(
     ResourceMentionGroup Group,
     ChatResourceKind Kind,
@@ -36,7 +40,8 @@ public sealed record ResourceMentionItem(
     ResourceMentionAction Action = ResourceMentionAction.Attach,
     ChatLineRange? Lines = null,
     ChatReviewKind? ReviewKind = null,
-    string Token = "")
+    string Token = "",
+    string? OpenAs = null)
 {
     public string Key => $"{Group}:{Action}:{Value}";
 }
@@ -50,4 +55,5 @@ public sealed record ResourceMentionSources(
     IReadOnlyList<ProjectSummary> Projects,
     IReadOnlyList<ChatResourceRef> Attached,
     Guid? CurrentChatId,
-    Guid? CurrentProjectId);
+    Guid? CurrentProjectId,
+    IReadOnlyList<ProjectDirectory>? Directories = null);

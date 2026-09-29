@@ -7,6 +7,12 @@ namespace AI.Contracts.Resources;
 public sealed record ResourceSuggestion(ChatResourceKind Kind, string Path, string RelativePath, PathAccess Access);
 
 /// <summary>
+/// The "@" list's files and directories. <paramref name="Complete"/> is false while the Host is
+/// still indexing: the list asks again shortly, and better matches may arrive.
+/// </summary>
+public sealed record ResourceSearchResult(IReadOnlyList<ResourceSuggestion> Items, bool Complete);
+
+/// <summary>
 /// A repository with uncommitted changes, offered as "@diff:Name": a project directory inside a
 /// work tree, or a work tree found inside one. <paramref name="Location"/> says where it is —
 /// the project directory's name and the path below it — so two of the same name can be told apart.

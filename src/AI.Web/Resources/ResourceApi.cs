@@ -25,13 +25,20 @@ public sealed class ResourceApi(HttpClient http) : IResourceApi
         return await response.Content.ReadFromJsonAsync<ResolvedPath[]>(cancellationToken) ?? [];
     }
 
-    public async Task<IReadOnlyList<ResourceSuggestion>> SearchAsync(Guid projectId, string query, int limit,
+    public async Task<ResourceSearchResult> SearchAsync(Guid projectId, string query, int limit,
         CancellationToken cancellationToken)
     {
         using var response = await http.GetAsync(
             $"api/projects/{projectId}/resources/search?query={Uri.EscapeDataString(query)}&limit={limit}", cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<ResourceSuggestion[]>(cancellationToken) ?? [];
+        return await response.Content.ReadFromJsonAsync<ResourceSearchResult>(cancellationToken)
+            ?? new ResourceSearchResult([], true);
+    }
+
+    public async Task WarmAsync(Guid projectId, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"api/projects/{projectId}/resources/index", null, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
     }
 
     public async Task<IReadOnlyList<WorkspaceDiffSource>> ListDiffsAsync(Guid projectId, CancellationToken cancellationToken)

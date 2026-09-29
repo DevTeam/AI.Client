@@ -28,6 +28,7 @@
 @inject IRunStatusPresentation StatusPresentation
 @inject IComposerHistoryNavigator _composerHistoryNavigator
 @inject IComposerContextPresentation ContextPresentation
+@inject IClientSettingsService ClientSettings
 @inject IDelayedBusyIndicatorFactory BusyIndicatorFactory
 @inject NavigationManager Navigation
 @implements IAsyncDisposable
@@ -522,7 +523,7 @@
                     }
                 </div>
                 @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation" aria-label="Stop generation" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> }
-                <ComposerSendButton ActiveMode="@GetComposerSendMode()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
+                <ComposerSendButton ActiveMode="@GetComposerSendMode()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@(_showContextWindowUsage ? GetComposerContext() : null)" />
             </div>
             @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
         </footer>
@@ -640,7 +641,7 @@
 
 @if (_globalSection is not null)
 {
-    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection == "ProjectMemory" ? _selectedProject?.Id : null)" Section="@_globalSection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" />
+    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection == "ProjectMemory" ? _selectedProject?.Id : null)" Section="@_globalSection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" ContextWindowUsageChanged="value => _showContextWindowUsage = value" />
 }
 
 @if (_permissionsScope is not null && _selectedProject is not null)
@@ -728,6 +729,7 @@
     private static readonly object PinDividerKey = new();
     private string _sidebarAnnouncement = string.Empty;
     private string? _globalSection;
+    private bool _showContextWindowUsage = true;
     private IJSObjectReference? _navigationModule;
     private IJSObjectReference? _navigationHandle;
     private IJSObjectReference? _scrollbarGutterModule;
@@ -1060,6 +1062,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _showContextWindowUsage = (await ClientSettings.GetAsync()).ShowContextWindowUsage;
         Notifications.Changed += OnNotificationsChanged;
         HostConnection.Changed += OnHostStatusChanged;
         Notifications.OpenRequested += OnNotificationOpenRequested;

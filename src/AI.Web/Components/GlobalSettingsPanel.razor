@@ -64,6 +64,10 @@
                             <legend>Notifications</legend>
                             <label class="checkbox"><input type="checkbox" checked="@_notificationSoundEnabled" @onchange="SetNotificationSoundAsync" /> Play a sound for new chat notifications</label>
                         </fieldset>
+                        <fieldset class="app-settings-group">
+                            <legend>Chat</legend>
+                            <label class="checkbox"><input type="checkbox" checked="@_showContextWindowUsage" @onchange="SetShowContextWindowUsageAsync" /> Show context window usage</label>
+                        </fieldset>
                         @if (ClientMode.PublicWeb)
                         {
                             var (hostState, hostLabel) = HostConnection.Status switch
@@ -191,6 +195,7 @@
 @code {
     [Parameter] public string Section { get; set; } = "Connections";
     [Parameter] public EventCallback Saved { get; set; }
+    [Parameter] public EventCallback<bool> ContextWindowUsageChanged { get; set; }
     /// <summary>The project whose memory the ProjectMemory section edits.</summary>
     [Parameter] public Guid? ProjectId { get; set; }
     private MemoryEditor? _memoryEditor;
@@ -238,6 +243,7 @@
     private AccentColor _accent;
     private int _cornerRoundnessPercent = 100;
     private bool _notificationSoundEnabled = true;
+    private bool _showContextWindowUsage = true;
     private ElementReference _drawer;
     private IJSObjectReference? _transferModule;
     private IJSObjectReference? _transferSubscription;
@@ -255,7 +261,9 @@
         _theme = await Theme.GetAsync();
         _accent = await Theme.GetAccentAsync();
         _cornerRoundnessPercent = await Theme.GetCornerRoundnessAsync();
-        _notificationSoundEnabled = (await ClientSettings.GetAsync()).NotificationSoundEnabled;
+        var clientSettings = await ClientSettings.GetAsync();
+        _notificationSoundEnabled = clientSettings.NotificationSoundEnabled;
+        _showContextWindowUsage = clientSettings.ShowContextWindowUsage;
         await LoadGlobalSettingsAsync();
     }
     private async Task LoadGlobalSettingsAsync()
@@ -299,7 +307,7 @@
 
     private string Description => Section switch
     {
-        "Settings" => ClientMode.PublicWeb ? "How the app looks and sounds, and the Host it works with." : "How the app looks and sounds on this device.",
+        "Settings" => ClientMode.PublicWeb ? "How the app looks and behaves, and the Host it works with." : "How the app looks and behaves on this device.",
         "Memory" => "What the assistant remembers about you in every project.",
         "ProjectMemory" => "What the assistant remembers about this project.",
         "Connections" => "OpenAI-compatible endpoints available to every project.",
@@ -333,6 +341,13 @@
     {
         _notificationSoundEnabled = args.Value is true;
         await ClientSettings.UpdateAsync(current => current with { NotificationSoundEnabled = _notificationSoundEnabled });
+    }
+
+    private async Task SetShowContextWindowUsageAsync(ChangeEventArgs args)
+    {
+        _showContextWindowUsage = args.Value is true;
+        await ClientSettings.UpdateAsync(current => current with { ShowContextWindowUsage = _showContextWindowUsage });
+        await ContextWindowUsageChanged.InvokeAsync(_showContextWindowUsage);
     }
 
     private static string Plural(int count, string word) => $"{count} {word}{(count == 1 ? string.Empty : "s")}";

@@ -81,12 +81,15 @@ public sealed class McpToolSession : IToolSession
     {
         ArgumentNullException.ThrowIfNull(tool);
         if (arguments.Length > 65536) throw new ArgumentException("Tool arguments exceed the size limit.", nameof(arguments));
-        var input = JsonSerializer.Deserialize<JsonElement>(arguments);
-        var evaluation = JsonSchema.Build(_descriptors[tool.OriginalName].InputSchema)
+        var schema = _descriptors[tool.OriginalName].InputSchema;
+        var canonical = JsonNode.Parse(arguments) is JsonObject parsed ? Repair(parsed, schema) : null;
+        var input = canonical is null
+            ? JsonSerializer.Deserialize<JsonElement>(arguments)
+            : JsonSerializer.SerializeToElement(canonical);
+        var evaluation = JsonSchema.Build(schema)
             .Evaluate(input, new EvaluationOptions { OutputFormat = OutputFormat.List });
-        if (!evaluation.IsValid)
+        if (!evaluation.IsValid || canonical is null)
             throw new ArgumentException("Tool arguments do not match the input schema. " + Explain(evaluation), nameof(arguments));
-        var canonical = JsonNode.Parse(arguments)!.AsObject();
         if (!_canonicalizePaths) return canonical.ToJsonString();
         // Canonicalize before approval so the user and the server judge the same path.
         foreach (var property in PathProperties)
@@ -99,6 +102,69 @@ public sealed class McpToolSession : IToolSession
             else canonical[property] = Absolute(node.GetValue<string>());
         }
         return canonical.ToJsonString();
+    }
+
+    /// <summary>
+    /// Undoes the two slips models make most often with otherwise correct calls: an object or array
+    /// sent as its JSON text, and an enum value in the wrong case. Only top-level properties whose
+    /// schema leaves no other reading are changed, so a value that was meant as a string stays one.
+    /// </summary>
+    private static JsonObject Repair(JsonObject arguments, JsonElement schema)
+    {
+        if (!schema.TryGetProperty("properties", out var properties) || properties.ValueKind != JsonValueKind.Object)
+            return arguments;
+        foreach (var property in properties.EnumerateObject())
+        {
+            if (arguments[property.Name] is not JsonValue value || !value.TryGetValue<string>(out var text)) continue;
+            var types = Types(property.Value).ToHashSet(StringComparer.Ordinal);
+            if (!types.Contains("string") && (types.Contains("object") || types.Contains("array")))
+            {
+                try
+                {
+                    if (JsonNode.Parse(text) is { } node
+                        && (node is JsonObject && types.Contains("object") || node is JsonArray && types.Contains("array")))
+                        arguments[property.Name] = node;
+                }
+                catch (JsonException)
+                {
+                    // Not JSON after all: leave it for the schema to reject with its own message.
+                }
+                continue;
+            }
+            var choices = Enum(property.Value).ToArray();
+            if (choices.Length > 0 && !choices.Contains(text, StringComparer.Ordinal)
+                && choices.SingleOrDefault(choice => string.Equals(choice, text, StringComparison.OrdinalIgnoreCase)) is { } match)
+                arguments[property.Name] = match;
+        }
+        return arguments;
+    }
+
+    private static IEnumerable<string> Types(JsonElement schema)
+    {
+        if (schema.TryGetProperty("type", out var type))
+        {
+            if (type.ValueKind == JsonValueKind.String) yield return type.GetString()!;
+            else if (type.ValueKind == JsonValueKind.Array)
+                foreach (var item in type.EnumerateArray())
+                    if (item.ValueKind == JsonValueKind.String) yield return item.GetString()!;
+        }
+        foreach (var keyword in new[] { "anyOf", "oneOf" })
+            if (schema.TryGetProperty(keyword, out var options) && options.ValueKind == JsonValueKind.Array)
+                foreach (var option in options.EnumerateArray())
+                    foreach (var nested in Types(option))
+                        yield return nested;
+    }
+
+    private static IEnumerable<string> Enum(JsonElement schema)
+    {
+        if (schema.TryGetProperty("enum", out var values) && values.ValueKind == JsonValueKind.Array)
+            foreach (var value in values.EnumerateArray())
+                if (value.ValueKind == JsonValueKind.String) yield return value.GetString()!;
+        foreach (var keyword in new[] { "anyOf", "oneOf" })
+            if (schema.TryGetProperty(keyword, out var options) && options.ValueKind == JsonValueKind.Array)
+                foreach (var option in options.EnumerateArray())
+                    foreach (var nested in Enum(option))
+                        yield return nested;
     }
 
     /// <summary>

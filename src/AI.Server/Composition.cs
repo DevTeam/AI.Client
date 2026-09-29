@@ -113,7 +113,7 @@ internal sealed class Composition
                 JsonGlobalSettingsRepository, ProtectedGlobalSecretStore, ResourceService, ResourceModelProjection, JsonResourceRepository, ProjectPathAccess, WorkspacePathResolver,
                 ReviewService, JsonReviewRepository, MemoryService, JsonMemoryRepository, ProjectInstructionsService, JsonProjectInstructionsRepository,
                 WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService, OpenAiCompatibleConnectionModelsResolver, JsonChatRunRepository,
-                ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator, ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService, KeyringOrFileMasterKeyStore, ChatTitleSkill,
+                ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator, ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService, KeyringOrFileMasterKeyStore, ChatRenameSkill,
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff, MasterKeyFormat, ProcessCommandRunner,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()

@@ -2742,6 +2742,59 @@ body {
     box-shadow: 0 .6rem 2rem rgb(0 0 0 / calc(53% * var(--shadow-scale)));
 }
 .composer-resource-menu-label { padding: .3rem .55rem; color: var(--color-text-subtle); font-size: .75rem; }
+/* The skill a message invokes: the accent tells it apart from the workspace references beside it,
+   in the composer and in the sent message alike. */
+.workspace-composer .composer-skill-chip,
+.workspace-composer .composer-skill-chip > span,
+.message-skill-chip {
+    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+    color: var(--color-accent);
+}
+.workspace-composer .composer-skill-chip { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.message-skill-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    max-width: min(100%, 25rem);
+    margin-bottom: .4rem;
+    font-weight: 500;
+}
+.message-skill-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message-skill-chip .app-icon { flex: none; width: 1rem; height: 1rem; }
+/* The slash list over the composer: one row per skill, name then description, source on the right. */
+.skill-command-menu {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + .5rem);
+    left: 0;
+    z-index: 30;
+    max-height: min(22rem, 50vh);
+    overflow-y: auto;
+    padding: .35rem;
+    border: 1px solid var(--color-border-strong);
+    border-radius: calc(.65rem * var(--corner-scale));
+    background: var(--color-fill-hover);
+    box-shadow: 0 .6rem 2rem rgb(0 0 0 / calc(53% * var(--shadow-scale)));
+}
+.workspace-composer .skill-command-label { padding: .3rem .55rem .2rem; color: var(--color-text-subtle); font-size: .75rem; }
+.skill-command-item {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .6rem;
+    padding: .45rem .55rem;
+    border-radius: calc(.4rem * var(--corner-scale));
+    cursor: pointer;
+    scroll-margin: .35rem;
+}
+.skill-command-item.selected { background: var(--color-fill-stronger); }
+.skill-command-item .app-icon { width: 1rem; height: 1rem; color: var(--color-text-secondary); }
+.workspace-composer .skill-command-item span { font-size: .85rem; }
+.workspace-composer .skill-command-name { color: var(--color-text-secondary); white-space: nowrap; }
+.skill-command-name mark { padding: 0; background: none; color: var(--color-text-strong); font-weight: 600; }
+.skill-command-item.selected .skill-command-name { color: var(--color-text); }
+.workspace-composer .skill-command-description { overflow: hidden; color: var(--color-text-subtle); text-overflow: ellipsis; white-space: nowrap; }
+.workspace-composer .skill-command-source { color: var(--color-text-subtle); font-size: .78rem; }
 .composer-resource-menu button { display: flex; align-items: center; gap: .6rem; padding: .5rem .55rem; border: 0; border-radius: calc(.35rem * var(--corner-scale)); background: transparent; color: var(--color-text); text-align: left; }
 .composer-resource-menu button:hover,
 .composer-resource-menu button:focus-visible { background: var(--color-fill-stronger); }

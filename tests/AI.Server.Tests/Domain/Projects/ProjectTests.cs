@@ -53,6 +53,23 @@ public sealed class ProjectTests
     }
 
     [Fact]
+    public void RemoveDirectoryGrantRemovesOnlyThatGrant()
+    {
+        var project = CreateProject();
+        var removed = new DirectoryGrant(new DirectoryGrantId(Guid.Parse("019f0000-0000-7000-8000-000000000011")),
+            "Source", @"C:\Project\src", true, ["read"]);
+        var kept = new DirectoryGrant(new DirectoryGrantId(Guid.Parse("019f0000-0000-7000-8000-000000000012")),
+            "Docs", @"C:\Project\docs", true, ["read"]);
+        project.AddDirectoryGrant(removed, _createdAt);
+        project.AddDirectoryGrant(kept, _createdAt);
+
+        project.RemoveDirectoryGrant(removed.Id, _createdAt.AddMinutes(1));
+
+        project.DirectoryGrants.ShouldHaveSingleItem().ShouldBeSameAs(kept);
+        Should.Throw<DomainException>(() => project.RemoveDirectoryGrant(removed.Id, _createdAt.AddMinutes(1)));
+    }
+
+    [Fact]
     public void SetToolPolicyThrowsDomainExceptionWhenServerIsNotConnected()
     {
         var project = CreateProject();

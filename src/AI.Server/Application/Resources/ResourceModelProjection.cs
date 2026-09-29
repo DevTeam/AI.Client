@@ -12,6 +12,9 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
     public string Project(string content, IReadOnlyList<ChatResourceRef>? references)
     {
         if (references is null or { Count: 0 }) return content;
+        content = WithInvokedSkill(content, references);
+        references = references.Where(item => item.Kind != ChatResourceKind.Skill).ToArray();
+        if (references.Count == 0) return content;
         var lines = references.Select(item =>
             item.Kind == ChatResourceKind.Review
                 ? $"- review: {JsonSerializer.Serialize(item.Name ?? item.Path)} [resource {item.Id}]"
@@ -24,6 +27,9 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
         IReadOnlyList<ChatResourceRef>? references, CancellationToken cancellationToken)
     {
         if (references is null or { Count: 0 }) return content;
+        content = WithInvokedSkill(content, references);
+        references = references.Where(item => item.Kind != ChatResourceKind.Skill).ToArray();
+        if (references.Count == 0) return content;
         var reviewItems = references.Any(item => item.Kind == ChatResourceKind.Review)
             ? (await (reviews ?? throw new InvalidOperationException("Review service is required."))
                 .ListAsync(projectId, chatId, cancellationToken)).ToDictionary(item => item.Id)
@@ -69,5 +75,19 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
         if (lines.Count == 0) return content;
         return string.Join('\n', new[] { content, "Attached workspace references:" }.Concat(lines)
             .Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
+    /// <summary>
+    /// A skill chosen from the composer's slash list. The message text is the user's instructions
+    /// for it; the model still prepares the parameters with its ordinary tools and runs it.
+    /// </summary>
+    private static string WithInvokedSkill(string content, IReadOnlyList<ChatResourceRef> references)
+    {
+        if (references.FirstOrDefault(item => item.Kind == ChatResourceKind.Skill) is not { } skill) return content;
+        var line = $"The user invoked the skill {JsonSerializer.Serialize(skill.Path)}"
+                   + (skill.Name is { Length: > 0 } name ? $" ({JsonSerializer.Serialize(name)})" : string.Empty)
+                   + " for this message. Run it now with app_run_skill, taking its parameters from the message; use "
+                   + "app_skill_search for its schema if you do not have it. A playbook returns instructions: follow them in this turn.";
+        return string.IsNullOrWhiteSpace(content) ? line : $"{line}\n{content}";
     }
 }

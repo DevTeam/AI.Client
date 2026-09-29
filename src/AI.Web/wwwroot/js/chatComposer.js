@@ -42,9 +42,54 @@ export function attach(textarea, dotNetReference) {
             applyHistoryText(result.text);
         });
 
+    // Mirrors whether the component shows the slash list of skills, for the same reason as
+    // historyActive: the list takes Up/Down/Enter/Tab/Escape, and whether it owns the key has to
+    // be decided synchronously. The component pushes the state after every render that changes it.
+    let skillListOpen = false;
+
+    const acceptSkill = () => dotNetReference
+        .invokeMethodAsync("AcceptSkillSuggestion")
+        .then(text => {
+            if (text === null || text === undefined) return;
+            textarea.value = text;
+            textarea.setSelectionRange(text.length, text.length);
+            resize();
+        });
+
+    const handleSkillList = event => {
+        const plain = !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+        if ((event.key === "ArrowUp" || event.key === "ArrowDown") && plain) {
+            event.preventDefault();
+            dotNetReference.invokeMethodAsync("MoveSkillSuggestion", event.key === "ArrowUp" ? -1 : 1);
+            return true;
+        }
+        if ((event.key === "Enter" || event.key === "Tab") && plain) {
+            event.preventDefault();
+            skillListOpen = false;
+            acceptSkill();
+            return true;
+        }
+        if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            skillListOpen = false;
+            dotNetReference.invokeMethodAsync("DismissSkillSuggestions");
+            return true;
+        }
+        return false;
+    };
+
     const handler = event => {
         if (event.isComposing) {
             pushModifiers(event.ctrlKey, event.altKey, event.shiftKey);
+            return;
+        }
+        if (skillListOpen && handleSkillList(event)) return;
+        // The skill chip sits before the text: Backspace with the caret at the very start removes
+        // it whole, the way a chip inside the text would go.
+        if (event.key === "Backspace" && textarea.selectionStart === 0 && textarea.selectionEnd === 0
+            && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+            dotNetReference.invokeMethodAsync("RemoveDraftSkill");
             return;
         }
         if (event.key === "ArrowUp" || event.key === "ArrowDown") {
@@ -141,6 +186,12 @@ export function attach(textarea, dotNetReference) {
             textarea.focus();
         },
         resize,
+        setSkillList: open => { skillListOpen = open; },
+        scrollSkillSuggestionIntoView: () => {
+            textarea.closest(".workspace-composer")
+                ?.querySelector(".skill-command-item.selected")
+                ?.scrollIntoView({ block: "nearest" });
+        },
         reset: () => {
             // The bound _chat.Message may take one render to reach the DOM textarea. For Ctrl+Enter
             // (queue) the render that follows is gated on a snapshot push from the dispatcher,
@@ -148,6 +199,7 @@ export function attach(textarea, dotNetReference) {
             // a clear here, then let the next resize run naturally.
             textarea.value = "";
             historyActive = false;
+            skillListOpen = false;
             resize();
         },
         dispose: detach

@@ -11,7 +11,7 @@ using AI.Contracts.Chats;
 using Microsoft.Extensions.Logging;
 
 /// <summary>A bounded, tool-using skill run. The model chooses which chat messages to read.</summary>
-public sealed class ChatTitleSkill(
+public sealed class ChatRenameSkill(
     ISkillCatalog catalog,
     IChatService chats,
     IProjectService projects,
@@ -19,12 +19,12 @@ public sealed class ChatTitleSkill(
     IGlobalSecretStore secrets,
     IChatCompletionClient completion,
     IAppDataChangeSignal changes,
-    ILogger<ChatTitleSkill> logger) : ISkillExecutor
+    ILogger<ChatRenameSkill> logger) : ISkillExecutor
 {
-    public string SkillId => "chat-title";
+    public string SkillId => "chat-rename";
 
     private static readonly Action<ILogger, Guid, Exception?> SkillFailed =
-        LoggerMessage.Define<Guid>(LogLevel.Warning, new EventId(1601, "ChatTitleSkillFailed"),
+        LoggerMessage.Define<Guid>(LogLevel.Warning, new EventId(1601, "ChatRenameSkillFailed"),
             "Chat title skill failed for chat {ChatId}");
     private static readonly ChatToolDefinition ReadChatTool = new("read_chat",
         "Read user and assistant messages from this chat. Choose the start index and count needed to name it.",

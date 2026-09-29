@@ -52,16 +52,24 @@ public sealed class AppSkillsToolTests
         var found = await session.CallAsync(search, """{"query":"rename chat"}""", null,
             TestContext.Current.CancellationToken);
         found.IsError.ShouldBeFalse();
-        found.StructuredContent!.Value.GetProperty("skills")[0].GetProperty("id").GetString().ShouldBe("chat-title");
+        found.StructuredContent!.Value.GetProperty("skills")[0].GetProperty("id").GetString().ShouldBe("chat-rename");
 
         var arguments = JsonSerializer.Serialize(new
         {
-            skillId = "chat-title",
+            skillId = "chat-rename",
             parameters = new { chat_id = "current", mode = "requested", unexpected = true }
         });
         var rejected = await session.CallAsync(run, arguments, null, TestContext.Current.CancellationToken);
         rejected.IsError.ShouldBeTrue();
         rejected.StructuredContent!.Value.GetProperty("status").GetString().ShouldBe("Failed");
+
+        // A playbook whose parameters are all optional runs without any, and says where it runs.
+        var playbook = await session.CallAsync(run, """{"skillId":"chat-summary"}""", null,
+            TestContext.Current.CancellationToken);
+        playbook.IsError.ShouldBeFalse();
+        var output = playbook.StructuredContent!.Value.GetProperty("output");
+        output.GetProperty("kind").GetString().ShouldBe("playbook");
+        output.GetProperty("context").GetProperty("chatId").GetGuid().ShouldBe(chatId);
     }
 
     [Fact]
@@ -86,7 +94,7 @@ public sealed class AppSkillsToolTests
         content.GetProperty("matchedQuery").GetBoolean().ShouldBeFalse();
         content.GetProperty("guidance").GetString()!.ShouldContain("No skill matched");
         content.GetProperty("skills").EnumerateArray()
-            .ShouldContain(skill => skill.GetProperty("id").GetString() == "project-name");
+            .ShouldContain(skill => skill.GetProperty("id").GetString() == "chat-branch-cleanup");
     }
 
     [Fact]

@@ -34,7 +34,17 @@ public sealed class GenericSkillExecutorTests
         completion.Setup(client => client.StreamAsync(It.IsAny<ChatCompletionRequest>(), It.IsAny<CancellationToken>()))
             .Returns((ChatCompletionRequest request, CancellationToken token) => Respond(request, answer, token));
         var executor = new GenericSkillExecutor(projects.Object, settings.Object, secrets.Object, completion.Object);
-        var skill = new BuiltInSkillCatalog().GetById("project-name")!;
+        var skill = SkillMarkdown.Parse("""
+            ---
+            id: project-name-suggest
+            name: Project name suggest
+            description: Suggest a project name from its details; changes nothing.
+            parameters: {"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"}},"required":["name","description"],"additionalProperties":false}
+            result: {"type":"object","properties":{"name":{"type":"string","minLength":3,"maxLength":80}},"required":["name"],"additionalProperties":false}
+            ---
+
+            Return one JSON object with a short `name` for the project.
+            """, "User");
 
         var result = await executor.RunAsync(skill, new SkillInvocation(skill.Id, projectId,
             JsonSerializer.SerializeToElement(new { name = "Untitled app", description = "A C# assistant for project work" })),

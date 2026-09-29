@@ -27,6 +27,21 @@ public sealed class ToolCatalogRegistryTests
         registry.GetPinned(run).ShouldBeEmpty();
     }
 
+    [Fact]
+    public void ShouldPinToolsNamedWithOrWithoutTheirServerPrefix()
+    {
+        var registry = new ToolCatalogRegistry();
+        var run = new ToolRunContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), true);
+        using var scope = registry.Begin(run);
+        registry.Update(run, [Tool("mcp_app__app_chats", "Chats"), Tool("mcp_app__app_runs", "Runs"),
+            Tool("mcp_app__app_chats_extra", "Other"), Tool("ask_user", "Ask")]);
+
+        var pinned = registry.Pin(run, ["app_chats", "ask_user", "missing"]);
+
+        pinned.ShouldBe(["mcp_app__app_chats", "ask_user"], ignoreOrder: true);
+        registry.GetPinned(run).ShouldNotContain("mcp_app__app_runs");
+    }
+
     private static AgentTool Tool(string name, string description)
     {
         var schema = JsonDocument.Parse("{}" ).RootElement.Clone();

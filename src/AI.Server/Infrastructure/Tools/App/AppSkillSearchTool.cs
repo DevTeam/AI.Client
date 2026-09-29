@@ -6,7 +6,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
 
-public sealed record SkillSearchItem(string Id, string Name, string Description, string Source,
+public sealed record SkillSearchItem(string Id, string Name, string Description, string Source, string Kind,
     JsonElement ParametersSchema, JsonElement? ResultSchema);
 public sealed record SkillSearchResult(IReadOnlyList<SkillSearchItem> Skills, bool MatchedQuery, string Guidance);
 
@@ -25,13 +25,13 @@ public sealed class AppSkillSearchTool(ISkillCatalog catalog) : IAppTool
                 Description = "Find available skills by task or name. Omit query to list all enabled skills. "
                               + "If a query has no matches, returns the available skills with MatchedQuery=false; "
                               + "do not infer that the catalog is empty. Returns each skill's ID, parameter schema "
-                              + "and result schema. Read any needed app data with app_read, then pass it as parameters "
-                              + "to app_run_skill. Search before running a skill whose parameters you do not know."
+                              + "result schema and kind. A generic skill needs its data read with app_read and passed as parameters; "
+                              + "a playbook returns instructions for you to follow with your own tools. Run either with app_run_skill. Search before running a skill whose parameters you do not know."
             });
 
         [McpServerTool(Name = "skill_search", ReadOnly = true, Destructive = false, Idempotent = true,
             OpenWorld = false, UseStructuredContent = true, OutputSchemaType = typeof(SkillSearchResult))]
-        private async Task<CallToolResult> Search(string? query = null, int limit = 8,
+        private async Task<CallToolResult> Search(string? query = null, int limit = 30,
             CancellationToken cancellationToken = default)
         {
             var words = (query ?? string.Empty).Split([' ', '\t', '\r', '\n', '_', '-'],
@@ -54,9 +54,9 @@ public sealed class AppSkillSearchTool(ISkillCatalog catalog) : IAppTool
                 .Where(item => !matchedQuery || words.Length == 0 || item.Score > 0)
                 .OrderByDescending(item => item.Score)
                 .ThenBy(item => item.Skill.Id, StringComparer.Ordinal)
-                .Take(Math.Clamp(limit, 1, 20))
+                .Take(Math.Clamp(limit, 1, 50))
                 .Select(item => new SkillSearchItem(item.Skill.Id, item.Skill.Name, item.Skill.Description,
-                    item.Skill.Source, item.Skill.ParametersSchema, item.Skill.ResultSchema))
+                    item.Skill.Source, item.Skill.Kind, item.Skill.ParametersSchema, item.Skill.ResultSchema))
                 .ToArray();
             var guidance = available.Length == 0
                 ? "No enabled skills are available in this project."

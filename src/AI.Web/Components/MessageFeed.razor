@@ -205,6 +205,12 @@
                     {
                         <span class="message-empty-label">Empty message</span>
                     }
+                    @* The skill the message invoked from the composer's slash list leads it, as its chip
+                       did in the composer; the text after it is what the user asked of the skill. *@
+                    @foreach (var skill in (message.Resources ?? []).Where(item => item.Kind == ChatResourceKind.Skill))
+                    {
+                        <span class="message-skill-chip" @key="skill.Id" title="@($"Skill {skill.Path}")"><AppIcon Name="skill" /><span>@(skill.Name ?? skill.Path)</span></span>
+                    }
                     @if (!string.IsNullOrWhiteSpace(message.Content))
                     {
                         @if (message.Role is "User" or "Assistant" && message.ToolCalls is null)
@@ -216,10 +222,10 @@
                         }
                         else { <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div> }
                     }
-                    @if (message.Resources is { Count: > 0 })
+                    @if (message.Resources?.Any(item => item.Kind != ChatResourceKind.Skill) == true)
                     {
                         <div class="message-resource-list" aria-label="Workspace references">
-                            @foreach (var resource in message.Resources)
+                            @foreach (var resource in message.Resources.Where(item => item.Kind != ChatResourceKind.Skill))
                             {
                                 <span class="message-resource-chip" @key="resource.Id" title="@ResourceLabel(resource)">
                                     @if (resource.Kind == ChatResourceKind.Review)

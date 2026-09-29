@@ -24,8 +24,10 @@ public sealed class AppSkillsTool(ISkillCatalog catalog, IAppWrites writes) : IA
                 Description = "Create, update, disable or delete a User or current Project SKILL.md. Save needs full "
                               + "SKILL.md content, scope, revision (0 to create) and enabled. Read the current skill first "
                               + "and pass its revision to update. Built-in skills are read-only. Delete rehearses by default; "
-                              + "set dryRun=false to apply. Use a fresh operationId per change. Declarative skills have no "
-                              + "application tools: read required data with app_read and pass it in the parameters."
+                              + "set dryRun=false to apply. Use a fresh operationId per change. 'kind: generic' skills run without "
+                              + "tools on the data passed in parameters and need a result schema; 'kind: playbook' skills are "
+                              + "instructions for the calling model, list the tools they use in 'tools' and have no result schema. "
+                              + "Read a skill's full document and revision with app_read resource=Skills."
             });
 
         [McpServerTool(Name = "app_skills", ReadOnly = false, Destructive = true, Idempotent = true,

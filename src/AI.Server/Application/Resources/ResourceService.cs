@@ -1,11 +1,15 @@
 namespace AI.Application.Resources;
 
 using AI.Application.Projects;
+using AI.Application.Skills;
 using AI.Contracts.Resources;
 
-/// <summary>Validates path references against a project's read grants at creation and submission.</summary>
+/// <summary>
+/// Validates path references against a project's read grants at creation and submission, and the
+/// skill a message invokes against the skills enabled in that project.
+/// </summary>
 public sealed class ResourceService(IProjectService projects, IDirectoryBrowser browser,
-    IResourceRepository repository, IReviewService reviews, IProjectPathAccess access) : IResourceService
+    IResourceRepository repository, IReviewService reviews, IProjectPathAccess access, ISkillCatalog skills) : IResourceService
 {
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -33,6 +37,8 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
     {
         if (references?.Any(item => item.Kind == ChatResourceKind.Review) == true)
             throw new ArgumentException("Chat ID is required for review references.");
+        if (references?.Any(item => item.Kind == ChatResourceKind.Skill) == true)
+            throw new ArgumentException("Skills are invoked by a chat message, not saved as project resources.");
         var validated = await ValidatePathsAsync(projectId, references, cancellationToken);
         if (validated.Count == 0) return validated;
         var catalog = (await repository.ListAsync(projectId, cancellationToken))
@@ -54,7 +60,8 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
         if (references.Count > 20 || references.Select(item => item.Id).Distinct().Count() != references.Count)
             throw new ArgumentException("A message needs at most 20 unique resources.");
         var files = await ValidateAsync(projectId,
-            references.Where(item => item.Kind != ChatResourceKind.Review).ToArray(), cancellationToken);
+            references.Where(item => item.Kind is not (ChatResourceKind.Review or ChatResourceKind.Skill)).ToArray(),
+            cancellationToken);
         var reviewList = references.Any(item => item.Kind == ChatResourceKind.Review)
             ? (await reviews.ListAsync(projectId, chatId, cancellationToken)).ToDictionary(item => item.Id)
             : [];
@@ -68,6 +75,17 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
                 throw new InvalidOperationException("A review without comments cannot be attached to a message.");
             byId.Add(reference.Id, new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty,
                 review.Name, review.Kind));
+        }
+        var invoked = references.Where(item => item.Kind == ChatResourceKind.Skill).ToArray();
+        if (invoked.Length > 1) throw new ArgumentException("A message can invoke at most one skill.");
+        foreach (var reference in invoked)
+        {
+            // The effective skill of this project, as app_run_skill would resolve it: a disabled
+            // project skill hides an enabled user skill of the same ID rather than falling back.
+            var skill = await skills.GetByIdAsync(reference.Path, projectId, cancellationToken);
+            if (skill is not { Enabled: true })
+                throw new InvalidOperationException($"The skill {reference.Path} is not available in this project.");
+            byId.Add(reference.Id, new ChatResourceRef(reference.Id, ChatResourceKind.Skill, skill.Id, skill.Name));
         }
         return references.Select(item => byId[item.Id]).ToArray();
     }

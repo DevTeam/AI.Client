@@ -79,6 +79,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         using var instructionScope = instructions.Begin(run);
         instructions.Upsert(run, new ModelInstruction("run.completion-protocol", CompletionInstruction,
             1_000, ModelInstructionLifetime.Run));
+        // Several app tools take the project and chat they act on as ids, and nothing else in the
+        // context says which ones this run belongs to; a model left to guess reads lists to find them.
+        if (servers.Contains(AppMcpServer.Id))
+            instructions.Upsert(run, new ModelInstruction("run.context",
+                $"This run: projectId {projectId}, chatId {chatId}, branchId {branchId}. The main branch id equals the chat id.",
+                900, ModelInstructionLifetime.Run));
         await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), token);
         using var checkpointScope = checkpoints.Begin(run, async (prompt, ct) =>
             (await completion.CompleteAsync(request with

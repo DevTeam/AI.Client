@@ -17,7 +17,7 @@ using Moq;
 using Shouldly;
 using Xunit;
 
-public class ChatTitleSkillTests
+public class ChatRenameSkillTests
 {
     [Fact]
     public async Task ShouldReadChatThroughToolBeforeApplyingTitle()
@@ -47,11 +47,11 @@ public class ChatTitleSkillTests
             .Returns((ChatCompletionRequest request, CancellationToken token) => Respond(request, token));
         var changes = new Mock<IAppDataChangeSignal>(MockBehavior.Strict);
         changes.Setup(item => item.Notify());
-        var skill = new ChatTitleSkill(new BuiltInSkillCatalog(), chats.Object, projects.Object, settings.Object,
-            secrets.Object, completion.Object, changes.Object, NullLogger<ChatTitleSkill>.Instance);
+        var skill = new ChatRenameSkill(new BuiltInSkillCatalog(), chats.Object, projects.Object, settings.Object,
+            secrets.Object, completion.Object, changes.Object, NullLogger<ChatRenameSkill>.Instance);
         var runner = new SkillRunner(new BuiltInSkillCatalog(), skill);
 
-        var result = await runner.RunAsync(new SkillInvocation("chat-title", projectId,
+        var result = await runner.RunAsync(new SkillInvocation("chat-rename", projectId,
             JsonSerializer.SerializeToElement(new { chat_id = chatId, mode = "automatic" })), CancellationToken.None);
 
         result.Status.ShouldBe("Completed");
@@ -92,11 +92,11 @@ public class ChatTitleSkillTests
         var changes = new Mock<IAppDataChangeSignal>(MockBehavior.Strict);
         changes.Setup(item => item.Notify());
         var catalog = new BuiltInSkillCatalog();
-        var runner = new SkillRunner(catalog, new ChatTitleSkill(catalog, chats.Object, projects.Object, settings.Object,
-            secrets.Object, completion.Object, changes.Object, NullLogger<ChatTitleSkill>.Instance));
+        var runner = new SkillRunner(catalog, new ChatRenameSkill(catalog, chats.Object, projects.Object, settings.Object,
+            secrets.Object, completion.Object, changes.Object, NullLogger<ChatRenameSkill>.Instance));
 
         var currentChatId = useCurrent ? chatId : Guid.CreateVersion7();
-        var result = await runner.RunAsync(new SkillInvocation("chat-title", projectId,
+        var result = await runner.RunAsync(new SkillInvocation("chat-rename", projectId,
             JsonSerializer.SerializeToElement(new { chat_id = useCurrent ? "current" : chatId.ToString(), mode = "requested" }),
             currentChatId), CancellationToken.None);
 
@@ -117,11 +117,11 @@ public class ChatTitleSkillTests
         chats.Setup(item => item.GetAsync(projectId, chatId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((ChatDetails?)null);
         var catalog = new BuiltInSkillCatalog();
-        var runner = new SkillRunner(catalog, new ChatTitleSkill(catalog, chats.Object, Mock.Of<IProjectService>(),
+        var runner = new SkillRunner(catalog, new ChatRenameSkill(catalog, chats.Object, Mock.Of<IProjectService>(),
             Mock.Of<IGlobalSettingsRepository>(), Mock.Of<IGlobalSecretStore>(),
-            Mock.Of<IChatCompletionClient>(), Mock.Of<IAppDataChangeSignal>(), NullLogger<ChatTitleSkill>.Instance));
+            Mock.Of<IChatCompletionClient>(), Mock.Of<IAppDataChangeSignal>(), NullLogger<ChatRenameSkill>.Instance));
 
-        var result = await runner.RunAsync(new SkillInvocation("chat-title", projectId,
+        var result = await runner.RunAsync(new SkillInvocation("chat-rename", projectId,
             JsonSerializer.SerializeToElement(new { chat_id = chatId, mode = "requested" })), CancellationToken.None);
 
         result.Status.ShouldBe("Failed");
@@ -137,13 +137,13 @@ public class ChatTitleSkillTests
     {
         var chats = new Mock<IChatService>(MockBehavior.Strict);
         var catalog = new BuiltInSkillCatalog();
-        var skill = new ChatTitleSkill(catalog, chats.Object, Mock.Of<IProjectService>(),
+        var skill = new ChatRenameSkill(catalog, chats.Object, Mock.Of<IProjectService>(),
             Mock.Of<IGlobalSettingsRepository>(), Mock.Of<IGlobalSecretStore>(),
-            Mock.Of<IChatCompletionClient>(), Mock.Of<IAppDataChangeSignal>(), NullLogger<ChatTitleSkill>.Instance);
+            Mock.Of<IChatCompletionClient>(), Mock.Of<IAppDataChangeSignal>(), NullLogger<ChatRenameSkill>.Instance);
         var runner = new SkillRunner(catalog, skill);
 
         var result = await runner.RunAsync(
-            new SkillInvocation("chat-title", Guid.CreateVersion7(), JsonSerializer.Deserialize<JsonElement>(arguments)),
+            new SkillInvocation("chat-rename", Guid.CreateVersion7(), JsonSerializer.Deserialize<JsonElement>(arguments)),
             CancellationToken.None);
         result.Status.ShouldBe("Failed");
         chats.VerifyNoOtherCalls();

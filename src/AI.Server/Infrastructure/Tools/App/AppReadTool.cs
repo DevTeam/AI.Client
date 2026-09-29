@@ -7,6 +7,7 @@ using AI.Application.Projects;
 using AI.Application.Runs;
 using AI.Application.Resources;
 using AI.Application.Settings;
+using AI.Application.Skills;
 using AI.Application.Tools;
 using AI.Contracts.Chats;
 using System.Text.Json;
@@ -58,6 +59,11 @@ public enum AppResource
     /// system prompt layer.
     /// </summary>
     Instructions,
+    /// <summary>
+    /// Built-in, User and Project skills of the project with source, kind, enabled state and revision.
+    /// 'query' narrows them to an id or text and then also returns each full SKILL.md.
+    /// </summary>
+    Skills,
 }
 
 [McpServerToolType]
@@ -71,6 +77,7 @@ public sealed class AppReadTool(
     IMemoryService memory,
     IProjectInstructionsService projectInstructions,
     IStandingInstructions standing,
+    ISkillCatalog skills,
     Func<IChatRunDispatcher> runs,
     IAppToolReply reply) : IAppTool
 {
@@ -84,9 +91,12 @@ public sealed class AppReadTool(
                 SerializerOptions = reply.Json,
                 Description = "Read this application's own data: projects, chats, messages, runs, resources and global settings. "
                               + "'Projects' and 'Settings' need no ids. 'Project', 'Chats', 'Resources', 'Chat', 'Messages', "
-                              + "'Reviews' and 'Review' use projectId; the last four also need chatId, and 'Review' needs resourceId. "
+                              + "'Reviews' and 'Review' use projectId; the last four also use chatId, and 'Review' needs resourceId. "
+                              + "Omitted chatId for 'Chat', 'Messages' and 'Reviews' means the current chat. "
                               + "'Memory' lists the user's and the project's long-term memory; pass resourceId for one entry or "
-                              + "query to search. 'Instructions' returns the project instructions and their revision. "
+                              + "query to search. 'Instructions' returns the project instructions and their revision. 'Skills' lists "
+                              + "built-in, User and Project skills; pass a skill id or text as query to get their full SKILL.md "
+                              + "and revision before editing one with app_skills. "
                               + "For these project-scoped resources, omitted projectId means the current project. "
                               + "'Runs' accepts optional projectId, chatId and branchId filters. 'Search' accepts the same optional "
                               + "filters and requires query; use it instead of reading chats one by one. Results are paged: pass "
@@ -134,8 +144,12 @@ public sealed class AppReadTool(
         {
             if (resource is AppResource.Project or AppResource.Chats or AppResource.Chat or AppResource.Messages
                 or AppResource.Resources or AppResource.Reviews or AppResource.Review or AppResource.Memory
-                or AppResource.Instructions)
+                or AppResource.Instructions or AppResource.Skills)
                 projectId ??= run.ProjectId == Guid.Empty ? null : run.ProjectId;
+            // Chat-scoped reads of the project the run is in default to the run's own chat.
+            if (resource is AppResource.Chat or AppResource.Messages or AppResource.Reviews
+                && projectId == run.ProjectId && run.ChatId != Guid.Empty)
+                chatId ??= run.ChatId;
             if (resource == AppResource.Search)
                 return reply.Reply(await SearchAsync(projectId, chatId, branchId, cursor, limit, query, isRegex, ignoreCase,
                     roles, cancellationToken));
@@ -255,6 +269,24 @@ public sealed class AppReadTool(
                     Layers = preview.Layers.Select(layer => new
                         { layer.Key, layer.Title, layer.Sources, layer.Tokens, layer.BudgetTokens, layer.Truncated }).ToArray()
                 }], cursor, limit, reply.Json);
+            }
+            case AppResource.Skills:
+            {
+                var all = await skills.ListAsync(projectId, cancellationToken);
+                var matched = string.IsNullOrWhiteSpace(query)
+                    ? all
+                    : all.Where(skill => skill.Id == query
+                        || skill.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+                        || skill.Description.Contains(query, StringComparison.OrdinalIgnoreCase)).ToArray();
+                var exact = matched.Where(skill => skill.Id == query).ToArray();
+                // Without a query this is a catalog; the documents themselves are only worth their
+                // size once the caller has said which skill it is about to change.
+                var withContent = !string.IsNullOrWhiteSpace(query);
+                return Paging.Page("Skills", (exact.Length > 0 ? exact : matched).Select(skill => new
+                {
+                    skill.Id, skill.Name, skill.Description, skill.Source, skill.Kind, skill.Enabled, skill.Revision,
+                    skill.AllowedTools, Content = withContent ? skill.Content : null
+                }).ToArray(), cursor, limit, reply.Json);
             }
             default:
                 throw new ArgumentException("Unknown resource.", nameof(resource));

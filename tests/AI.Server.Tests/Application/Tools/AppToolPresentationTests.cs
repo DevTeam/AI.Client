@@ -83,9 +83,9 @@ public sealed class AppToolPresentationTests
     public void ShouldShowSkillTargetAndOutcome()
     {
         var call = _tools.Presentations.DescribeCall("mcp_app__run_skill",
-            """{"skillId":"chat-title","parameters":{"chat_id":"current","mode":"requested"}}""");
+            """{"skillId":"chat-rename","parameters":{"chat_id":"current","mode":"requested"}}""");
         call.Title.ShouldBe("Run skill");
-        call.Detail.ShouldBe("chat-title");
+        call.Detail.ShouldBe("chat-rename");
         call.Safety.ShouldBe(ToolSafety.Mutating);
 
         var result = _tools.Presentations.DescribeResult("mcp_app__run_skill", null,

@@ -1,7 +1,8 @@
 ---
-id: chat-title
-name: Chat title
-description: Name a new chat or rename an existing chat at the user's request.
+id: chat-rename
+name: Chat rename
+kind: executor
+description: Name a new chat, or rename an existing chat when the user asks.
 parameters: {"type":"object","properties":{"chat_id":{"oneOf":[{"const":"current"},{"type":"string","format":"uuid"}],"description":"Use current for this chat, or a chat ID from the current project"},"mode":{"type":"string","enum":["automatic","requested"],"description":"automatic only names a pending new chat; requested renames an existing chat on the user's request"}},"required":["chat_id","mode"],"additionalProperties":false}
 ---
 

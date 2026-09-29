@@ -62,7 +62,7 @@ public sealed class SkillCatalogTests
     [Theory]
     [InlineData("../escape")]
     [InlineData("Project Name")]
-    [InlineData("chat-title")]
+    [InlineData("chat-rename")]
     public async Task ShouldRejectUnsafeOrBundledIds(string id)
     {
         using var catalog = new SkillCatalog(new BuiltInSkillCatalog(),

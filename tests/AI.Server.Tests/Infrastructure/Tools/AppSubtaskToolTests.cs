@@ -39,7 +39,7 @@ public sealed class AppSubtaskToolTests
         await using var session = await fixture.OpenAsync();
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
 
-        var result = await session.CallAsync(tool, fixture.Arguments("summarise the thing"), null,
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("summarise the thing"), null,
             TestContext.Current.CancellationToken);
 
         result.IsError.ShouldBeFalse(result.ModelContent);
@@ -62,7 +62,7 @@ public sealed class AppSubtaskToolTests
         await using var session = await fixture.OpenAsync();
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
 
-        var result = await session.CallAsync(tool, fixture.Arguments("first", "second", "third"), null,
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("first", "second", "third"), null,
             TestContext.Current.CancellationToken);
 
         var outcomes = result.StructuredContent!.Value.GetProperty("results");
@@ -80,7 +80,7 @@ public sealed class AppSubtaskToolTests
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
 
         var result = await session.CallAsync(tool,
-            fixture.Arguments("a", "b", "c", "d", "e", "f", "g", "h", "i"), null,
+            SubtaskFixture.Arguments("a", "b", "c", "d", "e", "f", "g", "h", "i"), null,
             TestContext.Current.CancellationToken);
 
         result.IsError.ShouldBeTrue();
@@ -96,7 +96,7 @@ public sealed class AppSubtaskToolTests
         await using var session = await fixture.OpenAsync();
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
 
-        var result = await session.CallAsync(tool, fixture.Arguments("broken", "healthy"), null,
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("broken", "healthy"), null,
             TestContext.Current.CancellationToken);
 
         var outcomes = result.StructuredContent!.Value.GetProperty("results").EnumerateArray().ToArray();
@@ -113,7 +113,7 @@ public sealed class AppSubtaskToolTests
         await using var session = await fixture.OpenAsync();
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
 
-        var result = await session.CallAsync(tool, fixture.Arguments("anything"), null, TestContext.Current.CancellationToken);
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("anything"), null, TestContext.Current.CancellationToken);
 
         result.IsError.ShouldBeTrue();
         result.StructuredContent!.Value.GetProperty("error").GetString().ShouldNotBeNull().ShouldContain("connection");
@@ -128,7 +128,7 @@ public sealed class AppSubtaskToolTests
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
         var reports = new List<ToolProgress>();
 
-        await session.CallAsync(tool, fixture.Arguments("first", "second"),
+        await session.CallAsync(tool, SubtaskFixture.Arguments("first", "second"),
             new Progress<ToolProgress>(value => { lock (reports) reports.Add(value); }),
             TestContext.Current.CancellationToken);
 
@@ -152,7 +152,7 @@ public sealed class AppSubtaskToolTests
         await using var session = await fixture.OpenAsync();
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
 
-        var result = await session.CallAsync(tool, fixture.Arguments("do something"), null,
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("do something"), null,
             TestContext.Current.CancellationToken);
 
         // Storing the protocol's own JSON verbatim nests escaped JSON inside escaped JSON, which is
@@ -169,7 +169,7 @@ public sealed class AppSubtaskToolTests
         await using var session = await fixture.OpenAsync();
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
 
-        var result = await session.CallAsync(tool, fixture.Arguments("anything"), null, TestContext.Current.CancellationToken);
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("anything"), null, TestContext.Current.CancellationToken);
 
         result.StructuredContent!.Value.GetProperty("results")[0].GetProperty("connection").GetString().ShouldBe("Test");
     }
@@ -201,7 +201,7 @@ public sealed class AppSubtaskToolTests
 
         // The mark exists so that delegated work need not cost what the conversation costs: nothing
         // named a connection here, and the chat's own is the expensive one.
-        var result = await session.CallAsync(tool, fixture.Arguments("anything"), null, TestContext.Current.CancellationToken);
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("anything"), null, TestContext.Current.CancellationToken);
 
         result.StructuredContent!.Value.GetProperty("results")[0].GetProperty("connection").GetString().ShouldBe("Cheap");
     }
@@ -217,7 +217,7 @@ public sealed class AppSubtaskToolTests
 
         // Marking several is how a fan-out stops queueing behind one provider: nothing here named a
         // connection, so the tasks are dealt out over the marked ones in turn.
-        var result = await session.CallAsync(tool, fixture.Arguments("one", "two", "three"), null,
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("one", "two", "three"), null,
             TestContext.Current.CancellationToken);
 
         var used = result.StructuredContent!.Value.GetProperty("results").EnumerateArray()
@@ -308,7 +308,7 @@ public sealed class AppSubtaskToolTests
         await using var session = await fixture.OpenAsync();
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
 
-        await session.CallAsync(tool, fixture.Arguments("do something"), null, TestContext.Current.CancellationToken);
+        await session.CallAsync(tool, SubtaskFixture.Arguments("do something"), null, TestContext.Current.CancellationToken);
 
         // The whole point of a subtask is that it is not a chat: no manifest, no message nodes, no
         // run state — nothing to find afterwards and nothing to clean up.
@@ -373,8 +373,9 @@ public sealed class AppSubtaskToolTests
         public Task<IToolSession> OpenAsync(bool interactive = true) => Sessions.OpenAsync([],
             new ToolRunContext(ProjectId, ChatId, ChatId, interactive), TestContext.Current.CancellationToken);
 
-        public string Arguments(params string[] tasks) =>
-            JsonSerializer.Serialize(new { projectId = ProjectId, chatId = ChatId, tasks = tasks.Select(task => new { task }) });
+        /// <summary>Without ids, which the tool reads as the calling run's own project and chat.</summary>
+        public static string Arguments(params string[] tasks) =>
+            JsonSerializer.Serialize(new { tasks = tasks.Select(task => new { task }) });
 
         public string ArgumentsOn(Guid connectionId, params string[] tasks) =>
             JsonSerializer.Serialize(new { projectId = ProjectId, chatId = ChatId, tasks = tasks.Select(task => new { task }), connectionId });

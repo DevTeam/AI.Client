@@ -45,6 +45,18 @@ public sealed class ToolCatalogRegistry : IToolCatalogRegistry
             Short(tool.ModelDefinition.Description), tool.ServerId.ToString())).ToArray();
     }
 
+    public IReadOnlyList<string> Pin(ToolRunContext run, IEnumerable<string> names)
+    {
+        if (!_entries.TryGetValue(Key.Of(run), out var entry)) return [];
+        var wanted = names.ToHashSet(StringComparer.Ordinal);
+        var pinned = entry.Tools
+            .Select(tool => tool.ModelDefinition.Name)
+            .Where(name => wanted.Contains(name) || wanted.Any(bare => name.EndsWith("__" + bare, StringComparison.Ordinal)))
+            .ToArray();
+        foreach (var name in pinned) entry.Pinned.TryAdd(name, 0);
+        return pinned;
+    }
+
     private static string Short(string value) => value.Length <= 240 ? value : value[..240] + "…";
 
     private readonly record struct Key(Guid ProjectId, Guid ChatId, Guid BranchId)

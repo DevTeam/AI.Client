@@ -27,16 +27,26 @@ public static class SkillMarkdown
         if (name.Length > 120 || description.Length > 400)
             throw new ArgumentException("Skill name or description is too long.");
         var parameters = Schema(Field("parameters") ?? throw new ArgumentException("SKILL.md needs parameters."));
+        var kind = Field("kind") ?? SkillKinds.Generic;
+        if (kind is not (SkillKinds.Generic or SkillKinds.Playbook or SkillKinds.Executor))
+            throw new ArgumentException("Skill kind must be generic, playbook or executor.");
+        if (kind == SkillKinds.Executor && source != "Built-in")
+            throw new ArgumentException("Only bundled skills can be executors.");
         var result = Field("result") is { } resultText ? Schema(resultText) : (JsonElement?)null;
+        if (kind == SkillKinds.Playbook && result is not null)
+            throw new ArgumentException("A playbook has no result schema; the calling model reports its outcome.");
         var tools = Field("tools") is { } toolsText
             ? JsonSerializer.Deserialize<string[]>(toolsText) ?? [] : [];
-        if (tools.Length > 0)
-            throw new ArgumentException("Declarative skills cannot call application tools; pass data in parameters.");
+        if (tools.Length > 0 && kind != SkillKinds.Playbook)
+            throw new ArgumentException("Only playbooks declare tools; a generic skill receives its data in parameters.");
+        if (tools.Any(tool => tool.Length is < 1 or > 64
+                || tool.Any(character => character is not (>= 'a' and <= 'z' or >= '0' and <= '9' or '_'))))
+            throw new ArgumentException("Tool names must be lowercase letters, digits and underscores.");
         var enabled = Field("enabled") is not { } enabledText || bool.Parse(enabledText);
         var revision = Field("revision") is { } revisionText
             ? long.Parse(revisionText, System.Globalization.CultureInfo.InvariantCulture) : 0;
         return new SkillDefinition(id, name, description, source, content, enabled, parameters, result,
-            tools, projectId, revision);
+            tools, projectId, revision, kind);
     }
 
     public static string WithMetadata(string content, long revision, bool enabled)
@@ -49,6 +59,14 @@ public static class SkillMarkdown
         lines.Insert(1, $"revision: {revision}");
         lines.Insert(2, $"enabled: {enabled.ToString().ToLowerInvariant()}");
         return string.Join('\n', lines);
+    }
+
+    /// <summary>The instructions after the frontmatter, which is what a playbook hands to the calling model.</summary>
+    public static string Body(string content)
+    {
+        var lines = content.ReplaceLineEndings("\n").Split('\n');
+        var end = Array.IndexOf(lines, "---", 1);
+        return string.Join('\n', lines.Skip(end + 1)).Trim();
     }
 
     private static JsonElement Schema(string text)

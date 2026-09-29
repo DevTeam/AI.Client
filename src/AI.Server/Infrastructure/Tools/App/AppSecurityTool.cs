@@ -15,6 +15,9 @@ public enum SecurityOperation
     /// <summary>Add one directory grant without changing other project security settings.</summary>
     AddDirectoryGrant,
 
+    /// <summary>Remove one directory grant by 'grantId' without changing other project security settings.</summary>
+    RemoveDirectoryGrant,
+
     /// <summary>Replace a project's whole access state at once. Needs 'projectId', 'revision' and 'security'.</summary>
     SetProjectSecurity,
 
@@ -61,7 +64,8 @@ public sealed class AppSecurityTool(
             SerializerOptions = reply.Json,
             Description = "Change this application's access settings: directory grants, MCP server bindings, per-tool policies and "
                           + "connection credentials. Use 'AddDirectoryGrant' with 'projectId', 'revision' and 'directoryGrant' "
-                          + "to add one directory without changing server bindings or policies. "
+                          + "to add one directory without changing server bindings or policies, and 'RemoveDirectoryGrant' with "
+                          + "'projectId', 'revision' and 'grantId' (the grant's id from app_read) to revoke one. "
                           + "'SetProjectSecurity' and 'SaveGlobalSettings' replace the whole state they cover, so "
                           + "read it with 'app_read' first and send it back with your change applied — anything you leave out is removed. "
                           + "Secrets are write-only: a key can be stored and never read back, and passing null clears it. 'operationId' "
@@ -78,6 +82,7 @@ public sealed class AppSecurityTool(
         Guid? chatId = null,
         long revision = 0,
         DirectoryGrantPayload? directoryGrant = null,
+        Guid? grantId = null,
         ProjectSecurityPayload? security = null,
         ToolPolicyPayload? toolPolicy = null,
         GlobalSettingsPayload? settings = null,
@@ -89,6 +94,7 @@ public sealed class AppSecurityTool(
         writes.RunAsync(operation.ToString(), operationId, builder => operation switch
         {
             SecurityOperation.AddDirectoryGrant => AddDirectoryGrantAsync(builder, projectId, revision, directoryGrant, cancellationToken),
+            SecurityOperation.RemoveDirectoryGrant => RemoveDirectoryGrantAsync(builder, projectId, revision, grantId, cancellationToken),
             SecurityOperation.SetProjectSecurity => SetProjectSecurityAsync(builder, projectId, revision, security, cancellationToken),
             SecurityOperation.SetProjectToolPolicy => SetProjectToolPolicyAsync(builder, projectId, toolPolicy, cancellationToken),
             SecurityOperation.RemoveProjectToolPolicy => RemoveProjectToolPolicyAsync(builder, projectId, serverId, name, schemaHash, cancellationToken),
@@ -113,6 +119,19 @@ public sealed class AppSecurityTool(
             grant.Id, grant.DisplayName, grant.CanonicalRoot, grant.Recursive, grant.ToolNames), cancellationToken);
         return AppProjectsTool.Describe(builder, result, id,
             project => $"Granted access to '{grant.CanonicalRoot}' in '{project.Name}'.", current, reply.Json);
+    }
+
+    private async Task<AppWriteResult> RemoveDirectoryGrantAsync(
+        AppWriteBuilder builder, Guid? projectId, long revision, Guid? grantId, CancellationToken cancellationToken)
+    {
+        var id = Required(projectId, nameof(projectId));
+        var grant = Required(grantId, nameof(grantId));
+        var current = await projects.GetAsync(id, cancellationToken);
+        var root = current?.DirectoryGrants.FirstOrDefault(item => item.Id == grant)?.CanonicalRoot
+            ?? throw new ArgumentException("Directory grant not found.", nameof(grantId));
+        var result = await projects.RemoveDirectoryGrantAsync(id, revision, grant, cancellationToken);
+        return AppProjectsTool.Describe(builder, result, id,
+            project => $"Revoked access to '{root}' in '{project.Name}'.", current, reply.Json);
     }
 
     private async Task<AppWriteResult> SetProjectSecurityAsync(

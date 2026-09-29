@@ -1,0 +1,55 @@
+@using AI.Web.Skills
+@* The composer's slash list. Keyboard selection lives in the page (chatComposer.js hands it the
+   keys), so this only draws the rows and reports pointer picks. mousedown, not click: the textarea
+   keeps focus and the caret while a row is chosen. *@
+<div class="skill-command-menu" role="listbox" aria-label="Skills" id="skill-command-menu">
+    <div class="skill-command-label">Skills</div>
+    @for (var index = 0; index < Matches.Count; index++)
+    {
+        var row = index;
+        var match = Matches[row];
+        <div @key="match.Skill.Id" id="skill-command-@row" role="option" aria-selected="@(row == SelectedIndex ? "true" : "false")"
+             class="skill-command-item @(row == SelectedIndex ? "selected" : null)"
+             @onmousedown="() => OnPick.InvokeAsync(row)" @onmousedown:preventDefault
+             @onmousemove="() => Hover(row)">
+            <AppIcon Name="skill" />
+            <span class="skill-command-name">@foreach (var part in Parts(match)) { if (part.Matched) { <mark>@part.Text</mark> } else { @part.Text } }</span>
+            <span class="skill-command-description">@match.Skill.Description</span>
+            <span class="skill-command-source">@SourceLabel(match.Skill.Source)</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<SkillCommandMatch> Matches { get; set; } = [];
+
+    [Parameter] public int SelectedIndex { get; set; }
+
+    [Parameter] public EventCallback<int> OnPick { get; set; }
+
+    [Parameter] public EventCallback<int> OnHover { get; set; }
+
+    public static string SourceLabel(string source) => source switch
+    {
+        "Project" => "Project",
+        "User" => "User",
+        _ => "Built-in"
+    };
+
+    // mousemove rather than mouseenter: a list scrolled by the keyboard slides rows under a still
+    // pointer, and that must not steal the selection back.
+    private Task Hover(int row) => row == SelectedIndex ? Task.CompletedTask : OnHover.InvokeAsync(row);
+
+    private static IEnumerable<(string Text, bool Matched)> Parts(SkillCommandMatch match)
+    {
+        var name = match.Skill.Name;
+        var highlighted = match.Highlights.ToHashSet();
+        var start = 0;
+        for (var index = 1; index <= name.Length; index++)
+        {
+            if (index < name.Length && highlighted.Contains(index) == highlighted.Contains(start)) continue;
+            yield return (name[start..index], highlighted.Contains(start));
+            start = index;
+        }
+    }
+}

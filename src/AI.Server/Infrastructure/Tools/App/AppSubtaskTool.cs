@@ -97,8 +97,8 @@ public sealed class AppSubtaskTool(
             {
                 SerializerOptions = reply.Json,
                 Description = "Delegate work to a separate conversation and get back only its answer, so the details never enter your own "
-                              + "context. Pass the project and chat you are running in: the subtask inherits their directory grants and tool "
-                              + "policies. Each task answers through its own 'connectionId' if it names an enabled one, else the call's "
+                              + "context. It runs in your project and chat unless 'projectId' and 'chatId' name others, and inherits their "
+                              + "directory grants and tool policies. Each task answers through its own 'connectionId' if it names an enabled one, else the call's "
                               + "'connectionId', else one of the connections marked for subtasks — several may be, and tasks naming none "
                               + "are dealt out over them in turn — else the calling chat's. Read the settings resource to "
                               + "see what each connection is worth: a connection may carry a capability and a cost from 1 to 5 and a line on "
@@ -113,13 +113,15 @@ public sealed class AppSubtaskTool(
         [McpServerTool(Name = "spawn_subtask", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = true,
             UseStructuredContent = true, OutputSchemaType = typeof(SubtaskResult))]
         private Task<CallToolResult> RunAsync(
-            Guid projectId,
-            Guid chatId,
             SubtaskRequest[] tasks,
             IProgress<ProgressNotificationValue> progress,
+            Guid? projectId = null,
+            Guid? chatId = null,
             Guid? connectionId = null,
             CancellationToken cancellationToken = default) =>
-            tool.RunAsync(run, projectId, chatId, tasks, progress, connectionId, cancellationToken);
+            // Omitted ids mean the run's own project and chat, which is almost always what is meant
+            // and is the one pair a model cannot get wrong.
+            tool.RunAsync(run, projectId ?? run.ProjectId, chatId ?? run.ChatId, tasks, progress, connectionId, cancellationToken);
     }
 
     private async Task<CallToolResult> RunAsync(

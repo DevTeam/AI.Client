@@ -83,6 +83,18 @@ public sealed class Project
         UpdatedAt = updatedAt;
     }
 
+    public void RemoveDirectoryGrant(DirectoryGrantId id, DateTimeOffset updatedAt)
+    {
+        EnsureTimestampDoesNotMoveBackwards(updatedAt);
+
+        if (!_directoryGrants.Remove(id))
+        {
+            throw new DomainException($"Directory grant '{id}' does not exist.");
+        }
+
+        UpdatedAt = updatedAt;
+    }
+
     public void AddMcpServer(McpServerBinding server, DateTimeOffset updatedAt)
     {
         ArgumentNullException.ThrowIfNull(server);

@@ -18,6 +18,7 @@
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject AI.Web.Memory.IMemoryApi MemoryApi
 @inject AI.Web.Skills.ISkillApi SkillApi
+@inject AI.Web.Skills.ISkillCommandMatcher SkillMatcher
 @inject IChatRunsApi ChatRunsApi
 @inject IRunStateService RunState
 @inject IChatComposerService Composer
@@ -465,7 +466,15 @@
             @if (_draftResources.Count > 0)
             {
                 <div class="composer-resource-list" aria-label="Attached workspace references">
-                    @foreach (var resource in _draftResources)
+                    @foreach (var skill in _draftResources.Where(item => item.Kind == ChatResourceKind.Skill))
+                    {
+                        <span class="composer-resource-chip composer-skill-chip" @key="skill.Id" title="@SkillChipTitle(skill)">
+                            <AppIcon Name="skill" />
+                            <span>@(skill.Name ?? skill.Path)</span>
+                            <button type="button" aria-label="Remove skill @(skill.Name ?? skill.Path)" title="Remove skill" @onclick="() => RemoveDraftResource(skill.Id)"><AppIcon Name="x" /></button>
+                        </span>
+                    }
+                    @foreach (var resource in _draftResources.Where(item => item.Kind != ChatResourceKind.Skill))
                     {
                         <span class="composer-resource-chip" @key="resource.Id" title="@(resource.Kind == ChatResourceKind.Review ? ReviewName(resource) : resource.Path)">
                             <AppIcon Name="@(resource.Kind == ChatResourceKind.Review ? "diff" : resource.Kind == ChatResourceKind.File ? "file" : "folder")" />
@@ -475,7 +484,12 @@
                     }
                 </div>
             }
-            <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@(_replaceSourceId is not null ? "Edit the message to replace this branch..." : _isForking ? "Write the first message in the new branch..." : GetSelectedRun() is { PendingPrompt: not null } ? "Answer the question above..." : "Message the assistant...")" aria-label="Message"></textarea>
+            @if (IsSkillListOpen())
+            {
+                <SkillCommandMenu Matches="_skillMatches" SelectedIndex="_skillSuggestionIndex" OnPick="PickSkillSuggestionAsync" OnHover="HoverSkillSuggestion" />
+            }
+            <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@GetComposerPlaceholder()" aria-label="Message"
+                      aria-controls="@(IsSkillListOpen() ? "skill-command-menu" : null)" aria-activedescendant="@(IsSkillListOpen() ? $"skill-command-{_skillSuggestionIndex}" : null)"></textarea>
             <div class="composer-footer">
                 <div class="composer-resource-menu-anchor">
                     <button class="icon-action composer-add-resource" type="button" title="Add to chat" aria-label="Add to chat" aria-expanded="@_isResourceMenuOpen" @onclick="ToggleResourceMenu"><AppIcon Name="plus" /></button>
@@ -774,6 +788,16 @@
     private bool _isResourceMenuOpen;
     private DirectoryPickerMode? _resourcePickerMode;
     private readonly List<ChatResourceRef> _draftResources = [];
+    // The slash list: the effective skills of the project the composer last loaded them for, the
+    // rows matching what is typed, and the skills picked this session, which rank first.
+    private IReadOnlyList<AI.Contracts.Skills.SkillDefinition> _composerSkills = [];
+    private Guid? _composerSkillsProjectId;
+    private IReadOnlyList<AI.Web.Skills.SkillCommandMatch> _skillMatches = [];
+    private int _skillSuggestionIndex;
+    private bool _skillSuggestionsDismissed;
+    private bool? _skillListPushed;
+    private bool _scrollSkillSuggestion;
+    private readonly List<string> _recentSkillIds = [];
     private readonly Dictionary<string, ChatResourceRef[]> _resourceDrafts = [];
     private readonly List<ChatReview> _reviews = [];
     private readonly Dictionary<Guid, IReadOnlyList<ChatReview>> _menuReviews = [];
@@ -1224,6 +1248,8 @@
             {
                 var handle = await _composerModule.InvokeAsync<IJSObjectReference>("attach", _composer, _dotNetReference);
                 _composerHandle = handle;
+                // A fresh handle starts with the list closed; push the real state again.
+                _skillListPushed = null;
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException)
             {
@@ -1274,6 +1300,23 @@
                 await MarkSelectedChatReadAsync();
                 await WorkspaceStateService.SetProjectContextAsync(opened.ProjectId, opened.ChatId, opened.BranchLeafId);
             }
+        }
+
+        if (_composerHandle is not null && (_skillListPushed != IsSkillListOpen() || _scrollSkillSuggestion))
+        {
+            var handle = _composerHandle;
+            var open = IsSkillListOpen();
+            try
+            {
+                if (_skillListPushed != open) await handle.InvokeVoidAsync("setSkillList", open);
+                _skillListPushed = open;
+                if (open && _scrollSkillSuggestion) await handle.InvokeVoidAsync("scrollSkillSuggestionIntoView");
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException)
+            {
+                if (ReferenceEquals(_composerHandle, handle)) _composerHandle = null;
+            }
+            _scrollSkillSuggestion = false;
         }
 
         if (_composerNeedsResize && _composerHandle is not null)
@@ -2028,6 +2071,9 @@
     {
         if (_isSubmittingMessage || !CanSendMessage()) return;
         if (await TryAnswerPendingPromptAsync(_chat.Message)) return;
+        // A message that starts a new chat has nothing to replace or fork from, whatever mode
+        // the composer was left in.
+        if (_selectedChat is null) ResetBranchOperationState();
 
         var effectiveMode = _isForking ? ComposerSubmitMode.Fork
             : _replaceSourceId is not null ? ComposerSubmitMode.Send
@@ -3819,6 +3865,9 @@
             _branchLeafId = null;
             SetJustArrivedLeaf(null);
             _wasGeneratingByBranch.Clear();
+            // An edit or fork begun in the deleted chat points at its messages; carried over, the
+            // next first message of a new chat is sent as a replacement of one that is gone.
+            ResetBranchOperationState();
             _chat.Message = string.Empty;
             _chatError = null;
             _composerNeedsResize = true;
@@ -3964,14 +4013,138 @@
             ? "No connection"
             : _connections.SingleOrDefault(item => item.Id == _chat.CredentialProfileId)?.Name ?? "Select connection";
 
-    private void OnComposerInput(ChangeEventArgs args)
+    private async Task OnComposerInput(ChangeEventArgs args)
     {
         // Typing detaches the composer from history: the text is the user's own again, so it
         // goes back to being saved as a draft and Up starts a fresh walk from the newest entry.
         _composerHistoryNavigator.Reset();
+        var wasCommand = SkillMatcher.GetQuery(_chat.Message) is not null;
         _chat.Message = args.Value?.ToString() ?? string.Empty;
         WorkspaceStateService.QueueComposerDraftSave(GetComposerDraftKey(), _chat.Message);
+        await UpdateSkillSuggestionsAsync(reload: !wasCommand);
     }
+
+    /// <summary>
+    /// Recomputes the slash list for the current text. The skills are re-read each time a command
+    /// starts, so one edited in Settings or by the assistant a moment ago is already there.
+    /// </summary>
+    private async Task UpdateSkillSuggestionsAsync(bool reload)
+    {
+        if (SkillMatcher.GetQuery(_chat.Message) is not { } query || _selectedProject is not { } project)
+        {
+            _skillMatches = [];
+            _skillSuggestionsDismissed = false;
+            return;
+        }
+        if (reload || _composerSkillsProjectId != project.Id)
+        {
+            try
+            {
+                _composerSkills = await SkillApi.ListAsync(project.Id, CancellationToken.None);
+                _composerSkillsProjectId = project.Id;
+            }
+            catch (HttpRequestException)
+            {
+                // Without the list the slash is plain text; the message still sends as typed.
+                _composerSkills = [];
+                _composerSkillsProjectId = null;
+            }
+            // The user may have typed on, or switched project, while the list was loading.
+            if (SkillMatcher.GetQuery(_chat.Message) is not { } current || _selectedProject?.Id != project.Id)
+            {
+                _skillMatches = [];
+                return;
+            }
+            query = current;
+        }
+        var selectedId = _skillMatches.ElementAtOrDefault(_skillSuggestionIndex)?.Skill.Id;
+        _skillMatches = SkillMatcher.Match(_composerSkills, query, _recentSkillIds);
+        // A narrowing query keeps the highlighted row while it still matches; otherwise the best one.
+        var kept = selectedId is null ? -1 : _skillMatches.ToList().FindIndex(item => item.Skill.Id == selectedId);
+        _skillSuggestionIndex = kept >= 0 && query.Length > 0 ? kept : 0;
+        _scrollSkillSuggestion = true;
+    }
+
+    private bool IsSkillListOpen() => _skillMatches.Count > 0 && !_skillSuggestionsDismissed
+        && SkillMatcher.GetQuery(_chat.Message) is not null;
+
+    [JSInvokable]
+    public Task MoveSkillSuggestion(int direction)
+    {
+        if (!IsSkillListOpen()) return Task.CompletedTask;
+        _skillSuggestionIndex = (_skillSuggestionIndex + direction + _skillMatches.Count) % _skillMatches.Count;
+        _scrollSkillSuggestion = true;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Enter or Tab in the list: the highlighted skill becomes the message's chip. Returns the text left in the composer.</summary>
+    [JSInvokable]
+    public async Task<string?> AcceptSkillSuggestion()
+    {
+        if (!IsSkillListOpen()) return null;
+        var text = AcceptSkill(_skillMatches[Math.Clamp(_skillSuggestionIndex, 0, _skillMatches.Count - 1)].Skill);
+        await InvokeAsync(StateHasChanged);
+        return text;
+    }
+
+    [JSInvokable]
+    public Task DismissSkillSuggestions()
+    {
+        _skillSuggestionsDismissed = true;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task RemoveDraftSkill()
+    {
+        if (_draftResources.FirstOrDefault(item => item.Kind == ChatResourceKind.Skill) is not { } skill)
+            return Task.CompletedTask;
+        RemoveDraftResource(skill.Id);
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task PickSkillSuggestionAsync(int index)
+    {
+        if (index < 0 || index >= _skillMatches.Count) return;
+        AcceptSkill(_skillMatches[index].Skill);
+        if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("focus");
+    }
+
+    private void HoverSkillSuggestion(int index) => _skillSuggestionIndex = index;
+
+    private string AcceptSkill(AI.Contracts.Skills.SkillDefinition skill)
+    {
+        // One skill per message: picking another replaces the chip instead of adding a second.
+        var previous = _draftResources.FindIndex(item => item.Kind == ChatResourceKind.Skill);
+        if (previous >= 0) _draftResources.RemoveAt(previous);
+        else if (_draftResources.Count >= 20)
+        {
+            _chatError = "A message can reference at most 20 resources. Remove one to add a skill.";
+            return _chat.Message;
+        }
+        _draftResources.Insert(0, new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Skill, skill.Id, skill.Name));
+        _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
+        _recentSkillIds.Remove(skill.Id);
+        _recentSkillIds.Insert(0, skill.Id);
+        if (_recentSkillIds.Count > 5) _recentSkillIds.RemoveAt(_recentSkillIds.Count - 1);
+        _chat.Message = string.Empty;
+        _skillMatches = [];
+        _composerNeedsResize = true;
+        WorkspaceStateService.QueueComposerDraftSave(GetComposerDraftKey(), _chat.Message);
+        return _chat.Message;
+    }
+
+    private string SkillChipTitle(ChatResourceRef skill) =>
+        _composerSkills.FirstOrDefault(item => item.Id == skill.Path) is { } definition
+            ? $"{definition.Name} · {SkillCommandMenu.SourceLabel(definition.Source)}\n{definition.Description}"
+            : skill.Path;
+
+    private string GetComposerPlaceholder() =>
+        _replaceSourceId is not null ? "Edit the message to replace this branch..."
+        : _isForking ? "Write the first message in the new branch..."
+        : GetSelectedRun() is { PendingPrompt: not null } ? "Answer the question above..."
+        : _draftResources.Any(item => item.Kind == ChatResourceKind.Skill) ? "What should the skill do? (optional)"
+        : "Message the assistant, or / for skills...";
 
     private void OpenResourcePicker(DirectoryPickerMode mode)
     {

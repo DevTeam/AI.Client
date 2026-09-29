@@ -560,7 +560,7 @@ public sealed class ChatRunDispatcher(
         lock (_titleTasksGate)
         {
             if (_shutdown.IsCancellationRequested || _titleTasks.ContainsKey(chatId)) return;
-            var invocation = new SkillInvocation("chat-title", projectId,
+            var invocation = new SkillInvocation("chat-rename", projectId,
                 System.Text.Json.JsonSerializer.SerializeToElement(new { chat_id = chatId, mode = "automatic" }), chatId);
             var task = Task.Run(() => skillRunner.RunAsync(invocation, _shutdown.Token));
             _titleTasks[chatId] = task;

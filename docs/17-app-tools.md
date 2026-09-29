@@ -155,7 +155,7 @@ The real check lives elsewhere and works independently: `PathGuard` inside the b
 
 **The grant takes effect before the next model step in the same run.** The Host re-reads project grants between model steps. When they change, it reopens the tool session so the built-in server receives the new grants at startup. Tool calls already submitted in the same batch finish with the previous session. A tool omitted from the model request because of the schema budget is a separate tool-discovery condition, not a directory-access failure.
 
-For one directory, use `AddDirectoryGrant` with the project revision and a single grant. It leaves MCP server bindings and tool policies intact. `SetProjectSecurity` still replaces the full security document and should be reserved for intentional full replacements.
+For one directory, use `AddDirectoryGrant` with the project revision and a single grant. It leaves MCP server bindings and tool policies intact. `RemoveDirectoryGrant` revokes one grant by `grantId` the same way. `SetProjectSecurity` still replaces the full security document and should be reserved for intentional full replacements.
 
 ## Confirmations and call batches
 
@@ -194,3 +194,17 @@ Limits are not tightened: a value changes only if the new one is larger than the
 - `AppDataChangeSignalTests` and `AppToolPresentationTests` unit tests;
 - `AppToolTests` — discovery and calls through a real MCP session over the in-process transport, against real application services: cursor-based pagination, absence of secrets, operation replay, dry run, revision conflict, security settings replacement, rejection of out-of-schema arguments;
 - smoke test through the real Host: `GET /api/mcp/default/tools` returns 21 tools (16 built-in and 5 application), and a chat under the model's control created another chat through `app_chats` and put a message in it through `app_runs`; the chat list in the open UI updated on the `data-changed` signal without reloading the page.
+
+## Current ids and forgiving arguments
+
+A run with the App server gets one system line naming its `projectId`, `chatId` and `branchId`,
+because several tools take them as ids and nothing else in the context says which ones the run
+belongs to. Where a tool knows the run, an omitted id means the current one: project-scoped
+`app_read` resources, `Chat`, `Messages` and `Reviews` in `app_read` (current chat), and
+`spawn_subtask` (current project and chat).
+
+Before the input schema is checked, the Host repairs two common slips in top-level arguments: an
+object or array sent as its JSON text is parsed when the schema does not also accept a string, and
+an enum value in the wrong case is replaced by the one value it matches. Anything else still fails
+with the property and reason in the error. Labels quoted in tool descriptions, such as
+"(Recommended)", are examples: questions and options are written in the user's language.

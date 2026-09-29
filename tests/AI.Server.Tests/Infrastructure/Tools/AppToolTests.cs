@@ -26,6 +26,7 @@ using AI.Server.Hosting;
 using Moq;
 using Shouldly;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Xunit;
 
 /// <summary>
@@ -359,6 +360,50 @@ public sealed class AppToolTests
     }
 
     [Fact]
+    public async Task RemovingDirectoryGrantKeepsTheOtherGrantsBindingsAndPolicies()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        var original = (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!;
+        var removedId = Guid.NewGuid();
+        var seeded = await fixture.Projects.UpdateSecurityAsync(fixture.ProjectId,
+            new UpdateProjectSecurityRequest(original.Revision,
+                [new DirectoryGrantSettings(removedId, "old", @"C:\Projects\Old", true, ["read"]),
+                    new DirectoryGrantSettings(Guid.NewGuid(), "kept", @"C:\Projects\Kept", true, ["read"])],
+                [new AI.Contracts.Projects.McpServerSettings(DefaultMcpServer.Id, "Built-in tools", "Stdio", true)],
+                [new ToolPolicySettings(DefaultMcpServer.Id, "read_text_file", "schema", "Allow", 10, 60)]),
+            CancellationToken.None);
+        await using var session = await fixture.OpenAsync();
+
+        var result = await AppFixture.CallAsync(session, "app_security", new
+        {
+            operation = "RemoveDirectoryGrant", projectId = fixture.ProjectId,
+            operationId = Guid.NewGuid(), revision = seeded.Revision, grantId = removedId,
+        });
+
+        result.GetProperty("applied").GetBoolean().ShouldBeTrue();
+        result.GetProperty("effect").GetString()!.ShouldContain(@"C:\Projects\Old");
+        var updated = (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!;
+        updated.DirectoryGrants.ShouldHaveSingleItem().DisplayName.ShouldBe("kept");
+        updated.McpServers.ShouldHaveSingleItem().Id.ShouldBe(DefaultMcpServer.Id);
+        updated.ToolPolicies.ShouldHaveSingleItem().Name.ShouldBe("read_text_file");
+    }
+
+    [Fact]
+    public async Task ShouldReadSkillDocumentsOnlyWhenAskedForOne()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var catalog = await AppFixture.CallAsync(session, "app_read", new { resource = "Skills", limit = 50 });
+        var one = await AppFixture.CallAsync(session, "app_read", new { resource = "Skills", query = "skill-create" });
+
+        catalog.GetProperty("items").EnumerateArray().ShouldAllBe(item => item.GetProperty("content").ValueKind == JsonValueKind.Null);
+        var skill = one.GetProperty("items").EnumerateArray().ShouldHaveSingleItem();
+        skill.GetProperty("kind").GetString().ShouldBe("playbook");
+        skill.GetProperty("content").GetString()!.ShouldContain("Skill conventions");
+    }
+
+    [Fact]
     public async Task ShouldFindMessagesWithoutReadingChatsOneByOne()
     {
         await using var fixture = await AppFixture.CreateAsync();
@@ -415,6 +460,33 @@ public sealed class AppToolTests
         var error = Should.Throw<ArgumentException>(() => session.ValidateArguments(tool, """{"resource":"Everything"}"""));
         // The message has to say what was wrong with which property, or the caller can only guess.
         error.Message.ShouldContain("resource");
+    }
+
+    [Fact]
+    public async Task ShouldRepairEnumCaseAndObjectsSentAsJsonText()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var read = session.Tools.Single(item => item.OriginalName == "app_read");
+        var ask = session.Tools.Single(item => item.OriginalName == "ask_user");
+
+        var repairedEnum = JsonNode.Parse(session.ValidateArguments(read, """{"resource":"projects"}"""))!;
+        var questions = JsonSerializer.Serialize(new[] { new { id = "q", text = "Which?", options = new[] { new { label = "A" } } } });
+        var repairedArray = JsonNode.Parse(session.ValidateArguments(ask, JsonSerializer.Serialize(new { questions })))!;
+
+        repairedEnum["resource"]!.GetValue<string>().ShouldBe("Projects");
+        repairedArray["questions"].ShouldBeOfType<JsonArray>().Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ShouldReadTheCurrentChatWhenNoChatIsNamed()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var chat = await AppFixture.CallAsync(session, "app_read", new { resource = "Chat" });
+
+        chat.GetProperty("items")[0].GetProperty("id").GetGuid().ShouldBe(fixture.ChatId);
     }
 
     private static readonly IReadOnlySet<Guid> AppServerOnly = new HashSet<Guid> { AppMcpServer.Id };

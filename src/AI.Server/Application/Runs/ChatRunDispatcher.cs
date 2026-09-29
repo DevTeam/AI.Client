@@ -15,6 +15,7 @@ using Workspace;
 using AI.Application.Resources;
 using AI.Application.Memory;
 using AI.Application.Instructions;
+using AI.Application.Skills;
 using Domain.Runs;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
@@ -25,7 +26,8 @@ public sealed class ChatRunDispatcher(
     IGlobalSecretStore secretStore, IClock clock, IIdGenerator ids, IChatSynchronization synchronization,
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies,
     IChatContextBuilder contextBuilder, IChatBranchIds branchIds, IResourceService resources, IReviewService reviews,
-    IResourceModelProjection resourceProjection, IMemoryService memory, IProjectInstructionsService projectInstructions)
+    IResourceModelProjection resourceProjection, IMemoryService memory, IProjectInstructionsService projectInstructions,
+    ISkillRunner skillRunner)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -37,6 +39,8 @@ public sealed class ChatRunDispatcher(
     private static readonly TimeSpan PolicyRecheck = TimeSpan.FromSeconds(2);
 
     private readonly ConcurrentDictionary<RunKey, Runtime> _runtimes = new();
+    private readonly Dictionary<Guid, Task> _titleTasks = [];
+    private readonly Lock _titleTasksGate = new();
     private readonly ConcurrentDictionary<Guid, Channel<IReadOnlyList<ChatRunSnapshot>>> _subscribers = new();
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Lock _publicationLock = new();
@@ -89,7 +93,10 @@ public sealed class ChatRunDispatcher(
     public async Task ShutdownAsync(CancellationToken cancellationToken)
     {
         await _shutdown.CancelAsync();
-        await Task.WhenAll(_runtimes.Values.Select(runtime => runtime.Worker ?? Task.CompletedTask)).WaitAsync(cancellationToken);
+        Task[] titleTasks;
+        lock (_titleTasksGate) titleTasks = _titleTasks.Values.ToArray();
+        await Task.WhenAll(_runtimes.Values.Select(runtime => runtime.Worker ?? Task.CompletedTask).Concat(titleTasks))
+            .WaitAsync(cancellationToken);
         foreach (var subscriber in _subscribers.Values) subscriber.Writer.TryComplete();
     }
 
@@ -446,6 +453,7 @@ public sealed class ChatRunDispatcher(
                     (tool, arguments, timeout, position, ct) => ApproveAsync(runtime, tool, arguments, timeout, position, ct), token,
                     draft: (chunk, ct) => ReportDraftAsync(runtime, chunk, ct),
                     contextUsage: (usage, ct) => ReportContextAsync(runtime, usage, ct));
+                var suggestTitle = false;
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
                 {
                     token.ThrowIfCancellationRequested();
@@ -470,7 +478,10 @@ public sealed class ChatRunDispatcher(
                     chat = await chatMutations.PruneMessagesCoreAsync(chat.ProjectId, chat.Id,
                         RetainedMessageIds(chat.Id), token) ?? chat;
                     await SaveAsync(runtime, chat, token);
+                    suggestTitle = runtime.State.BranchId == chat.Id && chat.AutoTitlePending
+                        && chat.Messages.Count(message => message.Role == "User") == 1;
                 }
+                if (suggestTitle) StartTitleSkill(runtime.State.ProjectId, runtime.State.ChatId);
             }
         }
         catch (Exception error)
@@ -541,6 +552,22 @@ public sealed class ChatRunDispatcher(
             Publish();
             runtime.Worker = null;
             StartWorker(runtime);
+        }
+    }
+
+    private void StartTitleSkill(Guid projectId, Guid chatId)
+    {
+        lock (_titleTasksGate)
+        {
+            if (_shutdown.IsCancellationRequested || _titleTasks.ContainsKey(chatId)) return;
+            var invocation = new SkillInvocation("chat-title", projectId,
+                System.Text.Json.JsonSerializer.SerializeToElement(new { chat_id = chatId }));
+            var task = Task.Run(() => skillRunner.RunAsync(invocation, _shutdown.Token));
+            _titleTasks[chatId] = task;
+            _ = task.ContinueWith(_ =>
+            {
+                lock (_titleTasksGate) _titleTasks.Remove(chatId);
+            }, TaskScheduler.Default);
         }
     }
 

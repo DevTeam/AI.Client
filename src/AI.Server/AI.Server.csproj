@@ -10,4 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AI.Contracts\AI.Contracts.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Skills\BuiltIn\**\SKILL.md" />
+  </ItemGroup>
 </Project>

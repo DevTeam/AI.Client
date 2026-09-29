@@ -28,7 +28,7 @@ public sealed class ChatComposerService(IChatHistoryApi chatHistory, IChatRunsAp
                     : firstResource?.Name ?? firstResource?.Path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
                         .LastOrDefault() ?? "Workspace references";
                 chat = await chatHistory.CreateAsync(projectId,
-                    new CreateChatRequest(title, request.CredentialProfileId), cancellationToken);
+                    new CreateChatRequest(title, request.CredentialProfileId, AutoTitlePending: true), cancellationToken);
             }
             var parent = mode == ChatSubmitMode.Fork ? request.ForkSourceId ?? request.BranchLeafId : null;
             var sourceBranchId = request.SelectedBranchId ?? request.SelectedRun?.BranchId

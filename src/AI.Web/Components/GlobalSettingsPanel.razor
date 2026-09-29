@@ -103,6 +103,11 @@
                     <MemoryEditor @ref="_memoryEditor" @key="Section" ProjectId="@(Section == "ProjectMemory" ? ProjectId : null)" Changed="StateHasChanged" />
                     break;
                 }
+                case "Skills":
+                {
+                    <SkillEditor @ref="_skillEditor" Changed="StateHasChanged" />
+                    break;
+                }
                 case "Connections":
                 {
                     <div class="global-editor-layout">
@@ -199,6 +204,7 @@
     /// <summary>The project whose memory the ProjectMemory section edits.</summary>
     [Parameter] public Guid? ProjectId { get; set; }
     private MemoryEditor? _memoryEditor;
+    private SkillEditor? _skillEditor;
     [Parameter] public EventCallback Close { get; set; }
     private bool _loaded;
     private bool _saving;
@@ -296,6 +302,7 @@
     {
         "Settings" => "Applied right away · stored on this device",
         "Memory" or "ProjectMemory" => _memoryEditor?.Stats ?? string.Empty,
+        "Skills" => _skillEditor?.Stats ?? string.Empty,
         "Connections" => $"{Plural(_connections.Count, "connection")} · {_connections.Count(item => item.Enabled)} enabled",
         _ => $"{Plural(_globalMcpServers.Count, "server")} · {_globalMcpServers.Count(item => item.Enabled)} enabled · {Plural(_toolPolicies.Count, "tool default")}"
     };
@@ -303,13 +310,14 @@
     private string Title => Section == "ProjectMemory" ? "Project memory" : Section;
 
     /// <summary>Connections and MCP servers travel as text; the app's own look and memory do not.</summary>
-    private bool CanTransfer => Section is not ("Settings" or "Memory" or "ProjectMemory");
+    private bool CanTransfer => Section is not ("Settings" or "Memory" or "ProjectMemory" or "Skills");
 
     private string Description => Section switch
     {
         "Settings" => ClientMode.PublicWeb ? "How the app looks and behaves, and the Host it works with." : "How the app looks and behaves on this device.",
         "Memory" => "What the assistant remembers about you in every project.",
         "ProjectMemory" => "What the assistant remembers about this project.",
+        "Skills" => "Instructions the assistant can use for focused tasks.",
         "Connections" => "OpenAI-compatible endpoints available to every project.",
         _ => "Global MCP servers available to every project."
     };

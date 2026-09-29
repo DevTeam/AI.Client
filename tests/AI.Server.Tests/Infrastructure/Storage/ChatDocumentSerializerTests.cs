@@ -13,6 +13,21 @@ public class ChatDocumentSerializerTests
     private readonly ChatDocumentSerializer _serializer = new();
 
     [Fact]
+    public void ShouldPreserveAutomaticTitleEligibilityAndStopAfterManualRename()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()),
+            "First message", now, autoTitlePending: true);
+
+        var restored = _serializer.Deserialize(_serializer.Serialize(chat, 1)).Chat;
+        restored.AutoTitlePending.ShouldBeTrue();
+        restored.Rename("My title", now);
+        restored.ApplyAutomaticTitle("Suggested title", now).ShouldBeFalse();
+        restored.Title.ShouldBe("My title");
+        _serializer.Deserialize(_serializer.Serialize(restored, 2)).Chat.AutoTitlePending.ShouldBeFalse();
+    }
+
+    [Fact]
     public void ShouldKeepResourceOnlyUserMessageAsReferences()
     {
         var now = DateTimeOffset.UnixEpoch;

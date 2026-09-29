@@ -14,7 +14,8 @@ public sealed class ChatThread
         ProjectId projectId,
         string title,
         DateTimeOffset createdAt,
-        ConnectionId? connectionId = null)
+        ConnectionId? connectionId = null,
+        bool autoTitlePending = false)
     {
         if (string.IsNullOrWhiteSpace(title))
         {
@@ -28,12 +29,14 @@ public sealed class ChatThread
         UpdatedAt = createdAt;
         LastActivityAt = createdAt;
         ConnectionId = connectionId;
+        AutoTitlePending = autoTitlePending;
         _branches[id.Value] = new ChatBranch(id.Value, null, title.Trim());
     }
 
     public ChatId Id { get; }
     public ProjectId ProjectId { get; }
     public string Title { get; private set; }
+    public bool AutoTitlePending { get; private set; }
     public DateTimeOffset CreatedAt { get; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset LastActivityAt { get; private set; }
@@ -117,8 +120,18 @@ public sealed class ChatThread
 
         EnsureTimestampDoesNotMoveBackwards(updatedAt);
         Title = title.Trim();
+        AutoTitlePending = false;
         UpdatedAt = updatedAt;
     }
+
+    public bool ApplyAutomaticTitle(string title, DateTimeOffset updatedAt)
+    {
+        if (!AutoTitlePending) return false;
+        Rename(title, updatedAt);
+        return true;
+    }
+
+    public void RestoreAutoTitlePending(bool pending) => AutoTitlePending = pending;
 
     public void SetConnection(ConnectionId? connectionId, DateTimeOffset updatedAt)
     {

@@ -10,4 +10,5 @@ public sealed record ChatDetails(
     Guid? ConnectionId,
     IReadOnlyList<ChatMessageView> Messages,
     IReadOnlyList<ChatBranchView>? Branches = null,
-    IReadOnlyList<AI.Contracts.Projects.ToolPolicySettings>? ToolPolicies = null);
+    IReadOnlyList<AI.Contracts.Projects.ToolPolicySettings>? ToolPolicies = null,
+    bool AutoTitlePending = false);

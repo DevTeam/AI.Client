@@ -30,6 +30,7 @@ The documents describe the agreed-upon architecture and are the source of truth 
 24. [Desktop app](23-desktop.md)
 25. [Chat artifacts and reviews (proposal)](24-chat-artifacts.md)
 26. [Long-term memory and project instructions](25-memory-and-instructions.md)
+27. [Skills](27-skills.md)
 
 ## Accepted decisions
 

@@ -170,7 +170,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             new ProjectId(projectId),
             request.Title,
             now,
-            request.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null);
+            request.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null,
+            request.AutoTitlePending);
         var result = await repository.SaveAsync(chat, 0, cancellationToken);
         return ToDetails(chat, result.Revision);
     }
@@ -379,6 +380,16 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
 
+    public async Task<ChatDetails?> ApplyAutomaticTitleAsync(
+        Guid projectId, Guid chatId, string title, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null || !stored.Chat.ApplyAutomaticTitle(title, clock.UtcNow)) return null;
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
     public async Task<ChatDeleteResult> DeleteAsync(
         Guid projectId,
         Guid chatId,
@@ -447,7 +458,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
         chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
             policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
-            policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray());
+            policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
+        chat.AutoTitlePending);
 
     private static ChatDetails ToTranscript(ChatThread chat, long revision)
     {
@@ -484,7 +496,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
                 branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
             chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
                 policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
-                policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray());
+                policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
+            chat.AutoTitlePending);
     }
 
     private static bool IsPlainAssistant(ChatMessage message) =>

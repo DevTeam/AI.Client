@@ -11,7 +11,7 @@ using Server.CommandLine;
 /// running, then opens the Web app with a one-time pairing code so the browser connects without
 /// any further question.
 /// </summary>
-internal sealed class OpenCommand(RootCommand rootCommand, IHostProcess hostProcess, IBrowserOpener browser) : IInitializable
+internal sealed class OpenCommand(RootCommand rootCommand, IHostProcess hostProcess, IWebAppLauncher webApp) : IInitializable
 {
     private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(30);
 
@@ -25,17 +25,19 @@ internal sealed class OpenCommand(RootCommand rootCommand, IHostProcess hostProc
 
     private async Task<int> RunAsync(CancellationToken cancellationToken)
     {
-        using var client = new HttpClient { BaseAddress = new Uri(HostProtocol.PublicHostAddress), Timeout = TimeSpan.FromSeconds(3) };
-        if (!await IsRunningAsync(client, cancellationToken))
+        var address = new Uri(HostProtocol.PublicHostAddress);
+        using (var client = new HttpClient { BaseAddress = address, Timeout = TimeSpan.FromSeconds(3) })
         {
-            hostProcess.StartInBackground();
-            var waiting = Stopwatch.StartNew();
-            while (waiting.Elapsed < StartTimeout && !await IsRunningAsync(client, cancellationToken))
-                await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+            if (!await IsRunningAsync(client, cancellationToken))
+            {
+                hostProcess.StartInBackground();
+                var waiting = Stopwatch.StartNew();
+                while (waiting.Elapsed < StartTimeout && !await IsRunningAsync(client, cancellationToken))
+                    await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+            }
         }
 
-        // Without a code the Web app still opens and explains what is wrong with the Host.
-        browser.Open(await LaunchUrlAsync(client, cancellationToken) ?? HostProtocol.PublicWebOrigin + "/");
+        await webApp.OpenAsync(address, cancellationToken);
         return 0;
     }
 
@@ -52,21 +54,5 @@ internal sealed class OpenCommand(RootCommand rootCommand, IHostProcess hostProc
         }
     }
 
-    private static async Task<string?> LaunchUrlAsync(HttpClient client, CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var response = await client.PostAsync("api/bridge/launch", null, cancellationToken);
-            if (!response.IsSuccessStatusCode) return null;
-            return (await response.Content.ReadFromJsonAsync<Launch>(cancellationToken))?.Url;
-        }
-        catch (Exception error) when (error is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
-        {
-            return null;
-        }
-    }
-
     private sealed record Health(string? ProductName);
-
-    private sealed record Launch(string? Url);
 }

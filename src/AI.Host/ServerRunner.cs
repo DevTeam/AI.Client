@@ -3,7 +3,7 @@ namespace AI.Host;
 using Infrastructure.Storage;
 using Server.Hosting;
 
-internal sealed class ServerRunner : IServerRunner
+internal sealed class ServerRunner(IHostStatus status) : IServerRunner
 {
     public async Task<int> RunAsync(ServerOptions options, CancellationToken cancellationToken)
     {
@@ -22,6 +22,7 @@ internal sealed class ServerRunner : IServerRunner
             {
                 await Console.Error.WriteLineAsync(error.Message);
                 if (!options.PublicWeb) return 2;
+                status.Report(new HostState(HostPhase.WaitingForDataDirectory, Detail: error.Message));
                 try
                 {
                     await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
@@ -32,9 +33,15 @@ internal sealed class ServerRunner : IServerRunner
                 }
                 continue;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Quit from the tray while the server was still starting.
+                return 0;
+            }
 
             await using (server)
             {
+                status.Report(new HostState(HostPhase.Running, server.Address));
                 await server.WaitForShutdownAsync(cancellationToken);
             }
 

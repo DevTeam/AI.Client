@@ -16,8 +16,9 @@ internal sealed partial class CommandLineComposition
             .DependsOn("AI.Server.CommandLine.Composition")
             .Singleton<StandaloneCommand>(Tag.Unique)
             .Singleton<OpenCommand>(Tag.Unique)
-            .Transient<BrowserOpener, HostProcess>()
-            .Transient<ServerRunner>();
+            .Singleton<HostStatus>()
+            .Transient<BrowserOpener, HostProcess, WebAppLauncher>()
+            .Transient<ServerRunner, HostRunner, HostTray>();
 }
 
 /// <summary>The server graph for one run; also ASP.NET's service provider factory.</summary>

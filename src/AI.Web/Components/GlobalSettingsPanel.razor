@@ -23,7 +23,7 @@
                 <button class="icon-action" type="button" title="Import from clipboard or file (or press Ctrl+V here)" aria-label="Import settings" disabled="@(_saving || !_loaded)" @onclick="OpenImport"><AppIcon Name="import" /></button>
                 <button class="icon-action" type="button" title="Export to clipboard or file" aria-label="Export settings" disabled="@(_saving || !_loaded)" @onclick="OpenExport"><AppIcon Name="export" /></button>
             }
-            <button class="icon-action" type="button" title="Close" aria-label="Close @Title" disabled="@_saving" @onclick="RequestCloseAsync"><AppIcon Name="x" /></button>
+            <button class="icon-action" type="button" title="Close" aria-label="Close @Title" disabled="@_saving" @onclick="RequestCloseAsync"><AppIcon Name="drawer-close" /></button>
         </div>
     </header>
     <div class="settings-drawer-content">

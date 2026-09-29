@@ -29,7 +29,7 @@
                 <button class="icon-action review-workspace-delete" type="button" title="Delete review" aria-label="Delete review" @onclick="() => _confirmingDelete = true"><AppIcon Name="trash" /></button>
             }
         }
-        <button class="icon-action review-close" type="button" title="Close review" aria-label="Close review" @onclick="OnClose"><AppIcon Name="x" /></button>
+        <button class="icon-action review-close" type="button" title="Close review" aria-label="Close review" @onclick="OnClose"><AppIcon Name="drawer-close" /></button>
     </header>
     @if (_error is { Length: > 0 }) { <p class="review-error" role="alert">@_error</p> }
     @if (_current is null)

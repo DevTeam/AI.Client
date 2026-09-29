@@ -275,17 +275,17 @@ public sealed class AppReadTool(
                 var all = await skills.ListAsync(projectId, cancellationToken);
                 var matched = string.IsNullOrWhiteSpace(query)
                     ? all
-                    : all.Where(skill => skill.Id == query
+                    : all.Where(skill => skill.Id == query || skill.Aliases?.Contains(query) == true
                         || skill.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
                         || skill.Description.Contains(query, StringComparison.OrdinalIgnoreCase)).ToArray();
-                var exact = matched.Where(skill => skill.Id == query).ToArray();
+                var exact = matched.Where(skill => skill.Id == query || skill.Aliases?.Contains(query) == true).ToArray();
                 // Without a query this is a catalog; the documents themselves are only worth their
                 // size once the caller has said which skill it is about to change.
                 var withContent = !string.IsNullOrWhiteSpace(query);
                 return Paging.Page("Skills", (exact.Length > 0 ? exact : matched).Select(skill => new
                 {
                     skill.Id, skill.Name, skill.Description, skill.Source, skill.Kind, skill.Enabled, skill.Revision,
-                    skill.AllowedTools, Content = withContent ? skill.Content : null
+                    skill.Aliases, skill.AllowedTools, Content = withContent ? skill.Content : null
                 }).ToArray(), cursor, limit, reply.Json);
             }
             default:

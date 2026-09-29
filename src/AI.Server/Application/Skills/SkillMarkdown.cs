@@ -19,9 +19,13 @@ public static class SkillMarkdown
         string? Field(string key) => lines.Skip(1).Take(end - 1)
             .FirstOrDefault(line => line.StartsWith(key + ": ", StringComparison.Ordinal))?[(key.Length + 2)..].Trim();
         var id = Field("id") ?? throw new ArgumentException("SKILL.md needs id.");
-        if (id.Length is < 1 or > 64 || id[0] is < 'a' or > 'z'
-            || id[^1] == '-' || id.Any(character => character is not (>= 'a' and <= 'z' or >= '0' and <= '9' or '-')))
+        if (!IsCommand(id))
             throw new ArgumentException("Skill id must be lowercase letters, digits and hyphens, starting with a letter.");
+        var aliases = Field("aliases") is { } aliasesText
+            ? JsonSerializer.Deserialize<string[]>(aliasesText) ?? [] : [];
+        if (aliases.Length > 8 || aliases.Any(alias => !IsCommand(alias) || alias == id)
+            || aliases.Distinct(StringComparer.Ordinal).Count() != aliases.Length)
+            throw new ArgumentException("Skill aliases are up to 8 distinct commands spelled like an id and different from it.");
         var name = Field("name") ?? throw new ArgumentException("SKILL.md needs name.");
         var description = Field("description") ?? throw new ArgumentException("SKILL.md needs description.");
         if (name.Length > 120 || description.Length > 400)
@@ -46,7 +50,7 @@ public static class SkillMarkdown
         var revision = Field("revision") is { } revisionText
             ? long.Parse(revisionText, System.Globalization.CultureInfo.InvariantCulture) : 0;
         return new SkillDefinition(id, name, description, source, content, enabled, parameters, result,
-            tools, projectId, revision, kind);
+            tools, projectId, revision, kind, aliases);
     }
 
     public static string WithMetadata(string content, long revision, bool enabled)
@@ -68,6 +72,10 @@ public static class SkillMarkdown
         var end = Array.IndexOf(lines, "---", 1);
         return string.Join('\n', lines.Skip(end + 1)).Trim();
     }
+
+    private static bool IsCommand(string text) =>
+        text.Length is >= 1 and <= 64 && text[0] is >= 'a' and <= 'z' && text[^1] != '-'
+        && text.All(character => character is >= 'a' and <= 'z' or >= '0' and <= '9' or '-');
 
     private static JsonElement Schema(string text)
     {

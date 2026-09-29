@@ -16,7 +16,10 @@ the `id` saves a new skill and deletes the old one. Built-in skills stay read-on
 are deleted with their project.
 
 Frontmatter requires `id`, `name`, `description` and a JSON Schema object on the `parameters`
-line. `kind` selects how the skill runs:
+line. Optional `aliases` is a JSON array of up to 8 short commands spelled like an id, for example
+`aliases: ["compact"]`: typing one in full after `/` puts the skill first in the list, and
+`app_skill_search` and `app_read resource=Skills` find the skill by it. An alias never replaces the id,
+which chips and `app_run_skill` still use. `kind` selects how the skill runs:
 
 | kind | Runs in | Declares |
 |---|---|---|
@@ -51,7 +54,7 @@ application permissions, and every write still goes through tool approval.
 |---|---|---|
 | `chat-rename` | Names a new chat after its first answer, or renames one on request (executor) | — |
 | `chat-compact` | Summarizes the chat and continues in a new chat that starts from the summary | `app_chats`, `app_runs` |
-| `chat-context-compact` | Replaces the finished work of the current turn with a model-only summary, or undoes it | `context_compact` |
+| `chat-context-compact` (`/compact`) | Replaces the finished work of the current turn with a model-only summary, or undoes it | `context_compact` |
 | `chat-fork` | Starts a branch from an earlier user message with a new prompt | `app_runs` Fork, `app_chats` RenameBranch |
 | `chat-summary` | Summarizes this or another chat; read-only, the safe example for testing skills | `app_read` |
 | `chat-branch-cleanup` | Deletes branches the user picks; never the main or current branch | `app_chats` DeleteBranch |

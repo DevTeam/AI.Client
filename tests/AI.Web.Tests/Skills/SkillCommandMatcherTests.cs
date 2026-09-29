@@ -59,7 +59,27 @@ public sealed class SkillCommandMatcherTests
         matches.Select(item => item.Skill.Name).ShouldBe(["Beta for project", "Alpha"]);
     }
 
+    [Fact]
+    public void ShouldPutAnExactAliasFirstAndShowIt()
+    {
+        var skills = new[]
+        {
+            Skill("chat-compact", "Chat compact"),
+            Skill("compare", "Compare files"),
+            Skill("chat-context-compact", "Chat context compact", aliases: ["compact"])
+        };
+
+        var exact = _matcher.Match(skills, "compact", []);
+        exact[0].Skill.Id.ShouldBe("chat-context-compact");
+        exact[0].Alias.ShouldBe("compact");
+
+        var prefix = _matcher.Match(skills, "comp", []);
+        prefix.Select(item => item.Skill.Id).ShouldBe(["compare", "chat-context-compact", "chat-compact"]);
+        prefix[1].Alias.ShouldBe("compact");
+        prefix[0].Alias.ShouldBeNull();
+    }
+
     private static SkillDefinition Skill(string id, string name, string description = "Description",
-        string source = "User", bool enabled = true) =>
-        new(id, name, description, source, "---", enabled, JsonDocument.Parse("{}").RootElement);
+        string source = "User", bool enabled = true, string[]? aliases = null) =>
+        new(id, name, description, source, "---", enabled, JsonDocument.Parse("{}").RootElement, Aliases: aliases);
 }

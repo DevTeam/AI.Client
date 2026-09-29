@@ -23,7 +23,8 @@ public sealed class SkillCommandMatcher : ISkillCommandMatcher
         var matches = new List<(SkillCommandMatch Match, int Rank)>();
         foreach (var skill in effective)
         {
-            if (Rank(skill, query) is { } ranked) matches.Add((new SkillCommandMatch(skill, ranked.Highlights), ranked.Rank));
+            if (Rank(skill, query) is { } ranked)
+                matches.Add((new SkillCommandMatch(skill, ranked.Highlights, ranked.Alias), ranked.Rank));
         }
         return matches
             .OrderBy(item => item.Rank)
@@ -34,21 +35,27 @@ public sealed class SkillCommandMatcher : ISkillCommandMatcher
             .ToArray();
     }
 
-    private static (int Rank, IReadOnlyList<int> Highlights)? Rank(SkillDefinition skill, string query)
+    private static (int Rank, IReadOnlyList<int> Highlights, string? Alias)? Rank(SkillDefinition skill, string query)
     {
-        if (query.Length == 0) return (0, []);
+        if (query.Length == 0) return (0, [], null);
+        var aliases = skill.Aliases ?? [];
+        // "/compact" typed in full goes straight to the skill that claims it.
+        if (aliases.FirstOrDefault(alias => alias.Equals(query, StringComparison.OrdinalIgnoreCase)) is { } exact)
+            return (-1, [], exact);
         var name = skill.Name;
         const StringComparison ignoreCase = StringComparison.CurrentCultureIgnoreCase;
-        if (name.StartsWith(query, ignoreCase)) return (0, Range(0, query.Length));
-        if (skill.Id.StartsWith(query, StringComparison.OrdinalIgnoreCase)) return (1, []);
+        if (name.StartsWith(query, ignoreCase)) return (0, Range(0, query.Length), null);
+        if (aliases.FirstOrDefault(alias => alias.StartsWith(query, StringComparison.OrdinalIgnoreCase)) is { } prefix)
+            return (1, [], prefix);
+        if (skill.Id.StartsWith(query, StringComparison.OrdinalIgnoreCase)) return (1, [], null);
         for (var index = name.IndexOf(query, ignoreCase); index > 0; index = name.IndexOf(query, index + 1, ignoreCase))
         {
-            if (!char.IsLetterOrDigit(name[index - 1])) return (2, Range(index, query.Length));
+            if (!char.IsLetterOrDigit(name[index - 1])) return (2, Range(index, query.Length), null);
         }
-        if (name.IndexOf(query, ignoreCase) is var inside and >= 0) return (3, Range(inside, query.Length));
-        if (skill.Id.Contains(query, StringComparison.OrdinalIgnoreCase)) return (3, []);
-        if (Subsequence(name, query) is { } scattered) return (4, scattered);
-        if (skill.Description.Contains(query, ignoreCase)) return (5, []);
+        if (name.IndexOf(query, ignoreCase) is var inside and >= 0) return (3, Range(inside, query.Length), null);
+        if (skill.Id.Contains(query, StringComparison.OrdinalIgnoreCase)) return (3, [], null);
+        if (Subsequence(name, query) is { } scattered) return (4, scattered, null);
+        if (skill.Description.Contains(query, ignoreCase)) return (5, [], null);
         return null;
     }
 

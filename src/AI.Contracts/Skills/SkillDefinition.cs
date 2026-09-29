@@ -8,10 +8,12 @@ using System.Text.Json;
 /// <see cref="SkillKinds.Playbook"/> hands its instructions to the calling model, which follows them
 /// with its ordinary permission-checked tools; <see cref="SkillKinds.Executor"/> is bundled code.
 /// </param>
+/// <param name="Aliases">Short extra commands, such as "compact", that find the skill in the slash list and in search.</param>
 public sealed record SkillDefinition(string Id, string Name, string Description, string Source,
     string Content, bool Enabled, JsonElement ParametersSchema,
     JsonElement? ResultSchema = null, IReadOnlyList<string>? AllowedTools = null,
-    Guid? ProjectId = null, long Revision = 0, string Kind = SkillKinds.Generic);
+    Guid? ProjectId = null, long Revision = 0, string Kind = SkillKinds.Generic,
+    IReadOnlyList<string>? Aliases = null);
 
 public static class SkillKinds
 {

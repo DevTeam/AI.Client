@@ -39,6 +39,23 @@ public class SkillMarkdownTests
         SkillMarkdown.Body(playbook.Content).ShouldBe("1. Read the project with `app_read`.");
     }
 
+    [Fact]
+    public void ShouldReadAliases()
+    {
+        SkillMarkdown.Parse(Playbook, "User").Aliases.ShouldBe([]);
+        SkillMarkdown.Parse(Playbook.Replace("kind: playbook\n", "kind: playbook\naliases: [\"compact\", \"sq\"]\n"), "User")
+            .Aliases.ShouldBe(["compact", "sq"]);
+    }
+
+    [Theory]
+    [InlineData("[\"Compact\"]")]
+    [InlineData("[\"compact\", \"compact\"]")]
+    [InlineData("[\"-compact\"]")]
+    [InlineData("[\"compact now\"]")]
+    public void ShouldRejectInvalidAliases(string aliases) =>
+        Should.Throw<ArgumentException>(() =>
+            SkillMarkdown.Parse(Playbook.Replace("kind: playbook\n", $"kind: playbook\naliases: {aliases}\n"), "User"));
+
     [Theory]
     [InlineData("kind: playbook", "kind: script")]
     [InlineData("kind: playbook", "kind: executor")]

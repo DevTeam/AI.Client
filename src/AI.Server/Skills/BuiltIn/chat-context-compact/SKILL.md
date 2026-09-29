@@ -2,6 +2,7 @@
 id: chat-context-compact
 name: Chat context compact
 kind: playbook
+aliases: ["compact"]
 description: Replace the finished work of the current turn with a short summary only the model sees, or undo that; the transcript stays unchanged.
 parameters: {"type":"object","properties":{"action":{"type":"string","enum":["compact","reset"],"description":"reset undoes the checkpoint of this turn; compact is the default"},"target_tokens":{"type":"integer","minimum":256,"maximum":4000,"description":"Summary size, only if the user named one; 1500 by default"}},"additionalProperties":false}
 tools: ["context_compact"]

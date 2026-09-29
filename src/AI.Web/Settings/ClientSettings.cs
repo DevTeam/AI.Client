@@ -14,4 +14,6 @@ public sealed record ClientSettings
     public int CornerRoundnessPercent { get; init; } = 100;
 
     public bool NotificationSoundEnabled { get; init; } = true;
+
+    public bool ShowContextWindowUsage { get; init; } = true;
 }

@@ -34,7 +34,7 @@
                 aria-describedby="@(!_showDetails ? _previewId : null)"
                 title="@(_showDetails ? "Collapse file changes" : "Expand file changes")" @onclick="ToggleDetails">
             <span class="workspace-changes-icon" aria-hidden="true"><AppIcon Name="diff" /></span>
-            <span class="workspace-changes-title">@changes.Files.Count @(changes.Files.Count == 1 ? "file" : "files") changed</span>
+            <span class="workspace-changes-title">@(Label is null ? null : $"{Label} · ")@changes.Files.Count @(changes.Files.Count == 1 ? "file" : "files") changed</span>
             @* The sign carries the meaning, not the colour: red/green alone fails for anyone who
                cannot tell them apart, and in a diff the direction is the whole point. *@
             <span class="workspace-changes-chevron" aria-hidden="true"><AppIcon Name="chevron-down" /></span>
@@ -93,10 +93,18 @@
     [Parameter] public EventCallback<Guid> OnReview { get; set; }
     [Parameter] public EventCallback<ChatReview> OnReviewChanged { get; set; }
 
+    /// <summary>Whose changes these are, for a card that is not a run's own: a "@diff" snapshot.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Opened on purpose, as a click on a "@diff" link does, so the list shows at once.</summary>
+    [Parameter] public bool InitiallyExpanded { get; set; }
+
     private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _previewId = $"workspace-changes-preview-{Guid.NewGuid():N}";
     private bool _showDetails;
     private bool _suppressPreview;
+
+    protected override void OnInitialized() => _showDetails = InitiallyExpanded;
 
     private void ToggleDetails()
     {

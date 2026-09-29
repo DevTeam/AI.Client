@@ -632,6 +632,11 @@ body {
     font-size: 0.8rem;
 }
 
+/* Undoable, nothing is lost: says so without the alarm colour. */
+.project-menu-confirm.neutral {
+    color: var(--color-text-secondary);
+}
+
 .modal-backdrop {
     position: fixed;
     z-index: 40;
@@ -2645,6 +2650,7 @@ body {
 .path-drag-source { opacity: .45; }
 .message-resource-chip { max-width: min(100%, 25rem); }
 .message-resource-open { padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.message-resource-open > .message-resource-summary { flex: none; color: var(--color-text-muted); font-size: .85em; font-variant-numeric: tabular-nums; }
 .message-resource-remove { display: inline-flex; flex: 0 0 auto; margin-left: .2rem; padding: 0; border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; }
 .message-resource-remove:hover { color: var(--color-text-strong); }
 .message-resource-remove .app-icon { width: .75rem; height: .75rem; }
@@ -3740,11 +3746,12 @@ textarea {
 .user-prompt-other-input { width: 100%; margin-top: .15rem; padding: .3rem .45rem; border: 1px solid var(--color-border); border-radius: calc(.35rem * var(--corner-scale)); background: var(--color-surface); color: inherit; font-size: .8rem; }
 .user-prompt-note { margin: 0; color: var(--color-text-subtle); font-size: .75rem; }
 .user-prompt-note.ready { color: var(--color-accent-text); }
-.user-prompt kbd { display: inline-block; padding: .08rem .3rem; border: 1px solid var(--color-border-strong); border-bottom-width: 2px; border-radius: calc(.25rem * var(--corner-scale)); background: var(--color-fill-hover); color: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .7rem; line-height: 1.1; }
+/* The key's bottom edge is a shadow, not a thicker border, so the label centres on the key face. */
+.user-prompt kbd { display: inline-block; padding: .08rem .3rem; border: 1px solid var(--color-border-strong); border-radius: calc(.25rem * var(--corner-scale)); box-shadow: 0 1px 0 var(--color-border-strong); background: var(--color-fill-hover); color: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .7rem; line-height: 1.1; }
 .user-prompt-actions { display: flex; align-items: center; justify-content: flex-end; gap: .45rem; }
 .user-prompt-actions > button { display: inline-flex; align-items: center; justify-content: center; margin: 0; }
 .user-prompt-actions > button > span { display: inline-flex; align-items: center; line-height: 1.25; }
-.user-prompt-actions > button:not(.secondary-action) kbd { display: inline-flex; align-items: center; justify-content: center; margin-left: .35rem; border-color: var(--color-border-translucent); background: var(--color-overlay-sunken); transform: translateY(1px); }
+.user-prompt-actions > button:not(.secondary-action) kbd { display: inline-flex; align-items: center; justify-content: center; margin-left: .35rem; padding: .2rem .3rem; border-color: var(--color-border-translucent); box-shadow: 0 1px 0 var(--color-border-translucent); background: var(--color-overlay-sunken); line-height: 1; }
 .user-prompt-error { margin: 0; color: var(--color-danger-text-strong); font-size: .8rem; }
 
 /* Only a tint: presses go through to the page, and runEvents.watchDrawerDismiss closes the drawer. */
@@ -5349,34 +5356,56 @@ textarea {
 .markdown-content .file-link[data-file-access="read"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='10' width='16' height='11' rx='2' fill='black' stroke='none'/%3E%3Cpath d='M8 10V7a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E"); --file-access-color: var(--color-text-faint); }
 .markdown-content .file-link[data-file-access="write"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='11' width='15' height='10' rx='2' fill='black' stroke='none'/%3E%3Cpath d='M9 11V7a4 4 0 0 1 7.8-1.2'/%3E%3C/svg%3E"); --file-access-color: var(--color-accent); }
 .markdown-content .file-link[data-file-access="none"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M5.6 5.6l12.8 12.8'/%3E%3C/svg%3E"); --file-access-color: var(--color-danger-text); }
-/* "@" links in a user message: the same mark as a local-path link — accent text, tint and
-   underline from the theme — with the icon of what they name in front. A file or directory link
-   is also a .file-link, so it keeps that link's menu, drag and access icon after it. */
+/* "@" links in a user message: a chip, not a link in the prose — a thin accent frame around the
+   icon of what it names and its short name, with the token as written in the tooltip. It is not
+   underlined, so it no longer reads like a local path the model wrote; the underline comes back
+   on hover. A file or directory link is also a .file-link, so it keeps that link's menu, drag and
+   access icon, which sits inside the frame; with no access the frame goes muted and dashed. */
 .markdown-content a.mention-link {
+    padding: 0 .35em;
     color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
-    text-decoration: underline solid color-mix(in srgb, var(--color-accent) 80%, transparent);
-    border-radius: calc(.25rem * var(--corner-scale));
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+    border-radius: calc(.3rem * var(--corner-scale));
+    text-decoration: none;
     -webkit-box-decoration-break: clone;
     box-decoration-break: clone;
     cursor: pointer;
     white-space: nowrap;
 }
 .markdown-content a.mention-link.file-link { cursor: context-menu; }
-.markdown-content a.mention-link:hover { color: var(--color-accent-strong); }
+.markdown-content a.mention-link:hover {
+    color: var(--color-accent-strong);
+    border-color: color-mix(in srgb, var(--color-accent) 80%, transparent);
+    text-decoration: underline solid color-mix(in srgb, var(--color-accent) 60%, transparent);
+    text-underline-offset: .15em;
+}
 .workspace-message.user .markdown-content a.mention-link {
-    background: color-mix(in srgb, var(--color-accent) 35%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+.markdown-content a.mention-link.file-link[data-file-access="none"] {
+    background: transparent;
+    border-color: color-mix(in srgb, var(--color-text-muted) 60%, transparent);
+    border-style: dashed;
 }
 .markdown-content a.mention-link::before {
     content: "";
     display: inline-block;
     width: .85em;
     height: .85em;
-    margin: 0 .2em 0 .1em;
+    margin-right: .25em;
     vertical-align: -.1em;
     background-color: currentColor;
     -webkit-mask: var(--mention-icon) center / contain no-repeat;
     mask: var(--mention-icon) center / contain no-repeat;
+}
+/* What a "@diff" captured, after its name: quieter than the name, as in the changes card. */
+.markdown-content a.mention-link[data-summary]::after {
+    content: attr(data-summary);
+    margin-left: .4em;
+    color: var(--color-text-muted);
+    font-size: .85em;
+    font-variant-numeric: tabular-nums;
 }
 .markdown-content a.mention-file { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z'/%3E%3Cpath d='M14 3v5h5'/%3E%3C/svg%3E"); }
 .markdown-content a.mention-directory { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'/%3E%3C/svg%3E"); }

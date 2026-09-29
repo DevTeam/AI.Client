@@ -3436,6 +3436,52 @@ button:active:not(:disabled) {
     font-size: 0.88em;
 }
 
+.markdown-content pre .hljs { color: var(--color-text); }
+.markdown-content pre .hljs-comment,
+.markdown-content pre .hljs-quote { color: var(--color-text-muted); font-style: italic; }
+.markdown-content pre .hljs-keyword,
+.markdown-content pre .hljs-selector-tag,
+.markdown-content pre .hljs-literal,
+.markdown-content pre .hljs-built_in { color: #c792ea; }
+.markdown-content pre .hljs-string,
+.markdown-content pre .hljs-regexp,
+.markdown-content pre .hljs-attr,
+.markdown-content pre .hljs-addition { color: #a6d98f; }
+.markdown-content pre .hljs-number,
+.markdown-content pre .hljs-symbol,
+.markdown-content pre .hljs-variable,
+.markdown-content pre .hljs-template-variable { color: #f6bc75; }
+.markdown-content pre .hljs-title,
+.markdown-content pre .hljs-type,
+.markdown-content pre .hljs-class,
+.markdown-content pre .hljs-function,
+.markdown-content pre .hljs-attribute { color: #83c7ef; }
+.markdown-content pre .hljs-meta,
+.markdown-content pre .hljs-selector-id,
+.markdown-content pre .hljs-selector-class { color: #e9a0ba; }
+.markdown-content pre .hljs-deletion { color: var(--color-danger-text); }
+
+:root[data-theme="light"] .markdown-content pre .hljs-keyword,
+:root[data-theme="light"] .markdown-content pre .hljs-selector-tag,
+:root[data-theme="light"] .markdown-content pre .hljs-literal,
+:root[data-theme="light"] .markdown-content pre .hljs-built_in { color: #7139a4; }
+:root[data-theme="light"] .markdown-content pre .hljs-string,
+:root[data-theme="light"] .markdown-content pre .hljs-regexp,
+:root[data-theme="light"] .markdown-content pre .hljs-attr,
+:root[data-theme="light"] .markdown-content pre .hljs-addition { color: #23713b; }
+:root[data-theme="light"] .markdown-content pre .hljs-number,
+:root[data-theme="light"] .markdown-content pre .hljs-symbol,
+:root[data-theme="light"] .markdown-content pre .hljs-variable,
+:root[data-theme="light"] .markdown-content pre .hljs-template-variable { color: #99520a; }
+:root[data-theme="light"] .markdown-content pre .hljs-title,
+:root[data-theme="light"] .markdown-content pre .hljs-type,
+:root[data-theme="light"] .markdown-content pre .hljs-class,
+:root[data-theme="light"] .markdown-content pre .hljs-function,
+:root[data-theme="light"] .markdown-content pre .hljs-attribute { color: #17629d; }
+:root[data-theme="light"] .markdown-content pre .hljs-meta,
+:root[data-theme="light"] .markdown-content pre .hljs-selector-id,
+:root[data-theme="light"] .markdown-content pre .hljs-selector-class { color: #9a315c; }
+
 .security-editor h3 {
     margin: 1rem 0 0;
 }

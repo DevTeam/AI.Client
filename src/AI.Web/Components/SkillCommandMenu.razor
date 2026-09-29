@@ -13,7 +13,7 @@
              @onmousedown="() => OnPick.InvokeAsync(row)" @onmousedown:preventDefault
              @onmousemove="() => Hover(row)">
             <AppIcon Name="skill" />
-            <span class="skill-command-name">@foreach (var part in Parts(match)) { if (part.Matched) { <mark>@part.Text</mark> } else { @part.Text } }@if (match.Alias is { } alias) { <span class="skill-command-alias"> /@alias</span> }</span>
+            <span class="skill-command-name">@if (match.Alias is not null) { @("/") }@foreach (var part in Parts(match)) { if (part.Matched) { <mark>@part.Text</mark> } else { @part.Text } }@if (match.Alias is not null) { <span class="skill-command-skill-name">@match.Skill.Name</span> }</span>
             <span class="skill-command-description">@match.Skill.Description</span>
             <span class="skill-command-source">@SourceLabel(match.Skill.Source)</span>
         </div>
@@ -42,7 +42,7 @@
 
     private static IEnumerable<(string Text, bool Matched)> Parts(SkillCommandMatch match)
     {
-        var name = match.Skill.Name;
+        var name = match.Title;
         var highlighted = match.Highlights.ToHashSet();
         var start = 0;
         for (var index = 1; index <= name.Length; index++)

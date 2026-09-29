@@ -632,11 +632,6 @@ body {
     font-size: 0.8rem;
 }
 
-/* Undoable, nothing is lost: says so without the alarm colour. */
-.project-menu-confirm.neutral {
-    color: var(--color-text-secondary);
-}
-
 .modal-backdrop {
     position: fixed;
     z-index: 40;
@@ -5177,6 +5172,12 @@ textarea {
 .review-menu-delete .app-icon, .review-menu-cancel .app-icon { width: .9rem; height: .9rem; }
 .review-menu-confirm-label { flex: 1; min-width: 0; padding-left: .6rem; }
 .review-menu-confirm-delete { padding: .2rem .4rem; border-radius: calc(.3rem * var(--corner-scale)); color: var(--color-danger-text) !important; }
+/* The same in-place confirmation for an undoable step (a directory's access): nothing is lost, so no alarm colour. */
+.review-menu-confirm-action { padding: .2rem .4rem; border-radius: calc(.3rem * var(--corner-scale)); color: var(--color-accent-text) !important; }
+.review-menu-confirm-action:hover, .review-menu-confirm-action:focus-visible { background: var(--color-fill-strong); }
+/* In a context menu the row takes the place of a menu item, so it keeps that item's box: the menu does not jump. */
+.chat-menu > .review-menu-row { border: 1px solid transparent; }
+.chat-menu > .review-menu-row > .review-menu-confirm-label { padding: .45rem .6rem; white-space: nowrap; }
 .workspace-changes-top { display: flex; align-items: center; min-width: 0; }
 .workspace-changes-top .workspace-changes-header { flex: 1; width: auto; min-width: 0; }
 .workspace-changes-top .workspace-changes-chevron { margin-left: auto; }

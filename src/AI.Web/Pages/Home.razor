@@ -315,7 +315,7 @@
                                         <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
                                             @if (_isConfirmingDirectoryDelete)
                                             {
-                                                <div class="project-menu-confirm neutral"><span>Remove access? Files stay on disk.</span><button class="compact-action" type="button" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Remove access</button><button class="secondary-action compact-action" type="button" @onclick="CancelDirectoryDelete">Cancel</button></div>
+                                                <div class="review-menu-row"><span class="review-menu-confirm-label">Remove access?</span><button type="button" class="review-menu-confirm-action" title="Files stay on disk" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Remove</button><button type="button" class="review-menu-cancel" aria-label="Cancel" @onclick="CancelDirectoryDelete"><AppIcon Name="x" /></button></div>
                                             }
                                             else
                                             {

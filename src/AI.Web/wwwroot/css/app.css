@@ -2213,6 +2213,16 @@ body {
     justify-content: flex-start;
 }
 
+/* The running turn's text and the newest reply are always at the bottom, next to the viewport, and
+   each is freshly mounted: first as live text, then as the streamed answer, then as the saved
+   message. Under content-visibility each mount was laid out at the 12rem placeholder for a frame
+   and then grew to its real height, and with the feed pinned to the bottom a long answer made the
+   whole transcript jump three times as it landed. */
+.workspace-message.streaming,
+.workspace-message.branch-leaf {
+    content-visibility: visible;
+}
+
 /* A branch chooser opens outside the article and must not be clipped. */
 .workspace-message:has(.branch-picker-menu) {
     overflow: visible;

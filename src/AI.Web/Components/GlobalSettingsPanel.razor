@@ -974,6 +974,8 @@
         public string GoodFor { get; set; } = string.Empty;
         public long? ContextWindowTokens { get; set; }
         public long? ReservedOutputTokens { get; set; }
+        // Not edited here yet; carried so saving the form keeps what was stored.
+        public AI.Contracts.Usage.TokenPrices? Prices { get; set; }
         public bool HasCredential { get; set; }
         public string? Secret { get; set; }
         // Came in from an import that named a key without its value. Only the import knows this:
@@ -988,7 +990,8 @@
             ForSubtasks = item.ForSubtasks, Capability = item.Capability ?? 0, Cost = item.Cost ?? 0,
             GoodFor = item.GoodFor ?? string.Empty,
             ContextWindowTokens = item.ContextWindowTokens,
-            ReservedOutputTokens = item.ReservedOutputTokens
+            ReservedOutputTokens = item.ReservedOutputTokens,
+            Prices = item.Prices
         };
 
         public ConnectionSettings ToSettings() =>
@@ -996,7 +999,7 @@
             new(Id, Name, BaseUrl, Model, Enabled, IsDefault, HasCredential, ForSubtasks,
                 Capability == 0 ? null : Capability, Cost == 0 ? null : Cost,
                 string.IsNullOrWhiteSpace(GoodFor) ? null : GoodFor,
-                ContextWindowTokens, ReservedOutputTokens);
+                ContextWindowTokens, ReservedOutputTokens, Prices);
     }
 
     [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]

@@ -18,7 +18,7 @@ public class ChatCompletionSseParserTests
             """;
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         var chunks = new List<ChatCompletionChunk>();
-        await foreach (var chunk in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
+        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
         chunks.Count.ShouldBe(2);
         chunks[0].ToolCallsStarted.ShouldBeTrue();
         chunks[0].ToolCallName.ShouldBe("run");
@@ -39,7 +39,7 @@ public class ChatCompletionSseParserTests
             """;
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         var chunks = new List<ChatCompletionChunk>();
-        await foreach (var chunk in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
+        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
         chunks.Where(chunk => chunk.ToolCallsStarted).Select(chunk => chunk.ToolCallName).ShouldBe([null, "run"]);
         chunks[^1].ToolCalls!.Single().Name.ShouldBe("run");
     }
@@ -54,7 +54,7 @@ public class ChatCompletionSseParserTests
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) { }
+            await foreach (var _ in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None)) { }
         });
     }
     [Fact]
@@ -66,7 +66,7 @@ public class ChatCompletionSseParserTests
             """;
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         var chunks = new List<ChatCompletionChunk>();
-        await foreach (var chunk in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
+        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
 
         // The text, then the fact that there was meant to be more of it.
         chunks.Select(chunk => chunk.Content).ShouldBe(["Half a sen", ""]);
@@ -91,7 +91,7 @@ public class ChatCompletionSseParserTests
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         var chunks = new List<string>();
 
-        await foreach (var chunk in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None))
+        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None))
         {
             chunks.Add(chunk.Content);
             chunk.Model.ShouldBe("test-model");
@@ -112,7 +112,7 @@ public class ChatCompletionSseParserTests
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         var chunks = new List<string>();
 
-        await foreach (var chunk in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None))
+        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None))
         {
             chunks.Add(chunk.Content);
         }

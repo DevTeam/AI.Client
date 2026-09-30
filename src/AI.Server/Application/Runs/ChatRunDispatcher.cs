@@ -16,6 +16,8 @@ using AI.Application.Resources;
 using AI.Application.Memory;
 using AI.Application.Instructions;
 using AI.Application.Skills;
+using AI.Application.Usage;
+using Contracts.Usage;
 using Domain.Runs;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
@@ -28,7 +30,7 @@ public sealed class ChatRunDispatcher(
     IChatContextBuilder contextBuilder, IChatBranchIds branchIds, IResourceService resources, IReviewService reviews,
     IResourceModelProjection resourceProjection, IMemoryService memory, IProjectInstructionsService projectInstructions,
     ISkillRunner skillRunner, ISkillCatalog skillCatalog, IChatReplySuggestions replySuggestions,
-    IToolAutoApprover autoApprover)
+    IToolAutoApprover autoApprover, ITokenUsageMeter usageMeter, ITokenUsageAggregator usageAggregator)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -434,7 +436,16 @@ public sealed class ChatRunDispatcher(
                     await SaveAsync(runtime, chat, token);
                 }
 
-                var workspaceChanges = await agent.RunAsync(runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId, request,
+                // Every request below is this turn's, including those of its subtasks, its routing
+                // and its compaction; the scope ends with the agent so the title and reply
+                // suggestions started afterwards are the chat's rather than the turn's.
+                runtime.TurnRecords.Clear();
+                runtime.TurnUsage = null;
+                WorkspaceChangeSet workspaceChanges;
+                using (usageMeter.Begin(new TokenUsageScope(TokenUsagePurpose.Answer, runtime.State.ProjectId,
+                           runtime.State.ChatId, runtime.State.BranchId, queued.Id,
+                           (record, ct) => ReportTokenUsageAsync(runtime, record, ct))))
+                workspaceChanges = await agent.RunAsync(runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId, request,
                     (message, ct) => PersistToolMessageAsync(runtime, message, ct),
                     async (content, ct) =>
                     {
@@ -525,7 +536,11 @@ public sealed class ChatRunDispatcher(
             catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException)
             {
                 runtime.State.Fail(saveError.Message, RunFailureKind.Storage);
-                runtime.Snapshot = Snapshot(runtime.State, null, runtime.ActiveMessageId) with { Context = runtime.Context };
+                runtime.Snapshot = Snapshot(runtime.State, null, runtime.ActiveMessageId) with
+                {
+                    Context = runtime.Context,
+                    TurnUsage = runtime.TurnUsage
+                };
                 Publish();
             }
         }
@@ -838,6 +853,18 @@ public sealed class ChatRunDispatcher(
         Publish();
     }
 
+    private async Task ReportTokenUsageAsync(Runtime runtime, TokenUsageRecord record, CancellationToken token)
+    {
+        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
+        if (record.TurnId is not { } turnId) return;
+        runtime.TurnRecords.Add(record);
+        runtime.TurnUsage = new TurnTokenUsage(turnId, runtime.State.BranchId, runtime.TurnRecords[0].At,
+            usageAggregator.Total(runtime.TurnRecords),
+            usageAggregator.Group(runtime.TurnRecords, item => item.Purpose.ToString()));
+        runtime.Snapshot = runtime.Snapshot with { TurnUsage = runtime.TurnUsage };
+        Publish();
+    }
+
     private async Task ReportTransportActivityAsync(Runtime runtime, ChatTransportWait? wait, CancellationToken token)
     {
         using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
@@ -1051,7 +1078,8 @@ public sealed class ChatRunDispatcher(
             MessageDelta = runtime.MessageDelta,
             DraftContent = runtime.DraftContent,
             DraftToolCall = runtime.DraftToolCall,
-            Context = runtime.Context
+            Context = runtime.Context,
+            TurnUsage = runtime.TurnUsage
         };
         if (chat is not null)
             foreach (var other in _runtimes.Values.Where(item => item.State.ChatId == chat.Id && item != runtime))
@@ -1353,6 +1381,9 @@ public sealed class ChatRunDispatcher(
         public ChatRunWait? Wait { get; set; }
         /// <summary>The last measured context of this branch; kept in memory only.</summary>
         public ContextUsage? Context { get; set; }
+        /// <summary>The requests of the current or last turn, as they were measured; kept in memory only.</summary>
+        public List<TokenUsageRecord> TurnRecords { get; } = [];
+        public TurnTokenUsage? TurnUsage { get; set; }
 
         /// <summary>The prose of the model step in flight; never persisted.</summary>
         public System.Text.StringBuilder Draft { get; } = new();

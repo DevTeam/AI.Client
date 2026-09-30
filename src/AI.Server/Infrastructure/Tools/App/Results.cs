@@ -73,7 +73,8 @@ public sealed record ConnectionPayload(
     int? Cost = null,
     string? GoodFor = null,
     long? ContextWindowTokens = null,
-    long? ReservedOutputTokens = null);
+    long? ReservedOutputTokens = null,
+    AI.Contracts.Usage.TokenPrices? Prices = null);
 
 public sealed record McpEnvironmentVariablePayload(string Name, string? Value, bool IsSecret);
 

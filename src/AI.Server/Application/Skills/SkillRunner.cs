@@ -3,17 +3,27 @@ namespace AI.Application.Skills;
 using System.Text.Json;
 using Json.Schema;
 using AI.Contracts.Skills;
+using AI.Contracts.Usage;
+using AI.Application.Usage;
 
 /// <summary>Validates a skill's declared parameters before dispatching to its implementation.</summary>
 public sealed class SkillRunner(ISkillCatalog catalog, ChatRenameSkill chatRenameSkill,
     GenericSkillExecutor? genericExecutor = null, ChatReplySuggestSkill? chatReplySuggestSkill = null,
-    SkillRouteSkill? skillRouteSkill = null, ChatToolRiskAssessSkill? chatToolRiskAssessSkill = null) : ISkillRunner
+    SkillRouteSkill? skillRouteSkill = null, ChatToolRiskAssessSkill? chatToolRiskAssessSkill = null,
+    ITokenUsageMeter? usageMeter = null) : ISkillRunner
 {
     private readonly object _gate = new();
     private readonly List<SkillRunRecord> _recent = [];
     private readonly Dictionary<string, ISkillExecutor> _executors =
         new ISkillExecutor?[] { chatRenameSkill, chatReplySuggestSkill, skillRouteSkill, chatToolRiskAssessSkill }.OfType<ISkillExecutor>()
             .ToDictionary(executor => executor.SkillId, StringComparer.Ordinal);
+
+    private TokenUsagePurpose Purpose(string skillId) =>
+        skillId == chatRenameSkill.SkillId ? TokenUsagePurpose.Title
+        : skillId == chatReplySuggestSkill?.SkillId ? TokenUsagePurpose.ReplySuggestion
+        : skillId == skillRouteSkill?.SkillId ? TokenUsagePurpose.Routing
+        : skillId == chatToolRiskAssessSkill?.SkillId ? TokenUsagePurpose.ToolRisk
+        : TokenUsagePurpose.Skill;
 
     public IReadOnlyList<SkillRunRecord> ListRecent()
     {
@@ -31,6 +41,10 @@ public sealed class SkillRunner(ISkillCatalog catalog, ChatRenameSkill chatRenam
         }
 
         SkillExecutionResult result;
+        // Whatever the skill asks a model is attributed to it. Inside a run the scope adds only the
+        // purpose, and the turn it serves is inherited; outside one it also names the chat.
+        using var usageScope = usageMeter?.Begin(new TokenUsageScope(Purpose(invocation.SkillId), invocation.ProjectId,
+            invocation.CurrentChatId));
         try
         {
             var skill = await catalog.GetByIdAsync(invocation.SkillId, invocation.ProjectId, cancellationToken);

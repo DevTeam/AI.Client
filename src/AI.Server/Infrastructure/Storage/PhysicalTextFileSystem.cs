@@ -81,6 +81,21 @@ public sealed class PhysicalTextFileSystem : ITextFileSystem
         }
     }
 
+    public async Task AppendTextAsync(string path, string content, CancellationToken cancellationToken)
+    {
+        var directory = Path.GetDirectoryName(path)
+            ?? throw new InvalidOperationException("Storage path must include a directory.");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.AppendAllTextAsync(path, content, cancellationToken);
+        }
+        catch (Exception error) when (error is UnauthorizedAccessException or IOException)
+        {
+            throw Named(error, path);
+        }
+    }
+
     /// <summary>
     /// Completes a save by putting the temporary file in the stored one's place.
     /// </summary>

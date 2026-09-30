@@ -185,6 +185,12 @@ public sealed class GlobalSettingsService(
             throw new ArgumentException("Context window and reserved output overrides are outside supported limits.");
         }
 
+        if (item.Prices is { } prices && (prices.Input is < 0 or > MaxPricePerMillion
+                || prices.Output is < 0 or > MaxPricePerMillion || prices.CachedInput is < 0 or > MaxPricePerMillion))
+        {
+            throw new ArgumentException($"Token prices must be between 0 and {MaxPricePerMillion} per million tokens.");
+        }
+
         var effective = contextLimits.Resolve(item);
         if (effective.ReservedOutputTokens >= effective.ContextWindowTokens)
         {
@@ -203,6 +209,12 @@ public sealed class GlobalSettingsService(
             GoodFor = string.IsNullOrWhiteSpace(item.GoodFor) ? null : item.GoodFor.Trim()
         };
     }
+
+    /// <summary>
+    /// A ceiling on a price per million tokens: far above anything sold today, low enough that a
+    /// price typed per token instead of per million is refused rather than stored.
+    /// </summary>
+    private const decimal MaxPricePerMillion = 10_000m;
 
     private static int? Rating(int? value) => value is >= 1 and <= 5 ? value : null;
 

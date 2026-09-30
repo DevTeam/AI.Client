@@ -18,4 +18,7 @@ public sealed record ChatCompletionChunk(
     // large arguments payload to finish streaming.
     bool ToolCallsStarted = false,
     // The model-facing name of the first call once the stream has named it; null until then.
-    string? ToolCallName = null);
+    string? ToolCallName = null,
+    // What the endpoint reported the whole request used. It rides on a chunk of its own after the
+    // finish reason, carrying no content, and is absent when the endpoint reports nothing.
+    ChatCompletionUsage? Usage = null);

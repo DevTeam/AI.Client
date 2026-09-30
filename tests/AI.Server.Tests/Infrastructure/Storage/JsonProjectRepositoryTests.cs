@@ -183,6 +183,12 @@ public class JsonProjectRepositoryTests
             return Task.CompletedTask;
         }
 
+        public Task AppendTextAsync(string path, string content, CancellationToken cancellationToken)
+        {
+            _files[path] = (_files.TryGetValue(path, out var existing) ? existing : string.Empty) + content;
+            return Task.CompletedTask;
+        }
+
         public Task MoveAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken cancellationToken)
         {
             if (!_files.TryGetValue(sourcePath, out var content))

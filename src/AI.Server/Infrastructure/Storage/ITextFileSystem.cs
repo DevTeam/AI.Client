@@ -13,6 +13,9 @@ public interface ITextFileSystem
 
     Task WriteTextAsync(string path, string content, CancellationToken cancellationToken);
 
+    /// <summary>Adds <paramref name="content"/> to the end of the file, creating it and its directory when absent.</summary>
+    Task AppendTextAsync(string path, string content, CancellationToken cancellationToken);
+
     Task MoveAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken cancellationToken);
 
     Task DeleteAsync(string path, CancellationToken cancellationToken);

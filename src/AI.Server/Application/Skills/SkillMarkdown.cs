@@ -26,6 +26,10 @@ public static class SkillMarkdown
         if (aliases.Length > 8 || aliases.Any(alias => !IsCommand(alias) || alias == id)
             || aliases.Distinct(StringComparer.Ordinal).Count() != aliases.Length)
             throw new ArgumentException("Skill aliases are up to 8 distinct commands spelled like an id and different from it.");
+        var icon = Field("icon");
+        if (icon is not null && !SkillIcons.IsValid(icon))
+            throw new ArgumentException($"Skill icon must be one of: {string.Join(", ", SkillIcons.Names)}; "
+                + $"or SVG path data on a 24x24 grid, starting with M, up to {SkillIcons.MaxPathLength} characters.");
         var name = Field("name") ?? throw new ArgumentException("SKILL.md needs name.");
         var description = Field("description") ?? throw new ArgumentException("SKILL.md needs description.");
         if (name.Length > 120 || description.Length > 400)
@@ -50,7 +54,7 @@ public static class SkillMarkdown
         var revision = Field("revision") is { } revisionText
             ? long.Parse(revisionText, System.Globalization.CultureInfo.InvariantCulture) : 0;
         return new SkillDefinition(id, name, description, source, content, enabled, parameters, result,
-            tools, projectId, revision, kind, aliases);
+            tools, projectId, revision, kind, aliases, icon);
     }
 
     public static string WithMetadata(string content, long revision, bool enabled)

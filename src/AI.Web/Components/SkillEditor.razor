@@ -21,7 +21,7 @@
                 {
                     <div class="settings-list-item @(item.Key == _selectedKey ? "selected" : string.Empty) @(item.Enabled ? string.Empty : "memory-disabled")">
                         <button class="settings-list-select" type="button" @onclick="() => _selectedKey = item.Key">
-                            <span>@item.Name</span>
+                            <span><SkillIcon Icon="@item.Icon" />@item.Name</span>
                             <small>@Summary(item)</small>
                         </button>
                         @if (item.Key == _selectedKey && !item.ReadOnly)
@@ -48,6 +48,23 @@
                     <label class="checkbox"><input type="checkbox" @bind="selected.Enabled" @bind:after="() => Changed.InvokeAsync()" /> Enabled</label>
                 }
             </div>
+            @if (!selected.ReadOnly)
+            {
+                @* Writes the icon line of the SKILL.md below, so the text stays the one source of truth. *@
+                <div class="skill-icon-picker" role="radiogroup" aria-label="Icon">
+                    @if (SkillIcons.IsPath(selected.Icon))
+                    {
+                        @* The skill's own path, shown first as the pick. Picking a name replaces its line; only the text brings it back. *@
+                        <button class="icon-action selected" type="button" role="radio" aria-checked="true" title="Own icon from the SKILL.md" aria-label="Own icon"><SkillIcon Icon="@selected.Icon" /></button>
+                    }
+                    @foreach (var name in SkillIcons.Names)
+                    {
+                        var picked = name == selected.Icon;
+                        <button class="icon-action @(picked ? "selected" : null)" type="button" role="radio" aria-checked="@(picked ? "true" : "false")"
+                                title="@name" aria-label="@name" @onclick="() => selected.Icon = name"><AppIcon Name="@name" /></button>
+                    }
+                </div>
+            }
             @if (stored is not null)
             {
                 <label>Description<textarea rows="2" readonly>@stored.Description</textarea></label>
@@ -265,6 +282,26 @@
         public string Name => FrontmatterValue("name") ?? Stored?.Name ?? "New skill";
 
         public string? Id => FrontmatterValue("id");
+
+        /// <summary>The icon line: a name or the skill's own path data; setting the default removes the line.</summary>
+        public string Icon
+        {
+            get => FrontmatterValue("icon") is { } icon && SkillIcons.IsValid(icon) ? icon : SkillIcons.Default;
+            set
+            {
+                var lines = Content.ReplaceLineEndings("\n").Split('\n').ToList();
+                var end = lines.Count > 0 && lines[0] == "---" ? lines.IndexOf("---", 1) : -1;
+                if (end < 0) return;
+                var current = lines.FindIndex(1, end - 1, line => line.StartsWith("icon: ", StringComparison.Ordinal));
+                if (current >= 0) lines.RemoveAt(current);
+                if (value != SkillIcons.Default)
+                {
+                    var name = lines.FindIndex(1, lines.IndexOf("---", 1) - 1, line => line.StartsWith("name: ", StringComparison.Ordinal));
+                    lines.Insert(name >= 0 ? name + 1 : 1, $"icon: {value}");
+                }
+                Content = string.Join('\n', lines);
+            }
+        }
 
         public bool IsUntouched => string.IsNullOrWhiteSpace(Content) || Content == Template;
 

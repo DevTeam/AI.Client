@@ -47,6 +47,28 @@ public class SkillMarkdownTests
             .Aliases.ShouldBe(["compact", "sq"]);
     }
 
+    [Fact]
+    public void ShouldReadIcon()
+    {
+        SkillMarkdown.Parse(Playbook, "User").Icon.ShouldBeNull();
+        SkillMarkdown.Parse(Playbook.Replace("kind: playbook\n", "icon: rocket\nkind: playbook\n"), "User")
+            .Icon.ShouldBe("rocket");
+        SkillMarkdown.Parse(Playbook.Replace("kind: playbook\n", "icon: M12 3 3 8l9 5 9-5ZM3 13l9 5 9-5\nkind: playbook\n"), "User")
+            .Icon.ShouldBe("M12 3 3 8l9 5 9-5ZM3 13l9 5 9-5");
+    }
+
+    [Theory]
+    [InlineData("Rocket")]
+    [InlineData("rocket-ship")]
+    [InlineData("🚀")]
+    [InlineData("12 3 3 8Z")]
+    [InlineData("M12 3\" onload=\"alert(1)")]
+    [InlineData("M12 3<script>")]
+    public void ShouldRejectUnknownIcons(string icon) =>
+        Should.Throw<ArgumentException>(() =>
+            SkillMarkdown.Parse(Playbook.Replace("kind: playbook\n", $"icon: {icon}\nkind: playbook\n"), "User"))
+            .Message.ShouldContain("rocket");
+
     [Theory]
     [InlineData("[\"Compact\"]")]
     [InlineData("[\"compact\", \"compact\"]")]

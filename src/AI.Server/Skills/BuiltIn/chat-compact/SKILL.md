@@ -1,6 +1,7 @@
 ---
 id: chat-compact
 name: Chat compact
+icon: minimize
 kind: playbook
 description: Free the model's context: summarize this chat and continue in a new chat that starts from the summary.
 parameters: {"type":"object","properties":{"focus":{"type":"string","description":"What the summary must keep, if the user said"},"next":{"type":"string","description":"The task to continue with in the new chat, if the user said"}},"additionalProperties":false}

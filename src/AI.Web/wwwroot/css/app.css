@@ -5286,6 +5286,11 @@ textarea {
 .memory-form textarea { min-height: 9rem; resize: vertical; }
 .memory-meta { margin: 0; color: var(--color-text-faint); font-size: 0.8rem; }
 .skill-editor .settings-list-select > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-editor .settings-list-select > span { display: flex; gap: 0.4rem; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-editor .settings-list-select > span .app-icon { flex: none; width: 0.95rem; height: 0.95rem; color: var(--color-text-secondary); }
+.skill-icon-picker { display: flex; flex-wrap: wrap; gap: 0.2rem; }
+.skill-icon-picker .icon-action { border: 1px solid transparent; }
+.skill-icon-picker .icon-action.selected { border-color: var(--color-accent); color: var(--color-accent); background: var(--color-fill-stronger); }
 .skill-source, .skill-state { color: var(--color-text-secondary); font-size: .8rem; }
 .skill-form textarea { resize: none; }
 .skill-form .skill-content { min-height: 18rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .78rem; line-height: 1.45; }
@@ -5338,8 +5343,8 @@ textarea {
 .markdown-content a:hover,
 .markdown-content .file-link:hover { color: var(--color-accent-strong); }
 /* A local path carries the same mark as a message comment — the same tint and underline — and is
-   told apart by being a link: accent text, and after it an icon for what the project may do there
-   instead of the comment icon. */
+   told apart by being a link: accent text, and before it the icon of a file or a directory, with
+   what the project may do there as a badge on it (see the "@" links below). */
 .markdown-content .file-link {
     background: color-mix(in srgb, var(--color-accent) 22%, transparent);
     text-decoration: underline solid color-mix(in srgb, var(--color-accent) 80%, transparent);
@@ -5353,20 +5358,6 @@ textarea {
     background: color-mix(in srgb, var(--color-text-muted) 22%, transparent);
     text-decoration-color: color-mix(in srgb, var(--color-text-muted) 80%, transparent);
 }
-.markdown-content .file-link[data-file-access]::after {
-    content: "";
-    display: inline-block;
-    width: 0.75em;
-    height: 0.75em;
-    margin-left: 0.2em;
-    vertical-align: -0.05em;
-    background-color: var(--file-access-color);
-    -webkit-mask: var(--file-access-icon) center / contain no-repeat;
-    mask: var(--file-access-icon) center / contain no-repeat;
-}
-.markdown-content .file-link[data-file-access="read"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='10' width='16' height='11' rx='2' fill='black' stroke='none'/%3E%3Cpath d='M8 10V7a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E"); --file-access-color: var(--color-text-faint); }
-.markdown-content .file-link[data-file-access="write"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='11' width='15' height='10' rx='2' fill='black' stroke='none'/%3E%3Cpath d='M9 11V7a4 4 0 0 1 7.8-1.2'/%3E%3C/svg%3E"); --file-access-color: var(--color-accent); }
-.markdown-content .file-link[data-file-access="none"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M5.6 5.6l12.8 12.8'/%3E%3C/svg%3E"); --file-access-color: var(--color-danger-text); }
 /* A reference to what a message works with — a file, a directory, a chat, a review, a project,
    uncommitted changes — is one pill wherever it is drawn: an "@" link in the text, a pill the "+"
    menu attached above the text, the same pill in the composer. A thin accent frame around the icon
@@ -5416,8 +5407,6 @@ textarea {
 }
 .markdown-content a.mention-link.file-link[data-path-state="no"],
 .resource-pill > .file-link[data-path-state="no"] .resource-pill-label { text-decoration: line-through; }
-/* The pill's icon takes the place of the access icon a plain local path has after it. */
-.markdown-content a.mention-link.file-link[data-file-access]::after { content: none; }
 
 /* A pill of its own, outside the text: a line of its own height, the name cut short when long. */
 .resource-pill {
@@ -5471,10 +5460,10 @@ a.resource-pill-target.file-link { cursor: context-menu; }
 .resource-pill-remove:hover { color: var(--color-text-strong); }
 .resource-pill-remove .app-icon { width: .75rem; height: .75rem; }
 
-/* The icon of what the pill names. A badge sits in its lower right corner, cut out of the icon so
-   the two never touch: a pencil where the project may change the path, a barred circle where it
-   may not read it, a cross where it is gone. */
-.markdown-content a.mention-link::before,
+/* The icon of what the pill or the path names, inside its frame and before the name. A badge sits
+   in its lower right corner, cut out of the icon so the two never touch: a pencil where the project
+   may change the path, a barred circle where it may not read it, a cross where it is gone. */
+.markdown-content :is(a.mention-link, .file-link)::before,
 .resource-pill-target::before {
     content: "";
     display: inline-block;
@@ -5488,10 +5477,12 @@ a.resource-pill-target.file-link { cursor: context-menu; }
     mask: var(--mention-icon) center / contain no-repeat;
 }
 .resource-pill-target::before { width: 1em; height: 1em; margin-right: .3em; }
-.mention-link[data-file-access="write"] { --mention-badge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13.6 23.4l.9-3.7 5.4-5.4a1.9 1.9 0 0 1 2.7 2.7l-5.4 5.4Z' fill='black'/%3E%3C/svg%3E"); }
-.mention-link[data-file-access="none"] { --mention-badge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Ccircle cx='18.5' cy='18.5' r='4.2'/%3E%3Cpath d='M15.5 15.5l6 6'/%3E%3C/svg%3E"); }
-.mention-link.file-link[data-path-state="no"] { --mention-badge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M15.5 15.5l6 6M21.5 15.5l-6 6'/%3E%3C/svg%3E"); }
-.mention-link:is([data-file-access="write"], [data-file-access="none"], .file-link[data-path-state="no"])::before {
+.markdown-content .file-link:not(.mention-link) { --mention-icon: var(--file-icon); }
+.markdown-content .file-link:not(.mention-link)[data-file-kind="Directory"] { --mention-icon: var(--directory-icon); }
+.file-link[data-file-access="write"] { --mention-badge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13.6 23.4l.9-3.7 5.4-5.4a1.9 1.9 0 0 1 2.7 2.7l-5.4 5.4Z' fill='black'/%3E%3C/svg%3E"); }
+.file-link[data-file-access="none"] { --mention-badge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Ccircle cx='18.5' cy='18.5' r='4.2'/%3E%3Cpath d='M15.5 15.5l6 6'/%3E%3C/svg%3E"); }
+.file-link[data-path-state="no"] { --mention-badge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M15.5 15.5l6 6M21.5 15.5l-6 6'/%3E%3C/svg%3E"); }
+.file-link:is([data-file-access="write"], [data-file-access="none"], [data-path-state="no"])::before {
     --mention-badge-cutout: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='18.5' cy='18.5' r='7' fill='black'/%3E%3C/svg%3E");
     /* Top to bottom: the badge, over the icon less the cut-out. */
     -webkit-mask: var(--mention-badge) center / contain no-repeat, var(--mention-icon) center / contain no-repeat, var(--mention-badge-cutout) center / contain no-repeat;
@@ -5499,8 +5490,10 @@ a.resource-pill-target.file-link { cursor: context-menu; }
     mask: var(--mention-badge) center / contain no-repeat, var(--mention-icon) center / contain no-repeat, var(--mention-badge-cutout) center / contain no-repeat;
     mask-composite: add, subtract, add;
 }
-.mention-file { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z'/%3E%3Cpath d='M14 3v5h5'/%3E%3C/svg%3E"); }
-.mention-directory { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'/%3E%3C/svg%3E"); }
+/* A file and a directory are drawn the same as an "@" link and as a plain path. */
+:root { --file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z'/%3E%3Cpath d='M14 3v5h5'/%3E%3C/svg%3E"); --directory-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'/%3E%3C/svg%3E"); }
+.mention-file { --mention-icon: var(--file-icon); }
+.mention-directory { --mention-icon: var(--directory-icon); }
 .mention-chat { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-3.9-.94L3 20l1.06-3.98A8.5 8.5 0 1 1 21 11.5Z'/%3E%3C/svg%3E"); }
 .mention-project { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 3 9 5-9 5-9-5Z'/%3E%3Cpath d='m3 13 9 5 9-5'/%3E%3C/svg%3E"); }
 .mention-diff { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='5' r='2'/%3E%3Ccircle cx='18' cy='7' r='2'/%3E%3Ccircle cx='6' cy='19' r='2'/%3E%3Cpath d='M6 7v10M8 15h3a7 7 0 0 0 7-6'/%3E%3C/svg%3E"); }

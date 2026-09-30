@@ -1,6 +1,7 @@
 ---
 id: chat-fork
 name: Chat fork
+icon: fork
 kind: playbook
 description: Start a new branch of this chat from an earlier message to try another approach without losing the current one.
 parameters: {"type":"object","properties":{"message":{"type":"string","description":"The user message to redo, as the user described it"},"prompt":{"type":"string","description":"The new message for the branch, if the user gave it"}},"additionalProperties":false}

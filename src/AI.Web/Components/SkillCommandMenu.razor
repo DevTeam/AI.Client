@@ -12,7 +12,7 @@
              class="skill-command-item @(row == SelectedIndex ? "selected" : null)"
              @onmousedown="() => OnPick.InvokeAsync(row)" @onmousedown:preventDefault
              @onmousemove="() => Hover(row)">
-            <AppIcon Name="skill" />
+            <SkillIcon Icon="@match.Skill.Icon" />
             <span class="skill-command-name">@if (match.Alias is not null) { @("/") }@foreach (var part in Parts(match)) { if (part.Matched) { <mark>@part.Text</mark> } else { @part.Text } }@if (match.Alias is not null) { <span class="skill-command-skill-name">@match.Skill.Name</span> }</span>
             <span class="skill-command-description">@match.Skill.Description</span>
             <span class="skill-command-source">@SourceLabel(match.Skill.Source)</span>

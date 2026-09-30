@@ -1,6 +1,7 @@
 ---
 id: skill-from-chat
 name: Skill from chat
+icon: message-circle
 kind: playbook
 description: Turn the workflow carried out in this chat into a reusable playbook skill, saved after review.
 parameters: {"type":"object","properties":{"scope":{"type":"string","enum":["User","Project"],"description":"Only when the user said"}},"additionalProperties":false}

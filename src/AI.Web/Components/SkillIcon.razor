@@ -1,0 +1,20 @@
+@using AI.Contracts.Skills
+@* A skill's icon: a name from the shared set, or the skill's own path data drawn with the same
+   stroke as AppIcon. Anything else, such as a hand-edited typo, falls back to the default. *@
+@if (Icon is { } icon && SkillIcons.IsPath(icon))
+{
+    <svg class="app-icon @Class" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="@icon" />
+    </svg>
+}
+else
+{
+    <AppIcon Name="@(Icon is { } name && SkillIcons.Names.Contains(name) ? name : SkillIcons.Default)" Class="@Class" />
+}
+
+@code {
+    /// <summary>The value of the icon line; null draws the default.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+}

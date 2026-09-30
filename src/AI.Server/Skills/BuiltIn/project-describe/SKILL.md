@@ -1,6 +1,7 @@
 ---
 id: project-describe
 name: Project describe
+icon: file-text
 kind: playbook
 description: Write or improve the current project's description from its directories, then apply it after confirmation.
 parameters: {"type":"object","properties":{"focus":{"type":"string","description":"What the description should stress, if the user said"}},"additionalProperties":false}

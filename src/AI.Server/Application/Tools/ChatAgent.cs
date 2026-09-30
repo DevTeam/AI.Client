@@ -46,7 +46,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         bool interactive = true,
         Guid? parentBranchId = null,
         Func<string?, CancellationToken, Task>? draft = null,
-        Func<ContextUsage, CancellationToken, Task>? contextUsage = null)
+        Func<ContextUsage, CancellationToken, Task>? contextUsage = null,
+        Func<string, CancellationToken, Task>? draftToolCall = null)
     {
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var transportScope = transport.BeginScope(transportActivity);
@@ -271,6 +272,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 chunkCount++;
                 if (chunk.ToolCalls is { } received) calls.AddRange(received);
                 if (chunk.FinishReason is { Length: > 0 } reason) finish = reason;
+                if (chunk is { ToolCallsStarted: true, ToolCallName: { Length: > 0 } starting }
+                    && starting != completionProtocol.Tool.ModelDefinition.Name && draftToolCall is not null)
+                    await draftToolCall(starting, token);
                 if (chunk.Content.Length == 0) continue;
                 content.Append(chunk.Content);
                 if (draftHeld)

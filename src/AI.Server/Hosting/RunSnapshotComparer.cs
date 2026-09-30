@@ -24,6 +24,7 @@ public sealed class RunSnapshotComparer : IRunSnapshotComparer
         && (current.RecoveryActions ?? []).SequenceEqual(old.RecoveryActions ?? [])
         && current.ActiveMessageId == old.ActiveMessageId
         && current.DraftContent == old.DraftContent
+        && current.DraftToolCall == old.DraftToolCall
         && Equals(current.WorkspaceChanges, old.WorkspaceChanges);
 
     private static bool QueueItemEqual(QueuedChatMessage first, QueuedChatMessage second) =>

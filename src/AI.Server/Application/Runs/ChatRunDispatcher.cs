@@ -453,7 +453,8 @@ public sealed class ChatRunDispatcher(
                     (wait, ct) => ReportTransportActivityAsync(runtime, wait, ct),
                     (tool, arguments, timeout, position, ct) => ApproveAsync(runtime, tool, arguments, timeout, position, ct), token,
                     draft: (chunk, ct) => ReportDraftAsync(runtime, chunk, ct),
-                    contextUsage: (usage, ct) => ReportContextAsync(runtime, usage, ct));
+                    contextUsage: (usage, ct) => ReportContextAsync(runtime, usage, ct),
+                    draftToolCall: (name, ct) => ReportDraftToolCallAsync(runtime, name, ct));
                 var suggestTitle = false;
                 Guid? answeredHead = null;
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
@@ -549,12 +550,14 @@ public sealed class ChatRunDispatcher(
             runtime.PendingPrompt = null;
             runtime.ActiveTools.Clear();
             runtime.Draft.Clear();
+            runtime.DraftToolCall = null;
             runtime.Snapshot = runtime.Snapshot with
             {
                 PendingApproval = null,
                 PendingPrompt = null,
                 ActiveTools = [],
                 DraftContent = null,
+                DraftToolCall = null,
                 // This block patches the last published snapshot instead of rebuilding it, so
                 // every field the worker just released has to be named here. Leaving this one out
                 // left the run advertising an active command it had already finished with.
@@ -802,6 +805,7 @@ public sealed class ChatRunDispatcher(
         if (chunk is null)
         {
             runtime.Draft.Clear();
+            runtime.DraftToolCall = null;
             return;
         }
 
@@ -809,6 +813,20 @@ public sealed class ChatRunDispatcher(
         if (clock.UtcNow - runtime.LastDraftPublished < ProgressPublishInterval) return;
         runtime.LastDraftPublished = clock.UtcNow;
         runtime.Snapshot = runtime.Snapshot with { DraftContent = runtime.DraftContent };
+        Publish();
+    }
+
+    /// <summary>
+    /// Publishes at once, unlike the prose: the start of a call is one event, and the transcript
+    /// uses it to stop presenting the text before it as a possible answer.
+    /// </summary>
+    private async Task ReportDraftToolCallAsync(Runtime runtime, string name, CancellationToken token)
+    {
+        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
+        if (runtime.DraftToolCall == name) return;
+        runtime.DraftToolCall = name;
+        runtime.LastDraftPublished = clock.UtcNow;
+        runtime.Snapshot = runtime.Snapshot with { DraftContent = runtime.DraftContent, DraftToolCall = name };
         Publish();
     }
 
@@ -1032,6 +1050,7 @@ public sealed class ChatRunDispatcher(
             Wait = runtime.Wait,
             MessageDelta = runtime.MessageDelta,
             DraftContent = runtime.DraftContent,
+            DraftToolCall = runtime.DraftToolCall,
             Context = runtime.Context
         };
         if (chat is not null)
@@ -1338,6 +1357,8 @@ public sealed class ChatRunDispatcher(
         /// <summary>The prose of the model step in flight; never persisted.</summary>
         public System.Text.StringBuilder Draft { get; } = new();
         public DateTimeOffset LastDraftPublished { get; set; }
+        /// <summary>The tool the step in flight has started to call; cleared with the draft.</summary>
+        public string? DraftToolCall { get; set; }
         public string? DraftContent => Draft.Length == 0 ? null : Draft.ToString();
 
         public ChatMessageDelta? MessageDelta => _recentMessages.Count == 0

@@ -34,8 +34,7 @@ One row per turn, in place of all intermediate messages — that is, between the
 
 | Turn state | Row text |
 | --- | --- |
-| Running, a tool in flight | the tool's title + time: `Read file · 12s` |
-| Running, otherwise | `Working for 12s`; the model's text is shown in full below the row (see [Live text](#live-text)) |
+| Running | `Working for 12s`; the model's text is shown in full below the row (see [Live text](#live-text)), and what the turn is doing under it (see [Activity line](#activity-line)) |
 | Completed | `Worked for 1m 13s` |
 | Stopped by user | `Stopped after 22s` |
 | Failed | `Failed after 22s` |
@@ -61,6 +60,27 @@ Source, newest first: the draft of the model step in flight (`ChatRunSnapshot.Dr
 - A replacement fades in from the row (300 ms); growth of the same text is patched in place. `prefers-reduced-motion` turns the animation off.
 
 The logic lives in `TurnLiveText` (one instance per transcript) and is covered by `TurnLiveTextTests`.
+
+#### Preamble
+
+A text known to lead into tool calls is a remark, not the answer, and is drawn muted and slightly smaller (`.live-text.is-preamble`). It is known once the model step in flight has started a call (`ChatRunSnapshot.DraftToolCall`, see below) or once the text has landed as a note with tool calls attached. Until then it is drawn as a possible answer: most answers are not preceded by anything that would say otherwise. The completion protocol's own tool (`app_finish_run`) does not mark the text — it carries the answer.
+
+### Activity line
+
+One muted line under the live text says what the turn is doing now. A model often ends its note with "…and run it:" and then streams the call's arguments for seconds; without the line the colon was followed by a blank.
+
+| Run state | Line |
+| --- | --- |
+| A tool is running | `› <tool title>  <detail>` — the last active call, as its tool row names it |
+| The model is streaming a call's arguments | `› Preparing <tool title>…` |
+| Waiting for tool approval | `› Waiting for tool approval` |
+| The model is writing prose | no line: the text itself is the activity |
+| Otherwise (request in flight, after a result) | `› Thinking…` |
+| A question to the user, a rate-limit wait | no line: they have their own cards |
+
+The line is static — no spinner or animation — so it reads as work in progress with animations off. It follows the run at once; it does not wait for the live text's reading delay. It is shown only while the turn is collapsed: expanded, the live tool rows say the same. The row itself no longer names the running tool, which would say the same thing twice.
+
+The start of a call comes from the stream: `ChatCompletionSseParser` raises `ToolCallsStarted` with `ToolCallName` as soon as the endpoint names the call, the agent reports it, and the dispatcher publishes it at once as `DraftToolCall`. It is cleared together with the draft, in the publication that lands the preamble.
 
 The row is not interactive during generation — click and expand are available only after the turn ends, so a half-rendered intermediate state does not need a skeleton.
 
@@ -180,7 +200,7 @@ The row is rendered in a muted color, smaller text, single line with ellipsis on
 2. The row's text matches the table by turn state.
 3. Click on the row expands the intermediate items into today's view without changes.
 4. A running turn shows the model's current text in full under the row, streamed; a new text replaces it only after the reading delay (see [Live text](#live-text)).
-5. During generation the row shows the running tool or `Working for …` and the growing time; the feed holds at most one live text for the turn.
+5. During generation the row shows `Working for …` and the growing time; the feed holds at most one live text for the turn, and one activity line under it.
 6. A turn with no intermediate messages does not add a row.
 7. Stopped and failed turns show `Stopped after …` / `Failed after …`.
 8. The file changes card is visible with the turn collapsed.

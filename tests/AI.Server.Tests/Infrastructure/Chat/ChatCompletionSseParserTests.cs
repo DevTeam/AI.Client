@@ -21,10 +21,27 @@ public class ChatCompletionSseParserTests
         await foreach (var chunk in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
         chunks.Count.ShouldBe(2);
         chunks[0].ToolCallsStarted.ShouldBeTrue();
+        chunks[0].ToolCallName.ShouldBe("run");
         chunks[0].ToolCalls.ShouldBeNull();
         var calls = chunks[1].ToolCalls!;
         calls[0].Arguments.ShouldBe("{\"x\":1}");
         calls[1].Id.ShouldBe("two");
+    }
+
+    [Fact]
+    public async Task ShouldAnnounceToolNameWhenItArrivesAfterTheFirstDelta()
+    {
+        const string sse = """
+            data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"one"}]}}]}
+            data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"run","arguments":"{}"}}]}}]}
+            data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":""}}]}}]}
+            data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}
+            """;
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
+        var chunks = new List<ChatCompletionChunk>();
+        await foreach (var chunk in new ChatCompletionSseParser().ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
+        chunks.Where(chunk => chunk.ToolCallsStarted).Select(chunk => chunk.ToolCallName).ShouldBe([null, "run"]);
+        chunks[^1].ToolCalls!.Single().Name.ShouldBe("run");
     }
 
     [Fact]

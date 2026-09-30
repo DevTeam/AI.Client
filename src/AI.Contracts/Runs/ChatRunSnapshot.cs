@@ -14,6 +14,10 @@ public sealed record ChatRunSnapshot(Guid ProjectId, Guid ChatId, Guid BranchId,
     // is not the answer: it lets the transcript show what the model is saying before the step
     // ends and becomes a preamble, the final answer, or nothing.
     string? DraftContent = null,
+    // The tool the model step in flight has started to call, by its model-facing name, while the
+    // call's arguments are still streaming. It marks DraftContent as a preamble rather than a
+    // possible answer, and fills the pause before the call becomes an active tool.
+    string? DraftToolCall = null,
     // How the last request of this branch filled the model's context window. It lives with the
     // run rather than the chat, so a Host restart forgets it until the branch sends again.
     ContextUsage? Context = null);

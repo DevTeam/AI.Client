@@ -4241,6 +4241,49 @@ textarea {
     .workspace-message.live-text { animation: none; }
 }
 
+/* Text known to lead into tool calls is a remark, not the answer: it steps back once the model
+   starts the call it announced, so the eye moves on to the activity line below it. */
+.workspace-message.live-text.is-preamble .markdown-content {
+    color: var(--color-text-muted);
+    font-size: 0.92em;
+    transition: color 200ms ease;
+}
+
+/* What the running turn is doing right now, one line under its text. Shares the tool-row scale
+   and palette: it is the collapsed stand-in for the call rows the expanded turn shows. */
+.turn-activity {
+    display: flex;
+    width: min(100%, 48rem);
+    min-width: 0;
+    margin: -0.35rem auto 0.75rem;
+    align-items: baseline;
+    gap: 0.4rem;
+    color: var(--color-text-faint);
+    font-size: 0.76rem;
+    white-space: nowrap;
+}
+
+.turn-activity-glyph {
+    flex: 0 0 auto;
+    color: var(--color-accent);
+}
+
+.turn-activity-title {
+    flex: 0 0 auto;
+    color: var(--color-text-secondary);
+}
+
+.turn-activity-detail {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .workspace-message.live-text.is-preamble .markdown-content { transition: none; }
+}
+
 .tool-row-glyph {
     display: inline-grid;
     flex: 0 0 auto;

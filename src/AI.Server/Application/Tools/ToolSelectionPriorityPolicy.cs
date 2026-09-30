@@ -18,6 +18,7 @@ public sealed class ToolSelectionPriorityPolicy : IToolSelectionPriorityPolicy
         "app_read" or
         "app_projects" or
         "app_security" or
+        "skill_search" or
         "run_skill" or
         "spawn_subtask";
 

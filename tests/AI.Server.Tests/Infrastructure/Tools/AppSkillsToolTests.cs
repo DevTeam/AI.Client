@@ -49,6 +49,11 @@ public sealed class AppSkillsToolTests
         var search = session.Tools.Single(tool => tool.OriginalName == "skill_search");
         var run = session.Tools.Single(tool => tool.OriginalName == "run_skill");
 
+        search.ModelDefinition.Name.ShouldBe("mcp_app__skill_search");
+        run.ModelDefinition.Name.ShouldBe("mcp_app__run_skill");
+        run.ModelDefinition.Description.ShouldContain(search.ModelDefinition.Name);
+        search.ModelDefinition.Description.ShouldContain(run.ModelDefinition.Name);
+
         var found = await session.CallAsync(search, """{"query":"rename chat"}""", null,
             TestContext.Current.CancellationToken);
         found.IsError.ShouldBeFalse();

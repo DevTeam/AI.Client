@@ -145,7 +145,7 @@ public sealed class ResourceServiceTests
             [new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Skill, "project-name", "Project name")]);
 
         projected.ShouldStartWith("The user invoked the skill \"project-name\" (\"Project name\")");
-        projected.ShouldContain("app_run_skill");
+        projected.ShouldContain("mcp_app__run_skill");
         projected.ShouldEndWith("\nMake it shorter");
         projected.ShouldNotContain("Attached workspace references");
     }

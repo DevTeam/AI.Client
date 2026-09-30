@@ -35,13 +35,13 @@ public sealed class StandingInstructions(
     private const string SkillsIntro =
         "Skill catalog. Skills are tested procedures for kinds of tasks. Before you act on a request, and again when the "
         + "user moves to another task, check this list: when a skill fits the task, even in part, run it with "
-        + "app_run_skill before other tools and follow it rather than improvising the same steps. That holds for "
+        + "mcp_app__run_skill before other tools and follow it rather than improvising the same steps. That holds for "
         + "requests that look simple, and for questions you would ask before starting: the skill says what to ask. "
         + "Run only skills listed here or named by the user, never a guessed id. While the conversation stays on the "
         + "task a playbook started, its follow-ups belong to that playbook: continue it from the step you reached. When "
         + "the user turns to a different task, choose again from this list, or none. When a playbook names another "
         + "skill for the next part of the work, switch to that skill. Parameters marked * are required; "
-        + "app_skill_search returns the full schema.";
+        + "mcp_app__skill_search returns the full schema.";
 
     /// <summary>A profile or pinned entry is shown in full up to this length; longer ones are cut.</summary>
     private const int InlineBodyLimit = 600;
@@ -102,8 +102,8 @@ public sealed class StandingInstructions(
         + "- Writes (app_chats, app_runs, app_projects, app_security, app_memory, app_instructions, app_skills) need a fresh operationId "
         + "and the revision you read; on a conflict re-read before deciding again. app_security replaces whole sections: "
         + "send back everything you read with only your change applied.\n"
-        + "- Skills are the application's tested procedures; the skill catalog below lists them. app_run_skill runs one "
-        + "in the current project; app_skill_search returns full argument schemas and finds skills by task. A playbook "
+        + "- Skills are the application's tested procedures; the skill catalog below lists them. mcp_app__run_skill runs one "
+        + "in the current project; mcp_app__skill_search returns full argument schemas and finds skills by task. A playbook "
         + "skill returns instructions: follow them in the same turn, ask through ask_user rather than listing choices in "
         + "text, and give the result they ask for. For a request to test skill execution, run the read-only chat-summary "
         + "without asking which skill to test. "
@@ -243,7 +243,7 @@ public sealed class StandingInstructions(
     /// <summary>
     /// One line per enabled skill: its id, what it is for and its parameter names. Executors run by
     /// the application on its own schedule are left out unless they take a request, which only
-    /// chat-rename does. The list is cut to its budget with a pointer to app_skill_search.
+    /// chat-rename does. The list is cut to its budget with a pointer to mcp_app__skill_search.
     /// </summary>
     private async Task<ModelContextLayer?> SkillsLayerAsync(Guid projectId, CancellationToken cancellationToken)
     {
@@ -286,7 +286,7 @@ public sealed class StandingInstructions(
     }
 
     private static string MoreSkillsNote(int count) =>
-        $"... {count} more skills are not listed; find them with app_skill_search and a query.";
+        $"... {count} more skills are not listed; find them with mcp_app__skill_search and a query.";
 
     private const string TruncationNote = "\n[Truncated to fit the project instructions budget.]";
 

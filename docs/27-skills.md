@@ -20,8 +20,8 @@ line. Optional `aliases` is a JSON array of up to 8 short commands spelled like 
 `aliases: ["compact"]`: typing one in full after `/` puts the skill first in the list. A row found
 by an alias (in full, by its start, or by its letters in order, so `/coma` still finds it) leads with
 the best matching `/alias`, highlighted, and names the skill after it; the chip keeps the name. Also,
-`app_skill_search` and `app_read resource=Skills` find the skill by it. An alias never replaces the id,
-which chips and `app_run_skill` still use. `kind` selects how the skill runs:
+`mcp_app__skill_search` and `app_read resource=Skills` find the skill by it. An alias never replaces the id,
+which chips and `mcp_app__run_skill` still use. `kind` selects how the skill runs:
 
 | kind | Runs in | Declares |
 |---|---|---|
@@ -29,7 +29,7 @@ which chips and `app_run_skill` still use. `kind` selects how the skill runs:
 | `playbook` | the calling model's own turn, with its ordinary permission-checked tools | `tools` it uses, no `result` |
 | `executor` | bundled code; only built-in skills | — |
 
-A playbook run does no model call: `app_run_skill` validates the arguments and returns
+A playbook run does no model call: `mcp_app__run_skill` validates the arguments and returns
 `output.instructions` (the body after the frontmatter), the arguments, the declared tools and
 `output.context` with the current project, chat and branch ids, which the model cannot see
 otherwise. The model then follows the steps in the same turn. The run pins the declared `tools`
@@ -124,10 +124,10 @@ requests still work. See [Composer rules](15-composer-rules.md#suggested-reply).
 
 ## Tools
 
-`app_skill_search` exposes enabled effective skills, their kinds and schemas to the main model. An
+`mcp_app__skill_search` exposes enabled effective skills, their kinds and schemas to the main model. An
 omitted query lists all enabled skills. If a query has no text matches, the result still lists
 available skills with `matchedQuery=false` and guidance; an empty result means there really are
-no enabled skills in the current scope. `app_run_skill` validates arguments and runs a skill in
+no enabled skills in the current scope. `mcp_app__run_skill` validates arguments and runs a skill in
 the current project. `app_read resource=Skills` lists the built-in, User and Project skills with
 source, kind and revision, and returns the full SKILL.md when a query names the skill.
 `app_skills` creates, updates, disables or deletes User and current Project skills with revision
@@ -145,13 +145,13 @@ in the project, and the model's copy of the message starts with an instruction t
 When the App tools are available, the standing `skills.catalog` layer lists every enabled skill
 in effect for the project: its id, description and parameter names, with `*` marking required ones.
 Only executors the application runs on its own (`chat-reply-suggest`, `chat-tool-risk-assess`) are left out. It follows
-memory, has its own 3,072-token budget and ends with a pointer to `app_skill_search` when it is
+memory, has its own 3,072-token budget and ends with a pointer to `mcp_app__skill_search` when it is
 cut. Its lead tells the model to check the list before acting and when the user changes task, to
 run a fitting skill before other tools even for requests that look simple, and to run only listed
-or user-named ids. `run_skill` is always in the request's tool schema, so a skill from the catalog
+or user-named ids. `skill_search` and `run_skill` are always in the request's tool schema, so a skill from the catalog
 runs without a `tool_search`.
 
-A playbook's instructions stay in the conversation as the `app_run_skill` result. Before every model
+A playbook's instructions stay in the conversation as the `mcp_app__run_skill` result. Before every model
 step `ChatAgent` adds the run instruction `run.active-skill` naming the latest playbook loaded within
 the last four user messages (`ISkillGuide.ActivePlaybookAsync`; a failed load does not count). It
 tells the model to keep following that playbook while the user continues its task and to choose
@@ -175,14 +175,14 @@ tools, and those the chosen skills declare, are pinned before the tool selector 
 the first step has them without `app_tool_search`.
 
 When the first skill is a playbook without required parameters, `ChatAgent` loads it itself: it
-persists an `app_run_skill` call with `parameters: {}` and its result, as if the model had made
+persists an `mcp_app__run_skill` call with `parameters: {}` and its result, as if the model had made
 them, and plans the first step again with them in the context. Loading a playbook only returns
 its instructions, so it needs no approval, and the transcript shows it as an ordinary skill call.
-A hint alone was not enough: told to call `app_run_skill` first, a model still asked its own
+A hint alone was not enough: told to call `mcp_app__run_skill` first, a model still asked its own
 questions and did the work by hand, and a playbook's last steps (such as `project-create` opening
 the project's first chat) never ran. The run instruction `run.skill-route` (until the model's
 first answer) then says to follow the loaded instructions from step 1, taking parameter values
-from the message. For a skill with required parameters it says to call `app_run_skill` first,
+from the message. For a skill with required parameters it says to call `mcp_app__run_skill` first,
 before any question. A second skill is for the rest of the request. When the router returns only
 the active playbook, the instruction says the message continues it.
 

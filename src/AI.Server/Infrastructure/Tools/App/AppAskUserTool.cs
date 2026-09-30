@@ -41,8 +41,9 @@ public sealed record AskUserQuestion(
 public sealed record AskUserReply(string Id, string[] Selected, string? Other, IReadOnlyList<string>? Paths = null);
 
 /// <param name="Outcome">
-/// <c>answered</c>, <c>dismissed</c> (they told you to decide), <c>expired</c> (nobody was there)
-/// or <c>interrupted</c> (there was no one to ask at all).
+/// <c>answered</c>, <c>dismissed</c> (they told you to decide), <c>declined</c> (they refused the
+/// question and want you to stop), <c>expired</c> (nobody was there) or <c>interrupted</c> (there was
+/// no one to ask at all).
 /// </param>
 /// <param name="Guidance">What to do about that outcome, in the words the model should act on.</param>
 public sealed record AskUserResult(
@@ -119,7 +120,8 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                         + "alongside — list the paths you already consider likely. Use 'multiSelect' only when the choices "
                         + "genuinely combine. The user may "
                         + "answer some questions and not others, or none at all: an absent answer means the choice is yours to "
-                        + "make, never an invitation to ask again."
+                        + "make, never an invitation to ask again. The user may also decline the question outright "
+                        + "(outcome 'declined'): then stop that work and wait for them instead of choosing."
                 });
 
         [McpServerTool(Name = "ask_user", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false,
@@ -154,6 +156,7 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
             UserPromptOutcome.Answered => "answered",
             UserPromptOutcome.Dismissed => "dismissed",
             UserPromptOutcome.Expired => "expired",
+            UserPromptOutcome.Declined => "declined",
             _ => "interrupted"
         };
 
@@ -169,6 +172,12 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                     .Except(answers.Select(answer => answer.Id), StringComparer.Ordinal))
                 + ". " + DecideYourself,
             UserPromptOutcome.Expired => "Nobody answered in time. " + DecideYourself,
+            // Unlike dismissing, declining hands nothing over: choosing for them anyway is exactly
+            // what they just refused, so the only thing left to do is stop and listen.
+            UserPromptOutcome.Declined =>
+                "The user declined to answer and does not want you to choose for them. Do not proceed with the work "
+                + "this question was about and do not ask it again. End your turn with a short reply that says what "
+                + "you stopped and wait for the user's next message.",
             _ => "The user declined to decide. " + DecideYourself
         };
 

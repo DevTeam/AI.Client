@@ -551,6 +551,25 @@ public sealed class AppToolTests
     }
 
     [Fact]
+    public async Task AskUserDeclinedShouldTellTheModelToStopRatherThanChoose()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        fixture.Broker.Answer = _ => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Declined, []);
+
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[] { new { id = "scope", text = "How far?", options = new[] { new { label = "Narrow" } } } }
+        });
+
+        result.GetProperty("outcome").GetString().ShouldBe("declined");
+        result.GetProperty("answers").GetArrayLength().ShouldBe(0);
+        var guidance = result.GetProperty("guidance").GetString()!;
+        guidance.ShouldContain("Do not proceed");
+        guidance.ShouldNotContain("option you judge best");
+    }
+
+    [Fact]
     public async Task AskUserShouldReturnSeveralSelectedDirectories()
     {
         await using var fixture = await AppFixture.CreateAsync();

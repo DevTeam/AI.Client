@@ -86,7 +86,7 @@ Result:
 
 The wire carries **positions** of the options from the UI; the model receives **texts**: an answer read from history without the question in front of you should still say what was decided. An answer naming an option that does not exist is discarded rather than guessed: the two sides of the transformation are separated by the process, and a mismatch means the question was replaced.
 
-`outcome` is `answered`, `dismissed`, `expired`, `interrupted`, or `invalid`. In every case except the first, `guidance` tells the model to decide on its own, name the assumption, and **not ask the same thing again**.
+`outcome` is `answered`, `dismissed`, `declined`, `expired`, `interrupted`, or `invalid`. For `dismissed`, `expired` and `interrupted`, `guidance` tells the model to decide on its own, name the assumption, and **not ask the same thing again**. `declined` is the opposite of `dismissed`: the person refused the question itself, so `guidance` tells the model **not** to choose, stop the work the question was about, end the turn with a short reply and wait for the next message.
 
 ## UX
 
@@ -96,13 +96,14 @@ The card sits at the end of the feed, where the confirmation card sits, and for 
 |---|---|
 | Multiple questions | all at once in one card, one `Answer` button: answers are often interdependent |
 | Partial answer | allowed. `Answer` is always active; questions with no selection are sent empty, and `guidance` names them one by one, so the model does not ask again |
-| Refusal | `Decide yourself` button → `dismissed`. An empty "answer" also becomes `dismissed`: it is the same thing with a worse record |
+| Delegation | `Decide yourself` button → `dismissed`: the model chooses and carries on. An empty "answer" also becomes `dismissed`: it is the same thing with a worse record |
+| Refusal | `Decline` button (left edge, apart from the other two) → `declined`: the model does not choose, stops that work and waits for the person. Unlike `Stop`, the turn ends with the model's own short reply, so the chat stays coherent |
 | Composer | while the question is open, sent text becomes a free answer to the first question that accepts it. Placeholder is "Answer the question above…". A queue would mean a quiet deadlock: the person writes an answer at the bottom and gets it delivered after 15 minutes |
 | Keyboard | standard radio/checkbox semantics. Once every question has an answer, the card says so and Enter submits the answers and continues the chat; action buttons keep their native Enter behavior |
 | Markdown | inline subset in the question text (emphasis, code, links). Options and descriptions are always plain text: they are button captions |
 | "Other" | a field next to the option; typing text selects it. With zero options, the card looks like a regular input with the question as its heading |
 | Attention | an "attention required" marker in the chat list, the same one a confirmation uses. No system notifications or sound |
-| Trace | a tool-call row through `AskUserPresentationAdapter`: "Scope: Only the changed module", expands to details. An answer with no selection is `Warning`: the model decided on its own, and that is worth finding later |
+| Trace | a tool-call row through `AskUserPresentationAdapter`: "Scope: Only the changed module", expands to details. An answer with no selection is `Warning`: the model decided on its own (or, for `declined`, stopped), and that is worth finding later |
 | Language | English, like the whole UI. The model writes the question text in the conversation's language |
 
 `RunStateService` does not count the time spent waiting for a question as generation time, so the "model is thinking" indicator does not lie while the person is reading.

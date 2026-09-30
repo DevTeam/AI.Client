@@ -11,4 +11,6 @@ public sealed record ChatDetails(
     IReadOnlyList<ChatMessageView> Messages,
     IReadOnlyList<ChatBranchView>? Branches = null,
     IReadOnlyList<AI.Contracts.Projects.ToolPolicySettings>? ToolPolicies = null,
-    bool AutoTitlePending = false);
+    bool AutoTitlePending = false,
+    DateTimeOffset? ArchivedAt = null,
+    Guid? ArchiveOperationId = null);

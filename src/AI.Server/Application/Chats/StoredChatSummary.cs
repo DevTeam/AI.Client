@@ -15,4 +15,6 @@ public sealed record StoredChatSummary(
     int BranchCount = 0,
     bool HasStoredBranchCount = true,
     string? PinOrder = null,
-    bool IsEmpty = false);
+    bool IsEmpty = false,
+    DateTimeOffset? ArchivedAt = null,
+    Guid? ArchiveOperationId = null);

@@ -54,6 +54,7 @@
                browser already draws; Escape does the same from the keyboard. *@
             <input type="search" class="sidebar-search-input" value="@_searchQuery" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown" placeholder="Search messages" aria-label="Search messages in all chats" />
         </div>
+        <label class="archive-search-toggle"><input type="checkbox" @bind="_searchIncludeArchived" @bind:after="RunSearchAsync" /> Include archived chats</label>
         @if (_searchResult is { } found)
         {
             <div class="sidebar-search-results">
@@ -68,7 +69,7 @@
                         <button class="search-result" type="button" @onclick="() => OpenSearchMatchAsync(match)">
                             <span class="search-result-where">@match.ProjectName · @match.ChatTitle</span>
                             <span class="search-result-snippet">@match.Snippet</span>
-                            <span class="search-result-meta">@match.Role · @match.CreatedAt.LocalDateTime.ToString("g")@(match.MatchCount > 1 ? $" · {match.MatchCount} matches" : string.Empty)</span>
+                            <span class="search-result-meta">@(match.IsArchived ? "Archived · " : "")@match.Role · @match.CreatedAt.LocalDateTime.ToString("g")@(match.MatchCount > 1 ? $" · {match.MatchCount} matches" : string.Empty)</span>
                         </button>
                     }
                 }
@@ -184,6 +185,7 @@
                                         </div>
                                         }
                                     }
+                                    <button type="button" role="menuitem" @onclick="() => ArchiveChatAsync(chat)"><AppIcon Name="archive" /><span>Archive chat</span></button>
                                     @if (_isConfirmingChatDelete)
                                     {
                                         <div class="project-menu-confirm"><span>Delete this chat and all its branches?</span><button class="danger compact-action" type="button" disabled="@(_deletingChatId is not null)" @onclick="() => DeleteChatAsync(chat)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="CancelChatDelete"><AppIcon Name="x" /></button></div>
@@ -281,7 +283,12 @@
                             }
                         </div>
                     }
-                    else if (_chats.Count == 0) { <span class="empty-hint">No chats yet</span> }
+                    else if (orderedChats.Count == 0) { <span class="empty-hint">No active chats</span> }
+                    @if (_archiveSuggestionProject == project.Id && _archiveSuggestionCount >= 10)
+                    {
+                        <div class="archive-suggestion" role="status"><span>@_archiveSuggestionCount chats inactive for 30 days</span><button type="button" @onclick="() => OpenArchive(true)">Review</button><button class="icon-action" type="button" aria-label="Dismiss cleanup suggestion" @onclick="DismissArchiveSuggestionAsync"><AppIcon Name="x" /></button></div>
+                    }
+                    <button class="workspace-nav-item" type="button" @onclick="() => OpenArchive(false)"><AppIcon Name="archive" /><span class="nav-item-label">Archive · @_chats.Count(chat => chat.ArchivedAt is not null)</span></button>
                 </nav>
                 <div class="directory-nav-group">
                     @if (_security.DirectoryGrants.Count == 0)
@@ -591,7 +598,14 @@
         </footer>
     </section>
 
-    @if (_isProjectMenuOpen && _selectedProject is not null)
+    @if (_showArchive && _selectedProject is { } archiveProject)
+{
+    <ChatArchiveDrawer @ref="_archiveDrawer" @key="archiveProject.Id" ProjectId="@archiveProject.Id" ProjectName="@archiveProject.Name"
+        Chats="@_chats" StartWithCleanup="@_archiveCleanup" Close="CloseArchive"
+        Open="OpenArchivedChatAsync" Changed="ArchiveChangedAsync" SuggestionsChanged="RefreshArchiveSuggestionsAsync" />
+}
+
+@if (_isProjectMenuOpen && _selectedProject is not null)
     {
         <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
         <div class="project-menu" role="menu" style="@GetProjectMenuStyle()" @onclick:stopPropagation="true">
@@ -620,6 +634,7 @@
                     <span class="menu-count">@_security.ToolPolicies.Count</span>
                 }
             </button>
+            <button type="button" role="menuitem" @onclick="() => OpenArchive(true)"><AppIcon Name="archive" />Archive old chats…</button>
             @if (_isConfirmingProjectDelete)
             {
                 <div class="project-menu-confirm"><span>Are you sure?</span><button class="danger compact-action" type="button" @onclick="DeleteProjectAsync">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="CancelProjectDelete"><AppIcon Name="x" /></button></div>
@@ -2736,6 +2751,7 @@
     // paging in the UI — a person narrows a query sooner than they page through it — so the cursor
     // the service returns is reported as "more remain" and otherwise left alone.
     private string _searchQuery = string.Empty;
+    private bool _searchIncludeArchived;
     private ChatSearchResult? _searchResult;
     private bool _isSearching;
     private CancellationTokenSource? _searchCancellation;
@@ -2786,7 +2802,7 @@
         var query = _searchQuery.Trim();
         try
         {
-            var result = await ChatHistoryApi.SearchAsync(query, null, cancellation.Token);
+            var result = await ChatHistoryApi.SearchAsync(query, null, cancellation.Token, _searchIncludeArchived);
             if (!cancellation.IsCancellationRequested && _searchQuery.Trim() == query)
             {
                 _searchResult = result;
@@ -3276,6 +3292,7 @@
         _deferredChats = null;
         _chats.Clear();
         _chats.AddRange(chats);
+        await CheckArchiveSuggestionsAsync();
 
         if (refreshSelected && _selectedChat is { } selected)
         {
@@ -3821,8 +3838,93 @@
     // The Host already sends pinned chats first in their manual order and the rest by activity.
     // A chat without messages stays out of the list until its first message, except the open one:
     // its first message may still be on the way to the Host when the list is re-read.
+    private ChatArchiveDrawer? _archiveDrawer;
+    private void CloseArchive() { if (_archiveDrawer?.IsBusy != true) _showArchive = false; }
+    private IJSObjectReference? _archiveModule;
+    private Guid? _archiveSuggestionProject;
+    private int _archiveSuggestionCount;
+    private string _archiveSuggestionFingerprint = "";
+    private DateTimeOffset _archiveSuggestionCheckedAt;
+    private bool _archiveSuggestionLoading;
+    private bool _showArchive, _archiveCleanup, _archiveSaving;
+
+    private async Task RefreshArchiveSuggestionsAsync()
+    {
+        _archiveSuggestionCheckedAt = default;
+        await CheckArchiveSuggestionsAsync();
+    }
+
+    private async Task CheckArchiveSuggestionsAsync()
+    {
+        if (_selectedProject is not { } project || _archiveSuggestionLoading) return;
+        if (_archiveSuggestionProject == project.Id && DateTimeOffset.UtcNow - _archiveSuggestionCheckedAt < TimeSpan.FromMinutes(5)) return;
+        _archiveSuggestionLoading = true;
+        try
+        {
+            _archiveModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatArchive.js");
+            var state = await _archiveModule.InvokeAsync<JsonElement>("suggestionState", project.Id);
+            _archiveSuggestionCount = 0; _archiveSuggestionProject = project.Id;
+            _archiveSuggestionCheckedAt = DateTimeOffset.UtcNow;
+            if (!state.TryGetProperty("enabled", out var enabled) || enabled.ValueKind != JsonValueKind.True) return;
+            var preview = await ChatHistoryApi.PreviewArchiveAsync(project.Id, new(DateTimeOffset.UtcNow.AddDays(-30)), CancellationToken.None);
+            if (_selectedProject?.Id != project.Id) return;
+            _archiveSuggestionFingerprint = string.Join(",", preview.Chats.Select(chat => chat.Id).Order());
+            if (state.TryGetProperty("dismissed", out var dismissed) && dismissed.GetString() == _archiveSuggestionFingerprint) return;
+            _archiveSuggestionCount = preview.Chats.Count;
+        }
+        catch (Exception error) when (error is JSException or HttpRequestException) { _archiveSuggestionCount = 0; }
+        finally { _archiveSuggestionLoading = false; }
+    }
+
+    private async Task DismissArchiveSuggestionAsync()
+    {
+        _archiveSuggestionCount = 0;
+        if (_archiveModule is not null && _archiveSuggestionProject is { } projectId)
+        {
+            try { await _archiveModule.InvokeVoidAsync("dismissSuggestion", projectId, _archiveSuggestionFingerprint); }
+            catch (JSException) { }
+        }
+    }
+
+    private void OpenArchive(bool cleanup)
+    {
+        _isProjectMenuOpen = false; _chatMenuId = null;
+        _archiveCleanup = cleanup; _showArchive = true;
+    }
+
+    private async Task OpenArchivedChatAsync(Guid chatId)
+    {
+        await SelectChatAsync(chatId);
+        _showArchive = false;
+    }
+
+    private async Task ArchiveChangedAsync(ChatArchiveResult result)
+    {
+        _archiveSuggestionCheckedAt = default;
+        if (_selectedProject is { } project) await LoadChatsAsync(project.Id);
+    }
+
+    private Task ArchiveChatAsync(ChatSummary chat) => ChangeArchiveAsync(chat.ProjectId,
+        new ChatArchiveRequest(true, Guid.NewGuid(), [new(chat.Id, chat.Revision)], SkipBusy: false));
+
+    private async Task ChangeArchiveAsync(Guid projectId, ChatArchiveRequest request)
+    {
+        if (_archiveSaving) return;
+        _archiveSaving = true; _chatMenuId = null;
+        try
+        {
+            var result = await ChatHistoryApi.ArchiveAsync(projectId, request, CancellationToken.None);
+            if (result.Skipped.Count > 0)
+                Notifications.ShowError(string.Join(" ", result.Skipped.Select(item => item.Reason).Distinct()));
+            _archiveSuggestionCheckedAt = default;
+            if (_selectedProject?.Id == projectId) await LoadChatsAsync(projectId);
+        }
+        catch (HttpRequestException) { Notifications.ShowError("Could not update the chat archive. Try again."); }
+        finally { _archiveSaving = false; }
+    }
+
     private List<ChatSummary> GetOrderedChats() =>
-        _chats.Where(chat => !chat.IsEmpty || chat.Id == GetActiveChatId()).OrderByDescending(chat => chat.IsPinned).ToList();
+        _chats.Where(chat => chat.ArchivedAt is null && (!chat.IsEmpty || chat.Id == GetActiveChatId())).OrderByDescending(chat => chat.IsPinned).ToList();
 
     // The sidebar shows one page of chats at a time: a long-lived project accumulates dozens of
     // them and the directory/settings groups below the list get pushed off-screen otherwise.
@@ -4035,7 +4137,11 @@
     [JSInvokable]
     public async Task OnEscapePressed()
     {
-        if (_notificationsOpen)
+        if (_showArchive)
+        {
+            CloseArchive();
+        }
+        else if (_notificationsOpen)
         {
             await ToggleNotificationsAsync();
         }
@@ -5772,6 +5878,7 @@
         CancelNavigationCountdown();
         if (_navigationCueModule is not null) await _navigationCueModule.DisposeAsync();
         if (_runEventsModule is not null) await _runEventsModule.DisposeAsync();
+        if (_archiveModule is not null) await _archiveModule.DisposeAsync();
         if (_navigationHandle is not null) { await _navigationHandle.InvokeVoidAsync("dispose"); await _navigationHandle.DisposeAsync(); }
         if (_navigationModule is not null) await _navigationModule.DisposeAsync();
 

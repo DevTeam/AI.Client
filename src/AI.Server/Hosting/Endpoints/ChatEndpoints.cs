@@ -55,12 +55,22 @@ public sealed class ChatEndpoints : IEndpointModule
         // is a projection of stored history, never a change to it.
         routes.MapGet("/api/chats/search", (
             string query, Guid? projectId, Guid? chatId, Guid? branchId, bool? isRegex, bool? ignoreCase,
-            string? roles, DateTimeOffset? from, DateTimeOffset? to, int? limit, string? cursor,
+            string? roles, DateTimeOffset? from, DateTimeOffset? to, int? limit, string? cursor, ChatArchiveScope? archiveScope,
             IChatSearchService search, CancellationToken cancellationToken) =>
             search.SearchAsync(new ChatSearchRequest(query, projectId, chatId, branchId,
                 isRegex ?? false, ignoreCase ?? true,
                 roles?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-                from, to, limit ?? ChatSearchLimits.DefaultMatches, cursor), cancellationToken));
+                from, to, limit ?? ChatSearchLimits.DefaultMatches, cursor, archiveScope ?? ChatArchiveScope.Active), cancellationToken));
+
+        routes.MapPost("/api/projects/{projectId:guid}/chats/archive/preview",
+            (Guid projectId, ChatArchivePreviewRequest request, IChatArchiveService service, CancellationToken token) =>
+                service.PreviewAsync(projectId, request, token));
+        routes.MapPost("/api/projects/{projectId:guid}/chats/archive",
+            (Guid projectId, ChatArchiveRequest request, IChatArchiveService service, CancellationToken token) =>
+                service.ApplyAsync(projectId, request, token));
+        routes.MapPost("/api/projects/{projectId:guid}/chats/archive/{operationId:guid}/undo",
+            (Guid projectId, Guid operationId, IChatArchiveService service, CancellationToken token) =>
+                service.UndoAsync(projectId, operationId, token));
 
         routes.MapGet(
             "/api/projects/{projectId:guid}/chats",

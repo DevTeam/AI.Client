@@ -43,7 +43,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         item.IsPinned,
         item.PinnedAt,
         item.BranchCount,
-        item.IsEmpty);
+        item.IsEmpty, item.ArchivedAt, item.ArchiveOperationId);
 
     public async Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
     {
@@ -189,6 +189,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             request.ToolCalls?.Select(call => new ChatToolCall(call.Id, call.Name, call.Arguments)).ToArray(),
             request.ToolCallId,
             ToDomain(request.WorkspaceChanges), ResourceReferences.ToDomain(request.Resources));
+        if (role == ChatMessageRole.User) stored.Chat.SetArchived(false, Guid.Empty, now);
         if (request.ReplaceSourceId is { } replaceId)
         {
             stored.Chat.ReplaceInBranch(request.BranchId ?? throw new ArgumentException("A replacement branch is required."),
@@ -286,7 +287,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             stored.Chat.IsPinned,
             stored.Chat.PinnedAt,
             stored.Chat.BranchCount,
-            stored.Chat.Messages.Count == 0);
+            stored.Chat.Messages.Count == 0, stored.Chat.ArchivedAt, stored.Chat.ArchiveOperationId);
     }
 
     /// <summary>Returns the key that puts <paramref name="chatId"/> in front of <paramref name="beforeChatId"/>
@@ -436,7 +437,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
             policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
             policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
-        chat.AutoTitlePending);
+        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId);
 
     private static ChatDetails ToTranscript(ChatThread chat, long revision)
     {
@@ -474,7 +475,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
                 policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
                 policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
-            chat.AutoTitlePending);
+            chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId);
     }
 
     private static bool IsPlainAssistant(ChatMessage message) =>

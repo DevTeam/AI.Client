@@ -21,7 +21,8 @@ public sealed record ChatSearchRequest(
     DateTimeOffset? From = null,
     DateTimeOffset? To = null,
     int Limit = ChatSearchLimits.DefaultMatches,
-    string? Cursor = null);
+    string? Cursor = null,
+    ChatArchiveScope ArchiveScope = ChatArchiveScope.Active);
 
 /// <param name="MatchCount">How many times the query occurs in the whole message, not only in the snippet.</param>
 /// <param name="Snippet">Text around the first occurrence, so a long message does not arrive whole.</param>
@@ -35,7 +36,8 @@ public sealed record ChatSearchMatch(
     string Role,
     DateTimeOffset CreatedAt,
     string Snippet,
-    int MatchCount);
+    int MatchCount,
+    bool IsArchived = false);
 
 /// <param name="Truncated">True when a limit ended the search early, so more matches may exist.</param>
 /// <param name="NextCursor">Where to resume, or null when the search reached the end.</param>

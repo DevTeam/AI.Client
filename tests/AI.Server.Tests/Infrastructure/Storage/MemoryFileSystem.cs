@@ -29,6 +29,12 @@ internal sealed class MemoryFileSystem : ITextFileSystem
         if (FailWriteSuffix is { } suffix && path.EndsWith(suffix, StringComparison.Ordinal)) throw new IOException("Simulated storage failure.");
         Files[path] = content;
     }
+    public Task AppendTextAsync(string path, string content, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Files.AddOrUpdate(path, content, (_, existing) => existing + content);
+        return Task.CompletedTask;
+    }
     public Task MoveAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

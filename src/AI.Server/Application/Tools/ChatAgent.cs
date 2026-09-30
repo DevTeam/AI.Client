@@ -14,6 +14,8 @@ using Instructions;
 using Contracts.Instructions;
 using Contracts.Skills;
 using Skills;
+using Usage;
+using Contracts.Usage;
 using System.Text;
 using System.Text.Json;
 
@@ -34,7 +36,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
     IRunCompletionProtocol completionProtocol, IToolSearchDefinitionEnricher toolSearchEnricher,
     IStandingInstructions standingInstructions, IContextTokenEstimator estimator, ISkillGuide skillGuide,
-    ISkillRouting skillRouting) : IChatAgent
+    ISkillRouting skillRouting, ITokenUsageMeter usageMeter) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -91,12 +93,15 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 900, ModelInstructionLifetime.Run));
         await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), token);
         using var checkpointScope = checkpoints.Begin(run, async (prompt, ct) =>
-            (await completion.CompleteAsync(request with
+        {
+            using var usageScope = usageMeter.Begin(new TokenUsageScope(TokenUsagePurpose.Checkpoint));
+            return (await completion.CompleteAsync(request with
             {
                 Message = prompt,
                 ContextMessages = [new ChatCompletionMessage("user", prompt)],
                 Tools = []
-            }, ct)).Content);
+            }, ct)).Content;
+        });
         var sessionFactory = servers.Count > 0 ? sessions() : null;
         var initialSession = sessionFactory is not null
             ? await sessionFactory.OpenAsync(grants, servers, run, token)
@@ -261,7 +266,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var composition = instructionComposer.Compose(run, modelContext);
             instructionDiagnostics.RecordInstructions(request.Model, composition.Keys, composition.EstimatedTokens);
             var plan = await contextPlanner.PlanAsync(configuredConnection, request.Model, composition.Messages, available,
-                new CompletionClientSummarizer(completion, request), SummaryTargetTokens, token);
+                new CompletionClientSummarizer(completion, request, usageMeter), SummaryTargetTokens, token);
             contextDiagnostics.Record(request.Model, plan, composition.Messages.Count, available.Length);
             lastPlan = plan;
             await Usage(plan);
@@ -908,14 +913,17 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// sent, so the summary cannot recurse into more tool calls.
     /// </summary>
     private sealed class CompletionClientSummarizer(IChatCompletionClient completion,
-        ChatCompletionRequest originalRequest) : IContextSummarizer
+        ChatCompletionRequest originalRequest, ITokenUsageMeter usageMeter) : IContextSummarizer
     {
-        public async Task<string> SummarizeAsync(string prompt, CancellationToken cancellationToken) =>
-            (await completion.CompleteAsync(originalRequest with
+        public async Task<string> SummarizeAsync(string prompt, CancellationToken cancellationToken)
+        {
+            using var usageScope = usageMeter.Begin(new TokenUsageScope(TokenUsagePurpose.Compaction));
+            return (await completion.CompleteAsync(originalRequest with
             {
                 Message = prompt,
                 ContextMessages = [new ChatCompletionMessage("user", prompt)],
                 Tools = []
             }, cancellationToken)).Content;
+        }
     }
 }

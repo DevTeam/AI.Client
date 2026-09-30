@@ -14,6 +14,7 @@ using Application.Settings;
 using Application.Skills;
 using Application.Tools;
 using Application.Workspace;
+using Application.Usage;
 using AI.Contracts.Workspace;
 using Hosting;
 using Hosting.Endpoints;
@@ -25,6 +26,7 @@ using Infrastructure.Settings;
 using Infrastructure.Storage;
 using Infrastructure.Tools;
 using Infrastructure.Workspace;
+using Infrastructure.Usage;
 using Microsoft.Extensions.Logging;
 using Mcp.App;
 using Pure.DI;
@@ -60,6 +62,7 @@ internal sealed class Composition
             .Root<ISkillRunner>()
             .Root<IChatSearchService>()
             .Root<IChatCompletionClient>()
+            .Root<ITokenUsageService>()
             .Root<IGlobalSettingsService>()
             .Root<IChatEndpoint>()
             .Root<IChatRunRepository>()
@@ -85,7 +88,7 @@ internal sealed class Composition
             .Root<IBrowserAccessService>()
             .Root<IInstalledDesktop>()
             .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, BrowserAccessService, InstalledDesktop>()
-            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, MemoryEndpoints, SkillEndpoints, BrowserAccessEndpoints>(Tag.Unique)
+            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, MemoryEndpoints, SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints>(Tag.Unique)
             .Singleton<ProjectStorageLocation, DataDirectoryLock, JsonLineFileLoggerProvider, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.
@@ -123,6 +126,7 @@ internal sealed class Composition
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff, MasterKeyFormat, ProcessCommandRunner,
                 AppDataChangeSignal, AppNavigationSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
             .Singleton<WorkspaceFileSearch, GitWorkspaceDiffReader, FileExcerptReader>()
+            .Singleton<ChatCompletionUsageReader, TokenUsageMeter, JsonLinesTokenUsageLedger, TokenUsageAggregator, TokenUsageService>()
             // Bound by their own types only: every executor is an ISkillExecutor, and SkillRunner takes each by type.
             .Bind<ChatReplySuggestSkill>().As(Lifetime.Singleton).To<ChatReplySuggestSkill>()
             .Bind<SkillRouteSkill>().As(Lifetime.Singleton).To<SkillRouteSkill>()
@@ -138,8 +142,12 @@ internal sealed class Composition
                 [Tag("base")] IChatCompletionClient baseClient,
                 ILogger<RetryingChatCompletionClient> retryLogger,
                 IChatTransportPolicy transportPolicy,
-                IChatTransportActivity transportActivity) =>
-                new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity))
+                IChatTransportActivity transportActivity,
+                ITokenUsageMeter usageMeter,
+                IContextTokenEstimator usageEstimator) =>
+                new MeteringChatCompletionClient(
+                    new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity),
+                    usageMeter, usageEstimator))
             .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool,
                 AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool>(Tag.Unique)
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)

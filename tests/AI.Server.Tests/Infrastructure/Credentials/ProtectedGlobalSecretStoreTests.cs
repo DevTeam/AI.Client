@@ -106,6 +106,12 @@ public class ProtectedGlobalSecretStoreTests
             return Task.CompletedTask;
         }
 
+        public Task AppendTextAsync(string path, string content, CancellationToken cancellationToken)
+        {
+            _files[path] = (_files.TryGetValue(path, out var existing) ? existing : string.Empty) + content;
+            return Task.CompletedTask;
+        }
+
         public Task MoveAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 

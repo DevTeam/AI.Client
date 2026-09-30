@@ -1,5 +1,7 @@
 namespace AI.Mcp.App;
 
+using AI.Application.Usage;
+using AI.Contracts.Usage;
 using AI.Application.Chat;
 using AI.Application.Chats;
 using AI.Application.Projects;
@@ -65,7 +67,8 @@ public sealed class AppSubtaskTool(
     IToolPresentations presentations,
     IToolResultCodec toolResultCodec,
     IAppToolReply reply,
-    Func<IToolAutoApprover> autoApprover) : IAppTool
+    Func<IToolAutoApprover> autoApprover,
+    ITokenUsageMeter usageMeter) : IAppTool
 {
     /// <summary>
     /// How many subtask runs may be in flight across the Host at once. A nested subtask holds its
@@ -194,6 +197,9 @@ public sealed class AppSubtaskTool(
         var made = new Dictionary<string, (string Name, string Arguments)>(StringComparer.Ordinal);
         var toolCalls = 0;
         board.Set(index, "starting");
+        // Counted in the turn that delegated the work, which the scope inherits, but apart from
+        // its own answer: a fan-out is where a turn's cost usually hides.
+        using var usageScope = usageMeter.Begin(new TokenUsageScope(TokenUsagePurpose.Subtask));
         try
         {
             var changes = await agent().RunAsync(projectId, chatId,

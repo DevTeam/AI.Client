@@ -20,7 +20,11 @@ public sealed record ChatRunSnapshot(Guid ProjectId, Guid ChatId, Guid BranchId,
     string? DraftToolCall = null,
     // How the last request of this branch filled the model's context window. It lives with the
     // run rather than the chat, so a Host restart forgets it until the branch sends again.
-    ContextUsage? Context = null);
+    ContextUsage? Context = null,
+    // What the current turn of this branch has used so far, or the last turn once it ended —
+    // subtasks, routing and compaction included. In memory like Context; the ledger keeps the
+    // durable copy.
+    Usage.TurnTokenUsage? TurnUsage = null);
 
 /// <summary>
 /// A bounded, self-contained tail of messages persisted while a run is active. Every append names

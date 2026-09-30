@@ -214,7 +214,10 @@ public sealed class AppSecurityTool(
                 // flag is recomputed from what is actually held.
                 stored.Connections.Any(item => item.Id == connection.Id && item.HasCredential),
                 connection.ForSubtasks, connection.Capability, connection.Cost, connection.GoodFor,
-                connection.ContextWindowTokens, connection.ReservedOutputTokens)).ToArray(),
+                connection.ContextWindowTokens, connection.ReservedOutputTokens,
+                // Prices are kept when the payload leaves them out: a model rewriting the whole
+                // document rarely restates them, and dropping them would silently unprice usage.
+                connection.Prices ?? stored.Connections.SingleOrDefault(item => item.Id == connection.Id)?.Prices)).ToArray(),
             value.McpServers.Select(server => new AI.Contracts.Settings.McpServerSettings(
                 server.Id, server.Name, server.Transport, server.Enabled, server.Policy, server.Url, server.Command,
                 server.Arguments, server.WorkingDirectory,

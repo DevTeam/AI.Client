@@ -17,6 +17,10 @@ namespace AI.Contracts.Settings;
 /// One line of what the two ratings cannot express — a long context, vision, being local and
 /// offline. Read by the model when it chooses, so it is prose on purpose.
 /// </param>
+/// <param name="Prices">
+/// What the endpoint charges per million tokens, used to price usage it does not price itself;
+/// null leaves such usage unpriced rather than guessing.
+/// </param>
 /// <summary>
 /// One model the endpoint advertises through <c>GET /v1/models</c>. The resolver normalises the
 /// upstream OpenAI-compatible payload into this shape so the UI does not need to know the
@@ -52,4 +56,5 @@ public sealed record ConnectionSettings(
     int? Cost = null,
     string? GoodFor = null,
     long? ContextWindowTokens = null,
-    long? ReservedOutputTokens = null);
+    long? ReservedOutputTokens = null,
+    Usage.TokenPrices? Prices = null);

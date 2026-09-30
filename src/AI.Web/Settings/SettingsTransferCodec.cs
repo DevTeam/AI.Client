@@ -2,6 +2,7 @@ namespace AI.Web.Settings;
 
 using System.Text;
 using System.Text.Json;
+using AI.Contracts.Usage;
 using System.Text.RegularExpressions;
 using AI.Contracts.Settings;
 
@@ -70,6 +71,14 @@ public sealed partial class SettingsTransferCodec : ISettingsTransferCodec
         if (connection.Capability is { } capability) writer.WriteNumber("capability", capability);
         if (connection.Cost is { } cost) writer.WriteNumber("cost", cost);
         if (!string.IsNullOrWhiteSpace(connection.GoodFor)) writer.WriteString("goodFor", connection.GoodFor);
+        if (connection.Prices is { } prices)
+        {
+            writer.WriteStartObject("prices");
+            writer.WriteNumber("input", prices.Input);
+            writer.WriteNumber("output", prices.Output);
+            if (prices.CachedInput is { } cached) writer.WriteNumber("cachedInput", cached);
+            writer.WriteEndObject();
+        }
         // The key stays on this Host. An empty value still says that one is needed.
         if (connection.HasCredential) writer.WriteString("apiKey", string.Empty);
         writer.WriteEndObject();
@@ -434,9 +443,20 @@ public sealed partial class SettingsTransferCodec : ISettingsTransferCodec
                 Guid.CreateVersion7(), name, baseUrl!.TrimEnd('/'), model, IsEnabled(element), false, false, false,
                 Rating(Number(element, "capability")), Rating(Number(element, "cost")),
                 String(element, "goodFor")?.Trim() is { Length: > 0 } goodFor ? goodFor : null,
-                Number(element, "contextWindowTokens"), Number(element, "reservedOutputTokens"));
+                Number(element, "contextWindowTokens"), Number(element, "reservedOutputTokens"), Prices(element));
             Connections.Add(new ImportedSettingsItem<ConnectionSettings>(settings, credentialOmitted, notes));
         }
+
+        private static TokenPrices? Prices(JsonElement element) =>
+            element.ValueKind == JsonValueKind.Object && element.TryGetProperty("prices", out var prices)
+            && prices.ValueKind == JsonValueKind.Object
+            && Price(prices, "input") is { } input && Price(prices, "output") is { } output
+                ? new TokenPrices(input, output, Price(prices, "cachedInput"))
+                : null;
+
+        private static decimal? Price(JsonElement element, string name) =>
+            element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
+            && value.TryGetDecimal(out var price) && price >= 0 ? price : null;
 
         private static int? Rating(long? value) => value is >= 1 and <= 5 ? (int)value : null;
 

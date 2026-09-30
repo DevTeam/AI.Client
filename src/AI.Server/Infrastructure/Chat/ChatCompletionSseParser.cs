@@ -7,7 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text;
 
-public sealed class ChatCompletionSseParser : IChatCompletionSseParser
+public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageReader) : IChatCompletionSseParser
 {
     // Once the model has started streaming, a gap this long between chunks means the connection
     // has stalled. Waiting for the very first chunk is a different situation — the endpoint may
@@ -21,6 +21,13 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
     private static readonly TimeSpan StreamIdleTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan FirstTokenTimeout = TimeSpan.FromSeconds(120);
 
+    /// <summary>
+    /// How long the stream is read past its finish reason for the usage report. Endpoints asked for
+    /// usage send it in one more chunk right after the finish and then close; one that never does
+    /// must not hold the run for longer than a blink.
+    /// </summary>
+    private static readonly TimeSpan UsageWait = TimeSpan.FromSeconds(2);
+
     public async IAsyncEnumerable<ChatCompletionChunk> ParseAsync(
         Stream stream,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -30,18 +37,26 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
         var calls = new SortedDictionary<int, (StringBuilder Id, StringBuilder Name, StringBuilder Arguments)>();
         var contentIdleTimer = new Stopwatch();
         var toolNameAnnounced = false;
+        // Past the finish reason the answer is complete and only the usage report may still come.
+        var finished = false;
+        var finishTimer = new Stopwatch();
+        ChatCompletionUsage? usage = null;
+        string? lastModel = null;
         while (true)
         {
             string? line;
             try
             {
-                var readTimeout = hasContent
-                    ? StreamIdleTimeout - contentIdleTimer.Elapsed
-                    : FirstTokenTimeout;
+                var readTimeout = finished
+                    ? UsageWait - finishTimer.Elapsed
+                    : hasContent
+                        ? StreamIdleTimeout - contentIdleTimer.Elapsed
+                        : FirstTokenTimeout;
+                if (finished && readTimeout <= TimeSpan.Zero) break;
                 if (hasContent && readTimeout <= TimeSpan.Zero)
                 {
                     if (calls.Count > 0) throw new InvalidOperationException("Tool call stream timed out before completion.");
-                    yield break;
+                    break;
                 }
 
                 line = await reader.ReadLineAsync(cancellationToken).AsTask()
@@ -49,23 +64,24 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
             }
             catch (TimeoutException)
             {
+                if (finished) break;
                 if (!hasContent) throw new TimeoutException($"The model did not send a response within {FirstTokenTimeout.TotalSeconds:0} seconds.");
                 if (calls.Count > 0) throw new InvalidOperationException("Tool call stream timed out before completion.");
-                yield break;
+                break;
             }
 
             if (line is null)
             {
                 if (calls.Count > 0) throw new InvalidOperationException("Tool call stream ended before completion.");
-                yield break;
+                break;
             }
 
             if (!line.StartsWith("data:", StringComparison.Ordinal))
             {
-                if (hasContent && contentIdleTimer.Elapsed >= StreamIdleTimeout)
+                if (!finished && hasContent && contentIdleTimer.Elapsed >= StreamIdleTimeout)
                 {
                     if (calls.Count > 0) throw new InvalidOperationException("Tool call stream timed out before completion.");
-                    yield break;
+                    break;
                 }
 
                 continue;
@@ -75,12 +91,21 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
             if (data == "[DONE]")
             {
                 if (calls.Count > 0) throw new InvalidOperationException("Tool call stream has no completion marker.");
-                yield break;
+                break;
             }
 
             using var document = JsonDocument.Parse(data);
             var root = document.RootElement;
             var model = root.TryGetProperty("model", out var modelElement) ? modelElement.GetString() : null;
+            lastModel = model ?? lastModel;
+            // Usage comes in a chunk with no choices after the finish, or, with some endpoints, on
+            // the finishing chunk itself; either way it describes the whole request.
+            if (usageReader.Read(root) is { } reported) usage = reported;
+            if (finished)
+            {
+                if (usage is not null) break;
+                continue;
+            }
             if (!root.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
             {
                 continue;
@@ -143,16 +168,19 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
                     if (completed.Any(call => string.IsNullOrWhiteSpace(call.Id) || string.IsNullOrWhiteSpace(call.Name))
                         || completed.Select(call => call.Id).Distinct(StringComparer.Ordinal).Count() != completed.Length)
                         throw new InvalidOperationException("Invalid tool call identity.");
+                    calls.Clear();
                     yield return new ChatCompletionChunk("", model, completed, reason);
                 }
                 // An empty chunk carrying nothing but the reason. The caller has already been given
                 // every character of the answer; what it still lacks is whether that answer is the
                 // whole one, and this is the only place the stream says so.
                 else yield return new ChatCompletionChunk("", model, null, reason);
-                yield break;
+                if (usage is not null) break;
+                finished = true;
+                finishTimer.Start();
             }
-
-
         }
+
+        if (usage is not null) yield return new ChatCompletionChunk("", lastModel, Usage: usage);
     }
 }

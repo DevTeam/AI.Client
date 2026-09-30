@@ -1,6 +1,8 @@
 namespace AI.Infrastructure.Chat;
 
 using AI.Application.Chat;
+using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -8,8 +10,14 @@ using System.Text.Json;
 public sealed class OpenAiCompatibleChatCompletionClient(
     HttpClient httpClient,
     IChatCompletionSseParser sseParser,
-    IChatTransportPolicy policy) : IChatCompletionClient
+    IChatTransportPolicy policy,
+    IChatCompletionUsageReader usageReader) : IChatCompletionClient
 {
+    // Endpoints that refused stream_options. Usage is asked for by default because nearly every
+    // OpenAI-compatible server accepts it; the few strict ones that reject unknown fields are
+    // remembered for the life of the process and streamed without it.
+    private readonly ConcurrentDictionary<string, bool> _withoutStreamUsage = new(StringComparer.OrdinalIgnoreCase);
+
     // Providers routinely put the actual reason (e.g. "context length exceeded", a validation
     // complaint about a malformed tool_calls entry) in the response body, not the status line —
     // a bare "400 (Bad Request)" is not enough to diagnose or even reproduce the failure after
@@ -73,20 +81,37 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         var model = root.TryGetProperty("model", out var modelElement)
             ? modelElement.GetString() ?? request.Model.Trim()
             : request.Model.Trim();
-        return new ChatCompletionResponse(content, model);
+        return new ChatCompletionResponse(content, model, usageReader.Read(root));
     }
 
     public async IAsyncEnumerable<ChatCompletionChunk> StreamAsync(
         ChatCompletionRequest request,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        using var message = CreateRequest(request, true);
-        using var response = await SendAsync(message, cancellationToken);
+        var endpointKey = request.BaseUrl.Trim().TrimEnd('/');
+        var askUsage = !_withoutStreamUsage.ContainsKey(endpointKey);
+        using var message = CreateRequest(request, true, askUsage);
+        var response = await SendAsync(message, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await ReadBodyAsync(response, cancellationToken);
-            throw Failure(response, errorBody);
+            if (!askUsage || !RejectsStreamOptions(response, errorBody))
+            {
+                using (response) throw Failure(response, errorBody);
+            }
+
+            response.Dispose();
+            _withoutStreamUsage[endpointKey] = true;
+            using var retry = CreateRequest(request, true, false);
+            response = await SendAsync(retry, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var retryBody = await ReadBodyAsync(response, cancellationToken);
+                using (response) throw Failure(response, retryBody);
+            }
         }
+
+        using var _ = response;
 
         using var firstToken = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         firstToken.CancelAfter(policy.FirstTokenTimeout);
@@ -156,7 +181,16 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         }
     }
 
-    private static HttpRequestMessage CreateRequest(ChatCompletionRequest request, bool stream)
+    /// <summary>
+    /// Whether a refusal is about <c>stream_options</c> rather than anything else in the request:
+    /// only then is sending it again without the field worth one more request.
+    /// </summary>
+    private static bool RejectsStreamOptions(HttpResponseMessage response, string body) =>
+        response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity
+        && (body.Contains("stream_options", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("include_usage", StringComparison.OrdinalIgnoreCase));
+
+    private static HttpRequestMessage CreateRequest(ChatCompletionRequest request, bool stream, bool askUsage)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (!Uri.TryCreate(request.BaseUrl, UriKind.Absolute, out var baseUri)
@@ -174,7 +208,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             HttpMethod.Post,
             new Uri(baseUri.ToString().TrimEnd('/') + "/chat/completions"))
         {
-            Content = JsonContent.Create(CreateBody(request, stream))
+            Content = JsonContent.Create(CreateBody(request, stream, askUsage))
         };
         if (!string.IsNullOrWhiteSpace(request.ApiKey))
         {
@@ -213,7 +247,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         return $"{prefix} {preview}";
     }
 
-    private static Dictionary<string, object?> CreateBody(ChatCompletionRequest request, bool stream)
+    private static Dictionary<string, object?> CreateBody(ChatCompletionRequest request, bool stream, bool askUsage)
     {
         var messages = (request.ContextMessages is { Count: > 0 } ? request.ContextMessages
             : [new ChatCompletionMessage("user", request.Message.Trim())]).Select(item =>
@@ -227,6 +261,9 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             return message;
         }).ToArray();
         var body = new Dictionary<string, object?> { ["model"] = request.Model.Trim(), ["messages"] = messages, ["stream"] = stream };
+        // Without it a stream says nothing about what it used: the report is an extra final chunk
+        // that endpoints send only when asked.
+        if (stream && askUsage) body["stream_options"] = new { include_usage = true };
         if (request.Tools is { Count: > 0 }) body["tools"] = request.Tools.Select(tool => new
         {
             type = "function", function = new { name = tool.Name, description = tool.Description, parameters = tool.InputSchema }

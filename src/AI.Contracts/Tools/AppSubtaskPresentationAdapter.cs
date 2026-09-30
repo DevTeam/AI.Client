@@ -46,6 +46,7 @@ public sealed class AppSubtaskPresentationAdapter : BuiltInToolPresentationAdapt
             var outcome = outcomes[index];
             var calls = Number(outcome, "toolCalls") ?? 0;
             var files = Number(outcome, "filesChanged") ?? 0;
+            var elapsed = Number(outcome, "elapsedMilliseconds");
             var note = Text(outcome, "error") ?? Text(outcome, "answer") ?? string.Empty;
             var connection = Text(outcome, "connection");
             // The label is a label: a whole task prompt runs to several sentences, and a definition
@@ -53,6 +54,7 @@ public sealed class AppSubtaskPresentationAdapter : BuiltInToolPresentationAdapt
             facts.Add(new ToolFact($"Subtask {index + 1}",
                 (connection is { Length: > 0 } ? connection + " · " : string.Empty)
                 + $"{(calls == 0 ? "no tool calls" : Plural(calls, "tool call", "tool calls"))}"
+                + (elapsed is { } milliseconds ? $", {milliseconds} ms" : string.Empty)
                 + (files > 0 ? $", {Plural(files, "file", "files")} changed" : string.Empty)
                 + (note.Length > 0 ? $" — {(note.Length <= 160 ? note : note[..159] + "…")}" : string.Empty)));
         }

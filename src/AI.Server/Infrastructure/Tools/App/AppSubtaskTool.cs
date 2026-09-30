@@ -23,6 +23,7 @@ public sealed record SubtaskRequest(string Task, Guid? ConnectionId = null);
 /// <summary>What one delegated task produced. The transcript is deliberately not here.</summary>
 /// <param name="Answer">The subtask's final reply, which is all the calling model is given.</param>
 /// <param name="Connection">Which connection answered, so the record shows what the work was worth.</param>
+/// <param name="ElapsedMilliseconds">Wall time of the delegated run, including its model and tool calls; not provider-only latency.</param>
 public sealed record SubtaskOutcome(
     string Task,
     string Answer,
@@ -31,7 +32,8 @@ public sealed record SubtaskOutcome(
     int ToolCalls,
     int FilesChanged,
     bool Completed,
-    string? Error);
+    string? Error,
+    long ElapsedMilliseconds = 0);
 
 public sealed record SubtaskResult(IReadOnlyList<SubtaskOutcome> Results, string? Error);
 
@@ -183,6 +185,7 @@ public sealed class AppSubtaskTool(
         ToolRunContext run, Guid projectId, Guid chatId, ChatCompletionRequest template, string connection, string task,
         int index, Board board, CancellationToken cancellationToken)
     {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
         var transcript = new List<SubtaskTranscriptEntry>();
         var answer = new System.Text.StringBuilder();
         // A tool message names only the call it answers, so what that call was has to be remembered
@@ -239,14 +242,16 @@ public sealed class AppSubtaskTool(
             var text = answer.ToString();
             transcript.Add(new SubtaskTranscriptEntry(task, "assistant", text, null));
             board.Finish(index);
-            return (new SubtaskOutcome(task, text, connection, transcript.Count, toolCalls, changes.Files.Count, true, null), transcript);
+            return (new SubtaskOutcome(task, text, connection, transcript.Count, toolCalls, changes.Files.Count, true, null,
+                elapsed.ElapsedMilliseconds), transcript);
         }
         catch (Exception error) when (error is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             // One failed subtask does not fail its siblings: the caller is told which one broke and
             // keeps whatever the others produced.
             board.Finish(index);
-            return (new SubtaskOutcome(task, answer.ToString(), connection, transcript.Count, toolCalls, 0, false, error.Message), transcript);
+            return (new SubtaskOutcome(task, answer.ToString(), connection, transcript.Count, toolCalls, 0, false, error.Message,
+                elapsed.ElapsedMilliseconds), transcript);
         }
     }
 

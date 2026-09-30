@@ -20,6 +20,8 @@ internal sealed partial class AppToolsComposition
             .DependsOn("AI.Server.Composition")
             .DependsOn("AI.Server.Tests.TestServer")
             .Arg<IUserPromptBroker>("broker")
+            .Arg<IConnectionModelsResolver>("modelsResolver")
             // The server already roots its services; this is the extra one the tests reach into.
-            .Root<IGlobalSettingsRepository>();
+            .Root<IGlobalSettingsRepository>()
+            .Root<IGlobalSecretStore>();
 }

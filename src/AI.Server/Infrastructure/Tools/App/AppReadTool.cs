@@ -38,6 +38,9 @@ public enum AppResource
     /// <summary>Global settings: connections, MCP servers and tool policies. Never any secret.</summary>
     Settings,
 
+    /// <summary>Models advertised by an OpenAI-compatible API. Use resourceId for a saved connection, or query for a new Base URL.</summary>
+    ConnectionModels,
+
     /// <summary>
     /// Messages matching 'query' across every chat, or within whatever 'projectId', 'chatId' and
     /// 'branchId' narrow it to. Returns a snippet around each match, not the whole message.
@@ -92,6 +95,8 @@ public sealed class AppReadTool(
                 Description = "Read this application's own data: projects, chats, messages, runs, resources and global settings. "
                               + "'Projects' and 'Settings' need no ids. 'Project', 'Chats', 'Resources', 'Chat', 'Messages', "
                               + "'Reviews' and 'Review' use projectId; the last four also use chatId, and 'Review' needs resourceId. "
+                              + "'ConnectionModels' fetches the provider's model catalog: resourceId selects a saved connection "
+                              + "and uses its stored key and URL; otherwise query must be an absolute HTTP Base URL and no key is sent. "
                               + "Omitted chatId for 'Chat', 'Messages' and 'Reviews' means the current chat. "
                               + "'Memory' lists the user's and the project's long-term memory; pass resourceId for one entry or "
                               + "query to search. 'Instructions' returns the project instructions and their revision. 'Skills' lists "
@@ -106,7 +111,7 @@ public sealed class AppReadTool(
                               + "revision of what it is changing."
             });
 
-        [McpServerTool(Name = "app_read", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        [McpServerTool(Name = "app_read", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = true,
             UseStructuredContent = true, OutputSchemaType = typeof(AppReadResult))]
         private Task<CallToolResult> ReadAsync(
             AppResource resource,
@@ -223,6 +228,26 @@ public sealed class AppReadTool(
             }
             case AppResource.Settings:
                 return Paging.Page("Settings", [await settings.GetAsync(cancellationToken)], cursor, limit, reply.Json);
+            case AppResource.ConnectionModels:
+            {
+                // A stored key may only go to its stored endpoint. Never combine an arbitrary
+                // URL supplied by the model with another connection's credential.
+                var baseUrl = query;
+                if (resourceId is { } connectionId)
+                {
+                    var connection = (await settings.GetAsync(cancellationToken)).Connections
+                        .SingleOrDefault(item => item.Id == connectionId)
+                        ?? throw new InvalidOperationException("Connection not found.");
+                    if (!string.IsNullOrWhiteSpace(query))
+                        throw new ArgumentException("Use resourceId alone for a saved connection; query is only for a new Base URL.");
+                    baseUrl = connection.BaseUrl;
+                }
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                    throw new ArgumentException("'query' (Base URL) or 'resourceId' (saved connection) is required.");
+                var models = await settings.ResolveConnectionModelsAsync(resourceId ?? Guid.CreateVersion7(),
+                    new AI.Contracts.Settings.ResolveConnectionModelsRequest(baseUrl), cancellationToken);
+                return Paging.Page("ConnectionModels", models, cursor, limit, reply.Json);
+            }
             case AppResource.Resources:
                 return Paging.Page("Resources", await resources.ListAsync(Required(projectId, nameof(projectId)), cancellationToken),
                     cursor, limit, reply.Json);

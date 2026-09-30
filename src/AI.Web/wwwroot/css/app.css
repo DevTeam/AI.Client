@@ -3937,8 +3937,9 @@ textarea {
 .user-prompt-actions > button { display: inline-flex; align-items: center; justify-content: center; margin: 0; }
 /* Declining is set apart from the two buttons that carry the work on. */
 .user-prompt-actions > .user-prompt-decline { margin-right: auto; }
-.user-prompt-actions > button > span { display: inline-flex; align-items: center; line-height: 1.25; }
-.user-prompt-actions > button:not(.secondary-action) kbd { display: inline-flex; align-items: center; justify-content: center; margin-left: .35rem; padding: .2rem .3rem; border-color: var(--color-border-translucent); box-shadow: 0 1px 0 var(--color-border-translucent); background: var(--color-overlay-sunken); line-height: 1; }
+/* Baseline, not center: the label's glyphs sit low in their line box, so a centred keycap floats above them. */
+.user-prompt-actions > button > span { display: inline-flex; align-items: baseline; line-height: 1.25; }
+.user-prompt-actions > button:not(.secondary-action) kbd { display: inline-block; margin-left: .35rem; padding: .2rem .3rem; border-color: var(--color-border-translucent); box-shadow: 0 1px 0 var(--color-border-translucent); background: var(--color-overlay-sunken); line-height: 1; }
 .user-prompt-error { margin: 0; color: var(--color-danger-text-strong); font-size: .8rem; }
 
 /* Only a tint: presses go through to the page, and runEvents.watchDrawerDismiss closes the drawer. */
@@ -5958,6 +5959,16 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* The long text gives way, not the actions: "Go back" stays on one line and reads as a button. */
+.navigation-cue > button {
+    flex: none;
+    white-space: nowrap;
+}
+
+.navigation-cue .compact-action:not(.primary) {
+    border-color: var(--color-border-strong);
 }
 
 .navigation-cue .compact-action.primary {

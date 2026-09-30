@@ -1,6 +1,7 @@
 ---
 id: chat-context-compact
 name: Chat context compact
+icon: archive
 kind: playbook
 aliases: ["compact"]
 description: Replace the finished work of the current turn with a short summary only the model sees, or undo that; the transcript stays unchanged.

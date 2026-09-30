@@ -1,6 +1,7 @@
 ---
 id: project-create
 name: Project create
+icon: project
 kind: playbook
 description: Create a project from directories the user picks, with a suggested name and access level.
 parameters: {"type":"object","properties":{"name":{"type":"string","description":"The project name, only when the user already gave one"},"description":{"type":"string","description":"What the project is for, if the user said"}},"additionalProperties":false}

@@ -1,6 +1,7 @@
 ---
 id: project-directory-add
 name: Project directory add
+icon: folder-plus
 kind: playbook
 description: Grant the current project access to more directories, choosing read-only or read-write access.
 parameters: {"type":"object","properties":{"paths":{"type":"array","items":{"type":"string"},"description":"Absolute directories the user already named"},"access":{"type":"string","enum":["read","readwrite"],"description":"Only when the user already said which access they want"}},"additionalProperties":false}

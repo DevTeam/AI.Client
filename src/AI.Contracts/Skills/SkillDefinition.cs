@@ -9,11 +9,12 @@ using System.Text.Json;
 /// with its ordinary permission-checked tools; <see cref="SkillKinds.Executor"/> is bundled code.
 /// </param>
 /// <param name="Aliases">Short extra commands, such as "compact", that find the skill in the slash list and in search.</param>
+/// <param name="Icon">One of <see cref="SkillIcons.Names"/>, or null for <see cref="SkillIcons.Default"/>.</param>
 public sealed record SkillDefinition(string Id, string Name, string Description, string Source,
     string Content, bool Enabled, JsonElement ParametersSchema,
     JsonElement? ResultSchema = null, IReadOnlyList<string>? AllowedTools = null,
     Guid? ProjectId = null, long Revision = 0, string Kind = SkillKinds.Generic,
-    IReadOnlyList<string>? Aliases = null);
+    IReadOnlyList<string>? Aliases = null, string? Icon = null);
 
 public static class SkillKinds
 {

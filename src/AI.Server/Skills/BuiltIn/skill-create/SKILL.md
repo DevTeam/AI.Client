@@ -1,6 +1,7 @@
 ---
 id: skill-create
 name: Skill create
+icon: sparkles
 kind: playbook
 description: Create a User or Project skill from the user's description: interview, draft SKILL.md and save it after review.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"What the skill should do, in the user's words"},"scope":{"type":"string","enum":["User","Project"],"description":"Only when the user said"}},"additionalProperties":false}
@@ -13,6 +14,14 @@ Skill conventions:
   is a verb: create, rename, compact, fork, add, remove, review, save, edit.
 - `name` is the id in words with the first letter capitalized: `project-directory-add` becomes
   "Project directory add".
+- `icon` names the picture in the `/` list, chosen for what the skill does. One of: skill, sparkles,
+  wand, zap, lightbulb, target, rocket, play, tool, code, terminal, bug, flask, shield, lock,
+  search, eye, diff, git-branch, fork, message-circle, minimize, list-checks, edit, file, file-text,
+  folder, folder-plus, folder-minus, project, package, database, memory, eraser, scroll, book, tag,
+  link, globe, languages, mail, users, calendar, clock, chart, image, archive, trash, download,
+  import, export, refresh, settings. Only when the user asks for a picture none of these give,
+  `icon` is SVG path data instead: one line starting with `M`, drawn as a 2px stroke on a 24x24
+  grid, such as `M12 3 3 8l9 5 9-5ZM3 13l9 5 9-5`.
 - `description` is one sentence that starts with a verb and names every side effect ("… after
   confirmation", "changes nothing").
 - `kind: generic` turns its parameters into JSON in an isolated model without tools and needs a
@@ -34,8 +43,8 @@ Skill conventions:
 1. List existing skills with `skill_search`; if one already covers `goal`, offer `skill-edit`.
 2. Ask in one `ask_user` call only for what is still missing: the scope (User for every project,
    Project for this one), the inputs, and whether it may change data.
-3. Draft the full SKILL.md: frontmatter lines `id`, `name`, `kind`, `description`, `parameters`,
-   then `tools` or `result`, then `---` and the body.
+3. Draft the full SKILL.md: frontmatter lines `id`, `name`, `icon`, `kind`, `description`,
+   `parameters`, then `tools` or `result`, then `---` and the body.
 4. Show the draft in your answer and call `ask_user` labelled "Save" with "Save (Recommended)" and
    "Change something"; a typed answer is the change to make, after which you ask again. Dismissed
    saves; expired or interrupted leaves the draft unsaved in your answer.

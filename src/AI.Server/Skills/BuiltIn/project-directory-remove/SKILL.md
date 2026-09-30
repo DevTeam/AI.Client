@@ -1,6 +1,7 @@
 ---
 id: project-directory-remove
 name: Project directory remove
+icon: folder-minus
 kind: playbook
 description: Revoke the current project's access to directories the user picks from its grants.
 parameters: {"type":"object","properties":{"paths":{"type":"array","items":{"type":"string"},"description":"Granted directories the user already named"}},"additionalProperties":false}

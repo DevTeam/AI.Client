@@ -1,6 +1,7 @@
 ---
 id: project-security-review
 name: Project security review
+icon: shield
 kind: playbook
 description: Review the current project's directory grants and tool policies and suggest tighter settings; changes nothing.
 parameters: {"type":"object","properties":{},"additionalProperties":false}

@@ -1,6 +1,7 @@
 ---
 id: chat-branch-cleanup
 name: Chat branch cleanup
+icon: git-branch
 kind: playbook
 description: Delete abandoned branches of this chat that the user picks; the main and current branches are never offered.
 parameters: {"type":"object","properties":{},"additionalProperties":false}

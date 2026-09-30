@@ -1,6 +1,7 @@
 ---
 id: memory-review
 name: Memory review
+icon: eye
 kind: playbook
 description: Tidy long-term memory: merge duplicates, resolve contradictions and drop stale entries the user approves.
 parameters: {"type":"object","properties":{"scope":{"type":"string","enum":["User","Project","All"],"description":"Which memory to review; All by default"}},"additionalProperties":false}

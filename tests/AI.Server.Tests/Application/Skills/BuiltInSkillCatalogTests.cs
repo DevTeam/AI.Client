@@ -38,6 +38,18 @@ public class BuiltInSkillCatalogTests
     }
 
     [Fact]
+    public void ShouldGiveEveryBundledSkillAnIconThatSkillCreateOffers()
+    {
+        var skills = new BuiltInSkillCatalog().List();
+        var conventions = string.Join(' ', skills.Single(skill => skill.Id == "skill-create").Content
+            .ReplaceLineEndings("\n").Split('\n').Select(line => line.Trim()));
+
+        foreach (var skill in skills) SkillIcons.Names.ShouldContain(skill.Icon, skill.Id);
+        // skill-create lists the icons for the model that drafts a skill; the list must not drift.
+        conventions.ShouldContain($"One of: {string.Join(", ", SkillIcons.Names)}.");
+    }
+
+    [Fact]
     public void ShouldGiveEveryAliasToOneSkillOnly()
     {
         var skills = new BuiltInSkillCatalog().List();

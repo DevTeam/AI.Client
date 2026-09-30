@@ -1,6 +1,7 @@
 ---
 id: chat-summary
 name: Chat summary
+icon: list-checks
 kind: playbook
 description: Summarize this chat or another one in the project: decisions, open tasks and touched files; changes nothing.
 parameters: {"type":"object","properties":{"chat_id":{"oneOf":[{"const":"current"},{"type":"string","format":"uuid"}],"description":"current or a chat id from this project"},"length":{"type":"string","enum":["short","full"],"description":"short is up to five bullets; full adds sections"}},"additionalProperties":false}

@@ -205,6 +205,56 @@ export function attach(textarea, dotNetReference) {
     textarea.addEventListener("keyup", releaseHandler);
     textarea.addEventListener("blur", blurHandler);
 
+    // The "@" links the draft holds are drawn as pills under the text: a copy of it, laid out the
+    // same way behind the transparent textarea, with each link wrapped in a mark. The copy only
+    // gives the marks their place; the text itself, the caret and the selection stay the
+    // textarea's. A mark cannot be wider than its text, so it gets no padding and no icon.
+    const highlight = textarea.parentElement?.querySelector(":scope > .composer-mention-highlight") ?? null;
+    let mentionTokens = [];
+    const MIRRORED = ["fontFamily", "fontSize", "fontWeight", "fontStyle", "letterSpacing", "wordSpacing", "lineHeight",
+        "tabSize", "textIndent", "textTransform", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"];
+    // The same word boundaries as MentionLinkWriter, which makes these links of the sent text.
+    const standsAlone = (text, index) => index === 0 || /\s/.test(text[index - 1]) || text[index - 1] === "(" || text[index - 1] === '"';
+    const endsWord = (text, end) => end === text.length || /[\s.,;:!?)"]/.test(text[end]);
+    const paintMentions = () => {
+        if (!highlight) return;
+        const text = textarea.value;
+        const fragment = document.createDocumentFragment();
+        let offset = 0;
+        if (mentionTokens.length > 0) {
+            for (let index = text.indexOf("@"); index >= 0; index = text.indexOf("@", index + 1)) {
+                if (index < offset || !standsAlone(text, index)) continue;
+                const token = mentionTokens.find(item => text.startsWith(item, index) && endsWord(text, index + item.length));
+                if (!token) continue;
+                fragment.append(text.slice(offset, index));
+                const mark = document.createElement("mark");
+                mark.className = "composer-mention";
+                mark.textContent = token;
+                fragment.append(mark);
+                offset = index + token.length;
+            }
+        }
+        if (offset === 0) {
+            highlight.replaceChildren();
+            highlight.hidden = true;
+            return;
+        }
+        // A trailing line break takes a line in the textarea and none in a block without it.
+        fragment.append(text.slice(offset) + "​");
+        const style = getComputedStyle(textarea);
+        for (const name of MIRRORED) highlight.style[name] = style[name];
+        highlight.style.width = `${textarea.clientWidth}px`;
+        highlight.style.height = `${textarea.clientHeight}px`;
+        highlight.replaceChildren(fragment);
+        highlight.hidden = false;
+        highlight.scrollTop = textarea.scrollTop;
+    };
+    const syncScroll = () => { if (highlight && !highlight.hidden) highlight.scrollTop = textarea.scrollTop; };
+    textarea.addEventListener("scroll", syncScroll);
+    // A narrower composer wraps the text again.
+    const resizeObserver = highlight ? new ResizeObserver(() => paintMentions()) : null;
+    resizeObserver?.observe(textarea);
+
     const resize = () => {
         const style = getComputedStyle(textarea);
         const parsedLineHeight = Number.parseFloat(style.lineHeight);
@@ -216,6 +266,8 @@ export function attach(textarea, dotNetReference) {
         textarea.style.maxHeight = `${maxHeight}px`;
         textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
         textarea.style.overflowY = textarea.scrollHeight > maxHeight + 1 ? "auto" : "hidden";
+        // Every change of the text from here, typed or set, comes through resize.
+        paintMentions();
     };
     textarea.addEventListener("input", resize);
     textarea.addEventListener("input", reportCaret);
@@ -231,6 +283,8 @@ export function attach(textarea, dotNetReference) {
         textarea.removeEventListener("input", reportCaret);
         textarea.removeEventListener("keyup", caretKeyHandler);
         textarea.removeEventListener("click", reportCaret);
+        textarea.removeEventListener("scroll", syncScroll);
+        resizeObserver?.disconnect();
         if (textarea.__composerDetach === detach) delete textarea.__composerDetach;
     };
     textarea.__composerDetach = detach;
@@ -243,6 +297,11 @@ export function attach(textarea, dotNetReference) {
         resize,
         setSkillList: open => { skillListOpen = open; },
         setMentionList: open => { mentionListOpen = open; },
+        setMentionTokens: tokens => {
+            // The longer link first: "@src/app/" must not be taken for the start of "@src/app/x.cs".
+            mentionTokens = [...(tokens ?? [])].filter(token => token.length > 1).sort((left, right) => right.length - left.length);
+            paintMentions();
+        },
         setText: (text, caret) => {
             applyTextEdit({ text, caret });
             textarea.focus();
@@ -336,10 +395,6 @@ export function watchResourceDrop(dotNetReference) {
         if (/^[a-z]:\//i.test(slashed)) return `file:///${slashed.slice(0, 2)}${encode(slashed.slice(2))}`;
         return `file://${encode(slashed)}`;
     };
-    const ICONS = {
-        File: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5" />',
-        Directory: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />'
-    };
     const dragSourceOf = target => {
         const element = target instanceof Element ? target.closest("[data-drag-path], [data-file-path]") : null;
         const path = element?.dataset.dragPath ?? element?.dataset.filePath;
@@ -350,9 +405,9 @@ export function watchResourceDrop(dotNetReference) {
     };
     const showDragImage = (transfer, source) => {
         const chip = document.createElement("div");
-        chip.className = "composer-resource-chip path-drag-image";
-        chip.innerHTML = `<svg class="app-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[source.kind]}</svg><span></span>`;
-        chip.querySelector("span").textContent = source.path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || source.path;
+        chip.className = "resource-pill path-drag-image";
+        chip.innerHTML = `<span class="resource-pill-target mention-${source.kind.toLowerCase()}"><span class="resource-pill-label"></span></span>`;
+        chip.querySelector(".resource-pill-label").textContent = source.path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || source.path;
         document.body.append(chip);
         transfer.setDragImage(chip, 14, Math.round(chip.offsetHeight / 2));
         // The browser takes its snapshot while this event runs; the element is not needed after.

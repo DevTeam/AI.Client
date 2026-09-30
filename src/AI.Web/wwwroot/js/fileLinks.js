@@ -14,7 +14,8 @@
 // - every answer is cached per project, so re-rendered text is decorated without asking again.
 // A right-click on a recognised path hands it to .NET, which offers to add it to the next message.
 
-const BLOCK = '.markdown-content';
+// A message's text, and the pills of what the "+" menu attached to it: those are "@" links too.
+const BLOCK = '.markdown-content, .message-resource-list';
 const SCAN_DELAY_MS = 200;
 const FLUSH_DELAY_MS = 120;
 const BATCH_SIZE = 100;
@@ -91,7 +92,8 @@ const accessName = access => access === 2 || access === 'ReadWrite' ? 'write'
 const ACCESS_TITLES = {
     read: 'The project can read this; right-click to add it to the message',
     write: 'The project can read and change this; right-click to add it to the message',
-    none: 'The project cannot read this yet; right-click to allow access'
+    none: 'The project cannot read this yet; right-click to allow access',
+    missing: 'Not found: it was moved or deleted'
 };
 
 export function attach(container, dotnet) {
@@ -114,10 +116,13 @@ export function attach(container, dotnet) {
         element.dataset.filePath = resolved.path;
         if (resolved.kind) element.dataset.fileKind = resolved.kind;
         else delete element.dataset.fileKind;
-        // The access shows as an icon after the link, drawn by CSS from this attribute.
+        // The access shows as an icon after the link, drawn by CSS from this attribute; an "@" link
+        // shows it as a badge on its own icon instead.
         if (resolved.access) element.dataset.fileAccess = resolved.access;
         else delete element.dataset.fileAccess;
-        element.title = `${ownHintOf(element) ?? resolved.path}\n${ACCESS_TITLES[resolved.access] ?? 'Right-click to add it to the message'}`;
+        // A link written as a local path stays one when the Host did not find it (see undecorate).
+        const state = resolved.access ?? (element.dataset.pathState === 'no' ? 'missing' : null);
+        element.title = `${ownHintOf(element) ?? resolved.path}\n${ACCESS_TITLES[state] ?? 'Right-click to add it to the message'}`;
     };
 
     // An "@" link comes with its own hint — the token as written and the path — which the access

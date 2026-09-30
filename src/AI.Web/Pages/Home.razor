@@ -470,18 +470,17 @@
                 <div class="composer-resource-list" aria-label="Attached workspace references">
                     @foreach (var skill in _draftResources.Where(item => item.Kind == ChatResourceKind.Skill))
                     {
-                        <span class="composer-resource-chip composer-skill-chip" @key="skill.Id" title="@SkillChipTitle(skill)">
-                            <AppIcon Name="skill" />
-                            <span>@(skill.Name ?? skill.Path)</span>
-                            <button type="button" aria-label="Remove skill @(skill.Name ?? skill.Path)" title="Remove skill" @onclick="() => RemoveDraftResource(skill.Id)"><AppIcon Name="x" /></button>
+                        <span class="resource-pill" @key="skill.Id" title="@SkillChipTitle(skill)">
+                            <span class="resource-pill-target mention-skill"><span class="resource-pill-label">@(skill.Name ?? skill.Path)</span></span>
+                            <button class="resource-pill-remove" type="button" aria-label="Remove skill @(skill.Name ?? skill.Path)" title="Remove skill" @onclick="() => RemoveDraftResource(skill.Id)"><AppIcon Name="x" /></button>
                         </span>
                     }
                     @foreach (var resource in _draftResources.Where(item => item.Kind != ChatResourceKind.Skill && item.Mention is null))
                     {
-                        <span class="composer-resource-chip" @key="resource.Id" title="@DraftChipTitle(resource)">
-                            <AppIcon Name="@ResourceMentionMenu.IconOf(resource.Kind)" />
-                            <span>@DraftChipLabel(resource)</span>
-                            <button type="button" aria-label="Remove @DraftChipTitle(resource)" title="Remove reference" @onclick="() => RemoveDraftResource(resource.Id)"><AppIcon Name="x" /></button>
+                        @* The pill the reference keeps in the sent message and an "@" link has in the text. *@
+                        <span class="resource-pill" @key="resource.Id" title="@DraftChipTitle(resource)">
+                            <span class="resource-pill-target mention-@resource.Kind.ToString().ToLowerInvariant()"><span class="resource-pill-label">@DraftChipLabel(resource)</span></span>
+                            <button class="resource-pill-remove" type="button" aria-label="Remove @DraftChipTitle(resource)" title="Remove reference" @onclick="() => RemoveDraftResource(resource.Id)"><AppIcon Name="x" /></button>
                         </span>
                     }
                 </div>
@@ -494,9 +493,13 @@
             {
                 <ResourceMentionMenu Items="_mentionItems" SelectedIndex="_mentionIndex" OnPick="PickMentionSuggestionAsync" OnHover="HoverMentionSuggestion" />
             }
-            <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@GetComposerPlaceholder()" aria-label="Message"
-                      aria-controls="@(IsSkillListOpen() ? "skill-command-menu" : IsMentionListOpen() ? "resource-mention-menu" : null)"
-                      aria-activedescendant="@(IsSkillListOpen() ? $"skill-command-{_skillSuggestionIndex}" : IsMentionListOpen() ? $"resource-mention-{_mentionIndex}" : null)"></textarea>
+            @* chatComposer.js draws the draft's "@" links as pills under the text; nothing here renders into it. *@
+            <div class="composer-input">
+                <div class="composer-mention-highlight" aria-hidden="true" hidden></div>
+                <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@GetComposerPlaceholder()" aria-label="Message"
+                          aria-controls="@(IsSkillListOpen() ? "skill-command-menu" : IsMentionListOpen() ? "resource-mention-menu" : null)"
+                          aria-activedescendant="@(IsSkillListOpen() ? $"skill-command-{_skillSuggestionIndex}" : IsMentionListOpen() ? $"resource-mention-{_mentionIndex}" : null)"></textarea>
+            </div>
             <div class="composer-footer">
                 <div class="composer-resource-menu-anchor">
                     <button class="icon-action composer-add-resource" type="button" title="Add to chat" aria-label="Add to chat" aria-expanded="@_isResourceMenuOpen" @onclick="ToggleResourceMenu"><AppIcon Name="plus" /></button>
@@ -813,6 +816,7 @@
     private int _mentionIndex;
     private int? _mentionDismissedAt;
     private bool? _mentionListPushed;
+    private string? _mentionTokensPushed;
     private bool _scrollMention;
     private IReadOnlyList<ResourceSuggestion> _mentionFiles = [];
     private string? _mentionFilesQuery;
@@ -1271,8 +1275,9 @@
             {
                 var handle = await _composerModule.InvokeAsync<IJSObjectReference>("attach", _composer, _dotNetReference);
                 _composerHandle = handle;
-                // A fresh handle starts with the list closed; push the real state again.
+                // A fresh handle starts with the list closed and no links; push the real state again.
                 _skillListPushed = null;
+                _mentionTokensPushed = null;
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException)
             {
@@ -1357,6 +1362,23 @@
                 if (ReferenceEquals(_composerHandle, handle)) _composerHandle = null;
             }
             _scrollMention = false;
+        }
+
+        // The "@" links the draft holds, for the composer to draw under its text.
+        var mentionTokens = _draftResources.Select(item => item.Mention).OfType<string>().ToArray();
+        var mentionTokensKey = string.Join('\n', mentionTokens);
+        if (_composerHandle is not null && mentionTokensKey != _mentionTokensPushed)
+        {
+            var handle = _composerHandle;
+            try
+            {
+                await handle.InvokeVoidAsync("setMentionTokens", [mentionTokens]);
+                _mentionTokensPushed = mentionTokensKey;
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException)
+            {
+                if (ReferenceEquals(_composerHandle, handle)) _composerHandle = null;
+            }
         }
 
         if (_composerNeedsResize && _composerHandle is not null)
@@ -4446,7 +4468,7 @@
     {
         ChatResourceKind.Review => ReviewName(resource),
         ChatResourceKind.File when resource.Lines is { } lines => $"{ResourceDisplayName(resource.Path)}:{LineRangeText(lines)}",
-        ChatResourceKind.Diff => $"Changes · {resource.Name ?? ResourceDisplayName(resource.Path)}",
+        ChatResourceKind.Diff => resource.Name ?? ResourceDisplayName(resource.Path),
         ChatResourceKind.Chat or ChatResourceKind.Project => resource.Name ?? resource.Path,
         _ => ResourceDisplayName(resource.Path)
     };

@@ -70,7 +70,13 @@ public enum UserPromptOutcome
     Expired,
 
     /// <summary>The run was stopped, or there was no interactive surface to ask on at all.</summary>
-    Interrupted
+    Interrupted,
+
+    /// <summary>
+    /// The person refused the question itself: they do not want the model to choose either, so the
+    /// work the question was about stops here and waits for what they say next.
+    /// </summary>
+    Declined
 }
 
 /// <summary>

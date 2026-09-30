@@ -55,6 +55,7 @@ public sealed class AskUserPresentationAdapter : BuiltInToolPresentationAdapter
                     "expired" => "No answer in time; the model decided",
                     "interrupted" => "Nobody could be asked; the model decided",
                     "invalid" => Text(structured, "error") ?? "The question could not be asked",
+                    "declined" => "Declined by the user; the model stopped",
                     _ => "Left to the model"
                 },
                 outcome == "invalid" ? ToolResultSeverity.Error : ToolResultSeverity.Warning,

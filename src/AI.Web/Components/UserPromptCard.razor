@@ -120,7 +120,12 @@
         }
     </p>
     <div class="user-prompt-actions">
-        <button class="secondary-action" type="button" disabled="@_sending" @onclick="DismissAsync" @onkeydown:stopPropagation="true"><span>Decide yourself</span></button>
+        @* Two ways not to answer, and they mean opposite things: "decide yourself" hands the choice
+           over and the work goes on, "decline" refuses it and the work stops until they say more. *@
+        <button class="secondary-action user-prompt-decline" type="button" disabled="@_sending" @onclick="DeclineAsync" @onkeydown:stopPropagation="true"
+                title="Don't answer and stop the assistant here"><span>Decline</span></button>
+        <button class="secondary-action" type="button" disabled="@_sending" @onclick="DismissAsync" @onkeydown:stopPropagation="true"
+                title="Let the assistant choose and carry on"><span>Decide yourself</span></button>
         <button type="button" disabled="@_sending" @onclick="AnswerAsync" @onkeydown:stopPropagation="true">
             @if (_sending)
             {
@@ -264,6 +269,8 @@
 
     private Task DismissAsync() => SendAsync(UserPromptOutcome.Dismissed);
 
+    private Task DeclineAsync() => SendAsync(UserPromptOutcome.Declined);
+
     private Task HandleKeyDownAsync(KeyboardEventArgs args) =>
         args.Key == "Enter" && !args.AltKey && !args.CtrlKey && !args.MetaKey && !args.ShiftKey
             && !args.IsComposing && IsReady && !_sending
@@ -287,7 +294,7 @@
                 : [];
             // Answering nothing at all is telling the assistant to decide, which is what the other
             // button says. Sending it as an answer would have the same effect with a worse record.
-            if (answers.Length == 0) outcome = UserPromptOutcome.Dismissed;
+            if (answers.Length == 0 && outcome == UserPromptOutcome.Answered) outcome = UserPromptOutcome.Dismissed;
             if (!await OnAnswer(new UserPromptResponse(Prompt.Id, outcome, answers)))
                 _error = "This question is no longer available.";
         }

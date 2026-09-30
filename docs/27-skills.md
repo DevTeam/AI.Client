@@ -153,10 +153,19 @@ tools on the chat's own connection, 12 seconds at most. It gets the message, the
 previous answer, the active playbook, the catalog lines and the permitted tools by their first
 sentence, and returns up to two skill ids and eight tool names; unknown ones are dropped. The
 tools, and those the chosen skills declare, are pinned before the tool selector cuts the list, so
-the first step has them without `app_tool_search`. The chosen skills become the run instruction
-`run.skill-route` (until the model's first answer): the first call is `app_run_skill` with the
-first skill, before any question; a second skill is for the rest of the request. When the router
-returns only the active playbook, the instruction says the message continues it.
+the first step has them without `app_tool_search`.
+
+When the first skill is a playbook without required parameters, `ChatAgent` loads it itself: it
+persists an `app_run_skill` call with `parameters: {}` and its result, as if the model had made
+them, and plans the first step again with them in the context. Loading a playbook only returns
+its instructions, so it needs no approval, and the transcript shows it as an ordinary skill call.
+A hint alone was not enough: told to call `app_run_skill` first, a model still asked its own
+questions and did the work by hand, and a playbook's last steps (such as `project-create` opening
+the project's first chat) never ran. The run instruction `run.skill-route` (until the model's
+first answer) then says to follow the loaded instructions from step 1, taking parameter values
+from the message. For a skill with required parameters it says to call `app_run_skill` first,
+before any question. A second skill is for the rest of the request. When the router returns only
+the active playbook, the instruction says the message continues it.
 
 A message whose skill the user picked in the `/` list, and a turn that resumes after an approval,
 are not routed. Routing that fails, times out or finds nothing leaves the turn as it was.

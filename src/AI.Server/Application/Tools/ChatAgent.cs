@@ -144,6 +144,51 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         string? provisionalAnswer = null;
         var completionRequired = counts.Count > 0;
         var routed = false;
+        // Runs app_run_skill for the routed playbook as if the model had called it: the call and its
+        // result are persisted like any other, so the transcript shows the skill and a resumed run
+        // sees its instructions. True when the playbook's instructions are now in the context.
+        async Task<bool> LoadRoutedSkillAsync(AgentTool runSkill, SkillDefinition skill)
+        {
+            var call = new ChatToolCall($"route_{Guid.NewGuid():N}", runSkill.ModelDefinition.Name,
+                JsonSerializer.Serialize(new { skillId = skill.Id, parameters = new { } }));
+            ToolCallResult result;
+            try
+            {
+                var arguments = session!.ValidateArguments(runSkill, call.Arguments);
+                await Draft(null);
+                var assistant = new ChatCompletionMessage("assistant", string.Empty, [call]);
+                await persist(assistant, token);
+                context.Add(assistant);
+                seenIds.Add(call.Id);
+                counts[call.Name] = counts.GetValueOrDefault(call.Name) + 1;
+                completionRequired = true;
+                await activity(new ToolActivity(call.Id, call.Name, arguments), token);
+                try
+                {
+                    result = await session.CallAsync(runSkill, arguments, null, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    await AbandonAsync([call], 0, "Invocation interrupted. Load the skill again if it is still needed.");
+                    throw;
+                }
+                catch (Exception error) when (error is not OperationCanceledException)
+                {
+                    result = Error("The skill could not be loaded: " + error.Message);
+                }
+            }
+            catch (ArgumentException)
+            {
+                // The schema refused the arguments before anything was persisted: leave it to the model.
+                return false;
+            }
+            var message = ToolMessage(call.Id, result);
+            await persist(message, token);
+            context.Add(message);
+            await activity(null, token);
+            return !result.IsError;
+        }
+
         while (true)
         {
             if (session is not null)
@@ -175,8 +220,17 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             if (!routed)
             {
                 routed = true;
-                if (interactive && servers.Contains(AppMcpServer.Id))
-                    await RouteAsync(run, context, permitted, token);
+                if (interactive && servers.Contains(AppMcpServer.Id)
+                    && await RouteAsync(run, context, permitted, token) is { } route)
+                {
+                    var runSkill = permitted.FirstOrDefault(tool =>
+                        tool.ServerId == AppMcpServer.Id && tool.OriginalName == RunSkillTool);
+                    var loaded = LoadsItself(route) && runSkill is not null
+                                 && await LoadRoutedSkillAsync(runSkill, route.Skills[0]);
+                    UpsertRouteHint(run, route, loaded);
+                    // The loaded playbook is now in the context, which this step was planned without.
+                    if (loaded) continue;
+                }
             }
             var stalled = stalledSteps >= MaxStalledSteps;
             if (stalled)
@@ -603,13 +657,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     private const string ActiveSkillKey = "run.active-skill";
 
     /// <summary>
-    /// Asks the <c>skill-route</c> skill about the message that starts this turn. The catalog alone
-    /// was not enough: models read it and improvised anyway, doing by hand what a playbook covers.
-    /// A named skill in the first request is much harder to overlook. The hint lasts until the
-    /// model's first answer; after that the active-skill reminder carries the choice. Routing that
-    /// fails for any reason leaves the turn as it would have been without it.
+    /// Asks the <c>skill-route</c> skill about the message that starts this turn, and pins the tools
+    /// its first steps need. Routing that fails for any reason leaves the turn as it would have been
+    /// without it.
     /// </summary>
-    private async Task RouteAsync(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context,
+    private async Task<SkillRoute?> RouteAsync(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context,
         IReadOnlyList<AgentTool> permitted, CancellationToken token)
     {
         SkillRoute? route;
@@ -620,25 +672,56 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException
                                           or ArgumentException or InvalidOperationException)
         {
-            return;
+            return null;
         }
-        if (route is null) return;
-        toolCatalog.Pin(run, route.Tools.Concat(route.Skills.SelectMany(skill => skill.AllowedTools ?? [])));
+        if (route is not null)
+            toolCatalog.Pin(run, route.Tools.Concat(route.Skills.SelectMany(skill => skill.AllowedTools ?? [])));
+        return route;
+    }
+
+    /// <summary>
+    /// A playbook the route names first is loaded by the application rather than suggested: told in
+    /// so many words to call app_run_skill first, models still asked their own questions and did the
+    /// work by hand, and the playbook's later steps — the project's first chat, opening it — never
+    /// happened. Loading one only returns its instructions, so it is done without asking. A playbook
+    /// with required parameters is left to the model, which has to supply them.
+    /// </summary>
+    private static bool LoadsItself(SkillRoute route) =>
+        route is { ContinuesActive: false, Skills: [{ Kind: SkillKinds.Playbook } first, ..] }
+        && !(first.ParametersSchema.ValueKind == JsonValueKind.Object
+             && first.ParametersSchema.TryGetProperty("required", out var required)
+             && required.ValueKind == JsonValueKind.Array && required.GetArrayLength() > 0);
+
+    /// <summary>
+    /// Tells the model what routing decided. The hint lasts until the model's first answer; after
+    /// that the active-skill reminder carries the choice.
+    /// </summary>
+    private void UpsertRouteHint(ToolRunContext run, SkillRoute route, bool loaded)
+    {
         if (route.Skills.Count == 0) return;
         var first = route.Skills[0];
+        var next = route.Skills.Count > 1
+            ? $" When it is done, run {route.Skills[1].Id} for the rest of the request, unless the first skill hands "
+              + "that part on to another chat."
+            : "";
         var hint = route.ContinuesActive
             ? $"Skill routing: the user's latest message continues the active skill {first.Id}. Keep following its "
               + "instructions from the step you reached."
-            : $"Skill routing: {string.Join("; then ", route.Skills.Select(skill => $"{skill.Id} ({skill.Description})"))} "
-              + $"fits the user's latest message. Unless the message plainly asks for something else, your first call is "
-              + $"app_run_skill with skillId {first.Id}, taking its parameters from the message. Do not ask questions or "
-              + "start the work before it: the skill says what to ask and how to do the work."
-              + (route.Skills.Count > 1 ? $" When it is done, run {route.Skills[1].Id} for the rest of the request, unless the first skill hands "
-                  + "that part on to another chat." : "");
+            : loaded
+                ? $"Skill routing: the application loaded the skill {first.Id} for the user's latest message; its "
+                  + "instructions are in the app_run_skill result just before this request. Follow them now from step 1, "
+                  + "taking the values of its parameters from the user's message, and do every step, including the "
+                  + "last ones. Only if the message plainly asks for something else, set the skill aside." + next
+                : $"Skill routing: {string.Join("; then ", route.Skills.Select(skill => $"{skill.Id} ({skill.Description})"))} "
+                  + $"fits the user's latest message. Unless the message plainly asks for something else, your first call is "
+                  + $"app_run_skill with skillId {first.Id}, taking its parameters from the message. Do not ask questions or "
+                  + "start the work before it: the skill says what to ask and how to do the work." + next;
         instructions.Upsert(run, new ModelInstruction(RouteKey, hint, 885, ModelInstructionLifetime.UntilAcknowledged));
     }
 
     private const string RouteKey = "run.skill-route";
+
+    private const string RunSkillTool = "run_skill";
 
     /// <summary>
     /// The stable run-wide protocol. Ordinary text before a tool call remains a compact

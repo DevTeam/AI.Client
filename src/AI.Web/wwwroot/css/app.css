@@ -2031,7 +2031,9 @@ body {
 /* The tips of a new chat: quiet cards one step above the page, the accent kept for icons and
    the one thing to try in each. The column matches the composer's so the two read as a unit. */
 /* A fixed track: the empty state otherwise shrinks to its text, and the grid of tips with it. */
-.workspace-empty-start { grid-template-columns: min(100%, 52rem); padding: 2rem 0; }
+/* border-box: the padding keeps the tips off the edges when the feed is short, and must not add
+   to min-height: 100%, or a feed with room to spare still gets a scrollbar. */
+.workspace-empty-start { box-sizing: border-box; grid-template-columns: min(100%, 52rem); padding: 2rem 0; }
 .workspace-empty-start > h2 { margin-bottom: 0.35rem; }
 
 .chat-tips,
@@ -5931,3 +5933,98 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 }
 
 .settings-export-note .app-icon { flex: none; width: 0.85rem; height: 0.85rem; margin-top: 0.1rem; }
+
+/* The assistant opening another project or chat: announced above the composer, with a pointer
+   that travels to the sidebar row it presses and a highlight where the window lands. */
+.navigation-cue {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.4rem;
+    padding: 0.4rem 0.5rem 0.4rem 0.7rem;
+    border: 1px solid var(--color-accent-fill);
+    border-radius: 0.6rem;
+    background: var(--color-accent-bg);
+    color: var(--color-accent-text);
+    font-size: 0.82rem;
+}
+
+.navigation-cue.is-arrival {
+    border-color: var(--color-border);
+    background: var(--color-surface-raised);
+    color: var(--color-text-secondary);
+}
+
+.navigation-cue-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.navigation-cue .compact-action.primary {
+    border-color: var(--color-accent-strong);
+    background: var(--color-accent-fill);
+    color: var(--color-text-strong);
+}
+
+.ghost-cursor {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    pointer-events: none;
+    transition-property: transform, opacity;
+    transition-timing-function: cubic-bezier(0.3, 0, 0.2, 1);
+    filter: drop-shadow(0 1px 2px rgb(0 0 0 / 45%));
+}
+
+.ghost-cursor svg {
+    display: block;
+    fill: var(--color-text-strong);
+    stroke: var(--color-bg);
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    transition: transform 120ms ease-out;
+}
+
+.ghost-cursor.is-pressing svg { transform: scale(0.85); }
+
+.ghost-cursor.is-leaving {
+    opacity: 0;
+    transition-duration: 200ms !important;
+}
+
+.ghost-cursor-ripple {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 2.2rem;
+    height: 2.2rem;
+    margin: -1.1rem 0 0 -1.1rem;
+    border: 2px solid var(--color-accent);
+    border-radius: 50%;
+    animation: ghost-cursor-ripple 600ms ease-out forwards;
+}
+
+@keyframes ghost-cursor-ripple {
+    from { opacity: 0.9; transform: scale(0.3); }
+    to { opacity: 0; transform: scale(1.4); }
+}
+
+.ghost-cursor-target { background: var(--color-accent-bg-hover); }
+
+.navigation-arrived {
+    border-radius: 0.4rem;
+    animation: navigation-arrived 2s ease-out;
+}
+
+@keyframes navigation-arrived {
+    0%, 35% { box-shadow: 0 0 0 2px var(--color-accent); background-color: var(--color-accent-bg-hover); }
+    100% { box-shadow: 0 0 0 2px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .navigation-arrived { animation: none; box-shadow: 0 0 0 2px var(--color-accent); }
+}

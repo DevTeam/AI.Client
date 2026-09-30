@@ -658,7 +658,7 @@ public sealed class AppToolTests
         opened.GetProperty("effect").GetString().ShouldBe("Opened chat 'Next'.");
         // Only the request that passed its checks reaches the window.
         (await requests.MoveNextAsync()).ShouldBeTrue();
-        requests.Current.ShouldBe(new AppNavigation(fixture.ProjectId, chat.Id));
+        requests.Current.ShouldBe(new AppNavigation(fixture.ProjectId, chat.Id, null, fixture.ChatId, "Test", "Next"));
         await requests.DisposeAsync();
     }
 

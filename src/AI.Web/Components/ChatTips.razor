@@ -1,0 +1,191 @@
+@* What a new chat can do, shown where the first message is about to be written. Each tip is
+   something to try rather than to read: a click types "@" or "/" into the composer, opens the
+   project menu or adds a directory. Tips for features this person has already used move to the
+   end and fade, so the ones still worth reading come first. *@
+@using AI.Web.Skills
+@inject IChatTipsState TipsState
+@inject ISkillApi SkillApi
+@implements IDisposable
+
+@if (!_loaded)
+{
+}
+else if (TipsState.IsHidden)
+{
+    <p class="chat-tips-strip">
+        <span><kbd>Enter</kbd> send</span>
+        <span><kbd>Ctrl</kbd><kbd>Enter</kbd> queue</span>
+        <span><kbd>@@</kbd> context</span>
+        <span><kbd>/</kbd> skills</span>
+        <button type="button" class="chat-tips-link" @onclick="() => TipsState.SetHiddenAsync(false)">Show tips</button>
+    </p>
+}
+else
+{
+    <section class="chat-tips" aria-label="How to use chats">
+        <div class="chat-tips-grid">
+            @foreach (var tip in OrderedTips())
+            {
+                var familiar = TipsState.IsUsed(tip);
+                var expanded = _expanded.Contains(tip);
+                <article @key="tip" class="chat-tip @(familiar ? "is-familiar" : null) @(expanded ? "is-expanded" : null)">
+                    <button type="button" class="chat-tip-head" aria-expanded="@(expanded ? "true" : "false")" @onclick="() => Toggle(tip)">
+                        <AppIcon Name="@Icon(tip)" />
+                        <span class="chat-tip-title">@Title(tip)</span>
+                        @if (familiar) { <AppIcon Name="check" Class="chat-tip-familiar" /> }
+                        <AppIcon Name="chevron-down" Class="chat-tip-chevron" />
+                    </button>
+                    @switch (tip)
+                    {
+                        case Send:
+                            <div class="chat-tip-keys">
+                                <span>Send</span><span><kbd>Enter</kbd></span>
+                                <span>Add to the queue</span><span><kbd>Ctrl</kbd><kbd>Enter</kbd></span>
+                                <span>Interrupt and send now</span><span><kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Enter</kbd></span>
+                                <span>New line</span><span><kbd>⇧</kbd><kbd>Enter</kbd></span>
+                            </div>
+                            break;
+                        case Context:
+                            <p class="chat-tip-text"><kbd>@@</kbd> links a file, folder, chat, diff or review. <kbd>/</kbd> starts a skill.</p>
+                            <p class="chat-tip-actions">
+                                <button type="button" class="chat-tip-action" @onclick="InsertMention">Type @@</button>
+                                @if (_skillCount == 0)
+                                {
+                                    <button type="button" class="chat-tip-action" @onclick="() => OnCreateSkill.InvokeAsync()">Create a skill</button>
+                                }
+                                else if (IsComposerEmpty)
+                                {
+                                    <button type="button" class="chat-tip-action" @onclick="InsertSkillCommand">Type /</button>
+                                }
+                            </p>
+                            break;
+                        case Branches:
+                            <p class="chat-tip-text">Fork from any message, or edit one to take another path. The earlier answers stay in their own branch.</p>
+                            <div class="chat-tip-keys"><span>Send as a new branch</span><span><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Enter</kbd></span></div>
+                            break;
+                        case Projects:
+                            <p class="chat-tip-text">A project holds chats together with folder access, memory, skills and tool permissions.</p>
+                            <p class="chat-tip-actions"><button type="button" class="chat-tip-action" @onclick="args => OnOpenProjectMenu.InvokeAsync(args)">Project menu</button></p>
+                            break;
+                        case Review:
+                            <p class="chat-tip-text">When a reply changes files, open its changes, comment on lines and attach the review to your next message.</p>
+                            @if (!HasDirectories)
+                            {
+                                <p class="chat-tip-actions"><button type="button" class="chat-tip-action is-primary" @onclick="() => OnAddDirectory.InvokeAsync()"><AppIcon Name="folder-plus" />Add a directory</button></p>
+                            }
+                            break;
+                        default:
+                            <p class="chat-tip-text">Select text in any message to comment on it, then attach the comments to your next message.</p>
+                            break;
+                    }
+                    @if (expanded) { <p class="chat-tip-more">@More(tip)</p> }
+                </article>
+            }
+        </div>
+        <p class="chat-tips-footer">
+            <button type="button" class="chat-tips-link" @onclick="() => TipsState.SetHiddenAsync(true)">Hide tips</button>
+            <span aria-hidden="true">·</span>
+            <span>Type <kbd>?</kbd> in an empty message to bring them back</span>
+        </p>
+    </section>
+}
+
+@code {
+    public const string Send = "send";
+    public const string Context = "context";
+    public const string Branches = "branches";
+    public const string Projects = "projects";
+    public const string Review = "review";
+    public const string Comments = "comments";
+
+    [Parameter] public Guid? ProjectId { get; set; }
+    [Parameter] public bool HasDirectories { get; set; }
+    [Parameter] public bool IsComposerEmpty { get; set; }
+    [Parameter] public EventCallback<string> OnInsertText { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnOpenProjectMenu { get; set; }
+    [Parameter] public EventCallback OnAddDirectory { get; set; }
+    [Parameter] public EventCallback OnCreateSkill { get; set; }
+
+    private readonly HashSet<string> _expanded = [];
+    private bool _loaded;
+    private Guid? _skillsProjectId;
+    // Null until known: the "create a skill" nudge must not flash before the list arrives.
+    private int? _skillCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        TipsState.Changed += OnTipsChanged;
+        await TipsState.InitializeAsync();
+        _loaded = true;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ProjectId == _skillsProjectId) return;
+        _skillsProjectId = ProjectId;
+        _skillCount = null;
+        if (ProjectId is not { } projectId) return;
+        try
+        {
+            var count = (await SkillApi.ListAsync(projectId, CancellationToken.None)).Count(skill => skill.Enabled);
+            if (_skillsProjectId == projectId) _skillCount = count;
+        }
+        catch (HttpRequestException)
+        {
+        }
+    }
+
+    private void OnTipsChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => TipsState.Changed -= OnTipsChanged;
+
+    private const string MentionTrigger = "@";
+
+    private Task InsertMention() => OnInsertText.InvokeAsync(MentionTrigger);
+
+    private Task InsertSkillCommand() => OnInsertText.InvokeAsync("/");
+
+    private void Toggle(string tip)
+    {
+        if (!_expanded.Add(tip)) _expanded.Remove(tip);
+    }
+
+    // Without a directory the assistant has no files to link, edit or review, so that tip leads
+    // until one is added; otherwise the order is fixed and only familiarity moves a tip.
+    private IEnumerable<string> OrderedTips() =>
+        new[] { Send, Context, Branches, Projects, Review, Comments }
+            .Select((tip, index) => (tip, index))
+            .OrderBy(item => TipsState.IsUsed(item.tip))
+            .ThenBy(item => item.tip == Review && !HasDirectories ? -1 : item.index)
+            .Select(item => item.tip);
+
+    private static string Icon(string tip) => tip switch
+    {
+        Send => "send",
+        Context => "link",
+        Branches => "git-branch",
+        Projects => "project",
+        Review => "diff",
+        _ => "message-circle"
+    };
+
+    private static string Title(string tip) => tip switch
+    {
+        Send => "Send and queue",
+        Context => "Context and skills",
+        Branches => "Branches",
+        Projects => "Projects and chats",
+        Review => "Code review",
+        _ => "Comments"
+    };
+
+    private static string More(string tip) => tip switch
+    {
+        Send => "Queued messages wait for the current reply and then run one after another. Up in an empty message brings back what you sent before.",
+        Context => "The + button attaches the same things, and files dropped onto the message box are attached too.",
+        Branches => "Each message with branches shows a picker under it, so you can switch between the paths at any time.",
+        Projects => "Chats are listed under their project on the left. Right-click a project or a chat for its menu.",
+        Review => "The assistant only sees the directories you add to the project, each read only or read/write.",
+        _ => "Comments are kept with the message, so you can collect them over several replies before sending."
+    };
+}

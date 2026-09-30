@@ -382,6 +382,21 @@ export function attach(textarea, dotNetReference) {
             applyTextEdit({ text, caret });
             textarea.focus();
         },
+        // Text put in as if typed at the caret: the input event is what the component and the
+        // "@" caret tracking listen to, so a typed "@" or "/" opens its list here as well. An "@"
+        // is kept apart from the word before it, or it would not start a mention.
+        type: text => {
+            const start = textarea.selectionStart ?? textarea.value.length;
+            const end = textarea.selectionEnd ?? start;
+            const before = textarea.value.slice(0, start);
+            const insert = text === "@" && before && !/\s$/.test(before) ? ` ${text}` : text;
+            textarea.focus();
+            textarea.value = before + insert + textarea.value.slice(end);
+            const caret = start + insert.length;
+            textarea.setSelectionRange(caret, caret);
+            textarea.dispatchEvent(new Event("input", { bubbles: true }));
+            resize();
+        },
         scrollSkillSuggestionIntoView: () => {
             textarea.closest(".workspace-composer")
                 ?.querySelector(".skill-command-item.selected")

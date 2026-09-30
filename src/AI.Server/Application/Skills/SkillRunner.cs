@@ -168,7 +168,8 @@ public sealed class SkillRunner(ISkillCatalog catalog, ChatRenameSkill chatRenam
             + "question, option label, title and answer in the user's language: quoted labels in the instructions, "
             + "including the \"(Recommended)\" suffix, are examples to translate. Anything the instructions have you "
             + "show the user, such as a report, is part of your final answer; a closing line they ask for goes after "
-            + "it and never replaces it.",
+            + "it and never replaces it. The user's follow-ups on the same task continue these instructions from the step "
+            + "you reached; when the instructions name another skill for the next part of the work, run that skill.",
             invocation.CurrentChatId, Output: output);
     }
 }

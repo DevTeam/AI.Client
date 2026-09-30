@@ -18,6 +18,7 @@ public sealed class ToolSelectionPriorityPolicy : IToolSelectionPriorityPolicy
         "app_read" or
         "app_projects" or
         "app_security" or
+        "run_skill" or
         "spawn_subtask";
 
     public bool IsPreferred(AgentTool tool) => IsAppTool(tool);

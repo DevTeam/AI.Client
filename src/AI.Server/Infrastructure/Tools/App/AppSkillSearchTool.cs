@@ -11,12 +11,12 @@ public sealed record SkillSearchItem(string Id, string Name, string Description,
 public sealed record SkillSearchResult(IReadOnlyList<SkillSearchItem> Skills, bool MatchedQuery, string Guidance);
 
 [McpServerToolType]
-public sealed class AppSkillSearchTool(ISkillCatalog catalog) : IAppTool
+public sealed class AppSkillSearchTool(ISkillGuide skills) : IAppTool
 {
     public McpServerTool Create(ToolRunContext run, IAppToolReply reply) =>
-        new Session(catalog, run, reply).Create();
+        new Session(skills, run, reply).Create();
 
-    private sealed class Session(ISkillCatalog catalog, ToolRunContext run, IAppToolReply reply)
+    private sealed class Session(ISkillGuide skills, ToolRunContext run, IAppToolReply reply)
     {
         public McpServerTool Create() => McpServerTool.Create(Search,
             new McpServerToolCreateOptions
@@ -36,11 +36,7 @@ public sealed class AppSkillSearchTool(ISkillCatalog catalog) : IAppTool
         {
             var words = (query ?? string.Empty).Split([' ', '\t', '\r', '\n', '_', '-'],
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var available = (await catalog.ListAsync(run.ProjectId == Guid.Empty ? null : run.ProjectId, cancellationToken))
-                .GroupBy(skill => skill.Id, StringComparer.Ordinal)
-                .Select(group => group.OrderByDescending(skill => skill.Source == "Project" ? 2 : skill.Source == "User" ? 1 : 0)
-                    .First())
-                .Where(skill => skill.Enabled)
+            var available = (await skills.EffectiveAsync(run.ProjectId, cancellationToken))
                 .Select(skill => new
                 {
                     Skill = skill,

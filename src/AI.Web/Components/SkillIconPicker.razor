@@ -1,0 +1,165 @@
+@using AI.Contracts.Skills
+@implements IAsyncDisposable
+@inject IJSRuntime JsRuntime
+
+@* A combobox over SkillIcons.Names: the trigger shows the pick, the list opens under it. A skill's
+   own path icon is listed first while the SKILL.md holds one; picking a name replaces that line and
+   only the text brings it back. *@
+<div class="skill-icon-select" @ref="_root">
+    <button type="button" class="skill-icon-select-trigger" role="combobox"
+            aria-label="Icon" aria-haspopup="listbox" aria-expanded="@(_isOpen ? "true" : "false")"
+            aria-controls="@ListId" aria-activedescendant="@(_isOpen ? OptionId(_active) : null)"
+            @onclick="Toggle" @onkeydown="OnKeyDown" @onfocusout="OnFocusOut">
+        <SkillIcon Icon="@Value" />
+        <span class="skill-icon-select-label">@Label(Value)</span>
+        <AppIcon Name="@(_isOpen ? "chevron-up" : "chevron-down")" Class="skill-icon-select-chevron" />
+    </button>
+    @if (_isOpen)
+    {
+        <ul id="@ListId" class="skill-icon-list" role="listbox" aria-label="Icons" @onmousedown:preventDefault>
+            @for (var index = 0; index < Options.Count; index++)
+            {
+                var option = Options[index];
+                var position = index;
+                <li id="@OptionId(position)" role="option" aria-selected="@(option == Value ? "true" : "false")"
+                    class="skill-icon-option @(option == Value ? "selected" : null) @(position == _active ? "active" : null)"
+                    @onclick="() => SelectAsync(option)" @onmousemove="() => _active = position">
+                    <SkillIcon Icon="@option" />
+                    <span>@Label(option)</span>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private readonly string _id = $"skill-icon-{Guid.NewGuid():N}";
+    private ElementReference _root;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _handle;
+    private DotNetObjectReference<SkillIconPicker>? _selfReference;
+    private bool _isOpen;
+    private bool _reveal;
+    private bool _disposed;
+    private int _active;
+
+    /// <summary>The value of the icon line: a name, or the skill's own path data.</summary>
+    [Parameter] public string Value { get; set; } = SkillIcons.Default;
+
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    private string ListId => $"{_id}-list";
+
+    private IReadOnlyList<string> Options => SkillIcons.IsPath(Value) ? [Value, .. SkillIcons.Names] : SkillIcons.Names;
+
+    private string OptionId(int index) => $"{_id}-{index}";
+
+    private static string Label(string icon) => icon switch
+    {
+        _ when SkillIcons.IsPath(icon) => "Own icon from the SKILL.md",
+        SkillIcons.Default => "Skill (default)",
+        _ => char.ToUpperInvariant(icon[0]) + icon[1..].Replace('-', ' ')
+    };
+
+    private void Open()
+    {
+        _active = Math.Max(0, Options.ToList().IndexOf(Value));
+        _isOpen = true;
+        _reveal = true;
+    }
+
+    private void Toggle()
+    {
+        if (_isOpen) _isOpen = false;
+        else Open();
+    }
+
+    private async Task SelectAsync(string icon)
+    {
+        _isOpen = false;
+        if (icon == Value) return;
+        Value = icon;
+        await ValueChanged.InvokeAsync(icon);
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.AltKey || args.CtrlKey || args.MetaKey) return;
+        switch (args.Key)
+        {
+            case "Escape": _isOpen = false; break;
+            case "Enter" or " " when _isOpen: await SelectAsync(Options[_active]); break;
+            case "Enter" or " " or "ArrowDown" or "ArrowUp" when !_isOpen: Open(); break;
+            case "ArrowDown": Move(_active + 1); break;
+            case "ArrowUp": Move(_active - 1); break;
+            case "Home" when _isOpen: Move(0); break;
+            case "End" when _isOpen: Move(Options.Count - 1); break;
+        }
+    }
+
+    private void Move(int index)
+    {
+        _active = Math.Clamp(index, 0, Options.Count - 1);
+        _reveal = true;
+    }
+
+    // The options never take focus, so leaving the trigger means leaving the picker.
+    private void OnFocusOut() => _isOpen = false;
+
+    /// <summary>A press outside the picker while the list is open; see <c>iconPicker.js</c>.</summary>
+    [JSInvokable]
+    public void OnOutsidePress()
+    {
+        if (!_isOpen) return;
+        _isOpen = false;
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (firstRender)
+            {
+                _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/iconPicker.js");
+                _selfReference = DotNetObjectReference.Create(this);
+                _handle = await _module.InvokeAsync<IJSObjectReference>("attach", _root, _selfReference);
+                // Disposed while the import was in flight: nothing will dispose the handlers later.
+                if (_disposed) await DisposeAsync();
+            }
+            if (_reveal && _isOpen && _module is not null)
+            {
+                _reveal = false;
+                await _module.InvokeVoidAsync("reveal", _root);
+            }
+        }
+        catch (Exception error) when (error is JSException or JSDisconnectedException or ObjectDisposedException)
+        {
+            // Without the module the list still opens, closes on blur and picks by click.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        try
+        {
+            if (_handle is { } handle)
+            {
+                _handle = null;
+                await handle.InvokeVoidAsync("dispose");
+                await handle.DisposeAsync();
+            }
+            if (_module is { } module)
+            {
+                _module = null;
+                await module.DisposeAsync();
+            }
+        }
+        catch (Exception error) when (error is JSException or JSDisconnectedException or ObjectDisposedException)
+        {
+        }
+        _selfReference?.Dispose();
+        _selfReference = null;
+    }
+}

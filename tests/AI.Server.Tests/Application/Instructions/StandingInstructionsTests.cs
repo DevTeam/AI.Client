@@ -4,6 +4,7 @@ using AI.Application.Chat;
 using AI.Application.Instructions;
 using AI.Application.Memory;
 using AI.Application.Projects;
+using AI.Application.Skills;
 using AI.Contracts.Instructions;
 using AI.Contracts.Memory;
 using AI.Contracts.Projects;
@@ -42,7 +43,7 @@ public sealed class StandingInstructionsTests : IDisposable
         _memory = new MemoryService(_memoryRepository, projects.Object, new Uuid7IdGenerator(), new SystemClock());
         _instructions = new ProjectInstructionsService(_instructionsRepository, projects.Object, new SystemClock());
         _standing = new StandingInstructions(projects.Object, _instructionsRepository, new WorkspaceInstructionFileReader(),
-            _memory, new ContextTokenEstimator());
+            _memory, new SkillGuide(new BuiltInSkillCatalog()), new ContextTokenEstimator());
     }
 
     public void Dispose()
@@ -67,7 +68,7 @@ public sealed class StandingInstructionsTests : IDisposable
 
         var preview = await _standing.BuildAsync(_projectId, true, token);
 
-        preview.Layers.Select(layer => layer.Key).ShouldBe(["app.base", "project.instructions", "memory.index"]);
+        preview.Layers.Select(layer => layer.Key).ShouldBe(["app.base", "project.instructions", "memory.index", "skills.catalog"]);
         preview.Layers[0].Content.ShouldContain("spawn_subtask");
         // Access outside the grants is asked for, not worked around.
         preview.Layers[0].Content.ShouldContain("pathKind 'directories'");
@@ -108,6 +109,26 @@ public sealed class StandingInstructionsTests : IDisposable
         preview.Layers[0].Content.ShouldContain("```mermaid");
         preview.Layers[0].Content.ShouldContain("xmlns=\"http://www.w3.org/2000/svg\"");
         preview.Layers.ShouldNotContain(layer => layer.Key == "memory.index");
+        preview.Layers.ShouldNotContain(layer => layer.Key == "skills.catalog");
+    }
+
+    [Fact]
+    public async Task ShouldListEverySkillTheModelMayRunWithItsParameters()
+    {
+        var preview = await _standing.BuildAsync(_projectId, true, TestContext.Current.CancellationToken);
+
+        var skills = preview.Layers.Single(layer => layer.Key == "skills.catalog");
+        skills.Truncated.ShouldBeFalse();
+        skills.Tokens.ShouldBeLessThanOrEqualTo(skills.BudgetTokens);
+        // The catalog says when to check it, and how to leave one skill for another.
+        skills.Content.ShouldContain("before other tools");
+        skills.Content.ShouldContain("different task");
+        skills.Content.ShouldContain("\n- code-feature-implement: Implement a feature");
+        skills.Content.ShouldContain("(goal, scope)");
+        skills.Content.ShouldContain("\n- chat-rename: ");
+        skills.Content.ShouldContain("chat_id*, mode*");
+        // An executor the application runs on its own schedule is not the model's to pick.
+        skills.Content.ShouldNotContain("chat-reply-suggest");
     }
 
     [Fact]

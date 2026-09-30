@@ -51,18 +51,9 @@
             @if (!selected.ReadOnly)
             {
                 @* Writes the icon line of the SKILL.md below, so the text stays the one source of truth. *@
-                <div class="skill-icon-picker" role="radiogroup" aria-label="Icon">
-                    @if (SkillIcons.IsPath(selected.Icon))
-                    {
-                        @* The skill's own path, shown first as the pick. Picking a name replaces its line; only the text brings it back. *@
-                        <button class="icon-action selected" type="button" role="radio" aria-checked="true" title="Own icon from the SKILL.md" aria-label="Own icon"><SkillIcon Icon="@selected.Icon" /></button>
-                    }
-                    @foreach (var name in SkillIcons.Names)
-                    {
-                        var picked = name == selected.Icon;
-                        <button class="icon-action @(picked ? "selected" : null)" type="button" role="radio" aria-checked="@(picked ? "true" : "false")"
-                                title="@name" aria-label="@name" @onclick="() => selected.Icon = name"><AppIcon Name="@name" /></button>
-                    }
+                <div class="skill-icon-field">
+                    <span>Icon</span>
+                    <SkillIconPicker Value="@selected.Icon" ValueChanged="icon => selected.Icon = icon" />
                 </div>
             }
             @if (stored is not null)

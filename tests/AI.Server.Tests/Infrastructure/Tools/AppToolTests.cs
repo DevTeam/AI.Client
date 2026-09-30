@@ -229,7 +229,7 @@ public sealed class AppToolTests
         result.GetProperty("applied").GetBoolean().ShouldBeTrue();
 
         var preview = await fixture.Standing.BuildAsync(fixture.ProjectId, true, TestContext.Current.CancellationToken);
-        preview.Layers.Select(layer => layer.Key).ShouldBe(["app.base", "project.instructions", "memory.index"]);
+        preview.Layers.Select(layer => layer.Key).ShouldBe(["app.base", "project.instructions", "memory.index", "skills.catalog"]);
         preview.Layers[1].Content.ShouldContain("Run the tests before finishing.");
         var description = session.Tools.Single(tool => tool.OriginalName == "app_instructions").ModelDefinition.Description;
         description.ShouldContain("app_memory");

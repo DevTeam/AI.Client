@@ -18,12 +18,12 @@ public sealed class AppSkillRunTool(ISkillRunner runner, IToolCatalogRegistry ca
             new McpServerToolCreateOptions
             {
                 SerializerOptions = reply.Json,
-                Description = "Run a skill found with app_skill_search. Pass its ID and a 'parameters' JSON object matching its "
+                Description = "Run a skill from the skill catalog or app_skill_search. Pass its ID and a 'parameters' JSON object matching its "
                               + "schema; pass {} when every parameter is optional and none applies. The application supplies the current project scope; chat IDs outside it are rejected. "
                               + "A generic skill runs in an isolated model without tools: read its data with app_read first and pass it "
                               + "in the arguments; it returns JSON in output. A playbook returns output.instructions and output.context "
                               + "(current project, chat and branch ids): follow the instructions right away in this turn with your "
-                              + "ordinary tools, then report the outcome to the user in one short line. "
+                              + "ordinary tools, then give the result they ask for. A follow-up on the same task continues them rather than running the skill again. "
                               + "Use chat-rename mode=requested only when the user explicitly asked to rename that chat. "
                               + "The result reports Completed, Skipped or Failed and includes the affected chat ID."
             });

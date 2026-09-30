@@ -12,6 +12,8 @@ using Contracts.Workspace;
 using Workspace;
 using Instructions;
 using Contracts.Instructions;
+using Contracts.Skills;
+using Skills;
 using System.Text;
 using System.Text.Json;
 
@@ -31,7 +33,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IModelContentCheckpointService checkpoints, IModelInstructionRegistry instructions,
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
     IRunCompletionProtocol completionProtocol, IToolSearchDefinitionEnricher toolSearchEnricher,
-    IStandingInstructions standingInstructions, IContextTokenEstimator estimator) : IChatAgent
+    IStandingInstructions standingInstructions, IContextTokenEstimator estimator, ISkillGuide skillGuide) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -185,6 +187,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     ToolDiscoveryInstruction(selection.AvailableCount, selectedTools.Count),
                     990, ModelInstructionLifetime.Request));
             else instructions.Remove(run, "run.tool-discovery");
+            if (servers.Contains(AppMcpServer.Id))
+                await UpsertActiveSkillAsync(run, context, token);
             var calls = new List<ChatToolCall>();
             var content = new StringBuilder();
             string? finish = null;
@@ -550,6 +554,43 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             instructions.Upsert(run, new ModelInstruction(preview.Layers[index].Key, preview.Layers[index].Content,
                 preview.Layers.Count - index, ModelInstructionLifetime.Run, ModelInstructionPlacement.Standing));
     }
+
+    /// <summary>
+    /// Names the playbook the conversation is in, before every step. Its instructions sit in an
+    /// earlier tool result, and a model that meets a follow-up — an answer to the playbook's
+    /// question, "also do X" — without a word about it treats the message as a fresh request and
+    /// improvises, or loads the playbook again from its first step. The same reminder says when to
+    /// let go: a different task picks its own skill. Re-read each step, so a playbook loaded
+    /// mid-run takes over at once; a catalog that cannot be read leaves the step without it.
+    /// </summary>
+    private async Task UpsertActiveSkillAsync(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context,
+        CancellationToken token)
+    {
+        SkillDefinition? active;
+        try
+        {
+            active = await skillGuide.ActivePlaybookAsync(run.ProjectId, context, token);
+        }
+        catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException)
+        {
+            active = null;
+        }
+        if (active is null)
+        {
+            instructions.Remove(run, ActiveSkillKey);
+            return;
+        }
+        instructions.Upsert(run, new ModelInstruction(ActiveSkillKey,
+            $"Active skill: {active.Id} ({active.Name}), a playbook loaded earlier in this conversation; its instructions "
+            + "are in that app_run_skill result. While the user's latest message continues that task (an answer to its "
+            + "question, a correction, a next step or an addition), keep following those instructions from the step you "
+            + "reached, including their checks and final report; do not start over. Run it again only if its instructions "
+            + "are no longer in the conversation. If the message is a different task, leave this skill and pick the one "
+            + "from the skill catalog that fits the new task, or none.",
+            880, ModelInstructionLifetime.Run));
+    }
+
+    private const string ActiveSkillKey = "run.active-skill";
 
     /// <summary>
     /// The stable run-wide protocol. Ordinary text before a tool call remains a compact

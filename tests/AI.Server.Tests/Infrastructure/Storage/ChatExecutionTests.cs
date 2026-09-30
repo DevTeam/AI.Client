@@ -75,6 +75,33 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task RoutedPlaybookShouldBeLoadedBeforeTheModelsFirstStep()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferRunSkill = true;
+        fixture.Completion.RouteAnswer = "{\"skills\":[\"chat-summary\"],\"tools\":[]}";
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "What did we decide?"));
+
+        var first = await fixture.NextCallAsync();
+        // The model's first request already holds the loaded playbook and says to follow it.
+        var context = first.Request.ContextMessages!;
+        context.ShouldContain(message => message.Role == "assistant"
+            && message.ToolCalls!.Single().Name == "mcp_app__run_skill");
+        context[^1].Role.ShouldBe("tool");
+        context[^1].ForModel.ShouldContain("Summarize the chat");
+        context.ShouldContain(message => message.Role == "system" && message.Content.StartsWith(
+            "Skill routing: the application loaded the skill chat-summary", StringComparison.Ordinal));
+        fixture.Tools.SkillRuns.ShouldHaveSingleItem().ShouldContain("\"skillId\":\"chat-summary\"");
+        first.Answer.SetResult("We decided to ship on Friday.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        // The load is part of the transcript, so the skill shows and a later turn sees it.
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.ShouldContain(message => message.Role == "Tool");
+        chat.Messages[^1].Content.ShouldBe("We decided to ship on Friday.");
+    }
+
+    [Fact]
     public async Task ToolMessagesShouldBePublishedAsAContiguousChatDelta()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -1626,6 +1653,9 @@ public sealed class ChatExecutionTests
 
         /// <summary>Text the next call streams before it is answered; consumed once.</summary>
         public string? NextPrelude { get; set; }
+
+        /// <summary>What the skill router answers; nowhere by default.</summary>
+        public string RouteAnswer { get; set; } = "{}";
         public bool AdaptLegacyFinalAnswers { get; set; } = true;
         public Task<ChatCompletionResponse> CompleteAsync(ChatCompletionRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
         public async IAsyncEnumerable<ChatCompletionChunk> StreamAsync(ChatCompletionRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -1634,7 +1664,7 @@ public sealed class ChatExecutionTests
             // every scenario scripts only the chat model's own steps.
             if (request.Message == "Route the request")
             {
-                yield return new ChatCompletionChunk("{}");
+                yield return new ChatCompletionChunk(RouteAnswer);
                 yield break;
             }
             var call = new Call(request, new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously));
@@ -1895,7 +1925,19 @@ public sealed class ChatExecutionTests
             ToolDescriptor.Basic("mcp_app__ask_user", "ask_user", "Ask", JsonSerializer.Deserialize<JsonElement>("{}")),
             AppMcpServer.Id, "ask_user", "schema");
 
-        public IReadOnlyList<AgentTool> Tools => Broker is null ? [ProcessRun] : [ProcessRun, AskUser];
+        /// <summary>Stands in for app_run_skill, offered only to a test that set <see cref="OfferRunSkill"/>.</summary>
+        private static readonly AgentTool RunSkill = new(
+            new ChatToolDefinition("mcp_app__run_skill", "Run a skill", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_app__run_skill", "run_skill", "Run a skill", JsonSerializer.Deserialize<JsonElement>("{}")),
+            AppMcpServer.Id, "run_skill", "schema");
+
+        public bool OfferRunSkill { get; set; }
+
+        /// <summary>The arguments of every run_skill call, in order.</summary>
+        public List<string> SkillRuns { get; } = [];
+
+        public IReadOnlyList<AgentTool> Tools =>
+            [ProcessRun, .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>()];
 
         /// <summary>Set to route an ask_user call to the run that is waiting on it.</summary>
         public IUserPromptBroker? Broker { get; set; }
@@ -1924,6 +1966,12 @@ public sealed class ChatExecutionTests
         public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
         {
             CallCount++;
+            if (tool.OriginalName == "run_skill")
+            {
+                SkillRuns.Add(arguments);
+                return _codec.Read("{\"structuredContent\":{\"status\":\"Completed\",\"output\":{\"kind\":\"playbook\","
+                    + "\"instructions\":\"1. Summarize the chat.\"}}}");
+            }
             if (tool.OriginalName == "ask_user" && Broker is { } broker && Run is { } run)
             {
                 LastResponse = await broker.AskAsync(run,

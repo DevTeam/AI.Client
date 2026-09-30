@@ -23,13 +23,16 @@ tools: ["ask_user","app_projects","app_security","app_chats","app_runs","app_nav
    revision from the previous step, a fresh grant id, `recursive` true, the final segment as the
    display name and toolNames ["read","write","edit","delete"] or ["read"]. Each grant returns
    the revision for the next one.
-6. `app_chats` Create the project's first chat with the new project id. Its title names the task
-   in two to five words in the user's language, or is the project name when there is no task.
+6. Always give the project its first chat, with or without a task: `app_chats` Create with the new
+   project id and a title that names the task in two to five words in the user's language, or
+   "Getting started" in the user's language when there is no task.
 7. When `task` is given, or the request asked for work inside the new project (code to write,
    files to create or examine), `app_runs` Submit it to the new chat with mode Send and wait
    false: the task in the user's words and language, plus what was settled here (names, paths,
    choices). Do not do that work in this chat: its tools cannot reach the new project's
    directories, while the new chat's run can.
-8. `app_navigate` to the new project and chat, so the user continues there.
+   Without a task, submit nothing: the chat waits for the user's first message.
+8. `app_navigate` to the new project and that chat (both ids), so the user continues there. Never
+   end the skill before this step.
 9. Answer with one line: the project name, how many directories, the access level, and that the
    work continues in the new chat, or that the chat is ready for the first message.

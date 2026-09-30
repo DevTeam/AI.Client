@@ -51,11 +51,11 @@
         @* Search opens in the right-hand drawer slot, like the settings sections: the results sit
            beside the transcript they lead into instead of replacing the project tree. *@
         <button class="workspace-nav-item search-nav-action @(_isSearchOpen ? "selected" : string.Empty)" type="button" data-search-open
-                aria-keyshortcuts="Control+K" aria-expanded="@(_isSearchOpen ? "true" : "false")" aria-controls="search-drawer" @onclick="ToggleSearchPanelAsync">
-            <AppIcon Name="search" /><span class="nav-item-label">Search</span><kbd class="nav-item-shortcut">Ctrl+K</kbd>
+                title="Search messages (Ctrl+K)" aria-keyshortcuts="Control+K" aria-expanded="@(_isSearchOpen ? "true" : "false")" aria-controls="search-drawer" @onclick="ToggleSearchPanelAsync">
+            <AppIcon Name="search" /><span class="nav-item-label">Search</span><kbd class="nav-item-shortcut" aria-hidden="true">Ctrl+K</kbd>
         </button>
         <div id="projects-nav">
-        <button class="workspace-nav-item new-project-action" type="button" @onclick="BeginProjectCreation"><AppIcon Name="plus" /><span class="nav-item-label">New project</span></button>
+        <button class="workspace-nav-item new-project-action" type="button" title="New project (Alt+Shift+N)" data-hotkey="Alt+Shift+KeyN" aria-keyshortcuts="Alt+Shift+N" @onclick="BeginProjectCreation"><AppIcon Name="plus" /><span class="nav-item-label">New project</span></button>
         @if (ProjectsBusy.IsVisible)
         {
             <div class="sidebar-skeleton" role="status" aria-label="Loading projects">
@@ -88,7 +88,8 @@
                        project they were already in. *@
                     <button class="workspace-nav-item" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => HandleProjectItemClickAsync(project)"><span class="status-dot @GetProjectStatusClass(project.Id)"></span><span class="nav-item-label">@project.Name</span></button>
                 }
-                <button class="icon-action project-action-button project-new-chat-button" type="button" title="New chat" aria-label="New chat" @onclick="() => CreateChatForProjectAsync(project)"><AppIcon Name="plus" /></button>
+                <button class="icon-action project-action-button project-new-chat-button" type="button" title="@(project.Id == _selectedProject?.Id ? "New chat (Alt+N)" : "New chat")" aria-label="New chat"
+                        data-hotkey="@(project.Id == _selectedProject?.Id ? "Alt+KeyN" : null)" aria-keyshortcuts="@(project.Id == _selectedProject?.Id ? "Alt+N" : null)" @onclick="() => CreateChatForProjectAsync(project)"><AppIcon Name="plus" /></button>
                 <button class="icon-action project-action-button project-rename-button" type="button" title="Rename" aria-label="Rename project" @onclick="() => BeginProjectRenameAsync(project)"><AppIcon Name="edit" /></button>
                 <button class="icon-action project-action-button project-menu-button @(_isProjectMenuOpen && project.Id == _selectedProject?.Id ? "menu-open" : string.Empty)" type="button" title="Project settings" aria-label="Project settings" @onclick="() => ToggleProjectMenuAsync(project)"><AppIcon Name="more" /></button>
             </div>
@@ -323,11 +324,11 @@
         <span class="visually-hidden" role="status" aria-live="polite">@_sidebarAnnouncement</span>
         </div>
         <nav class="global-nav root-nav sidebar-global-nav" aria-label="Application settings">
-            <button class="workspace-nav-item @(_globalSection == "Connections" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Connections")'><AppIcon Name="connection" /><span>Connections</span><span class="directory-count">@_connections.Count(item => item.Enabled)</span></button>
-            <button class="workspace-nav-item @(_globalSection == "MCP" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("MCP")'><AppIcon Name="mcp" /><span>MCP</span><span class="directory-count">@_enabledMcpServerCount</span></button>
-            <button class="workspace-nav-item @(_globalSection == "Memory" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Memory")'><AppIcon Name="memory" /><span>Memory</span><span class="directory-count">@_userMemoryCount</span></button>
-            <button class="workspace-nav-item @(_globalSection == "Skills" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Skills")'><AppIcon Name="skill" /><span>Skills</span><span class="directory-count">@_skillCount</span></button>
-            <button class="workspace-nav-item @(_globalSection == "Settings" ? "selected" : string.Empty)" type="button" @onclick='() => OpenGlobalSection("Settings")'><AppIcon Name="settings" /><span>Settings</span>@if (ClientMode.PublicWeb)
+            <button class="workspace-nav-item @(_globalSection == "Connections" ? "selected" : string.Empty)" type="button" title="Connections (Alt+1)" data-hotkey="Alt+Digit1" aria-keyshortcuts="Alt+1" @onclick='() => OpenGlobalSection("Connections")'><AppIcon Name="connection" /><span>Connections</span><span class="directory-count">@_connections.Count(item => item.Enabled)</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+1</kbd></button>
+            <button class="workspace-nav-item @(_globalSection == "MCP" ? "selected" : string.Empty)" type="button" title="MCP (Alt+2)" data-hotkey="Alt+Digit2" aria-keyshortcuts="Alt+2" @onclick='() => OpenGlobalSection("MCP")'><AppIcon Name="mcp" /><span>MCP</span><span class="directory-count">@_enabledMcpServerCount</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+2</kbd></button>
+            <button class="workspace-nav-item @(_globalSection == "Memory" ? "selected" : string.Empty)" type="button" title="Memory (Alt+3)" data-hotkey="Alt+Digit3" aria-keyshortcuts="Alt+3" @onclick='() => OpenGlobalSection("Memory")'><AppIcon Name="memory" /><span>Memory</span><span class="directory-count">@_userMemoryCount</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+3</kbd></button>
+            <button class="workspace-nav-item @(_globalSection == "Skills" ? "selected" : string.Empty)" type="button" title="Skills (Alt+4)" data-hotkey="Alt+Digit4" aria-keyshortcuts="Alt+4" @onclick='() => OpenGlobalSection("Skills")'><AppIcon Name="skill" /><span>Skills</span><span class="directory-count">@_skillCount</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+4</kbd></button>
+            <button class="workspace-nav-item @(_globalSection == "Settings" ? "selected" : string.Empty)" type="button" title="Settings (Alt+0)" data-hotkey="Alt+Digit0" aria-keyshortcuts="Alt+0" @onclick='() => OpenGlobalSection("Settings")'><AppIcon Name="settings" /><span>Settings</span>@if (ClientMode.PublicWeb)
                 {
                     @* The only place the published app shows its link to the Host; details and
                        Disconnect are in Settings. *@
@@ -338,7 +339,7 @@
                         _ => ("is-connecting", "Connecting to Host…")
                     };
                     <span class="host-status-dot @hostState" role="img" aria-label="@hostLabel" title="@hostLabel"></span>
-                }</button>
+                }<kbd class="nav-item-shortcut" aria-hidden="true">Alt+0</kbd></button>
         </nav>
     </aside>
 
@@ -715,16 +716,40 @@
                         </div>
                     }
                 </div>
+                @* One line that always says what the panel is doing: waiting for more input,
+                   searching, or what the last search found. Text, not motion alone, so it reads the
+                   same with animations switched off. *@
+                <p class="search-drawer-status @(SearchBusy.IsVisible ? "busy" : string.Empty)" role="status" aria-live="polite">
+                    @if (_searchQuery.Trim().Length == 1)
+                    {
+                        <span>Type one more character</span>
+                    }
+                    else if (SearchBusy.IsVisible)
+                    {
+                        <AppIcon Name="spinner" Class="archive-spinner" /><span>Searching all chats…</span>
+                    }
+                    else if (_searchResult is { Error: { Length: > 0 } searchError })
+                    {
+                        <AppIcon Name="error" /><span>@searchError</span>
+                    }
+                    else if (_searchResult is { } summary)
+                    {
+                        <span>@SearchSummary(summary)</span>
+                    }
+                </p>
             </div>
             @if (_searchResult is { } found)
             {
-                <div class="search-drawer-results" id="search-results" role="listbox" aria-label="Search results">
-                    @if (_isSearching) { <p class="empty-hint">Searching...</p> }
-                    else if (found.Error is { Length: > 0 } searchError) { <p class="empty-hint">@searchError</p> }
-                    else if (found.Matches.Count == 0) { <p class="empty-hint">Nothing found in @found.ChatsSearched chat(s).</p> }
-                    else
+                @* Results of the previous query stay while the next one runs, dimmed once the wait
+                   is long enough to notice, instead of blinking out on every keystroke. *@
+                <div class="search-drawer-results @(_isSearching && SearchBusy.IsVisible ? "stale" : string.Empty)" id="search-results" role="listbox" aria-label="Search results" aria-busy="@(_isSearching ? "true" : "false")">
+                    @* A failure is reported by the status line alone. *@
+                    @if (found.Matches.Count == 0 && found.Error is not { Length: > 0 })
                     {
-                        <p class="empty-hint">@found.Matches.Count match(es) in @_searchGroups.Count chat(s), newest first@(found.Truncated ? "; more remain" : string.Empty)</p>
+                        <p class="empty-hint search-drawer-hint">No messages contain “@_searchResultQuery”.@(_searchIncludeArchived ? string.Empty : " Archived chats were not searched.")</p>
+                    }
+                    else if (found.Matches.Count > 0)
+                    {
                         @foreach (var group in _searchGroups)
                         {
                             var expanded = _expandedSearchGroups.Contains(group.ChatId);
@@ -743,7 +768,7 @@
                                     var active = match.MessageId == _searchActiveMessageId;
                                     <button id="@SearchRowId(match.MessageId)" @key="match.MessageId" class="search-result @(active ? "active" : string.Empty)" type="button" tabindex="-1"
                                             role="option" aria-selected="@(active ? "true" : "false")" @onclick="() => OpenSearchMatchAsync(match)">
-                                        <span class="search-result-snippet">@foreach (var part in SearchResults.Highlight(match.Snippet, _searchQuery))
+                                        <span class="search-result-snippet">@foreach (var part in SearchResults.Highlight(match.Snippet, _searchResultQuery))
                                         {
                                             if (part.IsMatch) { <mark>@part.Text</mark> } else { @part.Text }
                                         }</span>
@@ -759,9 +784,9 @@
                     }
                 </div>
             }
-            else
+            else if (!_isSearching)
             {
-                <p class="empty-hint search-drawer-hint">Type at least two characters. Up/Down pick a result, Enter opens it, F3 steps through the chat.</p>
+                <p class="empty-hint search-drawer-hint">Searches the messages of every chat. Up/Down pick a result, Enter opens it, F3 steps through the open chat.</p>
             }
         </aside>
     }
@@ -2824,6 +2849,8 @@
     private string _searchQuery = string.Empty;
     private bool _searchIncludeArchived;
     private ChatSearchResult? _searchResult;
+    // The query _searchResult answers: while the next one runs, its rows are marked by what found them.
+    private string _searchResultQuery = string.Empty;
     private bool _isSearching;
     private CancellationTokenSource? _searchCancellation;
     // The result as the sidebar lays it out, rebuilt only when a new result lands.
@@ -2864,6 +2891,18 @@
         _isSearchOpen = false;
         await ClearSearch();
     }
+
+    // Delayed, so a search that answers at once never flashes "Searching…".
+    private IDelayedBusyIndicator? _searchBusy;
+    private IDelayedBusyIndicator SearchBusy => _searchBusy ??= BusyIndicatorFactory.Create(() => InvokeAsync(StateHasChanged));
+
+    private static string SearchSummary(ChatSearchResult result) => result.Matches.Count == 0
+        ? $"Nothing found in {Plural(result.ChatsSearched, "chat")}"
+        : $"{Plural(result.Matches.Count, "match", "matches")} in {Plural(result.Matches.Select(match => match.ChatId).Distinct().Count(), "chat")} · newest first"
+          + (result.Truncated ? " · more exist, refine the query" : string.Empty);
+
+    private static string Plural(int count, string one, string? many = null) =>
+        $"{count} {(count == 1 ? one : many ?? one + "s")}";
 
     private void OnFeedSearchPositionChanged((int Index, int Count) position) =>
         (_feedSearchIndex, _feedSearchCount) = position;
@@ -2925,6 +2964,7 @@
     private void SetSearchResult(ChatSearchResult? result)
     {
         _searchResult = result;
+        _searchResultQuery = _searchQuery.Trim();
         _searchGroups = result is null ? [] : SearchResults.Group(result.Matches);
         _expandedSearchGroups.Clear();
         _searchActiveMessageId = null;
@@ -2947,6 +2987,7 @@
         }
 
         _isSearching = false;
+        SearchBusy.End();
     }
 
     private async Task RunSearchAsync()
@@ -2965,6 +3006,7 @@
         var cancellation = new CancellationTokenSource();
         _searchCancellation = cancellation;
         _isSearching = true;
+        SearchBusy.Begin();
         try
         {
             var result = await ChatHistoryApi.SearchAsync(query, null, cancellation.Token, _searchIncludeArchived);
@@ -2972,6 +3014,7 @@
             {
                 SetSearchResult(result);
                 _isSearching = false;
+                SearchBusy.End();
             }
         }
         catch (OperationCanceledException) { }
@@ -2979,6 +3022,7 @@
         {
             if (!cancellation.IsCancellationRequested) SetSearchResult(new ChatSearchResult([], 0, 0, false, null, "Search is unavailable."));
             _isSearching = false;
+            SearchBusy.End();
         }
     }
 
@@ -6015,6 +6059,7 @@
             _projectSelectionCancellation = null;
         }
         _projectsBusy?.Dispose();
+        _searchBusy?.Dispose();
         _chatsBusy?.Dispose();
         await _generatingTickerCancellation.CancelAsync();
         _generatingTickerCancellation.Dispose();

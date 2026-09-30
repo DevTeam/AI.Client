@@ -61,8 +61,9 @@
                             </div>
                         </fieldset>
                         <fieldset class="app-settings-group">
-                            <legend>Notifications</legend>
+                            <legend>Sounds</legend>
                             <label class="checkbox"><input type="checkbox" checked="@_notificationSoundEnabled" @onchange="SetNotificationSoundAsync" /> Play a sound for new chat notifications</label>
+                            <label class="checkbox"><input type="checkbox" checked="@_otherSoundsEnabled" @onchange="SetOtherSoundsAsync" /> Play other sounds</label>
                         </fieldset>
                         <fieldset class="app-settings-group">
                             <legend>Chat</legend>
@@ -255,6 +256,7 @@
     private AccentColor _accent;
     private int _cornerRoundnessPercent = 100;
     private bool _notificationSoundEnabled = true;
+    private bool _otherSoundsEnabled = true;
     private bool _showContextWindowUsage = true;
     private ChatAutomationSettings _chatAutomation = new();
     private ElementReference _drawer;
@@ -276,6 +278,7 @@
         _cornerRoundnessPercent = await Theme.GetCornerRoundnessAsync();
         var clientSettings = await ClientSettings.GetAsync();
         _notificationSoundEnabled = clientSettings.NotificationSoundEnabled;
+        _otherSoundsEnabled = clientSettings.OtherSoundsEnabled;
         _showContextWindowUsage = clientSettings.ShowContextWindowUsage;
         await LoadGlobalSettingsAsync();
     }
@@ -363,6 +366,12 @@
     {
         _notificationSoundEnabled = args.Value is true;
         await ClientSettings.UpdateAsync(current => current with { NotificationSoundEnabled = _notificationSoundEnabled });
+    }
+
+    private async Task SetOtherSoundsAsync(ChangeEventArgs args)
+    {
+        _otherSoundsEnabled = args.Value is true;
+        await ClientSettings.UpdateAsync(current => current with { OtherSoundsEnabled = _otherSoundsEnabled });
     }
 
     private async Task SetShowContextWindowUsageAsync(ChangeEventArgs args)

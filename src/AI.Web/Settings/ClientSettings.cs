@@ -15,5 +15,7 @@ public sealed record ClientSettings
 
     public bool NotificationSoundEnabled { get; init; } = true;
 
+    public bool OtherSoundsEnabled { get; init; } = true;
+
     public bool ShowContextWindowUsage { get; init; } = true;
 }

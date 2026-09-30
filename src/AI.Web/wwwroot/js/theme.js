@@ -53,11 +53,16 @@
         document.documentElement.style.setProperty("--corner-scale", String(clamped / 100));
     }
 
+    function applyOtherSounds(value) {
+        document.documentElement.dataset.otherSounds = String(value !== false);
+    }
+
     let ready;
     globalThis.aiClientSettingsReady = new Promise(resolve => { ready = resolve; });
 
     function saveClientSettings(json) {
         localStorage.setItem(storageKey, json);
+        applyOtherSounds(JSON.parse(json)?.otherSoundsEnabled);
         if (typeof globalThis.invokeCSharpAction === "function") {
             globalThis.invokeCSharpAction(JSON.stringify({ type: "client-settings-save", settings: json }));
         }
@@ -71,6 +76,7 @@
         try { restored = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { restored = null; }
         applyAccent(restored?.accent);
         applyCornerRoundness(restored?.cornerRoundnessPercent);
+        applyOtherSounds(restored?.otherSoundsEnabled);
         apply(restored?.theme);
         ready();
     }
@@ -79,6 +85,7 @@
     try { saved = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { saved = null; }
     applyAccent(saved?.accent);
     applyCornerRoundness(saved?.cornerRoundnessPercent);
+    applyOtherSounds(saved?.otherSoundsEnabled);
     apply(saved?.theme, false);
     systemLight.addEventListener("change", () => { if (preference === "system") render(); });
     // The bridge may not be injected yet while <head> runs. Wait for it before Blazor reads the

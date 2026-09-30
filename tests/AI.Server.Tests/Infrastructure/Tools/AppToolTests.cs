@@ -39,6 +39,67 @@ using Xunit;
 public sealed class AppToolTests
 {
     [Fact]
+    public async Task ShouldReadAndPageModelsForANewEndpointWithoutSavingConnections()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        fixture.Models.Setup(item => item.ResolveAsync("https://provider.test/int/v1", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ResolvedModelInfo("first"), new ResolvedModelInfo("second")]);
+        await using var session = await fixture.OpenAsync();
+
+        var first = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "ConnectionModels", query = "https://provider.test/int/v1", limit = 1 });
+        first.GetProperty("total").GetInt32().ShouldBe(2);
+        first.GetProperty("items")[0].GetProperty("id").GetString().ShouldBe("first");
+        var second = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "ConnectionModels", query = "https://provider.test/int/v1", limit = 1,
+                cursor = first.GetProperty("nextCursor").GetString() });
+        second.GetProperty("items")[0].GetProperty("id").GetString().ShouldBe("second");
+        var settings = await AppFixture.CallAsync(session, "app_read", new { resource = "Settings" });
+        settings.GetProperty("items")[0].GetProperty("connections").GetArrayLength().ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ShouldUseOnlyTheSavedEndpointForConnectionModelDiscovery()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        fixture.Secrets.Setup(item => item.GetAsync("connection", It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("saved-key");
+        fixture.Models.Setup(item => item.ResolveAsync("https://example.test/v1", "saved-key", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ResolvedModelInfo("model")]);
+        await using var session = await fixture.OpenAsync();
+        var settings = await AppFixture.CallAsync(session, "app_read", new { resource = "Settings" });
+        var id = settings.GetProperty("items")[0].GetProperty("connections")[0].GetProperty("id").GetGuid();
+
+        var result = await AppFixture.CallAsync(session, "app_read", new { resource = "ConnectionModels", resourceId = id });
+        result.GetProperty("items")[0].GetProperty("id").GetString().ShouldBe("model");
+        fixture.Models.Verify(item => item.ResolveAsync("https://example.test/v1", "saved-key", It.IsAny<CancellationToken>()), Times.Once);
+        result.GetRawText().ShouldNotContain("saved-key");
+
+        var rejected = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "ConnectionModels", resourceId = id, query = "https://other.test/v1" }, expectError: true);
+        rejected.GetProperty("error").GetString()!.ShouldContain("resourceId alone");
+        fixture.Models.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task ShouldReportModelDiscoveryErrorsWithoutMutatingSettings()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        fixture.Models.Setup(item => item.ResolveAsync("https://provider.test/v1", null, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("The endpoint returned 401 (Unauthorized)."));
+        await using var session = await fixture.OpenAsync();
+
+        var failed = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "ConnectionModels", query = "https://provider.test/v1" }, expectError: true);
+        failed.GetProperty("error").GetString()!.ShouldContain("401");
+        var missing = await AppFixture.CallAsync(session, "app_read", new { resource = "ConnectionModels" }, expectError: true);
+        missing.GetProperty("error").GetString()!.ShouldContain("required");
+        var unknown = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "ConnectionModels", resourceId = Guid.NewGuid() }, expectError: true);
+        unknown.GetProperty("error").GetString().ShouldBe("Connection not found.");
+    }
+
+    [Fact]
     public async Task ShouldDiscoverEveryToolOverTheInProcessTransport()
     {
         await using var fixture = await AppFixture.CreateAsync();
@@ -679,6 +740,8 @@ public sealed class AppToolTests
 
         /// <summary>Stands in for the run waiting on the question, so the tool can be exercised alone.</summary>
         public TestPromptBroker Broker { get; } = new();
+        public Mock<IConnectionModelsResolver> Models { get; } = new(MockBehavior.Strict);
+        public Mock<IGlobalSecretStore> Secrets => Mock.Get(_composition.Resolve<IGlobalSecretStore>());
 
         public IProjectService Projects => _composition.Resolve<IProjectService>();
         public IChatService Chats => _composition.Resolve<IChatService>();
@@ -694,7 +757,8 @@ public sealed class AppToolTests
                 options: new ServerOptions("data", null, true),
                 fileSystem: new MemoryFileSystem(),
                 completion: Mock.Of<IChatCompletionClient>(),
-                broker: Broker);
+                broker: Broker,
+                modelsResolver: Models.Object);
         }
 
         public static async Task<AppFixture> CreateAsync()

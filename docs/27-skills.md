@@ -39,7 +39,7 @@ application permissions, and every write still goes through tool approval.
 ## Naming
 
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. The domains are `chat`,
-  `project`, `memory`, `skill`, `instructions`, `code` and `git`; a new area gets a new domain. The
+  `project`, `memory`, `skill`, `instructions`, `code`, `git` and `settings`; a new area gets a new domain. The
   action is a verb: create, rename, compact, fork, add, remove, review, save, edit, suggest,
   implement, fix, run, commit.
 - `name` is the id in words with the first letter capitalized (`project-directory-add` →
@@ -82,6 +82,24 @@ application permissions, and every write still goes through tool approval.
 | `code-tests-run` | Finds the project's test command, runs it and reports each failure; offers `code-bug-fix` | `process_run`, `run_skill` |
 | `code-changes-review` | Reviews uncommitted changes for stray files, secrets, debug leftovers and unrelated edits; cleans up what the user picks | `process_run`, `edit_file`, `delete_file` |
 | `git-commit` | On request only: drafts a message in the log's style and commits the chosen paths; never pushes | `process_run` |
+| `settings-add-connections` | Discovers models from API URLs and adds or merges Connections by URL + model, preserving credentials and unrelated settings; offers comparison | `app_read`, `app_security`, `ask_user`, `run_skill` |
+| `settings-review-connections` | Compares selected Connections with bounded synthetic tasks, reports quality, measured run time and errors, then applies approved defaults, subtask pools or cleanup | `app_read`, `spawn_subtask`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
+| `settings-select-connection` | Selects an enabled connection for the global default, current project/chat or subtask pool; can restore project/chat inheritance | `app_read`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
+
+Connection discovery is available through `app_read resource=ConnectionModels`: `query` is a new
+OpenAI-compatible Base URL (without authentication); `resourceId` alone selects a saved connection
+and uses its URL and stored credential on the Host. Combining an id and a URL is rejected, so a
+stored key cannot be redirected. The result is the ordinary paged read result with model ids,
+display names and owner tags. Discovery uses the same resolver and 15-second ceiling as the editor;
+it does not create a Connection or prove completion support. Keys needed by new Connections are
+entered in Settings → Connections; the playbooks do not ask for secrets in chat.
+
+The comparison uses explicit connection ids in `spawn_subtask`, at most eight tasks per batch and
+two small suites per candidate. Its `elapsedMilliseconds` measures the whole delegated run,
+including application overhead and tool calls, on successes and failures. Price stays unknown
+unless the user supplied it; stored Cost/Capability values are coarse user ratings, not prices or
+benchmark scores. Default, subtask and cleanup changes are proposed for approval, and referenced
+connections need a working replacement before deactivation or deletion.
 
 The history of a chat is compacted for the model only while a request would not fit, and
 `context_compact` only covers the finished work of the current turn; `chat-context-compact` runs it

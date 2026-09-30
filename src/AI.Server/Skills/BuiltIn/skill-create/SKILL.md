@@ -10,7 +10,7 @@ tools: ["app_read","ask_user","app_skills","skill_search"]
 
 Skill conventions:
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. Domains: chat, project, memory,
-  skill, instructions, code, git; start a new domain only for a new area such as `doc`. The action
+  skill, instructions, code, git, settings; start a new domain only for a new area such as `doc`. The action
   is a verb: create, rename, compact, fork, add, remove, review, save, edit, implement, fix, run.
 - `name` is the id in words with the first letter capitalized: `project-directory-add` becomes
   "Project directory add".
@@ -19,7 +19,12 @@ Skill conventions:
   search, eye, diff, git-branch, fork, message-circle, minimize, list-checks, edit, file, file-text,
   folder, folder-plus, folder-minus, project, package, database, memory, eraser, scroll, book, tag,
   link, globe, languages, mail, users, calendar, clock, chart, image, archive, trash, download,
-  import, export, refresh, settings. Only when the user asks for a picture none of these give,
+  import, export, refresh, settings, cpu, circuit-board, server, network, cloud, cloud-upload,
+  hard-drive, monitor, smartphone, wifi, workflow, git-merge, git-commit, brackets, regex, binary,
+  variable, puzzle, blocks, filter, clipboard, clipboard-check, file-code, file-search, notebook,
+  graduation-cap, bookmark, library, table, calculator, chart-line, chart-pie, trending-up, gauge,
+  activity, timer, alarm, calendar-check, repeat, history, palette, brush, pen-tool, crop, camera,
+  video, microphone, headphones, music, map. Only when the user asks for a picture none of these give,
   `icon` is SVG path data instead: one line starting with `M`, drawn as a 2px stroke on a 24x24
   grid, such as `M12 3 3 8l9 5 9-5ZM3 13l9 5 9-5`.
 - `description` is one sentence that starts with a verb, leads with the task the skill is for (the

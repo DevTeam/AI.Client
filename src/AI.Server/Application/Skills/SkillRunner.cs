@@ -37,9 +37,11 @@ public sealed class SkillRunner(ISkillCatalog catalog, ChatRenameSkill chatRenam
             var skill = await catalog.GetByIdAsync(invocation.SkillId, invocation.ProjectId, cancellationToken);
             if (skill is not { Enabled: true })
                 throw new ArgumentException($"Skill '{invocation.SkillId}' is unavailable.");
-            invocation = invocation with { Parameters = Normalize(invocation.Parameters) };
-            if (!JsonSchema.Build(skill.ParametersSchema).Evaluate(invocation.Parameters).IsValid)
-                throw new ArgumentException($"Parameters for skill '{skill.Id}' do not match its schema. "
+            invocation = invocation with { Parameters = Coerce(Normalize(invocation.Parameters), skill.ParametersSchema) };
+            var evaluation = JsonSchema.Build(skill.ParametersSchema).Evaluate(invocation.Parameters,
+                new EvaluationOptions { OutputFormat = OutputFormat.List });
+            if (!evaluation.IsValid)
+                throw new ArgumentException($"Parameters for skill '{skill.Id}' do not match its schema: {Describe(evaluation)}. "
                     + $"Pass an object matching: {skill.ParametersSchema.GetRawText()}");
             result = skill.Kind switch
             {
@@ -89,6 +91,57 @@ public sealed class SkillRunner(ISkillCatalog catalog, ChatRenameSkill chatRenam
         if (string.IsNullOrWhiteSpace(text)) return JsonSerializer.SerializeToElement(new { });
         try { return JsonSerializer.Deserialize<JsonElement>(text); }
         catch (JsonException) { return parameters; }
+    }
+
+    /// <summary>
+    /// Models also quote scalar arguments, such as "1500" for an integer; a top-level string that
+    /// parses as the type its property declares is taken as that value.
+    /// </summary>
+    private static JsonElement Coerce(JsonElement parameters, JsonElement schema)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object || schema.ValueKind != JsonValueKind.Object
+            || !schema.TryGetProperty("properties", out var properties) || properties.ValueKind != JsonValueKind.Object)
+            return parameters;
+        var changed = false;
+        var result = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        foreach (var property in parameters.EnumerateObject())
+        {
+            var value = property.Value;
+            if (value.ValueKind == JsonValueKind.String
+                && properties.TryGetProperty(property.Name, out var declared) && declared.ValueKind == JsonValueKind.Object
+                && declared.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String
+                && Parse(value.GetString()!.Trim(), type.GetString()) is { } parsed)
+            {
+                value = parsed;
+                changed = true;
+            }
+            result[property.Name] = value;
+        }
+        return changed ? JsonSerializer.SerializeToElement(result) : parameters;
+    }
+
+    private static JsonElement? Parse(string text, string? type) => type switch
+    {
+        "integer" when long.TryParse(text, System.Globalization.NumberStyles.AllowLeadingSign,
+            System.Globalization.CultureInfo.InvariantCulture, out var integer) => JsonSerializer.SerializeToElement(integer),
+        "number" when double.TryParse(text, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var number) && double.IsFinite(number)
+            => JsonSerializer.SerializeToElement(number),
+        "boolean" when bool.TryParse(text, out var flag) => JsonSerializer.SerializeToElement(flag),
+        _ => null
+    };
+
+    /// <summary>Names each failing location, so a model can fix the one argument instead of resending the call.</summary>
+    private static string Describe(EvaluationResults evaluation)
+    {
+        var errors = (evaluation.Details ?? [])
+            .Prepend(evaluation)
+            .Where(item => item.Errors is { Count: > 0 })
+            .SelectMany(item => item.Errors!.Select(error =>
+                $"{(item.InstanceLocation.ToString() is { Length: > 0 } location ? location : "/")} {error.Value}"))
+            .Distinct()
+            .ToArray();
+        return errors.Length == 0 ? "invalid parameters" : string.Join("; ", errors);
     }
 
     /// <summary>

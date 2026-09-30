@@ -117,6 +117,35 @@ public class SkillMarkdownTests
         result.Message.ShouldContain("\"focus\"");
     }
 
+    [Fact]
+    public async Task ShouldTakeQuotedScalarsAsTheDeclaredType()
+    {
+        var result = await new SkillRunner(new BuiltInSkillCatalog(), BuiltInRenameSkill()).RunAsync(new SkillInvocation(
+            "chat-context-compact", Guid.CreateVersion7(),
+            JsonSerializer.SerializeToElement(new { action = "compact", target_tokens = "1500" })), CancellationToken.None);
+
+        result.Status.ShouldBe("Completed", result.Message);
+        var arguments = result.Output!.Value.GetProperty("arguments");
+        arguments.GetProperty("target_tokens").GetInt32().ShouldBe(1500);
+        arguments.GetProperty("action").GetString().ShouldBe("compact");
+    }
+
+    [Fact]
+    public async Task ShouldNameTheArgumentThatFailsTheSchema()
+    {
+        var result = await new SkillRunner(new BuiltInSkillCatalog(), BuiltInRenameSkill()).RunAsync(new SkillInvocation(
+            "chat-context-compact", Guid.CreateVersion7(),
+            JsonSerializer.SerializeToElement(new { target_tokens = "many" })), CancellationToken.None);
+
+        result.Status.ShouldBe("Failed");
+        result.Message.ShouldContain("/target_tokens");
+    }
+
+    private static ChatRenameSkill BuiltInRenameSkill() => new(new BuiltInSkillCatalog(),
+        Mock.Of<IChatService>(), Mock.Of<IProjectService>(), Mock.Of<IGlobalSettingsRepository>(),
+        Mock.Of<IGlobalSecretStore>(), Mock.Of<IChatCompletionClient>(), Mock.Of<IAppDataChangeSignal>(),
+        NullLogger<ChatRenameSkill>.Instance);
+
     private static SkillRunner Runner(Guid projectId)
     {
         var catalog = new Mock<ISkillCatalog>();

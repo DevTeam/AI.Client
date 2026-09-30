@@ -202,8 +202,30 @@ export function attach(workspace) {
             } else {
                 workspace.querySelector("[data-search-open]")?.click();
             }
+        } else {
+            pressHotkey(event);
         }
     });
+    // The other shortcuts are declared on the controls they press: data-hotkey lists combinations
+    // such as "Alt+Digit1" or "Ctrl+Comma", separated by spaces. The physical key (event.code) is
+    // matched, not the character, so they work the same under a Russian layout.
+    const comboOf = event => [
+        event.ctrlKey && "Ctrl", event.altKey && "Alt", event.shiftKey && "Shift", event.metaKey && "Meta", event.code
+    ].filter(Boolean).join("+");
+    const pressHotkey = event => {
+        // A bare key stays with whatever has focus; only chords are the workspace's.
+        if (event.repeat || event.defaultPrevented || !(event.ctrlKey || event.altKey || event.metaKey)) return;
+        // Nothing behind a modal dialog is reachable by pointer, so it is not by keyboard either.
+        if (document.querySelector('[aria-modal="true"], dialog[open]')) return;
+        const combo = comboOf(event);
+        const control = [...workspace.querySelectorAll("[data-hotkey]")]
+            .find(element => element.dataset.hotkey.split(" ").includes(combo));
+        if (!control || control.disabled) return;
+        event.preventDefault();
+        // click() reaches a control that is only hidden, such as a row of a collapsed sidebar or
+        // a hover-only button, exactly as a pointer press on it would.
+        control.click();
+    };
     // Up, Down and Enter in the search box walk and open the results (Blazor handles the keys);
     // left alone, Up and Down would also throw the caret to either end of the query.
     listen(document, "keydown", event => {

@@ -4845,14 +4845,20 @@ textarea {
 .search-drawer-options .archive-search-toggle { margin: 0; }
 .search-drawer-results { display: flex; flex-direction: column; gap: .125rem; min-height: 0; padding: .25rem .6rem .75rem; overflow-y: auto; }
 .search-drawer-hint { padding: 1rem 1.2rem; line-height: 1.45; }
+.search-drawer-status { display: flex; align-items: center; gap: .4rem; min-height: 1.1rem; margin: 0; color: var(--color-text-secondary); font-size: .75rem; }
+.search-drawer-status .app-icon { width: .9rem; height: .9rem; flex: none; }
+.search-drawer-status.busy { color: var(--color-accent); }
+/* Last query's results while the next one runs: still readable, visibly not current. */
+.search-drawer-results.stale { opacity: .5; transition: opacity 120ms ease; }
 
 /* Steps through the occurrences in the open chat. */
 .find-bar { display: flex; flex: none; align-items: center; gap: .125rem; font-size: .8125rem; }
 .find-bar .icon-action { width: 1.65rem; height: 1.65rem; }
 .find-bar-count { margin-right: .25rem; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-/* The sidebar row that opens search; the shortcut is shown the way the menus show theirs. */
-.search-nav-action .nav-item-shortcut { margin-left: auto; padding: 0 .3rem; border: 1px solid var(--color-border); border-radius: calc(.3rem * var(--corner-scale)); color: var(--color-text-faint); font-family: inherit; font-size: .68rem; line-height: 1.4; }
+/* Sidebar rows show their shortcut at the right edge, the way menus do. aria-hidden on the tag:
+   screen readers get the same thing from aria-keyshortcuts. */
+.nav-item-shortcut { flex: none; margin-left: auto; padding: 0 .3rem; border: 1px solid var(--color-border); border-radius: calc(.3rem * var(--corner-scale)); color: var(--color-text-faint); font-family: inherit; font-size: .68rem; line-height: 1.4; }
 .search-group { display: flex; flex-direction: column; gap: .0625rem; padding: .25rem 0; }
 .search-group + .search-group { border-top: 1px solid var(--color-border); }
 .search-group-header { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .25rem .5rem 0; border: none; background: none; color: inherit; text-align: left; cursor: pointer; }

@@ -22,10 +22,10 @@ public sealed class StandingInstructions(
     public const string ProjectKey = "project.instructions";
     public const string MemoryKey = "memory.index";
     public const string SkillsKey = "skills.catalog";
-    public const long BaseBudgetTokens = 3_072;
+    public const long BaseBudgetTokens = 5_120;
     public const long ProjectBudgetTokens = 4_096;
     public const long MemoryBudgetTokens = 2_048;
-    public const long SkillsBudgetTokens = 3_072;
+    public const long SkillsBudgetTokens = 5_120;
 
     /// <summary>
     /// Leads the catalog. A skill the model has to go looking for is a skill it skips: listing each

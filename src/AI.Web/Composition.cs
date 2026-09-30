@@ -23,6 +23,8 @@ using AI.Contracts.Tools;
 using AI.Contracts.Settings;
 using Pure.DI;
 using Navigation;
+using Usage;
+using Widgets;
 using Pure.DI.MS;
 using System.Diagnostics;
 using Microsoft.JSInterop;
@@ -84,6 +86,12 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IResourcePresenter>().To<ResourcePresenter>()
             .Bind<IDiffSnapshotReader>().To<DiffSnapshotReader>()
             .RootBind<IComposerContextPresentation>().To<ComposerContextPresentation>()
+            .RootBind<IUsagePresentation>().To<UsagePresentation>()
+            .RootBind<IChatWidgetCatalog>().To<ChatWidgetCatalog>()
+            .RootBind<IChatWidgetLayout>().To<ChatWidgetLayout>()
+            .Bind<IChatUsageStore>().As(Lifetime.Singleton).To<ChatUsageStore>()
+            .Root<IChatUsageStore>()
+            .RootBind<IChatUsageApi>().To<ChatUsageApi>()
             .RootBind<IDelayedBusyIndicatorFactory>().To<DelayedBusyIndicatorFactory>()
             .Bind<INotificationService>("base").As(Lifetime.Singleton).To<NotificationService>()
             .Singleton<DesktopBadgeNotificationService, DesktopUnreadCountPublisher, ApiBaseUrl, ClientMode, HostConnection, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService,

@@ -18,4 +18,13 @@ public sealed record ClientSettings
     public bool OtherSoundsEnabled { get; init; } = true;
 
     public bool ShowContextWindowUsage { get; init; } = true;
+
+    /// <summary>Whether the turn line shows what the turn used ("42k → 1.8k") next to its time.</summary>
+    public bool ShowTurnTokens { get; init; }
+
+    /// <summary>Whether the column of chat widgets is open beside the conversation.</summary>
+    public bool ChatWidgetsOpen { get; init; }
+
+    /// <summary>The widgets of that column in the person's order, with what each one shows.</summary>
+    public IReadOnlyList<AI.Web.Widgets.ChatWidgetPreference> ChatWidgets { get; init; } = [];
 }

@@ -68,6 +68,7 @@
                         <fieldset class="app-settings-group">
                             <legend>Chat</legend>
                             <label class="checkbox"><input type="checkbox" checked="@_showContextWindowUsage" @onchange="SetShowContextWindowUsageAsync" /> Show context window usage</label>
+                            <label class="checkbox"><input type="checkbox" checked="@_showTurnTokens" @onchange="SetShowTurnTokensAsync" /> Show tokens next to each turn's time</label>
                             @* These are the Host's: it makes the model calls, whichever window is open. *@
                             <label class="checkbox"><input type="checkbox" checked="@_chatAutomation.AutoTitle" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { AutoTitle = args.Value is true })" /> Name new chats after the first answer</label>
                             <label class="checkbox"><input type="checkbox" checked="@_chatAutomation.SuggestReplies" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { SuggestReplies = args.Value is true })" /> Suggest a reply after each answer</label>
@@ -124,7 +125,7 @@
                         </div>
                         @if (GetSelectedConnection() is { } connection)
                         {
-                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label><label class="checkbox"><input type="checkbox" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" /> For subtasks</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<input type="url" autocomplete="url" class="text-input" placeholder="https://api.openai.com/v1" @bind="connection.BaseUrl" @bind:event="oninput" @bind:after="() => OnEndpointChanged(connection.Id)" /></label><div class="model-field-row"><div class="model-field"><span>Model</span><ModelPicker @bind-Value="connection.Model" AriaLabel="Model" Models="@(_resolvedModels.TryGetValue(connection.Id, out var list) ? list : null)" Loading="@(_resolvingModelsForId == connection.Id)" Error="@(_resolvedErrors.TryGetValue(connection.Id, out var err) ? err : null)" OnRetry="@(() => LoadModelsIfStaleAsync(connection.Id, force: true))" Placeholder="@ModelPickerPlaceholder(connection)" EmptyHint="@ModelPickerEmptyHint(connection)" /></div>@if (_resolvingModelsForId == connection.Id) { <span class="model-loading" aria-label="Loading models" role="status"><AppIcon Name="spinner" Class="tool-row-spinner" /></span> }</div><div class="connection-ratings"><label>Context window tokens<input type="number" min="1024" max="4000000" step="1" @bind="connection.ContextWindowTokens" /><small>Effective: @EffectiveLimits(connection).ContextWindowTokens (@SourceLabel(EffectiveLimits(connection).ContextWindowSource))</small></label><label>Reserved output tokens<input type="number" min="256" max="1000000" step="1" @bind="connection.ReservedOutputTokens" /><small>Effective: @EffectiveLimits(connection).ReservedOutputTokens (@SourceLabel(EffectiveLimits(connection).ReservedOutputSource))</small></label></div><div class="connection-ratings"><label>Capability<input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><small>@RatingLabel(connection.Capability, Capabilities)</small></label><label>Cost<input type="range" min="0" max="5" step="1" @bind="connection.Cost" @bind:event="oninput" /><small>@RatingLabel(connection.Cost, Costs)</small></label></div><label>Good for<InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="What the ratings cannot say: vision, long context, local" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" @bind-Value:after="() => OnEndpointChanged(connection.Id)" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : connection.KeyMissing ? "Needed: imported without its key" : "Optional")" class="@(connection.NeedsKey ? "needs-key" : null)" /></label></form>
+                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label><label class="checkbox"><input type="checkbox" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" /> For subtasks</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<input type="url" autocomplete="url" class="text-input" placeholder="https://api.openai.com/v1" @bind="connection.BaseUrl" @bind:event="oninput" @bind:after="() => OnEndpointChanged(connection.Id)" /></label><div class="model-field-row"><div class="model-field"><span>Model</span><ModelPicker @bind-Value="connection.Model" AriaLabel="Model" Models="@(_resolvedModels.TryGetValue(connection.Id, out var list) ? list : null)" Loading="@(_resolvingModelsForId == connection.Id)" Error="@(_resolvedErrors.TryGetValue(connection.Id, out var err) ? err : null)" OnRetry="@(() => LoadModelsIfStaleAsync(connection.Id, force: true))" Placeholder="@ModelPickerPlaceholder(connection)" EmptyHint="@ModelPickerEmptyHint(connection)" /></div>@if (_resolvingModelsForId == connection.Id) { <span class="model-loading" aria-label="Loading models" role="status"><AppIcon Name="spinner" Class="tool-row-spinner" /></span> }</div><div class="connection-ratings"><label>Context window tokens<input type="number" min="1024" max="4000000" step="1" @bind="connection.ContextWindowTokens" /><small>Effective: @EffectiveLimits(connection).ContextWindowTokens (@SourceLabel(EffectiveLimits(connection).ContextWindowSource))</small></label><label>Reserved output tokens<input type="number" min="256" max="1000000" step="1" @bind="connection.ReservedOutputTokens" /><small>Effective: @EffectiveLimits(connection).ReservedOutputTokens (@SourceLabel(EffectiveLimits(connection).ReservedOutputSource))</small></label></div><div class="connection-ratings connection-prices"><label>Input price<input type="number" min="0" max="10000" step="0.01" @bind="connection.InputPrice" /><small>Per million tokens</small></label><label>Output price<input type="number" min="0" max="10000" step="0.01" @bind="connection.OutputPrice" /><small>Per million tokens</small></label><label>Cached input<input type="number" min="0" max="10000" step="0.01" @bind="connection.CachedInputPrice" /><small>Empty: same as input</small></label></div><p class="connection-prices-note">Prices cost the usage of an endpoint that does not price requests itself. Leave them empty to show tokens only.</p><div class="connection-ratings"><label>Capability<input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><small>@RatingLabel(connection.Capability, Capabilities)</small></label><label>Cost<input type="range" min="0" max="5" step="1" @bind="connection.Cost" @bind:event="oninput" /><small>@RatingLabel(connection.Cost, Costs)</small></label></div><label>Good for<InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="What the ratings cannot say: vision, long context, local" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" @bind-Value:after="() => OnEndpointChanged(connection.Id)" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : connection.KeyMissing ? "Needed: imported without its key" : "Optional")" class="@(connection.NeedsKey ? "needs-key" : null)" /></label></form>
                         }
                     </div>
                     break;
@@ -208,6 +209,7 @@
     [Parameter] public string Section { get; set; } = "Connections";
     [Parameter] public EventCallback Saved { get; set; }
     [Parameter] public EventCallback<bool> ContextWindowUsageChanged { get; set; }
+    [Parameter] public EventCallback<bool> TurnTokensChanged { get; set; }
     /// <summary>The project whose memory and skills the ProjectMemory and ProjectSkills sections edit.</summary>
     [Parameter] public Guid? ProjectId { get; set; }
     private MemoryEditor? _memoryEditor;
@@ -258,6 +260,7 @@
     private bool _notificationSoundEnabled = true;
     private bool _otherSoundsEnabled = true;
     private bool _showContextWindowUsage = true;
+    private bool _showTurnTokens;
     private ChatAutomationSettings _chatAutomation = new();
     private ElementReference _drawer;
     private IJSObjectReference? _transferModule;
@@ -280,6 +283,7 @@
         _notificationSoundEnabled = clientSettings.NotificationSoundEnabled;
         _otherSoundsEnabled = clientSettings.OtherSoundsEnabled;
         _showContextWindowUsage = clientSettings.ShowContextWindowUsage;
+        _showTurnTokens = clientSettings.ShowTurnTokens;
         await LoadGlobalSettingsAsync();
     }
     private async Task LoadGlobalSettingsAsync()
@@ -379,6 +383,13 @@
         _showContextWindowUsage = args.Value is true;
         await ClientSettings.UpdateAsync(current => current with { ShowContextWindowUsage = _showContextWindowUsage });
         await ContextWindowUsageChanged.InvokeAsync(_showContextWindowUsage);
+    }
+
+    private async Task SetShowTurnTokensAsync(ChangeEventArgs args)
+    {
+        _showTurnTokens = args.Value is true;
+        await ClientSettings.UpdateAsync(current => current with { ShowTurnTokens = _showTurnTokens });
+        await TurnTokensChanged.InvokeAsync(_showTurnTokens);
     }
 
     /// <summary>Applied on click like the rest of this section, but stored on the Host.</summary>
@@ -974,8 +985,9 @@
         public string GoodFor { get; set; } = string.Empty;
         public long? ContextWindowTokens { get; set; }
         public long? ReservedOutputTokens { get; set; }
-        // Not edited here yet; carried so saving the form keeps what was stored.
-        public AI.Contracts.Usage.TokenPrices? Prices { get; set; }
+        public decimal? InputPrice { get; set; }
+        public decimal? OutputPrice { get; set; }
+        public decimal? CachedInputPrice { get; set; }
         public bool HasCredential { get; set; }
         public string? Secret { get; set; }
         // Came in from an import that named a key without its value. Only the import knows this:
@@ -991,7 +1003,9 @@
             GoodFor = item.GoodFor ?? string.Empty,
             ContextWindowTokens = item.ContextWindowTokens,
             ReservedOutputTokens = item.ReservedOutputTokens,
-            Prices = item.Prices
+            InputPrice = item.Prices?.Input,
+            OutputPrice = item.Prices?.Output,
+            CachedInputPrice = item.Prices?.CachedInput
         };
 
         public ConnectionSettings ToSettings() =>
@@ -999,7 +1013,11 @@
             new(Id, Name, BaseUrl, Model, Enabled, IsDefault, HasCredential, ForSubtasks,
                 Capability == 0 ? null : Capability, Cost == 0 ? null : Cost,
                 string.IsNullOrWhiteSpace(GoodFor) ? null : GoodFor,
-                ContextWindowTokens, ReservedOutputTokens, Prices);
+                ContextWindowTokens, ReservedOutputTokens,
+                // A price is a pair: an input price without an output one would cost half of every request.
+                InputPrice is { } input && OutputPrice is { } output
+                    ? new AI.Contracts.Usage.TokenPrices(input, output, CachedInputPrice)
+                    : null);
     }
 
     [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]

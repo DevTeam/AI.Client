@@ -310,7 +310,11 @@ body {
     /* The divider takes no column of its own: the sidebar's border is the resting line, and the
        grab strip overlaps both sides of it. */
     --left-divider: 0px;
-    grid-template-columns: var(--sidebar-track) var(--left-divider) minmax(0, 1fr);
+    /* The chat widget column takes a track of its own when open, so the conversation narrows
+       beside it instead of sliding under it; drawers still open over both. */
+    --widgets-width: 20rem;
+    --widgets-track: 0px;
+    grid-template-columns: var(--sidebar-track) var(--left-divider) minmax(0, 1fr) var(--widgets-track);
     grid-template-rows: minmax(0, 1fr);
     width: 100vw;
     height: 100vh;
@@ -6268,3 +6272,236 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
     .archive-backdrop { background: transparent; }
 }
 @media (prefers-reduced-motion: reduce) { .archive-drawer, .archive-backdrop, .archive-drawer.is-leaving, .archive-backdrop.is-leaving, .archive-row { animation: none; transition: none; } }
+
+/* Chat widgets. A column beside the conversation, holding widgets that share one shell: a header
+   with a drag handle, a title that folds the widget, the widget's own actions and a hide button,
+   then the body. Every widget uses these classes and adds only what its content needs, so new
+   widgets look like they belong to the set without styling a frame of their own. */
+.workspace-shell.widgets-open { --widgets-track: var(--widgets-width); }
+.workspace-widgets-toggle { flex: none; margin-left: auto; pointer-events: auto; }
+.workspace-widgets-toggle.is-active { color: var(--color-accent-text); background: var(--color-accent-bg); }
+
+.chat-widgets {
+    grid-column: 4;
+    grid-row: 1;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-sunken);
+}
+
+.chat-widgets-header {
+    display: flex;
+    align-items: center;
+    gap: .2rem;
+    height: 2.4rem;
+    box-sizing: border-box;
+    padding: .2rem .45rem .2rem .85rem;
+}
+.chat-widgets-header .icon-action { width: 1.65rem; height: 1.65rem; }
+.chat-widgets-heading { flex: 1; color: var(--color-text-muted); font-size: .74rem; }
+
+.chat-widgets-menu-anchor { position: relative; display: inline-flex; }
+.chat-widgets-menu-scrim { position: fixed; inset: 0; z-index: 20; }
+.chat-widgets-menu {
+    position: absolute;
+    top: calc(100% + .3rem);
+    right: 0;
+    z-index: 21;
+    display: grid;
+    gap: .1rem;
+    width: 17rem;
+    padding: .35rem;
+    border: 1px solid var(--color-border);
+    border-radius: calc(.6rem * var(--corner-scale));
+    background: var(--color-surface-raised);
+    box-shadow: 0 8px 24px rgb(0 0 0 / calc(40% * var(--shadow-scale)));
+}
+.chat-widgets-menu-item {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    align-items: start;
+    gap: .55rem;
+    padding: .45rem .5rem;
+    border-radius: calc(.4rem * var(--corner-scale));
+    cursor: pointer;
+}
+.chat-widgets-menu-item:hover { background: var(--color-fill-hover); }
+.chat-widgets-menu-item .app-icon { margin-top: .1rem; color: var(--color-text-muted); }
+.chat-widgets-menu-item strong { display: block; font-size: .8rem; font-weight: 500; }
+.chat-widgets-menu-item small { display: block; margin-top: .1rem; color: var(--color-text-subtle); font-size: .72rem; line-height: 1.35; }
+
+.chat-widgets-list {
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    min-height: 0;
+    padding: 0 .6rem .8rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.chat-widgets-empty { display: grid; justify-items: start; gap: .5rem; padding: .6rem .3rem; color: var(--color-text-subtle); font-size: .78rem; }
+.chat-widgets-empty p { margin: 0; }
+
+.chat-widget {
+    position: relative;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: calc(.75rem * var(--corner-scale));
+    background: var(--color-surface);
+}
+.chat-widget-header { display: flex; align-items: center; gap: .1rem; min-height: 2.3rem; padding: .15rem .3rem .15rem .15rem; }
+.chat-widget-handle {
+    display: inline-grid;
+    place-items: center;
+    width: 1.35rem;
+    height: 1.6rem;
+    padding: 0;
+    border: 0;
+    border-radius: calc(.35rem * var(--corner-scale));
+    background: none;
+    color: var(--color-text-faint);
+    cursor: grab;
+    touch-action: none;
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+.chat-widget:hover .chat-widget-handle,
+.chat-widget-handle:focus-visible,
+.chat-widget.is-dragging .chat-widget-handle { opacity: 1; }
+.chat-widget-handle:hover { color: var(--color-text-muted); background: var(--color-fill-hover); }
+.chat-widget-title {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: .45rem;
+    min-width: 0;
+    padding: .3rem .35rem;
+    border: 0;
+    border-radius: calc(.4rem * var(--corner-scale));
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    font-size: .8rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+}
+.chat-widget-title:hover { background: var(--color-fill-hover); }
+.chat-widget-icon { color: var(--color-text-muted); }
+.chat-widget-name { flex: none; }
+.chat-widget-summary {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-subtle);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.chat-widget-chevron { margin-left: auto; color: var(--color-text-faint); transition: transform 150ms ease; }
+.chat-widget.is-collapsed .chat-widget-chevron { transform: rotate(-90deg); }
+.chat-widget-header .chat-widget-hide { width: 1.6rem; height: 1.6rem; color: var(--color-text-faint); opacity: 0; transition: opacity 120ms ease; }
+.chat-widget:hover .chat-widget-hide, .chat-widget-hide:focus-visible { opacity: 1; }
+.chat-widget-body { padding: .1rem .85rem .85rem; font-size: .78rem; }
+
+/* Reordering: the lifted widget follows the pointer above the others, and a line shows where it lands. */
+.chat-widgets-list.is-reordering { user-select: none; }
+.chat-widgets-list.is-reordering .chat-widget-handle { cursor: grabbing; }
+.chat-widget.is-dragging { z-index: 2; box-shadow: 0 10px 28px rgb(0 0 0 / calc(45% * var(--shadow-scale))); opacity: .96; }
+.chat-widget.drop-before::before,
+.chat-widgets-list.drop-end::after {
+    content: "";
+    display: block;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--color-accent);
+}
+.chat-widget.drop-before::before { position: absolute; top: calc(-.3rem - 1px); left: .4rem; right: .4rem; }
+.chat-widgets-list.drop-end::after { flex: none; margin: -.3rem .4rem 0; }
+
+@media (hover: none) {
+    .chat-widget-handle, .chat-widget-header .chat-widget-hide { opacity: 1; }
+}
+
+@media (width <= 900px) {
+    /* Too narrow to share: the column floats over the conversation like a drawer, below the drawers. */
+    .workspace-shell.widgets-open { --widgets-track: 0px; }
+    .chat-widgets {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 40;
+        width: min(var(--widgets-width), 100vw);
+        box-shadow: -1rem 0 2.5rem rgb(0 0 0 / calc(38% * var(--shadow-scale)));
+    }
+}
+
+/* The usage widget. */
+.chat-usage-section { display: grid; gap: .4rem; padding: .7rem 0; border-top: 1px solid var(--color-border-subtle); }
+.chat-usage-section:first-child { padding-top: .2rem; border-top: 0; }
+.chat-usage-row { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; min-width: 0; }
+.chat-usage-heading { color: var(--color-text-secondary); font-weight: 500; }
+.chat-usage-figure { color: var(--color-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chat-usage-figure.context-fill-warning { color: var(--color-warning); }
+.chat-usage-figure.context-fill-critical { color: var(--color-danger); }
+.chat-usage-muted { color: var(--color-text-subtle); font-weight: 400; }
+.chat-usage-connection { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-usage-bar { display: flex; gap: 1px; height: .45rem; overflow: hidden; border-radius: calc(.25rem * var(--corner-scale)); background: var(--color-fill); }
+.chat-usage-bar-segment { flex-basis: 0; min-width: 2px; background: var(--context-color); }
+.chat-usage-bar-segment.reserved { opacity: .45; }
+.chat-usage-bar-free { flex-basis: 0; }
+.chat-usage-legend { display: flex; flex-wrap: wrap; gap: .25rem .75rem; color: var(--color-text-subtle); font-size: .72rem; }
+.chat-usage-legend > span { display: inline-flex; align-items: center; gap: .3rem; }
+.chat-usage-legend b { color: var(--color-text-secondary); font-weight: 400; font-variant-numeric: tabular-nums; }
+.chat-usage-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem; margin: .1rem 0 0; padding: .45rem .55rem; border-radius: calc(.45rem * var(--corner-scale)); background: var(--color-fill); color: var(--color-text-secondary); font-size: .74rem; }
+.chat-usage-note.context-note-warning { background: color-mix(in srgb, var(--color-warning) 14%, transparent); color: var(--color-warning-text); }
+.chat-usage-note.context-note-critical { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.chat-usage-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .3rem .8rem; margin: 0; }
+.chat-usage-facts dt { color: var(--color-text-subtle); }
+.chat-usage-facts dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.chat-usage-facts small { margin-left: .35rem; color: var(--color-text-subtle); font-size: .72rem; }
+.chat-usage-link { padding: 0; border: 0; background: none; color: var(--color-accent-text); font: inherit; cursor: pointer; }
+.chat-usage-link:hover { text-decoration: underline; }
+.chat-usage-shares { display: grid; gap: .35rem; margin: 0; padding: 0; list-style: none; }
+.chat-usage-shares li { display: grid; grid-template-columns: minmax(0, 7.5rem) minmax(0, 1fr) 2.4rem; align-items: center; gap: .55rem; }
+.chat-usage-share-label { overflow: hidden; color: var(--color-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.chat-usage-share-track { height: .3rem; overflow: hidden; border-radius: .15rem; background: var(--color-fill); }
+.chat-usage-share-track > span { display: block; height: 100%; border-radius: inherit; background: var(--color-text-muted); }
+.chat-usage-share-value { color: var(--color-text-subtle); text-align: right; font-variant-numeric: tabular-nums; }
+.chat-usage-footnote, .chat-usage-empty { margin: .2rem 0 0; color: var(--color-text-subtle); font-size: .72rem; line-height: 1.45; }
+
+/* What a turn used: after its time in the turn line, and in full under an opened turn. */
+.turn-summary-tokens { flex: none; color: var(--color-text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.turn-usage {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .15rem .9rem;
+    width: min(100%, 48rem);
+    margin: -.45rem auto .8rem;
+    color: var(--color-text-faint);
+    font-size: .72rem;
+    font-variant-numeric: tabular-nums;
+}
+.turn-usage small { font-size: inherit; }
+
+/* The ring around Send opens the usage widget; the button in its middle still sends. */
+.composer-send-context-open {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* A little wider than the ring it answers for: the halo itself is a 5px band. */
+    width: 60px;
+    height: 60px;
+    padding: 0;
+    translate: -50% -50%;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+}
+.composer-send-wrapper .composer-send { position: relative; z-index: 1; }
+
+.connection-prices-note { margin: -.4rem 0 0; color: var(--color-text-subtle); font-size: .78rem; }

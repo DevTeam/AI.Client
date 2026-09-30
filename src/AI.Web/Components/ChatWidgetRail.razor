@@ -1,0 +1,126 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JsRuntime
+@inject IChatWidgetCatalog Catalog
+@inject IChatWidgetLayout Layout
+@* The column of chat widgets beside the conversation. It is part of the layout, not a drawer:
+   the conversation narrows to make room, and the drawers — settings, review and the rest — open
+   over it as they open over everything else. What each widget shows is the caller's; the column
+   owns their order, which of them are shown, and the shell they share. *@
+<aside class="chat-widgets" aria-label="Chat widgets">
+    <header class="chat-widgets-header">
+        <span class="chat-widgets-heading">Widgets</span>
+        <span class="chat-widgets-menu-anchor">
+            <button class="icon-action" type="button" title="Show or hide widgets" aria-label="Show or hide widgets"
+                    aria-haspopup="true" aria-expanded="@(_menuOpen ? "true" : "false")" @onclick="ToggleMenu">
+                <AppIcon Name="sliders" />
+            </button>
+            @if (_menuOpen)
+            {
+                <span class="chat-widgets-menu-scrim" @onclick="CloseMenu"></span>
+                <span class="chat-widgets-menu" role="group" aria-label="Widgets to show" @onkeydown="HandleMenuKey">
+                    @foreach (var widget in Widgets)
+                    {
+                        if (Catalog.Find(widget.Id) is not { } definition) continue;
+                        <label @key="widget.Id" class="chat-widgets-menu-item">
+                            <input type="checkbox" checked="@(!widget.Hidden)" @onchange="args => SetShownAsync(widget.Id, args)" />
+                            <AppIcon Name="@definition.Icon" />
+                            <span><strong>@definition.Title</strong><small>@definition.Description</small></span>
+                        </label>
+                    }
+                </span>
+            }
+        </span>
+        <button class="icon-action" type="button" title="Close widgets" aria-label="Close widgets" @onclick="OnClose">
+            <AppIcon Name="drawer-close" />
+        </button>
+    </header>
+    <div class="chat-widgets-list" @ref="_list">
+        @foreach (var widget in Widgets.Where(item => !item.Hidden))
+        {
+            if (Catalog.Find(widget.Id) is not { } definition) continue;
+            var id = widget.Id;
+            <div @key="id" class="chat-widget-slot">
+                @WidgetTemplate(new ChatWidgetContext(definition, widget,
+                    () => ChangeAsync(Layout.Update(Widgets, id, item => item with { Collapsed = !item.Collapsed })),
+                    () => ChangeAsync(Layout.Update(Widgets, id, item => item with { Hidden = true })),
+                    offset => ChangeAsync(Layout.MoveBy(Widgets, id, offset))))
+            </div>
+        }
+        @if (Widgets.All(item => item.Hidden))
+        {
+            <div class="chat-widgets-empty">
+                <p>Every widget is hidden.</p>
+                <button class="compact-action" type="button" @onclick="ToggleMenu">Choose widgets</button>
+            </div>
+        }
+    </div>
+</aside>
+
+@code {
+    /// <summary>Every widget in the person's order, hidden ones included; see <see cref="IChatWidgetLayout.Arrange"/>.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ChatWidgetPreference> Widgets { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public RenderFragment<ChatWidgetContext> WidgetTemplate { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<IReadOnlyList<ChatWidgetPreference>> WidgetsChanged { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private ElementReference _list;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _drag;
+    private DotNetObjectReference<ChatWidgetRail>? _self;
+    private bool _menuOpen;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _self = DotNetObjectReference.Create(this);
+            _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatWidgets.js");
+            _drag = await _module.InvokeAsync<IJSObjectReference>("attach", _list, _self);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    [JSInvokable]
+    public Task OnWidgetDropped(string id, string? beforeId) => ChangeAsync(Layout.Move(Widgets, id, beforeId));
+
+    private Task ChangeAsync(IReadOnlyList<ChatWidgetPreference> widgets) => WidgetsChanged.InvokeAsync(widgets);
+
+    private Task SetShownAsync(string id, ChangeEventArgs args) =>
+        ChangeAsync(Layout.Update(Widgets, id, item => item with { Hidden = args.Value is not true, Collapsed = false }));
+
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+
+    private void CloseMenu() => _menuOpen = false;
+
+    private void HandleMenuKey(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") _menuOpen = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_drag is not null)
+            {
+                await _drag.InvokeVoidAsync("dispose");
+                await _drag.DisposeAsync();
+            }
+            if (_module is not null) await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        _self?.Dispose();
+    }
+}

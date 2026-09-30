@@ -90,11 +90,27 @@ public class ClientSettingsServiceTests
             ShowContextWindowUsage = false
         });
 
-        js.Entries[StorageKey].ShouldBe("{\"theme\":\"light\",\"accent\":\"teal\",\"cornerRoundnessPercent\":100,\"notificationSoundEnabled\":true,\"otherSoundsEnabled\":false,\"showContextWindowUsage\":false}");
+        js.Entries[StorageKey].ShouldBe("{\"theme\":\"light\",\"accent\":\"teal\",\"cornerRoundnessPercent\":100,\"notificationSoundEnabled\":true,\"otherSoundsEnabled\":false,\"showContextWindowUsage\":false,\"showTurnTokens\":false,\"chatWidgetsOpen\":false,\"chatWidgets\":[]}");
         js.Calls.ShouldContain(call => call.Identifier == "aiClientTheme.saveClientSettings");
         (await new ClientSettingsService(js).GetAsync()).Theme.ShouldBe(ThemePreference.Light);
         (await new ClientSettingsService(js).GetAsync()).ShowContextWindowUsage.ShouldBeFalse();
         (await new ClientSettingsService(js).GetAsync()).OtherSoundsEnabled.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ShouldKeepTheWidgetColumnAcrossReads()
+    {
+        var js = new FakeJSRuntime();
+
+        await new ClientSettingsService(js).UpdateAsync(settings => settings with
+        {
+            ChatWidgetsOpen = true,
+            ChatWidgets = [new AI.Web.Widgets.ChatWidgetPreference("chat-usage", Collapsed: true)]
+        });
+
+        var read = await new ClientSettingsService(js).GetAsync();
+        read.ChatWidgetsOpen.ShouldBeTrue();
+        read.ChatWidgets.ShouldBe([new AI.Web.Widgets.ChatWidgetPreference("chat-usage", Collapsed: true)]);
     }
 
     [Fact]

@@ -36,13 +36,15 @@
 @inject IChatTipsState ChatTips
 @inject IComposerContextPresentation ContextPresentation
 @inject IClientSettingsService ClientSettings
+@inject IChatUsageStore ChatUsage
+@inject IChatWidgetLayout WidgetLayout
 @inject IDelayedBusyIndicatorFactory BusyIndicatorFactory
 @inject NavigationManager Navigation
 @implements IAsyncDisposable
 
 <PageTitle>@ClientMetadata.ProductName</PageTitle>
 
-<main class="workspace-shell" @ref="_workspace">
+<main class="workspace-shell @(IsChatWidgetsVisible() ? "widgets-open" : null)" @ref="_workspace">
     <aside class="workspace-sidebar" id="workspace-sidebar">
         <div class="sidebar-projects">
         @* The projects list is the sidebar's top level now, so it has no heading of its own and
@@ -384,6 +386,14 @@
                 <button class="icon-action" type="button" title="Forward" aria-label="Forward" disabled="@(!_canNavigateForward)" @onclick="GoForwardAsync"><AppIcon Name="chevron-right" /></button>
             </div>
             <span class="workspace-location" title="@GetWorkspaceLocation()">@GetWorkspaceLocation()</span>
+            @if (_selectedChat is not null)
+            {
+                <button class="icon-action workspace-widgets-toggle @(_chatWidgetsOpen ? "is-active" : null)" type="button"
+                        aria-label="Chat widgets" aria-pressed="@(_chatWidgetsOpen ? "true" : "false")"
+                        title="@(_chatWidgetsOpen ? "Hide chat widgets" : "Show chat widgets")" @onclick="ToggleChatWidgetsAsync">
+                    <AppIcon Name="panel-right" />
+                </button>
+            }
         </header>
         <MessageFeed @ref="_messageFeed"
             HasSelectedProject="@(_selectedProject is not null)"
@@ -404,6 +414,8 @@
             ForkSourceId="@_forkSourceId"
             MessageBranchMenuId="@_messageBranchMenuId"
             SelectedRun="@GetSelectedRun()"
+            ChatUsage="@(_selectedChat is null ? null : ChatUsage.Find(_selectedChat.Id))"
+            ShowTurnTokens="@_showTurnTokens"
             GeneratingElapsed="@GetGeneratingElapsed()"
             TranscriptRunPresentationVersion="@GetTranscriptRunPresentationVersion()"
             GetRunForBranch="@(messageId => _selectedChat is null ? null : GetRun(_selectedChat.Id, BranchLeafHelpers.RunBranchIdFor(messageId, _selectedChat)))"
@@ -574,11 +586,33 @@
                     }
                 </div>
                 @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation" aria-label="Stop generation" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> }
-                <ComposerSendButton ActiveMode="@GetComposerSendMode()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@(_showContextWindowUsage ? GetComposerContext() : null)" />
+                <ComposerSendButton ActiveMode="@GetComposerSendMode()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" OnContextClick="ShowUsageWidgetAsync" Context="@(_showContextWindowUsage ? GetComposerContext() : null)" />
             </div>
             @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
         </footer>
     </section>
+
+    @if (IsChatWidgetsVisible() && _selectedChat is { } widgetChat)
+    {
+        var widgetRun = GetSelectedRun();
+        <ChatWidgetRail Widgets="@_chatWidgets" WidgetsChanged="SaveChatWidgetsAsync" OnClose="ToggleChatWidgetsAsync">
+            <WidgetTemplate Context="widget">
+                @switch (widget.Definition.Id)
+                {
+                    case ChatWidgetCatalog.ChatUsage:
+                        <ChatUsageWidget Widget="@widget"
+                                         Context="@(_showContextWindowUsage ? GetComposerContext() : null)"
+                                         ChatUsage="@ChatUsage.Find(widgetChat.Id)"
+                                         LiveTurn="@widgetRun?.TurnUsage"
+                                         IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
+                                         ConnectionName="@GetComposerConnection()?.Name"
+                                         OnNewChat="CreateChatAsync"
+                                         OnOpenConnections='() => OpenGlobalSection("Connections")' />
+                        break;
+                }
+            </WidgetTemplate>
+        </ChatWidgetRail>
+    }
 
     @if (_showArchive && _selectedProject is { } archiveProject)
 {
@@ -815,7 +849,7 @@
 
 @if (_globalSection is not null)
 {
-    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" ContextWindowUsageChanged="value => _showContextWindowUsage = value" />
+    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" ContextWindowUsageChanged="value => _showContextWindowUsage = value" TurnTokensChanged="value => _showTurnTokens = value" />
 }
 
 @if (_permissionsScope is not null && _selectedProject is not null)
@@ -1272,7 +1306,11 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _showContextWindowUsage = (await ClientSettings.GetAsync()).ShowContextWindowUsage;
+        var clientSettings = await ClientSettings.GetAsync();
+        _showContextWindowUsage = clientSettings.ShowContextWindowUsage;
+        _showTurnTokens = clientSettings.ShowTurnTokens;
+        _chatWidgetsOpen = clientSettings.ChatWidgetsOpen;
+        _chatWidgets = WidgetLayout.Arrange(clientSettings.ChatWidgets);
         Notifications.Changed += OnNotificationsChanged;
         HostConnection.Changed += OnHostStatusChanged;
         ReplySuggestions.Changed += OnReplySuggestionChanged;
@@ -1360,6 +1398,9 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // A chat that has just opened is read once for what it has used; the turn line and the
+        // widget both show it, so it is read even while the widget column is closed.
+        if (_selectedChat is { } usageChat && _usageChatId != usageChat.Id) _ = RefreshChatUsageAsync();
         if (firstRender)
         {
             _dotNetReference = DotNetObjectReference.Create(this);
@@ -1868,6 +1909,7 @@
                 var arrivedHead = _selectedChat?.Branches?.SingleOrDefault(branch => branch.Id == snapshot.BranchId)?.HeadMessageId;
                 if (arrivedHead is { } headId && headId == _branchLeafId) SetJustArrivedLeaf(headId);
             }
+            if (wasGenerating && !isGenerating) _ = RefreshChatUsageAfterTurnAsync(snapshot.ChatId);
             _wasGeneratingByBranch[snapshot.BranchId] = isGenerating;
         }
         if (chatOrderChanged) await RefreshChatOrderAsync();
@@ -2638,7 +2680,63 @@
     }
 
     private ComposerContext GetComposerContext() => ContextPresentation.Build(GetSelectedRun()?.Context,
-        _connections.SingleOrDefault(item => item.Id == _chat.CredentialProfileId) ?? GetDefaultConnection(), _chat.Message);
+        GetComposerConnection(), _chat.Message);
+
+    private ConnectionSettings? GetComposerConnection() =>
+        _connections.SingleOrDefault(item => item.Id == _chat.CredentialProfileId) ?? GetDefaultConnection();
+
+    // The widget column: open or closed, and the person's order of what it holds. Both are this
+    // device's preferences, kept with the other client settings.
+    private bool _chatWidgetsOpen;
+    private IReadOnlyList<ChatWidgetPreference> _chatWidgets = [];
+    private bool _showTurnTokens;
+    private Guid? _usageChatId;
+
+    private bool IsChatWidgetsVisible() => _chatWidgetsOpen && _selectedChat is not null;
+
+    private async Task ToggleChatWidgetsAsync()
+    {
+        _chatWidgetsOpen = !_chatWidgetsOpen;
+        await ClientSettings.UpdateAsync(current => current with { ChatWidgetsOpen = _chatWidgetsOpen });
+        if (_chatWidgetsOpen) await RefreshChatUsageAsync();
+    }
+
+    // Pressing the ring asks about the window, so the answer is the usage widget, open and unfolded,
+    // wherever the person had put it.
+    private async Task ShowUsageWidgetAsync()
+    {
+        _chatWidgetsOpen = true;
+        _chatWidgets = WidgetLayout.Update(_chatWidgets, ChatWidgetCatalog.ChatUsage,
+            item => item with { Hidden = false, Collapsed = false });
+        await ClientSettings.UpdateAsync(current => current with { ChatWidgetsOpen = true, ChatWidgets = _chatWidgets });
+        await RefreshChatUsageAsync();
+    }
+
+    private async Task SaveChatWidgetsAsync(IReadOnlyList<ChatWidgetPreference> widgets)
+    {
+        _chatWidgets = widgets;
+        await ClientSettings.UpdateAsync(current => current with { ChatWidgets = widgets });
+    }
+
+    private async Task RefreshChatUsageAsync()
+    {
+        if (_selectedProject is not { } project || _selectedChat is not { } chat) return;
+        _usageChatId = chat.Id;
+        if (await ChatUsage.RefreshAsync(project.Id, chat.Id, CancellationToken.None)) await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Reads the ledger again once a turn of the open chat has ended: the turn's own figure is
+    /// then final, and what ran after it — the title, the reply suggestions — lands a moment later,
+    /// hence the second read.
+    /// </summary>
+    private async Task RefreshChatUsageAfterTurnAsync(Guid chatId)
+    {
+        if (_selectedChat?.Id != chatId) return;
+        await RefreshChatUsageAsync();
+        await Task.Delay(TimeSpan.FromSeconds(5));
+        if (_selectedChat?.Id == chatId) await RefreshChatUsageAsync();
+    }
 
     private ComposerSendButton.SendMode GetComposerSendMode() =>
         _replaceSourceId is not null

@@ -1,0 +1,174 @@
+@inject IUsagePresentation Usage
+@inject IComposerContextPresentation ContextPresentation
+@* What the open chat holds and has spent: the context window now, the turn in progress (or the
+   last one), the chat's totals, and where the tokens went. Figures the endpoint did not report are
+   marked "≈" rather than passed off as billed ones. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-usage-widget">
+    @if (Context is { } context)
+    {
+        var free = Math.Max(0, context.CapacityTokens - context.UsedTokens);
+        <div class="chat-usage-section">
+            <div class="chat-usage-row chat-usage-heading">
+                <span>Context now</span>
+                <span class="chat-usage-figure context-fill-@context.Level.ToString().ToLowerInvariant()">@context.Percent%</span>
+            </div>
+            <div class="chat-usage-bar" role="img"
+                 aria-label="@($"{context.Percent}% of the context window used: {Usage.FormatTokens(context.UsedTokens)} of {Usage.FormatTokens(context.CapacityTokens)}")">
+                @foreach (var layer in context.Layers.Where(layer => layer.Tokens > 0))
+                {
+                    <span @key="layer.Kind" class="chat-usage-bar-segment context-layer-@layer.CssName @(layer.Reserved ? "reserved" : null)"
+                          style="flex-grow: @Grow(layer.Tokens, context.CapacityTokens)" title="@layer.Label: @Usage.FormatTokens(layer.Tokens)"></span>
+                }
+                <span class="chat-usage-bar-free" style="flex-grow: @Grow(free, context.CapacityTokens)"></span>
+            </div>
+            <div class="chat-usage-legend">
+                @foreach (var layer in context.Layers.Where(layer => layer.Tokens > 0 && !layer.Reserved))
+                {
+                    <span @key="layer.Kind"><span class="context-swatch context-layer-@layer.CssName"></span>@layer.Label <b>@Usage.FormatTokens(layer.Tokens)</b></span>
+                }
+                <span><span class="context-swatch"></span>Free <b>@Usage.FormatTokens(free)</b></span>
+            </div>
+            <div class="chat-usage-row chat-usage-muted">
+                <span>@Usage.FormatTokens(context.UsedTokens) of @(context.IsDefaultCapacity ? "~" : null)@Usage.FormatTokens(context.CapacityTokens)</span>
+                @if (ConnectionName is not null) { <span class="chat-usage-connection" title="@ConnectionName">@ConnectionName</span> }
+            </div>
+            @if (ContextPresentation.Note(context) is { } note)
+            {
+                <p class="chat-usage-note context-note-@context.Level.ToString().ToLowerInvariant()">
+                    @note
+                    @if (context.Level != ContextFillLevel.Normal && OnNewChat.HasDelegate)
+                    {
+                        <button class="compact-action" type="button" @onclick="OnNewChat">New chat</button>
+                    }
+                </p>
+            }
+        </div>
+    }
+
+    @if (GetTurn() is { } turn)
+    {
+        <div class="chat-usage-section">
+            <div class="chat-usage-row chat-usage-heading">
+                <span>@(IsGenerating && LiveTurn?.TurnId == turn.TurnId ? "This turn" : "Last turn")</span>
+                <span class="chat-usage-figure">@Usage.FormatFlow(turn.Totals)</span>
+            </div>
+            <dl class="chat-usage-facts">
+                <dt>Requests</dt><dd>@turn.Totals.Requests</dd>
+                @if (Usage.CachePercent(turn.Totals.Tokens) is { } turnCache) { <dt>Cached input</dt><dd>@turnCache%</dd> }
+                @if (turn.Totals.Tokens.ReasoningTokens > 0) { <dt>Reasoning</dt><dd>@Usage.FormatTokens(turn.Totals.Tokens.ReasoningTokens)</dd> }
+                @if (Usage.OutputSpeed(turn.Totals) is { } speed) { <dt>Speed</dt><dd>@speed tok/s</dd> }
+                @if (Usage.FormatCost(turn.Totals) is { } turnCost) { <dt>Cost</dt><dd>@turnCost</dd> }
+            </dl>
+        </div>
+    }
+
+    @if (ChatUsage is { Totals.Requests: > 0 } chat)
+    {
+        <div class="chat-usage-section">
+            <div class="chat-usage-row chat-usage-heading">
+                <span>Whole chat</span>
+                <span class="chat-usage-figure chat-usage-muted">@chat.Turns.Count @(chat.Turns.Count == 1 ? "turn" : "turns")</span>
+            </div>
+            <dl class="chat-usage-facts">
+                <dt>Input</dt>
+                <dd>
+                    @(Usage.IsEstimated(chat.Totals) ? "≈" : null)@Usage.FormatExact(chat.Totals.Tokens.InputTokens)
+                    @if (Usage.CachePercent(chat.Totals.Tokens) is { } cache) { <small>@cache% cached</small> }
+                </dd>
+                <dt>Output</dt><dd>@(Usage.IsEstimated(chat.Totals) ? "≈" : null)@Usage.FormatExact(chat.Totals.Tokens.OutputTokens)</dd>
+                @if (chat.Totals.Tokens.ReasoningTokens > 0) { <dt>Reasoning</dt><dd>@Usage.FormatExact(chat.Totals.Tokens.ReasoningTokens)</dd> }
+                <dt>Requests</dt><dd>@chat.Totals.Requests</dd>
+                <dt>Cost</dt>
+                <dd>
+                    @if (Usage.FormatCost(chat.Totals) is { } cost)
+                    {
+                        @cost
+                        @if (chat.Totals.PricedRequests < chat.Totals.Requests) { <small title="Some requests went to a connection without prices">partial</small> }
+                    }
+                    else if (OnOpenConnections.HasDelegate)
+                    {
+                        <button class="chat-usage-link" type="button" @onclick="OnOpenConnections">Set prices</button>
+                    }
+                    else { <span class="chat-usage-muted">—</span> }
+                </dd>
+            </dl>
+        </div>
+
+        var shares = Usage.Shares(chat.ByPurpose);
+        @if (shares.Count > 1)
+        {
+            <div class="chat-usage-section">
+                <div class="chat-usage-row chat-usage-heading"><span>Where it went</span></div>
+                <ul class="chat-usage-shares">
+                    @foreach (var share in shares)
+                    {
+                        <li @key="share.Key">
+                            <span class="chat-usage-share-label">@share.Label</span>
+                            <span class="chat-usage-share-track"><span style="width: @Percent(share.Fraction)%"></span></span>
+                            <span class="chat-usage-share-value">@Math.Round(share.Fraction * 100)%</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (Usage.IsEstimated(chat.Totals))
+        {
+            <p class="chat-usage-footnote">≈ estimated: @chat.Totals.EstimatedRequests of @chat.Totals.Requests requests went to an endpoint that does not report usage.</p>
+        }
+    }
+    else if (GetTurn() is null)
+    {
+        <p class="chat-usage-empty">Token usage appears here once the chat sends its first request.</p>
+    }
+</ChatWidget>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>The window as the composer ring shows it; null when context usage is switched off.</summary>
+    [Parameter]
+    public ComposerContext? Context { get; set; }
+
+    [Parameter]
+    public ChatTokenUsage? ChatUsage { get; set; }
+
+    /// <summary>The turn the run is on, as the run snapshot reports it while it happens.</summary>
+    [Parameter]
+    public TurnTokenUsage? LiveTurn { get; set; }
+
+    [Parameter]
+    public bool IsGenerating { get; set; }
+
+    [Parameter]
+    public string? ConnectionName { get; set; }
+
+    [Parameter]
+    public EventCallback OnNewChat { get; set; }
+
+    [Parameter]
+    public EventCallback OnOpenConnections { get; set; }
+
+    private TurnTokenUsage? GetTurn() =>
+        LiveTurn is { } live && (ChatUsage?.Turns.LastOrDefault() is not { } stored
+                                 || stored.TurnId == live.TurnId && live.Totals.Requests >= stored.Totals.Requests
+                                 || stored.TurnId != live.TurnId && live.StartedAt >= stored.StartedAt)
+            ? live
+            : ChatUsage?.Turns.LastOrDefault();
+
+    private string? GetSummary()
+    {
+        var parts = new List<string>();
+        if (Context is { } context) parts.Add($"{context.Percent}%");
+        if (ChatUsage is { Totals.Requests: > 0 } chat)
+            parts.Add(Usage.FormatCost(chat.Totals) ?? Usage.FormatFlow(chat.Totals));
+        return parts.Count == 0 ? null : string.Join(" · ", parts);
+    }
+
+    private static string Grow(long tokens, long capacity) =>
+        (capacity <= 0 ? 0 : (double)tokens / capacity).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Percent(double fraction) =>
+        Math.Max(2, fraction * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+}

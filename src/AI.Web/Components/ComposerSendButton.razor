@@ -3,6 +3,12 @@
     @* The ring sits around the button as a quiet halo, grey at rest and in the layer colours
        while the tooltip explains them; only a filling window colours it on its own. *@
     @if (Context is not null) { <ContextRing Context="@Context" Size="50" Thickness="2.5" Gap="9" Class="composer-send-ring" /> }
+    @* The halo itself opens the chat's usage: a press on the ring rather than on the button. It is
+       left out of the tab order, since the header's widget button does the same from the keyboard. *@
+    @if (Context is not null && OnContextClick.HasDelegate)
+    {
+        <button class="composer-send-context-open" type="button" tabindex="-1" aria-label="Show chat usage" @onclick="OnContextClick"></button>
+    }
     <button class="composer-send" type="button" disabled="@Disabled" aria-label="@GetAriaLabel()" @onclick="OnClick">
         <AppIcon Name="@GetIcon()" Class="@(Busy ? "tool-row-spinner" : null)" />
     </button>
@@ -33,7 +39,7 @@
                     </span>
                 </span>
             </span>
-            @if (GetContextNote(context) is { } note) { <span class="composer-send-context-note context-note-@context.Level.ToString().ToLowerInvariant()">@note</span> }
+            @if (ContextPresentation.Note(context) is { } note) { <span class="composer-send-context-note context-note-@context.Level.ToString().ToLowerInvariant()">@note</span> }
             <span class="composer-send-tooltip-divider"></span>
         }
         @if (ActiveMode == SendMode.EditFork)
@@ -67,6 +73,10 @@
     [Parameter, EditorRequired]
     public EventCallback OnClick { get; set; }
 
+    /// <summary>Pressing the ring around the button; without it the ring only shows.</summary>
+    [Parameter]
+    public EventCallback OnContextClick { get; set; }
+
     /// <summary>How the context window is filled; no ring is drawn without it.</summary>
     [Parameter]
     public ComposerContext? Context { get; set; }
@@ -76,16 +86,6 @@
     private static bool IsKnown(ComposerContext context, ContextLayer layer) =>
         context.IsMeasured || layer.Reserved || layer.Kind == ContextLayerKind.Draft;
 
-    private static string? GetContextNote(ComposerContext context) => context switch
-    {
-        { Level: ContextFillLevel.Critical } => "Almost full: the next request compacts older turns",
-        { Level: ContextFillLevel.Warning } => "Filling up: older turns will be compacted soon",
-        { WasCompacted: true, OmittedMessages: > 0 } => $"Older turns compacted to fit ({context.OmittedMessages} messages)",
-        { WasCompacted: true } => "Older turns compacted to fit",
-        { IsMeasured: false } => "Measured with the next request",
-        { IsDefaultCapacity: true } => "Default window size; set the real one in Connections",
-        _ => null
-    };
 
     private string GetAriaLabel() => Context is { } context
         ? $"{GetActionLabel()}, context {context.Percent}% full"

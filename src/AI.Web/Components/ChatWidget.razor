@@ -1,0 +1,52 @@
+@* The shell every chat widget sits in, so the column reads as one set: a header with the drag
+   handle, the title that folds the widget, room for the widget's own actions, and a hide button.
+   Folded, the header still says the one figure that matters through Summary. *@
+<section class="chat-widget @(Widget.Preference.Collapsed ? "is-collapsed" : null) @Class"
+         data-widget-id="@Widget.Definition.Id" aria-labelledby="chat-widget-title-@Widget.Definition.Id">
+    <header class="chat-widget-header">
+        <button class="chat-widget-handle" type="button" title="Drag to reorder · Alt+↑ or Alt+↓ to move"
+                aria-label="Move @Widget.Definition.Title" @onkeydown="HandleHandleKeyAsync">
+            <AppIcon Name="drag" />
+        </button>
+        <button class="chat-widget-title" id="chat-widget-title-@Widget.Definition.Id" type="button"
+                aria-expanded="@(Widget.Preference.Collapsed ? "false" : "true")" @onclick="Widget.ToggleCollapsed">
+            <AppIcon Name="@Widget.Definition.Icon" Class="chat-widget-icon" />
+            <span class="chat-widget-name">@Widget.Definition.Title</span>
+            @if (Widget.Preference.Collapsed && Summary is not null) { <span class="chat-widget-summary">@Summary</span> }
+            <AppIcon Name="chevron-down" Class="chat-widget-chevron" />
+        </button>
+        @HeaderActions
+        <button class="icon-action chat-widget-hide" type="button" title="Hide widget" aria-label="Hide @Widget.Definition.Title"
+                @onclick="Widget.Hide">
+            <AppIcon Name="x" />
+        </button>
+    </header>
+    @if (!Widget.Preference.Collapsed)
+    {
+        <div class="chat-widget-body">@ChildContent</div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>A few words shown in the header while the widget is folded.</summary>
+    [Parameter]
+    public string? Summary { get; set; }
+
+    [Parameter]
+    public RenderFragment? HeaderActions { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private async Task HandleHandleKeyAsync(KeyboardEventArgs args)
+    {
+        var offset = args is { AltKey: true, Key: "ArrowUp" } ? -1 : args is { AltKey: true, Key: "ArrowDown" } ? 1 : 0;
+        if (offset != 0) await Widget.Move(offset);
+    }
+}

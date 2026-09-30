@@ -1164,7 +1164,8 @@ body {
     }
 }
 
-.chat-nav-row:hover {
+.chat-nav-row:hover,
+.archive-nav-item:hover {
     background: var(--color-fill-hover);
 }
 
@@ -1441,10 +1442,12 @@ body {
 
 .chat-menu .menu-danger { color: var(--color-danger-text); }
 
-.chat-link {
+.chat-link,
+.archive-nav-item {
     color: var(--color-text-muted);
 }
 
+.archive-nav-item > .app-icon,
 .chat-link > .app-icon,
 .chat-icon-with-branch-count > .app-icon {
     color: var(--color-text-disabled);

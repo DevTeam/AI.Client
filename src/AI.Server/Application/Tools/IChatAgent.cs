@@ -33,5 +33,9 @@ public interface IChatAgent
         Func<string?, CancellationToken, Task>? draft = null,
         // How each model request fills the context window, and once more with the final answer
         // counted, so the composer can show what the next request will start from.
-        Func<ContextUsage, CancellationToken, Task>? contextUsage = null);
+        Func<ContextUsage, CancellationToken, Task>? contextUsage = null,
+        // The tool the step in flight has started to call, named as soon as the stream names it,
+        // before its arguments are complete. A null draft ends it along with the step's prose.
+        // The completion protocol's own tool is not reported: it is how the run ends, not work.
+        Func<string, CancellationToken, Task>? draftToolCall = null);
 }

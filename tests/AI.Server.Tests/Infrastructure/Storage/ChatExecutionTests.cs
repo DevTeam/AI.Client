@@ -165,6 +165,29 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task StartedToolCallShouldMarkTheDraftUntilItsPreambleLands()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        fixture.Completion.NextToolCallStart = "mcp_built_in__process_run";
+        var call = await fixture.StreamPreludeAsync(
+            new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"), "Creating the project and running it:");
+
+        var starting = await fixture.WaitAsync(run => run.DraftToolCall is not null);
+        starting.DraftToolCall.ShouldBe("mcp_built_in__process_run");
+        starting.DraftContent.ShouldBe("Creating the project and running it:");
+
+        call.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        call.Answer.SetResult("");
+        var landed = await fixture.WaitAsync(run => run.MessageDelta?.Appends
+            .Any(append => append.Message.Content == "Creating the project and running it:") == true);
+        landed.DraftToolCall.ShouldBeNull();
+
+        (await fixture.NextCallAsync()).Answer.SetResult("Done");
+        (await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed)).DraftToolCall.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task ProvisionalTextAfterAToolMustNotBecomeTheFinalAnswer()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -1701,6 +1724,9 @@ public sealed class ChatExecutionTests
         /// <summary>Text the next call streams before it is answered; consumed once.</summary>
         public string? NextPrelude { get; set; }
 
+        /// <summary>A tool the next call starts to call before it is answered; consumed once.</summary>
+        public string? NextToolCallStart { get; set; }
+
         /// <summary>What the skill router answers; nowhere by default.</summary>
         public string RouteAnswer { get; set; } = "{}";
         public bool AdaptLegacyFinalAnswers { get; set; } = true;
@@ -1722,6 +1748,11 @@ public sealed class ChatExecutionTests
             {
                 yield return new ChatCompletionChunk(prelude);
                 call.PreludeStreamed.TrySetResult(true);
+            }
+            if (NextToolCallStart is { } starting)
+            {
+                NextToolCallStart = null;
+                yield return new ChatCompletionChunk("", ToolCallsStarted: true, ToolCallName: starting);
             }
             string content;
             try

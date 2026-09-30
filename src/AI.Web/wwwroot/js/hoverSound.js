@@ -3,7 +3,7 @@
 // notification ding is: a shared AudioContext + a small graph that disconnects itself.
 //
 // Two layers give the click its mechanical-tooth flavour:
-//   1. A short, band-passed noise burst around 2.6 kHz for the rounded "tk".
+//   1. A short, low-passed noise burst for a soft "tk" without a sharp high end.
 //   2. A short, low-passed noise burst around 220 Hz for the body — the wooden "thud".
 // A pure noise burst alone reads as a "tick"; layering in low-end body is what makes it read
 // as something physical hitting something else.
@@ -24,17 +24,16 @@
             const start = audioContext.currentTime;
             const sampleRate = audioContext.sampleRate;
 
-            // Envelope is long enough that the body has time to be heard but short enough that
-            // successive ticks (a fast hover can fire several in a second) never smear into a buzz.
-            const tickLength = 0.05;
+            // A slower attack and short fade soften the leading edge while keeping fast hovers distinct.
+            const tickLength = 0.065;
             const volume = audioContext.createGain();
             volume.gain.setValueAtTime(0.0001, start);
-            volume.gain.exponentialRampToValueAtTime(0.16, start + 0.006);
+            volume.gain.exponentialRampToValueAtTime(0.12, start + 0.012);
             volume.gain.exponentialRampToValueAtTime(0.0001, start + tickLength);
             volume.connect(audioContext.destination);
 
-            // 1. A quieter, lower-pitched transient with a gentler attack.
-            const transientLength = 0.008;
+            // 1. A longer, low-passed transient avoids the brittle noise spike.
+            const transientLength = 0.025;
             const transientBufferLength = Math.max(1, Math.floor(sampleRate * transientLength));
             const transientBuffer = audioContext.createBuffer(1, transientBufferLength, sampleRate);
             const transientData = transientBuffer.getChannelData(0);
@@ -42,9 +41,9 @@
             const transient = audioContext.createBufferSource();
             transient.buffer = transientBuffer;
             const transientFilter = audioContext.createBiquadFilter();
-            transientFilter.type = 'bandpass';
-            transientFilter.frequency.value = 2600;
-            transientFilter.Q.value = 1.2;
+            transientFilter.type = 'lowpass';
+            transientFilter.frequency.value = 1100;
+            transientFilter.Q.value = 0.7;
             transient.connect(transientFilter);
             transientFilter.connect(volume);
             transient.start(start);

@@ -185,11 +185,26 @@
                    entry animation, while growth of the same text only patches it. *@
                 var liveKey = (entry.TurnId, "live-text", entry.LiveVersion);
                 <article @key="liveKey" id="message-live"
-                         class="workspace-message assistant live-text streaming"
+                         class="workspace-message assistant live-text streaming @(entry.LivePreamble ? "is-preamble" : string.Empty)"
                          @onmouseenter="() => SetLiveTextHeld(true)"
                          @onmouseleave="() => SetLiveTextHeld(false)">
                     <div class="markdown-content">@((MarkupString)MarkdownRenderer.Render(liveText))</div>
                 </article>
+            }
+            else if (entry.Activity is { } activity)
+            {
+                @* What the turn is doing with its hands while the text above waits: a preamble ending
+                   in "…and run:" is followed by the call it announces, not by a blank. Static on
+                   purpose — with animations off it still reads as work in progress. *@
+                var activityKey = (entry.TurnId, "turn-activity");
+                <div @key="activityKey" class="turn-activity" role="status">
+                    <span class="turn-activity-glyph" aria-hidden="true">›</span>
+                    <span class="turn-activity-title">@activity.Title</span>
+                    @if (activity.Detail is { Length: > 0 } activityDetail)
+                    {
+                        <span class="turn-activity-detail" title="@activityDetail">@activityDetail</span>
+                    }
+                </div>
             }
             else if (entry.StreamingRun is { } streamingRun)
             {
@@ -1188,7 +1203,11 @@
         Guid? CollapseTurnId = null,
         ChatRunSnapshot? StreamingRun = null,
         string? LiveText = null,
-        int LiveVersion = 0);
+        int LiveVersion = 0,
+        bool LivePreamble = false,
+        TurnActivity? Activity = null);
+
+    private sealed record TurnActivity(string Title, string? Detail);
 
     private readonly HashSet<Guid> _expandedTurns = [];
     private readonly Dictionary<Guid, int> _expandedTurnItemLimits = [];
@@ -1260,13 +1279,17 @@
                     if (!IsTurnExpanded(turn))
                     {
                         if (_liveFrame.Text is { } liveText)
-                            entries.Add(new RenderedFeedEntry(LiveText: liveText, LiveVersion: _liveFrame.Version, TurnId: turn.Id));
+                            entries.Add(new RenderedFeedEntry(LiveText: liveText, LiveVersion: _liveFrame.Version, TurnId: turn.Id,
+                                LivePreamble: IsPreamble(turn, liveText)));
+                        if (GetTurnActivity() is { } activity)
+                            entries.Add(new RenderedFeedEntry(Activity: activity, TurnId: turn.Id));
                     }
                     // Expanded, the notes are already there as themselves; only the step still in
                     // flight has nowhere else to appear.
                     else if (SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft))
                     {
-                        entries.Add(new RenderedFeedEntry(LiveText: draft, LiveVersion: -1, TurnId: turn.Id));
+                        entries.Add(new RenderedFeedEntry(LiveText: draft, LiveVersion: -1, TurnId: turn.Id,
+                            LivePreamble: SelectedRun.DraftToolCall is not null));
                     }
                 }
 
@@ -1334,10 +1357,47 @@
                 .LastOrDefault(message => message.Role == "Assistant" && !string.IsNullOrWhiteSpace(message.Content))
                 ?.Content;
 
+    /// <summary>
+    /// Whether the shown text is known to lead into tool calls rather than being a possible answer:
+    /// the step in flight has started a call, or the text landed as a note with calls attached.
+    /// </summary>
+    private bool IsPreamble(FeedTurn turn, string shown)
+    {
+        if (SelectedRun?.DraftContent is { } draft && draft.Trim().StartsWith(shown, StringComparison.Ordinal))
+            return SelectedRun.DraftToolCall is not null;
+        return turn.IntermediateMessages.Any(message => message.Role == "Assistant"
+            && message.ToolCalls is { Count: > 0 }
+            && message.Content?.Trim().StartsWith(shown, StringComparison.Ordinal) == true);
+    }
+
+    /// <summary>
+    /// The one line under the live text saying what the turn is doing now. Nothing while the
+    /// model is writing prose — the text itself is the activity — and nothing for a question or a
+    /// rate-limit wait, which have their own cards.
+    /// </summary>
+    private TurnActivity? GetTurnActivity()
+    {
+        if (SelectedRun is not { } run || run.PendingPrompt is not null || run.Wait is not null) return null;
+        if (run.PendingApproval is not null) return new TurnActivity("Waiting for tool approval", null);
+        if (run.ActiveTools is { Count: > 0 } tools)
+        {
+            var call = Presentations.DescribeCall(tools[^1].Name, tools[^1].Arguments);
+            return new TurnActivity(call.Title, call.Detail);
+        }
+        if (run.DraftToolCall is { } preparing)
+            return new TurnActivity($"Preparing {Presentations.DescribeCall(preparing, null).Title}…", null);
+        if (!string.IsNullOrWhiteSpace(run.DraftContent)) return null;
+        return new TurnActivity("Thinking…", null);
+    }
+
     // Everything the live text is computed from that the transcript boundary does not already
     // watch: the draft growing, the final answer starting, a reading delay running out, the hold.
     private int GetLiveTextInputVersion() => HashCode.Combine(
         SelectedRun?.DraftContent?.Length,
+        SelectedRun?.DraftToolCall,
+        // The activity line under the text: which call is running, and whether a wait has its own card.
+        SelectedRun?.ActiveTools is { Count: > 0 } tools ? tools[^1].CallId : null,
+        SelectedRun?.Wait is null,
         string.IsNullOrEmpty(SelectedRun?.StreamingContent),
         _liveTextTick,
         _liveTextHeld);
@@ -1573,10 +1633,8 @@
         var duration = Feed.FormatDuration(elapsed);
         if (IsRunningTurn(turn))
         {
-            // The model's words are under the row in full now; the row says what it is doing
-            // with its hands, or just that it is at work.
-            if (SelectedRun?.ActiveTools is { Count: > 0 } tools)
-                return $"{Presentations.DescribeCall(tools[^1].Name, tools[^1].Arguments).Title} · {duration}";
+            // The model's words are under the row in full, and what it is doing with its hands is
+            // the line under them; the row only keeps time.
             return $"Working for {duration}";
         }
 

@@ -29,6 +29,7 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
         var hasContent = false;
         var calls = new SortedDictionary<int, (StringBuilder Id, StringBuilder Name, StringBuilder Arguments)>();
         var contentIdleTimer = new Stopwatch();
+        var toolNameAnnounced = false;
         while (true)
         {
             string? line;
@@ -110,8 +111,16 @@ public sealed class ChatCompletionSseParser : IChatCompletionSseParser
                 }
                 hasContent = true;
                 contentIdleTimer.Restart();
-                if (firstToolCallDelta && receivedToolCallDelta)
-                    yield return new ChatCompletionChunk("", model, ToolCallsStarted: true);
+                // The name usually rides on the first delta; an endpoint that sends it later gets
+                // a second start carrying it, so the transcript can say which tool is coming.
+                var firstName = calls.Count > 0 && calls.First().Value.Name.Length > 0
+                    ? calls.First().Value.Name.ToString()
+                    : null;
+                if (receivedToolCallDelta && (firstToolCallDelta || (!toolNameAnnounced && firstName is not null)))
+                {
+                    toolNameAnnounced = firstName is not null;
+                    yield return new ChatCompletionChunk("", model, ToolCallsStarted: true, ToolCallName: firstName);
+                }
             }
             if (choice.TryGetProperty("delta", out var delta)
                 && delta.TryGetProperty("content", out var contentElement)

@@ -41,17 +41,26 @@ public interface IHistoryCheckpointService
     Task<bool> DeleteAsync(Guid projectId, Guid chatId, Guid checkpointId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The turns of <paramref name="context"/> that a new checkpoint may cover: all but the last
-    /// <paramref name="keepTurns"/>. Empty when nothing new would be covered — only an earlier
-    /// summary and the kept turns are left.
+    /// The turns of <paramref name="context"/> that a new checkpoint may cover: everything before
+    /// the recent turns <paramref name="keep"/> leaves in full. Empty when nothing new would be
+    /// covered — only an earlier summary and the kept turns are left.
     /// </summary>
-    IReadOnlyList<ChatCompletionMessage> Coverable(IReadOnlyList<ChatCompletionMessage> context, int keepTurns);
+    IReadOnlyList<ChatCompletionMessage> Coverable(IReadOnlyList<ChatCompletionMessage> context, HistoryKeepPolicy keep);
 
     /// <summary>The message a checkpoint puts in place of the history it covers.</summary>
     ChatCompletionMessage SummaryMessage(HistoryCheckpoint checkpoint);
 }
 
-public sealed class HistoryCheckpointService(IHistoryCheckpointRepository repository) : IHistoryCheckpointService
+/// <summary>
+/// Which recent turns a compaction leaves in full. Turns are kept from the newest back while they
+/// fit <paramref name="Tokens"/> together, never more than <paramref name="MaxTurns"/> and never
+/// fewer than <paramref name="MinTurns"/>. Counting size rather than turns is what makes compaction
+/// useful in a chat of a few huge turns: keeping the last two there kept nearly everything.
+/// </summary>
+public sealed record HistoryKeepPolicy(long Tokens, int MinTurns, int MaxTurns);
+
+public sealed class HistoryCheckpointService(IHistoryCheckpointRepository repository, IContextTokenEstimator estimator)
+    : IHistoryCheckpointService
 {
     /// <summary>
     /// Kept per chat. A newer checkpoint on a branch already covers what an older one did, so the
@@ -132,14 +141,28 @@ public sealed class HistoryCheckpointService(IHistoryCheckpointRepository reposi
         return found;
     }
 
-    public IReadOnlyList<ChatCompletionMessage> Coverable(IReadOnlyList<ChatCompletionMessage> context, int keepTurns)
+    public IReadOnlyList<ChatCompletionMessage> Coverable(IReadOnlyList<ChatCompletionMessage> context, HistoryKeepPolicy keep)
     {
+        ArgumentNullException.ThrowIfNull(keep);
         var starts = new List<int>();
         for (var index = 0; index < context.Count; index++)
             if (context[index].Role == "user") starts.Add(index);
-        var turns = starts.Count - Math.Max(1, keepTurns);
-        if (turns <= 0) return [];
-        var covered = context.Skip(starts[0]).Take(starts[turns] - starts[0]).ToArray();
+        if (starts.Count == 0) return [];
+        var kept = 0;
+        long keptTokens = 0;
+        while (kept < starts.Count && kept < keep.MaxTurns)
+        {
+            var turn = starts.Count - 1 - kept;
+            var end = turn + 1 < starts.Count ? starts[turn + 1] : context.Count;
+            var size = estimator.EstimateMessages(context.Skip(starts[turn]).Take(end - starts[turn]).ToArray());
+            if (kept >= keep.MinTurns && keptTokens + size > keep.Tokens) break;
+            keptTokens += size;
+            kept++;
+        }
+        var coveredTurns = starts.Count - kept;
+        if (coveredTurns <= 0) return [];
+        var coveredEnd = coveredTurns < starts.Count ? starts[coveredTurns] : context.Count;
+        var covered = context.Skip(starts[0]).Take(coveredEnd - starts[0]).ToArray();
         // A lone earlier summary is not new history: covering only it would summarize a summary.
         var fresh = covered.Where(message => !IsSummary(message)).ToArray();
         return fresh.Any(message => message.MessageId is not null) ? covered : [];

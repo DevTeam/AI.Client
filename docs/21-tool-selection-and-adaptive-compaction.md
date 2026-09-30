@@ -45,9 +45,9 @@ Tool-call groups remain intact and the current user request is never truncated.
   checkpoint is run-local: on the next model step it replaces only the covered model-facing
   messages, keeping the current user request and the compaction tool protocol group, and it is
   discarded when the run ends.
-- `History` summarizes the chat's earlier turns — all but the current one and the one before it —
-  and keeps the summary as a history checkpoint (below), so every later request of the branch
-  starts from it.
+- `History` summarizes the chat's earlier turns — all but the current one, and the one before it
+  when it fits the keep budget — and keeps the summary as a history checkpoint (below), so every
+  later request of the branch starts from it.
 
 Summaries are written by `ContextSummaryWriter`: a source that fits one request (about 40k
 characters) is summarized in one, a longer one part by part and then merged, so nothing past a
@@ -65,10 +65,16 @@ full history for the next request.
 Checkpoints are made three ways:
 
 - the person presses Compact in the chat usage widget (`POST .../branches/{branchId}/compact`),
-  which summarizes all but the last two turns with the chat's connection, between turns only;
+  which summarizes the history with the chat's connection, between turns only;
 - the model calls `app_context_compact` with scope `History`;
 - the planner's LLM fallback: a summary it writes so that a request fits is kept and pinned for the
   rest of the run, instead of being written again for every step that would not fit without it.
+
+What stays in full is decided by size, not by count (`HistoryKeepPolicy`): recent turns are kept
+from the newest back while together they fit a fifth of the connection's input window, at most
+two. A chat of a few huge tool-heavy turns therefore keeps only its small last turn, or nothing
+between turns — the next question then starts from the summary. The model's `History` scope always
+keeps the turn in progress.
 
 The transcript marks where the model's view begins, before the question that follows the covered
 history, with the summary behind a toggle and an Undo.

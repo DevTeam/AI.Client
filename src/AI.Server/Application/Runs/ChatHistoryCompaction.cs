@@ -6,6 +6,7 @@ using Projects;
 using Settings;
 using Usage;
 using Contracts.Chats;
+using Contracts.Settings;
 using Contracts.Runs;
 using Contracts.Usage;
 
@@ -31,10 +32,15 @@ public sealed class ChatHistoryCompaction(
     ITokenUsageMeter usageMeter,
     IChatRunDispatcher runs,
     IClock clock,
-    IIdGenerator ids) : IChatHistoryCompaction
+    IIdGenerator ids,
+    IConnectionContextLimitsResolver contextLimits) : IChatHistoryCompaction
 {
-    /// <summary>What is left in full: the last two turns, which the next message most likely follows on from.</summary>
-    private const int TurnsToKeep = 2;
+    /// <summary>
+    /// At most this many recent turns stay in full, and only while they fit a fifth of the window
+    /// together. None may be left: between turns everything can be summarized, and the next
+    /// question starts from the summary.
+    /// </summary>
+    private const int MaxTurnsToKeep = 2;
 
     /// <summary>A whole conversation deserves a longer summary than one turn's work does.</summary>
     private const int SummaryTargetTokens = 3_000;
@@ -53,19 +59,21 @@ public sealed class ChatHistoryCompaction(
             return new HistoryCompactionResponse(HistoryCompactionStatus.Busy,
                 Error: "The branch is answering. Compact it once the turn has finished.");
 
-        var context = await history.ApplyAsync(projectId, chatId,
-            await contextBuilder.BuildAsync(chat, head, cancellationToken), cancellationToken);
-        var coverable = history.Coverable(context, TurnsToKeep);
-        if (coverable.Count == 0)
-            return new HistoryCompactionResponse(HistoryCompactionStatus.NothingToCompact,
-                Error: "Only the last two turns are left; there is nothing earlier to compact.");
-
         var global = await settings.LoadAsync(cancellationToken);
         var connectionId = chat.ConnectionId ?? project.ConnectionId
             ?? global.Connections.FirstOrDefault(item => item is { IsDefault: true, Enabled: true })?.Id
             ?? global.Connections.FirstOrDefault(item => item.Enabled)?.Id;
         if (global.Connections.SingleOrDefault(item => item.Id == connectionId && item.Enabled) is not { } connection)
             return new HistoryCompactionResponse(HistoryCompactionStatus.Failed, Error: "Choose an enabled connection for this chat.");
+
+        var context = await history.ApplyAsync(projectId, chatId,
+            await contextBuilder.BuildAsync(chat, head, cancellationToken), cancellationToken);
+        var limits = contextLimits.Resolve(connection);
+        var coverable = history.Coverable(context, new HistoryKeepPolicy(
+            Math.Max(1_024, (limits.ContextWindowTokens - limits.ReservedOutputTokens) / 5), 0, MaxTurnsToKeep));
+        if (coverable.Count == 0)
+            return new HistoryCompactionResponse(HistoryCompactionStatus.NothingToCompact,
+                Error: "The history is already summarized up to the latest turn.");
 
         var request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
             await secrets.GetAsync("connection", connection.Id, cancellationToken), "Summarize", connection.Id);

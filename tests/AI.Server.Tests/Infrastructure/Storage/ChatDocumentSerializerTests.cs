@@ -78,30 +78,12 @@ public class ChatDocumentSerializerTests
         chat.AddMessage(new ChatMessage(messageId, null, ChatMessageRole.User, string.Empty, now,
             resources: [review, file]), now);
 
-        chat.RemoveReviewReference(messageId, review.Id, now).ShouldBeTrue();
+        chat.RemoveReviewReferences(review.Id, now).ShouldBeTrue();
         var restored = _serializer.Deserialize(_serializer.Serialize(chat, 2));
 
         var message = restored.Chat.Messages.ShouldHaveSingleItem();
         message.Resources!.ShouldHaveSingleItem().ShouldBe(file);
         message.Content.ShouldBe(string.Empty);
-    }
-
-    [Fact]
-    public void RemovingTheLastFileReferenceShouldKeepTheEmptyMessageAfterReload()
-    {
-        var now = DateTimeOffset.UnixEpoch;
-        var file = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.File, "C:\\work\\api.cs");
-        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", now);
-        var messageId = new ChatMessageId(Guid.CreateVersion7());
-        chat.AddMessage(new ChatMessage(messageId, null, ChatMessageRole.User, string.Empty, now,
-            resources: [file]), now);
-
-        chat.RemoveResourceReference(messageId, file.Id, now).ShouldBeTrue();
-        var restored = _serializer.Deserialize(_serializer.Serialize(chat, 2));
-
-        var message = restored.Chat.Messages.ShouldHaveSingleItem();
-        message.Content.ShouldBe(string.Empty);
-        message.Resources.ShouldBeEmpty();
     }
 
     [Fact]

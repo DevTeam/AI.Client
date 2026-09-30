@@ -5991,6 +5991,9 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 
 .ghost-cursor.is-pressing svg { transform: scale(0.85); }
 
+/* Reduced motion: the pointer appears at the row instead of travelling to it. */
+.ghost-cursor.is-still, .ghost-cursor.is-still svg { transition: none; }
+
 .ghost-cursor.is-leaving {
     opacity: 0;
     transition-duration: 200ms !important;
@@ -6027,4 +6030,5 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 
 @media (prefers-reduced-motion: reduce) {
     .navigation-arrived { animation: none; box-shadow: 0 0 0 2px var(--color-accent); }
+    .ghost-cursor-ripple { animation: none; opacity: 0.8; transform: scale(0.9); }
 }

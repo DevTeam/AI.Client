@@ -49,28 +49,33 @@ export function cancelCursor() {
 /**
  * Moves a pointer from the composer to the row of the target, then presses it just before the
  * countdown ends. The chat row is used when it is in the list; a chat of another project is
- * reached through its project's row. Nothing is drawn under reduced motion.
+ * reached through its project's row. Under reduced motion the pointer does not travel: it appears
+ * at the row, where it presses with a still ring. It stays because it is the part that says where
+ * the window is going; Windows with animations switched off reports reduced motion to the page.
  */
 export function playCursor(projectId, chatId, durationMs) {
     cancelCursor();
-    if (reducedMotion()) return;
+    const still = reducedMotion();
     const target = targetRow(projectId, chatId);
     const origin = document.querySelector(".composer-input") || document.querySelector(".workspace-location");
     if (!target || !origin) return;
     const from = origin.getBoundingClientRect();
     const to = target.getBoundingClientRect();
     const element = document.createElement("div");
-    element.className = "ghost-cursor";
+    element.className = still ? "ghost-cursor is-still" : "ghost-cursor";
     element.setAttribute("aria-hidden", "true");
-    element.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 3l7 17 2.5-7L21 10.5z"/></svg>';
-    element.style.transform = `translate(${from.left + from.width / 2}px, ${from.top + from.height / 2}px)`;
+    element.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 3l7 17 2.5-7L21 10.5z"/></svg>';
+    const end = `translate(${to.left + Math.min(28, to.width / 3)}px, ${to.top + to.height / 2}px)`;
+    element.style.transform = still ? end : `translate(${from.left + from.width / 2}px, ${from.top + from.height / 2}px)`;
     document.body.appendChild(element);
     cursor = element;
-    // Read the start position back so the move below is a transition, not a jump.
-    void element.getBoundingClientRect();
-    const travel = Math.max(400, durationMs - 700);
-    element.style.transitionDuration = `${travel}ms`;
-    element.style.transform = `translate(${to.left + Math.min(28, to.width / 3)}px, ${to.top + to.height / 2}px)`;
+    const travel = still ? Math.max(400, durationMs - 1200) : Math.max(400, durationMs - 700);
+    if (!still) {
+        // Read the start position back so the move below is a transition, not a jump.
+        void element.getBoundingClientRect();
+        element.style.transitionDuration = `${travel}ms`;
+        element.style.transform = end;
+    }
     timers.push(setTimeout(() => {
         element.classList.add("is-pressing");
         target.classList.add("ghost-cursor-target");

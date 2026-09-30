@@ -1,0 +1,37 @@
+@inject IUsagePresentation Usage
+@* One quiet line under an opened turn: what it cost and where. Requests made for the turn's own
+   housekeeping — routing, approval checks, summaries — are counted apart from its answer and its
+   subtasks, since that is where a turn that looked short usually spent. *@
+<p class="turn-usage" aria-label="Token usage of this turn">
+    <span>@Turn.Totals.Requests @(Turn.Totals.Requests == 1 ? "request" : "requests")</span>
+    <span>in @(Estimated ? "≈" : null)@Usage.FormatExact(Turn.Totals.Tokens.InputTokens)@if (Usage.CachePercent(Turn.Totals.Tokens) is > 0 and var cache) { <small> (@cache% cached)</small> }</span>
+    <span>out @(Estimated ? "≈" : null)@Usage.FormatExact(Turn.Totals.Tokens.OutputTokens)</span>
+    @if (Turn.Totals.Tokens.ReasoningTokens > 0) { <span>reasoning @Usage.FormatTokens(Turn.Totals.Tokens.ReasoningTokens)</span> }
+    @if (Part(nameof(TokenUsagePurpose.Subtask)) is { } subtasks) { <span>subtasks @Usage.FormatFlow(subtasks)</span> }
+    @if (Background() is { } background) { <span title="Skill routing, approval checks and summaries">background @Usage.FormatTokens(background)</span> }
+    @if (Usage.OutputSpeed(Turn.Totals) is { } speed) { <span>@speed tok/s</span> }
+    @if (Usage.FormatCost(Turn.Totals) is { } cost) { <span>@cost</span> }
+</p>
+
+@code {
+    private static readonly string[] BackgroundPurposes =
+    [
+        nameof(TokenUsagePurpose.Routing), nameof(TokenUsagePurpose.ToolRisk),
+        nameof(TokenUsagePurpose.Checkpoint), nameof(TokenUsagePurpose.Compaction)
+    ];
+
+    [Parameter, EditorRequired]
+    public TurnTokenUsage Turn { get; set; } = null!;
+
+    private bool Estimated => Usage.IsEstimated(Turn.Totals);
+
+    private TokenUsageTotals? Part(string key) =>
+        Turn.ByPurpose.FirstOrDefault(slice => slice.Key == key)?.Totals;
+
+    private long? Background()
+    {
+        var tokens = Turn.ByPurpose.Where(slice => BackgroundPurposes.Contains(slice.Key))
+            .Sum(slice => slice.Totals.Tokens.InputTokens + slice.Totals.Tokens.OutputTokens);
+        return tokens > 0 ? tokens : null;
+    }
+}

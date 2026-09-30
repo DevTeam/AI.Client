@@ -13,4 +13,7 @@ public interface IComposerContextPresentation
 
     /// <summary>A compact token count: 950, 1.2k, 53k, 1.1M.</summary>
     string FormatTokens(long tokens);
+
+    /// <summary>The one thing worth saying about the window now, or null when there is nothing.</summary>
+    string? Note(ComposerContext context);
 }

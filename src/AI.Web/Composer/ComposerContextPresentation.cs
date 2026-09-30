@@ -41,6 +41,17 @@ public sealed class ComposerContextPresentation(IConnectionContextLimitsResolver
         _ => (tokens / 1_000_000d).ToString("0.#", CultureInfo.InvariantCulture) + "M"
     };
 
+    public string? Note(ComposerContext context) => context switch
+    {
+        { Level: ContextFillLevel.Critical } => "Almost full: the next request compacts older turns",
+        { Level: ContextFillLevel.Warning } => "Filling up: older turns will be compacted soon",
+        { WasCompacted: true, OmittedMessages: > 0 } => $"Older turns compacted to fit ({context.OmittedMessages} messages)",
+        { WasCompacted: true } => "Older turns compacted to fit",
+        { IsMeasured: false } => "Measured with the next request",
+        { IsDefaultCapacity: true } => "Default window size; set the real one in Connections",
+        _ => null
+    };
+
     private static long EstimateDraft(string draft) =>
         string.IsNullOrEmpty(draft) ? 0 : MessageEnvelopeTokens + EstimateText("user") + EstimateText(draft);
 

@@ -14,6 +14,7 @@
 @inject ITurnLiveText LiveText
 @inject IToolPresentations Presentations
 @inject IApiBaseUrl ApiBaseUrl
+@inject IUsagePresentation Usage
 @implements IAsyncDisposable
 @using AI.Contracts.Tools
 @using AI.Contracts.Resources
@@ -119,12 +120,19 @@
                 var expanded = IsTurnExpanded(summary);
                 var canExpand = CanExpandTurn(summary);
                 var summaryKey = (turnId, "turn-summary");
+                var usageKey = (turnId, "turn-usage");
                 RenderFragment summaryContent = @<text>
                     @if (IsRunningTurn(summary) || _loadingTurnIds.Contains(turnId))
                     {
                         <span class="turn-summary-spinner" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
                     }
                     <span class="turn-summary-text">@(_loadingTurnIds.Contains(turnId) ? "Loading details…" : GetTurnSummaryText(summary))</span>
+                    @* Only a finished turn says what it used: a figure ticking up beside the timer
+                       would pull the eye away from the answer being written under it. *@
+                    @if (ShowTurnTokens && !IsRunningTurn(summary) && GetTurnUsage(turnId) is { } turnUsage)
+                    {
+                        <span class="turn-summary-tokens" title="Input → output tokens">· @Usage.FormatFlow(turnUsage.Totals)</span>
+                    }
                     @if (canExpand)
                     {
                         <span class="turn-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-right" /></span>
@@ -145,6 +153,10 @@
                          class="turn-summary is-static @GetTurnSummaryStateClasses(summary)">
                         @summaryContent
                     </div>
+                }
+                @if (expanded && GetTurnUsage(turnId) is { } expandedUsage)
+                {
+                    <TurnUsageDetails @key="usageKey" Turn="@expandedUsage" />
                 }
             }
             else if (entry.ChangesMessage is { WorkspaceChanges: { IsEmpty: false } collapsedChanges })
@@ -475,6 +487,9 @@
     [Parameter] public Guid? ForkSourceId { get; set; }
     [Parameter] public Guid? MessageBranchMenuId { get; set; }
     [Parameter] public ChatRunSnapshot? SelectedRun { get; set; }
+    /// <summary>What the chat's finished turns used, by the Host's ledger; the running turn comes with <see cref="SelectedRun"/>.</summary>
+    [Parameter] public ChatTokenUsage? ChatUsage { get; set; }
+    [Parameter] public bool ShowTurnTokens { get; set; }
     [Parameter] public TimeSpan? GeneratingElapsed { get; set; }
     [Parameter] public int TranscriptRunPresentationVersion { get; set; }
     /// <summary>
@@ -584,6 +599,8 @@
     private Guid? _renderedForkSourceId;
     private Guid? _renderedMessageBranchMenuId;
     private ChatRunSnapshot? _renderedSelectedRun;
+    private ChatTokenUsage? _renderedChatUsage;
+    private bool _renderedShowTurnTokens;
     private TimeSpan? _renderedGeneratingElapsed;
     private int _renderedTranscriptRunPresentationVersion;
     private int _renderedReviewVersion;
@@ -607,6 +624,8 @@
             || _renderedForkSourceId != ForkSourceId
             || _renderedMessageBranchMenuId != MessageBranchMenuId
             || !ReferenceEquals(_renderedSelectedRun, SelectedRun)
+            || !ReferenceEquals(_renderedChatUsage, ChatUsage)
+            || _renderedShowTurnTokens != ShowTurnTokens
             || _renderedGeneratingElapsed != GeneratingElapsed
             || _renderedTranscriptRunPresentationVersion != TranscriptRunPresentationVersion
             || _renderedReviewVersion != ReviewVersion
@@ -632,6 +651,8 @@
         _renderedForkSourceId = ForkSourceId;
         _renderedMessageBranchMenuId = MessageBranchMenuId;
         _renderedSelectedRun = SelectedRun;
+        _renderedChatUsage = ChatUsage;
+        _renderedShowTurnTokens = ShowTurnTokens;
         _renderedGeneratingElapsed = GeneratingElapsed;
         _renderedTranscriptRunPresentationVersion = TranscriptRunPresentationVersion;
         _renderedReviewVersion = ReviewVersion;
@@ -1650,6 +1671,11 @@
 
         return $"Worked for {duration}";
     }
+
+    private TurnTokenUsage? GetTurnUsage(Guid turnId) =>
+        SelectedRun?.TurnUsage is { } live && live.TurnId == turnId
+            ? live
+            : ChatUsage?.Turns.FirstOrDefault(turn => turn.TurnId == turnId);
 
     private TimeSpan GetTurnDuration(FeedTurn turn)
     {

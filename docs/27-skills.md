@@ -40,7 +40,7 @@ application permissions, and every write still goes through tool approval.
 
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. The domains are `chat`,
   `project`, `memory`, `skill` and `instructions`; a new area gets a new domain. The action is a
-  verb: create, rename, compact, fork, add, remove, review, save, edit.
+  verb: create, rename, compact, fork, add, remove, review, save, edit, suggest.
 - `name` is the id in words with the first letter capitalized (`project-directory-add` →
   "Project directory add"), so the `/` list groups skills by domain.
 - `description` is one sentence that starts with a verb and names every side effect.
@@ -55,6 +55,7 @@ application permissions, and every write still goes through tool approval.
 | id | What it does | Tools |
 |---|---|---|
 | `chat-rename` | Names a new chat after its first answer, or renames one on request (executor) | — |
+| `chat-reply-suggest` | Drafts the user's next message to the last answer of a branch for the composer (executor) | — |
 | `chat-compact` | Summarizes the chat and continues in a new chat that starts from the summary | `app_chats`, `app_runs` |
 | `chat-context-compact` (`/compact`) | Replaces the finished work of the current turn with a model-only summary, or undoes it | `context_compact` |
 | `chat-fork` | Starts a branch from an earlier user message with a new prompt | `app_runs` Fork, `app_chats` RenameBranch |
@@ -84,6 +85,15 @@ so it does not ask for confirmation.
 lock. Automatic naming starts after the first main-branch answer; explicit requests can rename
 an existing chat. `chat_id=current` resolves from the trusted tool-run context, and a UUID is
 looked up only inside that project. Manual renames prevent a late automatic result from applying.
+
+`chat-reply-suggest` is an executor so that it can run after every answer without a turn of its
+own: one model call without tools gets the answer and the user message before it, and returns one
+short message in the user's language, or `NONE`. It changes nothing; `IChatReplySuggestions` keeps
+the draft per branch for the answer it was written for (`message_id`), and the Web reads it with
+`GET /api/projects/{p}/chats/{c}/reply-suggestion?branchId=&leafMessageId=`, which waits for a draft
+in progress, or `POST` to the same URL, which writes one now. Settings → Chat switches the automatic
+drafts and the automatic chat names off (`PUT /api/settings/chat-automation`); the explicit
+requests still work. See [Composer rules](15-composer-rules.md#suggested-reply).
 
 ## Tools
 

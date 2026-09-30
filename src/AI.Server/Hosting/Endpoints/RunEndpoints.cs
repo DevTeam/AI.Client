@@ -15,6 +15,18 @@ public sealed class RunEndpoints : IEndpointModule
             (Guid projectId, Guid chatId, SubmitChatMessageRequest request, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) =>
                 dispatcher.SubmitAsync(projectId, chatId, request, cancellationToken));
 
+        // GET only waits for a draft the Host started after the answer; POST writes one if there is
+        // none, which is the user asking for it. Neither changes the chat.
+        routes.MapGet("/api/projects/{projectId:guid}/chats/{chatId:guid}/reply-suggestion",
+            async (Guid projectId, Guid chatId, Guid branchId, Guid leafMessageId, IChatReplySuggestions suggestions, CancellationToken token) =>
+                await suggestions.GetAsync(projectId, chatId, branchId, leafMessageId, false, token) is { } suggestion
+                    ? Results.Ok(suggestion) : Results.NoContent());
+
+        routes.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/reply-suggestion",
+            async (Guid projectId, Guid chatId, Guid branchId, Guid leafMessageId, IChatReplySuggestions suggestions, CancellationToken token) =>
+                await suggestions.GetAsync(projectId, chatId, branchId, leafMessageId, true, token) is { } suggestion
+                    ? Results.Ok(suggestion) : Results.NoContent());
+
         routes.MapGet("/api/runs", (IChatRunDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.GetSnapshotAsync(cancellationToken));
 
         routes.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/tools/decision",

@@ -72,6 +72,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<ISettingsImportPlanner>().To<SettingsImportPlanner>()
             .RootBind<IRunStatusPresentation>().To<RunStatusPresentation>()
             .RootBind<IComposerHistoryNavigator>().To<ComposerHistoryNavigator>()
+            .RootBind<IReplySuggestionState>().To<ReplySuggestionState>()
             .RootBind<ISkillCommandMatcher>().To<SkillCommandMatcher>()
             .RootBind<IResourceMentionMatcher>().To<ResourceMentionMatcher>()
             .RootBind<IMentionLinkWriter>().To<MentionLinkWriter>()

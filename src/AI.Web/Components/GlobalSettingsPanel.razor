@@ -67,6 +67,10 @@
                         <fieldset class="app-settings-group">
                             <legend>Chat</legend>
                             <label class="checkbox"><input type="checkbox" checked="@_showContextWindowUsage" @onchange="SetShowContextWindowUsageAsync" /> Show context window usage</label>
+                            @* These two are the Host's: it makes the model calls, whichever window is open. *@
+                            <label class="checkbox"><input type="checkbox" checked="@_chatAutomation.AutoTitle" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { AutoTitle = args.Value is true })" /> Name new chats after the first answer</label>
+                            <label class="checkbox"><input type="checkbox" checked="@_chatAutomation.SuggestReplies" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { SuggestReplies = args.Value is true })" /> Suggest a reply after each answer</label>
+                            <p class="host-status-note">Naming and suggestions each make one more request to the chat's connection.</p>
                         </fieldset>
                         @if (ClientMode.PublicWeb)
                         {
@@ -251,6 +255,7 @@
     private int _cornerRoundnessPercent = 100;
     private bool _notificationSoundEnabled = true;
     private bool _showContextWindowUsage = true;
+    private ChatAutomationSettings _chatAutomation = new();
     private ElementReference _drawer;
     private IJSObjectReference? _transferModule;
     private IJSObjectReference? _transferSubscription;
@@ -282,6 +287,7 @@
         _globalMcpServers.AddRange(settings.McpServers.Select(GlobalMcpServerEditor.From));
         _toolPolicies.Clear();
         _toolPolicies.AddRange(settings.ToolPolicies.Select(McpToolPolicyEditor.From));
+        _chatAutomation = settings.ChatAutomation ?? new ChatAutomationSettings();
         // A save reloads, and switching between Connections and MCP saves: keep the selection
         // where it was instead of jumping back to the first item every time.
         if (_connections.All(item => item.Id != _selectedConnectionId)) _selectedConnectionId = _connections.FirstOrDefault()?.Id;
@@ -301,7 +307,7 @@
     /// <summary>The footer line, counted the way the permissions drawer counts its overrides.</summary>
     private string Stats => Section switch
     {
-        "Settings" => "Applied right away · stored on this device",
+        "Settings" => "Applied right away",
         "Memory" or "ProjectMemory" => _memoryEditor?.Stats ?? string.Empty,
         "Skills" or "ProjectSkills" => _skillEditor?.Stats ?? string.Empty,
         "Connections" => $"{Plural(_connections.Count, "connection")} · {_connections.Count(item => item.Enabled)} enabled",
@@ -363,6 +369,23 @@
         _showContextWindowUsage = args.Value is true;
         await ClientSettings.UpdateAsync(current => current with { ShowContextWindowUsage = _showContextWindowUsage });
         await ContextWindowUsageChanged.InvokeAsync(_showContextWindowUsage);
+    }
+
+    /// <summary>Applied on click like the rest of this section, but stored on the Host.</summary>
+    private async Task SetChatAutomationAsync(ChatAutomationSettings automation)
+    {
+        var previous = _chatAutomation;
+        _chatAutomation = automation;
+        try
+        {
+            _chatAutomation = (await GlobalSettingsApi.SetChatAutomationAsync(automation, CancellationToken.None)).ChatAutomation
+                ?? automation;
+        }
+        catch (HttpRequestException error)
+        {
+            _chatAutomation = previous;
+            Notifications.ShowError($"Could not save the chat setting: {error.Message}");
+        }
     }
 
     private static string Plural(int count, string word) => $"{count} {word}{(count == 1 ? string.Empty : "s")}";

@@ -13,6 +13,7 @@ public interface IGlobalSettingsApi
 
     Task SetMcpCredentialAsync(Guid id, string? value, CancellationToken cancellationToken);
     Task<GlobalSettings> RemoveToolPolicyAsync(Guid serverId, string name, string schemaHash, CancellationToken cancellationToken);
+    Task<GlobalSettings> SetChatAutomationAsync(ChatAutomationSettings automation, CancellationToken cancellationToken);
 
     /// <summary>
     /// Asks the endpoint typed into the connection editor for the models it serves. Returns an

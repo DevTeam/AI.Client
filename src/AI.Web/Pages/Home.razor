@@ -30,6 +30,7 @@
 @inject INotificationService Notifications
 @inject IRunStatusPresentation StatusPresentation
 @inject IComposerHistoryNavigator _composerHistoryNavigator
+@inject IReplySuggestionState ReplySuggestions
 @inject IComposerContextPresentation ContextPresentation
 @inject IClientSettingsService ClientSettings
 @inject IDelayedBusyIndicatorFactory BusyIndicatorFactory
@@ -495,6 +496,7 @@
             @* chatComposer.js draws the draft's "@" links as pills under the text; nothing here renders into it. *@
             <div class="composer-input">
                 <div class="composer-mention-highlight" aria-hidden="true" hidden></div>
+                <div class="composer-suggestion" hidden><span class="composer-suggestion-text"></span><button class="composer-suggestion-accept" type="button" tabindex="-1" title="Use this reply (Tab) · Esc hides it">Tab</button></div>
                 <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@GetComposerPlaceholder()" aria-label="Message"
                           aria-controls="@(IsSkillListOpen() ? "skill-command-menu" : IsMentionListOpen() ? "resource-mention-menu" : null)"
                           aria-activedescendant="@(IsSkillListOpen() ? $"skill-command-{_skillSuggestionIndex}" : IsMentionListOpen() ? $"resource-mention-{_mentionIndex}" : null)"></textarea>
@@ -817,6 +819,8 @@
     private bool? _mentionListPushed;
     private string? _mentionTokensPushed;
     private bool _scrollMention;
+    // The draft reply last handed to chatComposer.js; null until the current handle has one.
+    private string? _replySuggestionPushed;
     private IReadOnlyList<ResourceSuggestion> _mentionFiles = [];
     private string? _mentionFilesQuery;
     private IReadOnlyList<WorkspaceDiffSource> _mentionDiffs = [];
@@ -1127,6 +1131,7 @@
         _showContextWindowUsage = (await ClientSettings.GetAsync()).ShowContextWindowUsage;
         Notifications.Changed += OnNotificationsChanged;
         HostConnection.Changed += OnHostStatusChanged;
+        ReplySuggestions.Changed += OnReplySuggestionChanged;
         Notifications.OpenRequested += OnNotificationOpenRequested;
         Notifications.CenterRequested += OnNotificationCenterRequested;
         await Notifications.InitializeAsync();
@@ -1277,6 +1282,7 @@
                 // A fresh handle starts with the list closed and no links; push the real state again.
                 _skillListPushed = null;
                 _mentionTokensPushed = null;
+                _replySuggestionPushed = null;
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException)
             {
@@ -1373,6 +1379,23 @@
             {
                 await handle.InvokeVoidAsync("setMentionTokens", [mentionTokens]);
                 _mentionTokensPushed = mentionTokensKey;
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException)
+            {
+                if (ReferenceEquals(_composerHandle, handle)) _composerHandle = null;
+            }
+        }
+
+        // Every render re-derives which answer a draft would reply to; the state ignores a repeat.
+        ReplySuggestions.Follow(GetReplySuggestionTarget());
+        var replySuggestion = ReplySuggestions.Text ?? string.Empty;
+        if (_composerHandle is not null && replySuggestion != _replySuggestionPushed)
+        {
+            var handle = _composerHandle;
+            try
+            {
+                await handle.InvokeVoidAsync("setSuggestion", replySuggestion);
+                _replySuggestionPushed = replySuggestion;
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException)
             {
@@ -4150,6 +4173,43 @@
         return text;
     }
 
+    private void OnReplySuggestionChanged() => _ = InvokeAsync(StateHasChanged);
+
+    /// <summary>
+    /// The answer a drafted reply would go to: the head of the branch on screen, when it is a finished
+    /// answer and the composer would send to it. A run still busy, a question or approval waiting,
+    /// and a fork or replacement in progress each mean the next message is something else.
+    /// </summary>
+    private ReplySuggestionTarget? GetReplySuggestionTarget()
+    {
+        if (_selectedProject is not { } project || _selectedChat is not { } chat || _isForking || GetReplaceSource() is not null)
+            return null;
+        if (GetSelectedRun() is { } run && (run.Status == ChatRunStatus.Generating || run.Queue.Count > 0
+                || run.PendingPrompt is not null || run.PendingApproval is not null))
+            return null;
+        var branchId = GetSelectedRunBranchId();
+        if (chat.Branches?.SingleOrDefault(branch => branch.Id == branchId)?.HeadMessageId is not { } head) return null;
+        return chat.Messages.LastOrDefault(message => message.Id == head) is { Role: "Assistant", IsIncomplete: false }
+            ? new ReplySuggestionTarget(project.Id, chat.Id, branchId, head)
+            : null;
+    }
+
+    [JSInvokable]
+    public Task DismissReplySuggestion()
+    {
+        ReplySuggestions.Dismiss();
+        // chatComposer.js has already let go of it.
+        _replySuggestionPushed = string.Empty;
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public async Task RequestReplySuggestion()
+    {
+        if (GetReplySuggestionTarget() is null) return;
+        if (!await ReplySuggestions.RequestAsync()) Notifications.ShowInfo("No reply to suggest for this answer.");
+    }
+
     [JSInvokable]
     public Task DismissSkillSuggestions()
     {
@@ -5446,6 +5506,7 @@
     {
         Notifications.Changed -= OnNotificationsChanged;
         HostConnection.Changed -= OnHostStatusChanged;
+        ReplySuggestions.Changed -= OnReplySuggestionChanged;
         Notifications.OpenRequested -= OnNotificationOpenRequested;
         Notifications.CenterRequested -= OnNotificationCenterRequested;
         CancelChatSelection();

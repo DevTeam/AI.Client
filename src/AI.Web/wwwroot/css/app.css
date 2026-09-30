@@ -2619,6 +2619,35 @@ body {
     overflow-wrap: break-word;
     pointer-events: none;
 }
+/* The Host's draft of the user's reply, grey where the text would start while the box is empty
+   (chatComposer.js). Only its key cap takes the pointer: a click on the text is for typing. */
+.composer-suggestion {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 2;
+    overflow: hidden;
+    color: var(--color-text-faint);
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    pointer-events: none;
+}
+.composer-suggestion-accept {
+    margin-left: .45rem;
+    padding: 0 .35rem;
+    border: 1px solid var(--color-border);
+    border-radius: calc(.3rem * var(--corner-scale));
+    background: var(--color-surface-raised);
+    color: var(--color-text-muted);
+    font: inherit;
+    font-size: .75em;
+    line-height: 1.5;
+    vertical-align: .1em;
+    cursor: pointer;
+    pointer-events: auto;
+}
+.composer-suggestion-accept:hover { color: var(--color-text-strong); border-color: var(--color-border-strong); }
+.composer-input.has-reply-suggestion > textarea::placeholder { color: transparent; }
 .composer-mention {
     color: transparent;
     background: color-mix(in srgb, var(--color-accent) 16%, transparent);

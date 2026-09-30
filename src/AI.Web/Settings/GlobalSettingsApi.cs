@@ -20,6 +20,14 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
                ?? throw new InvalidOperationException("Global settings response is empty.");
     }
 
+    public async Task<GlobalSettings> SetChatAutomationAsync(ChatAutomationSettings automation, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PutAsJsonAsync("api/settings/chat-automation", automation, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<GlobalSettings>(cancellationToken)
+               ?? throw new InvalidOperationException("Global settings response is empty.");
+    }
+
     public Task SetConnectionCredentialAsync(Guid id, string? value, CancellationToken cancellationToken) =>
         SetSecretAsync($"api/settings/connections/{id}/credential", value, cancellationToken);
 

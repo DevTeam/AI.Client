@@ -40,6 +40,7 @@ export function attach(textarea, dotNetReference) {
             if (!result) return;
             historyActive = result.active;
             applyHistoryText(result.text);
+            paintSuggestion();
         });
 
     // Mirrors whether the component shows the slash list of skills, for the same reason as
@@ -127,6 +128,71 @@ export function attach(textarea, dotNetReference) {
     const caretKeys = new Set(["ArrowLeft", "ArrowRight", "Home", "End"]);
     const caretKeyHandler = event => { if (caretKeys.has(event.key)) reportCaret(); };
 
+    // The Host's draft of the user's reply. It is drawn only while the box is empty and nothing
+    // else is using it; Tab or → takes it as typed text, Esc puts it aside, Ctrl+Space asks for one.
+    const ghost = textarea.parentElement?.querySelector(":scope > .composer-suggestion") ?? null;
+    const ghostText = ghost?.querySelector(".composer-suggestion-text") ?? null;
+    let suggestion = "";
+    const showsSuggestion = () => suggestion.length > 0 && textarea.value.length === 0
+        && !historyActive && !skillListOpen && !mentionListOpen;
+    const paintSuggestion = () => {
+        if (!ghost || !ghostText) return;
+        const visible = showsSuggestion();
+        textarea.parentElement.classList.toggle("has-reply-suggestion", visible);
+        if (!visible) {
+            ghost.hidden = true;
+            return;
+        }
+        const style = getComputedStyle(textarea);
+        for (const name of MIRRORED) ghost.style[name] = style[name];
+        ghost.style.fontStyle = "italic";
+        ghost.style.width = `${textarea.clientWidth}px`;
+        ghostText.textContent = suggestion;
+        ghost.hidden = false;
+    };
+    const acceptSuggestion = () => {
+        const text = suggestion;
+        suggestion = "";
+        // The page learns the text the way it learns typing, from the input event.
+        textarea.value = text;
+        textarea.setSelectionRange(text.length, text.length);
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        textarea.focus();
+        dotNetReference.invokeMethodAsync("DismissReplySuggestion");
+    };
+    const handleSuggestion = event => {
+        const plain = !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+        if (event.key === " " && event.ctrlKey && !event.altKey && !event.shiftKey && textarea.value.length === 0) {
+            event.preventDefault();
+            dotNetReference.invokeMethodAsync("RequestReplySuggestion");
+            return true;
+        }
+        if (!showsSuggestion()) return false;
+        if ((event.key === "Tab" || event.key === "ArrowRight") && plain) {
+            event.preventDefault();
+            acceptSuggestion();
+            return true;
+        }
+        if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            suggestion = "";
+            paintSuggestion();
+            dotNetReference.invokeMethodAsync("DismissReplySuggestion");
+            return true;
+        }
+        return false;
+    };
+    const acceptButton = ghost?.querySelector(".composer-suggestion-accept") ?? null;
+    // Pressing the key cap must not take the focus from the box first.
+    const keepFocus = event => event.preventDefault();
+    const acceptClick = event => {
+        event.preventDefault();
+        if (showsSuggestion()) acceptSuggestion();
+    };
+    acceptButton?.addEventListener("mousedown", keepFocus);
+    acceptButton?.addEventListener("click", acceptClick);
+
     const handler = event => {
         if (event.isComposing) {
             pushModifiers(event.ctrlKey, event.altKey, event.shiftKey);
@@ -134,6 +200,7 @@ export function attach(textarea, dotNetReference) {
         }
         if (skillListOpen && handleSkillList(event)) return;
         if (mentionListOpen && handleMentionList(event)) return;
+        if (handleSuggestion(event)) return;
         // The skill chip sits before the text: Backspace with the caret at the very start removes
         // it whole, the way a chip inside the text would go.
         if (event.key === "Backspace" && textarea.selectionStart === 0 && textarea.selectionEnd === 0
@@ -264,9 +331,12 @@ export function attach(textarea, dotNetReference) {
         const maxHeight = lineHeight * 14;
         textarea.style.height = "auto";
         textarea.style.maxHeight = `${maxHeight}px`;
-        textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
-        textarea.style.overflowY = textarea.scrollHeight > maxHeight + 1 ? "auto" : "hidden";
         // Every change of the text from here, typed or set, comes through resize.
+        paintSuggestion();
+        // A draft longer than the empty box makes room for itself, as typed text would.
+        const content = Math.max(textarea.scrollHeight, ghost && !ghost.hidden ? ghost.scrollHeight : 0);
+        textarea.style.height = `${Math.min(content, maxHeight)}px`;
+        textarea.style.overflowY = textarea.scrollHeight > maxHeight + 1 ? "auto" : "hidden";
         paintMentions();
     };
     textarea.addEventListener("input", resize);
@@ -284,6 +354,8 @@ export function attach(textarea, dotNetReference) {
         textarea.removeEventListener("keyup", caretKeyHandler);
         textarea.removeEventListener("click", reportCaret);
         textarea.removeEventListener("scroll", syncScroll);
+        acceptButton?.removeEventListener("mousedown", keepFocus);
+        acceptButton?.removeEventListener("click", acceptClick);
         resizeObserver?.disconnect();
         if (textarea.__composerDetach === detach) delete textarea.__composerDetach;
     };
@@ -295,8 +367,12 @@ export function attach(textarea, dotNetReference) {
             textarea.focus();
         },
         resize,
-        setSkillList: open => { skillListOpen = open; },
-        setMentionList: open => { mentionListOpen = open; },
+        setSkillList: open => { skillListOpen = open; paintSuggestion(); },
+        setMentionList: open => { mentionListOpen = open; paintSuggestion(); },
+        setSuggestion: text => {
+            suggestion = text ?? "";
+            resize();
+        },
         setMentionTokens: tokens => {
             // The longer link first: "@src/app/" must not be taken for the start of "@src/app/x.cs".
             mentionTokens = [...(tokens ?? [])].filter(token => token.length > 1).sort((left, right) => right.length - left.length);

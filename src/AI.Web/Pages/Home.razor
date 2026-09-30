@@ -2759,14 +2759,6 @@
     private async Task OnSearchInput(ChangeEventArgs e)
     {
         _searchQuery = e.Value?.ToString() ?? string.Empty;
-        if (_searchQuery.Trim().Length < 2)
-        {
-            // One character matches nearly everything and costs a full scan to prove it.
-            await CancelSearchAsync();
-            _searchResult = null;
-            return;
-        }
-
         await RunSearchAsync();
     }
 
@@ -2796,10 +2788,17 @@
         // Typing is faster than searching, so each keystroke cancels the scan the last one started;
         // otherwise the answer to a half-typed word could land after the answer to the whole one.
         await CancelSearchAsync();
+        var query = _searchQuery.Trim();
+        if (query.Length < 2)
+        {
+            // One character matches nearly everything and costs a full scan to prove it.
+            _searchResult = null;
+            return;
+        }
+
         var cancellation = new CancellationTokenSource();
         _searchCancellation = cancellation;
         _isSearching = true;
-        var query = _searchQuery.Trim();
         try
         {
             var result = await ChatHistoryApi.SearchAsync(query, null, cancellation.Token, _searchIncludeArchived);

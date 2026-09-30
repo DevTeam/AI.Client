@@ -98,18 +98,6 @@ public sealed class ChatEndpoints : IEndpointModule
                 return content is null ? Results.NotFound() : Results.Ok(content);
             });
 
-        routes.MapDelete("/api/projects/{projectId:guid}/chats/{chatId:guid}/messages/{messageId:guid}/reviews/{reviewId:guid}",
-            async (Guid projectId, Guid chatId, Guid messageId, Guid reviewId, long revision,
-                IChatService service, CancellationToken token) =>
-                await service.RemoveReviewReferenceAsync(projectId, chatId, messageId, reviewId, revision, token) is { } chat
-                    ? Results.Ok(chat) : Results.Conflict());
-
-        routes.MapDelete("/api/projects/{projectId:guid}/chats/{chatId:guid}/messages/{messageId:guid}/resources/{resourceId:guid}",
-            async (Guid projectId, Guid chatId, Guid messageId, Guid resourceId, long revision,
-                IChatService service, CancellationToken token) =>
-                await service.RemoveResourceReferenceAsync(projectId, chatId, messageId, resourceId, revision, token) is { } chat
-                    ? Results.Ok(chat) : Results.Conflict());
-
         routes.MapPost(
             "/api/projects/{projectId:guid}/chats",
             async (Guid projectId, CreateChatRequest request, IChatService service, CancellationToken cancellationToken) =>

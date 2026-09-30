@@ -237,31 +237,25 @@ public sealed class ChatThread
         if (IsActivity(message)) LastActivityAt = updatedAt;
     }
 
-    public bool RemoveReviewReference(ChatMessageId messageId, Guid reviewId, DateTimeOffset updatedAt)
-        => RemoveReference(messageId, reviewId, updatedAt, reviewOnly: true);
-
-    public bool RemoveResourceReference(ChatMessageId messageId, Guid resourceId, DateTimeOffset updatedAt)
-        => RemoveReference(messageId, resourceId, updatedAt, reviewOnly: false);
-
     public bool RemoveReviewReferences(Guid reviewId, DateTimeOffset updatedAt)
     {
         var messageIds = _messages.Values.Where(message => message.Role == ChatMessageRole.User
             && message.Resources?.Any(item => item.Id == reviewId
                 && item.Kind == AI.Domain.Resources.ChatResourceKind.Review) == true)
             .Select(message => message.Id).ToArray();
-        foreach (var messageId in messageIds) RemoveReference(messageId, reviewId, updatedAt, reviewOnly: true);
+        foreach (var messageId in messageIds) RemoveReviewReference(messageId, reviewId, updatedAt);
         return messageIds.Length > 0;
     }
 
-    private bool RemoveReference(ChatMessageId messageId, Guid resourceId, DateTimeOffset updatedAt, bool reviewOnly)
+    private bool RemoveReviewReference(ChatMessageId messageId, Guid reviewId, DateTimeOffset updatedAt)
     {
         if (!_messages.TryGetValue(messageId, out var message) || message.Role != ChatMessageRole.User)
             return false;
         var resources = message.Resources;
-        if (resources is null || !resources.Any(item => item.Id == resourceId
-            && (!reviewOnly || item.Kind == AI.Domain.Resources.ChatResourceKind.Review))) return false;
+        if (resources is null || !resources.Any(item => item.Id == reviewId
+            && item.Kind == AI.Domain.Resources.ChatResourceKind.Review)) return false;
         EnsureTimestampDoesNotMoveBackwards(updatedAt);
-        var remaining = resources.Where(item => item.Id != resourceId).ToArray();
+        var remaining = resources.Where(item => item.Id != reviewId).ToArray();
         _messages[messageId] = new ChatMessage(message.Id, message.ParentId, message.Role,
             message.Content, message.CreatedAt, message.IsIncomplete, message.ToolCalls,
             message.ToolCallId, message.WorkspaceChanges, remaining, allowEmptyAfterResourceRemoval: true);

@@ -5470,23 +5470,6 @@ a.resource-pill-target.file-link { cursor: context-menu; }
 }
 .resource-pill-remove:hover { color: var(--color-text-strong); }
 .resource-pill-remove .app-icon { width: .75rem; height: .75rem; }
-/* A sent message's pill reads as a reference, not a draft: its remove button waits for the pointer,
-   over the pill's corner, so the pill is as wide as its name like an "@" link in the text. */
-.message-resource-list .resource-pill { position: relative; }
-.message-resource-list .resource-pill-remove {
-    position: absolute;
-    top: -.45rem;
-    right: -.45rem;
-    margin: 0;
-    padding: .1rem;
-    border: 1px solid var(--color-border-strong);
-    border-radius: 50%;
-    background: var(--color-fill);
-    opacity: 0;
-}
-.message-resource-list .resource-pill-remove .app-icon { width: .6rem; height: .6rem; }
-.message-resource-list .resource-pill:is(:hover, :focus-within) .resource-pill-remove { opacity: 1; }
-@media (hover: none) { .message-resource-list .resource-pill-remove { opacity: 1; } }
 
 /* The icon of what the pill names. A badge sits in its lower right corner, cut out of the icon so
    the two never touch: a pencil where the project may change the path, a barred circle where it

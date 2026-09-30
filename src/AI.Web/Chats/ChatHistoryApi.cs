@@ -62,28 +62,6 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
         return await response.Content.ReadFromJsonAsync<ChatMessageContent>(cancellationToken);
     }
 
-    public async Task<ChatDetails?> RemoveReviewReferenceAsync(Guid projectId, Guid chatId,
-        Guid messageId, Guid reviewId, long revision, CancellationToken cancellationToken)
-    {
-        using var response = await httpClient.DeleteAsync(
-            $"api/projects/{projectId}/chats/{chatId}/messages/{messageId}/reviews/{reviewId}?revision={revision}",
-            cancellationToken);
-        if (response.StatusCode == HttpStatusCode.Conflict) return null;
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ChatDetails>(cancellationToken);
-    }
-
-    public async Task<ChatDetails?> RemoveResourceReferenceAsync(Guid projectId, Guid chatId,
-        Guid messageId, Guid resourceId, long revision, CancellationToken cancellationToken)
-    {
-        using var response = await httpClient.DeleteAsync(
-            $"api/projects/{projectId}/chats/{chatId}/messages/{messageId}/resources/{resourceId}?revision={revision}",
-            cancellationToken);
-        if (response.StatusCode == HttpStatusCode.Conflict) return null;
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ChatDetails>(cancellationToken);
-    }
-
     public async Task<ChatDetails> CreateAsync(Guid projectId, CreateChatRequest request, CancellationToken cancellationToken)
     {
         using var response = await httpClient.PostAsJsonAsync($"api/projects/{projectId}/chats", request, cancellationToken);

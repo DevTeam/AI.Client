@@ -413,7 +413,6 @@
             OnReviewChanges="OpenReviewFromChangesAsync"
             OnOpenReview="OpenAttachedReviewAsync"
             OnOpenChat="SelectChatAsync"
-            OnRemoveResource="RemoveMessageResourceAsync"
             OnFileLinkMenu="OpenFileLinkMenu"
             ReviewNames="@_reviews.ToDictionary(item => item.Id, item => item.Name)"
             MessageReviewIds="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).Select(item => item.Id).ToHashSet()"
@@ -4614,38 +4613,6 @@
             return;
         }
         await OpenReviewAsync(reference.Id);
-    }
-
-    private async Task RemoveMessageResourceAsync((Guid MessageId, Guid ResourceId) link)
-    {
-        if (_selectedProject is null || _selectedChat is null) return;
-        var projectId = _selectedProject.Id;
-        var chatId = _selectedChat.Id;
-        try
-        {
-            var updated = await ChatHistoryApi.RemoveResourceReferenceAsync(projectId, chatId,
-                link.MessageId, link.ResourceId, _selectedChat.Revision, CancellationToken.None);
-            if (updated is null)
-            {
-                var current = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);
-                if (current?.Messages.FirstOrDefault(item => item.Id == link.MessageId)?.Resources
-                    ?.Any(item => item.Id == link.ResourceId) == true)
-                    updated = await ChatHistoryApi.RemoveResourceReferenceAsync(projectId, chatId,
-                        link.MessageId, link.ResourceId, current.Revision, CancellationToken.None);
-                else updated = current;
-            }
-            if (updated is null) { _chatError = "The chat changed. Try removing the resource again."; return; }
-            if (_selectedProject?.Id == projectId && _selectedChat?.Id == chatId)
-            {
-                _selectedChat = updated;
-                _reviewChat = updated;
-                _reviewVersion++;
-            }
-        }
-        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
-        {
-            _chatError = $"Could not remove resource link: {error.Message}";
-        }
     }
 
     private async Task LoadReviewsAsync()

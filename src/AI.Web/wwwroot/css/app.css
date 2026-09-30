@@ -5471,7 +5471,7 @@ a.resource-pill-target.file-link { cursor: context-menu; }
     width: .85em;
     height: .85em;
     margin-right: .25em;
-    vertical-align: -.1em;
+    vertical-align: -.04em;
     background-color: currentColor;
     -webkit-mask: var(--mention-icon) center / contain no-repeat;
     mask: var(--mention-icon) center / contain no-repeat;

@@ -115,6 +115,7 @@
             range.setStartBefore(marks[0]);
             range.setEndAfter(marks.at(-1));
         }
+        return marks;
     }
 
     function rebuild() {
@@ -132,7 +133,7 @@
                 if (range && range.toString() === comment.quote) own.push({ range, id: comment.id, body: comment.body ?? "" });
             }
             own.sort((left, right) => left.range.compareBoundaryPoints(Range.END_TO_END, right.range));
-            for (const item of own) wrapRange(container, item.range, item.id);
+            for (const item of own) item.marks = wrapRange(container, item.range, item.id);
             placeMarkers(container, own.map(item => item.range));
             if (own.length > 0) drawnByContainer.set(container, own);
         }
@@ -144,10 +145,12 @@
         requestAnimationFrame(rebuild);
     }
 
-    // A highlight is not an element, so it cannot carry a title: the pointer is tested against
-    // the drawn ranges' own rectangles instead, at most every 50 ms, and the app's one tooltip
-    // (tooltips.js) shows the comment. Comments are few per message, so this is a handful of
-    // rectangle checks.
+    // The pointer is tested against the rectangles of each comment's marks, at most every 50 ms,
+    // and the app's one tooltip (tooltips.js) shows every comment under it, which one title per
+    // mark could not. Not the range's rectangles: the range is live, and when fileLinks.js
+    // later replaces the text node just before a mark with a path link, the range's start stays
+    // ahead of the new nodes and the comment grows over the path. Comments are few per message,
+    // so this is a handful of rectangle checks.
     let lastMove = 0;
     let shownFor = null;
 
@@ -161,7 +164,7 @@
         const hits = [];
         let anchor = null;
         for (const item of drawnByContainer.get(container) ?? []) {
-            for (const rect of item.range.getClientRects()) {
+            for (const rect of item.marks.flatMap(mark => [...mark.getClientRects()])) {
                 if (x >= rect.left - 1 && x <= rect.right + 1 && y >= rect.top - 1 && y <= rect.bottom + 1) {
                     hits.push(item);
                     anchor ??= rect;

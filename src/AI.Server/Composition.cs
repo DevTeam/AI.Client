@@ -62,6 +62,7 @@ internal sealed class Composition
             .Root<IChatEndpoint>()
             .Root<IChatRunRepository>()
             .Root<IChatRunDispatcher>()
+            .Root<IChatReplySuggestions>()
             .Root<IResourceService>()
             .Root<IResourceRepository>()
             .Root<IWorkspacePathResolver>()
@@ -119,6 +120,9 @@ internal sealed class Composition
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff, MasterKeyFormat, ProcessCommandRunner,
                 AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
             .Singleton<WorkspaceFileSearch, GitWorkspaceDiffReader, FileExcerptReader>()
+            // Bound by their own types only: every executor is an ISkillExecutor, and SkillRunner takes each by type.
+            .Bind<ChatReplySuggestSkill>().As(Lifetime.Singleton).To<ChatReplySuggestSkill>()
+            .Bind<IChatReplySuggestions>().As(Lifetime.Singleton).To<ChatReplySuggestions>()
             .Transient<AppToolReply>()
             .Bind<BuiltInSkillCatalog>().As(Lifetime.Singleton).To<BuiltInSkillCatalog>()
             .Bind<ISkillCatalog>().As(Lifetime.Singleton).To<SkillCatalog>()

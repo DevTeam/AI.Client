@@ -11,6 +11,25 @@ a normal draft. Details — in [UX decisions](12-ux-decisions.md#история-
 
 The selected branch is passed as a stable ID regardless of the temporary view position during editing. Replacement uses the chat revision. An error leaves the text for fixing and resending.
 
+## Suggested reply
+
+After an answer the Host drafts the user's likely next message with `chat-reply-suggest` (see
+[Skills](27-skills.md#built-in-skills)), and the composer shows it as grey italic text while the box
+is empty. It is not the user's text: it never enters the draft, the input history or a send, and
+Enter with only the suggestion on screen sends nothing. `Tab` or `→` (or a click on its `Tab` key
+cap) turns it into ordinary text with the caret at the end; typing replaces it; `Esc` hides it
+until the next answer; `↑` browses the history as usual. `Ctrl+Space` in an empty box asks for a
+draft now, also when the automatic one is switched off or was hidden.
+
+A draft belongs to the head of the branch on screen, in any branch, and only while that head is a
+finished answer the composer would reply to: not while the branch generates, has queued messages,
+waits for an approval or an `ask_user` answer, or while a fork or replacement is being prepared. When
+the head changes the draft is dropped. The Host keeps the latest draft per branch in memory, so
+switching chats and back shows it again; a Host restart forgets it. **Settings → Chat → Suggest a
+reply after each answer** switches the automatic draft off, next to **Name new chats after the first
+answer** for `chat-rename`. Both are stored on the Host, which makes the calls whether or not a
+window is open.
+
 ## Skills from the slash list
 
 A message whose whole text so far is `/` plus a word (`/`, `/co`) opens the list of the

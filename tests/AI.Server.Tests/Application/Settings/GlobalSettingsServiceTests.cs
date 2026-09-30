@@ -22,7 +22,7 @@ public class GlobalSettingsServiceTests
             .Callback<GlobalSettings, CancellationToken>((settings, _) => saved = settings)
             .Returns(Task.CompletedTask);
         _repository.Setup(item => item.LoadAsync(CancellationToken.None))
-            .ReturnsAsync(() => saved!);
+            .ReturnsAsync(() => saved ?? new GlobalSettings([], [], []));
         _secretStore.Setup(item => item.ExistsAsync("connection", It.IsAny<Guid>(), CancellationToken.None))
             .ReturnsAsync(false);
 
@@ -177,13 +177,47 @@ public class GlobalSettingsServiceTests
         await action.ShouldThrowAsync<ArgumentException>();
     }
 
+    [Fact]
+    public async Task ShouldKeepChatAutomationWhenConnectionsAreSaved()
+    {
+        GlobalSettings saved = new([], [], [], new ChatAutomationSettings(AutoTitle: false, SuggestReplies: true));
+        _repository.Setup(item => item.SaveAsync(It.IsAny<GlobalSettings>(), CancellationToken.None))
+            .Callback<GlobalSettings, CancellationToken>((settings, _) => saved = settings)
+            .Returns(Task.CompletedTask);
+        _repository.Setup(item => item.LoadAsync(CancellationToken.None)).ReturnsAsync(() => saved);
+        _secretStore.Setup(item => item.ExistsAsync("connection", It.IsAny<Guid>(), CancellationToken.None))
+            .ReturnsAsync(false);
+        var service = CreateInstance();
+
+        await service.SaveAsync(new SaveGlobalSettingsRequest(
+            [new ConnectionSettings(Guid.CreateVersion7(), "One", "https://one/v1", "one", true, true, false)], [], []),
+            CancellationToken.None);
+        saved.ChatAutomation.ShouldBe(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: true));
+
+        var result = await service.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: true, SuggestReplies: false),
+            CancellationToken.None);
+
+        result.ChatAutomation.ShouldBe(new ChatAutomationSettings(AutoTitle: true, SuggestReplies: false));
+        saved.Connections.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task ShouldTurnChatAutomationOnForSettingsWrittenBeforeIt()
+    {
+        _repository.Setup(item => item.LoadAsync(CancellationToken.None)).ReturnsAsync(new GlobalSettings([], [], []));
+
+        var result = await CreateInstance().GetAsync(CancellationToken.None);
+
+        result.ChatAutomation.ShouldBe(new ChatAutomationSettings(AutoTitle: true, SuggestReplies: true));
+    }
+
     private async Task<GlobalSettings> SaveAsync(params ConnectionSettings[] connections)
     {
         GlobalSettings? saved = null;
         _repository.Setup(item => item.SaveAsync(It.IsAny<GlobalSettings>(), CancellationToken.None))
             .Callback<GlobalSettings, CancellationToken>((settings, _) => saved = settings)
             .Returns(Task.CompletedTask);
-        _repository.Setup(item => item.LoadAsync(CancellationToken.None)).ReturnsAsync(() => saved!);
+        _repository.Setup(item => item.LoadAsync(CancellationToken.None)).ReturnsAsync(() => saved ?? new GlobalSettings([], [], []));
         _secretStore.Setup(item => item.ExistsAsync("connection", It.IsAny<Guid>(), CancellationToken.None))
             .ReturnsAsync(false);
         return await CreateInstance().SaveAsync(new SaveGlobalSettingsRequest(connections, [], []), CancellationToken.None);

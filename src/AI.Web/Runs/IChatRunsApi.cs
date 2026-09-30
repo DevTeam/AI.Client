@@ -24,5 +24,11 @@ public interface IChatRunsApi
     Task<ChatRunSnapshot?> RebaseAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken);
     Task<ChatRunSnapshot?> ClearAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken);
     Task<ChatRunSnapshot?> ClearAllAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken);
+    /// <summary>
+    /// The Host's draft of the user's reply to <paramref name="leafMessageId"/>, or null when there is
+    /// none. Without <paramref name="generate"/> it only waits for a draft already being written.
+    /// </summary>
+    Task<ChatReplySuggestion?> GetReplySuggestionAsync(Guid projectId, Guid chatId, Guid branchId, Guid leafMessageId,
+        bool generate, CancellationToken cancellationToken);
     Task<ChatRunSnapshot?> DiscardAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken);
 }

@@ -71,7 +71,8 @@ public sealed class GlobalSettingsService(
                         : variable).ToArray()
                 };
             })),
-            settings.ToolPolicies);
+            settings.ToolPolicies,
+            settings.ChatAutomation ?? new ChatAutomationSettings());
     }
 
     public async Task<GlobalSettings> SaveAsync(
@@ -121,7 +122,9 @@ public sealed class GlobalSettingsService(
         }
 
         var toolPolicies = request.ToolPolicies.Select(Normalize).ToArray();
-        var settings = new GlobalSettings(connections, mcpServers, toolPolicies);
+        // The request carries only what the connections and MCP editors own; the rest is kept.
+        var stored = await repository.LoadAsync(cancellationToken);
+        var settings = new GlobalSettings(connections, mcpServers, toolPolicies, stored.ChatAutomation);
         await repository.SaveAsync(settings, cancellationToken);
         return await GetAsync(cancellationToken);
     }
@@ -156,6 +159,15 @@ public sealed class GlobalSettingsService(
         var settings = await repository.LoadAsync(cancellationToken);
         await repository.SaveAsync(settings with { ToolPolicies = settings.ToolPolicies.Where(item =>
             item.ServerId != serverId || item.Name != name || item.SchemaHash != schemaHash).ToArray() }, cancellationToken);
+        return await GetAsync(cancellationToken);
+    }
+
+    public async Task<GlobalSettings> SetChatAutomationAsync(ChatAutomationSettings automation,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(automation);
+        var settings = await repository.LoadAsync(cancellationToken);
+        await repository.SaveAsync(settings with { ChatAutomation = automation }, cancellationToken);
         return await GetAsync(cancellationToken);
     }
 

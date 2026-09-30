@@ -61,6 +61,16 @@ public sealed class ChatRunsApi(HttpClient httpClient) : IChatRunsApi
     public Task<ChatRunSnapshot?> ClearAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken) => PostCommandAsync(projectId, chatId, "queue/clear", branchId, operationId, cancellationToken);
     public Task<ChatRunSnapshot?> ClearAllAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken) => PostCommandAsync(projectId, chatId, "queue/clear-all", branchId, operationId, cancellationToken);
     public Task<ChatRunSnapshot?> DiscardAsync(Guid projectId, Guid chatId, Guid branchId, Guid operationId, CancellationToken cancellationToken) => PostCommandAsync(projectId, chatId, "queue/discard", branchId, operationId, cancellationToken);
+    public async Task<ChatReplySuggestion?> GetReplySuggestionAsync(Guid projectId, Guid chatId, Guid branchId,
+        Guid leafMessageId, bool generate, CancellationToken cancellationToken)
+    {
+        var url = $"api/projects/{projectId}/chats/{chatId}/reply-suggestion?branchId={branchId}&leafMessageId={leafMessageId}";
+        using var response = generate
+            ? await httpClient.PostAsync(url, null, cancellationToken)
+            : await httpClient.GetAsync(url, cancellationToken);
+        if (response.StatusCode != HttpStatusCode.OK) return null;
+        return await response.Content.ReadFromJsonAsync<ChatReplySuggestion>(cancellationToken);
+    }
     private async Task<ChatRunSnapshot?> PostCommandAsync(Guid projectId, Guid chatId, string command, Guid branchId, Guid operationId, CancellationToken cancellationToken)
     {
         using var response = await httpClient.PostAsync(CommandUrl(projectId, chatId, command, branchId, operationId), null, cancellationToken);

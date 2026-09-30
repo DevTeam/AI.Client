@@ -54,6 +54,27 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task AnswerShouldStartADraftOfTheReplyWhenSuggestionsAreOn()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(SuggestReplies: true));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Fix the empty list case"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Fixed it. Shall I add tests?");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var draft = await fixture.NextCallAsync();
+        draft.Request.Tools.ShouldBeNull();
+        draft.Request.ContextMessages![^1].Content.ShouldContain("Shall I add tests?");
+        draft.Answer.SetResult("Yes, add them and run them.");
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var head = chat!.Branches!.Single(branch => branch.Id == fixture.ChatId).HeadMessageId!.Value;
+        var suggestion = await fixture.ReplySuggestions.GetAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, head,
+            false, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        suggestion.ShouldNotBeNull().Text.ShouldBe("Yes, add them and run them.");
+    }
+
+    [Fact]
     public async Task ToolMessagesShouldBePublishedAsAContiguousChatDelta()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -1697,7 +1718,10 @@ public sealed class ChatExecutionTests
         public static async Task<Fixture> CreateAsync(IWorkspaceChangeTracker? workspace = null)
         {
             var fixture = new Fixture(workspace);
-            await fixture.Settings.SaveAsync(new GlobalSettings([new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.test/v1", "model", true, true, false)], [], []), CancellationToken.None);
+            // A drafted reply is one more call to the scripted model after every answer, which these
+            // tests read call by call; the drafts have tests of their own.
+            await fixture.Settings.SaveAsync(new GlobalSettings([new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.test/v1", "model", true, true, false)], [], [],
+                new ChatAutomationSettings(SuggestReplies: false)), CancellationToken.None);
             fixture.ProjectId = (await fixture.Projects.CreateAsync(new CreateProjectRequest("Test", ""), CancellationToken.None)).Id;
             fixture.ChatId = (await fixture.Chats.CreateAsync(fixture.ProjectId, new CreateChatRequest("Chat"), CancellationToken.None)).Id;
             await fixture.Dispatcher.WarmUpAsync(CancellationToken.None);
@@ -1751,6 +1775,12 @@ public sealed class ChatExecutionTests
 
         public Task<ProjectDetails?> GetProjectAsync() => Projects.GetAsync(ProjectId, CancellationToken.None);
         public Task<GlobalSettings> GetGlobalAsync() => Settings.LoadAsync(CancellationToken.None);
+        public IChatReplySuggestions ReplySuggestions => _composition.Resolve<IChatReplySuggestions>();
+        public async Task SetChatAutomationAsync(ChatAutomationSettings automation)
+        {
+            var global = await Settings.LoadAsync(CancellationToken.None);
+            await Settings.SaveAsync(global with { ChatAutomation = automation }, CancellationToken.None);
+        }
         public async Task SetGlobalPolicyAsync(string decision)
         {
             var global = await Settings.LoadAsync(CancellationToken.None);

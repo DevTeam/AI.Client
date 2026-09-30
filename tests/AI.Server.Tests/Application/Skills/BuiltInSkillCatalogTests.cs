@@ -60,12 +60,14 @@ public class BuiltInSkillCatalogTests
     }
 
     [Fact]
-    public void ShouldMakeEveryBundledSkillExceptChatRenameAPlaybookWithDeclaredTools()
+    public void ShouldMakeEveryBundledSkillExceptTheExecutorsAPlaybookWithDeclaredTools()
     {
         var skills = new BuiltInSkillCatalog().List();
+        string[] executors = ["chat-rename", "chat-reply-suggest"];
 
-        skills.Count.ShouldBeGreaterThanOrEqualTo(19);
-        foreach (var skill in skills.Where(item => item.Id != "chat-rename"))
+        skills.Count.ShouldBeGreaterThanOrEqualTo(20);
+        skills.Where(item => executors.Contains(item.Id)).ShouldAllBe(item => item.Kind == SkillKinds.Executor);
+        foreach (var skill in skills.Where(item => !executors.Contains(item.Id)))
         {
             skill.Kind.ShouldBe(SkillKinds.Playbook, skill.Id);
             skill.ResultSchema.ShouldBeNull(skill.Id);

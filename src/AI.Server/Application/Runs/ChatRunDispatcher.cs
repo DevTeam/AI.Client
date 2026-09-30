@@ -27,7 +27,7 @@ public sealed class ChatRunDispatcher(
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies,
     IChatContextBuilder contextBuilder, IChatBranchIds branchIds, IResourceService resources, IReviewService reviews,
     IResourceModelProjection resourceProjection, IMemoryService memory, IProjectInstructionsService projectInstructions,
-    ISkillRunner skillRunner, ISkillCatalog skillCatalog)
+    ISkillRunner skillRunner, ISkillCatalog skillCatalog, IChatReplySuggestions replySuggestions)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -454,6 +454,7 @@ public sealed class ChatRunDispatcher(
                     draft: (chunk, ct) => ReportDraftAsync(runtime, chunk, ct),
                     contextUsage: (usage, ct) => ReportContextAsync(runtime, usage, ct));
                 var suggestTitle = false;
+                Guid? answeredHead = null;
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
                 {
                     token.ThrowIfCancellationRequested();
@@ -480,8 +481,18 @@ public sealed class ChatRunDispatcher(
                     await SaveAsync(runtime, chat, token);
                     suggestTitle = runtime.State.BranchId == chat.Id && chat.AutoTitlePending
                         && chat.Messages.Count(message => message.Role == "User") == 1;
+                    // A reply is drafted only for the answer the user is left with: with more
+                    // messages queued behind it, the next one is already the reply.
+                    if (runtime.State.Queue.Count == 0)
+                        answeredHead = chat.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId)?.HeadMessageId;
                 }
-                if (suggestTitle) StartTitleSkill(runtime.State.ProjectId, runtime.State.ChatId);
+                if (suggestTitle || answeredHead is not null)
+                {
+                    var automation = (await settings.LoadAsync(token)).ChatAutomation ?? new ChatAutomationSettings();
+                    if (suggestTitle && automation.AutoTitle) StartTitleSkill(runtime.State.ProjectId, runtime.State.ChatId);
+                    if (answeredHead is { } head && automation.SuggestReplies)
+                        replySuggestions.Start(runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId, head);
+                }
             }
         }
         catch (Exception error)

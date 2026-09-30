@@ -2764,11 +2764,8 @@ body {
     color: var(--color-danger-text);
 }
 
-.message-actions .destructive-action {
-    color: var(--color-danger-text);
-}
-
-.message-actions .destructive-action:hover:not(:disabled) {
+.message-actions .destructive-action:hover:not(:disabled),
+.message-actions .destructive-action:focus-visible:not(:disabled) {
     background: var(--color-danger-bg);
     color: var(--color-danger-text-strong);
 }

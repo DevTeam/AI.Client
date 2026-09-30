@@ -67,6 +67,9 @@ public enum AppResource
     /// 'query' narrows them to an id or text and then also returns each full SKILL.md.
     /// </summary>
     Skills,
+
+    /// <summary>Declared MCP tools, schemas and hints of one enabled server selected by resourceId; calls no tools.</summary>
+    McpTools,
 }
 
 [McpServerToolType]
@@ -82,6 +85,7 @@ public sealed class AppReadTool(
     IStandingInstructions standing,
     ISkillCatalog skills,
     Func<IChatRunDispatcher> runs,
+    Func<IToolSessionFactory> toolSessions,
     IAppToolReply reply) : IAppTool
 {
     public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(this, run, reply).Create();
@@ -99,6 +103,9 @@ public sealed class AppReadTool(
                               + "'Reviews' and 'Review' use projectId; the last four also use chatId, and 'Review' needs resourceId. "
                               + "'ConnectionModels' fetches the provider's model catalog: resourceId selects a saved connection "
                               + "and uses its stored key and URL; otherwise query must be an absolute HTTP Base URL and no key is sent. "
+                              + "'McpTools' needs resourceId of an enabled MCP server from Settings and lists its declared tools "
+                              + "with original names, schema hashes, input schemas and annotations for configuring tool policies. "
+                              + "Discovery connects to that server but calls no tools and grants no directory access. "
                               + "Omitted chatId for 'Chat', 'Messages' and 'Reviews' means the current chat. "
                               + "'Memory' lists the user's and the project's long-term memory; pass resourceId for one entry or "
                               + "query to search. 'Instructions' returns the project instructions and their revision. 'Skills' lists "
@@ -202,6 +209,33 @@ public sealed class AppReadTool(
     {
         switch (resource)
         {
+            case AppResource.McpTools:
+            {
+                var id = Required(resourceId, nameof(resourceId));
+                var global = await settings.GetAsync(cancellationToken);
+                var server = global.McpServers.SingleOrDefault(item => item.Id == id)
+                    ?? throw new ArgumentException("MCP server not found.", nameof(resourceId));
+                if (!server.Enabled || server.Policy == "Deny")
+                    throw new InvalidOperationException("MCP server is disabled or denied; discovery did not start it.");
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                deadline.CancelAfter(TimeSpan.FromSeconds(15));
+                try
+                {
+                    await using var session = await toolSessions().OpenAsync([], new HashSet<Guid> { id },
+                        ToolRunContext.None, deadline.Token);
+                    if (session.Tools.Count == 0)
+                        throw new InvalidOperationException("No tools were discovered; this server may have no supported Host connection.");
+                    return Paging.Page("McpTools", session.Tools.Select(tool => new
+                    {
+                        tool.ServerId, Name = tool.OriginalName, tool.SchemaHash,
+                        tool.Descriptor.Description, tool.Descriptor.InputSchema, tool.Descriptor.Annotations
+                    }).ToArray(), cursor, limit, reply.Json);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw new InvalidOperationException("MCP tool discovery timed out.");
+                }
+            }
             case AppResource.Projects:
                 return Paging.Page("Projects", await projects.ListAsync(cancellationToken), cursor, limit, reply.Json);
             case AppResource.Project:

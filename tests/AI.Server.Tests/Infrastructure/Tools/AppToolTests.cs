@@ -39,6 +39,49 @@ using Xunit;
 public sealed class AppToolTests
 {
     [Fact]
+    public async Task ShouldDiscoverExactToolPolicyIdentitiesWithoutCallingTools()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var first = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "McpTools", resourceId = AppMcpServer.Id, limit = 1 });
+        first.GetProperty("total").GetInt32().ShouldBeGreaterThan(1);
+        var tool = first.GetProperty("items")[0];
+        tool.GetProperty("serverId").GetGuid().ShouldBe(AppMcpServer.Id);
+        var declared = session.Tools.Single(item => item.OriginalName == tool.GetProperty("name").GetString());
+        tool.GetProperty("schemaHash").GetString().ShouldBe(declared.SchemaHash);
+        tool.GetProperty("inputSchema").GetProperty("type").GetString().ShouldBe("object");
+        tool.GetProperty("annotations").ValueKind.ShouldBe(JsonValueKind.Object);
+
+        var next = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "McpTools", resourceId = AppMcpServer.Id, limit = 1,
+                cursor = first.GetProperty("nextCursor").GetString() });
+        next.GetProperty("items")[0].GetProperty("name").GetString()
+            .ShouldNotBe(tool.GetProperty("name").GetString());
+    }
+
+    [Theory]
+    [InlineData(false, "Ask")]
+    [InlineData(true, "Deny")]
+    public async Task ShouldRejectDiscoveryOfDisabledOrUnknownServers(bool enabled, string policy)
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var global = await fixture.GlobalSettings.GetAsync(CancellationToken.None);
+        await fixture.GlobalSettings.SaveAsync(new SaveGlobalSettingsRequest(global.Connections,
+            global.McpServers.Select(server => server.Id == DefaultMcpServer.Id
+                ? server with { Enabled = enabled, Policy = policy } : server).ToArray(), global.ToolPolicies), CancellationToken.None);
+
+        var disabled = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "McpTools", resourceId = DefaultMcpServer.Id }, expectError: true);
+        disabled.GetProperty("error").GetString()!.ShouldContain("disabled or denied");
+        var missing = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "McpTools", resourceId = Guid.NewGuid() }, expectError: true);
+        missing.GetProperty("error").GetString()!.ShouldContain("not found");
+    }
+
+    [Fact]
     public async Task ShouldReadAndPageModelsForANewEndpointWithoutSavingConnections()
     {
         await using var fixture = await AppFixture.CreateAsync();
@@ -877,6 +920,7 @@ public sealed class AppToolTests
         public IProjectService Projects => _composition.Resolve<IProjectService>();
         public IChatService Chats => _composition.Resolve<IChatService>();
         public IStandingInstructions Standing => _composition.Resolve<IStandingInstructions>();
+        public IGlobalSettingsService GlobalSettings => _composition.Resolve<IGlobalSettingsService>();
         private IGlobalSettingsRepository Settings => _composition.Resolve<IGlobalSettingsRepository>();
         private IToolSessionFactory Sessions => _composition.Resolve<IToolSessionFactory>();
         public Guid ProjectId { get; private set; }

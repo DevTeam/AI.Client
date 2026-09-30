@@ -60,7 +60,13 @@
     }
     else if (SelectedChat is null)
     {
-        <div class="workspace-empty"><h2>Start a conversation</h2><p>Write a message below. A new chat will be created in <button class="workspace-empty-project" type="button" title="Project menu" aria-haspopup="menu" @onclick="args => OnOpenProjectMenu.InvokeAsync(args)">@SelectedProjectName</button>.</p></div>
+        <div class="workspace-empty workspace-empty-start">
+            <h2>Start a conversation</h2>
+            <p>Write a message below. A new chat will be created in <button class="workspace-empty-project" type="button" title="Project menu" aria-haspopup="menu" @onclick="args => OnOpenProjectMenu.InvokeAsync(args)">@SelectedProjectName</button>.</p>
+            <ChatTips ProjectId="@SelectedProjectId" HasDirectories="@HasProjectDirectories" IsComposerEmpty="@IsComposerEmpty"
+                      OnInsertText="OnInsertComposerText" OnOpenProjectMenu="OnOpenProjectMenu"
+                      OnAddDirectory="OnAddDirectory" OnCreateSkill="OnCreateSkill" />
+        </div>
     }
     else
     {
@@ -417,6 +423,13 @@
     [Parameter] public string? SelectedProjectName { get; set; }
     /// <summary>A click on the project name in the empty feed: opens the same menu as the sidebar row.</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnOpenProjectMenu { get; set; }
+    // What the tips of an empty chat need; ignored once a chat is open.
+    [Parameter] public Guid? SelectedProjectId { get; set; }
+    [Parameter] public bool HasProjectDirectories { get; set; }
+    [Parameter] public bool IsComposerEmpty { get; set; }
+    [Parameter] public EventCallback<string> OnInsertComposerText { get; set; }
+    [Parameter] public EventCallback OnAddDirectory { get; set; }
+    [Parameter] public EventCallback OnCreateSkill { get; set; }
 
     /// <summary>
     /// Current search query from the sidebar search box, used to highlight matching text inside
@@ -557,6 +570,9 @@
     private int _renderedExpandedTurnsVersion;
     private bool _renderedHasSelectedProject;
     private string? _renderedSelectedProjectName;
+    private Guid? _renderedSelectedProjectId;
+    private bool _renderedHasProjectDirectories;
+    private bool _renderedIsComposerEmpty;
     private bool _renderedPinned = true;
     private string? _renderedSearchQuery;
     private bool _renderedNewBelow;
@@ -577,6 +593,11 @@
             || _renderedExpandedTurnsVersion != _expandedTurnsVersion
             || _renderedHasSelectedProject != HasSelectedProject
             || _renderedSelectedProjectName != SelectedProjectName
+            // The tips exist only while no chat is open, so a chat's feed never re-renders for them.
+            || SelectedChat is null
+                && (_renderedSelectedProjectId != SelectedProjectId
+                    || _renderedHasProjectDirectories != HasProjectDirectories
+                    || _renderedIsComposerEmpty != IsComposerEmpty)
             || !string.Equals(_renderedSearchQuery ?? string.Empty, SearchQuery ?? string.Empty, StringComparison.Ordinal)
             // The jump affordance lives entirely in this component's own state, and ShouldRender
             // is what decides whether its StateHasChanged reaches the DOM at all.
@@ -597,6 +618,9 @@
         _renderedExpandedTurnsVersion = _expandedTurnsVersion;
         _renderedHasSelectedProject = HasSelectedProject;
         _renderedSelectedProjectName = SelectedProjectName;
+        _renderedSelectedProjectId = SelectedProjectId;
+        _renderedHasProjectDirectories = HasProjectDirectories;
+        _renderedIsComposerEmpty = IsComposerEmpty;
         _renderedSearchQuery = SearchQuery;
         _renderedPinned = _pinned;
         _renderedNewBelow = _newBelow;

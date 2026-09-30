@@ -31,6 +31,7 @@
 @inject IRunStatusPresentation StatusPresentation
 @inject IComposerHistoryNavigator _composerHistoryNavigator
 @inject IReplySuggestionState ReplySuggestions
+@inject IChatTipsState ChatTips
 @inject IComposerContextPresentation ContextPresentation
 @inject IClientSettingsService ClientSettings
 @inject IDelayedBusyIndicatorFactory BusyIndicatorFactory
@@ -400,6 +401,12 @@
             HasSelectedProject="@(_selectedProject is not null)"
             SelectedProjectName="@_selectedProject?.Name"
             OnOpenProjectMenu="OpenProjectMenuAtAsync"
+            SelectedProjectId="@_selectedProject?.Id"
+            HasProjectDirectories="@(_security.DirectoryGrants.Count > 0)"
+            IsComposerEmpty="@string.IsNullOrEmpty(_chat.Message)"
+            OnInsertComposerText="InsertComposerTextAsync"
+            OnAddDirectory="OpenDirectoryPickerForNewGrant"
+            OnCreateSkill='() => OpenGlobalSection("ProjectSkills")'
             SearchQuery="@_searchQuery"
             SelectedChat="@_selectedChat"
             TranscriptId="@_selectedBranchId"
@@ -2253,6 +2260,7 @@
                     // runs after the guard drops.
                     ApplyAcceptedRunState(accepted, submittedDraftKey);
                     pendingUiUpdate = accepted;
+                    _ = MarkTipsUsedAsync(effectiveMode, request.Resources);
                     break;
             }
         }
@@ -3160,6 +3168,7 @@
 
     private async Task EditAndBranchAsync(ChatMessageView message)
     {
+        _ = ChatTips.MarkUsedAsync(AI.Web.Components.ChatTips.Branches);
         _isForking = true;
         _forkSourceId = message.ParentId;
         _replaceSourceId = null;
@@ -3191,6 +3200,7 @@
     private async Task ForkFromMessageAsync(ChatMessageView message)
     {
         if (message.Id == _branchLeafId) return;
+        _ = ChatTips.MarkUsedAsync(AI.Web.Components.ChatTips.Branches);
         _messageBranchMenuId = null;
         _branchLeafId = message.Id;
         _isForking = true;
@@ -3286,6 +3296,7 @@
     {
         CloseReviewSubmenu();
         _isProjectMenuOpen = !_isProjectMenuOpen;
+        if (_isProjectMenuOpen) _ = ChatTips.MarkUsedAsync(AI.Web.Components.ChatTips.Projects);
         _isConfirmingProjectDelete = false;
         _chatMenuId = null;
         _isConfirmingChatDelete = false;
@@ -3379,6 +3390,23 @@
 
         if (!_isProjectMenuOpen) await LoadProjectCountsAsync();
         ToggleProjectMenu();
+    }
+
+    /// <summary>A tip typed "@" or "/" for the person: it lands at the caret as if typed, so its list opens.</summary>
+    private async Task InsertComposerTextAsync(string text)
+    {
+        if (_composerHandle is null) return;
+        try { await _composerHandle.InvokeVoidAsync("type", text); }
+        catch (JSException) { }
+    }
+
+    private Task MarkTipsUsedAsync(ComposerSubmitMode mode, IReadOnlyList<ChatResourceRef>? resources)
+    {
+        var tips = new List<string>();
+        if (mode is ComposerSubmitMode.Queue or ComposerSubmitMode.SendNow) tips.Add(AI.Web.Components.ChatTips.Send);
+        if (mode == ComposerSubmitMode.Fork) tips.Add(AI.Web.Components.ChatTips.Branches);
+        if (resources is { Count: > 0 }) tips.Add(AI.Web.Components.ChatTips.Context);
+        return Task.WhenAll(tips.Select(ChatTips.MarkUsedAsync));
     }
 
     private async Task OpenProjectMenuAtAsync(MouseEventArgs args)
@@ -4154,6 +4182,15 @@
         _composerHistoryNavigator.Reset();
         var wasCommand = SkillMatcher.GetQuery(_chat.Message) is not null;
         _chat.Message = args.Value?.ToString() ?? string.Empty;
+        if (_chat.Message == "?" && _selectedChat is null && ChatTips.IsHidden)
+        {
+            // The way back to hidden tips: a lone "?" in a new chat's empty message shows them
+            // and is not kept as text.
+            _chat.Message = string.Empty;
+            if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("reset");
+            await ChatTips.SetHiddenAsync(false);
+            return;
+        }
         WorkspaceStateService.QueueComposerDraftSave(GetComposerDraftKey(), _chat.Message);
         await UpdateSkillSuggestionsAsync(reload: !wasCommand);
     }
@@ -4807,6 +4844,7 @@
 
     private async Task OpenReviewFromChangesAsync(Guid sourceMessageId)
     {
+        _ = ChatTips.MarkUsedAsync(AI.Web.Components.ChatTips.Review);
         if (_openingReviewSourceId == sourceMessageId) return;
         if (_reviewWorkspaceOpen && _reviews.FirstOrDefault(item => item.Id == _reviewStartId)?.SourceMessageId != sourceMessageId)
             await CloseReviewAsync();
@@ -4878,6 +4916,8 @@
 
     private async Task OnReviewChangedAsync(ChatReview review)
     {
+        _ = ChatTips.MarkUsedAsync(review.Kind == ChatReviewKind.Message
+            ? AI.Web.Components.ChatTips.Comments : AI.Web.Components.ChatTips.Review);
         if (IsEmptyReview(review))
         {
             var previous = _reviews.FirstOrDefault(item => item.Id == review.Id);

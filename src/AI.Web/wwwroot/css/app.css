@@ -2028,6 +2028,164 @@ body {
 
 .workspace-empty-project:hover { text-decoration: underline; }
 
+/* The tips of a new chat: quiet cards one step above the page, the accent kept for icons and
+   the one thing to try in each. The column matches the composer's so the two read as a unit. */
+/* A fixed track: the empty state otherwise shrinks to its text, and the grid of tips with it. */
+.workspace-empty-start { grid-template-columns: min(100%, 52rem); padding: 2rem 0; }
+.workspace-empty-start > h2 { margin-bottom: 0.35rem; }
+
+.chat-tips,
+.chat-tips-strip {
+    margin: 1.75rem 0 0;
+    text-align: left;
+}
+
+.chat-tips-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.65rem;
+    align-items: start;
+}
+
+.chat-tip {
+    display: grid;
+    gap: 0.5rem;
+    padding: 0.8rem 0.9rem 0.85rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: calc(0.75rem * var(--corner-scale));
+    background: var(--color-surface);
+    transition: border-color 120ms ease, opacity 120ms ease;
+    animation: chat-tip-in 260ms ease both;
+}
+
+.chat-tip:nth-child(2) { animation-delay: 40ms; }
+.chat-tip:nth-child(3) { animation-delay: 80ms; }
+.chat-tip:nth-child(4) { animation-delay: 120ms; }
+.chat-tip:nth-child(5) { animation-delay: 160ms; }
+.chat-tip:nth-child(6) { animation-delay: 200ms; }
+
+@keyframes chat-tip-in { from { opacity: 0; transform: translateY(0.35rem); } }
+
+.chat-tip:hover,
+.chat-tip.is-expanded { border-color: var(--color-border); }
+
+/* Already used: still there to look up, no longer asking for attention. */
+.chat-tip.is-familiar { opacity: 0.62; }
+.chat-tip.is-familiar:hover,
+.chat-tip.is-familiar.is-expanded { opacity: 1; }
+
+.chat-tip-head {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0;
+    color: var(--color-text-strong);
+    font-weight: 600;
+    text-align: left;
+}
+
+.chat-tip-head:active:not(:disabled) { background: transparent; }
+.chat-tip-head > .app-icon { flex: none; width: 1.05rem; height: 1.05rem; color: var(--color-accent); }
+.chat-tip-title { flex: 1; font-size: 0.9rem; }
+.chat-tip-head > .chat-tip-familiar { width: 0.85rem; height: 0.85rem; color: var(--color-success, var(--color-text-muted)); }
+.chat-tip-head > .chat-tip-chevron { width: 0.85rem; height: 0.85rem; color: var(--color-text-faint); transition: transform 150ms ease; }
+.chat-tip.is-expanded .chat-tip-chevron { transform: rotate(180deg); }
+
+.chat-tip-text,
+.chat-tip-more {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.chat-tip-more { padding-top: 0.5rem; border-top: 1px solid var(--color-border-subtle); color: var(--color-text-subtle); }
+
+.chat-tip-keys {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.3rem 0.75rem;
+    align-items: center;
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+}
+
+.chat-tip-keys > span:nth-child(even) { display: inline-flex; gap: 0.2rem; justify-content: flex-end; }
+
+.chat-tips kbd,
+.chat-tips-strip kbd {
+    display: inline-block;
+    min-width: 1.15rem;
+    padding: 0.08rem 0.32rem;
+    border: 1px solid var(--color-border-strong);
+    border-radius: calc(0.3rem * var(--corner-scale));
+    box-shadow: 0 1px 0 var(--color-border-strong);
+    background: var(--color-fill);
+    color: var(--color-text-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    text-align: center;
+}
+
+.chat-tip-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.1rem 0 0; }
+
+.chat-tip-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.6rem;
+    border-color: var(--color-border);
+    border-radius: calc(0.5rem * var(--corner-scale));
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+}
+
+.chat-tip-action:hover:not(:disabled) { border-color: var(--color-border-strong); background: var(--color-overlay-hover); }
+.chat-tip-action .app-icon { width: 0.9rem; height: 0.9rem; }
+.chat-tip-action.is-primary { border-color: transparent; background: var(--color-accent-bg); color: var(--color-accent-text); }
+.chat-tip-action.is-primary:hover:not(:disabled) { background: var(--color-accent-bg-hover); color: var(--color-accent-text); }
+
+.chat-tips-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    justify-content: center;
+    align-items: center;
+    margin: 1rem 0 0;
+    color: var(--color-text-faint);
+    font-size: 0.78rem;
+}
+
+.chat-tips-link {
+    padding: 0;
+    color: var(--color-text-muted);
+    font-size: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--color-border-strong);
+    text-underline-offset: 0.2em;
+}
+
+.chat-tips-link:active:not(:disabled) { background: transparent; }
+
+/* Hidden tips leave one line of the keys worth remembering, and the way back. */
+.chat-tips-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    justify-content: center;
+    align-items: center;
+    color: var(--color-text-faint);
+    font-size: 0.78rem;
+}
+
+.chat-tips-strip > span { display: inline-flex; gap: 0.25rem; align-items: center; }
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-tip { animation: none; }
+    .chat-tip-chevron { transition: none; }
+}
+
 .workspace-message,
 .markdown-content {
     /* Without min-width:0 in a grid/flex track, an unbreakable child (long token, wide table)

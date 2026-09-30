@@ -22,6 +22,7 @@ using Microsoft.AspNetCore.Components;
 using AI.Contracts.Tools;
 using AI.Contracts.Settings;
 using Pure.DI;
+using Navigation;
 using Pure.DI.MS;
 using System.Diagnostics;
 using Microsoft.JSInterop;
@@ -73,6 +74,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IRunStatusPresentation>().To<RunStatusPresentation>()
             .RootBind<IComposerHistoryNavigator>().To<ComposerHistoryNavigator>()
             .RootBind<IReplySuggestionState>().To<ReplySuggestionState>()
+            .RootBind<INavigationCues>().To<NavigationCues>()
             .Bind<IChatTipsState>().As(Lifetime.Singleton).To<ChatTipsState>()
             .Root<IChatTipsState>()
             .RootBind<ISkillCommandMatcher>().To<SkillCommandMatcher>()

@@ -2,6 +2,14 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "ai-client-host-routecheck",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/AI.Host", "--no-launch-profile", "-p:BaseOutputPath=C:/Users/PYANIK~1/AppData/Local/Temp/claude/C--Projects-DevTeam-AI-Client/651a2716-89ef-4047-98f0-affd1b18651b/scratchpad/hostbin/", "--", "--data-dir", "C:/Users/PYANIK~1/AppData/Local/Temp/claude/C--Projects-DevTeam-AI-Client/651a2716-89ef-4047-98f0-affd1b18651b/scratchpad/data", "--serve-web"],
+      "port": 52182,
+      "autoPort": false,
+      "env": { "ASPNETCORE_URLS": "http://localhost:52182", "ASPNETCORE_ENVIRONMENT": "Development" }
+    },
+    {
       "name": "ai-client-host",
       "runtimeExecutable": "dotnet",
       "runtimeArgs": [

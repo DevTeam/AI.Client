@@ -49,15 +49,18 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
             if (branchId is not null && chatId is null)
                 return reply.Reply(Failed("A branch needs its chatId."), true);
             var title = $"project '{project.Name}'";
+            string? chatTitle = null;
             if (chatId is { } id)
             {
                 var chat = await chats.GetAsync(projectId, id, cancellationToken);
                 if (chat is null) return reply.Reply(Failed("Chat not found in that project."), true);
                 if (branchId is { } branch && branch != id && chat.Branches?.Any(item => item.Id == branch) != true)
                     return reply.Reply(Failed("Branch not found in that chat."), true);
+                chatTitle = chat.Title;
                 title = branchId is { } shown && shown != id ? $"a branch of chat '{chat.Title}'" : $"chat '{chat.Title}'";
             }
-            navigation.Navigate(new AppNavigation(projectId, chatId, branchId == chatId ? null : branchId));
+            navigation.Navigate(new AppNavigation(projectId, chatId, branchId == chatId ? null : branchId, run.ChatId,
+                project.Name, chatTitle));
             return reply.Reply(new AppNavigateResult(true, projectId, chatId, branchId, $"Opened {title}."));
         }
     }

@@ -31,6 +31,7 @@
 @inject IRunStatusPresentation StatusPresentation
 @inject IComposerHistoryNavigator _composerHistoryNavigator
 @inject IReplySuggestionState ReplySuggestions
+@inject AI.Web.Navigation.INavigationCues NavigationCues
 @inject IChatTipsState ChatTips
 @inject IComposerContextPresentation ContextPresentation
 @inject IClientSettingsService ClientSettings
@@ -92,7 +93,7 @@
         }
         @foreach (var project in _projects)
         {
-            <div @key="project.Id" class="project-nav-row @(project.Id == _selectedProject?.Id ? "selected" : string.Empty) @(_draggedProjectId == project.Id ? "dragging" : string.Empty)" title="@GetProjectRunTitle(project.Id)" draggable="true" @ondragstart="() => OnProjectDragStart(project.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnProjectDrop(project)" @oncontextmenu="() => OnProjectContextMenu(project)" @oncontextmenu:preventDefault="true">
+            <div @key="project.Id" data-project-id="@project.Id" class="project-nav-row @(project.Id == _selectedProject?.Id ? "selected" : string.Empty) @(_draggedProjectId == project.Id ? "dragging" : string.Empty)" title="@GetProjectRunTitle(project.Id)" draggable="true" @ondragstart="() => OnProjectDragStart(project.Id)" @ondragover="OnDragOver" @ondragover:preventDefault="true" @ondrop="() => OnProjectDrop(project)" @oncontextmenu="() => OnProjectContextMenu(project)" @oncontextmenu:preventDefault="true">
                 @if (_editingProjectId == project.Id)
                 {
                     <input class="sidebar-inline-editor" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveProjectTitleAsync(project))" @onblur="() => SaveProjectTitleAsync(project)" aria-label="Project name" />
@@ -448,7 +449,33 @@
                that it can still be edited, reordered or removed. *@
             <section class="chat-queue @(_queueActionPending ? "queue-busy" : null)" aria-busy="@(_queueActionPending ? "true" : "false")"><div class="queue-header"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @pendingQueue.Count</span><AppIcon Name="chevron-right" /></button><div class="queue-actions">@if (_isConfirmingQueueClearAll) { <span class="queue-clear-confirm"><span>Stop the run and drop everything?</span><button class="danger compact-action" type="button" @onclick="ClearEverythingAsync">Clear all</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="() => _isConfirmingQueueClearAll = false"><AppIcon Name="x" /></button></span> } else { <button type="button" class="queue-action-button queue-action-clear" title="@($"Remove the {pendingQueue.Count} message(s) still waiting in the queue")" aria-label="Clear queued messages" @onclick="ClearQueueAsync"><AppIcon Name="queue-clear" /></button>@if (HasCommittedCommand(selectedRun)) { <button type="button" class="queue-action-button destructive-action" title="Stop the run and clear everything, including the message already sent" aria-label="Stop and clear everything" @onclick="() => _isConfirmingQueueClearAll = true"><AppIcon Name="trash" /></button> } }</div></div>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in pendingQueue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span title="@item.Content">@(string.IsNullOrWhiteSpace(item.Content) ? "Workspace references" : GetSingleLine(item.Content))@if (item.Resources is { Count: > 0 }) { <span class="queue-resource-count"> refs: @item.Resources.Count</span> }</span><button class="icon-action queue-send-now" type="button" title="Interrupt and send this message now" aria-label="Interrupt and send this message now" @onclick="() => SendQueuedMessageNowAsync(item.Id)"><AppIcon Name="zap" /></button><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }</section>
         }
-        <div class="composer-prelude">
+        @if (_navigationCue is { } cue)
+        {
+            @* A move the assistant asked for. It is announced before it happens, and can be refused. *@
+            <div @key="cue.Id" class="navigation-cue @(cue.Automatic ? "is-counting" : "is-offer")" role="status" aria-live="polite">
+                <AppIcon Name="@(cue.Automatic ? "chevron-right" : "info")" />
+                <span class="navigation-cue-text">@(cue.Automatic ? $"The assistant is opening {cue.Where} in {cue.SecondsLeft} s" : $"The assistant created {cue.Where}")</span>
+                @if (cue.Automatic)
+                {
+                    <button class="compact-action" type="button" @onclick="StayOnNavigationCue">Stay here</button>
+                    <button class="compact-action primary" type="button" @onclick="() => FollowNavigationCueAsync(cue)">Open now</button>
+                }
+                else
+                {
+                    <button class="compact-action primary" type="button" @onclick="() => FollowNavigationCueAsync(cue)">Open</button>
+                    <button class="compact-action" type="button" @onclick="StayOnNavigationCue">Not now</button>
+                }
+            </div>
+        }
+        else if (_navigationArrival is { } arrival)
+        {
+            <div @key="arrival.Id" class="navigation-cue is-arrival" role="status" aria-live="polite">
+                <AppIcon Name="info" />
+                <span class="navigation-cue-text">The assistant opened @arrival.Where. You were in @arrival.From.</span>
+                <button class="compact-action" type="button" @onclick="ReturnFromNavigationAsync">Go back</button>
+                <button class="icon-action" type="button" title="Dismiss" aria-label="Dismiss" @onclick="() => _navigationArrival = null"><AppIcon Name="x" /></button>
+            </div>
+        }        <div class="composer-prelude">
         <div class="composer-status" role="status">
             @* While the composer shows a history entry the counter comes first and the plain
                hint is dropped — the hint describes what Enter does with text the user wrote,
@@ -1531,10 +1558,20 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    private AI.Web.Navigation.NavigationCue? _navigationCue;
+    private AI.Web.Navigation.NavigationArrival? _navigationArrival;
+    private CancellationTokenSource? _navigationCountdown;
+    private IJSObjectReference? _navigationCueModule;
+
+    /// <summary>Typing or scrolling this recently means the user is busy with what is on screen.</summary>
+    private const int NavigationQuietMs = 2_500;
+
     // A model asked to show the user a place, usually one it has just created: a project and its first
-    // chat, a continuation chat, a new branch. The lists are re-read first because that place may be
-    // younger than the data-changed signal that announces it. It is a new history entry, so Back
-    // returns to where the user was.
+    // chat, a continuation chat, a new branch. Taking the window without a word surprised people, so
+    // the move is announced first. It happens on its own only while the window shows the chat that
+    // asked and the user is not busy there, after a short countdown with a pointer travelling to
+    // the row it opens; otherwise it is only offered. The lists are re-read first because that place
+    // may be younger than the data-changed signal that announces it.
     [JSInvokable]
     public async Task OnNavigateRequested(string json)
     {
@@ -1548,8 +1585,6 @@
             _projects.AddRange(projects);
             await ApplyProjectOrderAsync();
             if (_selectedProject?.Id == target.ProjectId) await LoadChatsAsync(target.ProjectId);
-            await NavigateToTargetAsync(new WorkspaceTarget(target.ProjectId, target.ChatId, target.BranchId, null, false));
-            await SyncWorkspaceUrlAsync();
         }
         catch (HttpRequestException)
         {
@@ -1557,7 +1592,103 @@
             return;
         }
 
+        var module = await NavigationCueModuleAsync();
+        var busy = await module.InvokeAsync<bool>("isUserBusy", NavigationQuietMs);
+        CancelNavigationCountdown();
+        var cue = NavigationCues.Decide(target, _selectedChat?.Id, busy, GetWorkspaceLocation());
+        _navigationCue = cue;
+        _navigationArrival = null;
         await InvokeAsync(StateHasChanged);
+        if (cue.Automatic) await CountDownToNavigationAsync(cue);
+    }
+
+    private async Task<IJSObjectReference> NavigationCueModuleAsync() =>
+        _navigationCueModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/navigationCue.js");
+
+    private void CancelNavigationCountdown()
+    {
+        _navigationCountdown?.Cancel();
+        _navigationCountdown?.Dispose();
+        _navigationCountdown = null;
+    }
+
+    private async Task CountDownToNavigationAsync(AI.Web.Navigation.NavigationCue cue)
+    {
+        var countdown = new CancellationTokenSource();
+        _navigationCountdown = countdown;
+        var module = await NavigationCueModuleAsync();
+        await module.InvokeVoidAsync("playCursor", cue.Target.ProjectId.ToString(), cue.Target.ChatId?.ToString(),
+            cue.SecondsLeft * 1000);
+        try
+        {
+            for (var left = cue.SecondsLeft; left > 0; left--)
+            {
+                if (_navigationCue?.Id != cue.Id) return;
+                _navigationCue = cue with { SecondsLeft = left };
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(1000, countdown.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        if (_navigationCue?.Id != cue.Id) return;
+        // The user may have moved on or started typing during the countdown: the move becomes an offer.
+        if (_selectedChat?.Id != cue.Target.SourceChatId || await module.InvokeAsync<bool>("isUserBusy", 1_000))
+        {
+            await module.InvokeVoidAsync("cancelCursor");
+            _navigationCue = cue with { Automatic = false };
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+        await FollowNavigationCueAsync(cue);
+    }
+
+    private async Task FollowNavigationCueAsync(AI.Web.Navigation.NavigationCue cue)
+    {
+        if (_navigationCue?.Id != cue.Id) return;
+        CancelNavigationCountdown();
+        _navigationCue = null;
+        var target = cue.Target;
+        try
+        {
+            await NavigateToTargetAsync(new WorkspaceTarget(target.ProjectId, target.ChatId, target.BranchId, null, false));
+            await SyncWorkspaceUrlAsync();
+        }
+        catch (HttpRequestException)
+        {
+            return;
+        }
+        var arrival = new AI.Web.Navigation.NavigationArrival(Guid.NewGuid(), cue.From, cue.Where);
+        _navigationArrival = arrival;
+        await InvokeAsync(StateHasChanged);
+        // After the render that shows the target's row, so there is a row to mark.
+        await Task.Delay(50);
+        await (await NavigationCueModuleAsync()).InvokeVoidAsync("highlightArrival", target.ProjectId.ToString(),
+            target.ChatId?.ToString());
+        await Task.Delay(NavigationCues.ArrivalNoteDuration);
+        if (_navigationArrival?.Id != arrival.Id) return;
+        _navigationArrival = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // Declining keeps the place findable: it goes into the notifications, which open it on a click.
+    private async Task StayOnNavigationCue()
+    {
+        CancelNavigationCountdown();
+        if (_navigationCue is not { } cue) return;
+        _navigationCue = null;
+        if (_navigationCueModule is not null) await _navigationCueModule.InvokeVoidAsync("cancelCursor");
+        if (cue.Target.ChatId is { } chatId)
+            Notifications.ShowChatEvent($"The assistant created {cue.Where}", NotificationKind.Info, cue.Target.ProjectId,
+                chatId, cue.Target.BranchId ?? chatId);
+    }
+
+    private async Task ReturnFromNavigationAsync()
+    {
+        _navigationArrival = null;
+        await GoBackAsync();
     }
 
     [JSInvokable]
@@ -5636,6 +5767,8 @@
         if (_escapeSubscription is not null) { await _escapeSubscription.InvokeVoidAsync("dispose"); await _escapeSubscription.DisposeAsync(); }
         if (_drawerDismissSubscription is not null) { await _drawerDismissSubscription.InvokeVoidAsync("dispose"); await _drawerDismissSubscription.DisposeAsync(); }
         if (_queueDragSubscription is not null) { await _queueDragSubscription.InvokeVoidAsync("dispose"); await _queueDragSubscription.DisposeAsync(); }
+        CancelNavigationCountdown();
+        if (_navigationCueModule is not null) await _navigationCueModule.DisposeAsync();
         if (_runEventsModule is not null) await _runEventsModule.DisposeAsync();
         if (_navigationHandle is not null) { await _navigationHandle.InvokeVoidAsync("dispose"); await _navigationHandle.DisposeAsync(); }
         if (_navigationModule is not null) await _navigationModule.DisposeAsync();

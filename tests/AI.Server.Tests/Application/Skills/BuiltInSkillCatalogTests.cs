@@ -63,9 +63,9 @@ public class BuiltInSkillCatalogTests
     public void ShouldMakeEveryBundledSkillExceptTheExecutorsAPlaybookWithDeclaredTools()
     {
         var skills = new BuiltInSkillCatalog().List();
-        string[] executors = ["chat-rename", "chat-reply-suggest"];
+        string[] executors = ["chat-rename", "chat-reply-suggest", "skill-route"];
 
-        skills.Count.ShouldBeGreaterThanOrEqualTo(25);
+        skills.Count.ShouldBeGreaterThanOrEqualTo(26);
         skills.Where(item => executors.Contains(item.Id)).ShouldAllBe(item => item.Kind == SkillKinds.Executor);
         foreach (var skill in skills.Where(item => !executors.Contains(item.Id)))
         {
@@ -74,7 +74,7 @@ public class BuiltInSkillCatalogTests
             skill.AllowedTools.ShouldNotBeNull().ShouldNotBeEmpty(skill.Id);
             // Every tool a playbook names in its steps is one it declares.
             foreach (var tool in new[] { "app_projects", "app_security", "app_chats", "app_runs", "app_memory",
-                         "app_skills", "app_instructions", "ask_user", "context_compact" })
+                         "app_skills", "app_instructions", "app_navigate", "ask_user", "context_compact" })
                 if (SkillMarkdown.Body(skill.Content).Contains($"`{tool}`", StringComparison.Ordinal))
                     skill.AllowedTools.ShouldContain(tool, skill.Id);
         }

@@ -5,7 +5,7 @@ icon: fork
 kind: playbook
 description: Start a new branch of this chat from an earlier message to try another approach without losing the current one.
 parameters: {"type":"object","properties":{"message":{"type":"string","description":"The user message to redo, as the user described it"},"prompt":{"type":"string","description":"The new message for the branch, if the user gave it"}},"additionalProperties":false}
-tools: ["app_read","ask_user","app_runs","app_chats"]
+tools: ["app_read","ask_user","app_runs","app_chats","app_navigate"]
 ---
 
 1. Take `projectId`, `chatId` and `branchId` from output.context. Read the branch's messages with
@@ -21,4 +21,5 @@ tools: ["app_read","ask_user","app_runs","app_chats"]
    chosen user message on the branch, the new content and wait false.
 5. When the result names a new branch, `app_chats` RenameBranch it to a 2 to 5 word title of the
    new approach, reading the chat's revision first.
-6. Answer with one line: which message the branch starts from and that it is running.
+6. `app_navigate` to the chat and the new branch, so the user watches it run.
+7. Answer with one line: which message the branch starts from and that it is running and open.

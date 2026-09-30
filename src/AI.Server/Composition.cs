@@ -78,6 +78,7 @@ internal sealed class Composition
             .Root<IAppToolReply>()
             .Root<IToolSessionFactory>()
             .Root<IAppDataChangeSignal>()
+            .Root<IAppNavigationSignal>()
             .Root<IRunEventsPublisher>()
             .Root<IBrowserAccessService>()
             .Root<IInstalledDesktop>()
@@ -118,15 +119,16 @@ internal sealed class Composition
                 ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator, ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService, KeyringOrFileMasterKeyStore, ChatRenameSkill,
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher, RunCompletionProtocol,
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff, MasterKeyFormat, ProcessCommandRunner,
-                AppDataChangeSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
+                AppDataChangeSignal, AppNavigationSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
             .Singleton<WorkspaceFileSearch, GitWorkspaceDiffReader, FileExcerptReader>()
             // Bound by their own types only: every executor is an ISkillExecutor, and SkillRunner takes each by type.
             .Bind<ChatReplySuggestSkill>().As(Lifetime.Singleton).To<ChatReplySuggestSkill>()
+            .Bind<SkillRouteSkill>().As(Lifetime.Singleton).To<SkillRouteSkill>()
             .Bind<IChatReplySuggestions>().As(Lifetime.Singleton).To<ChatReplySuggestions>()
             .Transient<AppToolReply>()
             .Bind<BuiltInSkillCatalog>().As(Lifetime.Singleton).To<BuiltInSkillCatalog>()
             .Bind<ISkillCatalog>().As(Lifetime.Singleton).To<SkillCatalog>()
-            .Singleton<SkillRunner, GenericSkillExecutor, SkillGuide>()
+            .Singleton<SkillRunner, GenericSkillExecutor, SkillGuide, SkillRouting>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
             .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To((
                 [Tag("base")] IChatCompletionClient baseClient,
@@ -135,7 +137,7 @@ internal sealed class Composition
                 IChatTransportActivity transportActivity) =>
                 new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity))
             .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool,
-                AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool>(Tag.Unique)
+                AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool>(Tag.Unique)
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
 }

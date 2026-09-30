@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 public sealed class RunEventsPublisher(
     IChatRunDispatcher dispatcher,
     IAppDataChangeSignal changes,
+    IAppNavigationSignal navigation,
     IRunSnapshotComparer comparer) : IRunEventsPublisher
 {
     public async Task WriteAsync(HttpResponse response, CancellationToken cancellationToken)
@@ -20,11 +21,12 @@ public sealed class RunEventsPublisher(
         // client learns from them that the Host is reachable, and fetch resolves only on headers.
         await response.StartAsync(cancellationToken);
         await response.Body.FlushAsync(cancellationToken);
-        // One response, two sources. Frames are funnelled through a channel so that only this loop
-        // ever writes to the body: two producers writing to one HTTP response would interleave.
+        // One response, three sources. Frames are funnelled through a channel so that only this loop
+        // ever writes to the body: several producers writing to one HTTP response would interleave.
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var frames = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
-        var producers = Task.WhenAll(PublishRunsAsync(frames.Writer, stop.Token), PublishDataChangesAsync(frames.Writer, stop.Token))
+        var producers = Task.WhenAll(PublishRunsAsync(frames.Writer, stop.Token), PublishDataChangesAsync(frames.Writer, stop.Token),
+                PublishNavigationAsync(frames.Writer, stop.Token))
             .ContinueWith(_ => frames.Writer.TryComplete(), TaskScheduler.Default);
         try
         {
@@ -53,6 +55,18 @@ public sealed class RunEventsPublisher(
                 await Task.Delay(TimeSpan.FromMilliseconds(250), token);
                 frames.TryWrite($"event: data-changed\ndata: {version}\n\n");
             }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    // The client reloads its lists before it follows a request, so a chat created a moment ago is
+    // already there to open; the request is not held back behind the data-changed delay.
+    private async Task PublishNavigationAsync(ChannelWriter<string> frames, CancellationToken token)
+    {
+        try
+        {
+            await foreach (var target in navigation.SubscribeAsync(token))
+                frames.TryWrite($"event: navigate\ndata: {JsonSerializer.Serialize(target)}\n\n");
         }
         catch (OperationCanceledException) { }
     }

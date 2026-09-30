@@ -86,6 +86,8 @@ export function subscribe(baseUrl, dotNetReference) {
                         const data = frame.split("\n").filter(line => line.startsWith("data: ")).map(line => line.slice(6)).join("\n");
                         if (event === "snapshot") onSnapshot(data);
                         else if (event === "data-changed") onDataChanged();
+                        else if (event === "navigate") void dotNetReference.invokeMethodAsync("OnNavigateRequested", data)
+                            .catch(error => { if (!disposed) console.error("Navigation could not be applied", error); });
                     }
                 }
             } catch (error) {

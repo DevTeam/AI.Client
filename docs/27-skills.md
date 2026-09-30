@@ -58,12 +58,13 @@ application permissions, and every write still goes through tool approval.
 |---|---|---|
 | `chat-rename` | Names a new chat after its first answer, or renames one on request (executor) | — |
 | `chat-reply-suggest` | Drafts the user's next message to the last answer of a branch for the composer (executor) | — |
-| `chat-compact` | Summarizes the chat and continues in a new chat that starts from the summary | `app_chats`, `app_runs` |
+| `skill-route` | Picks the skills and first tools for the message that starts a turn (executor); Settings → Chat turns it off | — |
+| `chat-compact` | Summarizes the chat and continues in a new chat that starts from the summary, and opens it | `app_chats`, `app_runs`, `app_navigate` |
 | `chat-context-compact` (`/compact`) | Replaces the finished work of the current turn with a model-only summary, or undoes it | `context_compact` |
-| `chat-fork` | Starts a branch from an earlier user message with a new prompt | `app_runs` Fork, `app_chats` RenameBranch |
+| `chat-fork` | Starts a branch from an earlier user message with a new prompt, and opens it | `app_runs` Fork, `app_chats` RenameBranch, `app_navigate` |
 | `chat-summary` | Summarizes this or another chat; read-only, the safe example for testing skills | `app_read` |
 | `chat-branch-cleanup` | Deletes branches the user picks; never the main or current branch | `app_chats` DeleteBranch |
-| `project-create` | Creates a project from picked directories with a suggested name and access | `app_projects`, `app_security` |
+| `project-create` | Creates a project from picked directories with a suggested name and access, creates its first chat, submits the requested work there and opens it | `app_projects`, `app_security`, `app_chats`, `app_runs`, `app_navigate` |
 | `project-rename` | Offers three names that keep the current meaning and applies the chosen one | `app_projects` Update |
 | `project-describe` | Drafts a description from the project's README and manifests | `app_projects` Update |
 | `project-directory-add` | Grants more directories, read-only or read-write | `app_security` AddDirectoryGrant |
@@ -137,3 +138,26 @@ the last four user messages (`ISkillGuide.ActivePlaybookAsync`; a failed load do
 tells the model to keep following that playbook while the user continues its task and to choose
 again from the catalog when the task changes. A playbook can hand the work on by naming another
 skill, as `code-tests-run` does with `code-bug-fix`.
+
+`project-create` hands the work on instead of doing it: the chat that asked for the project belongs
+to another project, so its file tools cannot reach the new directories. The playbook creates the
+new project's first chat, submits the requested task there with `app_runs` and opens it with
+`app_navigate`; the new chat's own turn is routed to `code-feature-implement` or another skill.
+
+### Routing each turn
+
+The catalog alone was not enough: a model read it and still did by hand what a playbook covers.
+So before the first model step of every interactive turn that starts with a new user message,
+`ChatAgent` asks `ISkillRouting`, which runs the `skill-route` executor: one model call without
+tools on the chat's own connection, 12 seconds at most. It gets the message, the end of the
+previous answer, the active playbook, the catalog lines and the permitted tools by their first
+sentence, and returns up to two skill ids and eight tool names; unknown ones are dropped. The
+tools, and those the chosen skills declare, are pinned before the tool selector cuts the list, so
+the first step has them without `app_tool_search`. The chosen skills become the run instruction
+`run.skill-route` (until the model's first answer): the first call is `app_run_skill` with the
+first skill, before any question; a second skill is for the rest of the request. When the router
+returns only the active playbook, the instruction says the message continues it.
+
+A message whose skill the user picked in the `/` list, and a turn that resumes after an approval,
+are not routed. Routing that fails, times out or finds nothing leaves the turn as it was.
+"Pick a skill for each new message" in Settings → Chat (`ChatAutomation.RouteSkills`) turns routing off.

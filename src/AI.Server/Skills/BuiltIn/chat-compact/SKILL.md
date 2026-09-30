@@ -5,7 +5,7 @@ icon: minimize
 kind: playbook
 description: Free the model's context: summarize this chat and continue in a new chat that starts from the summary.
 parameters: {"type":"object","properties":{"focus":{"type":"string","description":"What the summary must keep, if the user said"},"next":{"type":"string","description":"The task to continue with in the new chat, if the user said"}},"additionalProperties":false}
-tools: ["app_read","app_chats","app_runs"]
+tools: ["app_read","app_chats","app_runs","app_navigate"]
 ---
 
 Running this skill is the user's request to move on with a smaller context, so do not ask
@@ -25,5 +25,5 @@ current turn is too large.
 4. `app_runs` Submit to the new chat with mode Send and wait false. The content is one line
    saying it continues «<old title>», then the summary, then the next step: `next` when given,
    otherwise an instruction to wait for the user's next message without doing anything.
-5. Answer in this chat with the summary and one line naming the new chat, telling the user to
-   continue there.
+5. `app_navigate` to the new chat, so the user continues there.
+6. Answer in this chat with the summary and one line naming the new chat, which is now open.

@@ -33,7 +33,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IModelContentCheckpointService checkpoints, IModelInstructionRegistry instructions,
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
     IRunCompletionProtocol completionProtocol, IToolSearchDefinitionEnricher toolSearchEnricher,
-    IStandingInstructions standingInstructions, IContextTokenEstimator estimator, ISkillGuide skillGuide) : IChatAgent
+    IStandingInstructions standingInstructions, IContextTokenEstimator estimator, ISkillGuide skillGuide,
+    ISkillRouting skillRouting) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -142,6 +143,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         // published at once, but it is the answer to fall back on if the model then stops answering.
         string? provisionalAnswer = null;
         var completionRequired = counts.Count > 0;
+        var routed = false;
         while (true)
         {
             if (session is not null)
@@ -168,6 +170,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     if ((await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") permitted.Add(tool);
             permitted.Add(completionProtocol.Tool);
             toolCatalog.Update(run, permitted);
+            // Once per turn, before its first step: which skill fits the new message, and which tools
+            // the first steps need. The tools are pinned before the selector cuts the list.
+            if (!routed)
+            {
+                routed = true;
+                if (interactive && servers.Contains(AppMcpServer.Id))
+                    await RouteAsync(run, context, permitted, token);
+            }
             var stalled = stalledSteps >= MaxStalledSteps;
             if (stalled)
                 instructions.Upsert(run, new ModelInstruction("run.stalled",
@@ -591,6 +601,44 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     }
 
     private const string ActiveSkillKey = "run.active-skill";
+
+    /// <summary>
+    /// Asks the <c>skill-route</c> skill about the message that starts this turn. The catalog alone
+    /// was not enough: models read it and improvised anyway, doing by hand what a playbook covers.
+    /// A named skill in the first request is much harder to overlook. The hint lasts until the
+    /// model's first answer; after that the active-skill reminder carries the choice. Routing that
+    /// fails for any reason leaves the turn as it would have been without it.
+    /// </summary>
+    private async Task RouteAsync(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context,
+        IReadOnlyList<AgentTool> permitted, CancellationToken token)
+    {
+        SkillRoute? route;
+        try
+        {
+            route = await skillRouting.RouteAsync(run, context, permitted, token);
+        }
+        catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException
+                                          or ArgumentException or InvalidOperationException)
+        {
+            return;
+        }
+        if (route is null) return;
+        toolCatalog.Pin(run, route.Tools.Concat(route.Skills.SelectMany(skill => skill.AllowedTools ?? [])));
+        if (route.Skills.Count == 0) return;
+        var first = route.Skills[0];
+        var hint = route.ContinuesActive
+            ? $"Skill routing: the user's latest message continues the active skill {first.Id}. Keep following its "
+              + "instructions from the step you reached."
+            : $"Skill routing: {string.Join("; then ", route.Skills.Select(skill => $"{skill.Id} ({skill.Description})"))} "
+              + $"fits the user's latest message. Unless the message plainly asks for something else, your first call is "
+              + $"app_run_skill with skillId {first.Id}, taking its parameters from the message. Do not ask questions or "
+              + "start the work before it: the skill says what to ask and how to do the work."
+              + (route.Skills.Count > 1 ? $" When it is done, run {route.Skills[1].Id} for the rest of the request, unless the first skill hands "
+                  + "that part on to another chat." : "");
+        instructions.Upsert(run, new ModelInstruction(RouteKey, hint, 885, ModelInstructionLifetime.UntilAcknowledged));
+    }
+
+    private const string RouteKey = "run.skill-route";
 
     /// <summary>
     /// The stable run-wide protocol. Ordinary text before a tool call remains a compact

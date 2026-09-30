@@ -38,6 +38,7 @@ The tools are grouped by risk level: the tool boundary matches the boundary of w
 | `app_runs` | `Submit`, `Stop`, `UpdateQueued`, `RemoveQueued`, `ClearQueue`, `Resume`, `SkipFailed`, `Rebase`, `MarkRead` |
 | `app_projects` | `Create`, `Update`, `Delete` |
 | `app_security` | policies and grants for the project, chat, and globally; global settings; write credentials |
+| `app_navigate` | opens a project, chat or branch in the user's window; changes no data |
 | `app_resources` | create and retire project file/directory references; create and update named chat reviews; attach them with `app_runs Submit` |
 | `app_memory` | `Create`, `Update`, `Delete` long-term memory entries — see [25-memory-and-instructions.md](25-memory-and-instructions.md) |
 | `app_instructions` | replace the current project's instructions; kept apart so it still asks where other writes are allowed |
@@ -176,6 +177,8 @@ It is published after any `app_*` mutation is committed. A subscriber receives a
 On receiving the signal, the Web UI re-reads what it shows: the project list, the selected project's chats, and the open chat. The selection is preserved if the selected object still exists. Both frames go through the same channel, so only one loop writes to the response body.
 
 Changes made through the UI's own HTTP API do not publish a signal: the client that made them already knows.
+
+A third frame, `event: navigate`, carries an `AppNavigation` (`ProjectId`, optional `ChatId` and `BranchId`). `app_navigate` publishes it through `IAppNavigationSignal` after checking that the project, chat and branch exist; a background run (`Interactive` false) gets an error instead, so a window nobody is watching is not moved. Each listener keeps only the latest request. The Web re-reads the project list, and the chats when the project is already open, because the target may be newer than the pending `data-changed` frame; then it selects the target as a link would and pushes a history entry, so Back returns to where the user was. `project-create`, `chat-compact` and `chat-fork` call it for the project, chat or branch they create.
 
 ## Presentation in the UI
 

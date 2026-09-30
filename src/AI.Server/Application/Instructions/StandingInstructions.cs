@@ -106,6 +106,8 @@ public sealed class StandingInstructions(
         + "Only use chat-rename mode=requested when the user explicitly asks to rename that chat.\n"
         + "- app_skills saves or deletes User and current Project SKILL.md documents when asked; app_read resource=Skills "
         + "returns a skill's full document and revision. Follow the conventions in the built-in skill-create.\n"
+        + "- app_navigate opens a project, chat or branch you created for the user to continue in. Work for another "
+        + "project goes to a chat there (app_chats Create, app_runs Submit): this run reaches only this project's directories.\n"
         + "- spawn_subtask: runs work in a separate conversation and returns only its answer. Use it for broad searches, "
         + "reviews and investigations whose details you will not need; put parallel tasks in one call, and give each task "
         + "everything it needs, because it cannot ask anyone.\n"

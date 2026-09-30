@@ -1630,6 +1630,13 @@ public sealed class ChatExecutionTests
         public Task<ChatCompletionResponse> CompleteAsync(ChatCompletionRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
         public async IAsyncEnumerable<ChatCompletionChunk> StreamAsync(ChatCompletionRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
+            // Skill routing asks the model once before a turn's first step. It routes nowhere here, so
+            // every scenario scripts only the chat model's own steps.
+            if (request.Message == "Route the request")
+            {
+                yield return new ChatCompletionChunk("{}");
+                yield break;
+            }
             var call = new Call(request, new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously));
             Calls.Writer.TryWrite(call);
             call.Prelude = NextPrelude;

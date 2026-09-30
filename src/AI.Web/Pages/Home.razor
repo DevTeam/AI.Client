@@ -1521,6 +1521,35 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    // A model asked to show the user a place, usually one it has just created: a project and its first
+    // chat, a continuation chat, a new branch. The lists are re-read first because that place may be
+    // younger than the data-changed signal that announces it. It is a new history entry, so Back
+    // returns to where the user was.
+    [JSInvokable]
+    public async Task OnNavigateRequested(string json)
+    {
+        var target = JsonSerializer.Deserialize<AI.Contracts.Navigation.AppNavigation>(json,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        if (target is null) return;
+        try
+        {
+            var projects = await ProjectApi.ListAsync(CancellationToken.None);
+            _projects.Clear();
+            _projects.AddRange(projects);
+            await ApplyProjectOrderAsync();
+            if (_selectedProject?.Id == target.ProjectId) await LoadChatsAsync(target.ProjectId);
+            await NavigateToTargetAsync(new WorkspaceTarget(target.ProjectId, target.ChatId, target.BranchId, null, false));
+            await SyncWorkspaceUrlAsync();
+        }
+        catch (HttpRequestException)
+        {
+            // Unreachable Host: the event stream reports the outage itself.
+            return;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
     [JSInvokable]
     public async Task OnRunSnapshot(string json)
     {

@@ -104,16 +104,14 @@ const applySearchHighlight = (root, query) => {
     return highlightCount;
 };
 
-// Scrolls a specific message into view. Returns true when the target was in the DOM and the
-// scroll was issued, false when the caller still needs to expand the transcript and try again.
-// "center" puts the message in the middle of the visible area: the user can see a bit of context
-// above and below without it looking like the feed teleported.
-const scrollMessageIntoView = (scroller, messageId) => {
-    const element = document.getElementById(`message-${messageId}`);
-    if (element === null || !scroller.contains(element)) return false;
-    element.scrollIntoView({ behavior: "smooth", block: "center" });
-    return true;
-};
+// The occurrence the find bar is on. Only one mark carries it; it is re-applied by position after
+// a re-walk, because the re-walk replaces every mark element.
+const CurrentHighlightClass = "search-highlight-current";
+
+// Marks inside a collapsed block have no boxes: counting them would make "3 / 10" step onto
+// something that cannot be shown.
+const visibleMarks = root =>
+    Array.from(root.querySelectorAll(`mark.${SearchHighlightClass}`)).filter(mark => mark.getClientRects().length > 0);
 
 export function attach(scroller, owner) {
     let pinned = distanceFromBottom(scroller) <= PinThresholdPx;
@@ -264,7 +262,94 @@ export function attach(scroller, owner) {
         notify();
     };
 
+    // Search: the query last walked and which visible occurrence is current (-1 for none).
+    let searchQuery = "";
+    let searchIndex = -1;
+
+    const searchPosition = marks => [searchIndex < marks.length ? searchIndex : -1, marks.length];
+
+    const setCurrentMatch = (marks, index, behavior) => {
+        for (const mark of scroller.querySelectorAll(`mark.${CurrentHighlightClass}`)) mark.classList.remove(CurrentHighlightClass);
+        searchIndex = index >= 0 && index < marks.length ? index : -1;
+        if (searchIndex < 0) return;
+        const mark = marks[searchIndex];
+        mark.classList.add(CurrentHighlightClass);
+        if (behavior) mark.scrollIntoView({ behavior, block: "center" });
+    };
+
+    // keepPosition is false when the transcript is another chat: the same index there means nothing.
+    // Within one chat the current occurrence is remembered as "the n-th mark of this message", not
+    // as a global index: a re-walk after a turn's activity loads adds marks above it.
+    const highlight = (query, keepPosition) => {
+        const trimmed = (query ?? "").trim();
+        const keep = keepPosition && trimmed === searchQuery;
+        const current = keep ? scroller.querySelector(`mark.${CurrentHighlightClass}`) : null;
+        const message = current?.closest('[id^="message-"]') ?? null;
+        const ordinal = message ? Array.from(message.querySelectorAll(`mark.${SearchHighlightClass}`)).indexOf(current) : -1;
+        if (!keep) searchIndex = -1;
+        searchQuery = trimmed;
+        applySearchHighlight(scroller, trimmed);
+        const marks = visibleMarks(scroller);
+        if (message?.isConnected && ordinal >= 0) {
+            const again = message.querySelectorAll(`mark.${SearchHighlightClass}`)[ordinal];
+            searchIndex = again ? marks.indexOf(again) : -1;
+        }
+        setCurrentMatch(marks, searchIndex, null);
+        return searchPosition(marks);
+    };
+
+    // Without a current occurrence, "next" starts from what is on screen rather than from the top
+    // of a long transcript the reader has already scrolled through.
+    const stepMatch = delta => {
+        const marks = visibleMarks(scroller);
+        if (marks.length === 0) return searchPosition(marks);
+        let next;
+        if (searchIndex < 0 || searchIndex >= marks.length) {
+            const bounds = scroller.getBoundingClientRect();
+            if (delta > 0) {
+                next = marks.findIndex(mark => mark.getBoundingClientRect().top >= bounds.top);
+                if (next < 0) next = 0;
+            } else {
+                next = marks.findLastIndex(mark => mark.getBoundingClientRect().bottom <= bounds.bottom);
+                if (next < 0) next = marks.length - 1;
+            }
+        } else {
+            next = (searchIndex + delta + marks.length) % marks.length;
+        }
+        // Instant: F3 held down or pressed quickly must not queue animations behind each other.
+        setCurrentMatch(marks, next, "auto");
+        return searchPosition(marks);
+    };
+
+    // Scrolls a specific message into view — to its first occurrence of the query when it has one.
+    // Returns true when the target was in the DOM and the scroll was issued, false when the caller
+    // still needs to expand the transcript and try again. "center" leaves some context above and
+    // below without it looking like the feed teleported.
+    const scrollMessageIntoView = messageId => {
+        const element = document.getElementById(`message-${messageId}`);
+        if (element === null || !scroller.contains(element)) return false;
+        // A chat opened a moment ago may be in the DOM before Blazor has asked for its highlight.
+        if (searchQuery.length >= MinSearchQueryLength && element.querySelector(`mark.${SearchHighlightClass}`) === null)
+            applySearchHighlight(scroller, searchQuery);
+        const marks = visibleMarks(scroller);
+        const index = marks.findIndex(mark => element.contains(mark));
+        if (index >= 0) setCurrentMatch(marks, index, "smooth");
+        else {
+            setCurrentMatch(marks, -1, null);
+            element.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        return true;
+    };
+
     const onKeyDown = event => {
+        if (event.key === "F3" && !event.ctrlKey && !event.altKey && !event.metaKey) {
+            // Only while there is something to step through; otherwise F3 stays the browser's.
+            if (searchQuery.length < MinSearchQueryLength || scroller.querySelector(`mark.${SearchHighlightClass}`) === null) return;
+            event.preventDefault();
+            const [index, count] = stepMatch(event.shiftKey ? -1 : 1);
+            owner.invokeMethodAsync("OnSearchStepped", index, count);
+            return;
+        }
         if (event.key !== "End" || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
         if (isTextEntry(event.target)) return;
         event.preventDefault();
@@ -326,9 +411,16 @@ export function attach(scroller, owner) {
             watchedElementId = id;
             bindWatchedElement();
         },
-        applySearchHighlight: query => applySearchHighlight(scroller, query ?? ""),
-        clearSearchHighlight: () => clearSearchHighlight(scroller),
-        scrollMessageIntoView: id => scrollMessageIntoView(scroller, id),
+        // Both return [current index or -1, visible occurrences].
+        applySearchHighlight: (query, keepPosition) => highlight(query, keepPosition === true),
+        stepSearchMatch: delta => stepMatch(delta),
+        searchPosition: () => searchPosition(visibleMarks(scroller)),
+        clearSearchHighlight: () => {
+            searchQuery = "";
+            searchIndex = -1;
+            clearSearchHighlight(scroller);
+        },
+        scrollMessageIntoView: id => scrollMessageIntoView(id),
         jumpToBottom: () => toBottom(true),
         dispose: () => {
             observer.disconnect();

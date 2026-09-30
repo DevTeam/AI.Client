@@ -103,6 +103,35 @@ public sealed class ChatSearchServiceTests
     }
 
     [Fact]
+    public async Task ShouldPutTheNewestMatchesFirstAcrossChatsWhenAsked()
+    {
+        var service = Build([(ProjectA, "Alpha", ChatA, "Old chat", []), (ProjectB, "Beta", ChatB, "New chat", [])],
+            chatId => chatId == ChatA
+                ? [Message("deploy one", 1), Message("deploy four", 4)]
+                : [Message("deploy two", 2), Message("deploy three", 3)]);
+
+        var result = await service.SearchAsync(
+            new ChatSearchRequest("deploy", Limit: 3, Order: ChatSearchOrder.Newest), TestContext.Current.CancellationToken);
+
+        // The stable order would give "one, four, two" - the chat ids decide it, not the dates.
+        result.Matches.Select(match => match.Snippet).ShouldBe(["deploy four", "deploy three", "deploy two"]);
+        result.Truncated.ShouldBeTrue();
+        result.NextCursor.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ShouldRefuseACursorForTheNewestOrder()
+    {
+        var service = Build((ProjectA, "Alpha", ChatA, "Chat", ["deploy"]));
+
+        (await service.SearchAsync(new ChatSearchRequest("deploy", Cursor: "0:0", Order: ChatSearchOrder.Newest),
+            TestContext.Current.CancellationToken)).Error.ShouldNotBeNull();
+    }
+
+    private static ChatMessageView Message(string content, int minutes) =>
+        new(Guid.NewGuid(), null, "User", content, DateTimeOffset.UnixEpoch.AddMinutes(minutes));
+
+    [Fact]
     public async Task ShouldReportAnUnusablePatternInsteadOfThrowing()
     {
         var service = Build((ProjectA, "Alpha", ChatA, "Chat", ["anything"]));
@@ -138,11 +167,16 @@ public sealed class ChatSearchServiceTests
 
     private static ChatSearchService Build(
         params (Guid ProjectId, string ProjectName, Guid ChatId, string ChatTitle, string[] Messages)[] chats) =>
-        Build(chats, null);
+        Build(chats, (IReadOnlyList<ChatMessageView>?)null);
 
     private static ChatSearchService Build(
         (Guid ProjectId, string ProjectName, Guid ChatId, string ChatTitle, string[] Messages)[] chats,
-        IReadOnlyList<ChatMessageView>? extra)
+        IReadOnlyList<ChatMessageView>? extra) =>
+        Build(chats, _ => extra ?? []);
+
+    private static ChatSearchService Build(
+        (Guid ProjectId, string ProjectName, Guid ChatId, string ChatTitle, string[] Messages)[] chats,
+        Func<Guid, IReadOnlyList<ChatMessageView>> extra)
     {
         var projects = new Mock<IProjectService>(MockBehavior.Strict);
         var service = new Mock<IChatService>(MockBehavior.Strict);
@@ -161,7 +195,7 @@ public sealed class ChatSearchServiceTests
         {
             var messages = chat.Messages
                 .Select(content => new ChatMessageView(Guid.NewGuid(), null, "User", content, DateTimeOffset.UnixEpoch))
-                .Concat(extra ?? []).ToArray();
+                .Concat(extra(chat.ChatId)).ToArray();
             service.Setup(item => item.GetAsync(chat.ProjectId, chat.ChatId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ChatDetails(chat.ChatId, chat.ProjectId, chat.ChatTitle, DateTimeOffset.UnixEpoch,
                     DateTimeOffset.UnixEpoch, 1, null, messages));

@@ -10,6 +10,10 @@ namespace AI.Contracts.Chats;
 /// kilobytes of JSON apiece, so they are left out unless asked for by name.
 /// </param>
 /// <param name="Cursor">Opaque continuation from a previous result; callers pass it back unchanged.</param>
+/// <param name="Order">
+/// <see cref="ChatSearchOrder.Stable"/> pages with a cursor; <see cref="ChatSearchOrder.Newest"/>
+/// answers "where did I last see this" and has no continuation.
+/// </param>
 public sealed record ChatSearchRequest(
     string Query,
     Guid? ProjectId = null,
@@ -22,7 +26,20 @@ public sealed record ChatSearchRequest(
     DateTimeOffset? To = null,
     int Limit = ChatSearchLimits.DefaultMatches,
     string? Cursor = null,
-    ChatArchiveScope ArchiveScope = ChatArchiveScope.Active);
+    ChatArchiveScope ArchiveScope = ChatArchiveScope.Active,
+    ChatSearchOrder Order = ChatSearchOrder.Stable);
+
+public enum ChatSearchOrder
+{
+    /// <summary>A fixed scan order (project id, chat id, message position) that a cursor can resume.</summary>
+    Stable,
+
+    /// <summary>
+    /// Newest messages first, across every chat searched. The whole scope is read before anything is
+    /// returned, so there is no cursor: a person narrows the query rather than paging through it.
+    /// </summary>
+    Newest
+}
 
 /// <param name="MatchCount">How many times the query occurs in the whole message, not only in the snippet.</param>
 /// <param name="Snippet">Text around the first occurrence, so a long message does not arrive whole.</param>

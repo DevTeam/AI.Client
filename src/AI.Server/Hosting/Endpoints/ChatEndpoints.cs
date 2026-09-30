@@ -56,11 +56,12 @@ public sealed class ChatEndpoints : IEndpointModule
         routes.MapGet("/api/chats/search", (
             string query, Guid? projectId, Guid? chatId, Guid? branchId, bool? isRegex, bool? ignoreCase,
             string? roles, DateTimeOffset? from, DateTimeOffset? to, int? limit, string? cursor, ChatArchiveScope? archiveScope,
-            IChatSearchService search, CancellationToken cancellationToken) =>
+            ChatSearchOrder? order, IChatSearchService search, CancellationToken cancellationToken) =>
             search.SearchAsync(new ChatSearchRequest(query, projectId, chatId, branchId,
                 isRegex ?? false, ignoreCase ?? true,
                 roles?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-                from, to, limit ?? ChatSearchLimits.DefaultMatches, cursor, archiveScope ?? ChatArchiveScope.Active), cancellationToken));
+                from, to, limit ?? ChatSearchLimits.DefaultMatches, cursor, archiveScope ?? ChatArchiveScope.Active,
+                order ?? ChatSearchOrder.Stable), cancellationToken));
 
         routes.MapPost("/api/projects/{projectId:guid}/chats/archive/preview",
             (Guid projectId, ChatArchivePreviewRequest request, IChatArchiveService service, CancellationToken token) =>

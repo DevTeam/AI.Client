@@ -36,6 +36,10 @@ public sealed class ChatSearchService(IProjectService projects, IChatService cha
             return Failure(error.Message);
         }
 
+        var newest = request.Order == ChatSearchOrder.Newest;
+        if (newest && !string.IsNullOrWhiteSpace(request.Cursor))
+            return Failure("A cursor continues only a search in stable order.");
+
         var roles = (request.Roles is { Count: > 0 } ? request.Roles : ChatSearchLimits.DefaultRoles)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var (chatOffset, messageOffset) = Cursor.Parse(request.Cursor);
@@ -46,6 +50,9 @@ public sealed class ChatSearchService(IProjectService projects, IChatService cha
         var searched = 0;
 
         var targets = await TargetsAsync(request, cancellationToken);
+        // Newest first reads the chats last active first, so when the work ceiling cuts the scan
+        // short it is the oldest history that goes unread.
+        if (newest) targets = targets.OrderByDescending(target => target.LastActivityAt).ToArray();
         for (var index = chatOffset; index < targets.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -60,7 +67,9 @@ public sealed class ChatSearchService(IProjectService projects, IChatService cha
             for (var position = start; position < messages.Count; position++)
             {
                 if (examined >= ChatSearchLimits.MaxMessagesExamined)
-                    return new ChatSearchResult(matches, searched, examined, true, Cursor.Of(index, position));
+                    return newest
+                        ? Newest(matches, limit, searched, examined, true)
+                        : new ChatSearchResult(matches, searched, examined, true, Cursor.Of(index, position));
                 var message = messages[position];
                 examined++;
                 if (!roles.Contains(message.Role)) continue;
@@ -73,7 +82,14 @@ public sealed class ChatSearchService(IProjectService projects, IChatService cha
                 var match = new ChatSearchMatch(target.ProjectId, target.ProjectName, chat.Id, chat.Title,
                     message.Id, message.ParentId, message.Role, message.CreatedAt,
                     Snippet(content, matcher.FirstIndex(content)), count, chat.ArchivedAt is not null);
-                var cost = match.Snippet.Length + match.ChatTitle.Length + match.ProjectName.Length;
+                // Which matches are newest is known only at the end, so limits apply after sorting.
+                if (newest)
+                {
+                    matches.Add(match);
+                    continue;
+                }
+
+                var cost = Cost(match);
                 // The first match always goes in: a search that answers "your budget is too small"
                 // and nothing else is of no use to anyone.
                 if (matches.Count > 0 && (matches.Count >= limit || cost > budget))
@@ -84,8 +100,28 @@ public sealed class ChatSearchService(IProjectService projects, IChatService cha
         }
 
         // Falling out of the loop means the scan reached the end: nothing was cut short.
-        return new ChatSearchResult(matches, searched, examined, false, null);
+        return newest
+            ? Newest(matches, limit, searched, examined, false)
+            : new ChatSearchResult(matches, searched, examined, false, null);
     }
+
+    /// <summary>The newest matches that fit the same limits a stable search applies while it scans.</summary>
+    private static ChatSearchResult Newest(List<ChatSearchMatch> found, int limit, int searched, int examined, bool cut)
+    {
+        var budget = ChatSearchLimits.CharacterBudget;
+        var matches = new List<ChatSearchMatch>();
+        foreach (var match in found.OrderByDescending(match => match.CreatedAt))
+        {
+            var cost = Cost(match);
+            if (matches.Count > 0 && (matches.Count >= limit || cost > budget)) break;
+            matches.Add(match);
+            budget -= cost;
+        }
+
+        return new ChatSearchResult(matches, searched, examined, cut || matches.Count < found.Count, null);
+    }
+
+    private static int Cost(ChatSearchMatch match) => match.Snippet.Length + match.ChatTitle.Length + match.ProjectName.Length;
 
     /// <summary>
     /// The chats to scan, in an order that does not move: by project id, then chat id. The sidebar
@@ -105,7 +141,7 @@ public sealed class ChatSearchService(IProjectService projects, IChatService cha
                 if ((request.ChatId is not { } wanted || chat.Id == wanted)
                     && (request.ArchiveScope == ChatArchiveScope.All
                         || (chat.ArchivedAt is not null) == (request.ArchiveScope == ChatArchiveScope.Archived)))
-                    targets.Add(new Target(projectId, projectName, chat.Id));
+                    targets.Add(new Target(projectId, projectName, chat.Id, chat.LastActivityAt));
         return targets;
     }
 
@@ -142,7 +178,7 @@ public sealed class ChatSearchService(IProjectService projects, IChatService cha
 
     private static ChatSearchResult Failure(string error) => new([], 0, 0, false, null, error);
 
-    private sealed record Target(Guid ProjectId, string ProjectName, Guid ChatId);
+    private sealed record Target(Guid ProjectId, string ProjectName, Guid ChatId, DateTimeOffset LastActivityAt);
 
     /// <summary>
     /// Position in the scan as "chat index : message index". Opaque by contract — callers return

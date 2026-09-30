@@ -32,6 +32,10 @@ export function focusAdjacentItem(containerSelector, itemSelector, key) {
     items[nextIndex].focus();
 }
 
+export function revealElement(id) {
+    document.getElementById(id)?.scrollIntoView({ block: "nearest" });
+}
+
 const sidebarMin = 220;
 const sidebarMax = 420;
 // Dragging this far past the minimum hides the sidebar; the stop at the minimum comes first, so a
@@ -183,10 +187,29 @@ export function attach(workspace) {
         }
     });
     listen(document, "keydown", event => {
-        if (event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey && event.code === "KeyB") {
+        const ctrlOnly = event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+        if (ctrlOnly && event.code === "KeyB") {
             event.preventDefault();
             toggleSidebar();
+        } else if (ctrlOnly && event.code === "KeyK") {
+            // An open search panel takes the focus back; a closed one is opened through its
+            // sidebar button (which works while the sidebar is hidden), and Blazor focuses it.
+            event.preventDefault();
+            const input = document.querySelector(".search-drawer-input");
+            if (input) {
+                input.focus();
+                input.select();
+            } else {
+                workspace.querySelector("[data-search-open]")?.click();
+            }
         }
+    });
+    // Up, Down and Enter in the search box walk and open the results (Blazor handles the keys);
+    // left alone, Up and Down would also throw the caret to either end of the query.
+    listen(document, "keydown", event => {
+        if (!(event.target instanceof HTMLElement) || !event.target.matches(".search-drawer-input")) return;
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter") event.preventDefault();
     });
 
     return {

@@ -27,5 +27,6 @@ internal sealed class Composition
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppSubtaskPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppSkillPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AskUserPresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppNavigatePresentationAdapter>()
             .Singleton<ToolResultModelProjector, ToolResultCodec, ConnectionContextLimitsResolver, UnifiedDiff>();
 }

@@ -10,6 +10,7 @@ using AI.Application.Settings;
 using AI.Application.Tools;
 using AI.Application.Workspace;
 using AI.Contracts.Chats;
+using AI.Contracts.Navigation;
 using AI.Contracts.Projects;
 using AI.Contracts.Runs;
 using AI.Contracts.Settings;
@@ -45,7 +46,7 @@ public sealed class AppToolTests
 
         // The server decides its own listing order, so the set is what matters, not the sequence.
         session.Tools.Select(tool => tool.OriginalName).Order(StringComparer.Ordinal).ShouldBe(
-            ["app_chats", "app_instructions", "app_memory", "app_projects", "app_read", "app_resources", "app_runs", "app_security", "app_skills", "ask_user", "context_compact", "run_skill", "skill_search", "spawn_subtask", "tool_search"]);
+            ["app_chats", "app_instructions", "app_memory", "app_navigate", "app_projects", "app_read", "app_resources", "app_runs", "app_security", "app_skills", "ask_user", "context_compact", "run_skill", "skill_search", "spawn_subtask", "tool_search"]);
         session.Tools.ShouldAllBe(tool => tool.ServerId == AppMcpServer.Id);
         session.Tools.ShouldAllBe(tool => tool.ModelDefinition.Name.StartsWith("mcp_app__", StringComparison.Ordinal));
         // A schema hash is what ties a saved policy to the tool it was granted for.
@@ -639,6 +640,39 @@ public sealed class AppToolTests
         fixture.Broker.LastRequest.ShouldBeNull();
     }
 
+    [Fact]
+    public async Task ShouldOpenAChatInTheUsersWindowOnlyWhenItExists()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var requests = fixture.Navigation.SubscribeAsync(stop.Token).GetAsyncEnumerator(stop.Token);
+        var chat = await fixture.Chats.CreateAsync(fixture.ProjectId, new CreateChatRequest("Next"), CancellationToken.None);
+
+        var missing = await AppFixture.CallAsync(session, "app_navigate",
+            new { projectId = fixture.ProjectId, chatId = Guid.NewGuid() }, expectError: true);
+        var opened = await AppFixture.CallAsync(session, "app_navigate", new { projectId = fixture.ProjectId, chatId = chat.Id });
+
+        missing.GetProperty("opened").GetBoolean().ShouldBeFalse();
+        opened.GetProperty("opened").GetBoolean().ShouldBeTrue();
+        opened.GetProperty("effect").GetString().ShouldBe("Opened chat 'Next'.");
+        // Only the request that passed its checks reaches the window.
+        (await requests.MoveNextAsync()).ShouldBeTrue();
+        requests.Current.ShouldBe(new AppNavigation(fixture.ProjectId, chat.Id));
+        await requests.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ShouldNotMoveTheWindowFromABackgroundRun()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync(interactive: false);
+
+        var result = await AppFixture.CallAsync(session, "app_navigate", new { projectId = fixture.ProjectId }, expectError: true);
+
+        result.GetProperty("opened").GetBoolean().ShouldBeFalse();
+    }
+
     private sealed class AppFixture : IAsyncDisposable
     {
         private readonly AppToolsComposition _composition;
@@ -689,6 +723,8 @@ public sealed class AppToolTests
         }
 
         public ChangeWatch WatchChanges() => new(_composition.Resolve<IAppDataChangeSignal>());
+
+        public IAppNavigationSignal Navigation => _composition.Resolve<IAppNavigationSignal>();
 
         public ValueTask DisposeAsync() => _composition.DisposeAsync();
     }

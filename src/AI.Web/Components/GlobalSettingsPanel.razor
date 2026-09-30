@@ -67,10 +67,11 @@
                         <fieldset class="app-settings-group">
                             <legend>Chat</legend>
                             <label class="checkbox"><input type="checkbox" checked="@_showContextWindowUsage" @onchange="SetShowContextWindowUsageAsync" /> Show context window usage</label>
-                            @* These two are the Host's: it makes the model calls, whichever window is open. *@
+                            @* These are the Host's: it makes the model calls, whichever window is open. *@
                             <label class="checkbox"><input type="checkbox" checked="@_chatAutomation.AutoTitle" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { AutoTitle = args.Value is true })" /> Name new chats after the first answer</label>
                             <label class="checkbox"><input type="checkbox" checked="@_chatAutomation.SuggestReplies" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { SuggestReplies = args.Value is true })" /> Suggest a reply after each answer</label>
-                            <p class="host-status-note">Naming and suggestions each make one more request to the chat's connection.</p>
+                            <label class="checkbox"><input type="checkbox" checked="@_chatAutomation.RouteSkills" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { RouteSkills = args.Value is true })" /> Pick a skill for each new message</label>
+                            <p class="host-status-note">Naming, suggestions and skill picking each make one more request to the chat's connection.</p>
                         </fieldset>
                         @if (ClientMode.PublicWeb)
                         {

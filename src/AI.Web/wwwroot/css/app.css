@@ -150,14 +150,16 @@
     /* Search hits and the line under a review comment. */
     --color-highlight-bg: var(--color-accent-bg-active);
     --color-highlight-fg: var(--color-accent-text);
-    /* Context window layers use neutral steps; the current draft uses the user's accent.
+    /* Context window layers each take a hue from the accent palette (below), lifted towards
+       white here as --color-accent-strong is, so neighbouring arcs stay apart. The hues are fixed
+       rather than following the user's accent, so no two layers can end up the same colour.
        Warning and critical capacity remain status colours on the send-button ring. */
-    --color-context-instructions: var(--color-text-muted);
-    --color-context-tools: var(--color-text-subtle);
-    --color-context-history: var(--color-border-stronger);
-    --color-context-draft: var(--color-accent-strong);
-    --color-context-reserve: var(--color-text-secondary);
-    --color-context-overhead: var(--color-border-strong);
+    --color-context-instructions: color-mix(in srgb, var(--accent-swatch-purple) 80%, #ffffff);
+    --color-context-tools: color-mix(in srgb, var(--accent-swatch-teal) 80%, #ffffff);
+    --color-context-history: color-mix(in srgb, var(--accent-swatch-green) 80%, #ffffff);
+    --color-context-draft: color-mix(in srgb, var(--accent-swatch-blue) 80%, #ffffff);
+    --color-context-reserve: color-mix(in srgb, var(--accent-swatch-amber) 80%, #ffffff);
+    --color-context-overhead: color-mix(in srgb, var(--accent-swatch-pink) 80%, #ffffff);
     /* Shadow and backdrop alphas are written for the dark theme and scaled here. */
     --shadow-scale: 1;
     --scrim-scale: 1;
@@ -237,6 +239,15 @@
     --accent-swatch-pink: #cc3494;
     --accent-swatch-purple: #9b4fcf;
     --accent-swatch-indigo: #6b58f5;
+}
+/* The context layers at full swatch strength on the light background. */
+:root[data-theme="light"] {
+    --color-context-instructions: var(--accent-swatch-purple);
+    --color-context-tools: var(--accent-swatch-teal);
+    --color-context-history: var(--accent-swatch-green);
+    --color-context-draft: var(--accent-swatch-blue);
+    --color-context-reserve: var(--accent-swatch-amber);
+    --color-context-overhead: var(--accent-swatch-pink);
 }
 :root[data-accent="teal"] { --accent-swatch: var(--accent-swatch-teal); }
 :root[data-accent="green"] { --accent-swatch: var(--accent-swatch-green); }

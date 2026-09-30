@@ -28,6 +28,21 @@ public class ChatDocumentSerializerTests
     }
 
     [Fact]
+    public void ShouldPreserveApprovalModeAndReadOlderChatsAsAsk()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", now);
+        chat.SetApprovalMode(ChatApprovalMode.FullAccess, now);
+
+        var json = _serializer.Serialize(chat, 1);
+        _serializer.Deserialize(json).Chat.ApprovalMode.ShouldBe(ChatApprovalMode.FullAccess);
+
+        var older = JsonNode.Parse(json)!.AsObject();
+        older.Remove("ApprovalMode").ShouldBeTrue();
+        _serializer.Deserialize(older.ToJsonString()).Chat.ApprovalMode.ShouldBe(ChatApprovalMode.Ask);
+    }
+
+    [Fact]
     public void ShouldKeepResourceOnlyUserMessageAsReferences()
     {
         var now = DateTimeOffset.UnixEpoch;

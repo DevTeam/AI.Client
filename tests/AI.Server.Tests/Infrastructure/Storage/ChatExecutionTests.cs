@@ -566,6 +566,53 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task FullAccessShouldRunAskToolsWithoutACardButKeepDeny()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.Chats.UpdateApprovalModeAsync(fixture.ProjectId, fixture.ChatId,
+            new UpdateChatApprovalModeRequest(ToolApprovalMode.FullAccess), CancellationToken.None);
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+
+        var second = await fixture.NextCallAsync();
+        fixture.Tools.CallCount.ShouldBe(1);
+        second.Answer.SetResult("Done");
+        var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        completed.PendingApproval.ShouldBeNull();
+
+        await fixture.SetPolicyAsync("Deny");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run it again"));
+        var third = await fixture.NextCallAsync();
+        third.ToolCalls = [new ChatToolCall("call-2", "mcp_built_in__process_run", "{}")];
+        third.Answer.SetResult("");
+        var fourth = await fixture.NextCallAsync();
+        fixture.Tools.CallCount.ShouldBe(1);
+        fourth.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task SwitchingToFullAccessShouldAnswerTheWaitingCard()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+        await fixture.WaitAsync(run => run.PendingApproval is not null);
+
+        await fixture.Chats.UpdateApprovalModeAsync(fixture.ProjectId, fixture.ChatId,
+            new UpdateChatApprovalModeRequest(ToolApprovalMode.FullAccess), CancellationToken.None);
+
+        var second = await fixture.NextCallAsync();
+        fixture.Tools.CallCount.ShouldBe(1);
+        second.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task ToolLimitShouldIdentifyTheToolPolicyScopeAndKeepOtherToolsAvailable()
     {
         await using var fixture = await Fixture.CreateAsync();

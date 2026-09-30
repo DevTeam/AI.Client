@@ -6,6 +6,10 @@ namespace AI.Contracts.Runs;
 /// call must never imply allowing its neighbours — but a user facing the first of several deserves
 /// to know that before deciding.
 /// </param>
+/// <param name="Assessment">
+/// What the chat's risk assessment said about this call, when "Approve for me" judged it and still
+/// wanted the person to decide; null when no assessment ran.
+/// </param>
 public sealed record ToolApproval(
     Guid Id,
     Guid ServerId,
@@ -14,7 +18,8 @@ public sealed record ToolApproval(
     string Arguments,
     long TimeoutSeconds,
     int CallIndex = 1,
-    int BatchSize = 1);
+    int BatchSize = 1,
+    string? Assessment = null);
 
 public enum ToolApprovalAction
 {

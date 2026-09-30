@@ -21,6 +21,11 @@
                         <span class="tool-approval-count">Call @Approval.CallIndex of @Approval.BatchSize</span>
                     }
                 </span>
+                @* "Approve for me" judged this call and left it to the person; its reason is what to check. *@
+                @if (Approval.Assessment is { Length: > 0 } assessment)
+                {
+                    <span class="tool-approval-assessment" title="@assessment"><AppIcon Name="shield-alert" /><span>@assessment</span></span>
+                }
             </span>
         </button>
         <div class="tool-approval-actions">

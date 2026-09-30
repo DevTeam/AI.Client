@@ -49,6 +49,7 @@ public sealed class ChatThread
     public string? PinOrder { get; private set; }
     public IReadOnlyCollection<ChatMessage> Messages => _messages.Values;
     public ConnectionId? ConnectionId { get; private set; }
+    public ChatApprovalMode ApprovalMode { get; private set; }
     public IReadOnlyCollection<ChatBranch> Branches => _branches.Values;
 
     /// <summary>
@@ -157,6 +158,16 @@ public sealed class ChatThread
         ConnectionId = connectionId;
         UpdatedAt = updatedAt;
     }
+
+    public void SetApprovalMode(ChatApprovalMode mode, DateTimeOffset updatedAt)
+    {
+        EnsureTimestampDoesNotMoveBackwards(updatedAt);
+        if (!Enum.IsDefined(mode)) throw new DomainException("Unknown approval mode.");
+        ApprovalMode = mode;
+        UpdatedAt = updatedAt;
+    }
+
+    public void RestoreApprovalMode(ChatApprovalMode mode) => ApprovalMode = Enum.IsDefined(mode) ? mode : ChatApprovalMode.Ask;
 
     public void Pin(string order, DateTimeOffset pinnedAt)
     {

@@ -7,12 +7,12 @@ using AI.Contracts.Skills;
 /// <summary>Validates a skill's declared parameters before dispatching to its implementation.</summary>
 public sealed class SkillRunner(ISkillCatalog catalog, ChatRenameSkill chatRenameSkill,
     GenericSkillExecutor? genericExecutor = null, ChatReplySuggestSkill? chatReplySuggestSkill = null,
-    SkillRouteSkill? skillRouteSkill = null) : ISkillRunner
+    SkillRouteSkill? skillRouteSkill = null, ChatToolRiskAssessSkill? chatToolRiskAssessSkill = null) : ISkillRunner
 {
     private readonly object _gate = new();
     private readonly List<SkillRunRecord> _recent = [];
     private readonly Dictionary<string, ISkillExecutor> _executors =
-        new ISkillExecutor?[] { chatRenameSkill, chatReplySuggestSkill, skillRouteSkill }.OfType<ISkillExecutor>()
+        new ISkillExecutor?[] { chatRenameSkill, chatReplySuggestSkill, skillRouteSkill, chatToolRiskAssessSkill }.OfType<ISkillExecutor>()
             .ToDictionary(executor => executor.SkillId, StringComparer.Ordinal);
 
     public IReadOnlyList<SkillRunRecord> ListRecent()

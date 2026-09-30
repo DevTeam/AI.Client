@@ -109,6 +109,15 @@
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
             <path d="m9 12 2 2 4-4" />
             break;
+        @* The chat's tool approval modes: a raised hand asks, the checked shield judges, the warning
+           shield lets everything through. *@
+        case "hand":
+            <path d="M18 11V6a2 2 0 0 0-4 0" /><path d="M14 10V4a2 2 0 0 0-4 0v2" /><path d="M10 10.5V6a2 2 0 0 0-4 0v8" /><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-6-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+            break;
+        case "shield-alert":
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+            <path d="M12 8v4M12 16h.01" />
+            break;
         @* Added over removed: the two halves of a diff, in the order a diff reads them. *@
         case "diff":
             <path d="M12 4v6M9 7h6M9 17h6" />

@@ -588,7 +588,8 @@ body {
 .project-menu,
 .chat-menu,
 .branch-picker-menu,
-.composer-endpoint-menu {
+.composer-endpoint-menu,
+.composer-approval-menu {
     padding: 0.3rem;
     border: 1px solid var(--color-border);
     border-radius: calc(0.65rem * var(--corner-scale));
@@ -599,7 +600,8 @@ body {
 .project-menu > button,
 .chat-menu > button,
 .branch-picker-menu button,
-.composer-endpoint-menu button {
+.composer-endpoint-menu button,
+.composer-approval-menu button {
     gap: 0.45rem;
     padding: 0.45rem 0.6rem;
 }
@@ -2935,7 +2937,7 @@ body {
 .message-review-attach:hover, .message-review-attach:focus-visible { background: var(--color-accent-bg); color: var(--color-accent-text); }
 .queue-resource-count { color: var(--color-text-muted); white-space: nowrap; }
 
-.composer-resource-menu-anchor { position: relative; display: inline-flex; margin-right: auto; }
+.composer-resource-menu-anchor { position: relative; display: inline-flex; }
 .composer-add-resource { width: 2rem; height: 2rem; }
 .composer-resource-menu-backdrop { position: fixed; inset: 0; z-index: 29; }
 .composer-resource-menu {
@@ -2994,6 +2996,32 @@ body {
 .composer-review-submenu { display: grid; max-height: 12.5rem; overflow-y: auto; border-top: 1px solid var(--color-border-strong); margin-top: .2rem; padding-top: .2rem; }
 .composer-review-submenu button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-review-submenu button { min-height: 2.5rem; }
+
+/* The chat's tool approval mode, next to "+" on the composer's left; the rest of the footer sits right.
+   Full access is the one mode that is never quiet about itself, so it keeps the warning colour. */
+.composer-approval { position: relative; display: inline-flex; align-items: center; margin-right: auto; }
+.composer-approval-trigger { display: inline-flex; max-width: 12rem; align-items: center; gap: .35rem; padding: .3rem .55rem; border-color: transparent; border-radius: calc(1rem * var(--corner-scale)); background: transparent; color: var(--color-text-secondary); font-size: .82rem; }
+.workspace-composer .composer-approval-trigger span { overflow: hidden; color: inherit; text-overflow: ellipsis; white-space: nowrap; }
+.composer-approval-trigger .app-icon { flex: none; width: .95rem; height: .95rem; color: var(--color-text-subtle); }
+.composer-approval-trigger:hover:not(:disabled) { background: var(--color-fill-hover); }
+.composer-approval-trigger:disabled { color: var(--color-text-disabled); }
+.composer-approval-trigger.is-full-access,
+.composer-approval-trigger.is-full-access .app-icon { color: var(--color-warning-text); }
+.composer-approval-trigger.is-full-access { background: color-mix(in srgb, var(--color-warning) 12%, transparent); }
+.composer-approval-trigger.is-full-access:hover:not(:disabled) { background: color-mix(in srgb, var(--color-warning) 20%, transparent); }
+.composer-approval-menu { position: absolute; z-index: 31; bottom: calc(100% + .4rem); left: 0; display: grid; width: min(22rem, calc(100vw - 2rem)); }
+.composer-approval-menu-label { padding: .35rem .6rem .45rem; color: var(--color-text-subtle); font-size: .78rem; }
+.composer-approval-menu button { display: grid; grid-template-columns: 1.1rem minmax(0, 1fr) 1rem; align-items: start; border: 0; background: transparent; color: var(--color-text); text-align: left; }
+.composer-approval-menu button > .app-icon { width: 1.05rem; height: 1.05rem; margin-top: .1rem; color: var(--color-text-secondary); }
+.composer-approval-menu button:hover,
+.composer-approval-menu button:focus-visible { background: var(--color-fill-active); }
+.composer-approval-option { display: grid; gap: .1rem; min-width: 0; }
+.composer-approval-option strong { font-size: .88rem; font-weight: 500; }
+.workspace-composer .composer-approval-option span { color: var(--color-text-subtle); font-size: .76rem; line-height: 1.35; }
+.composer-approval-menu .composer-approval-check { width: .95rem; height: .95rem; margin-top: .15rem; color: var(--color-text-secondary); }
+.composer-approval-menu button.is-full-access strong,
+.workspace-composer .composer-approval-menu button.is-full-access span,
+.composer-approval-menu button.is-full-access .app-icon { color: var(--color-warning-text); }
 
 .composer-endpoint {
     position: relative;
@@ -3878,6 +3906,9 @@ textarea {
 .tool-approval-summary strong { flex: none; overflow: hidden; font-weight: 500; text-overflow: ellipsis; }
 .tool-approval-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tool-approval-count { flex: none; color: var(--color-text-faint); }
+.tool-approval-assessment { display: flex; align-items: center; gap: .3rem; min-width: 0; color: var(--color-warning-text); font-size: .74rem; }
+.tool-approval-assessment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-approval-assessment .app-icon { flex: none; width: .8rem; height: .8rem; }
 .tool-approval-actions { display: flex; flex: none; align-items: center; gap: .25rem; margin-left: auto; }
 .tool-approval-actions > button { min-height: 2rem; margin: 0; padding: .35rem .6rem; font-size: .78rem; }
 .tool-approval-deny { color: var(--color-text-muted); }

@@ -14,6 +14,7 @@ public interface IChatService
     Task<ChatDetails> CreateAsync(Guid projectId, CreateChatRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> AppendMessageAsync(Guid projectId, Guid chatId, AppendChatMessageRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> UpdateEndpointAsync(Guid projectId, Guid chatId, UpdateChatEndpointRequest request, CancellationToken cancellationToken);
+    Task<ChatDetails?> UpdateApprovalModeAsync(Guid projectId, Guid chatId, UpdateChatApprovalModeRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> RenameAsync(Guid projectId, Guid chatId, RenameChatRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> ApplyAutomaticTitleAsync(Guid projectId, Guid chatId, string title, CancellationToken cancellationToken);
     Task<ChatSummary?> PinAsync(Guid projectId, Guid chatId, PinChatRequest request, CancellationToken cancellationToken);

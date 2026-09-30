@@ -126,6 +126,8 @@ internal sealed class Composition
             // Bound by their own types only: every executor is an ISkillExecutor, and SkillRunner takes each by type.
             .Bind<ChatReplySuggestSkill>().As(Lifetime.Singleton).To<ChatReplySuggestSkill>()
             .Bind<SkillRouteSkill>().As(Lifetime.Singleton).To<SkillRouteSkill>()
+            .Bind<ChatToolRiskAssessSkill>().As(Lifetime.Singleton).To<ChatToolRiskAssessSkill>()
+            .Bind<IToolAutoApprover>().As(Lifetime.Singleton).To<ToolAutoApprover>()
             .Bind<IChatReplySuggestions>().As(Lifetime.Singleton).To<ChatReplySuggestions>()
             .Transient<AppToolReply>()
             .Bind<BuiltInSkillCatalog>().As(Lifetime.Singleton).To<BuiltInSkillCatalog>()

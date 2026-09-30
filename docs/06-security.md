@@ -62,6 +62,27 @@ Server enabled?
 
 The most restrictive result wins. A tool annotation cannot weaken the project policy.
 
+## Chat approval mode
+
+Each chat has a mode, chosen in the composer next to `+`, that answers a call its policy leaves at
+`Ask` before any card is shown. `Deny`, the per-run call limits and directory grants apply in every
+mode; the mode never touches them.
+
+```text
+Ask for approval — every such call waits for the approval card (the default, and every older chat)
+Approve for me   — the chat-tool-risk-assess executor judges the call; only "allow" with risk
+                   "low" runs without a card, anything else (including a failed or unreadable
+                   assessment) shows the card with the assessment's reason
+Full access      — every such call runs without asking
+```
+
+The assessment is one model call on the chat's own connection. It sees the user's latest request
+on the branch, the project's directory grants, the tool's description and annotations (as
+unverified hints) and the exact arguments, all passed as data. Switching the mode while a card
+waits answers it: Full access lets the call through, and "Approve for me" gets one assessment.
+Background subtasks, which have nobody to ask, run what the parent chat's mode would allow and
+refuse the rest. A chat not created yet keeps the mode picked in its composer and is created with it.
+
 ## Directory grants
 
 Permissions are defined separately for tools. Directory grants are an additional restriction on FileSystem tool arguments:

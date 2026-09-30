@@ -59,6 +59,7 @@ application permissions, and every write still goes through tool approval.
 | `chat-rename` | Names a new chat after its first answer, or renames one on request (executor) | — |
 | `chat-reply-suggest` | Drafts the user's next message to the last answer of a branch for the composer (executor) | — |
 | `skill-route` | Picks the skills and first tools for the message that starts a turn (executor); Settings → Chat turns it off | — |
+| `chat-tool-risk-assess` | Judges one pending tool call for the chat's "Approve for me" mode (executor); see [security](06-security.md#chat-approval-mode) | — |
 | `chat-compact` | Summarizes the chat and continues in a new chat that starts from the summary, and opens it | `app_chats`, `app_runs`, `app_navigate` |
 | `chat-context-compact` (`/compact`) | Replaces the finished work of the current turn with a model-only summary, or undoes it | `context_compact` |
 | `chat-fork` | Starts a branch from an earlier user message with a new prompt, and opens it | `app_runs` Fork, `app_chats` RenameBranch, `app_navigate` |
@@ -143,7 +144,7 @@ in the project, and the model's copy of the message starts with an instruction t
 
 When the App tools are available, the standing `skills.catalog` layer lists every enabled skill
 in effect for the project: its id, description and parameter names, with `*` marking required ones.
-Only executors the application runs on its own (`chat-reply-suggest`) are left out. It follows
+Only executors the application runs on its own (`chat-reply-suggest`, `chat-tool-risk-assess`) are left out. It follows
 memory, has its own 3,072-token budget and ends with a pointer to `app_skill_search` when it is
 cut. Its lead tells the model to check the list before acting and when the user changes task, to
 run a fitting skill before other tools even for requests that look simple, and to run only listed

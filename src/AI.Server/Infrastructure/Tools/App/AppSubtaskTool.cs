@@ -64,7 +64,8 @@ public sealed class AppSubtaskTool(
     IGlobalSecretStore secrets,
     IToolPresentations presentations,
     IToolResultCodec toolResultCodec,
-    IAppToolReply reply) : IAppTool
+    IAppToolReply reply,
+    Func<IToolAutoApprover> autoApprover) : IAppTool
 {
     /// <summary>
     /// How many subtask runs may be in flight across the Host at once. A nested subtask holds its
@@ -231,9 +232,13 @@ public sealed class AppSubtaskTool(
                     return Task.CompletedTask;
                 },
                 (_, _) => Task.CompletedTask,
-                // Nobody is watching a background run, so anything that would stop to ask is refused.
-                // The subtask is told as much and can report what it could not do.
-                (_, _, _, _, _) => Task.FromResult(ToolApprovalAction.Deny),
+                // Nobody is watching a background run, so anything that would stop to ask is refused —
+                // unless the chat's own mode would have answered it without asking anyway. The
+                // subtask is told when it is refused and can report what it could not do.
+                async (tool, arguments, _, _, ct) =>
+                    (await autoApprover().DecideAsync(projectId, chatId, run.BranchId, tool, arguments, ct)).Allowed
+                        ? ToolApprovalAction.Allow
+                        : ToolApprovalAction.Deny,
                 cancellationToken,
                 // Same reason, said once for every tool rather than per callback: this run has no
                 // person behind it, so ask_user answers itself instead of waiting for one.

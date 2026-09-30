@@ -134,6 +134,15 @@ public sealed class ChatEndpoints : IEndpointModule
                 return chat is null ? Results.NotFound() : Results.Ok(chat);
             });
 
+        routes.MapPut(
+            "/api/projects/{projectId:guid}/chats/{chatId:guid}/approval-mode",
+            async (Guid projectId, Guid chatId, UpdateChatApprovalModeRequest request, IChatService service, CancellationToken cancellationToken) =>
+            {
+                if (!Enum.IsDefined(request.Mode)) return Results.BadRequest();
+                var chat = await service.UpdateApprovalModeAsync(projectId, chatId, request, cancellationToken);
+                return chat is null ? Results.NotFound() : Results.Ok(chat);
+            });
+
         routes.MapPut("/api/projects/{projectId:guid}/chats/{chatId:guid}/tool-policies",
             async (Guid projectId, Guid chatId, ToolPolicySettings policy, IChatService service, CancellationToken token) =>
                 await service.SetToolPolicyAsync(projectId, chatId, policy, token) is { } chat ? Results.Ok(chat) : Results.NotFound());

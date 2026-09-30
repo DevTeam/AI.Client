@@ -126,7 +126,7 @@ internal sealed class Composition
             .Transient<AppToolReply>()
             .Bind<BuiltInSkillCatalog>().As(Lifetime.Singleton).To<BuiltInSkillCatalog>()
             .Bind<ISkillCatalog>().As(Lifetime.Singleton).To<SkillCatalog>()
-            .Singleton<SkillRunner, GenericSkillExecutor>()
+            .Singleton<SkillRunner, GenericSkillExecutor, SkillGuide>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
             .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To((
                 [Tag("base")] IChatCompletionClient baseClient,

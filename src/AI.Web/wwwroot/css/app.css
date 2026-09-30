@@ -5319,9 +5319,19 @@ textarea {
 .skill-editor .settings-list-select > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skill-editor .settings-list-select > span { display: flex; gap: 0.4rem; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skill-editor .settings-list-select > span .app-icon { flex: none; width: 0.95rem; height: 0.95rem; color: var(--color-text-secondary); }
-.skill-icon-picker { display: flex; flex-wrap: wrap; gap: 0.2rem; }
-.skill-icon-picker .icon-action { border: 1px solid transparent; }
-.skill-icon-picker .icon-action.selected { border-color: var(--color-accent); color: var(--color-accent); background: var(--color-fill-stronger); }
+/* The icon combobox: a select-like trigger with the pick and a chevron, and a list that floats under it. */
+.skill-icon-field { display: grid; gap: 0.4rem; color: var(--color-text-secondary); }
+.skill-icon-select { position: relative; }
+.skill-icon-select-trigger { display: flex; align-items: center; gap: 0.55rem; width: 100%; min-height: 2.7rem; padding: 0.55rem 0.65rem; border: 1px solid var(--color-border-strong); border-radius: calc(0.5rem * var(--corner-scale)); background: var(--color-input-bg); color: var(--color-text); font: inherit; text-align: left; cursor: pointer; }
+.skill-icon-select-trigger:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -1px; }
+.skill-icon-select-trigger > .app-icon { flex: none; width: 1.05rem; height: 1.05rem; }
+.skill-icon-select-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-icon-select-trigger > .skill-icon-select-chevron { width: 1rem; height: 1rem; color: var(--color-text-subtle); }
+.skill-icon-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50; max-height: 18rem; overflow-y: auto; margin: 0; padding: 0.25rem; list-style: none; background: var(--color-surface); border: 1px solid var(--color-border-translucent); border-radius: calc(0.4rem * var(--corner-scale)); box-shadow: 0 8px 24px rgb(0 0 0 / calc(35% * var(--shadow-scale))); }
+.skill-icon-option { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.6rem; border-radius: calc(0.3rem * var(--corner-scale)); color: var(--color-text); cursor: pointer; }
+.skill-icon-option .app-icon { flex: none; width: 1rem; height: 1rem; color: var(--color-text-secondary); }
+.skill-icon-option.active { background: var(--color-overlay-hover); }
+.skill-icon-option.selected, .skill-icon-option.selected .app-icon { color: var(--color-accent); }
 .skill-source, .skill-state { color: var(--color-text-secondary); font-size: .8rem; }
 .skill-form textarea { resize: none; }
 .skill-form .skill-content { min-height: 18rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .78rem; line-height: 1.45; }

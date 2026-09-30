@@ -7,7 +7,7 @@ using Xunit;
 
 public class BuiltInSkillCatalogTests
 {
-    private static readonly string[] Domains = ["chat", "project", "memory", "skill", "instructions"];
+    private static readonly string[] Domains = ["chat", "project", "memory", "skill", "instructions", "code", "git"];
 
     [Fact]
     public void ShouldExposeBundledChatRenameInstructions()
@@ -65,7 +65,7 @@ public class BuiltInSkillCatalogTests
         var skills = new BuiltInSkillCatalog().List();
         string[] executors = ["chat-rename", "chat-reply-suggest"];
 
-        skills.Count.ShouldBeGreaterThanOrEqualTo(20);
+        skills.Count.ShouldBeGreaterThanOrEqualTo(25);
         skills.Where(item => executors.Contains(item.Id)).ShouldAllBe(item => item.Kind == SkillKinds.Executor);
         foreach (var skill in skills.Where(item => !executors.Contains(item.Id)))
         {

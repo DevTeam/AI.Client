@@ -39,11 +39,13 @@ application permissions, and every write still goes through tool approval.
 ## Naming
 
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. The domains are `chat`,
-  `project`, `memory`, `skill` and `instructions`; a new area gets a new domain. The action is a
-  verb: create, rename, compact, fork, add, remove, review, save, edit, suggest.
+  `project`, `memory`, `skill`, `instructions`, `code` and `git`; a new area gets a new domain. The
+  action is a verb: create, rename, compact, fork, add, remove, review, save, edit, suggest,
+  implement, fix, run, commit.
 - `name` is the id in words with the first letter capitalized (`project-directory-add` →
   "Project directory add"), so the `/` list groups skills by domain.
-- `description` is one sentence that starts with a verb and names every side effect.
+- `description` is one sentence that starts with a verb, leads with the task the skill is for and
+  names every side effect. The model chooses from the catalog by it.
 - Playbooks confirm every change with `ask_user` unless the exact value came from the user, put
   the recommended option first with " (Recommended)", say what a dismissed, expired or
   interrupted question does, and end with a one-line report without ids or revisions.
@@ -74,6 +76,11 @@ application permissions, and every write still goes through tool approval.
 | `skill-edit` | Changes a User or Project skill after the user reviews the change | `app_skills` |
 | `skill-from-chat` | Turns the workflow of the current chat into a playbook | `app_skills` |
 | `instructions-edit` | Changes the project instructions with the smallest edit | `app_instructions` |
+| `code-feature-implement` | Implements a change end to end: baseline `git status`, explore, plan, edit, build and test, remove leftovers, summary; never commits | file tools, `process_run` |
+| `code-bug-fix` | Reproduces a bug, finds the root cause, adds a failing test, fixes it and reruns the tests | file tools, `process_run` |
+| `code-tests-run` | Finds the project's test command, runs it and reports each failure; offers `code-bug-fix` | `process_run`, `run_skill` |
+| `code-changes-review` | Reviews uncommitted changes for stray files, secrets, debug leftovers and unrelated edits; cleans up what the user picks | `process_run`, `edit_file`, `delete_file` |
+| `git-commit` | On request only: drafts a message in the log's style and commits the chosen paths; never pushes | `process_run` |
 
 The history of a chat is compacted for the model only while a request would not fit, and
 `context_compact` only covers the finished work of the current turn; `chat-context-compact` runs it
@@ -112,3 +119,21 @@ The user can invoke a skill from the composer: typing `/` lists the enabled skil
 one becomes a chip on the message (see [Composer rules](15-composer-rules.md#skills-from-the-slash-list)).
 The message stores it as a `Skill` resource; submission rejects a skill that is missing or disabled
 in the project, and the model's copy of the message starts with an instruction to run that skill.
+
+## How the model picks skills
+
+When the App tools are available, the standing `skills.catalog` layer lists every enabled skill
+in effect for the project: its id, description and parameter names, with `*` marking required ones.
+Only executors the application runs on its own (`chat-reply-suggest`) are left out. It follows
+memory, has its own 3,072-token budget and ends with a pointer to `app_skill_search` when it is
+cut. Its lead tells the model to check the list before acting and when the user changes task, to
+run a fitting skill before other tools even for requests that look simple, and to run only listed
+or user-named ids. `run_skill` is always in the request's tool schema, so a skill from the catalog
+runs without a `tool_search`.
+
+A playbook's instructions stay in the conversation as the `app_run_skill` result. Before every model
+step `ChatAgent` adds the run instruction `run.active-skill` naming the latest playbook loaded within
+the last four user messages (`ISkillGuide.ActivePlaybookAsync`; a failed load does not count). It
+tells the model to keep following that playbook while the user continues its task and to choose
+again from the catalog when the task changes. A playbook can hand the work on by naming another
+skill, as `code-tests-run` does with `code-bug-fix`.

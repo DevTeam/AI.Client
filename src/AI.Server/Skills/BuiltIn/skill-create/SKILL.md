@@ -10,8 +10,8 @@ tools: ["app_read","ask_user","app_skills","skill_search"]
 
 Skill conventions:
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. Domains: chat, project, memory,
-  skill, instructions; start a new domain only for a new area such as `git` or `doc`. The action
-  is a verb: create, rename, compact, fork, add, remove, review, save, edit.
+  skill, instructions, code, git; start a new domain only for a new area such as `doc`. The action
+  is a verb: create, rename, compact, fork, add, remove, review, save, edit, implement, fix, run.
 - `name` is the id in words with the first letter capitalized: `project-directory-add` becomes
   "Project directory add".
 - `icon` names the picture in the `/` list, chosen for what the skill does. One of: skill, sparkles,
@@ -22,8 +22,9 @@ Skill conventions:
   import, export, refresh, settings. Only when the user asks for a picture none of these give,
   `icon` is SVG path data instead: one line starting with `M`, drawn as a 2px stroke on a 24x24
   grid, such as `M12 3 3 8l9 5 9-5ZM3 13l9 5 9-5`.
-- `description` is one sentence that starts with a verb and names every side effect ("… after
-  confirmation", "changes nothing").
+- `description` is one sentence that starts with a verb, leads with the task the skill is for (the
+  model picks skills from the catalog by it) and names every side effect ("… after confirmation",
+  "changes nothing").
 - `kind: generic` turns its parameters into JSON in an isolated model without tools and needs a
   `result` schema. `kind: playbook` is followed by the calling model with its ordinary tools,
   lists them in `tools` and has no `result`. Prefer a playbook whenever the skill reads or

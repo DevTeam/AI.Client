@@ -449,34 +449,34 @@
                that it can still be edited, reordered or removed. *@
             <section class="chat-queue @(_queueActionPending ? "queue-busy" : null)" aria-busy="@(_queueActionPending ? "true" : "false")"><div class="queue-header"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @pendingQueue.Count</span><AppIcon Name="chevron-right" /></button><div class="queue-actions">@if (_isConfirmingQueueClearAll) { <span class="queue-clear-confirm"><span>Stop the run and drop everything?</span><button class="danger compact-action" type="button" @onclick="ClearEverythingAsync">Clear all</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="() => _isConfirmingQueueClearAll = false"><AppIcon Name="x" /></button></span> } else { <button type="button" class="queue-action-button queue-action-clear" title="@($"Remove the {pendingQueue.Count} message(s) still waiting in the queue")" aria-label="Clear queued messages" @onclick="ClearQueueAsync"><AppIcon Name="queue-clear" /></button>@if (HasCommittedCommand(selectedRun)) { <button type="button" class="queue-action-button destructive-action" title="Stop the run and clear everything, including the message already sent" aria-label="Stop and clear everything" @onclick="() => _isConfirmingQueueClearAll = true"><AppIcon Name="trash" /></button> } }</div></div>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in pendingQueue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span title="@item.Content">@(string.IsNullOrWhiteSpace(item.Content) ? "Workspace references" : GetSingleLine(item.Content))@if (item.Resources is { Count: > 0 }) { <span class="queue-resource-count"> refs: @item.Resources.Count</span> }</span><button class="icon-action queue-send-now" type="button" title="Interrupt and send this message now" aria-label="Interrupt and send this message now" @onclick="() => SendQueuedMessageNowAsync(item.Id)"><AppIcon Name="zap" /></button><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }</section>
         }
-        @if (_navigationCue is { } cue)
-        {
-            @* A move the assistant asked for. It is announced before it happens, and can be refused. *@
-            <div @key="cue.Id" class="navigation-cue @(cue.Automatic ? "is-counting" : "is-offer")" role="status" aria-live="polite">
-                <AppIcon Name="@(cue.Automatic ? "chevron-right" : "info")" />
-                <span class="navigation-cue-text">@(cue.Automatic ? $"The assistant is opening {cue.Where} in {cue.SecondsLeft} s" : $"The assistant created {cue.Where}")</span>
-                @if (cue.Automatic)
-                {
-                    <button class="compact-action" type="button" @onclick="StayOnNavigationCue">Stay here</button>
-                    <button class="compact-action primary" type="button" @onclick="() => FollowNavigationCueAsync(cue)">Open now</button>
-                }
-                else
-                {
-                    <button class="compact-action primary" type="button" @onclick="() => FollowNavigationCueAsync(cue)">Open</button>
-                    <button class="compact-action" type="button" @onclick="StayOnNavigationCue">Not now</button>
-                }
-            </div>
-        }
-        else if (_navigationArrival is { } arrival)
-        {
-            <div @key="arrival.Id" class="navigation-cue is-arrival" role="status" aria-live="polite">
-                <AppIcon Name="info" />
-                <span class="navigation-cue-text">The assistant opened @arrival.Where. You were in @arrival.From.</span>
-                <button class="compact-action" type="button" @onclick="ReturnFromNavigationAsync">Go back</button>
-                <button class="icon-action" type="button" title="Dismiss" aria-label="Dismiss" @onclick="() => _navigationArrival = null"><AppIcon Name="x" /></button>
-            </div>
-        }        <div class="composer-prelude">
-        <div class="composer-status" role="status">
+        <div class="composer-prelude">
+            @if (_navigationCue is { } cue)
+            {
+                @* A move the assistant asked for. It is announced before it happens, and can be refused. *@
+                <div @key="cue.Id" class="navigation-cue @(cue.Automatic ? "is-counting" : "is-offer")" role="status" aria-live="polite">
+                    <AppIcon Name="@(cue.Automatic ? "chevron-right" : "info")" />
+                    <span class="navigation-cue-text">@(cue.Automatic ? $"The assistant is opening {cue.Where} in {cue.SecondsLeft} s" : $"The assistant created {cue.Where}")</span>
+                    @if (cue.Automatic)
+                    {
+                        <button class="compact-action" type="button" @onclick="StayOnNavigationCue">Stay here</button>
+                        <button class="compact-action primary" type="button" @onclick="() => FollowNavigationCueAsync(cue)">Open now</button>
+                    }
+                    else
+                    {
+                        <button class="compact-action primary" type="button" @onclick="() => FollowNavigationCueAsync(cue)">Open</button>
+                        <button class="compact-action" type="button" @onclick="StayOnNavigationCue">Not now</button>
+                    }
+                </div>
+            }
+            else if (_navigationArrival is { } arrival)
+            {
+                <div @key="arrival.Id" class="navigation-cue is-arrival" role="status" aria-live="polite">
+                    <AppIcon Name="info" />
+                    <span class="navigation-cue-text">The assistant opened @arrival.Where. You were in @arrival.From.</span>
+                    <button class="compact-action" type="button" @onclick="ReturnFromNavigationAsync">Go back</button>
+                    <button class="icon-action" type="button" title="Dismiss" aria-label="Dismiss" @onclick="() => _navigationArrival = null"><AppIcon Name="x" /></button>
+                </div>
+            }        <div class="composer-status" role="status">
             @* While the composer shows a history entry the counter comes first and the plain
                hint is dropped — the hint describes what Enter does with text the user wrote,
                and that is no longer the interesting thing on screen. A fork/replace/generating
@@ -1617,6 +1617,8 @@
         var countdown = new CancellationTokenSource();
         _navigationCountdown = countdown;
         var module = await NavigationCueModuleAsync();
+        // After the render that lists a chat created a moment ago, so the pointer can find its row.
+        await Task.Delay(50);
         await module.InvokeVoidAsync("playCursor", cue.Target.ProjectId.ToString(), cue.Target.ChatId?.ToString(),
             cue.SecondsLeft * 1000);
         try

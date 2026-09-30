@@ -17,6 +17,12 @@ public interface IResourcePresenter
     /// </summary>
     string Hint(ChatResourceRef reference);
 
+    /// <summary>
+    /// Where its link points: a file URI for a file or directory (with the lines as a fragment),
+    /// so it is a local path wherever it is drawn; "#mention-{id}" for everything else.
+    /// </summary>
+    string Target(ChatResourceRef reference);
+
     /// <summary>For "@diff" the captured totals, such as "+120 −34"; null for every other kind.</summary>
     string? Summary(ChatResourceRef reference);
 

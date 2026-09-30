@@ -61,6 +61,20 @@ public sealed class ResourcePresenter(IDiffSnapshotReader snapshots) : IResource
     public DiffSnapshot? Changes(ChatResourceRef reference) =>
         reference.Kind == ChatResourceKind.Diff ? snapshots.Read(reference.Excerpt, reference.Path) : null;
 
+    public string Target(ChatResourceRef reference) => reference.Kind is ChatResourceKind.File or ChatResourceKind.Directory
+        ? FileUri(reference.Path) + (reference.Lines is { } lines ? $"#L{lines.Start}-L{lines.End}" : string.Empty)
+        : $"#mention-{reference.Id}";
+
+    /// <summary>A file URI by hand: in the browser <see cref="Uri"/> does not know a Windows path for one.</summary>
+    private static string FileUri(string path)
+    {
+        var slashed = path.Replace('\\', '/');
+        var encoded = string.Join('/', slashed.Split('/').Select(Uri.EscapeDataString));
+        if (slashed.StartsWith("//", StringComparison.Ordinal)) return "file:" + encoded;
+        if (slashed.Length >= 2 && slashed[1] == ':') return $"file:///{slashed[..2]}{encoded[(encoded.IndexOf('/', StringComparison.Ordinal) is var at and >= 0 ? at : encoded.Length)..]}";
+        return "file://" + encoded;
+    }
+
     private void DiffHint(ChatResourceRef reference, StringBuilder hint)
     {
         hint.Append(reference.Path);

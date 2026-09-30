@@ -30,7 +30,7 @@ public sealed class MentionLinkWriter(IResourcePresenter presenter) : IMentionLi
                 continue;
             }
             // The link shows the name; the token as written stays in its tooltip and in the message.
-            result.Append('[').Append(Escape(presenter.Label(match))).Append("](<").Append(Target(match)).Append("> \"")
+            result.Append('[').Append(Escape(presenter.Label(match))).Append("](<").Append(presenter.Target(match)).Append("> \"")
                 .Append(Title(presenter.Hint(match))).Append("\"){.mention-link .mention-")
                 .Append(match.Kind.ToString().ToLowerInvariant());
             if (presenter.Summary(match) is { } summary) result.Append(" data-summary=\"").Append(summary).Append('"');
@@ -59,20 +59,6 @@ public sealed class MentionLinkWriter(IResourcePresenter presenter) : IMentionLi
         var end = close < 0 ? index + run : close + run;
         result.Append(text, index, end - index);
         return end;
-    }
-
-    private static string Target(ChatResourceRef reference) => reference.Kind is ChatResourceKind.File or ChatResourceKind.Directory
-        ? FileUri(reference.Path) + (reference.Lines is { } lines ? $"#L{lines.Start}-L{lines.End}" : string.Empty)
-        : $"#mention-{reference.Id}";
-
-    /// <summary>A file URI by hand: in the browser <see cref="Uri"/> does not know a Windows path for one.</summary>
-    private static string FileUri(string path)
-    {
-        var slashed = path.Replace('\\', '/');
-        var encoded = string.Join('/', slashed.Split('/').Select(Uri.EscapeDataString));
-        if (slashed.StartsWith("//", StringComparison.Ordinal)) return "file:" + encoded;
-        if (slashed.Length >= 2 && slashed[1] == ':') return $"file:///{slashed[..2]}{encoded[(encoded.IndexOf('/', StringComparison.Ordinal) is var at and >= 0 ? at : encoded.Length)..]}";
-        return "file://" + encoded;
     }
 
     private static string Escape(string text)

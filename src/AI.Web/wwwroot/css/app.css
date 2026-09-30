@@ -2072,19 +2072,12 @@ body {
 .workspace-message.user .review-comment-mark {
     background-color: color-mix(in srgb, var(--color-accent) 38%, transparent);
 }
-.workspace-message.user .message-resource-chip {
-    border-color: var(--color-user-bubble-border);
-    background: var(--color-user-bubble-inset);
-}
 .workspace-message.user .markdown-content pre {
     background: var(--color-user-bubble-inset);
 }
 
 .message-empty-label { display: block; color: var(--color-text-secondary); font-size: .82rem; }
-.workspace-message.user.resource-only .message-resource-list { margin: .3rem 0 0; }
-.workspace-message.user.resource-only .message-resource-chip { min-width: 0; }
-.message-resource-open, .message-resource-content { display: inline-flex; flex: 1; min-width: 0; align-items: center; gap: .35rem; }
-.message-resource-content > span, .message-resource-open > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-message.user.resource-only .message-resource-list { margin-bottom: 0; }
 
 /* === Branch leaf transient effects === */
 
@@ -2612,6 +2605,27 @@ body {
     box-shadow: 0 0 0 1px var(--color-accent);
 }
 
+/* The draft's "@" links as pills under the text (chatComposer.js): a copy of the text laid out
+   like the textarea's, invisible but for the marks. The textarea above it keeps the text. */
+.composer-input { position: relative; }
+.composer-input > textarea { position: relative; z-index: 1; }
+.composer-mention-highlight {
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: hidden;
+    color: transparent;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    pointer-events: none;
+}
+.composer-mention {
+    color: transparent;
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    border-radius: calc(.3rem * var(--corner-scale));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+
 .workspace-composer textarea {
     min-height: 4.5rem;
     max-height: calc(14 * 1.2em);
@@ -2641,38 +2655,10 @@ body {
     margin-bottom: .45rem;
 }
 
-.composer-resource-chip,
-.message-resource-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: .35rem;
-    max-width: 100%;
-    padding: .2rem .45rem;
-    border: 1px solid var(--color-border-strong);
-    border-radius: calc(.45rem * var(--corner-scale));
-    background: var(--color-fill-active);
-    color: var(--color-text-secondary);
-    font-size: .78rem;
-}
-
-.composer-resource-chip > span,
-.message-resource-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.composer-resource-chip .app-icon,
-.message-resource-chip .app-icon { flex: none; width: .9rem; height: .9rem; }
-.composer-resource-chip button { display: inline-flex; padding: .08rem; border: 0; background: transparent; color: var(--color-text-muted); }
-.composer-resource-chip button:hover { color: var(--color-text-strong); }
-.composer-resource-chip button .app-icon { width: .8rem; height: .8rem; }
-.message-resource-list { margin-top: .5rem; }
 /* The picture under the pointer while any path is dragged (chatComposer.js): the chip it becomes
    in the composer. Drawn off screen only for the browser's snapshot. */
 .path-drag-image { position: fixed; top: -1000px; left: -1000px; max-width: 18rem; pointer-events: none; }
 .path-drag-source { opacity: .45; }
-.message-resource-chip { max-width: min(100%, 25rem); }
-.message-resource-open { padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
-.message-resource-open > .message-resource-summary { flex: none; color: var(--color-text-muted); font-size: .85em; font-variant-numeric: tabular-nums; }
-.message-resource-remove { display: inline-flex; flex: 0 0 auto; margin-left: .2rem; padding: 0; border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; }
-.message-resource-remove:hover { color: var(--color-text-strong); }
-.message-resource-remove .app-icon { width: .75rem; height: .75rem; }
 /* Comments and local-path links share one mark — see .file-link: the same tint, underline and
    rounded corners, and the icon tells them apart. Clone keeps the corners on every line a mark
    wraps onto; a comment inside another is not tinted twice. */
@@ -2767,28 +2753,6 @@ body {
     box-shadow: 0 .6rem 2rem rgb(0 0 0 / calc(53% * var(--shadow-scale)));
 }
 .composer-resource-menu-label { padding: .3rem .55rem; color: var(--color-text-subtle); font-size: .75rem; }
-/* The skill a message invokes: the accent tells it apart from the workspace references beside it,
-   in the composer and in the sent message alike. */
-.workspace-composer .composer-skill-chip,
-.workspace-composer .composer-skill-chip > span,
-.message-skill-chip {
-    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
-    color: var(--color-accent);
-}
-.workspace-composer .composer-skill-chip { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
-/* A block of its own, so no line box adds space beneath it; the gap to the text goes when no text follows. */
-.message-skill-chip {
-    display: flex;
-    width: fit-content;
-    align-items: center;
-    gap: .35rem;
-    max-width: min(100%, 25rem);
-    margin-bottom: .4rem;
-    font-weight: 500;
-}
-.message-skill-chip:last-child { margin-bottom: 0; }
-.message-skill-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.message-skill-chip .app-icon { flex: none; width: 1rem; height: 1rem; }
 /* The slash list over the composer: one row per skill, name then description, source on the right. */
 .skill-command-menu {
     position: absolute;
@@ -5403,41 +5367,135 @@ textarea {
 .markdown-content .file-link[data-file-access="read"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='10' width='16' height='11' rx='2' fill='black' stroke='none'/%3E%3Cpath d='M8 10V7a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E"); --file-access-color: var(--color-text-faint); }
 .markdown-content .file-link[data-file-access="write"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='11' width='15' height='10' rx='2' fill='black' stroke='none'/%3E%3Cpath d='M9 11V7a4 4 0 0 1 7.8-1.2'/%3E%3C/svg%3E"); --file-access-color: var(--color-accent); }
 .markdown-content .file-link[data-file-access="none"] { --file-access-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M5.6 5.6l12.8 12.8'/%3E%3C/svg%3E"); --file-access-color: var(--color-danger-text); }
-/* "@" links in a user message: a chip, not a link in the prose — a thin accent frame around the
-   icon of what it names and its short name, with the token as written in the tooltip. It is not
-   underlined, so it no longer reads like a local path the model wrote; the underline comes back
-   on hover. A file or directory link is also a .file-link, so it keeps that link's menu, drag and
-   access icon, which sits inside the frame; with no access the frame goes muted and dashed. */
-.markdown-content a.mention-link {
+/* A reference to what a message works with — a file, a directory, a chat, a review, a project,
+   uncommitted changes — is one pill wherever it is drawn: an "@" link in the text, a pill the "+"
+   menu attached above the text, the same pill in the composer. A thin accent frame around the icon
+   of what it names and its short name; the token as written and the full path are in the tooltip.
+   An "@" link is not underlined, so it no longer reads like a local path the model wrote; the
+   underline comes back on hover. A file or directory pill is also a .file-link (fileLinks.js), so
+   it keeps that link's menu and drag, and what the project may do there is a badge on its icon:
+   none for reading, the usual case, so that any badge stands out. */
+.markdown-content a.mention-link,
+.resource-pill {
     padding: 0 .35em;
     color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
     border-radius: calc(.3rem * var(--corner-scale));
     text-decoration: none;
+    white-space: nowrap;
+}
+.markdown-content a.mention-link {
     -webkit-box-decoration-break: clone;
     box-decoration-break: clone;
     cursor: pointer;
-    white-space: nowrap;
 }
 .markdown-content a.mention-link.file-link { cursor: context-menu; }
-.markdown-content a.mention-link:hover {
+/* A path the project may not read, or one that is gone, keeps its muted look under the pointer. */
+.markdown-content a.mention-link:not(.file-link:is([data-file-access="none"], [data-path-state="no"])):hover,
+.resource-pill:has(> :is(a, button).resource-pill-target:not(.file-link:is([data-file-access="none"], [data-path-state="no"])):hover) {
     color: var(--color-accent-strong);
     border-color: color-mix(in srgb, var(--color-accent) 80%, transparent);
+}
+.markdown-content a.mention-link:not(.file-link[data-path-state="no"]):hover,
+.resource-pill > :is(a, button).resource-pill-target:not(.file-link[data-path-state="no"]):hover .resource-pill-label {
     text-decoration: underline solid color-mix(in srgb, var(--color-accent) 60%, transparent);
     text-underline-offset: .15em;
 }
-.workspace-message.user .markdown-content a.mention-link {
+.workspace-message.user .markdown-content a.mention-link,
+.workspace-message.user .resource-pill {
     background: color-mix(in srgb, var(--color-accent) 18%, transparent);
 }
-.markdown-content a.mention-link.file-link[data-file-access="none"] {
+/* No access, or no longer there: the frame goes muted and dashed, and a missing one is struck out. */
+.markdown-content a.mention-link.file-link:is([data-file-access="none"], [data-path-state="no"]),
+.resource-pill:has(> .file-link:is([data-file-access="none"], [data-path-state="no"])) {
+    color: var(--color-text-muted);
     background: transparent;
     border-color: color-mix(in srgb, var(--color-text-muted) 60%, transparent);
     border-style: dashed;
 }
-.markdown-content a.mention-link::before {
+.markdown-content a.mention-link.file-link[data-path-state="no"],
+.resource-pill > .file-link[data-path-state="no"] .resource-pill-label { text-decoration: line-through; }
+/* The pill's icon takes the place of the access icon a plain local path has after it. */
+.markdown-content a.mention-link.file-link[data-file-access]::after { content: none; }
+
+/* A pill of its own, outside the text: a line of its own height, the name cut short when long. */
+.resource-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    min-width: 0;
+    max-width: min(100%, 25rem);
+    padding: .15rem .45rem;
+    font-size: .8rem;
+    line-height: 1.35;
+}
+/* The composer's hint text rule (.workspace-composer span) must not grey a draft's pill out. */
+.workspace-composer .resource-pill { color: var(--color-accent); font-size: .8rem; }
+.workspace-composer .resource-pill span { color: inherit; font-size: inherit; }
+.resource-pill-target {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-decoration: none;
+}
+:is(a, button).resource-pill-target { cursor: pointer; }
+a.resource-pill-target.file-link { cursor: context-menu; }
+.resource-pill-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* What a "@diff" captured, after its name: quieter than the name, as in the changes card. */
+.resource-pill-detail,
+.markdown-content a.mention-link[data-summary]::after {
+    flex: none;
+    margin-left: .4em;
+    color: var(--color-text-muted);
+    font-size: .85em;
+    font-variant-numeric: tabular-nums;
+}
+.markdown-content a.mention-link[data-summary]::after { content: attr(data-summary); }
+.resource-pill-remove {
+    display: inline-flex;
+    flex: none;
+    margin-right: -.15rem;
+    padding: .05rem;
+    border: 0;
+    border-radius: calc(.2rem * var(--corner-scale));
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+}
+.resource-pill-remove:hover { color: var(--color-text-strong); }
+.resource-pill-remove .app-icon { width: .75rem; height: .75rem; }
+/* A sent message's pill reads as a reference, not a draft: its remove button waits for the pointer,
+   over the pill's corner, so the pill is as wide as its name like an "@" link in the text. */
+.message-resource-list .resource-pill { position: relative; }
+.message-resource-list .resource-pill-remove {
+    position: absolute;
+    top: -.45rem;
+    right: -.45rem;
+    margin: 0;
+    padding: .1rem;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 50%;
+    background: var(--color-fill);
+    opacity: 0;
+}
+.message-resource-list .resource-pill-remove .app-icon { width: .6rem; height: .6rem; }
+.message-resource-list .resource-pill:is(:hover, :focus-within) .resource-pill-remove { opacity: 1; }
+@media (hover: none) { .message-resource-list .resource-pill-remove { opacity: 1; } }
+
+/* The icon of what the pill names. A badge sits in its lower right corner, cut out of the icon so
+   the two never touch: a pencil where the project may change the path, a barred circle where it
+   may not read it, a cross where it is gone. */
+.markdown-content a.mention-link::before,
+.resource-pill-target::before {
     content: "";
     display: inline-block;
+    flex: none;
     width: .85em;
     height: .85em;
     margin-right: .25em;
@@ -5446,20 +5504,25 @@ textarea {
     -webkit-mask: var(--mention-icon) center / contain no-repeat;
     mask: var(--mention-icon) center / contain no-repeat;
 }
-/* What a "@diff" captured, after its name: quieter than the name, as in the changes card. */
-.markdown-content a.mention-link[data-summary]::after {
-    content: attr(data-summary);
-    margin-left: .4em;
-    color: var(--color-text-muted);
-    font-size: .85em;
-    font-variant-numeric: tabular-nums;
+.resource-pill-target::before { width: 1em; height: 1em; margin-right: .3em; }
+.mention-link[data-file-access="write"] { --mention-badge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13.6 23.4l.9-3.7 5.4-5.4a1.9 1.9 0 0 1 2.7 2.7l-5.4 5.4Z' fill='black'/%3E%3C/svg%3E"); }
+.mention-link[data-file-access="none"] { --mention-badge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Ccircle cx='18.5' cy='18.5' r='4.2'/%3E%3Cpath d='M15.5 15.5l6 6'/%3E%3C/svg%3E"); }
+.mention-link.file-link[data-path-state="no"] { --mention-badge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M15.5 15.5l6 6M21.5 15.5l-6 6'/%3E%3C/svg%3E"); }
+.mention-link:is([data-file-access="write"], [data-file-access="none"], .file-link[data-path-state="no"])::before {
+    --mention-badge-cutout: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='18.5' cy='18.5' r='7' fill='black'/%3E%3C/svg%3E");
+    /* Top to bottom: the badge, over the icon less the cut-out. */
+    -webkit-mask: var(--mention-badge) center / contain no-repeat, var(--mention-icon) center / contain no-repeat, var(--mention-badge-cutout) center / contain no-repeat;
+    -webkit-mask-composite: source-over, source-out, source-over;
+    mask: var(--mention-badge) center / contain no-repeat, var(--mention-icon) center / contain no-repeat, var(--mention-badge-cutout) center / contain no-repeat;
+    mask-composite: add, subtract, add;
 }
-.markdown-content a.mention-file { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z'/%3E%3Cpath d='M14 3v5h5'/%3E%3C/svg%3E"); }
-.markdown-content a.mention-directory { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'/%3E%3C/svg%3E"); }
-.markdown-content a.mention-chat { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-3.9-.94L3 20l1.06-3.98A8.5 8.5 0 1 1 21 11.5Z'/%3E%3C/svg%3E"); }
-.markdown-content a.mention-project { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 3 9 5-9 5-9-5Z'/%3E%3Cpath d='m3 13 9 5 9-5'/%3E%3C/svg%3E"); }
-.markdown-content a.mention-diff { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='5' r='2'/%3E%3Ccircle cx='18' cy='7' r='2'/%3E%3Ccircle cx='6' cy='19' r='2'/%3E%3Cpath d='M6 7v10M8 15h3a7 7 0 0 0 7-6'/%3E%3C/svg%3E"); }
-.markdown-content a.mention-review { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v6M9 7h6M9 17h6'/%3E%3C/svg%3E"); }
+.mention-file { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z'/%3E%3Cpath d='M14 3v5h5'/%3E%3C/svg%3E"); }
+.mention-directory { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'/%3E%3C/svg%3E"); }
+.mention-chat { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-3.9-.94L3 20l1.06-3.98A8.5 8.5 0 1 1 21 11.5Z'/%3E%3C/svg%3E"); }
+.mention-project { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 3 9 5-9 5-9-5Z'/%3E%3Cpath d='m3 13 9 5 9-5'/%3E%3C/svg%3E"); }
+.mention-diff { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='5' r='2'/%3E%3Ccircle cx='18' cy='7' r='2'/%3E%3Ccircle cx='6' cy='19' r='2'/%3E%3Cpath d='M6 7v10M8 15h3a7 7 0 0 0 7-6'/%3E%3C/svg%3E"); }
+.mention-skill { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 6.5C9.5 5 6.5 5 3 6v13c3.5-1 6.5-1 9 .5 2.5-1.5 5.5-1.5 9-.5V6c-3.5-1-6.5-1-9 .5Z'/%3E%3Cpath d='M12 6.5v13'/%3E%3C/svg%3E"); }
+.mention-review { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v6M9 7h6M9 17h6'/%3E%3C/svg%3E"); }
 .file-link-menu { position: fixed; top: auto; right: auto; }
 .file-link-menu-path { overflow: hidden; padding: 0.35rem 0.9rem 0.2rem; color: var(--color-text-faint); font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
 

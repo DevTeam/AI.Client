@@ -1,0 +1,56 @@
+@* Where the model's view of the chat begins. Everything above stays on screen and on disk; the
+   model gets the summary in its place. The line sits before the question that follows the covered
+   history, which is always shown, even when the turn above it is folded. *@
+<div class="history-checkpoint-mark" role="note">
+    <div class="history-checkpoint-line">
+        <span class="history-checkpoint-rule" aria-hidden="true"></span>
+        <span class="history-checkpoint-label">
+            <AppIcon Name="minimize" />
+            @Label() · @Checkpoint.CoveredMessages @(Checkpoint.CoveredMessages == 1 ? "message" : "messages") summarized for the model
+        </span>
+        <button class="history-checkpoint-action" type="button" aria-expanded="@(_open ? "true" : "false")" @onclick="() => _open = !_open">
+            @(_open ? "Hide summary" : "Show summary")
+        </button>
+        @if (OnUndo.HasDelegate)
+        {
+            <button class="history-checkpoint-action" type="button" disabled="@_undoing" title="The next request goes back to the full history"
+                    @onclick="UndoAsync">Undo</button>
+        }
+        <span class="history-checkpoint-rule" aria-hidden="true"></span>
+    </div>
+    @if (_open)
+    {
+        <div class="history-checkpoint-summary">@Checkpoint.Summary</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public HistoryCheckpoint Checkpoint { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<HistoryCheckpoint> OnUndo { get; set; }
+
+    private bool _open;
+    private bool _undoing;
+
+    private string Label() => Checkpoint.Origin switch
+    {
+        HistoryCheckpointOrigin.Manual => "Earlier turns compacted",
+        HistoryCheckpointOrigin.Model => "Earlier turns compacted by the model",
+        _ => "Earlier turns compacted to fit"
+    };
+
+    private async Task UndoAsync()
+    {
+        _undoing = true;
+        try
+        {
+            await OnUndo.InvokeAsync(Checkpoint);
+        }
+        finally
+        {
+            _undoing = false;
+        }
+    }
+}

@@ -37,14 +37,41 @@ normal 3,000-character head plus 1,000-character tail projection does not fit, i
 progressively smaller model-only projections down to 384 head characters and 128 tail characters.
 Tool-call groups remain intact and the current user request is never truncated.
 
-## Explicit current-turn checkpoint
+## Explicit checkpoints
 
-`app_context_compact` exposes `Preview`, `Compact` and `Reset`. `Compact` starts an isolated
-completion request with no tools and asks it for a bounded summary of completed work before the
-compaction call. The resulting checkpoint is run-local: on the next model step it replaces only
-the covered model-facing messages, while keeping the current user request and the compaction tool
-protocol group. It is discarded automatically when the run ends, so no storage migration or
-background rewrite is required.
+`app_context_compact` exposes `Preview`, `Compact` and `Reset`, each with a `scope`:
+
+- `Turn` (default) summarizes completed work of the current turn before the compaction call. The
+  checkpoint is run-local: on the next model step it replaces only the covered model-facing
+  messages, keeping the current user request and the compaction tool protocol group, and it is
+  discarded when the run ends.
+- `History` summarizes the chat's earlier turns — all but the current one and the one before it —
+  and keeps the summary as a history checkpoint (below), so every later request of the branch
+  starts from it.
+
+Summaries are written by `ContextSummaryWriter`: a source that fits one request (about 40k
+characters) is summarized in one, a longer one part by part and then merged, so nothing past a
+character ceiling is silently dropped. Large tool results keep only their head and tail.
+
+## History checkpoints
+
+A history checkpoint (`HistoryCheckpoint`, stored in `{chat}.context.json` beside the chat) is a
+summary that stands in for the history up to one message. When a run starts, the branch context is
+built in full and the deepest checkpoint whose covered message is on the branch replaces
+everything up to the first user message after it; a fork taken before that message is unaffected.
+Stored messages and the visible transcript never change, and deleting the checkpoint restores the
+full history for the next request.
+
+Checkpoints are made three ways:
+
+- the person presses Compact in the chat usage widget (`POST .../branches/{branchId}/compact`),
+  which summarizes all but the last two turns with the chat's connection, between turns only;
+- the model calls `app_context_compact` with scope `History`;
+- the planner's LLM fallback: a summary it writes so that a request fits is kept and pinned for the
+  rest of the run, instead of being written again for every step that would not fit without it.
+
+The transcript marks where the model's view begins, before the question that follows the covered
+history, with the summary behind a toggle and an Undo.
 
 ## Diagnostics
 

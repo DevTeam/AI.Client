@@ -5,6 +5,7 @@ using Chats;
 using Projects;
 using Settings;
 using Contracts.Chat;
+using Contracts.Chats;
 using Contracts.Tools;
 using Contracts.Runs;
 using Contracts.Settings;
@@ -36,7 +37,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
     IRunCompletionProtocol completionProtocol, IToolSearchDefinitionEnricher toolSearchEnricher,
     IStandingInstructions standingInstructions, IContextTokenEstimator estimator, ISkillGuide skillGuide,
-    ISkillRouting skillRouting, ITokenUsageMeter usageMeter) : IChatAgent
+    ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
+    IClock clock, IIdGenerator ids) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -92,7 +94,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 $"This run: projectId {projectId}, chatId {chatId}, branchId {branchId}. The main branch id equals the chat id.",
                 900, ModelInstructionLifetime.Run));
         await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), token);
-        using var checkpointScope = checkpoints.Begin(run, async (prompt, ct) =>
+        using var checkpointScope = checkpoints.Begin(run, request.Model, async (prompt, ct) =>
         {
             using var usageScope = usageMeter.Begin(new TokenUsageScope(TokenUsagePurpose.Checkpoint));
             return (await completion.CompleteAsync(request with
@@ -269,6 +271,23 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 new CompletionClientSummarizer(completion, request, usageMeter), SummaryTargetTokens, token);
             contextDiagnostics.Record(request.Model, plan, composition.Messages.Count, available.Length);
             lastPlan = plan;
+            if (plan.HistorySummary is { } written)
+            {
+                // The model has just summarized the older turns to make this request fit. Kept, that
+                // summary stands in for them in the rest of this run and in later turns, instead of
+                // being written again for every request that would not fit without it.
+                var kept = new HistoryCheckpoint(ids.Create(), written.UpToMessageId, written.Text, written.CoveredMessages,
+                    written.SourceCharacters, request.Model, clock.UtcNow, HistoryCheckpointOrigin.Automatic);
+                try
+                {
+                    await historyCheckpoints.AddAsync(projectId, chatId, kept, token);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    // Unkept, the summary still serves this run; later turns write their own.
+                }
+                checkpoints.PinHistory(run, kept);
+            }
             await Usage(plan);
             if (!plan.Fits) throw new ContextWindowExceededException(plan);
             await foreach (var chunk in completion.StreamAsync(

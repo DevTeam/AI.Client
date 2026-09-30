@@ -71,7 +71,7 @@ public sealed class ChatContextPlannerTests
     public void ShouldNotOverflowWhenAnEstimateSaturates()
     {
         var saturated = new SaturatedEstimator();
-        var planner = new ChatContextPlanner(saturated, new ChatContextCompactor(saturated),
+        var planner = new ChatContextPlanner(saturated, new ChatContextCompactor(saturated, new ContextSummaryWriter()),
             new ConnectionContextLimitsResolver());
 
         var plan = planner.Plan(null, "unknown-model", [new ChatCompletionMessage("user", "large")],
@@ -147,7 +147,7 @@ public sealed class ChatContextPlannerTests
             new("assistant", "", [new ChatToolCall("call-1", "read", "{}")]),
             new("tool", stored, ToolCallId: "call-1")
         ];
-        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator),
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
             new FixedLimitsResolver(2_200, 256));
 
         var plan = planner.Plan(null, "small-model", messages, []);
@@ -227,7 +227,7 @@ public sealed class ChatContextPlannerTests
             new("assistant", $"outcome-{index} " + new string('b', 800)),
             new("tool", new string('c', 2_000), ToolCallId: $"call-{index}")
         }).ToArray();
-        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator),
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
             new FixedLimitsResolver(3_200, 256));
         var summarizer = new RecordingSummarizer("Compacted earlier work.");
 
@@ -242,6 +242,31 @@ public sealed class ChatContextPlannerTests
         // not reappear, and the assembled size is re-verified against the limit before returning.
         plan.Messages.ShouldNotContain(message => message.Role == "tool" && message.ForModel.Length >= 2_000);
         plan.Fits.ShouldBeTrue();
+        // Built from unstored messages, the summary has nothing to be kept against.
+        plan.HistorySummary.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task PlanAsyncShouldOfferAnLlmSummaryOfStoredMessagesForKeeping()
+    {
+        var ids = Enumerable.Range(0, 16).Select(_ => Guid.NewGuid()).ToArray();
+        var messages = Enumerable.Range(0, 8).SelectMany(index => new ChatCompletionMessage[]
+        {
+            new("user", $"request-{index} " + new string('a', 800), MessageId: ids[index * 2]),
+            new("assistant", $"outcome-{index} " + new string('b', 800), MessageId: ids[index * 2 + 1])
+        }).ToArray();
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
+            new FixedLimitsResolver(3_200, 256));
+
+        var plan = await planner.PlanAsync(null, "small-model", messages, [], new RecordingSummarizer("Earlier work."), 800,
+            CancellationToken.None);
+
+        plan.HistorySummary.ShouldNotBeNull();
+        plan.HistorySummary.Text.ShouldBe("Earlier work.");
+        var covered = Array.IndexOf(ids, plan.HistorySummary.UpToMessageId);
+        // It ends on an answer, so the next request can start again at the question after it.
+        (covered % 2).ShouldBe(1);
+        plan.HistorySummary.CoveredMessages.ShouldBe(covered + 1);
     }
 
     [Fact]
@@ -257,7 +282,7 @@ public sealed class ChatContextPlannerTests
             messages.Add(new ChatCompletionMessage("tool", new string('c', 4_000), ToolCallId: $"call-{index}"));
         }
 
-        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator),
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
             new FixedLimitsResolver(3_200, 256));
         var summarizer = new RecordingSummarizer("unused");
 
@@ -279,7 +304,7 @@ public sealed class ChatContextPlannerTests
             new("user", $"request-{index} " + new string('a', 50)),
             new("assistant", $"outcome-{index} " + new string('b', 50))
         }).ToArray();
-        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator),
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
             new ConnectionContextLimitsResolver());
         var summarizer = new RecordingSummarizer("should not run");
 
@@ -299,7 +324,7 @@ public sealed class ChatContextPlannerTests
             new("assistant", $"outcome-{index} " + new string('b', 800)),
             new("tool", new string('c', 2_000), ToolCallId: $"call-{index}")
         }).ToArray();
-        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator),
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
             new FixedLimitsResolver(3_200, 256));
         var summarizer = new RecordingSummarizer(string.Empty);
 
@@ -316,7 +341,7 @@ public sealed class ChatContextPlannerTests
             "Earlier conversation summary (deterministic"));
     }
 
-    private ChatContextPlanner Planner() => new(_estimator, new ChatContextCompactor(_estimator),
+    private ChatContextPlanner Planner() => new(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
         new ConnectionContextLimitsResolver());
 
     private static void AssertValidToolProtocol(IReadOnlyList<ChatCompletionMessage> messages)

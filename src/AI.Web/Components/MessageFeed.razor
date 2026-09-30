@@ -110,7 +110,8 @@
                                   ExpandedTurnsVersion="@_expandedTurnsVersion"
                                   ReviewVersion="@ReviewVersion"
                                   TurnElapsedSeconds="@GetGeneratingElapsedSeconds()"
-                                  LiveTextVersion="@GetLiveTextInputVersion()">
+                                  LiveTextVersion="@GetLiveTextInputVersion()"
+                                  UsageVersion="@_usageVersion">
         @foreach (var entry in GetRenderedFeedItems())
         {
             var item = entry.Item;
@@ -230,6 +231,10 @@
             }
             else if (item?.Message is { } message)
             {
+                @if (ActiveCheckpoint is { } activeCheckpoint && message.Role == "User" && message.ParentId == activeCheckpoint.UpToMessageId)
+                {
+                    <HistoryCheckpointMark @key="activeCheckpoint.Id" Checkpoint="@activeCheckpoint" OnUndo="OnUndoCheckpoint" />
+                }
                 <article @key="message.Id" id="message-@message.Id"
                          class="workspace-message @message.Role.ToLowerInvariant() @(message.Role == "User" && string.IsNullOrWhiteSpace(message.Content) ? "resource-only" : string.Empty) @(entry.RevealIndex is null ? string.Empty : "turn-message-arriving") @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)"
                          style="@(entry.RevealIndex is { } messageRevealIndex ? $"--turn-arrive-delay: {messageRevealIndex * 60}ms" : null)">
@@ -490,6 +495,9 @@
     /// <summary>What the chat's finished turns used, by the Host's ledger; the running turn comes with <see cref="SelectedRun"/>.</summary>
     [Parameter] public ChatTokenUsage? ChatUsage { get; set; }
     [Parameter] public bool ShowTurnTokens { get; set; }
+    /// <summary>The summary the model's view of this branch starts from, marked where the history it covers ends.</summary>
+    [Parameter] public HistoryCheckpoint? ActiveCheckpoint { get; set; }
+    [Parameter] public EventCallback<HistoryCheckpoint> OnUndoCheckpoint { get; set; }
     [Parameter] public TimeSpan? GeneratingElapsed { get; set; }
     [Parameter] public int TranscriptRunPresentationVersion { get; set; }
     /// <summary>
@@ -601,6 +609,9 @@
     private ChatRunSnapshot? _renderedSelectedRun;
     private ChatTokenUsage? _renderedChatUsage;
     private bool _renderedShowTurnTokens;
+    private HistoryCheckpoint? _renderedActiveCheckpoint;
+    private (ChatTokenUsage? ChatUsage, bool ShowTurnTokens, HistoryCheckpoint? ActiveCheckpoint, TurnTokenUsage? TurnUsage) _usageState;
+    private int _usageVersion;
     private TimeSpan? _renderedGeneratingElapsed;
     private int _renderedTranscriptRunPresentationVersion;
     private int _renderedReviewVersion;
@@ -626,6 +637,7 @@
             || !ReferenceEquals(_renderedSelectedRun, SelectedRun)
             || !ReferenceEquals(_renderedChatUsage, ChatUsage)
             || _renderedShowTurnTokens != ShowTurnTokens
+            || !ReferenceEquals(_renderedActiveCheckpoint, ActiveCheckpoint)
             || _renderedGeneratingElapsed != GeneratingElapsed
             || _renderedTranscriptRunPresentationVersion != TranscriptRunPresentationVersion
             || _renderedReviewVersion != ReviewVersion
@@ -653,6 +665,7 @@
         _renderedSelectedRun = SelectedRun;
         _renderedChatUsage = ChatUsage;
         _renderedShowTurnTokens = ShowTurnTokens;
+        _renderedActiveCheckpoint = ActiveCheckpoint;
         _renderedGeneratingElapsed = GeneratingElapsed;
         _renderedTranscriptRunPresentationVersion = TranscriptRunPresentationVersion;
         _renderedReviewVersion = ReviewVersion;
@@ -1041,6 +1054,15 @@
     // from the position this feed is restored to.
     protected override void OnParametersSet()
     {
+        // Moves whenever anything the turn lines or the checkpoint mark read from has changed.
+        var usageState = (ChatUsage, ShowTurnTokens, ActiveCheckpoint, SelectedRun?.TurnUsage);
+        if (!ReferenceEquals(_usageState.ChatUsage, usageState.ChatUsage) || _usageState.ShowTurnTokens != usageState.ShowTurnTokens
+            || !ReferenceEquals(_usageState.ActiveCheckpoint, usageState.ActiveCheckpoint)
+            || !ReferenceEquals(_usageState.TurnUsage, usageState.TurnUsage))
+        {
+            _usageState = usageState;
+            _usageVersion++;
+        }
         if (_activityChatId != SelectedChat?.Id)
         {
             _activityCancellation?.Cancel();

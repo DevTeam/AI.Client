@@ -6505,3 +6505,29 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .composer-send-wrapper .composer-send { position: relative; z-index: 1; }
 
 .connection-prices-note { margin: -.4rem 0 0; color: var(--color-text-subtle); font-size: .78rem; }
+
+.chat-usage-note-actions { display: inline-flex; flex-wrap: wrap; gap: .3rem; }
+.chat-usage-checkpoint { align-items: center; }
+.chat-usage-link:disabled { color: var(--color-text-subtle); cursor: default; text-decoration: none; }
+
+/* Where the model's view of the chat begins: a quiet rule with the summary behind a toggle. */
+.history-checkpoint-mark { width: min(100%, 48rem); margin: .2rem auto 1.1rem; color: var(--color-text-faint); font-size: .74rem; }
+.history-checkpoint-line { display: flex; align-items: center; gap: .6rem; }
+.history-checkpoint-rule { flex: 1; min-width: 1rem; height: 1px; background: var(--color-border-subtle); }
+.history-checkpoint-label { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.history-checkpoint-action { padding: 0; border: 0; background: none; color: var(--color-text-muted); font: inherit; cursor: pointer; white-space: nowrap; }
+.history-checkpoint-action:hover { color: var(--color-text); text-decoration: underline; }
+.history-checkpoint-action:disabled { color: var(--color-text-faint); cursor: default; text-decoration: none; }
+.history-checkpoint-summary {
+    margin: .6rem 0 0;
+    padding: .7rem .85rem;
+    max-height: 18rem;
+    overflow-y: auto;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: calc(.6rem * var(--corner-scale));
+    background: var(--color-bg-sunken);
+    color: var(--color-text-secondary);
+    font-size: .78rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}

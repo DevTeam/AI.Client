@@ -10,4 +10,5 @@ public interface IChatStoragePaths
     string GetTemporaryChatPath(ChatId chatId, ProjectId projectId);
     string GetChatSummaryPath(ChatId chatId, ProjectId projectId);
     string GetTemporaryChatSummaryPath(ChatId chatId, ProjectId projectId);
+    string GetHistoryCheckpointsPath(ChatId chatId, ProjectId projectId);
 }

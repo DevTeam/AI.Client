@@ -30,7 +30,8 @@ public sealed class ChatRunDispatcher(
     IChatContextBuilder contextBuilder, IChatBranchIds branchIds, IResourceService resources, IReviewService reviews,
     IResourceModelProjection resourceProjection, IMemoryService memory, IProjectInstructionsService projectInstructions,
     ISkillRunner skillRunner, ISkillCatalog skillCatalog, IChatReplySuggestions replySuggestions,
-    IToolAutoApprover autoApprover, ITokenUsageMeter usageMeter, ITokenUsageAggregator usageAggregator)
+    IToolAutoApprover autoApprover, ITokenUsageMeter usageMeter, ITokenUsageAggregator usageAggregator,
+    IHistoryCheckpointService historyCheckpoints)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -431,7 +432,10 @@ public sealed class ChatRunDispatcher(
                         await secretStore.GetAsync("connection", connection.Id, token),
                         await resourceProjection.ProjectAsync(runtime.State.ProjectId, runtime.State.ChatId, queued.Content,
                             ResourceReferences.ToContract(queued.Resources), token), connection.Id,
-                        await contextBuilder.BuildAsync(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id), token));
+                        // The branch's history as the model is to see it: in full, or from the
+                        // summary of its deepest checkpoint on.
+                        await historyCheckpoints.ApplyAsync(chat.ProjectId, chat.Id,
+                            await contextBuilder.BuildAsync(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id), token), token));
                     runtime.ToolHead = ResumeHead(chat, runtime.State.BranchId, queued.Id);
                     await SaveAsync(runtime, chat, token);
                 }

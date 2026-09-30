@@ -18,6 +18,9 @@
     // switches when a reading delay runs out, neither of which changes the chat revision.
     [Parameter] public int LiveTextVersion { get; set; }
     [Parameter] public int ReviewVersion { get; set; }
+    // What turns used and where the model's view of the chat begins arrive from the Host's ledger,
+    // after the messages they describe, and change nothing else the boundary watches.
+    [Parameter] public int UsageVersion { get; set; }
     private Guid? _renderedChatId;
     private long _renderedChatRevision = -1;
     private Guid? _renderedBranchLeafId;
@@ -29,6 +32,7 @@
     private int? _renderedTurnElapsedSeconds;
     private int _renderedLiveTextVersion;
     private int _renderedReviewVersion;
+    private int _renderedUsageVersion;
 
     protected override bool ShouldRender()
     {
@@ -42,7 +46,8 @@
             || _renderedExpandedTurnsVersion != ExpandedTurnsVersion
             || _renderedTurnElapsedSeconds != TurnElapsedSeconds
             || _renderedLiveTextVersion != LiveTextVersion
-            || _renderedReviewVersion != ReviewVersion;
+            || _renderedReviewVersion != ReviewVersion
+            || _renderedUsageVersion != UsageVersion;
 
         _renderedChatId = ChatId;
         _renderedChatRevision = ChatRevision;
@@ -55,6 +60,7 @@
         _renderedTurnElapsedSeconds = TurnElapsedSeconds;
         _renderedLiveTextVersion = LiveTextVersion;
         _renderedReviewVersion = ReviewVersion;
+        _renderedUsageVersion = UsageVersion;
         return changed;
     }
 }

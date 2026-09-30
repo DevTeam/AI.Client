@@ -399,6 +399,7 @@
         <MessageFeed @ref="_messageFeed"
             HasSelectedProject="@(_selectedProject is not null)"
             SelectedProjectName="@_selectedProject?.Name"
+            OnOpenProjectMenu="OpenProjectMenuAtAsync"
             SearchQuery="@_searchQuery"
             SelectedChat="@_selectedChat"
             TranscriptId="@_selectedBranchId"
@@ -559,7 +560,7 @@
     @if (_isProjectMenuOpen && _selectedProject is not null)
     {
         <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
-        <div class="project-menu" role="menu" @onclick:stopPropagation="true">
+        <div class="project-menu" role="menu" style="@GetProjectMenuStyle()" @onclick:stopPropagation="true">
             <button type="button" role="menuitem" @onclick="OpenProjectSettings"><AppIcon Name="sliders" />Project settings</button>
             <button type="button" role="menuitem" @onclick='() => OpenGlobalSection("ProjectMemory")'>
                 <AppIcon Name="memory" />
@@ -722,6 +723,8 @@
     private readonly List<ProjectSummary> _projects = [];
     private ProjectSummary? _selectedProject;
     private bool _isProjectMenuOpen;
+    // Where the project menu was opened from outside the sidebar; null keeps its place beside the row.
+    private (double X, double Y)? _projectMenuAnchor;
     private bool _isProjectSettingsOpen;
     private ProjectInstructionsEditor? _instructionsEditor;
     // The editor's values when the drawer opened: closing without edits must not save.
@@ -3368,6 +3371,7 @@
 
     private async Task ToggleProjectMenuAsync(ProjectSummary project)
     {
+        _projectMenuAnchor = null;
         if (_selectedProject?.Id != project.Id)
         {
             await SelectProjectAsync(project, restoreLastChat: false);
@@ -3376,6 +3380,20 @@
         if (!_isProjectMenuOpen) await LoadProjectCountsAsync();
         ToggleProjectMenu();
     }
+
+    private async Task OpenProjectMenuAtAsync(MouseEventArgs args)
+    {
+        if (_selectedProject is null) return;
+        var wasOpen = _isProjectMenuOpen;
+        if (!wasOpen) await LoadProjectCountsAsync();
+        ToggleProjectMenu();
+        // A keyboard press has no pointer position: the menu then opens in its usual place.
+        _projectMenuAnchor = wasOpen || (args.ClientX == 0 && args.ClientY == 0) ? null : (args.ClientX, args.ClientY);
+    }
+
+    private string? GetProjectMenuStyle() => _projectMenuAnchor is { } anchor
+        ? FormattableString.Invariant($"top: clamp(0.5rem, {anchor.Y + 8}px, calc(100vh - 16rem)); left: clamp(0.5rem, {anchor.X - 16}px, calc(100vw - 16rem));")
+        : null;
 
     private void BeginChatRename(ChatSummary chat)
     {
@@ -3552,6 +3570,7 @@
 
     private async Task OnProjectContextMenu(ProjectSummary project)
     {
+        _projectMenuAnchor = null;
         if (_selectedProject?.Id != project.Id)
         {
             await SelectProjectAsync(project);

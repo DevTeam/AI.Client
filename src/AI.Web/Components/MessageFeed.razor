@@ -60,7 +60,7 @@
     }
     else if (SelectedChat is null)
     {
-        <div class="workspace-empty"><h2>Start a conversation</h2><p>Write a message below. A new chat will be created in <strong>@SelectedProjectName</strong>.</p></div>
+        <div class="workspace-empty"><h2>Start a conversation</h2><p>Write a message below. A new chat will be created in <button class="workspace-empty-project" type="button" title="Project menu" aria-haspopup="menu" @onclick="args => OnOpenProjectMenu.InvokeAsync(args)">@SelectedProjectName</button>.</p></div>
     }
     else
     {
@@ -415,6 +415,8 @@
 
     [Parameter] public bool HasSelectedProject { get; set; }
     [Parameter] public string? SelectedProjectName { get; set; }
+    /// <summary>A click on the project name in the empty feed: opens the same menu as the sidebar row.</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnOpenProjectMenu { get; set; }
 
     /// <summary>
     /// Current search query from the sidebar search box, used to highlight matching text inside

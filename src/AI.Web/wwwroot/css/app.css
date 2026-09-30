@@ -2015,6 +2015,19 @@ body {
 /* The project the new chat will land in: the accent ties the name to the choice the user made. */
 .workspace-empty strong { color: var(--color-accent); font-weight: 600; }
 
+.workspace-empty-project {
+    display: inline;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.workspace-empty-project:hover { text-decoration: underline; }
+
 .workspace-message,
 .markdown-content {
     /* Without min-width:0 in a grid/flex track, an unbreakable child (long token, wide table)

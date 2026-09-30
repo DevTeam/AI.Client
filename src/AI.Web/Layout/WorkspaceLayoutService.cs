@@ -23,6 +23,9 @@ public sealed class WorkspaceLayoutService(IJSRuntime jsRuntime) : IWorkspaceLay
     public Task FocusAdjacentItemAsync(string containerSelector, string itemSelector, string key) =>
         _module is null ? Task.CompletedTask : _module.InvokeVoidAsync("focusAdjacentItem", containerSelector, itemSelector, key).AsTask();
 
+    public Task RevealElementAsync(string elementId) =>
+        _module is null ? Task.CompletedTask : _module.InvokeVoidAsync("revealElement", elementId).AsTask();
+
     public async ValueTask DisposeAsync()
     {
         if (_handle is not null)

@@ -432,12 +432,17 @@
     [Parameter] public EventCallback OnCreateSkill { get; set; }
 
     /// <summary>
-    /// Current search query from the sidebar search box, used to highlight matching text inside
+    /// Current query of the search panel, used to highlight matching text inside
     /// rendered messages. An empty/short value clears any existing highlight; the same minimum
-    /// length the sidebar enforces (2 characters) is mirrored on the JS side so a render pass
+    /// length the search panel enforces (2 characters) is mirrored on the JS side so a render pass
     /// never wastes a DOM walk on something the sidebar would not even send to the server.
     /// </summary>
     [Parameter] public string? SearchQuery { get; set; }
+    /// <summary>
+    /// Which occurrence of <see cref="SearchQuery"/> is current (-1 for none) and how many the
+    /// rendered transcript holds; the search panel draws its "3 / 10" from it.
+    /// </summary>
+    [Parameter] public EventCallback<(int Index, int Count)> OnSearchPositionChanged { get; set; }
     [Parameter] public ChatDetails? SelectedChat { get; set; }
     /// <summary>
     /// Stable identity of the selected main/fork transcript. Unlike <see cref="BranchLeafId"/>,
@@ -670,9 +675,11 @@
 
         if (await AdvanceTurnExpansionAsync()) return;
 
+        // Highlight before the deferred scroll: a search result scrolls to its occurrence, which
+        // exists only once the transcript has been walked for it.
+        await ApplySearchHighlightAsync();
         await ApplyDeferredScrollAsync();
         await SyncHistoryMarkersAsync();
-        await ApplySearchHighlightAsync();
     }
 
     private string? _watchedTurnSummaryElementId;
@@ -786,48 +793,58 @@
         var normalized = (SearchQuery ?? string.Empty).Trim();
         if (_appliedSearchChatId == chatId
             && string.Equals(_appliedSearchQuery, normalized, StringComparison.Ordinal)) return;
+        // The same chat re-walked (its activity loaded, say) keeps the find bar where it was. Not
+        // judged by _appliedSearchChatId: that is cleared on purpose to force such a re-walk.
+        var keepPosition = _searchPositionChatId == chatId && chatId is not null;
+        _searchPositionChatId = chatId;
         _appliedSearchChatId = chatId;
         _appliedSearchQuery = normalized;
         try
         {
-            await handle.InvokeVoidAsync("applySearchHighlight", normalized);
+            SetSearchPosition(await handle.InvokeAsync<int[]>("applySearchHighlight", normalized, keepPosition));
         }
         catch (Exception error) when (error is JSException or ObjectDisposedException) { }
     }
 
-    private async Task ApplyDeferredScrollAsync()
+    private Task ApplyDeferredScrollAsync() => TryPendingScrollAsync();
+
+    /// <summary>
+    /// One attempt at the pending scroll. A miss keeps the target: a search result in another chat
+    /// is asked for before that chat's transcript has rendered, and several renders can pass before
+    /// it does. The deadline stops a target that never appears from jumping the feed much later.
+    /// </summary>
+    private async Task<bool> TryPendingScrollAsync()
     {
-        if (_pendingScrollToMessageId is { } targetId && _messageScrollHandle is { } handle)
+        if (_pendingScrollToMessageId is not { } messageId || _messageScrollHandle is not { } handle) return false;
+        if (DateTime.UtcNow > _pendingScrollDeadline)
         {
             _pendingScrollToMessageId = null;
-            try
-            {
-                if (await handle.InvokeAsync<bool>("scrollMessageIntoView", targetId)) return;
-            }
-            catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+            return false;
+        }
+
+        var target = await ResolveRenderedTargetAsync(messageId);
+        try
+        {
+            if (!await handle.InvokeAsync<bool>("scrollMessageIntoView", target)) return false;
+            _pendingScrollToMessageId = null;
+            await AdoptSearchPositionAsync(handle);
+            return true;
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException)
+        {
+            _pendingScrollToMessageId = null;
+            return false;
         }
     }
 
-
     /// <summary>
-    /// Scrolls the feed to a specific message — the one the user picked from a search result.
-    /// If the target message is not in the DOM yet, the request is replayed after the next render.
+    /// The element to scroll to for <paramref name="messageId"/>. Search can land on a progress note
+    /// or tool result. Compact transcripts contain its lightweight message shell, but the
+    /// corresponding DOM node intentionally does not exist until that turn is expanded, so the one
+    /// owning turn is loaded first; a tool call is drawn as part of its group, under the last id.
     /// </summary>
-    public async Task ScrollToMessageAsync(Guid messageId)
+    private async Task<Guid> ResolveRenderedTargetAsync(Guid messageId)
     {
-        if (_disposed || messageId == Guid.Empty) return;
-        if (_messageScrollHandle is { } handle)
-        {
-            try
-            {
-                if (await handle.InvokeAsync<bool>("scrollMessageIntoView", messageId)) return;
-            }
-            catch (Exception error) when (error is JSException or ObjectDisposedException) { }
-        }
-
-        // Search can land on a progress note or tool result. Compact transcripts contain its
-        // lightweight message shell, but the corresponding DOM node intentionally does not exist
-        // until that turn is expanded. Load the one owning turn before scheduling the scroll.
         var owner = Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer())
             .FirstOrDefault(turn => turn.Id is not null
                 && turn.IntermediateMessages.Any(message => message.Id == messageId));
@@ -836,13 +853,69 @@
 
         var targetItem = owner?.IntermediateItems
             .FirstOrDefault(item => ChatFeed.MessagesOf(item).Any(message => message.Id == messageId));
-        var renderedTargetId = targetItem is { ToolGroup: { Count: > 0 } group }
+        return targetItem is { ToolGroup: { Count: > 0 } group }
             ? group[^1].Id
             : messageId;
+    }
 
-        // The JS side can run before a just-selected transcript reaches the DOM. Queue one retry
-        // for the next render in that case.
-        _pendingScrollToMessageId = renderedTargetId;
+    // Occurrences of the search query in the rendered transcript, and which one is current (-1
+    // before the first step). Kept by the JS side; mirrored here only to report changes.
+    private int _searchMatchIndex = -1;
+    private int _searchMatchCount;
+    // The chat the JS side's current occurrence belongs to.
+    private Guid? _searchPositionChatId;
+
+    // A scroll to a search result walks the DOM it found, which can be a chat this component has
+    // not highlighted yet; the occurrence it landed on belongs to that chat, and the highlight
+    // pass that follows must keep it rather than start over.
+    private async Task AdoptSearchPositionAsync(IJSObjectReference handle)
+    {
+        _searchPositionChatId = SelectedChat?.Id;
+        SetSearchPosition(await handle.InvokeAsync<int[]>("searchPosition"));
+    }
+
+    private void SetSearchPosition(int[]? position)
+    {
+        if (position is not [var index, var count]) return;
+        if (index == _searchMatchIndex && count == _searchMatchCount) return;
+        _searchMatchIndex = index;
+        _searchMatchCount = count;
+        _ = OnSearchPositionChanged.InvokeAsync((index, count));
+    }
+
+    /// <summary>Moves to the next (<paramref name="delta"/> 1) or previous (-1) occurrence and scrolls to it.</summary>
+    public async Task StepSearchMatchAsync(int delta)
+    {
+        if (_disposed || _messageScrollHandle is not { } handle) return;
+        try
+        {
+            SetSearchPosition(await handle.InvokeAsync<int[]>("stepSearchMatch", delta));
+        }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+    }
+
+    /// <summary>F3 / Shift+F3 stepped from the keyboard, anywhere on the page.</summary>
+    [JSInvokable]
+    public Task OnSearchStepped(int index, int count)
+    {
+        SetSearchPosition([index, count]);
+        return Task.CompletedTask;
+    }
+
+
+    /// <summary>
+    /// Scrolls the feed to a specific message — the one the user picked from a search result.
+    /// If the target message is not in the DOM yet, the request is retried after later renders.
+    /// </summary>
+    public async Task ScrollToMessageAsync(Guid messageId)
+    {
+        if (_disposed || messageId == Guid.Empty) return;
+        _pendingScrollToMessageId = messageId;
+        _pendingScrollDeadline = DateTime.UtcNow.AddSeconds(PendingScrollSeconds);
+        if (await TryPendingScrollAsync()) return;
+
+        // Rendering is what brings the target into the DOM: an expanded turn, or a transcript
+        // that was only just selected.
         _expandedTurnsVersion++;
         StateHasChanged();
     }
@@ -1091,10 +1164,12 @@
     // means a follow-up render only re-walks when the query itself actually changed.
     private string? _appliedSearchQuery;
 
-    // A scroll target that arrived while only the tail of the transcript was rendered. A message
-    // outside the tail is not in the DOM yet, so the first scroll attempt is replayed once the
-    // full chain lands - the same loop used for the saved-position restore.
+    // A scroll target not in the DOM yet: its chat is still loading, only the tail of the
+    // transcript is rendered, or its turn is collapsed. Retried after every render until it lands
+    // or the deadline passes.
     private Guid? _pendingScrollToMessageId;
+    private DateTime _pendingScrollDeadline;
+    private const int PendingScrollSeconds = 10;
 
     // Chat whose messages the last applySearchHighlight walked. Blazor drops our <mark> wrappers
     // when it rebuilds the transcript for a chat/branch switch, so a "nothing changed, skip the

@@ -79,6 +79,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatTipsState>()
             .RootBind<ISkillCommandMatcher>().To<SkillCommandMatcher>()
             .RootBind<IResourceMentionMatcher>().To<ResourceMentionMatcher>()
+            .RootBind<ISearchResultPresentation>().To<SearchResultPresentation>()
             .RootBind<IMentionLinkWriter>().To<MentionLinkWriter>()
             .RootBind<IResourcePresenter>().To<ResourcePresenter>()
             .Bind<IDiffSnapshotReader>().To<DiffSnapshotReader>()

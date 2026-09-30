@@ -12,8 +12,10 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
     public async Task<ChatSearchResult> SearchAsync(string query, Guid? projectId, CancellationToken cancellationToken, bool includeArchived = false)
     {
         var scope = projectId is { } id ? $"&projectId={id}" : string.Empty;
+        // A person looks for where they last saw something, so the newest matches come first; the
+        // stable order exists for paging, which this client does not do.
         return await httpClient.GetFromJsonAsync<ChatSearchResult>(
-            $"api/chats/search?query={Uri.EscapeDataString(query)}{scope}&archiveScope={(includeArchived ? "All" : "Active")}", cancellationToken)
+            $"api/chats/search?query={Uri.EscapeDataString(query)}{scope}&archiveScope={(includeArchived ? "All" : "Active")}&order={ChatSearchOrder.Newest}", cancellationToken)
             ?? new ChatSearchResult([], 0, 0, false, null);
     }
 

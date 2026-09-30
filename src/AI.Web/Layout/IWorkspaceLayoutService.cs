@@ -11,4 +11,7 @@ public interface IWorkspaceLayoutService : IAsyncDisposable
     Task BlurActiveElementAsync();
 
     Task FocusAdjacentItemAsync(string containerSelector, string itemSelector, string key);
+
+    /// <summary>Scrolls the element with <paramref name="elementId"/> into its scroll box, as little as possible.</summary>
+    Task RevealElementAsync(string elementId);
 }

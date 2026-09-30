@@ -4826,16 +4826,49 @@ textarea {
     padding: 0.1em 0.3em;
 }
 
+/* The occurrence the find bar is on: a filled accent, so it stands out from the other marks in
+   either theme without relying on motion. */
+.search-highlight.search-highlight-current,
+.markdown-content pre .search-highlight.search-highlight-current,
+.markdown-content code .search-highlight.search-highlight-current {
+    background: var(--color-accent-strong);
+    color: var(--color-on-accent);
+    box-shadow: 0 0 0 2px var(--color-accent-strong);
+}
 
-/* Sidebar search. While a query is running these results stand in for the project tree, so they
-   match its rhythm rather than introducing a panel of their own. */
-.sidebar-search { display: flex; align-items: center; gap: .25rem; padding: .5rem .5rem .25rem; }
-.sidebar-search-input { flex: 1; min-width: 0; }
-.sidebar-search-results { display: flex; flex-direction: column; gap: .125rem; padding: 0 .25rem .5rem; overflow-y: auto; }
+/* Search drawer. It shares the right-hand slot with the settings drawers; the query and its
+   options stay put above the results, which scroll on their own. */
+.search-drawer > header { align-items: center; }
+.search-drawer-controls { display: grid; gap: .45rem; padding: .75rem 1.2rem; border-bottom: 1px solid var(--color-border); }
+.search-drawer-input { width: 100%; box-sizing: border-box; }
+.search-drawer-options { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-height: 1.75rem; }
+.search-drawer-options .archive-search-toggle { margin: 0; }
+.search-drawer-results { display: flex; flex-direction: column; gap: .125rem; min-height: 0; padding: .25rem .6rem .75rem; overflow-y: auto; }
+.search-drawer-hint { padding: 1rem 1.2rem; line-height: 1.45; }
+
+/* Steps through the occurrences in the open chat. */
+.find-bar { display: flex; flex: none; align-items: center; gap: .125rem; font-size: .8125rem; }
+.find-bar .icon-action { width: 1.65rem; height: 1.65rem; }
+.find-bar-count { margin-right: .25rem; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* The sidebar row that opens search; the shortcut is shown the way the menus show theirs. */
+.search-nav-action .nav-item-shortcut { margin-left: auto; padding: 0 .3rem; border: 1px solid var(--color-border); border-radius: calc(.3rem * var(--corner-scale)); color: var(--color-text-faint); font-family: inherit; font-size: .68rem; line-height: 1.4; }
+.search-group { display: flex; flex-direction: column; gap: .0625rem; padding: .25rem 0; }
+.search-group + .search-group { border-top: 1px solid var(--color-border); }
+.search-group-header { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .25rem .5rem 0; border: none; background: none; color: inherit; text-align: left; cursor: pointer; }
+.search-group-header:hover .search-group-title { text-decoration: underline; }
+.search-group-title { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-group.current .search-group-title { color: var(--color-accent); }
+.search-group-count { flex: none; min-width: 1.25rem; padding: 0 .35rem; border-radius: 999px; background: var(--color-overlay-hover); color: var(--color-text-secondary); font-size: .75rem; text-align: center; font-variant-numeric: tabular-nums; }
+.search-group-where { padding: 0 .5rem .125rem; color: var(--color-text-secondary); font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-group-more { align-self: flex-start; margin: 0 .5rem; padding: .125rem 0; border: none; background: none; color: var(--color-accent); font-size: .75rem; cursor: pointer; }
+.search-group-more:hover { text-decoration: underline; }
 .search-result { display: flex; flex-direction: column; gap: .125rem; width: 100%; padding: .375rem .5rem; border: none; border-radius: calc(.375rem * var(--corner-scale)); background: none; color: inherit; text-align: left; cursor: pointer; }
 .search-result:hover, .search-result:focus-visible { background: var(--color-overlay-hover); }
-.search-result-where { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The keyboard's row: focus stays in the search box, so this is the only sign of where Enter goes. */
+.search-result.active { background: var(--color-accent-bg-active); box-shadow: inset 2px 0 0 var(--color-accent); }
 .search-result-snippet { opacity: .85; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.search-result-snippet mark { background: var(--color-highlight-bg); color: var(--color-highlight-fg); border-radius: calc(.2rem * var(--corner-scale)); padding: 0 .1em; font-weight: 600; }
 .search-result-meta { opacity: .6; font-size: .8125em; }
 
 /* Two coarse judgements sit side by side so they read as one comparison rather than two

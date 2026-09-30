@@ -11,6 +11,7 @@
 @inject IApiBaseUrl _apiBaseUrl
 @inject IProjectApi ProjectApi
 @inject IChatHistoryApi ChatHistoryApi
+@inject ISearchResultPresentation SearchResults
 @inject IChatMessageDeltaMerger ChatMessageDeltaMerger
 @inject IJSRuntime JsRuntime
 @inject IWorkspaceLayoutService WorkspaceLayoutService
@@ -47,35 +48,13 @@
         @* The projects list is the sidebar's top level now, so it has no heading of its own and
            nothing to collapse it into. Creating a project is an action row at the head of the
            list — the position the button already occupied, minus the section chrome around it. *@
-        @* Search sits above the list it replaces: while a query is running the sidebar shows what
-           was found instead of the tree, because the two answer the same question. *@
-        <div class="sidebar-search">
-            @* A search input clears itself, so no button of ours is added next to the one the
-               browser already draws; Escape does the same from the keyboard. *@
-            <input type="search" class="sidebar-search-input" value="@_searchQuery" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown" placeholder="Search messages" aria-label="Search messages in all chats" />
-        </div>
-        <label class="archive-search-toggle"><input type="checkbox" @bind="_searchIncludeArchived" @bind:after="RunSearchAsync" /> Include archived chats</label>
-        @if (_searchResult is { } found)
-        {
-            <div class="sidebar-search-results">
-                @if (_isSearching) { <p class="empty-hint">Searching...</p> }
-                else if (found.Error is { Length: > 0 } searchError) { <p class="empty-hint">@searchError</p> }
-                else if (found.Matches.Count == 0) { <p class="empty-hint">Nothing found in @found.ChatsSearched chat(s).</p> }
-                else
-                {
-                    <p class="empty-hint">@found.Matches.Count match(es) in @found.ChatsSearched chat(s)@(found.Truncated ? ", more remain" : string.Empty)</p>
-                    @foreach (var match in found.Matches)
-                    {
-                        <button class="search-result" type="button" @onclick="() => OpenSearchMatchAsync(match)">
-                            <span class="search-result-where">@match.ProjectName · @match.ChatTitle</span>
-                            <span class="search-result-snippet">@match.Snippet</span>
-                            <span class="search-result-meta">@(match.IsArchived ? "Archived · " : "")@match.Role · @match.CreatedAt.LocalDateTime.ToString("g")@(match.MatchCount > 1 ? $" · {match.MatchCount} matches" : string.Empty)</span>
-                        </button>
-                    }
-                }
-            </div>
-        }
-        <div id="projects-nav" hidden="@(_searchResult is not null)">
+        @* Search opens in the right-hand drawer slot, like the settings sections: the results sit
+           beside the transcript they lead into instead of replacing the project tree. *@
+        <button class="workspace-nav-item search-nav-action @(_isSearchOpen ? "selected" : string.Empty)" type="button" data-search-open
+                aria-keyshortcuts="Control+K" aria-expanded="@(_isSearchOpen ? "true" : "false")" aria-controls="search-drawer" @onclick="ToggleSearchPanelAsync">
+            <AppIcon Name="search" /><span class="nav-item-label">Search</span><kbd class="nav-item-shortcut">Ctrl+K</kbd>
+        </button>
+        <div id="projects-nav">
         <button class="workspace-nav-item new-project-action" type="button" @onclick="BeginProjectCreation"><AppIcon Name="plus" /><span class="nav-item-label">New project</span></button>
         @if (ProjectsBusy.IsVisible)
         {
@@ -416,6 +395,7 @@
             OnAddDirectory="OpenDirectoryPickerForNewGrant"
             OnCreateSkill='() => OpenGlobalSection("ProjectSkills")'
             SearchQuery="@_searchQuery"
+            OnSearchPositionChanged="OnFeedSearchPositionChanged"
             SelectedChat="@_selectedChat"
             TranscriptId="@_selectedBranchId"
             BranchLeafId="@_branchLeafId"
@@ -699,6 +679,89 @@
                     <span class="settings-drawer-error">Not saved.</span>
                     <button class="secondary-action permissions-reset-all" type="button" @onclick="CancelCurrentSettingsAsync">Discard changes</button>
                 </footer>
+            }
+        </aside>
+    }
+
+    @if (_isSearchOpen)
+    {
+        @* No backdrop and no close on an outside press: the point of the panel is reading the chat
+           beside it while stepping through what was found. *@
+        <aside class="permissions-drawer search-drawer" id="search-drawer" aria-label="Search messages">
+            <header>
+                <h2>Search</h2>
+                <button class="icon-action" type="button" title="Close (Esc)" aria-label="Close search" @onclick="CloseSearchPanelAsync"><AppIcon Name="drawer-close" /></button>
+            </header>
+            <div class="search-drawer-controls">
+                @* A combobox in the ARIA sense: focus stays in the box while Up/Down move the active
+                   result, so the query can still be edited between steps. *@
+                <input type="search" class="search-drawer-input" @ref="_searchInput" value="@_searchQuery" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown"
+                       placeholder="Search messages in all chats" aria-label="Search messages in all chats" aria-keyshortcuts="Control+K"
+                       role="combobox" aria-autocomplete="list" aria-controls="search-results"
+                       aria-expanded="@(_searchGroups.Count > 0 ? "true" : "false")"
+                       aria-activedescendant="@(_searchActiveMessageId is { } activeRow ? SearchRowId(activeRow) : null)" />
+                <div class="search-drawer-options">
+                    <label class="archive-search-toggle"><input type="checkbox" @bind="_searchIncludeArchived" @bind:after="RunSearchAsync" /> Include archived chats</label>
+                    @* Steps through the occurrences in the open chat. It counts only what is rendered:
+                       a match inside a collapsed turn shows up once that turn is opened. *@
+                    @if (_selectedChat is not null && _searchQuery.Trim().Length >= 2)
+                    {
+                        <div class="find-bar" role="group" aria-label="Occurrences in this chat">
+                            <span class="find-bar-count" aria-live="polite">@(_feedSearchCount == 0
+                                ? "None in this chat"
+                                : _feedSearchIndex < 0 ? $"{_feedSearchCount} in this chat" : $"{_feedSearchIndex + 1} / {_feedSearchCount}")</span>
+                            <button class="icon-action" type="button" title="Previous in this chat (Shift+F3)" aria-label="Previous occurrence in this chat" aria-keyshortcuts="Shift+F3" disabled="@(_feedSearchCount == 0)" @onclick="() => StepFeedSearchAsync(-1)"><AppIcon Name="chevron-up" /></button>
+                            <button class="icon-action" type="button" title="Next in this chat (F3)" aria-label="Next occurrence in this chat" aria-keyshortcuts="F3" disabled="@(_feedSearchCount == 0)" @onclick="() => StepFeedSearchAsync(1)"><AppIcon Name="chevron-down" /></button>
+                        </div>
+                    }
+                </div>
+            </div>
+            @if (_searchResult is { } found)
+            {
+                <div class="search-drawer-results" id="search-results" role="listbox" aria-label="Search results">
+                    @if (_isSearching) { <p class="empty-hint">Searching...</p> }
+                    else if (found.Error is { Length: > 0 } searchError) { <p class="empty-hint">@searchError</p> }
+                    else if (found.Matches.Count == 0) { <p class="empty-hint">Nothing found in @found.ChatsSearched chat(s).</p> }
+                    else
+                    {
+                        <p class="empty-hint">@found.Matches.Count match(es) in @_searchGroups.Count chat(s), newest first@(found.Truncated ? "; more remain" : string.Empty)</p>
+                        @foreach (var group in _searchGroups)
+                        {
+                            var expanded = _expandedSearchGroups.Contains(group.ChatId);
+                            var shown = expanded ? group.Matches : group.Matches.Take(SearchGroupPreviewCount);
+                            var hidden = group.Matches.Count - SearchGroupPreviewCount;
+                            <section @key="group.ChatId" class="search-group @(group.ChatId == _selectedChat?.Id ? "current" : string.Empty)" role="group" aria-label="@group.ChatTitle">
+                                @* The header opens the chat at its newest match; it is a pointer shortcut,
+                                   the keyboard reaches the same place through the first row. *@
+                                <button class="search-group-header" type="button" tabindex="-1" title="Open at the newest match" @onclick="() => OpenSearchMatchAsync(group.Matches[0])">
+                                    <span class="search-group-title">@group.ChatTitle</span>
+                                    <span class="search-group-count" title="@group.Occurrences occurrence(s)">@group.Occurrences</span>
+                                </button>
+                                <span class="search-group-where">@group.ProjectName@(group.IsArchived ? " · Archived" : string.Empty)</span>
+                                @foreach (var match in shown)
+                                {
+                                    var active = match.MessageId == _searchActiveMessageId;
+                                    <button id="@SearchRowId(match.MessageId)" @key="match.MessageId" class="search-result @(active ? "active" : string.Empty)" type="button" tabindex="-1"
+                                            role="option" aria-selected="@(active ? "true" : "false")" @onclick="() => OpenSearchMatchAsync(match)">
+                                        <span class="search-result-snippet">@foreach (var part in SearchResults.Highlight(match.Snippet, _searchQuery))
+                                        {
+                                            if (part.IsMatch) { <mark>@part.Text</mark> } else { @part.Text }
+                                        }</span>
+                                        <span class="search-result-meta">@match.Role · @match.CreatedAt.LocalDateTime.ToString("g")@(match.MatchCount > 1 ? $" · {match.MatchCount} matches" : string.Empty)</span>
+                                    </button>
+                                }
+                                @if (hidden > 0)
+                                {
+                                    <button class="search-group-more" type="button" tabindex="-1" aria-expanded="@(expanded ? "true" : "false")" @onclick="() => ToggleSearchGroup(group.ChatId)">@(expanded ? "Show fewer" : $"Show {hidden} more")</button>
+                                }
+                            </section>
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="empty-hint search-drawer-hint">Type at least two characters. Up/Down pick a result, Enter opens it, F3 steps through the chat.</p>
             }
         </aside>
     }
@@ -1106,7 +1169,7 @@
         await SyncWorkspaceUrlAsync();
     }
 
-    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings, Review }
+    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings, Review, Search }
 
     /// <summary>
     /// All right-hand drawers share one slot, so opening one closes the rest instead of stacking
@@ -1134,6 +1197,7 @@
             if (_isProjectSettingsOpen) return false;
         }
         if (keep != Drawer.Review && _reviewWorkspaceOpen) await CloseReviewAsync();
+        if (keep != Drawer.Search && _isSearchOpen) await CloseSearchPanelAsync();
         return true;
     }
 
@@ -1301,6 +1365,13 @@
             }
 
             StateHasChanged();
+        }
+
+        if (_focusSearchInput && _isSearchOpen)
+        {
+            _focusSearchInput = false;
+            try { await _searchInput.FocusAsync(); }
+            catch (JSException) { }
         }
 
         if (_chatListDragHandle is not null && (_playChatListMove || _focusChatAfterRender is not null))
@@ -2755,6 +2826,50 @@
     private ChatSearchResult? _searchResult;
     private bool _isSearching;
     private CancellationTokenSource? _searchCancellation;
+    // The result as the sidebar lays it out, rebuilt only when a new result lands.
+    private IReadOnlyList<SearchResultGroup> _searchGroups = [];
+    private readonly HashSet<Guid> _expandedSearchGroups = [];
+    // The row Up/Down and Enter act on, by message so expanding a group does not move it.
+    private Guid? _searchActiveMessageId;
+
+    // A chat with more matches than this shows the newest few and a "Show N more" row.
+    private const int SearchGroupPreviewCount = 3;
+
+    private static string SearchRowId(Guid messageId) => $"search-row-{messageId:N}";
+
+    // The drawer itself. Closing it ends the search: a highlight left behind in the transcript
+    // with nothing on screen that explains it or turns it off would only confuse.
+    private bool _isSearchOpen;
+    private ElementReference _searchInput;
+    private bool _focusSearchInput;
+    // Where the transcript's own find position is, as MessageFeed reports it.
+    private int _feedSearchIndex = -1;
+    private int _feedSearchCount;
+
+    private async Task ToggleSearchPanelAsync()
+    {
+        CloseContextMenus();
+        if (_isSearchOpen)
+        {
+            await CloseSearchPanelAsync();
+            return;
+        }
+        if (!await CloseDrawersExceptAsync(Drawer.Search)) return;
+        _isSearchOpen = true;
+        _focusSearchInput = true;
+    }
+
+    private async Task CloseSearchPanelAsync()
+    {
+        _isSearchOpen = false;
+        await ClearSearch();
+    }
+
+    private void OnFeedSearchPositionChanged((int Index, int Count) position) =>
+        (_feedSearchIndex, _feedSearchCount) = position;
+
+    private Task StepFeedSearchAsync(int delta) =>
+        _messageFeed?.StepSearchMatchAsync(delta) ?? Task.CompletedTask;
 
     private async Task OnSearchInput(ChangeEventArgs e)
     {
@@ -2762,13 +2877,64 @@
         await RunSearchAsync();
     }
 
-    private Task OnSearchKeyDown(KeyboardEventArgs e) => e.Key == "Escape" ? ClearSearch() : Task.CompletedTask;
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.AltKey || e.CtrlKey || e.MetaKey) return;
+        switch (e.Key)
+        {
+            case "Escape":
+                await CloseSearchPanelAsync();
+                break;
+            case "ArrowDown":
+            case "ArrowUp":
+                await MoveSearchActiveAsync(e.Key == "ArrowDown" ? 1 : -1);
+                break;
+            case "Enter":
+                var rows = GetVisibleSearchRows();
+                if (rows.Count == 0) break;
+                var target = rows.FirstOrDefault(row => row.MessageId == _searchActiveMessageId) ?? rows[0];
+                await OpenSearchMatchAsync(target);
+                break;
+        }
+    }
+
+    // The rows in the order they are drawn: the keyboard walks exactly what the eye sees.
+    private List<ChatSearchMatch> GetVisibleSearchRows() =>
+        _searchGroups.SelectMany(group => _expandedSearchGroups.Contains(group.ChatId)
+            ? group.Matches
+            : group.Matches.Take(SearchGroupPreviewCount)).ToList();
+
+    private async Task MoveSearchActiveAsync(int step)
+    {
+        var rows = GetVisibleSearchRows();
+        if (rows.Count == 0) return;
+        var current = rows.FindIndex(row => row.MessageId == _searchActiveMessageId);
+        var next = current < 0
+            ? step > 0 ? 0 : rows.Count - 1
+            : Math.Clamp(current + step, 0, rows.Count - 1);
+        _searchActiveMessageId = rows[next].MessageId;
+        StateHasChanged();
+        await WorkspaceLayoutService.RevealElementAsync(SearchRowId(rows[next].MessageId));
+    }
+
+    private void ToggleSearchGroup(Guid chatId)
+    {
+        if (!_expandedSearchGroups.Add(chatId)) _expandedSearchGroups.Remove(chatId);
+    }
+
+    private void SetSearchResult(ChatSearchResult? result)
+    {
+        _searchResult = result;
+        _searchGroups = result is null ? [] : SearchResults.Group(result.Matches);
+        _expandedSearchGroups.Clear();
+        _searchActiveMessageId = null;
+    }
 
     private async Task ClearSearch()
     {
         await CancelSearchAsync();
         _searchQuery = string.Empty;
-        _searchResult = null;
+        SetSearchResult(null);
     }
 
     private async Task CancelSearchAsync()
@@ -2792,7 +2958,7 @@
         if (query.Length < 2)
         {
             // One character matches nearly everything and costs a full scan to prove it.
-            _searchResult = null;
+            SetSearchResult(null);
             return;
         }
 
@@ -2804,20 +2970,22 @@
             var result = await ChatHistoryApi.SearchAsync(query, null, cancellation.Token, _searchIncludeArchived);
             if (!cancellation.IsCancellationRequested && _searchQuery.Trim() == query)
             {
-                _searchResult = result;
+                SetSearchResult(result);
                 _isSearching = false;
             }
         }
         catch (OperationCanceledException) { }
         catch (HttpRequestException)
         {
-            if (!cancellation.IsCancellationRequested) _searchResult = new ChatSearchResult([], 0, 0, false, null, "Search is unavailable.");
+            if (!cancellation.IsCancellationRequested) SetSearchResult(new ChatSearchResult([], 0, 0, false, null, "Search is unavailable."));
             _isSearching = false;
         }
     }
 
     private async Task OpenSearchMatchAsync(ChatSearchMatch match)
     {
+        // Whatever was opened, by pointer or keyboard, is where the next Up/Down continues from.
+        _searchActiveMessageId = match.MessageId;
         if (_projects.SingleOrDefault(item => item.Id == match.ProjectId) is { } project)
         {
             if (_selectedProject?.Id != project.Id) await SelectProjectAsync(project, restoreLastChat: false);
@@ -4159,6 +4327,10 @@
         else if (_reviewWorkspaceOpen)
         {
             await CloseReviewAsync();
+        }
+        else if (_isSearchOpen)
+        {
+            await CloseSearchPanelAsync();
         }
         else if (_isEndpointMenuOpen)
         {

@@ -150,7 +150,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         string? provisionalAnswer = null;
         var completionRequired = counts.Count > 0;
         var routed = false;
-        // Runs app_run_skill for the routed playbook as if the model had called it: the call and its
+        // Runs mcp_app__run_skill for the routed playbook as if the model had called it: the call and its
         // result are persisted like any other, so the transcript shows the skill and a resumed run
         // sees its instructions. True when the playbook's instructions are now in the context.
         async Task<bool> LoadRoutedSkillAsync(AgentTool runSkill, SkillDefinition skill)
@@ -655,7 +655,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         }
         instructions.Upsert(run, new ModelInstruction(ActiveSkillKey,
             $"Active skill: {active.Id} ({active.Name}), a playbook loaded earlier in this conversation; its instructions "
-            + "are in that app_run_skill result. While the user's latest message continues that task (an answer to its "
+            + "are in that mcp_app__run_skill result. While the user's latest message continues that task (an answer to its "
             + "question, a correction, a next step or an addition), keep following those instructions from the step you "
             + "reached, including their checks and final report; do not start over. Run it again only if its instructions "
             + "are no longer in the conversation. If the message is a different task, leave this skill and pick the one "
@@ -690,7 +690,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
 
     /// <summary>
     /// A playbook the route names first is loaded by the application rather than suggested: told in
-    /// so many words to call app_run_skill first, models still asked their own questions and did the
+    /// so many words to call mcp_app__run_skill first, models still asked their own questions and did the
     /// work by hand, and the playbook's later steps — the project's first chat, opening it — never
     /// happened. Loading one only returns its instructions, so it is done without asking. A playbook
     /// with required parameters is left to the model, which has to supply them.
@@ -718,12 +718,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
               + "instructions from the step you reached."
             : loaded
                 ? $"Skill routing: the application loaded the skill {first.Id} for the user's latest message; its "
-                  + "instructions are in the app_run_skill result just before this request. Follow them now from step 1, "
+                  + "instructions are in the mcp_app__run_skill result just before this request. Follow them now from step 1, "
                   + "taking the values of its parameters from the user's message, and do every step, including the "
                   + "last ones. Only if the message plainly asks for something else, set the skill aside." + next
                 : $"Skill routing: {string.Join("; then ", route.Skills.Select(skill => $"{skill.Id} ({skill.Description})"))} "
                   + $"fits the user's latest message. Unless the message plainly asks for something else, your first call is "
-                  + $"app_run_skill with skillId {first.Id}, taking its parameters from the message. Do not ask questions or "
+                  + $"mcp_app__run_skill with skillId {first.Id}, taking its parameters from the message. Do not ask questions or "
                   + "start the work before it: the skill says what to ask and how to do the work." + next;
         instructions.Upsert(run, new ModelInstruction(RouteKey, hint, 885, ModelInstructionLifetime.UntilAcknowledged));
     }

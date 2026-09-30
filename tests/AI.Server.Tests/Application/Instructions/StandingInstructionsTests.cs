@@ -122,6 +122,10 @@ public sealed class StandingInstructionsTests : IDisposable
         skills.Tokens.ShouldBeLessThanOrEqualTo(skills.BudgetTokens);
         // The catalog says when to check it, and how to leave one skill for another.
         skills.Content.ShouldContain("before other tools");
+        skills.Content.ShouldContain("mcp_app__skill_search");
+        skills.Content.ShouldContain("mcp_app__run_skill");
+        skills.Content.ShouldNotContain("app_skill_search");
+        skills.Content.ShouldNotContain("app_run_skill");
         skills.Content.ShouldContain("different task");
         skills.Content.ShouldContain("\n- code-feature-implement: Implement a feature");
         skills.Content.ShouldContain("(goal, scope)");

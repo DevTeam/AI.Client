@@ -18,7 +18,7 @@ public sealed class AppSkillRunTool(ISkillRunner runner, IToolCatalogRegistry ca
             new McpServerToolCreateOptions
             {
                 SerializerOptions = reply.Json,
-                Description = "Run a skill from the skill catalog or app_skill_search. Pass its ID and a 'parameters' JSON object matching its "
+                Description = "Run a skill from the skill catalog or mcp_app__skill_search. Pass its ID and a 'parameters' JSON object matching its "
                               + "schema; pass {} when every parameter is optional and none applies. The application supplies the current project scope; chat IDs outside it are rejected. "
                               + "A generic skill runs in an isolated model without tools: read its data with app_read first and pass it "
                               + "in the arguments; it returns JSON in output. A playbook returns output.instructions and output.context "

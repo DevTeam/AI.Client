@@ -26,7 +26,7 @@ public sealed class AppSkillSearchTool(ISkillGuide skills) : IAppTool
                               + "If a query has no matches, returns the available skills with MatchedQuery=false; "
                               + "do not infer that the catalog is empty. Returns each skill's ID, parameter schema "
                               + "result schema and kind. A generic skill needs its data read with app_read and passed as parameters; "
-                              + "a playbook returns instructions for you to follow with your own tools. Run either with app_run_skill. Search before running a skill whose parameters you do not know."
+                              + "a playbook returns instructions for you to follow with your own tools. Run either with mcp_app__run_skill. Search before running a skill whose parameters you do not know."
             });
 
         [McpServerTool(Name = "skill_search", ReadOnly = true, Destructive = false, Idempotent = true,

@@ -140,8 +140,8 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
         if (references.FirstOrDefault(item => item.Kind == ChatResourceKind.Skill) is not { } skill) return content;
         var line = $"The user invoked the skill {JsonSerializer.Serialize(skill.Path)}"
                    + (skill.Name is { Length: > 0 } name ? $" ({JsonSerializer.Serialize(name)})" : string.Empty)
-                   + " for this message. Run it now with app_run_skill, taking its parameters from the message; use "
-                   + "app_skill_search for its schema if you do not have it. A playbook returns instructions: follow them in this turn.";
+                   + " for this message. Run it now with mcp_app__run_skill, taking its parameters from the message; use "
+                   + "mcp_app__skill_search for its schema if you do not have it. A playbook returns instructions: follow them in this turn.";
         return string.IsNullOrWhiteSpace(content) ? line : $"{line}\n{content}";
     }
 }

@@ -8,8 +8,8 @@
 // A drawer that goes while another comes in the same render is a swap (a settings section with
 // its own key), not a close: the old one goes at once and the new one does not slide in.
 (() => {
-    const DRAWER = ".permissions-drawer, .review-workspace";
-    const BACKDROP = ".permissions-drawer-backdrop";
+    const DRAWER = ".permissions-drawer, .review-workspace, .archive-drawer";
+    const BACKDROP = ".permissions-drawer-backdrop, .archive-backdrop";
     // After the longest exit animation, in case animationend never comes (a hidden page).
     const FALLBACK_MS = 400;
     let layer = null;

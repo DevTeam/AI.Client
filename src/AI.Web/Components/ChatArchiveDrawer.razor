@@ -1,0 +1,387 @@
+@implements IAsyncDisposable
+@inject IChatHistoryApi ChatHistoryApi
+@inject IJSRuntime JsRuntime
+
+<div class="archive-backdrop" @onclick="CloseAsync"></div>
+<aside class="archive-drawer" aria-label="Chat archive" @onkeydown="OnKeyDown">
+    <header>
+        <div class="archive-title">
+            <AppIcon Name="archive" />
+            <div><h2>Chat archive</h2><p>@ProjectName</p></div>
+        </div>
+        <button class="icon-action" type="button" aria-label="Close archive" @ref="_closeButton" disabled="@_busy" @onclick="CloseAsync"><AppIcon Name="drawer-close" /></button>
+    </header>
+    <nav class="archive-tabs" aria-label="Archive view">
+        <button type="button" class="@(!_cleanup ? "selected" : "")" aria-pressed="@(!_cleanup)" disabled="@_busy" @onclick="() => SwitchView(false)">
+            <AppIcon Name="archive" /><span>Archived</span><span class="menu-count">@ArchivedCount</span>
+        </button>
+        <button type="button" class="@(_cleanup ? "selected" : "")" aria-pressed="@_cleanup" disabled="@_busy" @onclick="() => SwitchView(true)">
+            <AppIcon Name="eraser" /><span>Clean up</span>@if (_preview is { } preview) { <span class="menu-count">@preview.Chats.Count</span> }
+        </button>
+    </nav>
+    <div class="archive-content">
+        @if (_notice is { } notice)
+        {
+            <div class="archive-banner @(notice.Warning ? "warning" : "success")" role="status">
+                <AppIcon Name="@(notice.Warning ? "info" : "check")" />
+                <span>@notice.Text</span>
+                @if (notice.Undo is { } undo && _undoOperation == undo)
+                {
+                    <button class="compact-action" type="button" disabled="@_busy" @onclick="() => UndoAsync(undo)">Undo</button>
+                }
+                <button class="icon-action" type="button" aria-label="Dismiss" disabled="@_busy" @onclick="() => _notice = null"><AppIcon Name="x" /></button>
+                @if (_skipped.Count > 0)
+                {
+                    <details class="archive-skipped">
+                        <summary>Skipped chats · @_skipped.Count</summary>
+                        <ul>
+                            @foreach (var item in _skipped)
+                            {
+                                <li><strong>@(Chats.FirstOrDefault(chat => chat.Id == item.ChatId)?.Title ?? item.ChatId.ToString())</strong><span>@item.Reason</span></li>
+                            }
+                        </ul>
+                    </details>
+                }
+            </div>
+        }
+        @if (_error is not null)
+        {
+            <div class="archive-banner error" role="alert"><AppIcon Name="error" /><span>@_error</span></div>
+        }
+
+        @if (_cleanup)
+        {
+            <p class="archive-intro">Archive chats by their last conversation activity, including branches. Running chats and chats needing attention are skipped.</p>
+            <section class="archive-section" aria-label="Cutoff">
+                <h3>Last activity before</h3>
+                <div class="archive-segments" role="group" aria-label="Last activity before">
+                    @foreach (var (value, label) in AgeOptions)
+                    {
+                        <button type="button" class="@(_age == value ? "selected" : "")" aria-pressed="@(_age == value)" disabled="@_busy" @onclick="() => ChangeAgeAsync(value)">@label</button>
+                    }
+                </div>
+                @if (_age == "custom")
+                {
+                    <label class="archive-field">Date and time · @_timeZone
+                        <input type="datetime-local" value="@_before" disabled="@_busy" @onchange="ChangeDateAsync" />
+                    </label>
+                }
+                else if (!string.IsNullOrEmpty(_before))
+                {
+                    <p class="archive-hint"><AppIcon Name="clock" />Chats last active before @_before.Replace('T', ' ') · @_timeZone</p>
+                }
+                <label class="archive-checkbox"><input type="checkbox" checked="@_includePinned" disabled="@_busy" @onchange="ChangePinnedAsync" /> Include pinned chats</label>
+            </section>
+            <div class="archive-summary" aria-live="polite">
+                @if (_previewing)
+                {
+                    <AppIcon Name="spinner" Class="archive-spinner" /><span>Finding chats…</span>
+                }
+                else if (_preview is not null)
+                {
+                    <span><strong>@_preview.Chats.Count</strong> @Plural(_preview.Chats.Count, "chat") can be archived</span>
+                    @if (_preview.Skipped > 0) { <span class="archive-summary-skipped">@_preview.Skipped skipped</span> }
+                }
+                else if (string.IsNullOrEmpty(_before))
+                {
+                    <span>Choose a date and time to find chats.</span>
+                }
+            </div>
+        }
+        else
+        {
+            <p class="archive-intro">History, branches and settings are preserved. Sending a new message restores a chat automatically.</p>
+        }
+
+        @if (!_cleanup || _preview is not null)
+        {
+            var items = VisibleChats;
+            var state = SelectionState(items);
+            <div class="archive-toolbar">
+                @if (!_cleanup)
+                {
+                    <label class="archive-search">
+                        <AppIcon Name="search" />
+                        <input type="search" @bind="_query" @bind:event="oninput" placeholder="Search archived chats" aria-label="Search archive" disabled="@_busy" />
+                    </label>
+                }
+                @if (items.Count > 0)
+                {
+                    <div class="archive-selection">
+                        <label class="archive-checkbox">
+                            <input type="checkbox" @ref="_selectAll" checked="@(state == true)" disabled="@_busy" @onchange="ToggleAll" />
+                            @(_selected.Count > 0 ? $"{_selected.Count} selected" : $"Select all · {items.Count}")
+                        </label>
+                        @if (_selected.Count > 0) { <button class="archive-link" type="button" disabled="@_busy" @onclick="() => _selected.Clear()">Clear</button> }
+                        @if (_selected.Count >= SelectionLimit) { <span class="archive-limit">Up to @SelectionLimit chats per operation</span> }
+                    </div>
+                }
+            </div>
+            @foreach (var group in items.Take(_visibleCount).GroupBy(chat => Period(SortKey(chat))))
+            {
+                <section class="archive-group" aria-label="@group.Key">
+                    <h3>@group.Key</h3>
+                    @foreach (var chat in group)
+                    {
+                        var selected = _selected.Contains(chat.Id);
+                        <label class="archive-row @(selected ? "selected" : "")" @key="chat.Id">
+                            <input type="checkbox" aria-label="Select @chat.Title" checked="@selected" disabled="@(_busy || !selected && _selected.Count >= SelectionLimit)" @onchange="() => ToggleSelection(chat.Id)" />
+                            <span class="archive-row-main">
+                                <button class="archive-chat-link" type="button" title="Open chat" disabled="@_busy" @onclick="() => Open.InvokeAsync(chat.Id)">
+                                    @if (chat.IsPinned) { <AppIcon Name="pin" /> }<span>@chat.Title</span>
+                                </button>
+                                <span class="archive-row-meta">
+                                    @if (chat.ArchivedAt is { } archivedAt)
+                                    {
+                                        <span title="@archivedAt.LocalDateTime.ToString("g")">Archived @Relative(archivedAt)</span><span aria-hidden="true">·</span>
+                                    }
+                                    <span title="@chat.LastActivityAt.LocalDateTime.ToString("g")">Active @Relative(chat.LastActivityAt)</span>
+                                </span>
+                            </span>
+                            @if (!_cleanup)
+                            {
+                                <button class="icon-action archive-restore" type="button" title="Restore chat" aria-label="Restore @chat.Title" disabled="@_busy" @onclick="() => RestoreOneAsync(chat)"><AppIcon Name="reset" /></button>
+                            }
+                        </label>
+                    }
+                </section>
+            }
+            @if (items.Count > _visibleCount)
+            {
+                <button class="compact-action archive-more" type="button" @onclick="() => _visibleCount += 50">Show more · @(items.Count - _visibleCount)</button>
+            }
+            @if (items.Count == 0)
+            {
+                <div class="archive-empty">
+                    <AppIcon Name="@(_cleanup ? "check" : !string.IsNullOrEmpty(_query) ? "search" : "archive")" />
+                    <strong>@(_cleanup ? "Nothing to clean up" : !string.IsNullOrEmpty(_query) ? "No matches" : "Archive is empty")</strong>
+                    <span>@(_cleanup ? "No chats were inactive before this cutoff." : !string.IsNullOrEmpty(_query) ? "No archived chat title contains this text." : "Archived chats appear here. Archive a chat from its menu or clean up old chats.")</span>
+                </div>
+            }
+        }
+
+        @if (_cleanup)
+        {
+            <section class="archive-section archive-settings" aria-label="Suggestions">
+                <h3>Suggestions</h3>
+                <label class="archive-checkbox"><input type="checkbox" checked="@_suggestions" disabled="@_busy" @onchange="ChangeSuggestionsAsync" /> Suggest cleanup when 10 or more chats have been inactive for 30 days</label>
+            </section>
+        }
+    </div>
+    <footer>
+        <div class="archive-footer-status">
+            @if (_undoOperation is { } operation && _notice?.Undo != operation)
+            {
+                <button class="compact-action" type="button" disabled="@_busy" @onclick="() => UndoAsync(operation)"><AppIcon Name="history" />Undo last archiving</button>
+            }
+        </div>
+        <button class="compact-action primary" type="button" disabled="@(_busy || _previewing || _selected.Count == 0)" @onclick="ApplySelectionAsync">
+            @if (_busy) { <AppIcon Name="spinner" Class="archive-spinner" /> }
+            else { <AppIcon Name="@(_cleanup ? "archive" : "reset")" /> }
+            @(_busy ? "Working…" : (_cleanup ? "Archive" : "Restore") + (_selected.Count > 0 ? $" {_selected.Count}" : " selected"))
+        </button>
+    </footer>
+</aside>
+
+@code {
+    private const int SelectionLimit = 500;
+    private static readonly (string Value, string Label)[] AgeOptions = [("7", "7 days"), ("30", "30 days"), ("90", "90 days"), ("custom", "Custom")];
+    private sealed record ArchiveNotice(string Text, bool Warning, Guid? Undo);
+
+    [Parameter] public Guid ProjectId { get; set; }
+    [Parameter] public string ProjectName { get; set; } = "";
+    [Parameter] public IReadOnlyList<ChatSummary> Chats { get; set; } = [];
+    [Parameter] public bool StartWithCleanup { get; set; }
+    [Parameter] public EventCallback Close { get; set; }
+    [Parameter] public EventCallback<Guid> Open { get; set; }
+    [Parameter] public EventCallback<ChatArchiveResult> Changed { get; set; }
+    [Parameter] public EventCallback SuggestionsChanged { get; set; }
+    public bool IsBusy => _busy;
+    private ElementReference _closeButton, _selectAll;
+    private bool _cleanup, _busy, _previewing, _includePinned, _suggestions;
+    private string _age = "30", _before = "", _timeZone = "", _query = "";
+    private string? _error;
+    private ArchiveNotice? _notice;
+    private ChatArchivePreview? _preview;
+    private CancellationTokenSource? _previewCancellation;
+    private readonly HashSet<Guid> _selected = [];
+    private IReadOnlyList<ChatArchiveSkip> _skipped = [];
+    private Guid? _undoOperation;
+    private int _visibleCount = 50;
+    private IJSObjectReference? _module;
+    private int ArchivedCount => Chats.Count(chat => chat.ArchivedAt is not null);
+    private List<ChatSummary> VisibleChats => (_cleanup ? _preview?.Chats ?? [] : Chats.Where(chat => chat.ArchivedAt is not null))
+        .Where(chat => _cleanup || chat.Title.Contains(_query, StringComparison.OrdinalIgnoreCase))
+        .OrderByDescending(SortKey).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cleanup = StartWithCleanup;
+        try
+        {
+            _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatArchive.js");
+            _timeZone = await _module.InvokeAsync<string>("timeZone");
+            var state = await _module.InvokeAsync<System.Text.Json.JsonElement>("suggestionState", ProjectId);
+            _suggestions = state.TryGetProperty("enabled", out var enabled) && enabled.ValueKind == System.Text.Json.JsonValueKind.True;
+            _before = await _module.InvokeAsync<string>("daysAgo", 30);
+            _undoOperation = Chats.Where(chat => chat.ArchiveOperationId is not null).OrderByDescending(chat => chat.ArchivedAt).FirstOrDefault()?.ArchiveOperationId;
+        }
+        catch (JSException) { _error = "Could not read your time zone. Reopen the archive to retry."; }
+        if (_cleanup) await RefreshPreviewAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await _closeButton.FocusAsync();
+        // A native checkbox can only show the mixed state through its DOM property.
+        if (_module is not null && _selectAll.Context is not null)
+        {
+            try { await _module.InvokeVoidAsync("setIndeterminate", _selectAll, SelectionState(VisibleChats) is null); }
+            catch (JSException) { }
+        }
+    }
+
+    private Task CloseAsync() => !_busy ? Close.InvokeAsync() : Task.CompletedTask;
+
+    private async Task ChangeSuggestionsAsync(ChangeEventArgs args)
+    {
+        if (_module is null) return;
+        _suggestions = args.Value is true;
+        try
+        {
+            await _module.InvokeVoidAsync("setSuggestions", ProjectId, _suggestions);
+            await SuggestionsChanged.InvokeAsync();
+        }
+        catch (JSException) { _error = "Could not save cleanup suggestions."; }
+    }
+
+    private async Task SwitchView(bool cleanup)
+    {
+        if (_cleanup == cleanup) return;
+        _cleanup = cleanup; _selected.Clear(); _query = ""; _visibleCount = 50; _error = null;
+        if (cleanup && _preview is null) await RefreshPreviewAsync();
+    }
+
+    private async Task ChangeAgeAsync(string age)
+    {
+        _age = age;
+        if (_module is not null && int.TryParse(_age, out var days)) _before = await _module.InvokeAsync<string>("daysAgo", days);
+        await RefreshPreviewAsync();
+    }
+    private Task ChangeDateAsync(ChangeEventArgs args) { _before = args.Value?.ToString() ?? ""; return RefreshPreviewAsync(); }
+    private Task ChangePinnedAsync(ChangeEventArgs args) { _includePinned = args.Value is true; return RefreshPreviewAsync(); }
+
+    private void ToggleSelection(Guid id) { if (!_selected.Remove(id) && _selected.Count < SelectionLimit) _selected.Add(id); }
+    private void ToggleAll()
+    {
+        if (SelectionState(VisibleChats) == false) { foreach (var chat in VisibleChats.Take(SelectionLimit)) _selected.Add(chat.Id); }
+        else _selected.Clear();
+    }
+    // true: everything that can be selected is; false: nothing is; null: some.
+    private bool? SelectionState(IReadOnlyCollection<ChatSummary> items) =>
+        _selected.Count == 0 ? false : _selected.Count >= Math.Min(items.Count, SelectionLimit) ? true : null;
+
+    // The cutoff controls re-run the preview on their own; a short delay folds a burst of
+    // changes (typing a date, flipping presets) into a single request.
+    private async Task RefreshPreviewAsync()
+    {
+        _previewCancellation?.Cancel();
+        _preview = null; _selected.Clear(); _error = null;
+        if (_module is null || string.IsNullOrEmpty(_before)) { _previewing = false; return; }
+        var cancellation = _previewCancellation = new CancellationTokenSource();
+        _previewing = true;
+        try
+        {
+            await Task.Delay(300, cancellation.Token);
+            var iso = await _module.InvokeAsync<string>("toUtc", cancellation.Token, _before);
+            var preview = await ChatHistoryApi.PreviewArchiveAsync(ProjectId, new(DateTimeOffset.Parse(iso), _includePinned), cancellation.Token);
+            if (cancellation.IsCancellationRequested) return;
+            _preview = preview;
+            foreach (var chat in preview.Chats.Take(SelectionLimit)) _selected.Add(chat.Id);
+            _visibleCount = 50;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException or JSException or FormatException)
+        {
+            if (!cancellation.IsCancellationRequested) _error = "Could not find chats for this cutoff. Check the date and try again.";
+        }
+        finally { if (_previewCancellation == cancellation) _previewing = false; }
+    }
+
+    private Task ApplySelectionAsync()
+    {
+        var targets = VisibleChats.Where(chat => _selected.Contains(chat.Id)).Select(chat => new ChatArchiveTarget(chat.Id, chat.Revision)).ToArray();
+        return ApplyAsync(new(_cleanup, Guid.NewGuid(), targets));
+    }
+    private Task RestoreOneAsync(ChatSummary chat) => ApplyAsync(new(false, Guid.NewGuid(), [new(chat.Id, chat.Revision)]));
+    private async Task ApplyAsync(ChatArchiveRequest request) => await WorkAsync(async () =>
+    {
+        var result = await ChatHistoryApi.ArchiveAsync(ProjectId, request, CancellationToken.None);
+        _skipped = result.Skipped;
+        var undo = request.IsArchived && result.Changed.Count > 0 ? result.OperationId : (Guid?)null;
+        if (undo is not null) _undoOperation = undo;
+        _notice = new(Summary(result, request.IsArchived ? "archived" : "restored"), result.Skipped.Count > 0, undo);
+        _selected.Clear(); _preview = null; _cleanup = false; _query = "";
+        await Changed.InvokeAsync(result);
+    });
+    private async Task UndoAsync(Guid operation) => await WorkAsync(async () =>
+    {
+        var result = await ChatHistoryApi.UndoArchiveAsync(ProjectId, operation, CancellationToken.None);
+        _notice = new(Summary(result, "restored"), result.Skipped.Count > 0, null);
+        _skipped = result.Skipped; _undoOperation = null; _selected.Clear();
+        await Changed.InvokeAsync(result);
+    });
+    private async Task WorkAsync(Func<Task> work)
+    {
+        if (_busy) return;
+        _busy = true; _error = null;
+        try { await work(); }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException or JSException)
+        { _error = "Could not complete the operation. Refresh the preview and try again."; }
+        finally { _busy = false; }
+    }
+
+    private DateTimeOffset SortKey(ChatSummary chat) => _cleanup ? chat.LastActivityAt : chat.ArchivedAt ?? chat.LastActivityAt;
+
+    private static string Summary(ChatArchiveResult result, string verb) =>
+        $"{result.Changed.Count} {Plural(result.Changed.Count, "chat")} {verb}" + (result.Skipped.Count > 0 ? $" · {result.Skipped.Count} skipped" : "");
+
+    private static string Plural(int count, string word) => count == 1 ? word : word + "s";
+
+    private static string Period(DateTimeOffset at) => (DateTimeOffset.Now - at).TotalDays switch
+    {
+        < 1 => "Today",
+        < 7 => "Past week",
+        < 30 => "Past month",
+        < 90 => "Past 3 months",
+        < 365 => "Past year",
+        _ => "Older"
+    };
+
+    private static string Relative(DateTimeOffset at)
+    {
+        var age = DateTimeOffset.Now - at;
+        return age.TotalMinutes switch
+        {
+            < 1 => "just now",
+            < 60 => $"{(int)age.TotalMinutes} min ago",
+            < 60 * 24 => $"{(int)age.TotalHours} h ago",
+            < 60 * 48 => "yesterday",
+            < 60 * 24 * 14 => $"{(int)age.TotalDays} days ago",
+            < 60 * 24 * 60 => $"{(int)(age.TotalDays / 7)} weeks ago",
+            < 60 * 24 * 365 => $"{(int)(age.TotalDays / 30)} months ago",
+            _ => at.LocalDateTime.ToString("d")
+        };
+    }
+
+    private Task OnKeyDown(KeyboardEventArgs args) => args.Key == "Escape" && !_busy ? Close.InvokeAsync() : Task.CompletedTask;
+    public async ValueTask DisposeAsync()
+    {
+        _previewCancellation?.Cancel();
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+}

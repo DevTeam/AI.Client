@@ -9,12 +9,36 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
     public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken) =>
         await httpClient.GetFromJsonAsync<IReadOnlyList<ChatSummary>>($"api/projects/{projectId}/chats", cancellationToken) ?? [];
 
-    public async Task<ChatSearchResult> SearchAsync(string query, Guid? projectId, CancellationToken cancellationToken)
+    public async Task<ChatSearchResult> SearchAsync(string query, Guid? projectId, CancellationToken cancellationToken, bool includeArchived = false)
     {
         var scope = projectId is { } id ? $"&projectId={id}" : string.Empty;
         return await httpClient.GetFromJsonAsync<ChatSearchResult>(
-            $"api/chats/search?query={Uri.EscapeDataString(query)}{scope}", cancellationToken)
+            $"api/chats/search?query={Uri.EscapeDataString(query)}{scope}&archiveScope={(includeArchived ? "All" : "Active")}", cancellationToken)
             ?? new ChatSearchResult([], 0, 0, false, null);
+    }
+
+    public async Task<ChatArchivePreview> PreviewArchiveAsync(Guid projectId, ChatArchivePreviewRequest request, CancellationToken token)
+    {
+        using var response = await httpClient.PostAsJsonAsync($"api/projects/{projectId}/chats/archive/preview", request, token);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ChatArchivePreview>(token)
+            ?? throw new InvalidOperationException("Archive preview response is empty.");
+    }
+
+    public async Task<ChatArchiveResult> ArchiveAsync(Guid projectId, ChatArchiveRequest request, CancellationToken token)
+    {
+        using var response = await httpClient.PostAsJsonAsync($"api/projects/{projectId}/chats/archive", request, token);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ChatArchiveResult>(token)
+            ?? throw new InvalidOperationException("Archive response is empty.");
+    }
+
+    public async Task<ChatArchiveResult> UndoArchiveAsync(Guid projectId, Guid operationId, CancellationToken token)
+    {
+        using var response = await httpClient.PostAsync($"api/projects/{projectId}/chats/archive/{operationId}/undo", null, token);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ChatArchiveResult>(token)
+            ?? throw new InvalidOperationException("Archive undo response is empty.");
     }
 
     public async Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)

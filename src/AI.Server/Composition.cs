@@ -54,6 +54,8 @@ internal sealed class Composition
             .Root<IDirectoryBrowser>()
             .Root<IProjectService>()
             .Root<IChatService>()
+            .Root<IChatArchiveService>()
+            .Singleton<ChatArchiveService>()
             .Root<ISkillCatalog>()
             .Root<ISkillRunner>()
             .Root<IChatSearchService>()

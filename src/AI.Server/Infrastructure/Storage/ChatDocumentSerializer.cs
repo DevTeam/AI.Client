@@ -9,7 +9,7 @@ namespace AI.Infrastructure.Storage;
 
 public sealed class ChatDocumentSerializer : IChatDocumentSerializer
 {
-    private const int SchemaVersion = 7;
+    private const int SchemaVersion = 8;
     private const int PreviousSchemaVersion = 6;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
@@ -38,7 +38,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         chat.PinnedAt,
         chat.LastActivityAt,
         chat.PinOrder,
-        chat.AutoTitlePending), Options);
+        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId), Options);
 
     public string SerializeSummary(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatSummaryDocument(
         SchemaVersion,
@@ -52,13 +52,13 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         chat.LastActivityAt,
         chat.BranchCount,
         chat.PinOrder,
-        chat.Messages.Count == 0), Options);
+        chat.Messages.Count == 0, chat.ArchivedAt, chat.ArchiveOperationId), Options);
 
     public StoredChat Deserialize(string json)
     {
         var document = JsonSerializer.Deserialize<ChatDocument>(json, Options)
             ?? throw new JsonException("Chat document is empty.");
-        if (document.SchemaVersion is not (5 or PreviousSchemaVersion or SchemaVersion) || document.Revision < 0)
+        if (document.SchemaVersion is not (5 or PreviousSchemaVersion or 7 or SchemaVersion) || document.Revision < 0)
         {
             throw new JsonException("Chat document schema or revision is invalid.");
         }
@@ -91,6 +91,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         chat.RestoreAutoTitlePending(document.AutoTitlePending);
         chat.RestorePinState(document.IsPinned, document.PinnedAt, document.PinOrder);
         chat.RestoreActivity(document.LastActivityAt);
+        chat.RestoreArchiveState(document.ArchivedAt, document.ArchiveOperationId);
 
         return new StoredChat(chat, document.Revision);
     }
@@ -99,7 +100,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
     {
         var document = JsonSerializer.Deserialize<ChatSummaryDocument>(json, Options)
             ?? throw new JsonException("Chat document is empty.");
-        if (document.SchemaVersion is not (5 or PreviousSchemaVersion or SchemaVersion) || document.Revision < 0)
+        if (document.SchemaVersion is not (5 or PreviousSchemaVersion or 7 or SchemaVersion) || document.Revision < 0)
         {
             throw new JsonException("Chat document schema or revision is invalid.");
         }
@@ -116,7 +117,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             document.BranchCount ?? 0,
             document.BranchCount is not null,
             document.IsPinned ? document.PinOrder : null,
-            document.IsEmpty);
+            document.IsEmpty, document.ArchivedAt, document.ArchiveOperationId);
     }
 
     private sealed record ChatDocument(
@@ -136,7 +137,9 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         DateTimeOffset? PinnedAt = null,
         DateTimeOffset LastActivityAt = default,
         string? PinOrder = null,
-        bool AutoTitlePending = false);
+        bool AutoTitlePending = false,
+        DateTimeOffset? ArchivedAt = null,
+        Guid? ArchiveOperationId = null);
 
     // Deliberately contains only sidebar fields. System.Text.Json skips MessageIds without
     // materialising message nodes, so listing chats stays proportional to the small manifests
@@ -158,7 +161,9 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         string? PinOrder = null,
         // A chat is created before its first message is written. Manifests from before this
         // field existed read as non-empty, so no old chat disappears from the sidebar.
-        bool IsEmpty = false);
+        bool IsEmpty = false,
+        DateTimeOffset? ArchivedAt = null,
+        Guid? ArchiveOperationId = null);
 
     private sealed record ToolPolicyDocument(Guid ServerId, string Name, string SchemaHash,
         ToolPolicyDecision Decision, int? MaxCallsPerRun, TimeSpan? Timeout);

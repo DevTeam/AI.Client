@@ -72,7 +72,7 @@ public sealed class ChatSearchService(IProjectService projects, IChatService cha
 
                 var match = new ChatSearchMatch(target.ProjectId, target.ProjectName, chat.Id, chat.Title,
                     message.Id, message.ParentId, message.Role, message.CreatedAt,
-                    Snippet(content, matcher.FirstIndex(content)), count);
+                    Snippet(content, matcher.FirstIndex(content)), count, chat.ArchivedAt is not null);
                 var cost = match.Snippet.Length + match.ChatTitle.Length + match.ProjectName.Length;
                 // The first match always goes in: a search that answers "your budget is too small"
                 // and nothing else is of no use to anyone.
@@ -102,7 +102,9 @@ public sealed class ChatSearchService(IProjectService projects, IChatService cha
             : (await projects.ListAsync(cancellationToken)).Select(item => (item.Id, item.Name)).ToArray();
         foreach (var (projectId, projectName) in scope.OrderBy(item => item.Id))
             foreach (var chat in (await chats.ListAsync(projectId, cancellationToken)).OrderBy(item => item.Id))
-                if (request.ChatId is not { } wanted || chat.Id == wanted)
+                if ((request.ChatId is not { } wanted || chat.Id == wanted)
+                    && (request.ArchiveScope == ChatArchiveScope.All
+                        || (chat.ArchivedAt is not null) == (request.ArchiveScope == ChatArchiveScope.Archived)))
                     targets.Add(new Target(projectId, projectName, chat.Id));
         return targets;
     }

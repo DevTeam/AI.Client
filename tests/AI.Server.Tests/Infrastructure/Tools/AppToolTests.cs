@@ -734,6 +734,137 @@ public sealed class AppToolTests
         result.GetProperty("opened").GetBoolean().ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task ShouldArchiveWithoutLosingPinOrHistoryAndRestoreOnANewUserMessage()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var message = await fixture.Chats.AppendMessageAsync(fixture.ProjectId, fixture.ChatId,
+            new(null, null, "User", "archive searchable history", chat!.Revision), CancellationToken.None);
+        var pin = await fixture.Chats.PinAsync(fixture.ProjectId, fixture.ChatId,
+            new(true, message!.Revision), CancellationToken.None);
+        await using var session = await fixture.OpenAsync();
+        var operationId = Guid.NewGuid();
+        await AppFixture.CallAsync(session, "app_chats", new { operation = "Archive", projectId = fixture.ProjectId,
+            operationId, chatId = fixture.ChatId, revision = pin!.Revision });
+        var archived = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        archived!.ArchivedAt.ShouldNotBeNull();
+        archived.ArchiveOperationId.ShouldBe(operationId);
+        archived.Messages.ShouldHaveSingleItem();
+        (await fixture.Chats.ListAsync(fixture.ProjectId, CancellationToken.None)).Single().IsPinned.ShouldBeTrue();
+        var active = await AppFixture.CallAsync(session, "app_read", new { resource = "Chats", projectId = fixture.ProjectId });
+        active.GetProperty("returned").GetInt32().ShouldBe(0);
+        var archive = await AppFixture.CallAsync(session, "app_read", new { resource = "Chats", projectId = fixture.ProjectId, archiveScope = "Archived" });
+        archive.GetProperty("returned").GetInt32().ShouldBe(1);
+        var found = await AppFixture.CallAsync(session, "app_read", new { resource = "Search", query = "searchable", archiveScope = "Archived" });
+        found.GetProperty("items")[0].GetProperty("isArchived").GetBoolean().ShouldBeTrue();
+        var resumed = await fixture.Chats.AppendMessageAsync(fixture.ProjectId, fixture.ChatId,
+            new(null, archived.Messages[0].Id, "User", "continue", archived.Revision), CancellationToken.None);
+        resumed!.ArchivedAt.ShouldBeNull();
+        resumed.ArchiveOperationId.ShouldBeNull();
+        resumed.Messages.Count.ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData(UserPromptOutcome.Dismissed)]
+    [InlineData(UserPromptOutcome.Expired)]
+    [InlineData(UserPromptOutcome.Interrupted)]
+    [InlineData(UserPromptOutcome.Declined)]
+    [InlineData(UserPromptOutcome.Answered)]
+    public async Task ShouldNeverArchiveABatchWithoutAnAffirmativeAnswer(UserPromptOutcome outcome)
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        fixture.Broker.Answer = _ => new UserPromptResponse(Guid.NewGuid(), outcome,
+            outcome == UserPromptOutcome.Answered ? [new UserPromptAnswer("archive", [1], null)] : []);
+        await using var session = await fixture.OpenAsync();
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var result = await AppFixture.CallAsync(session, "app_chats", new { operation = "ArchiveBatch", projectId = fixture.ProjectId,
+            operationId = Guid.NewGuid(), dryRun = false, targets = new[] { new { chatId = fixture.ChatId, revision = chat!.Revision } } }, expectError: true);
+        result.GetProperty("applied").GetBoolean().ShouldBeFalse();
+        (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.ArchivedAt.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ShouldPreviewByActivityAndSkipChangesMadeAfterThePreview()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var cutoff = DateTimeOffset.UtcNow.AddDays(1);
+        var preview = await AppFixture.CallAsync(session, "app_chats", new { operation = "ArchiveBatch", projectId = fixture.ProjectId,
+            operationId = Guid.NewGuid(), activityBefore = cutoff });
+        preview.GetProperty("dryRun").GetBoolean().ShouldBeTrue();
+        preview.GetProperty("current").GetProperty("chats").GetArrayLength().ShouldBe(1);
+        await fixture.Chats.RenameAsync(fixture.ProjectId, fixture.ChatId, new("Changed after preview", chat!.Revision), CancellationToken.None);
+        var result = await AppFixture.CallAsync(session, "app_chats", new { operation = "ArchiveBatch", projectId = fixture.ProjectId,
+            operationId = Guid.NewGuid(), dryRun = false, targets = new[] { new { chatId = fixture.ChatId, revision = chat.Revision } } }, expectError: true);
+        result.GetProperty("current").GetProperty("skipped").GetArrayLength().ShouldBe(1);
+        (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.ArchivedAt.ShouldBeNull();
+        fixture.Broker.LastRequest.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task ShouldExcludePinnedChatsFromPreviewUnlessRequested()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        await fixture.Chats.PinAsync(fixture.ProjectId, fixture.ChatId, new(true, chat!.Revision), CancellationToken.None);
+        await using var session = await fixture.OpenAsync();
+        var cutoff = DateTimeOffset.UtcNow.AddDays(1);
+        var preview = await AppFixture.CallAsync(session, "app_chats", new { operation = "ArchiveBatch", projectId = fixture.ProjectId,
+            operationId = Guid.NewGuid(), activityBefore = cutoff });
+        preview.GetProperty("current").GetProperty("chats").GetArrayLength().ShouldBe(0);
+        var included = await AppFixture.CallAsync(session, "app_chats", new { operation = "ArchiveBatch", projectId = fixture.ProjectId,
+            operationId = Guid.NewGuid(), activityBefore = cutoff, includePinned = true });
+        included.GetProperty("current").GetProperty("chats").GetArrayLength().ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ShouldUndoOnlyTheSpecifiedArchiveOperation()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var original = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var first = Guid.NewGuid();
+        await AppFixture.CallAsync(session, "app_chats", new { operation = "Archive", projectId = fixture.ProjectId,
+            operationId = first, chatId = fixture.ChatId, revision = original!.Revision });
+        var archived = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        await AppFixture.CallAsync(session, "app_chats", new { operation = "Restore", projectId = fixture.ProjectId,
+            operationId = Guid.NewGuid(), chatId = fixture.ChatId, revision = archived!.Revision });
+        var restored = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var second = Guid.NewGuid();
+        await AppFixture.CallAsync(session, "app_chats", new { operation = "Archive", projectId = fixture.ProjectId,
+            operationId = second, chatId = fixture.ChatId, revision = restored!.Revision });
+        await AppFixture.CallAsync(session, "app_chats", new { operation = "UndoArchive", projectId = fixture.ProjectId,
+            operationId = Guid.NewGuid(), archiveOperationId = first });
+        (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.ArchiveOperationId.ShouldBe(second);
+        await AppFixture.CallAsync(session, "app_chats", new { operation = "UndoArchive", projectId = fixture.ProjectId,
+            operationId = Guid.NewGuid(), archiveOperationId = second });
+        (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.ArchivedAt.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ShouldApplyAConfirmedBatchAndReplayWithoutAnotherConfirmation()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var confirmations = 0;
+        fixture.Broker.Answer = _ =>
+        {
+            confirmations++;
+            return new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Answered, [new UserPromptAnswer("archive", [0], null)]);
+        };
+        var arguments = new { operation = "ArchiveBatch", projectId = fixture.ProjectId, operationId = Guid.NewGuid(),
+            dryRun = false, targets = new[] { new { chatId = fixture.ChatId, revision = chat!.Revision } } };
+        var applied = await AppFixture.CallAsync(session, "app_chats", arguments);
+        applied.GetProperty("applied").GetBoolean().ShouldBeTrue();
+        var replay = await AppFixture.CallAsync(session, "app_chats", arguments);
+        replay.GetProperty("replayed").GetBoolean().ShouldBeTrue();
+        confirmations.ShouldBe(1);
+        (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.ArchiveOperationId.ShouldBe(arguments.operationId);
+    }
+
     private sealed class AppFixture : IAsyncDisposable
     {
         private readonly AppToolsComposition _composition;

@@ -93,6 +93,8 @@ public sealed class AppReadTool(
             {
                 SerializerOptions = reply.Json,
                 Description = "Read this application's own data: projects, chats, messages, runs, resources and global settings. "
+                              + "Chats and Search accept archiveScope (Active by default, Archived or All). Chats accept "
+                              + "activityBefore (exclusive) and activityAfter (inclusive), with explicit time zone offsets, filtering LastActivityAt before paging. "
                               + "'Projects' and 'Settings' need no ids. 'Project', 'Chats', 'Resources', 'Chat', 'Messages', "
                               + "'Reviews' and 'Review' use projectId; the last four also use chatId, and 'Review' needs resourceId. "
                               + "'ConnectionModels' fetches the provider's model catalog: resourceId selects a saved connection "
@@ -125,9 +127,12 @@ public sealed class AppReadTool(
             bool isRegex = false,
             bool ignoreCase = true,
             string[]? roles = null,
+            ChatArchiveScope archiveScope = ChatArchiveScope.Active,
+            DateTimeOffset? activityBefore = null,
+            DateTimeOffset? activityAfter = null,
             CancellationToken cancellationToken = default) =>
             tool.ReadAsync(run, resource, projectId, chatId, branchId, resourceId, cursor, limit, query, isRegex,
-                ignoreCase, roles, cancellationToken);
+                ignoreCase, roles, archiveScope, activityBefore, activityAfter, cancellationToken);
     }
 
     private async Task<CallToolResult> ReadAsync(
@@ -143,6 +148,9 @@ public sealed class AppReadTool(
         bool isRegex = false,
         bool ignoreCase = true,
         string[]? roles = null,
+        ChatArchiveScope archiveScope = ChatArchiveScope.Active,
+        DateTimeOffset? activityBefore = null,
+        DateTimeOffset? activityAfter = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -157,9 +165,9 @@ public sealed class AppReadTool(
                 chatId ??= run.ChatId;
             if (resource == AppResource.Search)
                 return reply.Reply(await SearchAsync(projectId, chatId, branchId, cursor, limit, query, isRegex, ignoreCase,
-                    roles, cancellationToken));
+                    roles, archiveScope, cancellationToken));
             return reply.Reply(await PageAsync(resource, projectId, chatId, branchId, resourceId, cursor, limit, query,
-                cancellationToken));
+                archiveScope, activityBefore, activityAfter, cancellationToken));
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
@@ -173,12 +181,12 @@ public sealed class AppReadTool(
     /// </summary>
     private async Task<AppReadResult> SearchAsync(
         Guid? projectId, Guid? chatId, Guid? branchId, string? cursor, int limit, string? query,
-        bool isRegex, bool ignoreCase, string[]? roles, CancellationToken cancellationToken)
+        bool isRegex, bool ignoreCase, string[]? roles, ChatArchiveScope archiveScope, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(query))
             throw new ArgumentException("'query' is required to search.", nameof(query));
         var found = await search.SearchAsync(new ChatSearchRequest(query, projectId, chatId, branchId,
-            isRegex, ignoreCase, roles, null, null, limit, cursor), cancellationToken);
+            isRegex, ignoreCase, roles, null, null, limit, cursor, archiveScope), cancellationToken);
         if (found.Error is { } error) throw new ArgumentException(error, nameof(query));
         var items = found.Matches
             .Select(match => JsonSerializer.SerializeToElement(match, reply.Json))
@@ -190,7 +198,7 @@ public sealed class AppReadTool(
 
     private async Task<AppReadResult> PageAsync(
         AppResource resource, Guid? projectId, Guid? chatId, Guid? branchId, Guid? resourceId, string? cursor, int limit,
-        string? query, CancellationToken cancellationToken)
+        string? query, ChatArchiveScope archiveScope, DateTimeOffset? activityBefore, DateTimeOffset? activityAfter, CancellationToken cancellationToken)
     {
         switch (resource)
         {
@@ -203,7 +211,11 @@ public sealed class AppReadTool(
                 return Paging.Page("Project", [project], cursor, limit, reply.Json);
             }
             case AppResource.Chats:
-                return Paging.Page("Chats", await chats.ListAsync(Required(projectId, nameof(projectId)), cancellationToken), cursor, limit, reply.Json);
+                return Paging.Page("Chats", (await chats.ListAsync(Required(projectId, nameof(projectId)), cancellationToken))
+                    .Where(chat => archiveScope == ChatArchiveScope.All || (chat.ArchivedAt is not null) == (archiveScope == ChatArchiveScope.Archived))
+                    .Where(chat => activityBefore is not { } before || chat.LastActivityAt < before)
+                    .Where(chat => activityAfter is not { } after || chat.LastActivityAt >= after)
+                    .ToArray(), cursor, limit, reply.Json);
             case AppResource.Chat:
             {
                 var chat = await LoadChatAsync(projectId, chatId, cancellationToken);

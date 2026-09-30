@@ -5,7 +5,10 @@ using AI.Contracts.Chats;
 public interface IChatHistoryApi
 {
     Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken);
-    Task<ChatSearchResult> SearchAsync(string query, Guid? projectId, CancellationToken cancellationToken);
+    Task<ChatSearchResult> SearchAsync(string query, Guid? projectId, CancellationToken cancellationToken, bool includeArchived = false);
+    Task<ChatArchivePreview> PreviewArchiveAsync(Guid projectId, ChatArchivePreviewRequest request, CancellationToken token);
+    Task<ChatArchiveResult> ArchiveAsync(Guid projectId, ChatArchiveRequest request, CancellationToken token);
+    Task<ChatArchiveResult> UndoArchiveAsync(Guid projectId, Guid operationId, CancellationToken token);
     Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task<ChatDetails?> GetTranscriptAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task<ChatTurnActivity?> GetTurnActivityAsync(Guid projectId, Guid chatId, Guid turnId, Guid branchLeafId, CancellationToken cancellationToken);

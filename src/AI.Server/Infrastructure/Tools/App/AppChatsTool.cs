@@ -4,6 +4,7 @@ using AI.Application.Chats;
 using AI.Application.Runs;
 using AI.Application.Tools;
 using AI.Contracts.Chats;
+using AI.Contracts.Runs;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
@@ -12,6 +13,15 @@ public enum ChatOperation
 {
     /// <summary>Start a new chat in a project. Needs 'title'; 'revision' is ignored.</summary>
     Create,
+
+    /// <summary>Archive one chat, preserving history and pin order.</summary>
+    Archive,
+    /// <summary>Restore one chat from the archive.</summary>
+    Restore,
+    /// <summary>Preview old chats by activityBefore; apply explicit targets with dryRun false after user confirmation.</summary>
+    ArchiveBatch,
+    /// <summary>Restore chats archived by archiveOperationId.</summary>
+    UndoArchive,
 
     /// <summary>Change a chat's title. Needs 'chatId', 'title' and 'revision'.</summary>
     Rename,
@@ -38,24 +48,46 @@ public enum ChatOperation
 /// is what keeps that loop from having to be built all at once � every tool here does the same.
 /// </remarks>
 [McpServerToolType]
-public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> runs, IAppWrites writes, IAppToolReply reply) : IAppTool
+public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> runs, IAppWrites writes, IAppToolReply reply, IChatArchiveService archive, Func<IUserPromptBroker> prompts) : IAppTool
 {
-    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => McpServerTool.Create(
-        ChatsAsync,
-        new McpServerToolCreateOptions
-        {
-            SerializerOptions = reply.Json,
-            Description = "Create and change this application's chats and branches. Read the chat with 'app_read' first and pass the "
-                          + "'revision' you saw: a stale revision changes nothing and reports the current one back. 'operationId' must "
-                          + "be a fresh UUID per distinct change, and the same UUID when repeating one that may already have landed. "
-                          + "Only 'Delete' and 'DeleteBranch' understand 'dryRun', and they rehearse by default: they describe "
-                          + "what they would do and change nothing until 'dryRun' is false. Every other operation applies straight "
-                          + "away and rejects 'dryRun: true' rather than quietly ignoring it."
-        });
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(this, run, reply).Create();
 
-    [McpServerTool(Name = "app_chats", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false,
-        UseStructuredContent = true, OutputSchemaType = typeof(AppWriteResult))]
+    private sealed class Session(AppChatsTool tool, ToolRunContext run, IAppToolReply reply)
+    {
+        public McpServerTool Create() => McpServerTool.Create(
+            ChatsAsync,
+            new McpServerToolCreateOptions
+            {
+                SerializerOptions = reply.Json,
+                Description = "Create and change this application's chats and branches. Read the chat with 'app_read' first and pass the "
+                              + "'revision' you saw: a stale revision changes nothing and reports the current one back. 'operationId' must "
+                              + "be a fresh UUID per distinct change, and the same UUID when repeating one that may already have landed. "
+                              + "Archive and Restore change one explicitly named chat using its revision, even while running; archiving does not stop it. ArchiveBatch previews chats before activityBefore "
+                              + "(an ISO timestamp with time zone offset), excluding pinned unless includePinned is true. If the project or "
+                              + "cutoff is ambiguous, ask_user first. Apply the preview's explicit targets with dryRun false; the tool asks "
+                              + "the user to confirm and does nothing without an affirmative answer. Supply confirmationText, confirmLabel and cancelLabel in the user's language.  UndoArchive restores exactly the "
+                              + "chats still marked with archiveOperationId, including after restart. "
+                              + "Only 'Delete', 'DeleteBranch' and 'ArchiveBatch' understand 'dryRun', and they rehearse by default: they describe "
+                              + "what they would do and change nothing until 'dryRun' is false. Every other operation applies straight "
+                              + "away and rejects 'dryRun: true' rather than quietly ignoring it."
+            });
+
+        [McpServerTool(Name = "app_chats", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false,
+            UseStructuredContent = true, OutputSchemaType = typeof(AppWriteResult))]
+        private Task<CallToolResult> ChatsAsync(
+            ChatOperation operation, Guid projectId, Guid operationId,
+            Guid? chatId = null, Guid? branchId = null, string? title = null,
+            bool isPinned = false, Guid? connectionId = null, long revision = 0, bool? dryRun = null,
+            DateTimeOffset? activityBefore = null, bool includePinned = false,
+            ChatArchiveTarget[]? targets = null, Guid? archiveOperationId = null,
+            string? confirmationText = null, string? confirmLabel = null, string? cancelLabel = null,
+            CancellationToken cancellationToken = default) =>
+            tool.ChatsAsync(run, operation, projectId, operationId, chatId, branchId, title, isPinned, connectionId,
+                revision, dryRun, activityBefore, includePinned, targets, archiveOperationId, confirmationText, confirmLabel, cancelLabel, cancellationToken);
+    }
+
     private Task<CallToolResult> ChatsAsync(
+        ToolRunContext run,
         ChatOperation operation,
         Guid projectId,
         Guid operationId,
@@ -66,16 +98,23 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
         Guid? connectionId = null,
         long revision = 0,
         bool? dryRun = null,
+        DateTimeOffset? activityBefore = null, bool includePinned = false,
+        ChatArchiveTarget[]? targets = null, Guid? archiveOperationId = null,
+        string? confirmationText = null, string? confirmLabel = null, string? cancelLabel = null,
         CancellationToken cancellationToken = default) =>
         writes.RunAsync(operation.ToString(), operationId, builder => operation switch
         {
-            // Unspecified means "the operation's own default", which is a rehearsal for the two
+            // Unspecified means "the operation's own default", which is a rehearsal for the three
             // that can delete and nothing at all for the rest. Asking for one where it cannot
             // happen is refused rather than ignored: silently applying a change the caller
             // believed it was only rehearsing is the worst of the three outcomes.
-            _ when dryRun == true && operation is not (ChatOperation.Delete or ChatOperation.DeleteBranch) =>
+            _ when dryRun == true && operation is not (ChatOperation.Delete or ChatOperation.DeleteBranch or ChatOperation.ArchiveBatch) =>
                 throw new ArgumentException(
-                    $"'{operation}' cannot be rehearsed; only Delete and DeleteBranch honour 'dryRun'.", nameof(dryRun)),
+                    $"'{operation}' cannot be rehearsed; only Delete, DeleteBranch and ArchiveBatch honour 'dryRun'.", nameof(dryRun)),
+            ChatOperation.Archive => ArchiveAsync(builder, projectId, operationId, chatId, revision, true, cancellationToken),
+            ChatOperation.Restore => ArchiveAsync(builder, projectId, operationId, chatId, revision, false, cancellationToken),
+            ChatOperation.ArchiveBatch => ArchiveBatchAsync(builder, run, projectId, operationId, activityBefore, includePinned, targets, dryRun ?? true, confirmationText, confirmLabel, cancelLabel, cancellationToken),
+            ChatOperation.UndoArchive => UndoArchiveAsync(builder, projectId, archiveOperationId, cancellationToken),
             ChatOperation.Create => CreateAsync(builder, projectId, title, connectionId, cancellationToken),
             ChatOperation.Rename => RenameAsync(builder, projectId, chatId, title, revision, cancellationToken),
             ChatOperation.Pin => PinAsync(builder, projectId, chatId, isPinned, revision, cancellationToken),
@@ -85,6 +124,55 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
             ChatOperation.DeleteBranch => DeleteBranchAsync(builder, projectId, chatId, branchId, revision, dryRun ?? true, cancellationToken),
             _ => throw new ArgumentException("Unknown operation.", nameof(operation)),
         });
+
+    private async Task<AppWriteResult> ArchiveAsync(AppWriteBuilder builder, Guid projectId, Guid operationId,
+        Guid? chatId, long revision, bool archived, CancellationToken token)
+    {
+        var result = await archive.ApplyAsync(projectId,
+            new ChatArchiveRequest(archived, operationId, [new(Required(chatId, nameof(chatId)), revision)], SkipBusy: false), token);
+        return ArchiveReply(builder, projectId, result);
+    }
+
+    private async Task<AppWriteResult> ArchiveBatchAsync(AppWriteBuilder builder, ToolRunContext run,
+        Guid projectId, Guid operationId, DateTimeOffset? before, bool includePinned,
+        ChatArchiveTarget[]? targets, bool dryRun, string? confirmationText, string? confirmLabel, string? cancelLabel, CancellationToken token)
+    {
+        if (dryRun)
+        {
+            var preview = await archive.PreviewAsync(projectId,
+                new ChatArchivePreviewRequest(before ?? throw new ArgumentException("Specify activityBefore, including its time zone offset."), includePinned), token);
+            return builder.Planned($"Found {preview.Chats.Count} eligible chats; {preview.Skipped} need attention. "
+                + "Pass the selected chat ids and revisions as targets to apply this preview.", projectId,
+                current: Element(preview, reply.Json));
+        }
+        if (targets is not { Length: > 0 } || targets.Length > 500)
+            return builder.Failed("Pass 1 to 500 explicit targets from the preview.", projectId);
+        if (!run.Interactive) return builder.Failed("Batch archiving requires an interactive user confirmation.", projectId);
+        var listed = (await chats.ListAsync(projectId, token)).Where(chat => targets.Any(target => target.ChatId == chat.Id)).ToArray();
+        var names = string.Join(", ", listed.Take(6).Select(chat => chat.Title));
+        var answer = await prompts().AskAsync(run, new UserPromptRequest([
+            new UserPromptQuestion("archive", (confirmationText is { Length: > 0 and <= 400 } ? confirmationText : "Archive selected chats?")
+                + $"\n{targets.DistinctBy(target => target.ChatId).Count()} · {names}",
+                "Archive", [new UserPromptOption(confirmLabel is { Length: > 0 and <= 80 } ? confirmLabel : "Archive selected", null), new UserPromptOption(cancelLabel is { Length: > 0 and <= 80 } ? cancelLabel : "Cancel", null)], false, false)
+        ]), TimeSpan.FromMinutes(15), token);
+        if (answer.Outcome != UserPromptOutcome.Answered
+            || !answer.Answers.Any(answer => answer.QuestionId == "archive" && answer.Selected.SequenceEqual([0])))
+            return builder.Failed("Archiving was not confirmed. Nothing was changed.", projectId);
+        return ArchiveReply(builder, projectId,
+            await archive.ApplyAsync(projectId, new ChatArchiveRequest(true, operationId, targets), token));
+    }
+
+    private async Task<AppWriteResult> UndoArchiveAsync(AppWriteBuilder builder, Guid projectId, Guid? operationId, CancellationToken token) =>
+        ArchiveReply(builder, projectId, await archive.UndoAsync(projectId, Required(operationId, nameof(operationId)), token));
+
+    private AppWriteResult ArchiveReply(AppWriteBuilder builder, Guid projectId, ChatArchiveResult result) =>
+        result.Changed.Count > 0
+            ? builder.Applied($"Changed {result.Changed.Count} chats; skipped {result.Skipped.Count}. "
+                + $"Archive operation: {result.OperationId}.", projectId, current: Element(result, reply.Json))
+            : result.Skipped.Count > 0
+                ? builder.Failed(string.Join(" ", result.Skipped.Select(item => item.Reason).Distinct()), projectId)
+                    with { Current = Element(result, reply.Json) }
+                : builder.Planned("No chats needed changing.", projectId, current: Element(result, reply.Json));
 
     private async Task<AppWriteResult> CreateAsync(
         AppWriteBuilder builder, Guid projectId, string? title, Guid? connectionId, CancellationToken cancellationToken)

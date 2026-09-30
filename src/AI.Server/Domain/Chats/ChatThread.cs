@@ -40,6 +40,8 @@ public sealed class ChatThread
     public DateTimeOffset CreatedAt { get; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset LastActivityAt { get; private set; }
+    public DateTimeOffset? ArchivedAt { get; private set; }
+    public Guid? ArchiveOperationId { get; private set; }
     public bool IsPinned { get; private set; }
     public DateTimeOffset? PinnedAt { get; private set; }
     /// <summary>The chat's place among the pinned chats of its project, as a key made by <c>IPinOrderKeys</c>;
@@ -129,6 +131,21 @@ public sealed class ChatThread
         if (!AutoTitlePending) return false;
         Rename(title, updatedAt);
         return true;
+    }
+
+    public void SetArchived(bool archived, Guid operationId, DateTimeOffset at)
+    {
+        EnsureTimestampDoesNotMoveBackwards(at);
+        if ((ArchivedAt is not null) == archived) return;
+        ArchivedAt = archived ? at : null;
+        ArchiveOperationId = archived ? operationId : null;
+        UpdatedAt = at;
+    }
+
+    public void RestoreArchiveState(DateTimeOffset? archivedAt, Guid? operationId)
+    {
+        ArchivedAt = archivedAt;
+        ArchiveOperationId = archivedAt is null ? null : operationId;
     }
 
     public void RestoreAutoTitlePending(bool pending) => AutoTitlePending = pending;

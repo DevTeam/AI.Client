@@ -268,7 +268,7 @@
                     {
                         <div class="archive-suggestion" role="status"><span>@_archiveSuggestionCount chats inactive for 30 days</span><button type="button" @onclick="() => OpenArchive(true)">Review</button><button class="icon-action" type="button" aria-label="Dismiss cleanup suggestion" @onclick="DismissArchiveSuggestionAsync"><AppIcon Name="x" /></button></div>
                     }
-                    <button class="workspace-nav-item" type="button" @onclick="() => OpenArchive(false)"><AppIcon Name="archive" /><span class="nav-item-label">Archive · @_chats.Count(chat => chat.ArchivedAt is not null)</span></button>
+                    <button class="workspace-nav-item archive-nav-item" type="button" @onclick="() => OpenArchive(false)"><AppIcon Name="archive" /><span class="nav-item-label">Archive · @_chats.Count(chat => chat.ArchivedAt is not null)</span></button>
                 </nav>
                 <div class="directory-nav-group">
                     @if (_security.DirectoryGrants.Count == 0)

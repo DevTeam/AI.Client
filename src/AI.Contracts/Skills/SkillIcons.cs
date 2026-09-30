@@ -30,6 +30,11 @@ public static class SkillIcons
         "file", "file-text", "folder", "folder-plus", "folder-minus", "project", "package", "database",
         "memory", "eraser", "scroll", "book", "tag", "link", "globe", "languages",
         "mail", "users", "calendar", "clock", "chart", "image", "archive", "trash",
-        "download", "import", "export", "refresh", "settings"
+        "download", "import", "export", "refresh", "settings",
+        "cpu", "circuit-board", "server", "network", "cloud", "cloud-upload", "hard-drive", "monitor", "smartphone", "wifi",
+        "workflow", "git-merge", "git-commit", "brackets", "regex", "binary", "variable", "puzzle", "blocks", "filter",
+        "clipboard", "clipboard-check", "file-code", "file-search", "notebook", "graduation-cap", "bookmark", "library", "table", "calculator",
+        "chart-line", "chart-pie", "trending-up", "gauge", "activity", "timer", "alarm", "calendar-check", "repeat", "history",
+        "palette", "brush", "pen-tool", "crop", "camera", "video", "microphone", "headphones", "music", "map"
     ];
 }

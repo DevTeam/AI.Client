@@ -152,6 +152,12 @@ export function attach(strip, scroller, scrollKey) {
     let offsets = [];
     let measuredHeight = -1;
     let hoverY = null;
+    // Sentinel: the nearest marker the cursor was on the LAST time a ratchet tick could have
+    // fired. Cleared on mouseleave so the next entry into the strip plays its first tick even
+    // when it lands on the same marker the cursor was on before — without this reset, lifting
+    // the cursor off the strip and putting it back on the same mark (or one close by) would
+    // play nothing, and the strip would feel "broken" until the cursor actually moved.
+    let lastRatchetIndex = null;
     let scrollPersistTimer = null;
     // Lives as a sibling of the strip, not inside it: the strip clips its own overflow-x to
     // support the internal auto-scroll, which would hide a tooltip anchored inside it.
@@ -352,6 +358,17 @@ export function attach(strip, scroller, scrollKey) {
                 const distance = Math.abs(centers[index] - hoverY);
                 if (distance < nearestDistance) { nearestDistance = distance; nearestIndex = index; }
             }
+            // Ratchet: a tick on each CROSS into a new marker, not on every pixel of movement.
+            // lastRatchetIndex starts as null so the cursor's first entry into the strip also
+            // ticks (see the reset in onMouseLeave below — without that, leaving and re-entering
+            // the same strip at the same mark would play nothing). window.aiClientPlayRatchetTick
+            // is defined by js/hoverSound.js (loaded as a plain script in index.html); the feature
+            // gracefully no-ops when the page has not loaded the script yet, or when the browser
+            // has blocked audio until a user gesture.
+            if (lastRatchetIndex !== nearestIndex && typeof window.aiClientPlayRatchetTick === "function") {
+                window.aiClientPlayRatchetTick();
+                lastRatchetIndex = nearestIndex;
+            }
             for (let index = 0; index < list.length; index++) {
                 const falloff = Math.max(0, 1 - Math.abs(centers[index] - hoverY) / HoverReachPx);
                 const eased = falloff * falloff;
@@ -377,6 +394,12 @@ export function attach(strip, scroller, scrollKey) {
 
     const onMouseLeave = () => {
         hoverY = null;
+        // Reset so the next entry into the strip plays its first tick, even when the cursor
+        // comes back to the same marker it left from. With this null the render() in the
+        // hover branch above ticks on the very first mousemove of any new hover (because
+        // lastRatchetIndex is null !== nearestIndex); without it, a hover that never crosses
+        // a marker boundary would be silent from entry to exit.
+        lastRatchetIndex = null;
         render();
     };
 

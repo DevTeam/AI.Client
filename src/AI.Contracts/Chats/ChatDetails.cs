@@ -13,4 +13,5 @@ public sealed record ChatDetails(
     IReadOnlyList<AI.Contracts.Projects.ToolPolicySettings>? ToolPolicies = null,
     bool AutoTitlePending = false,
     DateTimeOffset? ArchivedAt = null,
-    Guid? ArchiveOperationId = null);
+    Guid? ArchiveOperationId = null,
+    ToolApprovalMode ApprovalMode = ToolApprovalMode.Ask);

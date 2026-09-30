@@ -1,0 +1,79 @@
+@using AI.Contracts.Chats
+
+<div class="composer-approval" @onkeydown="OnKeyDown">
+    <button class="composer-approval-trigger @ModeClass(Mode)" type="button" title="Change permissions" aria-label="Tool permissions: @Title(Mode)"
+            aria-haspopup="true" aria-expanded="@(_isOpen ? "true" : "false")" disabled="@Disabled" @onclick="Toggle">
+        <AppIcon Name="@Icon(Mode)" />
+        <span>@Title(Mode)</span>
+    </button>
+    @if (_isOpen)
+    {
+        <div class="context-menu-backdrop" @onclick="Close"></div>
+        <div class="composer-approval-menu" role="menu" aria-label="Tool permissions">
+            <span class="composer-approval-menu-label">How should tool calls be approved?</span>
+            @foreach (var mode in Modes)
+            {
+                var selected = mode == Mode;
+                <button type="button" role="menuitemradio" aria-checked="@(selected ? "true" : "false")"
+                        class="@ModeClass(mode) @(selected ? "selected" : null)" @onclick="() => SelectAsync(mode)">
+                    <AppIcon Name="@Icon(mode)" />
+                    <span class="composer-approval-option">
+                        <strong>@Title(mode)</strong>
+                        <span>@Description(mode)</span>
+                    </span>
+                    @if (selected) { <AppIcon Name="check" Class="composer-approval-check" /> }
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly ToolApprovalMode[] Modes = [ToolApprovalMode.Ask, ToolApprovalMode.Auto, ToolApprovalMode.FullAccess];
+
+    private bool _isOpen;
+
+    [Parameter] public ToolApprovalMode Mode { get; set; }
+
+    [Parameter] public EventCallback<ToolApprovalMode> ModeChanged { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    private static string Title(ToolApprovalMode mode) => mode switch
+    {
+        ToolApprovalMode.Auto => "Approve for me",
+        ToolApprovalMode.FullAccess => "Full access",
+        _ => "Ask for approval"
+    };
+
+    private static string Description(ToolApprovalMode mode) => mode switch
+    {
+        ToolApprovalMode.Auto => "Only ask for calls a risk check finds potentially unsafe",
+        ToolApprovalMode.FullAccess => "Run every tool call without asking",
+        _ => "Ask before every tool call that is not allowed yet"
+    };
+
+    private static string Icon(ToolApprovalMode mode) => mode switch
+    {
+        ToolApprovalMode.Auto => "shield",
+        ToolApprovalMode.FullAccess => "shield-alert",
+        _ => "hand"
+    };
+
+    private static string ModeClass(ToolApprovalMode mode) => mode == ToolApprovalMode.FullAccess ? "is-full-access" : string.Empty;
+
+    private void Toggle() => _isOpen = !_isOpen;
+
+    private void Close() => _isOpen = false;
+
+    private void OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") Close();
+    }
+
+    private async Task SelectAsync(ToolApprovalMode mode)
+    {
+        _isOpen = false;
+        if (mode != Mode) await ModeChanged.InvokeAsync(mode);
+    }
+}

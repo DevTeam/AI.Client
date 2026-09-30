@@ -27,7 +27,8 @@ public sealed class ChatRunDispatcher(
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies,
     IChatContextBuilder contextBuilder, IChatBranchIds branchIds, IResourceService resources, IReviewService reviews,
     IResourceModelProjection resourceProjection, IMemoryService memory, IProjectInstructionsService projectInstructions,
-    ISkillRunner skillRunner, ISkillCatalog skillCatalog, IChatReplySuggestions replySuggestions)
+    ISkillRunner skillRunner, ISkillCatalog skillCatalog, IChatReplySuggestions replySuggestions,
+    IToolAutoApprover autoApprover)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -636,11 +637,16 @@ public sealed class ChatRunDispatcher(
     private async Task<ToolApprovalAction> ApproveAsync(Runtime runtime, AgentTool tool, string arguments, long timeout,
         ToolCallPosition position, CancellationToken token)
     {
+        var (projectId, chatId, branchId) = (runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId);
+        // The chat's mode answers first; a card is only for what it leaves to the person.
+        var automatic = await autoApprover.DecideAsync(projectId, chatId, branchId, tool, arguments, token);
+        if (automatic.Allowed) return ToolApprovalAction.Allow;
+        var mode = await autoApprover.ModeAsync(projectId, chatId, token);
         var completion = new TaskCompletionSource<ToolApprovalAction>(TaskCreationOptions.RunContinuationsAsynchronously);
         using (await synchronization.EnterAsync(runtime.State.ChatId, token))
         {
             runtime.PendingApproval = new ToolApproval(ids.Create(), tool.ServerId, tool.OriginalName,
-                tool.SchemaHash, arguments, timeout, position.Index, position.BatchSize);
+                tool.SchemaHash, arguments, timeout, position.Index, position.BatchSize, automatic.Reason);
             runtime.Approval = completion;
             runtime.State.Append("");
             await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
@@ -658,6 +664,14 @@ public sealed class ChatRunDispatcher(
                     tool.ServerId, tool.OriginalName, tool.SchemaHash, token);
                 if (policy.Decision == "Allow") return ToolApprovalAction.Allow;
                 if (policy.Decision == "Deny") return ToolApprovalAction.Deny;
+                // Switching the chat's mode while the card waits answers it too: Full access lets the
+                // call through, and "Approve for me" gets the one assessment it would have had.
+                var current = await autoApprover.ModeAsync(projectId, chatId, token);
+                if (current == mode) continue;
+                mode = current;
+                if (current != ToolApprovalMode.Ask
+                    && (await autoApprover.DecideAsync(projectId, chatId, branchId, tool, arguments, token)).Allowed)
+                    return ToolApprovalAction.Allow;
             }
         }
         finally

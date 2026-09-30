@@ -15,6 +15,7 @@ public interface IChatHistoryApi
     Task<ChatMessageContent?> GetMessageContentAsync(Guid projectId, Guid chatId, Guid messageId, CancellationToken cancellationToken);
     Task<ChatDetails> CreateAsync(Guid projectId, CreateChatRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> UpdateEndpointAsync(Guid projectId, Guid chatId, UpdateChatEndpointRequest request, CancellationToken cancellationToken);
+    Task<ChatDetails?> UpdateApprovalModeAsync(Guid projectId, Guid chatId, UpdateChatApprovalModeRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> RenameAsync(Guid projectId, Guid chatId, RenameChatRequest request, CancellationToken cancellationToken);
     Task<ChatSummary?> PinAsync(Guid projectId, Guid chatId, PinChatRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> RenameBranchAsync(Guid projectId, Guid chatId, Guid branchId, RenameChatBranchRequest request, CancellationToken cancellationToken);

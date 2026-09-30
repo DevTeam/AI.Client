@@ -551,6 +551,7 @@
                         </div>
                     }
                 </div>
+                <ApprovalModePicker Mode="@GetApprovalMode()" ModeChanged="SetApprovalModeAsync" Disabled="@(_selectedProject is null)" />
                 <div class="composer-endpoint">
                     <button class="composer-endpoint-trigger" type="button" title="Endpoint for this chat" aria-label="Endpoint for this chat" aria-haspopup="true" aria-expanded="@(_isEndpointMenuOpen ? "true" : "false")" @onclick="ToggleEndpointMenu" disabled="@(_connections.Count == 0)">
                         <span>@GetEndpointDisplayName()</span>
@@ -879,6 +880,8 @@
     private Guid? _confirmingBranchDeleteId;
     private Guid? _messageBranchMenuId;
     private bool _isEndpointMenuOpen;
+    // The mode a chat not created yet will start in; a created chat carries its own.
+    private ToolApprovalMode _newChatApprovalMode = ToolApprovalMode.Ask;
     private Guid? _editingProjectId;
     private bool _isCreatingProject;
     private string _newProjectName = string.Empty;
@@ -2476,7 +2479,8 @@
                 _chat.Message,
                 GetSelectedRun(),
                 _selectedChat is null ? null : GetSelectedRunBranchId(),
-                SubmittedResources());
+                SubmittedResources(),
+                _newChatApprovalMode);
 
             var outcome = await Composer.SubmitAsync(request, CancellationToken.None);
 
@@ -4611,6 +4615,35 @@
                 new UpdateChatEndpointRequest(_chat.CredentialProfileId, _selectedChat.Revision),
                 CancellationToken.None);
             Notifications.ShowSuccess("Chat endpoint updated.");
+        }
+    }
+
+    private ToolApprovalMode GetApprovalMode() => _selectedChat?.ApprovalMode ?? _newChatApprovalMode;
+
+    private async Task SetApprovalModeAsync(ToolApprovalMode mode)
+    {
+        if (_selectedProject is null) return;
+        if (_selectedChat is not { } chat)
+        {
+            _newChatApprovalMode = mode;
+            return;
+        }
+        try
+        {
+            var updated = await ChatHistoryApi.UpdateApprovalModeAsync(_selectedProject.Id, chat.Id,
+                new UpdateChatApprovalModeRequest(mode), CancellationToken.None);
+            if (updated is null)
+            {
+                Notifications.ShowError("The chat no longer exists.");
+                return;
+            }
+            // Only the mode and the revision it was saved at: the page keeps the transcript it loaded.
+            if (_selectedChat?.Id == updated.Id)
+                _selectedChat = _selectedChat with { ApprovalMode = updated.ApprovalMode, Revision = Math.Max(_selectedChat.Revision, updated.Revision), UpdatedAt = updated.UpdatedAt };
+        }
+        catch (HttpRequestException error)
+        {
+            Notifications.ShowError($"Could not change tool permissions: {error.Message}");
         }
     }
 

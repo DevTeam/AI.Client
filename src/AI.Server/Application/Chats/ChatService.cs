@@ -149,6 +149,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             now,
             request.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null,
             request.AutoTitlePending);
+        if (request.ApprovalMode != ToolApprovalMode.Ask) chat.SetApprovalMode(ToDomain(request.ApprovalMode), now);
         var result = await repository.SaveAsync(chat, 0, cancellationToken);
         return ToDetails(chat, result.Revision);
     }
@@ -254,6 +255,38 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
+
+    public async Task<ChatDetails?> UpdateApprovalModeAsync(
+        Guid projectId,
+        Guid chatId,
+        UpdateChatApprovalModeRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        stored.Chat.SetApprovalMode(ToDomain(request.Mode), clock.UtcNow);
+        // Saved against the revision just read, under the chat's lease: a run appending messages
+        // must not turn the person's choice into a conflict they have to repeat.
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+    }
+
+    private static ChatApprovalMode ToDomain(ToolApprovalMode mode) => mode switch
+    {
+        ToolApprovalMode.Ask => ChatApprovalMode.Ask,
+        ToolApprovalMode.Auto => ChatApprovalMode.Auto,
+        ToolApprovalMode.FullAccess => ChatApprovalMode.FullAccess,
+        _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unknown approval mode.")
+    };
+
+    private static ToolApprovalMode ToContract(ChatApprovalMode mode) => mode switch
+    {
+        ChatApprovalMode.Auto => ToolApprovalMode.Auto,
+        ChatApprovalMode.FullAccess => ToolApprovalMode.FullAccess,
+        _ => ToolApprovalMode.Ask
+    };
 
     public async Task<ChatSummary?> PinAsync(
         Guid projectId,
@@ -437,7 +470,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
             policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
             policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
-        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId);
+        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode));
 
     private static ChatDetails ToTranscript(ChatThread chat, long revision)
     {
@@ -475,7 +508,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
                 policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
                 policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
-            chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId);
+            chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode));
     }
 
     private static bool IsPlainAssistant(ChatMessage message) =>

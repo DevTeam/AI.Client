@@ -10,7 +10,7 @@ public sealed class HistoryCheckpointServiceTests
 {
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid ChatId = Guid.NewGuid();
-    private readonly HistoryCheckpointService _service = new(new InMemoryHistoryCheckpoints());
+    private readonly HistoryCheckpointService _service = new(new InMemoryHistoryCheckpoints(), new ContextTokenEstimator());
 
     [Fact]
     public void ShouldReplaceHistoryUpToTheQuestionAfterTheCheckpointAndKeepInstructions()
@@ -73,8 +73,40 @@ public sealed class HistoryCheckpointServiceTests
             new("user", "q3", MessageId: Guid.NewGuid())
         ], Checkpoint(answer, "Summary"));
 
-        _service.Coverable(summarized, 2).ShouldBeEmpty();
-        _service.Coverable(summarized, 1).Select(message => message.Content).ShouldBe([summarized[0].Content, "q2", "a2"]);
+        _service.Coverable(summarized, new HistoryKeepPolicy(100_000, 2, 2)).ShouldBeEmpty();
+        _service.Coverable(summarized, new HistoryKeepPolicy(100_000, 1, 1)).Select(message => message.Content).ShouldBe([summarized[0].Content, "q2", "a2"]);
+    }
+
+    [Fact]
+    public void ShouldKeepRecentTurnsByTheirSizeNotByTheirNumber()
+    {
+        var huge = new string('x', 40_000);
+        ChatCompletionMessage[] context =
+        [
+            new("user", "q1", MessageId: Guid.NewGuid()), new("tool", huge, ToolCallId: "a", MessageId: Guid.NewGuid()),
+            new("user", "q2", MessageId: Guid.NewGuid()), new("tool", huge, ToolCallId: "b", MessageId: Guid.NewGuid()),
+            new("user", "q3", MessageId: Guid.NewGuid()), new("assistant", "short", MessageId: Guid.NewGuid())
+        ];
+
+        // Two huge turns and a small one: only the small one fits the budget, so both huge ones go.
+        _service.Coverable(context, new HistoryKeepPolicy(5_000, 0, 2)).Count.ShouldBe(4);
+        // Between turns nothing has to stay: a huge last turn is summarized with the rest.
+        _service.Coverable(context[..4], new HistoryKeepPolicy(5_000, 0, 2)).Count.ShouldBe(4);
+        // During a run the turn in progress stays, however large.
+        _service.Coverable(context[..4], new HistoryKeepPolicy(5_000, 1, 2)).Count.ShouldBe(2);
+        // Room for everything still leaves no more than the most recent turns.
+        _service.Coverable(context, new HistoryKeepPolicy(1_000_000, 0, 2)).Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public void ShouldApplyACheckpointCoveringTheWholeBranchOnceTheNextQuestionArrives()
+    {
+        var head = Guid.NewGuid();
+        ChatCompletionMessage[] before = [new("user", "q1", MessageId: Guid.NewGuid()), new("assistant", "a1", MessageId: head)];
+
+        var applied = _service.Apply([.. before, new("user", "q2")], Checkpoint(head, "Summary"));
+
+        applied.Select(message => message.Content).ShouldBe([HistoryCheckpointService.SummaryPrefix + "Summary", "q2"]);
     }
 
     [Fact]

@@ -18,7 +18,7 @@ public sealed class ModelContentCheckpointServiceTests
 
     public ModelContentCheckpointServiceTests()
     {
-        _history = new HistoryCheckpointService(_store);
+        _history = new HistoryCheckpointService(_store, new ContextTokenEstimator());
         var clock = new Mock<IClock>();
         clock.SetupGet(item => item.UtcNow).Returns(new DateTimeOffset(2026, 9, 30, 12, 0, 0, TimeSpan.Zero));
         var ids = new Mock<IIdGenerator>();
@@ -37,7 +37,7 @@ public sealed class ModelContentCheckpointServiceTests
             new("tool", largeResult, ToolCallId: "read-1"),
             new("assistant", "", [new ChatToolCall("compact-1", "app_context_compact", "{}")])
         ];
-        using var scope = _service.Begin(_run, "m", (_, _) => Task.FromResult("Read the file and found the cause."));
+        using var scope = _service.Begin(_run, "m", 100_000, (_, _) => Task.FromResult("Read the file and found the cause."));
         _service.Update(_run, beforeCall);
 
         var result = await _service.CompactAsync(_run, 500, ContextCompactionScope.Turn, CancellationToken.None);
@@ -70,7 +70,7 @@ public sealed class ModelContentCheckpointServiceTests
             }),
             new("assistant", "", [new ChatToolCall("compact-1", "app_context_compact", "{}")])
         ];
-        using var scope = _service.Begin(_run, "m", (prompt, _) =>
+        using var scope = _service.Begin(_run, "m", 100_000, (prompt, _) =>
         {
             prompts.Add(prompt);
             return Task.FromResult("summary");
@@ -98,7 +98,7 @@ public sealed class ModelContentCheckpointServiceTests
             new("user", "Third question", MessageId: Guid.NewGuid()),
             new("assistant", "", [new ChatToolCall("compact-1", "app_context_compact", "{}")])
         ];
-        using var scope = _service.Begin(_run, "model-x", (_, _) => Task.FromResult("They talked about the first question."));
+        using var scope = _service.Begin(_run, "model-x", 100_000, (_, _) => Task.FromResult("They talked about the first question."));
         _service.Update(_run, context);
 
         _service.Preview(_run, ContextCompactionScope.History).CoveredMessages.ShouldBe(2);
@@ -131,7 +131,7 @@ public sealed class ModelContentCheckpointServiceTests
             new("assistant", "Answer", MessageId: Guid.NewGuid()),
             new("user", "Follow-up", MessageId: Guid.NewGuid())
         ];
-        using var scope = _service.Begin(_run, "m", (_, _) => Task.FromResult("never"));
+        using var scope = _service.Begin(_run, "m", 100_000, (_, _) => Task.FromResult("never"));
         _service.Update(_run, context);
 
         var result = await _service.CompactAsync(_run, 500, ContextCompactionScope.History, CancellationToken.None);

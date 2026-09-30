@@ -9,8 +9,8 @@ public enum ContextCompactionScope
     /// <summary>The completed work of the current turn, for the rest of this run only.</summary>
     Turn,
     /// <summary>
-    /// The chat's earlier turns, all but the current one and the one before it. Kept as a history
-    /// checkpoint, so later turns start from the summary too.
+    /// The chat's earlier turns: all but the current one, and the one before it when it is small
+    /// enough to keep. Kept as a history checkpoint, so later turns start from the summary too.
     /// </summary>
     History
 }
@@ -18,7 +18,9 @@ public enum ContextCompactionScope
 public interface IModelContentCheckpointService
 {
     /// <param name="model">The model the summaries are written by, recorded on a kept checkpoint.</param>
-    IDisposable Begin(ToolRunContext run, string model, Func<string, CancellationToken, Task<string>> summarize);
+    /// <param name="historyKeepTokens">How much of the recent history a history compaction leaves in full.</param>
+    IDisposable Begin(ToolRunContext run, string model, long historyKeepTokens,
+        Func<string, CancellationToken, Task<string>> summarize);
     void Update(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context);
     IReadOnlyList<ChatCompletionMessage> Apply(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context);
 

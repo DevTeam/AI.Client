@@ -17,17 +17,18 @@ public sealed class ModelContentCheckpointService(
     IIdGenerator ids) : IModelContentCheckpointService
 {
     /// <summary>
-    /// What a history compaction leaves in full: the turn in progress and the one before it, which
-    /// is usually what the current request is about.
+    /// A history compaction always leaves the turn in progress, and the one before it when both fit
+    /// the run's keep budget: that is usually what the current request is about.
     /// </summary>
     private const int HistoryTurnsToKeep = 2;
 
     private readonly ConcurrentDictionary<Key, Entry> _entries = new();
 
-    public IDisposable Begin(ToolRunContext run, string model, Func<string, CancellationToken, Task<string>> summarize)
+    public IDisposable Begin(ToolRunContext run, string model, long historyKeepTokens,
+        Func<string, CancellationToken, Task<string>> summarize)
     {
         var key = Key.Of(run);
-        _entries[key] = new Entry(model, summarize);
+        _entries[key] = new Entry(model, new HistoryKeepPolicy(historyKeepTokens, 1, HistoryTurnsToKeep), summarize);
         return new Scope(() => _entries.TryRemove(key, out _));
     }
 
@@ -60,7 +61,7 @@ public sealed class ModelContentCheckpointService(
         if (!_entries.TryGetValue(Key.Of(run), out var entry)) return new(0, 0, false);
         if (scope == ContextCompactionScope.History)
         {
-            var coverable = history.Coverable(entry.Context, HistoryTurnsToKeep);
+            var coverable = history.Coverable(entry.Context, entry.Keep);
             return new(coverable.Count, coverable.Sum(message => (long)message.ForModel.Length), coverable.Count > 0);
         }
         var range = Range(entry.Context);
@@ -110,9 +111,9 @@ public sealed class ModelContentCheckpointService(
         // The context the run was given may already open with a summary; covering it again folds
         // the older summary into the new one.
         var context = entry.History is { } pinned ? history.Apply(entry.Context, pinned) : entry.Context;
-        var coverable = history.Coverable(context, HistoryTurnsToKeep);
+        var coverable = history.Coverable(context, entry.Keep);
         if (coverable.Count == 0)
-            return new(0, 0, 0, false, "Only the current and the previous turn are left; there is no earlier history to compact.");
+            return new(0, 0, 0, false, "Only the current turn and the recent ones kept in full are left; there is no earlier history to compact.");
         var summary = await summaryWriter.WriteAsync(coverable, targetTokens, new Summarizer(entry.Summarize), cancellationToken);
         var sourceCharacters = coverable.Sum(message => (long)message.ForModel.Length);
         if (summary is null) return new(coverable.Count, sourceCharacters, 0, false, "The compaction task returned no summary.");
@@ -149,9 +150,10 @@ public sealed class ModelContentCheckpointService(
         public static Key Of(ToolRunContext run) => new(run.ProjectId, run.ChatId, run.BranchId);
     }
 
-    private sealed class Entry(string model, Func<string, CancellationToken, Task<string>> summarize)
+    private sealed class Entry(string model, HistoryKeepPolicy keep, Func<string, CancellationToken, Task<string>> summarize)
     {
         public string Model { get; } = model;
+        public HistoryKeepPolicy Keep { get; } = keep;
         public Func<string, CancellationToken, Task<string>> Summarize { get; } = summarize;
         public IReadOnlyList<ChatCompletionMessage> Context { get; set; } = [];
         public Checkpoint? Checkpoint;

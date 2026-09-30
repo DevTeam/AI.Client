@@ -38,7 +38,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IRunCompletionProtocol completionProtocol, IToolSearchDefinitionEnricher toolSearchEnricher,
     IStandingInstructions standingInstructions, IContextTokenEstimator estimator, ISkillGuide skillGuide,
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
-    IClock clock, IIdGenerator ids) : IChatAgent
+    IClock clock, IIdGenerator ids, IConnectionContextLimitsResolver contextLimits) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -94,7 +94,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 $"This run: projectId {projectId}, chatId {chatId}, branchId {branchId}. The main branch id equals the chat id.",
                 900, ModelInstructionLifetime.Run));
         await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), token);
-        using var checkpointScope = checkpoints.Begin(run, request.Model, async (prompt, ct) =>
+        using var checkpointScope = checkpoints.Begin(run, request.Model, HistoryKeepTokens(configuredConnection), async (prompt, ct) =>
         {
             using var usageScope = usageMeter.Begin(new TokenUsageScope(TokenUsagePurpose.Checkpoint));
             return (await completion.CompleteAsync(request with
@@ -572,6 +572,16 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             }
         }
     }
+    /// <summary>
+    /// How much recent history a compaction leaves in full: a fifth of the input the connection
+    /// allows, so the kept turns cannot crowd out the room the compaction was meant to make.
+    /// </summary>
+    private long HistoryKeepTokens(ConnectionSettings? connection)
+    {
+        var limits = contextLimits.Resolve(connection);
+        return Math.Max(1_024, (limits.ContextWindowTokens - limits.ReservedOutputTokens) / 5);
+    }
+
     /// <summary>
     /// How many times a turn that produced nothing at all is asked again before the run gives up.
     /// Small on purpose: an endpoint that is genuinely answering nothing should be reported, not

@@ -20,7 +20,7 @@ public sealed class ChatContext(IToolResultCodec toolResultCodec, IResourceModel
             var role = message.Role.ToLowerInvariant();
             var modelContent = role == "tool" ? toolResultCodec.TryRead(message.Content)?.ModelContent : null;
             if (role == "user") modelContent = resources.Project(message.Content, message.Resources);
-            path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent));
+            path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent, message.Id));
             current = message.ParentId;
         }
         path.Reverse();
@@ -42,7 +42,7 @@ public sealed class ChatContext(IToolResultCodec toolResultCodec, IResourceModel
             var modelContent = role == "tool" ? toolResultCodec.TryRead(message.Content)?.ModelContent : null;
             if (role == "user") modelContent = await resources.ProjectAsync(chat.ProjectId, chat.Id,
                 message.Content, message.Resources, cancellationToken);
-            path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent));
+            path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent, message.Id));
             current = message.ParentId;
         }
         path.Reverse();

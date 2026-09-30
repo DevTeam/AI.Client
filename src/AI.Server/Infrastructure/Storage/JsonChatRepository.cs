@@ -102,6 +102,7 @@ public sealed class JsonChatRepository(
         if (revision != expectedRevision) return new ChatDeleteResult(false, revision);
         await fileSystem.DeleteAsync(path, cancellationToken);
         await fileSystem.DeleteAsync(paths.GetChatSummaryPath(id, projectId), cancellationToken);
+        await fileSystem.DeleteAsync(paths.GetHistoryCheckpointsPath(id, projectId), cancellationToken);
         return new ChatDeleteResult(true, revision);
     }
 }

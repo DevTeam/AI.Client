@@ -37,6 +37,7 @@
 @inject IComposerContextPresentation ContextPresentation
 @inject IClientSettingsService ClientSettings
 @inject IChatUsageStore ChatUsage
+@inject IHistoryCheckpointApi HistoryCheckpoints
 @inject IChatWidgetLayout WidgetLayout
 @inject IDelayedBusyIndicatorFactory BusyIndicatorFactory
 @inject NavigationManager Navigation
@@ -416,6 +417,8 @@
             SelectedRun="@GetSelectedRun()"
             ChatUsage="@(_selectedChat is null ? null : ChatUsage.Find(_selectedChat.Id))"
             ShowTurnTokens="@_showTurnTokens"
+            ActiveCheckpoint="@GetActiveCheckpoint()"
+            OnUndoCheckpoint="UndoCheckpointAsync"
             GeneratingElapsed="@GetGeneratingElapsed()"
             TranscriptRunPresentationVersion="@GetTranscriptRunPresentationVersion()"
             GetRunForBranch="@(messageId => _selectedChat is null ? null : GetRun(_selectedChat.Id, BranchLeafHelpers.RunBranchIdFor(messageId, _selectedChat)))"
@@ -607,7 +610,12 @@
                                          IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
                                          ConnectionName="@GetComposerConnection()?.Name"
                                          OnNewChat="CreateChatAsync"
-                                         OnOpenConnections='() => OpenGlobalSection("Connections")' />
+                                         OnOpenConnections='() => OpenGlobalSection("Connections")'
+                                         ActiveCheckpoint="@GetActiveCheckpoint()"
+                                         Compacting="@_compactingHistory"
+                                         CompactionNote="@(_compactionNoteChatId == widgetChat.Id ? _compactionNote : null)"
+                                         OnCompact="CompactHistoryAsync"
+                                         OnUndoCheckpoint="UndoCheckpointAsync" />
                         break;
                 }
             </WidgetTemplate>
@@ -2725,6 +2733,82 @@
         if (await ChatUsage.RefreshAsync(project.Id, chat.Id, CancellationToken.None)) await InvokeAsync(StateHasChanged);
     }
 
+    private bool _compactingHistory;
+    private string? _compactionNote;
+    private Guid? _compactionNoteChatId;
+    private (ChatDetails? Chat, Guid? Leaf, IReadOnlyList<HistoryCheckpoint>? Checkpoints, HistoryCheckpoint? Active) _activeCheckpoint;
+
+    /// <summary>
+    /// The history checkpoint the model's view of the visible branch starts from: of the chat's
+    /// checkpoints, the one covering the most of the path from the root to the shown leaf.
+    /// </summary>
+    private HistoryCheckpoint? GetActiveCheckpoint()
+    {
+        if (_selectedChat is not { } chat || _branchLeafId is not { } leaf) return null;
+        var checkpoints = ChatUsage.CheckpointsOf(chat.Id);
+        if (ReferenceEquals(_activeCheckpoint.Chat, chat) && _activeCheckpoint.Leaf == leaf
+            && ReferenceEquals(_activeCheckpoint.Checkpoints, checkpoints))
+            return _activeCheckpoint.Active;
+        HistoryCheckpoint? active = null;
+        if (checkpoints.Count > 0)
+        {
+            var byId = chat.Messages.ToDictionary(message => message.Id);
+            var covered = checkpoints.ToLookup(checkpoint => checkpoint.UpToMessageId);
+            var visited = new HashSet<Guid>();
+            // Walking up from the leaf, the first covered message is the deepest one on the path.
+            for (Guid? current = leaf; current is { } id && visited.Add(id) && byId.TryGetValue(id, out var message); current = message.ParentId)
+            {
+                if (!covered.Contains(id)) continue;
+                active = covered[id].MaxBy(checkpoint => checkpoint.CreatedAt);
+                break;
+            }
+        }
+        _activeCheckpoint = (chat, leaf, checkpoints, active);
+        return active;
+    }
+
+    private async Task CompactHistoryAsync()
+    {
+        if (_selectedProject is not { } project || _selectedChat is not { } chat || _compactingHistory) return;
+        _compactingHistory = true;
+        _compactionNote = null;
+        _compactionNoteChatId = chat.Id;
+        StateHasChanged();
+        try
+        {
+            var result = await HistoryCheckpoints.CompactAsync(project.Id, chat.Id, GetSelectedRunBranchId(), CancellationToken.None);
+            _compactionNote = result.Status == HistoryCompactionStatus.Compacted
+                ? "Compacted: the next request starts from the summary."
+                : result.Error ?? "The history could not be compacted.";
+            await RefreshChatUsageAsync();
+        }
+        catch (HttpRequestException)
+        {
+            _compactionNote = "The Host could not be reached.";
+        }
+        finally
+        {
+            _compactingHistory = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UndoCheckpointAsync(HistoryCheckpoint checkpoint)
+    {
+        if (_selectedProject is not { } project || _selectedChat is not { } chat) return;
+        try
+        {
+            if (!await HistoryCheckpoints.DeleteAsync(project.Id, chat.Id, checkpoint.Id, CancellationToken.None))
+                Notifications.ShowError("That summary is already gone.");
+            _compactionNote = null;
+            await RefreshChatUsageAsync();
+        }
+        catch (HttpRequestException)
+        {
+            Notifications.ShowError("The Host could not be reached.");
+        }
+    }
+
     /// <summary>
     /// Reads the ledger again once a turn of the open chat has ended: the turn's own figure is
     /// then final, and what ran after it — the title, the reply suggestions — lands a moment later,
@@ -2733,6 +2817,8 @@
     private async Task RefreshChatUsageAfterTurnAsync(Guid chatId)
     {
         if (_selectedChat?.Id != chatId) return;
+        // The turn ran on the summary a compaction made; what the ring shows is now measured with it.
+        if (_compactionNoteChatId == chatId) _compactionNote = null;
         await RefreshChatUsageAsync();
         await Task.Delay(TimeSpan.FromSeconds(5));
         if (_selectedChat?.Id == chatId) await RefreshChatUsageAsync();

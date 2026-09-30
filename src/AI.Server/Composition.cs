@@ -63,6 +63,8 @@ internal sealed class Composition
             .Root<IChatSearchService>()
             .Root<IChatCompletionClient>()
             .Root<ITokenUsageService>()
+            .Root<IHistoryCheckpointService>()
+            .Root<IChatHistoryCompaction>()
             .Root<IGlobalSettingsService>()
             .Root<IChatEndpoint>()
             .Root<IChatRunRepository>()
@@ -88,7 +90,7 @@ internal sealed class Composition
             .Root<IBrowserAccessService>()
             .Root<IInstalledDesktop>()
             .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, BrowserAccessService, InstalledDesktop>()
-            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, MemoryEndpoints, SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints>(Tag.Unique)
+            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, MemoryEndpoints, SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints>(Tag.Unique)
             .Singleton<ProjectStorageLocation, DataDirectoryLock, JsonLineFileLoggerProvider, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.
@@ -127,6 +129,7 @@ internal sealed class Composition
                 AppDataChangeSignal, AppNavigationSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
             .Singleton<WorkspaceFileSearch, GitWorkspaceDiffReader, FileExcerptReader>()
             .Singleton<ChatCompletionUsageReader, TokenUsageMeter, JsonLinesTokenUsageLedger, TokenUsageAggregator, TokenUsageService>()
+            .Singleton<ContextSummaryWriter, HistoryCheckpointService, JsonHistoryCheckpointRepository, ChatHistoryCompaction>()
             // Bound by their own types only: every executor is an ISkillExecutor, and SkillRunner takes each by type.
             .Bind<ChatReplySuggestSkill>().As(Lifetime.Singleton).To<ChatReplySuggestSkill>()
             .Bind<SkillRouteSkill>().As(Lifetime.Singleton).To<SkillRouteSkill>()

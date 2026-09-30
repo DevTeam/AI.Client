@@ -85,7 +85,8 @@ public sealed class ChatContextPlanner(
             compaction.OmittedMessages,
             compaction.Messages,
             estimator.EstimateMessages(compaction.Messages.Where(message => message.Role == "system").ToArray()),
-            Add(limits.ProtocolOverheadTokens, limits.SafetyMarginTokens));
+            Add(limits.ProtocolOverheadTokens, limits.SafetyMarginTokens),
+            compaction.Summary);
 
     private static long Add(params long[] values)
     {

@@ -32,15 +32,36 @@
                 <span>@Usage.FormatTokens(context.UsedTokens) of @(context.IsDefaultCapacity ? "~" : null)@Usage.FormatTokens(context.CapacityTokens)</span>
                 @if (ConnectionName is not null) { <span class="chat-usage-connection" title="@ConnectionName">@ConnectionName</span> }
             </div>
-            @if (ContextPresentation.Note(context) is { } note)
+            @if (ContextPresentation.Note(context) is { } note && CompactionNote is null)
             {
-                <p class="chat-usage-note context-note-@context.Level.ToString().ToLowerInvariant()">
-                    @note
-                    @if (context.Level != ContextFillLevel.Normal && OnNewChat.HasDelegate)
+                <div class="chat-usage-note context-note-@context.Level.ToString().ToLowerInvariant()">
+                    <span>@note</span>
+                    @if (context.Level != ContextFillLevel.Normal)
                     {
-                        <button class="compact-action" type="button" @onclick="OnNewChat">New chat</button>
+                        <span class="chat-usage-note-actions">
+                            @if (CanCompact) { <button class="compact-action" type="button" disabled="@Compacting" @onclick="OnCompact">@(Compacting ? "Compacting…" : "Compact now")</button> }
+                            @if (OnNewChat.HasDelegate) { <button class="compact-action" type="button" @onclick="OnNewChat">New chat</button> }
+                        </span>
                     }
-                </p>
+                </div>
+            }
+            @if (CompactionNote is { } compactionNote)
+            {
+                <p class="chat-usage-note" role="status">@compactionNote</p>
+            }
+            @if (ActiveCheckpoint is { } checkpoint)
+            {
+                <div class="chat-usage-row chat-usage-muted chat-usage-checkpoint">
+                    <span title="@checkpoint.CreatedAt.LocalDateTime.ToString("g")">Earlier turns summarized · @checkpoint.CoveredMessages @(checkpoint.CoveredMessages == 1 ? "message" : "messages")</span>
+                    @if (OnUndoCheckpoint.HasDelegate) { <button class="chat-usage-link" type="button" @onclick="() => OnUndoCheckpoint.InvokeAsync(checkpoint)">Undo</button> }
+                </div>
+            }
+            else if (CanCompact && context.Level == ContextFillLevel.Normal && ChatUsage?.Turns.Count > 2)
+            {
+                <div class="chat-usage-row">
+                    <button class="chat-usage-link" type="button" disabled="@Compacting" title="Summarize all but the last two turns for the model"
+                            @onclick="OnCompact">@(Compacting ? "Compacting…" : "Compact earlier turns")</button>
+                </div>
             }
         </div>
     }
@@ -105,7 +126,7 @@
                         <li @key="share.Key">
                             <span class="chat-usage-share-label">@share.Label</span>
                             <span class="chat-usage-share-track"><span style="width: @Percent(share.Fraction)%"></span></span>
-                            <span class="chat-usage-share-value">@Math.Round(share.Fraction * 100)%</span>
+                            <span class="chat-usage-share-value">@(share.Fraction < 0.005 ? "<1" : Math.Round(share.Fraction * 100).ToString(System.Globalization.CultureInfo.InvariantCulture))%</span>
                         </li>
                     }
                 </ul>
@@ -149,6 +170,26 @@
 
     [Parameter]
     public EventCallback OnOpenConnections { get; set; }
+
+    /// <summary>The summary the model's view of this branch starts from, if any.</summary>
+    [Parameter]
+    public HistoryCheckpoint? ActiveCheckpoint { get; set; }
+
+    [Parameter]
+    public bool Compacting { get; set; }
+
+    /// <summary>What the last compaction did, until a turn has run on it.</summary>
+    [Parameter]
+    public string? CompactionNote { get; set; }
+
+    [Parameter]
+    public EventCallback OnCompact { get; set; }
+
+    [Parameter]
+    public EventCallback<HistoryCheckpoint> OnUndoCheckpoint { get; set; }
+
+    // A running turn built its request already; the history is compacted between turns.
+    private bool CanCompact => OnCompact.HasDelegate && !IsGenerating;
 
     private TurnTokenUsage? GetTurn() =>
         LiveTurn is { } live && (ChatUsage?.Turns.LastOrDefault() is not { } stored

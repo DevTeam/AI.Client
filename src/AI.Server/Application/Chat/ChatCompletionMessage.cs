@@ -11,8 +11,13 @@ using AI.Contracts.Chat;
 /// server can put anything in it — so the model gets a projection without it. Null means the two
 /// are the same, which is the case for every message a person or the model itself wrote.
 /// </param>
+/// <param name="MessageId">
+/// The stored message this one was built from, or null for one made only for the request. It is
+/// what lets a summary say which part of the history it stands in for.
+/// </param>
 public sealed record ChatCompletionMessage(string Role, string Content,
-    IReadOnlyList<ChatToolCall>? ToolCalls = null, string? ToolCallId = null, string? ModelContent = null)
+    IReadOnlyList<ChatToolCall>? ToolCalls = null, string? ToolCallId = null, string? ModelContent = null,
+    Guid? MessageId = null)
 {
     /// <summary>The text to put on the wire for this message.</summary>
     public string ForModel => ModelContent ?? Content;

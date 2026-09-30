@@ -92,6 +92,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Bind<IChatUsageStore>().As(Lifetime.Singleton).To<ChatUsageStore>()
             .Root<IChatUsageStore>()
             .RootBind<IChatUsageApi>().To<ChatUsageApi>()
+            .RootBind<IHistoryCheckpointApi>().To<HistoryCheckpointApi>()
             .RootBind<IDelayedBusyIndicatorFactory>().To<DelayedBusyIndicatorFactory>()
             .Bind<INotificationService>("base").As(Lifetime.Singleton).To<NotificationService>()
             .Singleton<DesktopBadgeNotificationService, DesktopUnreadCountPublisher, ApiBaseUrl, ClientMode, HostConnection, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService,

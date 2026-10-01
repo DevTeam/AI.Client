@@ -5,7 +5,7 @@ using ModelContextProtocol.Protocol;
 
 /// <summary>
 /// Builds MCP results whose structured content always matches the declared output schema,
-/// including failures: the Host validates every result against that schema.
+/// including failures, so callers receive the same fields on rejection and success.
 /// </summary>
 /// <remarks>
 /// One serializer the server uses for arguments, results and schema generation alike, so an enum

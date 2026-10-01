@@ -34,13 +34,13 @@ public static class SkillMarkdown
         var description = Field("description") ?? throw new ArgumentException("SKILL.md needs description.");
         if (name.Length > 120 || description.Length > 400)
             throw new ArgumentException("Skill name or description is too long.");
-        var parameters = Schema(Field("parameters") ?? throw new ArgumentException("SKILL.md needs parameters."));
+        var parameters = Schema(Field("parameters") ?? throw new ArgumentException("SKILL.md needs parameters."), "parameters");
         var kind = Field("kind") ?? SkillKinds.Generic;
         if (kind is not (SkillKinds.Generic or SkillKinds.Playbook or SkillKinds.Executor))
             throw new ArgumentException("Skill kind must be generic, playbook or executor.");
         if (kind == SkillKinds.Executor && source != "Built-in")
             throw new ArgumentException("Only bundled skills can be executors.");
-        var result = Field("result") is { } resultText ? Schema(resultText) : (JsonElement?)null;
+        var result = Field("result") is { } resultText ? Schema(resultText, "result") : (JsonElement?)null;
         if (kind == SkillKinds.Playbook && result is not null)
             throw new ArgumentException("A playbook has no result schema; the calling model reports its outcome.");
         var tools = Field("tools") is { } toolsText
@@ -81,12 +81,17 @@ public static class SkillMarkdown
         text.Length is >= 1 and <= 64 && text[0] is >= 'a' and <= 'z' && text[^1] != '-'
         && text.All(character => character is >= 'a' and <= 'z' or >= '0' and <= '9' or '-');
 
-    private static JsonElement Schema(string text)
+    private static JsonElement Schema(string text, string field)
     {
         var element = JsonSerializer.Deserialize<JsonElement>(text);
         if (element.ValueKind != JsonValueKind.Object)
             throw new ArgumentException("A skill schema must be a JSON object.");
-        _ = JsonSchema.Build(element);
+        try { _ = JsonSchema.Build(element); }
+        catch (JsonSchemaException error)
+        {
+            throw new ArgumentException($"SKILL.md {field} must be a valid JSON Schema. {error.Message} "
+                + "For object inputs, use type: object and declare fields inside properties.", error);
+        }
         return element;
     }
 }

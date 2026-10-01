@@ -79,7 +79,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         bool Enabled(Guid serverId) =>
             global.McpServers.SingleOrDefault(server => server.Id == serverId) is { Enabled: true, Policy: not "Deny" }
             && project.McpServers.SingleOrDefault(server => server.Id == serverId) is not { Enabled: false };
-        var servers = new[] { DefaultMcpServer.Id, AppMcpServer.Id }.Where(Enabled).ToHashSet();
+        var servers = global.McpServers.Select(server => server.Id).Where(Enabled).ToHashSet();
         var grants = project.DirectoryGrants
             .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
         var run = new ToolRunContext(projectId, chatId, branchId, interactive);

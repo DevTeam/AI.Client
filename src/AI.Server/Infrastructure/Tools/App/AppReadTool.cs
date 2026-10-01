@@ -224,7 +224,7 @@ public sealed class AppReadTool(
                     await using var session = await toolSessions().OpenAsync([], new HashSet<Guid> { id },
                         ToolRunContext.None, deadline.Token);
                     if (session.Tools.Count == 0)
-                        throw new InvalidOperationException("No tools were discovered; this server may have no supported Host connection.");
+                        throw new InvalidOperationException("The MCP server connected successfully but declared no tools.");
                     return Paging.Page("McpTools", session.Tools.Select(tool => new
                     {
                         tool.ServerId, Name = tool.OriginalName, tool.SchemaHash,

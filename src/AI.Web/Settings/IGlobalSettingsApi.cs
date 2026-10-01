@@ -5,6 +5,7 @@ using AI.Contracts.Settings;
 public interface IGlobalSettingsApi
 {
     Task<IReadOnlyList<McpToolInfo>> GetDefaultToolsAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<McpToolInfo>> DiscoverMcpToolsAsync(DiscoverMcpToolsRequest request, CancellationToken cancellationToken);
     Task<GlobalSettings> GetAsync(CancellationToken cancellationToken);
 
     Task<GlobalSettings> SaveAsync(SaveGlobalSettingsRequest request, CancellationToken cancellationToken);

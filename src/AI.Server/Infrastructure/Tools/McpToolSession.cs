@@ -53,7 +53,7 @@ public sealed class McpToolSession : IToolSession
             if (tool.OutputSchema is { } outputSchema) _ = JsonSchema.Build(outputSchema);
             var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
                 tool.InputSchema.GetRawText() + tool.OutputSchema?.GetRawText())));
-            var name = namePrefix + tool.Name;
+            var name = ModelName(namePrefix, tool.Name);
             // The provider sees only what a function definition may contain; title, icons,
             // annotations, output schema and _meta stay on this side for the Host and the UI.
             return new AgentTool(
@@ -76,6 +76,20 @@ public sealed class McpToolSession : IToolSession
     }
 
     public IReadOnlyList<AgentTool> Tools { get; }
+
+    // Provider function names are limited to 64 ASCII letters, digits, underscores and hyphens.
+    // Keep the full server identity and hash names that need shortening or character repair;
+    // calls still use OriginalName, exactly as declared by the MCP server.
+    private static string ModelName(string prefix, string original)
+    {
+        var name = prefix + original;
+        if (name.Length <= 64 && name.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-'))
+            return name;
+        var safe = new string(original.Select(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '_' or '-' ? character : '_').ToArray());
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(original)))[..12];
+        return prefix + safe[..Math.Min(safe.Length, 64 - prefix.Length - hash.Length - 1)] + "_" + hash;
+    }
 
     public string ValidateArguments(AgentTool tool, string arguments)
     {

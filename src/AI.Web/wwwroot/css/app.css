@@ -6595,6 +6595,20 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .chat-files-more { justify-self: start; font-size: .74rem; }
 .chat-files-footer { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
 
+.chat-tools-total { display: flex; align-items: baseline; gap: .35rem; }
+.chat-tools-count { color: var(--color-text); font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.chat-tools-distinct { margin-left: auto; font-size: .74rem; white-space: nowrap; }
+.chat-tools-list { display: grid; gap: .6rem; margin: 0; padding: 0; list-style: none; }
+.chat-tools-list li { display: grid; grid-template-columns: minmax(0, 1fr) 2.6rem; align-items: baseline; gap: .2rem .55rem; }
+.chat-tools-name { min-width: 0; overflow-wrap: anywhere; font-size: .76rem; }
+.chat-tools-name small { display: block; font-size: .7rem; }
+.chat-tools-figure { text-align: right; font-size: .76rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chat-tools-track { display: flex; height: .2rem; overflow: hidden; border-radius: 2px; background: var(--color-fill); }
+.chat-tools-track > span { background: var(--color-accent-text); }
+.chat-tools-errors { color: var(--color-danger); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chat-tools-list small.chat-tools-errors { text-align: right; font-size: .7rem; }
+.chat-tools-more { align-self: flex-start; }
+
 /* Where the model's view of the chat begins: a quiet rule with the summary behind a toggle. */
 .history-checkpoint-mark { width: min(100%, 48rem); margin: .2rem auto 1.1rem; color: var(--color-text-faint); font-size: .74rem; }
 .history-checkpoint-line { display: flex; align-items: center; gap: .6rem; }

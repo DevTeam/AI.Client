@@ -1,0 +1,101 @@
+@inject IChatToolStatisticsCalculator Calculator
+
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-tools-widget">
+    <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" />
+    @if (_stats.Calls == 0)
+    {
+        <p class="chat-usage-empty">@(_scope == ChatWidgetScope.LastTurn && _hasAnyCalls
+            ? "The last turn called no tools."
+            : "Tool calls appear here when the chat first uses a tool, with results and usage by tool.")</p>
+    }
+    else
+    {
+        <div class="chat-usage-section">
+            <div class="chat-tools-total">
+                <span class="chat-tools-count">@_stats.Calls</span>
+                <span class="chat-usage-muted">@(_stats.Calls == 1 ? "call" : "calls")@(_stats.IsRunning ? " so far" : null)</span>
+                <span class="chat-tools-distinct chat-usage-muted">@_stats.Tools.Count @(_stats.Tools.Count == 1 ? "tool" : "tools")</span>
+            </div>
+            <dl class="chat-usage-grid">
+                @foreach (var outcome in Enum.GetValues<ChatToolOutcome>())
+                {
+                    if (_stats.Count(outcome) is > 0 and var count)
+                    {
+                        <dt title="@OutcomeTitle(outcome)">@OutcomeLabel(outcome)</dt>
+                        <dd class="@(outcome == ChatToolOutcome.Failed ? "chat-tools-errors" : null)">@count</dd>
+                    }
+                }
+            </dl>
+        </div>
+        <div class="chat-usage-section">
+            <div class="chat-usage-row chat-usage-heading"><span>Most used</span><span class="chat-usage-muted">calls</span></div>
+            <ul class="chat-tools-list">
+                @foreach (var tool in _showAll ? _stats.Tools : _stats.Tools.Take(VisibleTools))
+                {
+                    <li @key="tool.Name" title="@tool.Name">
+                        <span class="chat-tools-name">@tool.Label
+                            @if (tool.Server.Length > 0) { <small class="chat-usage-muted">@tool.Server</small> }
+                        </span>
+                        <span class="chat-tools-figure">@tool.Calls</span>
+                        <span class="chat-tools-track" aria-hidden="true"><span style="flex-grow: @tool.Calls"></span><i style="flex-grow: @(_stats.Tools[0].Calls - tool.Calls)"></i></span>
+                        @if (tool.Errors > 0) { <small class="chat-tools-errors">@tool.Errors @(tool.Errors == 1 ? "error" : "errors")</small> }
+                    </li>
+                }
+            </ul>
+            @if (_stats.Tools.Count > VisibleTools)
+            {
+                <button class="chat-usage-link chat-tools-more" type="button" @onclick="() => _showAll = !_showAll">@(_showAll ? "Show fewer" : $"Show {_stats.Tools.Count - VisibleTools} more")</button>
+            }
+        </div>
+        @if (_scope == ChatWidgetScope.Chat || _stats.IsRunning)
+        {
+            <div class="chat-usage-section chat-usage-footnote">
+                @if (_scope == ChatWidgetScope.Chat) { <span>In @_stats.TurnsWithTools of @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns")</span> }
+                @if (_stats.IsRunning) { <span>This turn is still running</span> }
+            </div>
+        }
+    }
+</ChatWidget>
+
+@code {
+    private const int VisibleTools = 6;
+    [Parameter, EditorRequired] public ChatWidgetContext Widget { get; set; } = null!;
+    [Parameter] public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+    [Parameter] public ChatRunSnapshot? Run { get; set; }
+    private ChatWidgetScope _scope = ChatWidgetScope.Chat;
+    private ChatToolStatistics _stats = new([], new Dictionary<ChatToolOutcome, int>(), 0, 0, 0, false);
+    private bool _hasAnyCalls;
+    private bool _showAll;
+
+    protected override void OnParametersSet() => Refresh();
+    private void SetScope(ChatWidgetScope scope)
+    {
+        _scope = scope;
+        _showAll = false;
+        Refresh();
+    }
+    private void Refresh()
+    {
+        _stats = Calculator.Calculate(Messages, Run, _scope);
+        _hasAnyCalls = _scope == ChatWidgetScope.Chat ? _stats.Calls > 0
+            : Calculator.Calculate(Messages, Run, ChatWidgetScope.Chat).Calls > 0;
+    }
+    private string? GetSummary() => _stats.Calls == 0 ? null
+        : $"{_stats.Calls} {(_stats.Calls == 1 ? "call" : "calls")}" + (_stats.Count(ChatToolOutcome.Failed) > 0
+            ? $" · {_stats.Count(ChatToolOutcome.Failed)} {(_stats.Count(ChatToolOutcome.Failed) == 1 ? "error" : "errors")}" : "");
+    private static string OutcomeLabel(ChatToolOutcome outcome) => outcome switch
+    {
+        ChatToolOutcome.Succeeded => "Succeeded", ChatToolOutcome.Failed => "Errors",
+        ChatToolOutcome.Running => "Running", ChatToolOutcome.AwaitingResult => "Awaiting result",
+        ChatToolOutcome.Unknown => "Unknown result", _ => "No result"
+    };
+    private static string OutcomeTitle(ChatToolOutcome outcome) => outcome switch
+    {
+        ChatToolOutcome.Succeeded => "The stored tool result reports no error",
+        ChatToolOutcome.Failed => "The stored tool result reports an error, including refused calls",
+        ChatToolOutcome.Running => "The Host is executing this call",
+        ChatToolOutcome.AwaitingResult => "This running turn has not saved a result for the call yet",
+        ChatToolOutcome.Unknown => "The result is incomplete or its error status is unavailable",
+        _ => "The turn ended without a stored result for the call"
+    };
+}

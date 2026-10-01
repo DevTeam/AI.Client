@@ -159,7 +159,7 @@ public class ChatCompletionUsageTests
     {
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         var chunks = new List<ChatCompletionChunk>();
-        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None))
+        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader(), new ChatTransportPolicy()).ParseAsync(stream, CancellationToken.None))
             chunks.Add(chunk);
         return chunks;
     }
@@ -170,7 +170,7 @@ public class ChatCompletionUsageTests
     }
 
     private OpenAiCompatibleChatCompletionClient CreateInstance() =>
-        new(new HttpClient(_handler.Object), new ChatCompletionSseParser(new ChatCompletionUsageReader()),
+        new(new HttpClient(_handler.Object), new ChatCompletionSseParser(new ChatCompletionUsageReader(), new ChatTransportPolicy()),
             new ChatTransportPolicy(), new ChatCompletionUsageReader(), new RateLimitHeaderReader(), _rateLimits, new SystemClock());
 
     [Fact]

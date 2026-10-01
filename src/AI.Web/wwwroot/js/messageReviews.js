@@ -244,13 +244,57 @@
             event.preventDefault();
     }, true);
 
+    // The open comment editor. A new comment's editor does not take focus, which would drop the
+    // selection the user may only have made to copy: copying closes it, typing moves into it, and
+    // a click anywhere else saves what was typed and closes it.
+    let active = null;
+
+    function openEditor() {
+        if (active && active.editor.isConnected && active.editor.matches(":popover-open")) return active;
+        active = null;
+        return null;
+    }
+
+    function dismiss(save) {
+        const current = openEditor();
+        if (!current) return;
+        active = null;
+        current.owner.invokeMethodAsync("DismissEditor", save).catch(() => { });
+    }
+
+    document.addEventListener("copy", event => {
+        const current = openEditor();
+        if (current && !(event.target instanceof Node && current.editor.contains(event.target))) dismiss(false);
+    }, true);
+
+    // Only the main button: a right click opens the menu the user may copy from.
+    document.addEventListener("pointerdown", event => {
+        const current = openEditor();
+        if (current && event.button === 0 && !(event.target instanceof Node && current.editor.contains(event.target))) dismiss(true);
+    }, true);
+
+    document.addEventListener("keydown", event => {
+        const current = openEditor();
+        if (!current || (event.target instanceof Node && current.editor.contains(event.target))) return;
+        if (event.key === "Escape") {
+            event.preventDefault();
+            dismiss(false);
+            return;
+        }
+        const target = event.target instanceof Element ? event.target : null;
+        const typing = target?.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])");
+        // Focusing during keydown sends the character to the comment text.
+        if (!typing && event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing)
+            current.editor.querySelector("textarea")?.focus();
+    }, true);
+
     window.messageReviews = {
-        showEditor(messageId) {
+        showEditor(messageId, owner, focus) {
             const editor = document.getElementById(`review-editor-${messageId}`);
-            if (editor && !editor.matches(":popover-open")) {
-                editor.showPopover();
-                editor.querySelector("textarea")?.focus();
-            }
+            if (!editor) return;
+            if (!editor.matches(":popover-open")) editor.showPopover();
+            active = { editor, owner };
+            if (focus) editor.querySelector("textarea")?.focus();
         },
         setComments(messageId, comments) {
             commentsByMessage.set(messageId, comments || []);

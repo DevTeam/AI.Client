@@ -1,0 +1,10 @@
+.git-picker-modal { grid-template-rows: auto minmax(0, 1fr) auto; }
+.git-picker-modal.has-revision { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.directory-picker-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+.directory-picker-modal > header span { overflow-wrap: anywhere; }
+.git-picker-selected { max-height: 10rem; overflow: auto; padding-left: 2rem; }
+.git-picker-selected li { padding: .15rem; }
+.git-picker-selected span { overflow-wrap: anywhere; }
+.directory-picker-item { cursor: pointer; }
+.directory-picker-item > span { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+.directory-picker-item > input { flex: none; width: auto; }

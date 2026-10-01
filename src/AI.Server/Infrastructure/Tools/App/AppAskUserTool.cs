@@ -24,6 +24,9 @@ public sealed record AskUserOption(string Label, string? Description = null);
 /// "directories" permits several choices, which come back in 'paths'.
 /// Leave it out for every other kind of question.
 /// </param>
+/// <param name="PickerKind">"branch" or "commit" for Git selection; use MultiSelect for several choices.</param>
+/// <param name="RepositoryPath">Absolute repository directory on the host, required for a Git picker.</param>
+/// <param name="Revision">Optional branch or revision limiting the commit history.</param>
 public sealed record AskUserQuestion(
     string Id,
     string Text,
@@ -31,14 +34,18 @@ public sealed record AskUserQuestion(
     string? Label = null,
     bool MultiSelect = false,
     bool AllowOther = true,
-    string? PathKind = null);
+    string? PathKind = null,
+    string? PickerKind = null,
+    string? RepositoryPath = null,
+    string? Revision = null);
 
 /// <param name="Selected">
 /// The labels the person chose, not their positions: what is stored in the transcript should still
 /// say what was decided when it is read back without the question in front of it.
 /// </param>
 /// <param name="Other">What they typed, when they typed something instead of choosing.</param>
-public sealed record AskUserReply(string Id, string[] Selected, string? Other, IReadOnlyList<string>? Paths = null);
+public sealed record AskUserReply(string Id, string[] Selected, string? Other, IReadOnlyList<string>? Paths = null,
+    IReadOnlyList<string>? Values = null);
 
 /// <param name="Outcome">
 /// <c>answered</c>, <c>dismissed</c> (they told you to decide), <c>declined</c> (they refused the
@@ -118,7 +125,9 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                         + "'directory', 'directories' or 'file': the user then picks it out of their own file system. A single path comes back in "
                         + "'other'; 'directories' allows several selections and returns them in 'paths'. This is far more reliable than asking them to type paths. Options may still be offered "
                         + "alongside — list the paths you already consider likely. Use 'multiSelect' only when the choices "
-                        + "genuinely combine. The user may "
+                        + "genuinely combine. For Git selection set 'pickerKind' to 'branch' or 'commit' and 'repositoryPath' to the absolute repository directory. "
+                        + "Set 'multiSelect' to true for several branches or commits. Optional 'revision' limits commit history to that branch or revision. "
+                        + "Leave 'pathKind' unset; options may be empty. The Git picker returns full ref names or commit hashes in 'values', in selection order. The user may "
                         + "answer some questions and not others, or none at all: an absent answer means the choice is yours to "
                         + "make, never an invitation to ask again. The user may also decline the question outright "
                         + "(outcome 'declined'): then stop that work and wait for them instead of choosing."
@@ -145,7 +154,7 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
             var answers = response.Answers
                 .Select(answer => Reply(questions, answer))
                 .OfType<AskUserReply>()
-                .Where(reply => reply.Selected.Length > 0 || !string.IsNullOrWhiteSpace(reply.Other) || reply.Paths is { Count: > 0 })
+                .Where(reply => reply.Selected.Length > 0 || !string.IsNullOrWhiteSpace(reply.Other) || reply.Paths is { Count: > 0 } || reply.Values is { Count: > 0 })
                 .ToArray();
 
             return reply.Reply(new AskUserResult(answers, Outcome(response.Outcome), Guidance(response.Outcome, answers, questions)));
@@ -185,10 +194,13 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
             question.Id,
             question.Text,
             question.Label,
-            question.Options.Select(option => new UserPromptOption(option.Label, option.Description)).ToArray(),
+            (question.Options ?? []).Select(option => new UserPromptOption(option.Label, option.Description)).ToArray(),
             question.MultiSelect,
             question.AllowOther,
-            question.PathKind?.Trim().ToLowerInvariant());
+            question.PathKind?.Trim().ToLowerInvariant(),
+            question.PickerKind?.Trim().ToLowerInvariant(),
+            question.RepositoryPath?.Trim(),
+            question.Revision);
 
         /// <summary>
         /// Turns positions back into labels. An answer naming an option that no longer exists is
@@ -200,16 +212,21 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
             var question = questions.FirstOrDefault(item => string.Equals(item.Id, answer.QuestionId, StringComparison.Ordinal));
             if (question is null) return null;
             var selected = answer.Selected
-                .Where(index => index >= 0 && index < question.Options.Length)
-                .Select(index => question.Options[index].Label)
+                .Where(index => index >= 0 && index < (question.Options?.Length ?? 0))
+                .Select(index => question.Options![index].Label)
                 .ToArray();
             var paths = question.PathKind?.Trim().Equals(DirectoriesPath, StringComparison.OrdinalIgnoreCase) == true
                 ? answer.Paths?.Where(path => !string.IsNullOrWhiteSpace(path))
                     .Select(path => path.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
                 : null;
+            var values = question.PickerKind?.Trim().ToLowerInvariant() is "branch" or "commit"
+                ? answer.Values?.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim())
+                    .Distinct(StringComparer.Ordinal).Take(question.MultiSelect ? 200 : 1).ToArray()
+                : null;
             return new AskUserReply(question.Id, selected,
                 string.IsNullOrWhiteSpace(answer.Other) ? null : answer.Other.Trim(),
-                paths is { Length: > 0 } ? paths : null);
+                paths is { Length: > 0 } ? paths : null,
+                values is { Length: > 0 } ? values : null);
         }
 
         /// <summary>
@@ -233,10 +250,18 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                 if (path is { Length: > 0 } and not (DirectoryPath or DirectoriesPath or FilePath))
                     return $"The 'pathKind' of '{question.Id}' must be '{DirectoryPath}', '{DirectoriesPath}' or '{FilePath}'.";
                 var options = question.Options ?? [];
+                var picker = question.PickerKind?.Trim().ToLowerInvariant();
+                if (picker is { Length: > 0 })
+                {
+                    if (picker is not ("branch" or "commit")) return $"The 'pickerKind' of '{question.Id}' must be 'branch' or 'commit'.";
+                    if (path is { Length: > 0 }) return $"Question '{question.Id}' cannot combine 'pathKind' and 'pickerKind'.";
+                    if (string.IsNullOrWhiteSpace(question.RepositoryPath) || !Path.IsPathFullyQualified(question.RepositoryPath))
+                        return $"Question '{question.Id}' needs an absolute 'repositoryPath' for its Git picker.";
+                }
                 if (options.Length > MaxOptions) return $"Question '{question.Id}' offers more than {MaxOptions} options.";
                 // A path question is answerable through its picker, so it needs neither options nor
                 // the free-text box the other kinds fall back on.
-                if (options.Length == 0 && !question.AllowOther && path is not { Length: > 0 })
+                if (options.Length == 0 && !question.AllowOther && path is not { Length: > 0 } && picker is not { Length: > 0 })
                     return $"Question '{question.Id}' offers no options and no free-text answer, so it cannot be answered.";
                 foreach (var option in options)
                 {

@@ -33,6 +33,9 @@ public sealed record UserPrompt(
 /// <see cref="UserPromptAnswer.Other"/> like any other typed answer. The "directories" mode allows
 /// several selections and returns them in <see cref="UserPromptAnswer.Paths"/>.
 /// </param>
+/// <param name="PickerKind">"branch" or "commit" for a Git picker; MultiSelect allows several choices.</param>
+/// <param name="RepositoryPath">Absolute repository directory on the host for a Git picker.</param>
+/// <param name="Revision">Optional branch or revision to limit the commit history.</param>
 public sealed record UserPromptQuestion(
     string Id,
     string Text,
@@ -40,7 +43,10 @@ public sealed record UserPromptQuestion(
     IReadOnlyList<UserPromptOption> Options,
     bool MultiSelect,
     bool AllowOther,
-    string? PathKind = null);
+    string? PathKind = null,
+    string? PickerKind = null,
+    string? RepositoryPath = null,
+    string? Revision = null);
 
 /// <summary>One choice. Plain text in both fields: these are captions on controls, never markup.</summary>
 public sealed record UserPromptOption(string Label, string? Description);
@@ -53,11 +59,13 @@ public sealed record UserPromptOption(string Label, string? Description);
 /// <param name="Selected">Indices into the question's options. Empty means the question was left to the model.</param>
 /// <param name="Other">Free text, or one selected path.</param>
 /// <param name="Paths">Several selected directory paths for a "directories" question.</param>
+/// <param name="Values">Full Git ref names or commit hashes in selection order.</param>
 public sealed record UserPromptAnswer(
     string QuestionId,
     IReadOnlyList<int> Selected,
     string? Other,
-    IReadOnlyList<string>? Paths = null);
+    IReadOnlyList<string>? Paths = null,
+    IReadOnlyList<string>? Values = null);
 
 public enum UserPromptOutcome
 {

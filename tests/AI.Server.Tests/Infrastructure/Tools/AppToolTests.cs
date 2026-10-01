@@ -698,6 +698,47 @@ public sealed class AppToolTests
     }
 
     [Theory]
+    [InlineData("branch", true)]
+    [InlineData("commit", true)]
+    [InlineData("commit", false)]
+    public async Task AskUserShouldReturnGitValuesInSelectionOrder(string kind, bool multiple)
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        fixture.Broker.Answer = _ => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Answered,
+            [new UserPromptAnswer("git", [], null, Values: [" refs/heads/Fix ", "refs/heads/fix", "refs/heads/Fix"])]);
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[] { new { id = "git", text = "Choose Git changes", options = Array.Empty<object>(),
+                pickerKind = kind, repositoryPath = Path.GetTempPath(), revision = "main", multiSelect = multiple, allowOther = false } }
+        });
+        result.GetProperty("answers")[0].GetProperty("values").EnumerateArray().Select(item => item.GetString())
+            .ShouldBe(multiple ? ["refs/heads/Fix", "refs/heads/fix"] : ["refs/heads/Fix"]);
+        var question = fixture.Broker.LastRequest!.Questions[0];
+        question.PickerKind.ShouldBe(kind);
+        question.RepositoryPath.ShouldBe(Path.GetTempPath());
+        question.Revision.ShouldBe("main");
+        result.GetProperty("guidance").GetString().ShouldBe("Proceed on these answers.");
+    }
+
+    [Theory]
+    [InlineData("unknown", null)]
+    [InlineData("branch", null)]
+    [InlineData("commit", "file")]
+    public async Task AskUserShouldRefuseAnInvalidGitPicker(string kind, string? pathKind)
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[] { new { id = "git", text = "Choose", options = Array.Empty<object>(), pickerKind = kind,
+                repositoryPath = pathKind is null ? "relative-path" : Path.GetTempPath(), pathKind, allowOther = false } }
+        }, expectError: true);
+        result.GetProperty("outcome").GetString().ShouldBe("invalid");
+        fixture.Broker.LastRequest.ShouldBeNull();
+    }
+
+    [Theory]
     // Every limit here is about the card staying readable, and each one is reported in words the
     // model can act on rather than as a schema failure it can only repeat.
     [InlineData("no questions")]

@@ -54,6 +54,7 @@ internal sealed class Composition
             .Root<IHostDescriptor>()
             .Root<IProjectRepository>()
             .Root<IDirectoryBrowser>()
+            .Root<IGitBrowser>()
             .Root<IProjectService>()
             .Root<IChatService>()
             .Root<IChatArchiveService>()
@@ -91,7 +92,7 @@ internal sealed class Composition
             .Root<IBrowserAccessService>()
             .Root<IInstalledDesktop>()
             .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, BrowserAccessService, InstalledDesktop>()
-            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, MemoryEndpoints, SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints>(Tag.Unique)
+            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, GitEndpoints, MemoryEndpoints, SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints>(Tag.Unique)
             .Singleton<ProjectStorageLocation, DataDirectoryLock, JsonLineFileLoggerProvider, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.
@@ -128,7 +129,7 @@ internal sealed class Composition
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher,
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff, MasterKeyFormat, ProcessCommandRunner,
                 AppDataChangeSignal, AppNavigationSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
-            .Singleton<WorkspaceFileSearch, GitWorkspaceDiffReader, FileExcerptReader>()
+            .Singleton<WorkspaceFileSearch, GitWorkspaceDiffReader, GitBrowser, FileExcerptReader>()
             .Singleton<ChatCompletionUsageReader, TokenUsageMeter, JsonLinesTokenUsageLedger, TokenUsageAggregator, TokenUsageService>()
             .Singleton<PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits, RateLimitHeaderReader>()
             .Singleton<ContextSummaryWriter, HistoryCheckpointService, JsonHistoryCheckpointRepository, ChatHistoryCompaction>()

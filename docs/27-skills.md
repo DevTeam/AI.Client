@@ -83,9 +83,27 @@ application permissions, and every write still goes through tool approval.
 | `code-tests-run` | Finds the project's test command, runs it and reports each failure; offers `code-bug-fix` | `process_run`, `run_skill` |
 | `code-changes-review` | Reviews uncommitted changes for stray files, secrets, debug leftovers and unrelated edits; cleans up what the user picks | `process_run`, `edit_file`, `delete_file` |
 | `git-commit` | On request only: drafts a message in the log's style and commits the chosen paths; never pushes | `process_run` |
+| `git-commit-message-suggest` | Drafts a message for staged/local changes or selected commits; changes nothing | `process_run`, `ask_user` commit picker |
+| `git-rebase` | Rebases the current branch onto a selected branch, keeps a recovery ref and pauses at conflicts | `process_run`, `ask_user` branch picker |
+| `git-merge` | Merges a selected branch into the current branch, keeps a recovery ref and pauses at conflicts | `process_run`, `ask_user` branch picker |
+| `git-rebase-auto` | Rebases and resolves compatible conflicts, checking each continuation; asks when intent is ambiguous | branch picker, file tools, `process_run` |
+| `git-merge-auto` | Merges and resolves compatible conflicts, then checks the result; asks when intent is ambiguous | branch picker, file tools, `process_run` |
+| `git-conflicts-resolve` | Resolves an existing operation's conflicts and continues authorized work after checks; also handles stash conflicts | file tools, `process_run`, `ask_user` |
+| `git-history-review` | Reviews selected branches or commits and their diffs; changes nothing | branch/commit pickers, `process_run` |
+| `git-cherry-pick` | Applies one or several selected commits in agreed order; keeps a recovery ref and pauses at conflicts | commit picker, `process_run` |
+| `git-revert` | Undoes selected commits with new commits in agreed order; keeps a recovery ref and pauses at conflicts | commit picker, `process_run` |
+| `git-stash` | Saves local work or applies a selected stash, retaining the stash until restoration is verified | `process_run`, `ask_user` |
 | `settings-add-connections` | Discovers models from API URLs and adds or merges Connections by URL + model, preserving credentials and unrelated settings; offers comparison | `app_read`, `app_security`, `ask_user`, `run_skill` |
 | `settings-review-connections` | Compares selected Connections with bounded synthetic tasks, reports quality, measured run time and errors, then applies approved defaults, subtask pools or cleanup | `app_read`, `spawn_subtask`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
 | `settings-select-connection` | Selects an enabled connection for the global default, current project/chat or subtask pool; can restore project/chat inheritance | `app_read`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
+
+Git skills use the [Git pickers in ask_user](19-ask-user.md#git-pickers) when the user has not named
+the branches or commits. Explicit values from the request bypass selection. History operations
+check for local work and ongoing operations first, and do not silently stash, discard changes or
+push. The automatic conflict variants inspect base/ours/theirs and preserve compatible intent;
+they do not blanket-select a side or skip commits to make an operation pass. Ambiguous conflicts
+leave the operation paused for a user decision. Every Git skill has an icon; rebase, automatic
+rebase and automatic merge also have dedicated icons in the shared icon picker.
 
 Connection discovery is available through `app_read resource=ConnectionModels`: `query` is a new
 OpenAI-compatible Base URL (without authentication); `resourceId` alone selects a saved connection

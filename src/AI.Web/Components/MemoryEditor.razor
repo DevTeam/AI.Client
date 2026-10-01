@@ -24,10 +24,12 @@
                             <span>@if (item.Pinned) { <AppIcon Name="pin" /> }@(string.IsNullOrWhiteSpace(item.Title) ? "New entry" : item.Title)</span>
                             <small>@Summary(item)</small>
                         </button>
-                        @if (item.Key == _selectedKey)
-                        {
-                            <button class="icon-action settings-item-remove" type="button" title="Remove entry" aria-label="Remove entry" @onclick="Remove"><AppIcon Name="trash" /></button>
-                        }
+                        <span class="settings-item-actions single">
+                            @if (item.Key == _selectedKey)
+                            {
+                                <button class="icon-action settings-item-remove" type="button" title="Remove entry" aria-label="Remove entry" @onclick="Remove"><AppIcon Name="trash" /></button>
+                            }
+                        </span>
                     </div>
                 }
             }

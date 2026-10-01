@@ -205,7 +205,6 @@ public sealed class GlobalSettingsService(
             // A rating is one of five words or nothing at all. Anything outside that is not a
             // judgement anyone made, and a stored zero would read as "the weakest there is".
             Capability = Rating(item.Capability),
-            Cost = Rating(item.Cost),
             GoodFor = string.IsNullOrWhiteSpace(item.GoodFor) ? null : item.GoodFor.Trim()
         };
     }

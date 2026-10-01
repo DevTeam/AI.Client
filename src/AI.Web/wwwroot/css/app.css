@@ -5851,11 +5851,16 @@ a.resource-pill-target.file-link { cursor: context-menu; }
     background: transparent;
 }
 
-/* Copy and remove sit together on the selected row; the column is sized by them. */
+/* Copy and remove sit together on the selected row. Every row keeps their room, so selecting
+   one does not narrow its name and rewrap it to a different height. */
 .settings-item-actions {
     display: flex;
+    justify-content: flex-end;
+    min-width: 4.5rem;
     margin-right: 0.4rem;
 }
+
+.settings-item-actions.single { min-width: 2.25rem; }
 
 .settings-item-actions .settings-item-remove { margin-right: 0; }
 

@@ -69,7 +69,6 @@ public sealed partial class SettingsTransferCodec : ISettingsTransferCodec
         if (connection.ContextWindowTokens is { } contextWindow) writer.WriteNumber("contextWindowTokens", contextWindow);
         if (connection.ReservedOutputTokens is { } reserved) writer.WriteNumber("reservedOutputTokens", reserved);
         if (connection.Capability is { } capability) writer.WriteNumber("capability", capability);
-        if (connection.Cost is { } cost) writer.WriteNumber("cost", cost);
         if (!string.IsNullOrWhiteSpace(connection.GoodFor)) writer.WriteString("goodFor", connection.GoodFor);
         if (connection.Prices is { } prices)
         {
@@ -441,7 +440,7 @@ public sealed partial class SettingsTransferCodec : ISettingsTransferCodec
             var name = String(element, "name")?.Trim() is { Length: > 0 } explicitName ? explicitName : key?.Trim() is { Length: > 0 } keyName ? keyName : uri.Host;
             var settings = new ConnectionSettings(
                 Guid.CreateVersion7(), name, baseUrl!.TrimEnd('/'), model, IsEnabled(element), false, false, false,
-                Rating(Number(element, "capability")), Rating(Number(element, "cost")),
+                Rating(Number(element, "capability")),
                 String(element, "goodFor")?.Trim() is { Length: > 0 } goodFor ? goodFor : null,
                 Number(element, "contextWindowTokens"), Number(element, "reservedOutputTokens"), Prices(element));
             Connections.Add(new ImportedSettingsItem<ConnectionSettings>(settings, credentialOmitted, notes));

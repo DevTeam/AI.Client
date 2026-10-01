@@ -12,7 +12,7 @@ public class SettingsTransferCodecTests
 
     private static ConnectionSettings Connection(string name = "OpenRouter", bool hasCredential = true) =>
         new(Guid.NewGuid(), name, "https://openrouter.ai/api/v1", "gpt-5", true, true, hasCredential, true,
-            4, 2, "long context", 200_000, null);
+            4, "long context", 200_000, null);
 
     private static McpServerSettings Stdio(params McpEnvironmentVariableSettings[] environment) =>
         new(Guid.NewGuid(), "github", "Stdio", true, "Allow", null, "npx", ["-y", "@mcp/github"], null, environment, false);

@@ -38,7 +38,7 @@ tools: ["app_read","spawn_subtask","app_security","app_projects","app_chats","as
    after two suites per candidate; ask before any more usage. Do not treat a timeout, auth
    error, rate limit or one bad answer as permanent failure.
 5. Show a compact table: connection/model, completion status, checked quality, measured run
-   time, known cost and error. Cost/Capability are user ratings from 1 to 5; do not infer prices,
+   time, known cost and error. Capability is a user rating from 1 to 5; use token prices or reported usage for cost. Do not infer prices,
    context size or capabilities from model names or elapsed time. Mark missing cost unknown
    and explain when a cost-efficiency recommendation cannot be made. Recommend an enabled
    default for goal and an optional subtask pool; several entries may have ForSubtasks true.
@@ -51,7 +51,7 @@ tools: ["app_read","spawn_subtask","app_security","app_projects","app_chats","as
    replacement and include that change in the approval. Deactivation also needs a working replacement if the connection
    is referenced by a project or chat; do not silently leave them unusable. Dismissed, declined,
    expired or interrupted applies no changes. If the user already approved exact changes,
-   do not ask again. Do not overwrite cost/capability ratings without separate approval.
+   do not ask again. Do not overwrite token prices or capability ratings without separate approval.
 7. Before cleanup of referenced connections, read the affected Project/Chat again and use
    `app_projects` Update or `app_chats` SetEndpoint with its current revision and the explicitly
    approved enabled replacement connectionId. Use a fresh operationId for each change; on

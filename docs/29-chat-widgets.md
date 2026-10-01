@@ -17,6 +17,7 @@ Current widgets:
 | `chat-performance` | Performance | `timer` | `ChatPerformanceWidget` | Wall-clock vs active time, throughput and where request time was spent |
 | `chat-subtasks` | Subtasks | `fork` | `ChatSubtasksWidget` | Delegated work the chat ran on another model: requests, tokens and share of the whole chat or the last turn |
 | `chat-knowledge` | Knowledge | `book` | `ChatKnowledgeWidget` | Files and pages the assistant read on the visible branch, grouped by tool, with the most recent paths |
+| `chat-timeline` | Timeline | `history` | `ChatTimelineWidget` | One row per turn on the visible branch: when it started, how long it ran, its requests and tokens, and the tools and files it touched |
 
 ## UX
 
@@ -457,3 +458,50 @@ Delegated work the chat ran on another model (`ChatSubtasksWidget`,
   `tests/AI.Web.Tests/Widgets`. The widget itself is a `ChatWidget` with `ChatWidgetScopeSwitch`,
   `Summary`, and the same `chat-usage-*` building blocks; only the headline layout uses
   widget-specific classes (`chat-subtasks-*`).
+
+## Timeline widget
+
+One row per turn on the visible branch (`ChatTimelineWidget`,
+`IChatTimelineStatisticsCalculator`).
+
+- **Scope.** Always the whole branch — the timeline of one turn is that turn, so the shared
+  "Whole chat / Last turn" switch is not shown. The empty state says so: "Turns appear here once
+  the chat sends its first message."
+- **Source of truth.** Two sources, aligned by position. Per-turn figures (requests, tokens)
+  come from the provider usage ledger's `ChatTokenUsage.Turns` slices, matched to branch turns
+  oldest first; the latest slice can be replaced by `TurnTokenUsage` when the run is on its last
+  turn and the live slice starts no earlier than the stored one (the same rule Performance and
+  Subtasks use, so the widgets agree). Durations and timestamps come from message
+  `CreatedAt` and so are marked "≈" in markup, the same way Performance marks wall-clock.
+- **What it shows.** One row per turn, newest last:
+  - **Head.** Turn index (`Turn N`), local start time (`HH:mm` with full timestamp in the
+    tooltip), duration when the turn has more than one message (`≈ N s` / `min` / `h`), and
+    `running` while the last turn is the live one. The opening assistant turn (before the first
+    user message) has no duration and its label is muted.
+  - **Figures.** Requests (`N request(s)`) and input → output tokens when the provider reported
+    them. Missing slices say "No usage reported" instead of a row of zeroes.
+  - **Chips.** Distinct tool call names in the order they first appeared (server prefix stripped,
+    same form the Tools widget uses), then the distinct files changed by the turn, taken from
+    saved receipts.
+  - **Action.** A click on "Open in transcript" scrolls the feed to the turn's first user message
+    via `OnSelectTurn`; the opening turn has no anchor and so no button.
+  - **Footer.** "This turn is still running" while it is.
+- **Honesty about numbers.**
+  - Provider-reported figures (requests, input, output) are quoted as they came in. A turn with
+    no ledger slice shows nothing rather than a placeholder.
+  - Durations and timestamps are derived from message timestamps; they include whatever time
+    passed between two messages, which is not the model thinking. The "≈" marker and the tooltip
+    say so.
+  - Tool call names use the part a person recognises (after `__`), not the raw
+    `mcp_server__tool` id.
+- **Folded summary.** `N turn(s)` when there are any, `Turn N running` while the last one is.
+- **Data.** `ChatTokenUsage`, `TurnTokenUsage`, the visible branch's `ChatMessageView`, and the
+  running flag. Token formatting is shared with Usage through `IUsagePresentation`. Duration and
+  time formatting live inside the widget — one rule each, both tiny.
+- **Architecture.** `IChatTimelineStatisticsCalculator` in `src/AI.Web/Widgets` returns a
+  `ChatTimelineStatistics` record holding one `TimelineTurn` per branch turn. Bound in
+  `Composition.cs` and tested in `tests/AI.Web.Tests/Widgets`. The widget itself is a
+  `ChatWidget` with `Summary` and the same `chat-usage-*` building blocks; only the vertical
+  timeline layout (rail, dot, chips) uses widget-specific classes (`chat-timeline-*`). Clicking
+  a row raises `OnSelectTurn(messageId)` and `Home.ScrollToTurnAsync` forwards it to
+  `MessageFeed.ScrollToMessageAsync`, so the timeline doubles as a table of contents.

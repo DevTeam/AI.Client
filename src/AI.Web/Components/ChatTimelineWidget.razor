@@ -1,0 +1,152 @@
+@inject IChatTimelineStatisticsCalculator Calculator
+
+@* One row per turn on the visible branch: when it started, how long it ran, its requests and
+   tokens, and the tools and files it touched. Durations come from message timestamps and so are
+   marked approximate, the same way the Performance widget marks wall-clock. The list is the
+   whole branch — the scope switch is not shown because the timeline of one turn is that turn,
+   and the widget's own empty state says so. A click on a row scrolls the transcript to the turn's
+   first user message, so the timeline doubles as a table of contents. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-timeline-widget">
+    @if (!_stats.HasTurns)
+    {
+        <p class="chat-usage-empty">Turns appear here once the chat sends its first message.</p>
+    }
+    else
+    {
+        <div class="chat-usage-section chat-timeline-headline">
+            <span class="chat-timeline-count">@_stats.Turns.Count</span>
+            <span class="chat-usage-muted">@(_stats.Turns.Count == 1 ? "turn" : "turns")@(_stats.HasProviderData ? "" : " · no usage data yet")</span>
+        </div>
+
+        <div class="chat-usage-section chat-timeline-list" role="list">
+            @foreach (var turn in _stats.Turns)
+            {
+                <div @key="turn.TurnIndex" class="chat-timeline-row @(turn.IsRunning ? "is-running" : null) @(turn.UserMessageId is null ? "is-opening" : null)"
+                     role="listitem">
+                    <div class="chat-timeline-line" aria-hidden="true">
+                        <span class="chat-timeline-dot"></span>
+                    </div>
+                    <div class="chat-timeline-body">
+                        <div class="chat-timeline-head">
+                            <span class="chat-timeline-index">Turn @turn.TurnIndex</span>
+                            <span class="chat-usage-muted" title="@turn.StartedAt.LocalDateTime.ToString("F")">@FormatStartedAt(turn.StartedAt)</span>
+                            @if (turn.HasDuration)
+                            {
+                                <span class="chat-usage-muted" title="From the first to the last message of the turn, including pauses before the user pressed Send">≈ @FormatDuration(turn.DurationMs)</span>
+                            }
+                            @if (turn.IsRunning)
+                            {
+                                <span class="chat-timeline-running chat-usage-muted">running</span>
+                            }
+                        </div>
+                        <div class="chat-timeline-figures">
+                            @if (turn.Requests is { } requests)
+                            {
+                                <span><b>@requests</b> <span class="chat-usage-muted">@FormatRequests(requests)</span></span>
+                            }
+                            @if (turn.InputTokens is { } input && turn.OutputTokens is { } output)
+                            {
+                                <span title="Input → output tokens for the turn, provider-reported"><span class="chat-usage-muted">tokens</span> @Usage.FormatTokens(input) → @Usage.FormatTokens(output)</span>
+                            }
+                            @if (turn.Requests is null && turn.InputTokens is null)
+                            {
+                                <span class="chat-usage-muted">No usage reported</span>
+                            }
+                        </div>
+                        @if (turn.ToolCalls.Count > 0)
+                        {
+                            <ul class="chat-timeline-chips" aria-label="Tools used in this turn">
+                                @foreach (var tool in turn.ToolCalls)
+                                {
+                                    <li @key="tool" class="chat-timeline-chip"><AppIcon Name="tool" />@tool</li>
+                                }
+                            </ul>
+                        }
+                        @if (turn.FilesChanged.Count > 0)
+                        {
+                            <ul class="chat-timeline-chips" aria-label="Files changed in this turn">
+                                @foreach (var path in turn.FilesChanged)
+                                {
+                                    <li @key="path" class="chat-timeline-chip chat-timeline-chip-file"><AppIcon Name="diff" /><span title="@path">@path</span></li>
+                                }
+                            </ul>
+                        }
+                        @if (turn.UserMessageId is { } userId)
+                        {
+                            <button class="chat-usage-link chat-timeline-jump" type="button"
+                                    title="Scroll the transcript to this turn"
+                                    @onclick="() => OnSelectTurn.InvokeAsync(userId)">Open in transcript</button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        @if (_stats.Turns[^1].IsRunning)
+        {
+            <div class="chat-usage-section chat-usage-footnote">
+                <span>This turn is still running</span>
+            </div>
+        }
+    }
+</ChatWidget>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>The visible branch, root to leaf.</summary>
+    [Parameter]
+    public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+
+    /// <summary>The chat's stored usage, when the ledger has reported any.</summary>
+    [Parameter]
+    public ChatTokenUsage? ChatUsage { get; set; }
+
+    /// <summary>The run snapshot's turn usage, while the run is on its last turn.</summary>
+    [Parameter]
+    public TurnTokenUsage? LiveTurn { get; set; }
+
+    /// <summary>True while the run is generating.</summary>
+    [Parameter]
+    public bool IsGenerating { get; set; }
+
+    /// <summary>Asks the page to scroll the transcript to <paramref name="messageId"/>.</summary>
+    [Parameter]
+    public EventCallback<Guid> OnSelectTurn { get; set; }
+
+    [Inject]
+    private IUsagePresentation Usage { get; set; } = null!;
+
+    private ChatTimelineStatistics _stats = ChatTimelineStatistics.Empty;
+
+    protected override void OnParametersSet() => Refresh();
+
+    private void Refresh() =>
+        _stats = Calculator.Calculate(Messages, ChatUsage, LiveTurn, IsGenerating);
+
+    private string? GetSummary()
+    {
+        if (!_stats.HasTurns) return null;
+        if (_stats.Turns[^1].IsRunning) return $"Turn {_stats.Turns[^1].TurnIndex} running";
+        var count = _stats.Turns.Count;
+        var label = count == 1 ? "turn" : "turns";
+        return $"{count} {label}";
+    }
+
+    private static string FormatStartedAt(DateTimeOffset at) =>
+        at.LocalDateTime.ToString("HH:mm");
+
+    private static string FormatDuration(long ms)
+    {
+        if (ms <= 0) return "0 s";
+        var span = TimeSpan.FromMilliseconds(ms);
+        if (span.TotalSeconds < 1) return $"{Math.Max(1, (int)ms)} ms";
+        if (span.TotalSeconds < 60) return $"{(int)Math.Ceiling(span.TotalSeconds)} s";
+        if (span.TotalMinutes < 60) return $"{(int)Math.Ceiling(span.TotalMinutes)} min";
+        return $"{(int)Math.Ceiling(span.TotalHours)} h";
+    }
+
+    private static string FormatRequests(int requests) =>
+        requests == 1 ? "request" : "requests";
+}

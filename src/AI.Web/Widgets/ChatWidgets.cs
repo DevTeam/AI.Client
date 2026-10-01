@@ -30,6 +30,7 @@ public sealed class ChatWidgetCatalog : IChatWidgetCatalog
     public const string ChatPerformance = "chat-performance";
     public const string ChatSubtasks = "chat-subtasks";
     public const string ChatKnowledge = "chat-knowledge";
+    public const string ChatTimeline = "chat-timeline";
 
     public IReadOnlyList<ChatWidgetDefinition> Widgets { get; } =
     [
@@ -38,7 +39,8 @@ public sealed class ChatWidgetCatalog : IChatWidgetCatalog
         new(ChatTools, "Tools", "tool", "Tool calls, results and most used tools in the whole chat or the last turn"),
         new(ChatPerformance, "Performance", "timer", "Wall-clock, throughput and how request time was spent in the whole chat or the last turn"),
         new(ChatSubtasks, "Subtasks", "fork", "Delegated work the chat ran on another model: requests, tokens and share of the whole chat or the last turn"),
-        new(ChatKnowledge, "Knowledge", "book", "Files and pages the assistant read on the visible branch, by tool and most recent paths")
+        new(ChatKnowledge, "Knowledge", "book", "Files and pages the assistant read on the visible branch, by tool and most recent paths"),
+        new(ChatTimeline, "Timeline", "history", "One row per turn on the visible branch: when it started, how long it ran, its requests and tokens, and the tools and files it touched")
     ];
 
     public ChatWidgetDefinition? Find(string id) => Widgets.FirstOrDefault(widget => widget.Id == id);

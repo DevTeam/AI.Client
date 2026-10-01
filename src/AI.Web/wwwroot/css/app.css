@@ -6692,3 +6692,33 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .chat-knowledge-source-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .chat-knowledge-source-count { font-variant-numeric: tabular-nums; }
 .chat-knowledge-more { align-self: flex-start; }
+
+/* Timeline widget: one row per turn on the visible branch, with the same building blocks as the
+   other widgets (chat-usage-* for rows, footnote, muted text). The list is a vertical timeline
+   with a left rail and dot, so the eye can scan turn boundaries; chips for tool calls and files
+   changed use the same pill shape as the rest of the app. Durations are marked "≈" in markup
+   because they come from message timestamps, the same convention Performance uses. */
+.chat-timeline-headline { display: flex; align-items: baseline; gap: .55rem; flex-wrap: wrap; }
+.chat-timeline-count { font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.chat-timeline-list { display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none; }
+.chat-timeline-row { position: relative; display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); column-gap: .6rem; padding: .15rem 0; border-top: 1px solid var(--color-border-subtle); }
+.chat-timeline-row:first-child { border-top: 0; }
+.chat-timeline-row.is-running .chat-timeline-dot { background: var(--color-accent-text); box-shadow: 0 0 0 3px var(--color-fill); animation: chat-timeline-pulse 1.6s ease-in-out infinite; }
+.chat-timeline-row.is-opening .chat-timeline-index { color: var(--color-text-secondary); }
+.chat-timeline-line { position: relative; }
+.chat-timeline-line::before { content: ""; position: absolute; left: 50%; top: 0; bottom: -.5rem; width: 1px; background: var(--color-border-subtle); transform: translateX(-50%); }
+.chat-timeline-row:first-child .chat-timeline-line::before { top: .35rem; }
+.chat-timeline-row:last-child .chat-timeline-line::before { bottom: 50%; }
+.chat-timeline-dot { position: absolute; left: 50%; top: .45rem; width: .55rem; height: .55rem; border-radius: 50%; background: var(--color-text-muted); transform: translate(-50%, 0); }
+.chat-timeline-body { display: grid; gap: .2rem; min-width: 0; }
+.chat-timeline-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem .55rem; font-size: .78rem; }
+.chat-timeline-index { font-weight: 500; }
+.chat-timeline-running { font-style: italic; }
+.chat-timeline-figures { display: flex; flex-wrap: wrap; gap: .25rem .6rem; font-size: .76rem; }
+.chat-timeline-chips { display: flex; flex-wrap: wrap; gap: .25rem; margin: .15rem 0 0; padding: 0; list-style: none; }
+.chat-timeline-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .45rem; border-radius: calc(.35rem * var(--corner-scale)); background: var(--color-fill); font-size: .72rem; line-height: 1.3; max-width: 100%; }
+.chat-timeline-chip > :last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.chat-timeline-chip-file > :last-child { max-width: 18rem; }
+.chat-timeline-jump { justify-self: start; margin-top: .15rem; }
+@keyframes chat-timeline-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .chat-timeline-row.is-running .chat-timeline-dot { animation: none; } }

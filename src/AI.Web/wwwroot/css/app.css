@@ -1022,7 +1022,6 @@ body {
 .settings-list-item {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     border-radius: calc(0.6rem * var(--corner-scale));
 }
@@ -1030,6 +1029,24 @@ body {
 .settings-list-item.selected {
     background: var(--color-fill-active);
 }
+
+/* The name keeps the whole row, as in the sidebar: the selected row's buttons arrive on top of
+   its right end over a gradient that dissolves the text beneath them, so selecting or hovering
+   a row never narrows its name and rewraps it to another height. */
+.settings-list-item::after {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    inset: 0 0 0 auto;
+    width: 6.5rem;
+    border-radius: inherit;
+    background: linear-gradient(to right, transparent, var(--color-fill-active) 2.5rem);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 140ms ease;
+}
+
+.settings-list-item > .settings-list-select { grid-area: 1 / 1; }
 
 .settings-item-remove {
     margin-right: 0.4rem;
@@ -5851,16 +5868,32 @@ a.resource-pill-target.file-link { cursor: context-menu; }
     background: transparent;
 }
 
-/* Copy and remove sit together on the selected row. Every row keeps their room, so selecting
-   one does not narrow its name and rewrap it to a different height. */
+/* Copy and remove sit together on the selected row, shown with the fade on hover or focus. */
 .settings-item-actions {
+    position: relative;
+    z-index: 2;
     display: flex;
-    justify-content: flex-end;
-    min-width: 4.5rem;
+    grid-area: 1 / 1;
+    justify-self: end;
     margin-right: 0.4rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 140ms ease;
 }
 
-.settings-item-actions.single { min-width: 2.25rem; }
+.settings-list-item.selected:is(:hover, :focus-within):has(> .settings-item-actions)::after,
+.settings-list-item.selected:is(:hover, :focus-within) > .settings-item-actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+@media (hover: none), (pointer: coarse) {
+    .settings-list-item.selected:has(> .settings-item-actions)::after,
+    .settings-list-item.selected > .settings-item-actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
 
 .settings-item-actions .settings-item-remove { margin-right: 0; }
 

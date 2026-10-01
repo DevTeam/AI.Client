@@ -24,12 +24,10 @@
                             <span><SkillIcon Icon="@item.Icon" />@item.Name</span>
                             <small>@Summary(item)</small>
                         </button>
-                        <span class="settings-item-actions single">
-                            @if (item.Key == _selectedKey && !item.ReadOnly)
-                            {
-                                <button class="icon-action settings-item-remove" type="button" title="Remove skill" aria-label="Remove skill" @onclick="Remove"><AppIcon Name="trash" /></button>
-                            }
-                        </span>
+                        @if (item.Key == _selectedKey && !item.ReadOnly)
+                        {
+                            <span class="settings-item-actions"><button class="icon-action settings-item-remove" type="button" title="Remove skill" aria-label="Remove skill" @onclick="Remove"><AppIcon Name="trash" /></button></span>
+                        }
                     </div>
                 }
             }

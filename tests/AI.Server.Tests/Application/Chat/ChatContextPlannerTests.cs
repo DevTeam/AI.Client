@@ -425,16 +425,18 @@ public sealed class ChatContextPlannerTests
         {
             new("user", $"request-{index} " + new string((char)('a' + index), 10_000)),
             new("assistant", $"outcome-{index}")
-        }).ToArray();
-        ChatCompletionMessage[] trailing = [new("user", ModelInstructionComposer.TrailingPrefix + new string('g', 4_000))];
+        }).Append(new ChatCompletionMessage("user", "next question")).ToArray();
+        var trailing = ModelInstructionComposer.TrailingOpen + new string('g', 4_000) + ModelInstructionComposer.TrailingClose;
         var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
             new FixedLimitsResolver(24_000, 1_000));
 
         var plan = planner.Plan(null, "small-model", messages, [], trailing);
 
         plan.Fits.ShouldBeTrue();
-        plan.Messages[^1].ShouldBeSameAs(trailing[0]);
-        plan.InstructionTokens.ShouldBeGreaterThanOrEqualTo(_estimator.EstimateMessages(trailing));
+        // Added to the last message, never sent as a user message of its own after a user message.
+        plan.Messages[^1].Content.ShouldBe("next question");
+        plan.Messages[^1].ForModel.ShouldEndWith(trailing);
+        plan.InstructionTokens.ShouldBeGreaterThanOrEqualTo(_estimator.EstimateMessages([new("user", trailing)]));
     }
 
     private sealed class FixedLimitsResolver(long contextWindow, long reservedOutput) : IConnectionContextLimitsResolver

@@ -54,7 +54,7 @@ Source, newest first: the draft of the model step in flight (`ChatRunSnapshot.Dr
 - **The next text waits until the previous could be read.** Reading time is length ÷ 20 characters per second, clamped to 1.5–6 s, counted from when the shown text last grew. A note that finished before a slow tool call has usually been read by then, so most switches cost no wait.
 - **No queue.** When the wait is over, the newest text is shown; anything in between is in the expanded turn.
 - **Hold.** While the pointer is over the text, it is not replaced.
-- **No going back.** A text the turn has moved past is not shown again (a draft rejected by the completion protocol leaves an older note as the newest candidate).
+- **No going back.** A text the turn has moved past is not shown again.
 - **The end is immediate.** Final answer, stop or failure replace the live text at once; the reader is not made to wait for the thing the wait was for.
 - **Expanded turn:** the notes are shown as themselves, so only the draft of the step in flight is added at the end.
 - A replacement fades in from the row (300 ms); growth of the same text is patched in place. `prefers-reduced-motion` turns the animation off.
@@ -63,7 +63,7 @@ The logic lives in `TurnLiveText` (one instance per transcript) and is covered b
 
 #### Preamble
 
-A text known to lead into tool calls is a remark, not the answer, and is drawn muted and slightly smaller (`.live-text.is-preamble`). It is known once the model step in flight has started a call (`ChatRunSnapshot.DraftToolCall`, see below) or once the text has landed as a note with tool calls attached. Until then it is drawn as a possible answer: most answers are not preceded by anything that would say otherwise. The completion protocol's own tool (`app_finish_run`) does not mark the text — it carries the answer.
+A text known to lead into tool calls is a remark, not the answer, and is drawn muted and slightly smaller (`.live-text.is-preamble`). It is known once the model step in flight has started a call (`ChatRunSnapshot.DraftToolCall`, see below) or once the text has landed as a note with tool calls attached. Until then it is drawn as a possible answer: most answers are not preceded by anything that would say otherwise.
 
 ### Activity line
 

@@ -9,7 +9,7 @@ public interface IChatContextPlanner
         string model,
         IReadOnlyList<ChatCompletionMessage> messages,
         IReadOnlyList<ChatToolDefinition> tools,
-        IReadOnlyList<ChatCompletionMessage>? trailing = null,
+        string? trailing = null,
         ContextCompactionMemory? memory = null);
 
     /// <summary>
@@ -17,7 +17,10 @@ public interface IChatContextPlanner
     /// request, falls back to an isolated, tool-free LLM summary. Pass a null summarizer to
     /// reproduce the synchronous behaviour for callers that cannot await a network call.
     /// </summary>
-    /// <param name="trailing">Guidance sent after the conversation; counted, never compacted.</param>
+    /// <param name="trailing">
+    /// Guidance attached to the end of the last message — or after it, when that is the model's own
+    /// — counted, never compacted.
+    /// </param>
     /// <param name="memory">
     /// The run's previous compaction. With it a compaction is carried on while the request still
     /// fits, rather than redone, so the request keeps its cached prefix.
@@ -30,6 +33,6 @@ public interface IChatContextPlanner
         IContextSummarizer? summarizer,
         int summaryTargetTokens,
         CancellationToken cancellationToken,
-        IReadOnlyList<ChatCompletionMessage>? trailing = null,
+        string? trailing = null,
         ContextCompactionMemory? memory = null);
 }

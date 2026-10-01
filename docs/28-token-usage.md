@@ -20,9 +20,10 @@ In order of preference:
 
 1. the cost the endpoint quoted (`usage.cost`, as OpenRouter-style gateways send it);
 2. the connection's prices, per million fresh input, cached input and output tokens;
-3. an estimate from the endpoint's earlier quotes for the same connection and model
-   (`UsageCostEstimator`): a least-squares fit over the last 200 quotes of the three kinds of
-   tokens, or one blended rate when the quotes do not support a fit. The quotes of the last month
+3. an estimate from the endpoint's earlier quotes for the same connection (`UsageCostEstimator`),
+   also for a request whose tokens are themselves estimated: a least-squares fit over the last
+   200 quotes of the three kinds of tokens, or one blended rate when the quotes do not support a
+   fit. The quotes of the last month
    are read from the ledger once, so it works right after a restart. Such a record has
    `CostEstimated`, and the widget marks the sum "≈ … estimated".
 

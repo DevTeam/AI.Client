@@ -19,10 +19,8 @@ public sealed partial class ContextPlanDiagnostics(ILogger<ContextPlanDiagnostic
     public void RecordInstructions(string model, IReadOnlyList<string> keys, long estimatedTokens) =>
         InstructionsComposed(logger, model, keys.Count, estimatedTokens, string.Join(",", keys));
 
-    public void RecordEmptyResponse(string model, int attempt, string? finishReason, int chunkCount,
-        bool completionRequired, bool completionToolForced) =>
-        EmptyResponse(logger, model, attempt, finishReason ?? "none", chunkCount,
-            completionRequired, completionToolForced);
+    public void RecordEmptyResponse(string model, int attempt, string? finishReason, int chunkCount, bool usedTools) =>
+        EmptyResponse(logger, model, attempt, finishReason ?? "none", chunkCount, usedTools);
 
     [LoggerMessage(1001, LogLevel.Information,
         "LLM context plan for {Model}: {EstimatedInputTokens}/{InputLimit} input tokens, "
@@ -47,7 +45,7 @@ public sealed partial class ContextPlanDiagnostics(ILogger<ContextPlanDiagnostic
 
     [LoggerMessage(1004, LogLevel.Warning,
         "LLM empty response for {Model}: attempt={Attempt}, finishReason={FinishReason}, chunks={ChunkCount}, "
-        + "completionRequired={CompletionRequired}, completionToolForced={CompletionToolForced}")]
+        + "usedTools={UsedTools}")]
     private static partial void EmptyResponse(ILogger logger, string model, int attempt, string finishReason,
-        int chunkCount, bool completionRequired, bool completionToolForced);
+        int chunkCount, bool usedTools);
 }

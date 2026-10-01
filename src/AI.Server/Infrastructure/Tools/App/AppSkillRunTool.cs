@@ -52,7 +52,7 @@ public sealed class AppSkillRunTool(ISkillRunner runner, IToolCatalogRegistry ca
                         Status = "Skipped",
                         Message = "This playbook was already loaded in this turn with the same parameters; its instructions "
                                   + "are in the earlier result. Do not start it over or repeat questions already answered: "
-                                  + "continue from the last step you finished, or call app_finish_run if every step is done.",
+                                  + "continue from the last step you finished, or give your final answer if every step is done.",
                         Output = null
                     }, false);
                 if (output.TryGetProperty("tools", out var tools))

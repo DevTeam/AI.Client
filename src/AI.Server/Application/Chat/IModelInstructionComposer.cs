@@ -4,17 +4,14 @@ using Tools;
 
 /// <param name="Messages">The leading instructions followed by the conversation.</param>
 /// <param name="Trailing">
-/// Step-specific guidance that goes after the conversation, ahead of nothing the provider could
-/// have cached. Empty when there is none.
+/// Step-specific guidance, attached to the end of the request's last message where nothing the
+/// provider could have cached comes after it. Null when there is none.
 /// </param>
 public sealed record ModelInstructionComposition(
     IReadOnlyList<ChatCompletionMessage> Messages,
     IReadOnlyList<string> Keys,
     long EstimatedTokens,
-    IReadOnlyList<ChatCompletionMessage>? Trailing = null)
-{
-    public IReadOnlyList<ChatCompletionMessage> TrailingMessages => Trailing ?? [];
-}
+    string? Trailing = null);
 
 /// <summary>
 /// Builds the model-only instructions. It is the sole boundary at which hidden application
@@ -33,6 +30,6 @@ public interface IModelInstructionDiagnostics
 {
     void RecordInstructions(string model, IReadOnlyList<string> keys, long estimatedTokens);
 
-    void RecordEmptyResponse(string model, int attempt, string? finishReason, int chunkCount,
-        bool completionRequired, bool completionToolForced);
+    /// <param name="usedTools">Whether the turn had called a tool before the empty response.</param>
+    void RecordEmptyResponse(string model, int attempt, string? finishReason, int chunkCount, bool usedTools);
 }

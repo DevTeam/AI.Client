@@ -46,11 +46,12 @@ public sealed class TokenUsageMeter(
         {
             cost = measurement.ReportedCost ?? await PriceAsync(measurement);
             if (measurement is { ReportedCost: { } quoted, ConnectionId: { } quotedBy, Estimated: false })
-                costs.Learn(quotedBy, measurement.Model, measurement.Tokens, quoted);
-            else if (cost is null && measurement is { ConnectionId: { } connectionId, Estimated: false })
+                costs.Learn(quotedBy, measurement.Tokens, quoted);
+            // Counts the application estimated are priced the same way; the record says both are estimates.
+            else if (cost is null && measurement.ConnectionId is { } connectionId)
             {
                 await LearnFromLedgerAsync();
-                cost = costs.Estimate(connectionId, measurement.Model, measurement.Tokens);
+                cost = costs.Estimate(connectionId, measurement.Tokens);
                 costEstimated = cost is not null;
             }
         }
@@ -118,7 +119,7 @@ public sealed class TokenUsageMeter(
         {
             foreach (var record in await ledger.ReadAsync(now - LearnedQuotesAge, now.AddMinutes(1), CancellationToken.None))
                 if (record is { Cost: { } quoted, CostEstimated: false, Estimated: false, ConnectionId: { } connectionId })
-                    costs.Learn(connectionId, record.Model, record.Tokens, quoted);
+                    costs.Learn(connectionId, record.Tokens, quoted);
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {

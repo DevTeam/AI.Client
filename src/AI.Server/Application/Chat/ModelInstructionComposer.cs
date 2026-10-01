@@ -9,10 +9,13 @@ public sealed class ModelInstructionComposer(
     private const long InstructionBudgetTokens = 2_048;
 
     /// <summary>
-    /// Opens the trailing note. It is sent with the user role: several chat templates reject a
-    /// system message anywhere but first, and the note must not read as something the user wrote.
+    /// Opens the trailing note. It is added to the last message rather than sent as one of its own:
+    /// several chat templates reject a system message anywhere but first, and others two messages
+    /// of one role in a row. The tag keeps it apart from what the user or a tool wrote.
     /// </summary>
-    public const string TrailingPrefix = "[Application guidance for this step. It comes from the application, not from the user.]\n\n";
+    public const string TrailingOpen = "<application-guidance>\nFrom the application for this step, not from the user.\n";
+
+    public const string TrailingClose = "\n</application-guidance>";
 
     public ModelInstructionComposition Compose(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context)
     {
@@ -45,9 +48,9 @@ public sealed class ModelInstructionComposer(
         var trailing = selected.Where(item => Position(item) == ModelInstructionPlacement.Trailing).ToArray();
         var messages = leading.Select(item => new ChatCompletionMessage("system", item.Content))
             .Concat(context).ToArray();
-        ChatCompletionMessage[] note = trailing.Length == 0
-            ? []
-            : [new ChatCompletionMessage("user", TrailingPrefix + string.Join("\n\n", trailing.Select(item => item.Content)))];
+        var note = trailing.Length == 0
+            ? null
+            : TrailingOpen + string.Join("\n\n", trailing.Select(item => item.Content)) + TrailingClose;
         return new ModelInstructionComposition(messages, leading.Concat(trailing).Select(item => item.Key).ToArray(),
             tokens, note);
     }

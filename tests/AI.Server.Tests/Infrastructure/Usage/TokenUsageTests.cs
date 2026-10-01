@@ -263,6 +263,20 @@ public class TokenUsageTests
         new TokenUsageAggregator().Total(records).EstimatedCostRequests.ShouldBe(1);
     }
 
+    [Fact]
+    public async Task ShouldPriceARequestTheEndpointReportedNothingForAndNamedAnotherModel()
+    {
+        var (meter, ledger) = CreateMeter();
+        await meter.RecordAsync(Measurement(new TokenCounts(1_000_000, 0)) with { ReportedCost = 2m, Model = "Vendor-M3" },
+            CancellationToken.None);
+
+        await meter.RecordAsync(Measurement(new TokenCounts(250_000, 0)) with { Estimated = true }, CancellationToken.None);
+
+        var unreported = (await ledger.ReadAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, CancellationToken.None))[^1];
+        unreported.Cost.ShouldBe(0.5m);
+        unreported.CostEstimated.ShouldBeTrue();
+    }
+
     private (TokenUsageMeter Meter, JsonLinesTokenUsageLedger Ledger) CreateMeter()
     {
         var ledger = new JsonLinesTokenUsageLedger(Location(), _files);

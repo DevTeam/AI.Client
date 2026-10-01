@@ -22,14 +22,14 @@ public sealed class ChatContextPlanner(
         string model,
         IReadOnlyList<ChatCompletionMessage> messages,
         IReadOnlyList<ChatToolDefinition> tools,
-        IReadOnlyList<ChatCompletionMessage>? trailing = null,
+        string? trailing = null,
         ContextCompactionMemory? memory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(model);
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(tools);
 
-        var core = PlanCore(connection, messages, tools, trailing ?? [], memory);
+        var core = PlanCore(connection, messages, tools, trailing, memory);
         return BuildPlan(core, core.Compaction);
     }
 
@@ -41,14 +41,14 @@ public sealed class ChatContextPlanner(
         IContextSummarizer? summarizer,
         int summaryTargetTokens,
         CancellationToken cancellationToken,
-        IReadOnlyList<ChatCompletionMessage>? trailing = null,
+        string? trailing = null,
         ContextCompactionMemory? memory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(model);
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(tools);
 
-        var core = PlanCore(connection, messages, tools, trailing ?? [], memory);
+        var core = PlanCore(connection, messages, tools, trailing, memory);
         var compaction = core.Compaction;
         if (estimator.EstimateMessages(compaction.Messages) > core.ConversationLimit && summarizer is not null)
         {
@@ -64,7 +64,7 @@ public sealed class ChatContextPlanner(
         ConnectionSettings? connection,
         IReadOnlyList<ChatCompletionMessage> messages,
         IReadOnlyList<ChatToolDefinition> tools,
-        IReadOnlyList<ChatCompletionMessage> trailing,
+        string? trailing,
         ContextCompactionMemory? memory)
     {
         var effective = limitsResolver.Resolve(connection);
@@ -78,7 +78,7 @@ public sealed class ChatContextPlanner(
             limits.ProtocolOverheadTokens, limits.SafetyMarginTokens);
         var inputLimit = Math.Max(0, limits.ContextWindowTokens - Math.Min(limits.ContextWindowTokens, fixedCost));
         // The trailing note is never compacted: it is what this step is asked to do.
-        var conversationLimit = Math.Max(0, inputLimit - (trailing.Count == 0 ? 0 : estimator.EstimateMessages(trailing)));
+        var conversationLimit = Math.Max(0, inputLimit - TrailingTokens(trailing));
         ContextCompactionResult compaction;
         if (estimator.EstimateMessages(messages) <= conversationLimit)
         {
@@ -104,11 +104,29 @@ public sealed class ChatContextPlanner(
 
     private sealed record PlanBasis(ResolvedConnectionContextLimits Effective, ChatContextLimits Limits,
         long InputLimit, long ConversationLimit, long ToolTokens, ContextCompactionResult Compaction,
-        IReadOnlyList<ChatCompletionMessage> Trailing);
+        string? Trailing);
+
+    private long TrailingTokens(string? trailing) =>
+        trailing is null ? 0 : estimator.EstimateMessages([new ChatCompletionMessage("user", trailing)]);
+
+    /// <summary>
+    /// The guidance goes at the end of the last message, and the request keeps its alternation of
+    /// roles. After the model's own words — an answer cut off and being continued — it follows as a
+    /// message of its own, since added to them it would read as the model's.
+    /// </summary>
+    private static IReadOnlyList<ChatCompletionMessage> Attach(IReadOnlyList<ChatCompletionMessage> messages, string? trailing)
+    {
+        if (trailing is null) return messages;
+        if (messages.Count == 0 || messages[^1].Role is "assistant" or "system")
+            return [.. messages, new ChatCompletionMessage("user", trailing)];
+        var attached = messages.ToArray();
+        attached[^1] = attached[^1] with { ModelContent = attached[^1].ForModel + "\n\n" + trailing };
+        return attached;
+    }
 
     private ContextPlan BuildPlan(PlanBasis basis, ContextCompactionResult compaction)
     {
-        var messages = basis.Trailing.Count == 0 ? compaction.Messages : compaction.Messages.Concat(basis.Trailing).ToArray();
+        var messages = Attach(compaction.Messages, basis.Trailing);
         return new(
             basis.InputLimit,
             estimator.EstimateMessages(messages),
@@ -121,7 +139,7 @@ public sealed class ChatContextPlanner(
             compaction.OmittedMessages,
             messages,
             estimator.EstimateMessages(compaction.Messages.Where(message => message.Role == "system").ToArray())
-            + (basis.Trailing.Count == 0 ? 0 : estimator.EstimateMessages(basis.Trailing)),
+            + TrailingTokens(basis.Trailing),
             Add(basis.Limits.ProtocolOverheadTokens, basis.Limits.SafetyMarginTokens),
             compaction.Summary);
     }

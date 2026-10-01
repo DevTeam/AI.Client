@@ -89,6 +89,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IUsagePresentation>().To<UsagePresentation>()
             .RootBind<IChatWidgetCatalog>().To<ChatWidgetCatalog>()
             .RootBind<IChatWidgetLayout>().To<ChatWidgetLayout>()
+            .RootBind<IChatFileStatisticsCalculator>().To<ChatFileStatisticsCalculator>()
             .Bind<IChatUsageStore>().As(Lifetime.Singleton).To<ChatUsageStore>()
             .Root<IChatUsageStore>()
             .RootBind<IChatUsageApi>().To<ChatUsageApi>()

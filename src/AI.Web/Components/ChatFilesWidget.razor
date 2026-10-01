@@ -1,0 +1,198 @@
+@using AI.Contracts.Workspace
+@inject IChatFileStatisticsCalculator Calculator
+@* What the open chat did to files on disk, added up over its turns or for the last one. Each run's
+   receipt is a net change of that run; the widget sums them, so a line written in one turn and
+   removed in the next counts on both sides. A file opens the review of the newest turn that
+   changed it. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-files-widget">
+    @{ var stats = _stats; }
+    <div class="chat-files-scope" role="radiogroup" aria-label="Which turns to count">
+        <button type="button" role="radio" aria-checked="@(_scope == ChatFileStatisticsScope.Chat ? "true" : "false")"
+                class="@(_scope == ChatFileStatisticsScope.Chat ? "is-selected" : null)" @onclick="() => SetScope(ChatFileStatisticsScope.Chat)">Whole chat</button>
+        <button type="button" role="radio" aria-checked="@(_scope == ChatFileStatisticsScope.LastTurn ? "true" : "false")"
+                class="@(_scope == ChatFileStatisticsScope.LastTurn ? "is-selected" : null)" @onclick="() => SetScope(ChatFileStatisticsScope.LastTurn)">Last turn</button>
+    </div>
+
+    @if (stats.Files.Count == 0)
+    {
+        <p class="chat-usage-empty">@(_scope == ChatFileStatisticsScope.LastTurn && _hasAnyChanges ? "The last turn changed no files." : "Files the chat changes on disk appear here, with lines added and removed.")</p>
+    }
+    else
+    {
+        <div class="chat-usage-section">
+            <div class="chat-files-total">
+                <span class="chat-files-count">@stats.Files.Count</span>
+                <span class="chat-usage-muted">@(stats.Files.Count == 1 ? "file" : "files")@(stats.IncludesLive ? " so far" : null)</span>
+                <span class="chat-files-total-lines" aria-label="@stats.Additions lines added, @stats.Deletions lines removed"
+                      title="Summed over the turns: a line changed in two turns counts twice">
+                    <span class="workspace-added">+@stats.Additions</span>
+                    <span class="workspace-removed">−@stats.Deletions</span>
+                </span>
+            </div>
+            @if (stats.Additions + stats.Deletions > 0)
+            {
+                <div class="chat-files-bar" aria-hidden="true">
+                    <span class="chat-files-bar-added" style="flex-grow: @stats.Additions"></span>
+                    <span class="chat-files-bar-removed" style="flex-grow: @stats.Deletions"></span>
+                </div>
+            }
+            <div class="chat-usage-legend">
+                @foreach (var (kind, label) in Kinds)
+                {
+                    if (stats.Count(kind) is > 0 and var count)
+                    {
+                        <span @key="kind"><span class="chat-files-kind chat-files-kind-@kind.ToString().ToLowerInvariant()" aria-hidden="true">@Glyph(kind)</span>@count @label</span>
+                    }
+                }
+            </div>
+        </div>
+
+        <div class="chat-usage-section">
+            <div class="chat-files-columns chat-usage-muted">
+                <span>Most changed</span>
+                <span>added</span>
+                <span>removed</span>
+            </div>
+            @{ var max = Math.Max(1, stats.Files.Max(file => file.Additions + file.Deletions)); }
+            <ul class="chat-files-list">
+                @foreach (var file in _showAll ? stats.Files : stats.Files.Take(VisibleFiles))
+                {
+                    var source = file.LatestSourceMessageId;
+                    <li @key="file.Path">
+                        <button class="chat-files-row" type="button" disabled="@(source is null)"
+                                title="@RowTitle(file)"
+                                @onclick="() => OpenFileAsync(file)">
+                            <span class="chat-files-kind chat-files-kind-@file.Kind.ToString().ToLowerInvariant()" title="@KindTitle(file.Kind)">@Glyph(file.Kind)</span>
+                            <span class="chat-files-name">@FileName(file.Path) <span class="chat-usage-muted">@Folder(file.Path)</span></span>
+                            @if (file.IsBinary && file.Additions + file.Deletions == 0)
+                            {
+                                <span class="chat-files-binary chat-usage-muted">binary</span>
+                            }
+                            else
+                            {
+                                <span class="chat-files-figure @(file.Additions > 0 ? "workspace-added" : "chat-usage-muted")">@(file.Additions > 0 ? $"+{file.Additions}" : "—")</span>
+                                <span class="chat-files-figure @(file.Deletions > 0 ? "workspace-removed" : "chat-usage-muted")">@(file.Deletions > 0 ? $"−{file.Deletions}" : "—")</span>
+                                <span class="chat-files-track" aria-hidden="true">
+                                    <span class="chat-files-bar-added" style="flex-grow: @file.Additions"></span>
+                                    <span class="chat-files-bar-removed" style="flex-grow: @file.Deletions"></span>
+                                    <span style="flex-grow: @(max - file.Additions - file.Deletions)"></span>
+                                </span>
+                            }
+                        </button>
+                    </li>
+                }
+            </ul>
+            @if (stats.Files.Count > VisibleFiles)
+            {
+                <button class="chat-usage-link chat-files-more" type="button" @onclick="() => _showAll = !_showAll">
+                    @(_showAll ? "Show fewer" : $"Show {stats.Files.Count - VisibleFiles} more")
+                </button>
+            }
+        </div>
+
+        <div class="chat-usage-section chat-files-footer">
+            <span class="chat-usage-muted">
+                @if (_scope == ChatFileStatisticsScope.Chat)
+                {
+                    @($"In {stats.TurnsWithChanges} of {stats.Turns} {(stats.Turns == 1 ? "turn" : "turns")}")
+                }
+                else if (stats.IncludesLive)
+                {
+                    @("This turn is still running")
+                }
+            </span>
+            @if (stats.LatestSourceMessageId is { } latest && OnReview.HasDelegate)
+            {
+                <button class="compact-action" type="button" @onclick="() => OnReview.InvokeAsync(new ChatFileReviewRequest(latest, null))"
+                        title="@(stats.Sources > 1 ? "A review covers one turn: this opens the newest one that changed files" : "Review these changes")">
+                    @(stats.Sources > 1 ? "Review latest" : "Review")
+                </button>
+            }
+        </div>
+    }
+</ChatWidget>
+
+@code {
+    private const int VisibleFiles = 6;
+
+    private static readonly (FileChangeKind Kind, string Label)[] Kinds =
+    [
+        (FileChangeKind.Added, "new"), (FileChangeKind.Modified, "edited"),
+        (FileChangeKind.Deleted, "deleted"), (FileChangeKind.Renamed, "renamed")
+    ];
+
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>The visible branch, root to leaf.</summary>
+    [Parameter]
+    public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+
+    /// <summary>The changes of the run in progress, before its receipt is saved.</summary>
+    [Parameter]
+    public WorkspaceChangeSet? LiveChanges { get; set; }
+
+    [Parameter]
+    public EventCallback<ChatFileReviewRequest> OnReview { get; set; }
+
+    private ChatFileStatisticsScope _scope = ChatFileStatisticsScope.Chat;
+    private bool _showAll;
+
+    private ChatFileStatistics _stats = ChatFileStatistics.Empty;
+    private bool _hasAnyChanges;
+
+    protected override void OnParametersSet() => Refresh();
+
+    private void SetScope(ChatFileStatisticsScope scope)
+    {
+        _scope = scope;
+        _showAll = false;
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        _stats = Calculator.Calculate(Messages, LiveChanges, _scope);
+        _hasAnyChanges = _scope == ChatFileStatisticsScope.Chat
+            ? _stats.Files.Count > 0
+            : Calculator.Calculate(Messages, LiveChanges, ChatFileStatisticsScope.Chat).Files.Count > 0;
+    }
+
+    private string? GetSummary() =>
+        _stats.Files.Count == 0 ? null : $"{_stats.Files.Count} · +{_stats.Additions} −{_stats.Deletions}";
+
+    private Task OpenFileAsync(ChatFileStatistic file) =>
+        file.LatestSourceMessageId is { } source
+            ? OnReview.InvokeAsync(new ChatFileReviewRequest(source, file.Path))
+            : Task.CompletedTask;
+
+    private static string RowTitle(ChatFileStatistic file)
+    {
+        var path = file.PreviousPath is { } previous ? $"{file.Path} (was {previous})" : file.Path;
+        return file.LatestSourceMessageId is null ? $"{path} — still being changed" : $"Review {path}";
+    }
+
+    private static string Glyph(FileChangeKind kind) => kind switch
+    {
+        FileChangeKind.Added => "A", FileChangeKind.Deleted => "D",
+        FileChangeKind.Renamed => "R", _ => "M",
+    };
+
+    private static string KindTitle(FileChangeKind kind) => kind switch
+    {
+        FileChangeKind.Added => "Added", FileChangeKind.Deleted => "Deleted",
+        FileChangeKind.Renamed => "Renamed", _ => "Modified",
+    };
+
+    private static string FileName(string path)
+    {
+        var index = path.LastIndexOfAny(['/', '\\']);
+        return index < 0 ? path : path[(index + 1)..];
+    }
+
+    private static string Folder(string path)
+    {
+        var index = path.LastIndexOfAny(['/', '\\']);
+        return index <= 0 ? string.Empty : path[..index];
+    }
+}

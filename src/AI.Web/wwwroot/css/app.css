@@ -1,6 +1,6 @@
 /* Colours. Components use only the semantic --color-* tokens below; a theme is the set of values
-   they take. js/theme.js puts data-theme="light|dark" on <html> before the first paint (the
-   Settings drawer picks it), so a new colour means a new token here, in both themes. */
+   they take. js/theme.js puts data-theme="light|dark|darkblue" on <html> before the first paint
+   (the Settings drawer picks it), so a new colour means a new token here, in every theme. */
 :root {
     --message-font-size: 0.93rem;
     --corner-scale: 1;
@@ -165,6 +165,82 @@
     --scrim-scale: 1;
 }
 
+/* Dark blue (Settings → Theme). The same structure as the dark palette above, with every surface,
+   fill and border shifted towards blue so the workspace reads cool rather than neutral grey. The
+   accent tokens and the status colours are copied unchanged on purpose: they belong to the accent
+   the user picked, and switching between dark and dark blue must not recolour them. */
+:root[data-theme="darkblue"] {
+    color-scheme: dark;
+    --color-bg-sunken: #0b1017;
+    --color-bg-inset: #0e141c;
+    --color-bg: #101720;
+    --color-surface: #141c26;
+    --color-surface-raised: #1b2531;
+    --color-input-bg: #0c121a;
+    --color-fill: #1d2733;
+    --color-fill-hover: #222d3b;
+    --color-fill-active: #283444;
+    --color-fill-strong: #2d3a4a;
+    --color-fill-stronger: #384657;
+    --color-overlay-faint: rgb(255 255 255 / 2%);
+    --color-overlay-hover: rgb(255 255 255 / 6%);
+    --color-overlay-active: rgb(255 255 255 / 9%);
+    --color-overlay-sunken: rgb(0 0 0 / 32%);
+    --color-inverse: #eef3f9;
+    --color-inverse-hover: #ffffff;
+    --color-inverse-active: #cfd9e6;
+    --color-on-inverse: #16202c;
+    --color-text-strong: #ffffff;
+    --color-text: #e8edf4;
+    --color-text-secondary: #cdd7e3;
+    --color-text-muted: #a3b0c0;
+    --color-text-subtle: #8d9aab;
+    --color-text-faint: #7d8a9b;
+    --color-text-disabled: #6a7686;
+    --color-border-subtle: #1e2836;
+    --color-border: #2b3847;
+    --color-border-strong: #3a4a5c;
+    --color-border-stronger: #4d5f73;
+    --color-border-translucent: rgb(255 255 255 / 8%);
+    --color-accent: #7eb4ed;
+    --color-accent-strong: #4f91dc;
+    --color-accent-text: #bcd7f5;
+    --color-accent-bg: #1f2c3c;
+    --color-accent-bg-hover: #283b50;
+    --color-accent-bg-active: #30455d;
+    --color-accent-fill: #345f91;
+    --color-on-accent: #ffffff;
+    --color-danger: #e0665f;
+    --color-danger-text: #ffabab;
+    --color-danger-text-strong: #ff8a8a;
+    --color-danger-bg: #33262a;
+    --color-danger-bg-hover: #442d31;
+    --color-danger-bg-active: #553439;
+    --color-danger-border: #654045;
+    --color-danger-border-strong: #814b52;
+    --color-warning: #d9a441;
+    --color-warning-text: #e5c47a;
+    --color-success: #5dc97c;
+    --color-success-text: #a6dcb1;
+    --color-success-border: #356a48;
+    --color-unread: var(--color-accent-strong);
+    --color-user-bubble: color-mix(in srgb, var(--color-accent-strong) 16%, var(--color-bg));
+    --color-user-bubble-border: color-mix(in srgb, var(--color-accent-strong) 30%, transparent);
+    --color-user-bubble-inset: rgb(0 0 0 / 32%);
+    --color-diff-added-bg: color-mix(in srgb, var(--color-success) 10%, transparent);
+    --color-diff-removed-bg: color-mix(in srgb, var(--color-danger) 10%, transparent);
+    --color-highlight-bg: var(--color-accent-bg-active);
+    --color-highlight-fg: var(--color-accent-text);
+    --color-context-instructions: color-mix(in srgb, var(--accent-swatch-purple) 80%, #ffffff);
+    --color-context-tools: color-mix(in srgb, var(--accent-swatch-teal) 80%, #ffffff);
+    --color-context-history: color-mix(in srgb, var(--accent-swatch-green) 80%, #ffffff);
+    --color-context-draft: color-mix(in srgb, var(--accent-swatch-blue) 80%, #ffffff);
+    --color-context-reserve: color-mix(in srgb, var(--accent-swatch-amber) 80%, #ffffff);
+    --color-context-overhead: color-mix(in srgb, var(--accent-swatch-pink) 80%, #ffffff);
+    --shadow-scale: 1;
+    --scrim-scale: 1;
+}
+
 :root[data-theme="light"] {
     color-scheme: light;
     --color-bg-sunken: #f3f3f3;
@@ -228,7 +304,7 @@
 
 /* Accent colour (Settings → Accent color). js/theme.js puts data-accent on <html>. Blue is the
    hand-tuned palette in the theme blocks above; every other accent takes one swatch per hue and
-   derives the --color-accent-* tokens from it, so the two themes stay in step without a second
+   derives the --color-accent-* tokens from it, so the dark palettes stay in step without a second
    table of values. The swatches are also what the Settings picker paints. */
 :root {
     --accent-swatch-blue: #2a78d0;

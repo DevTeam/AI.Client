@@ -33,7 +33,8 @@ internal sealed class JsonThemePreferenceStore(DesktopStart start) : IThemePrefe
         }
     }
 
-    private static string Normalize(string? preference) => preference is "light" or "dark" ? preference : "system";
+    private static string Normalize(string? preference) =>
+        preference is "light" or "dark" or "darkblue" ? preference : "system";
 
     private sealed record ThemePreference(string Preference);
 }

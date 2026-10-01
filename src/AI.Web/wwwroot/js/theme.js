@@ -1,7 +1,7 @@
-// Sets <html data-theme="light|dark"> from the saved preference. Loaded as a plain script in
-// <head>, ahead of the stylesheet, so browser preferences apply before the first paint. The entry
-// is the one ClientSettingsService
-// writes: "ai-client.settings" = {"theme":"system|light|dark","accent":"blue|teal|...",
+// Sets <html data-theme="light|dark|darkblue"> from the saved preference. Loaded as a plain
+// script in <head>, ahead of the stylesheet, so browser preferences apply before the first paint.
+// The entry is the one ClientSettingsService
+// writes: "ai-client.settings" = {"theme":"system|light|dark|darkBlue","accent":"blue|teal|...",
 // "cornerRoundnessPercent":100,...}. Desktop restores the entry from its profile before Blazor starts.
 // data-theme-preference keeps the choice itself, for styles that care whether the theme was
 // picked or inherited; data-accent picks the accent palette in app.css.
@@ -12,7 +12,7 @@
 
     // The browser chrome colour cannot come from CSS: this script runs before the stylesheet,
     // so these mirror --color-bg of each theme in app.css.
-    const chromeColors = { dark: "#171717", light: "#ffffff" };
+    const chromeColors = { dark: "#171717", light: "#ffffff", darkblue: "#101620" };
 
     function render() {
         const root = document.documentElement;
@@ -35,8 +35,14 @@
         toldHost = preference;
     }
 
+    // Must match ThemePreference, lowercased by ThemeService. The stored JSON spells the value in
+    // camelCase ("darkBlue"), so the value is folded before the lookup. "system" follows the OS;
+    // anything else (an older or newer build's value) leaves that to the OS as well.
+    const preferences = ["system", "light", "dark", "darkblue"];
+
     function apply(value, notifyHost = true) {
-        preference = value === "light" || value === "dark" ? value : "system";
+        const normalized = typeof value === "string" ? value.toLowerCase() : "";
+        preference = preferences.includes(normalized) ? normalized : "system";
         render();
         if (notifyHost) tellHost();
     }

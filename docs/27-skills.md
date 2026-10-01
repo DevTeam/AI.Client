@@ -97,9 +97,9 @@ entered in Settings → Connections; the playbooks do not ask for secrets in cha
 
 The comparison uses explicit connection ids in `spawn_subtask`, at most eight tasks per batch and
 two small suites per candidate. Its `elapsedMilliseconds` measures the whole delegated run,
-including application overhead and tool calls, on successes and failures. Price stays unknown
-unless the user supplied it; stored Cost/Capability values are coarse user ratings, not prices or
-benchmark scores. Default, subtask and cleanup changes are proposed for approval, and referenced
+including application overhead and tool calls, on successes and failures. Cost stays unknown
+unless token prices or reported usage are available; stored Capability values are coarse user
+ratings, not benchmark scores. Default, subtask and cleanup changes are proposed for approval, and referenced
 connections need a working replacement before deactivation or deletion.
 
 The history of a chat is compacted for the model only while a request would not fit, and

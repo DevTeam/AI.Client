@@ -82,14 +82,13 @@ public class GlobalSettingsServiceTests
     public async Task ShouldKeepARatingCoarseAndAbsentWhenNobodyGaveOne()
     {
         var id = Guid.CreateVersion7();
-        // Zero and nine are not judgements anyone made; storing either would have the model read a
+        // Zero is not a judgement anyone made; storing it would have the model read a
         // rating where none exists.
         var result = await SaveAsync(new ConnectionSettings(id, "One", "https://one/v1", "one", true, true, false,
-            Capability: 0, Cost: 9, GoodFor: "  vision  "));
+            Capability: 0, GoodFor: "  vision  "));
 
         var connection = result.Connections.Single(item => item.Id == id);
         connection.Capability.ShouldBeNull();
-        connection.Cost.ShouldBeNull();
         connection.GoodFor.ShouldBe("vision");
     }
 

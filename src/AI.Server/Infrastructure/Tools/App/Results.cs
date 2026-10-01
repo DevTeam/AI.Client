@@ -70,7 +70,6 @@ public sealed record ConnectionPayload(
     bool IsDefault,
     bool ForSubtasks = false,
     int? Capability = null,
-    int? Cost = null,
     string? GoodFor = null,
     long? ContextWindowTokens = null,
     long? ReservedOutputTokens = null,

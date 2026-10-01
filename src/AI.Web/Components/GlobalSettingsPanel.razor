@@ -1,6 +1,7 @@
 @using System.Diagnostics.CodeAnalysis
 @using System.Text.Json
 @using AI.Contracts.Settings
+@using AI.Web.FileSystem
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject IConnectionContextLimitsResolver ContextLimits
 @inject INotificationService Notifications
@@ -151,7 +152,7 @@
                                 }
                                 else if (!IsHostProvided(server.Id))
                                 {
-                                    <label>Command<InputText @bind-Value="server.Command" /></label><label>Arguments<InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label><label>Working directory<InputText @bind-Value="server.WorkingDirectory" /></label><label>Environment variables<InputTextArea @bind-Value="server.EnvironmentText" placeholder="NAME=value" />@if (server.MissingSecrets.Count > 0) { <small class="settings-needs-key-hint">Needs a value: @string.Join(", ", server.MissingSecrets). Type it after the = on its secret: line.</small> }</label>
+                                    <label>Command<div class="settings-path-row"><InputText class="settings-path-input" @bind-Value="server.Command" placeholder="Path to the executable" /><button class="secondary-action compact-action" type="button" title="Browse for the command executable" aria-label="Browse for the command executable" @onclick="() => OpenMcpCommandPicker(server)">Browse…</button></div></label><label>Arguments<InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label><label>Working directory<div class="settings-path-row"><InputText class="settings-path-input" @bind-Value="server.WorkingDirectory" placeholder="Path to a directory" /><button class="secondary-action compact-action" type="button" title="Browse for a working directory" aria-label="Browse for a working directory" @onclick="() => OpenMcpWorkingDirectoryPicker(server)">Browse…</button></div></label><label>Environment variables<InputTextArea @bind-Value="server.EnvironmentText" placeholder="NAME=value" />@if (server.MissingSecrets.Count > 0) { <small class="settings-needs-key-hint">Needs a value: @string.Join(", ", server.MissingSecrets). Type it after the = on its secret: line.</small> }</label>
                                 }
                                 <section class="mcp-tool-policies">
                                     <div class="section-heading"><div><h3>Tool defaults</h3><p>Used by every project unless that project has an override.</p></div><button class="secondary-action" type="button" disabled="@(_discoveringTools || _saving || !server.Enabled || server.Policy == "Deny")" @onclick="DiscoverToolsAsync">@(_discoveringTools ? "Discovering…" : "Discover tools")</button></div>
@@ -203,6 +204,16 @@
                           McpServers="@(_globalMcpServers.Where(item => !IsHostProvided(item.Id)).Select(ExportSettings).ToArray())"
                           Closed="() => _exportOpen = false" />
 }
+@if (_mcpPickerServer is not null)
+{
+    // Title comes from the dialog itself ("Select file" / "Select directory"); Subtitle is what
+    // tells the user which field they are editing and why it matters. The settings drawer sits at
+    // z-index 45, so the backdrop needs settings-transfer-backdrop (46) to appear above it — the
+    // same class the import/export dialogs use.
+    <DirectoryPickerDialog Subtitle="@_mcpPickerSubtitle" Mode="@_mcpPickerMode"
+                           StartPath="@_mcpPickerStartPath" BackdropClass="settings-transfer-backdrop"
+                           Selected="OnMcpPathPicked" Cancelled="CloseMcpPicker" />
+}
 @code {
     [Parameter] public string Section { get; set; } = "Connections";
     [Parameter] public EventCallback Saved { get; set; }
@@ -249,6 +260,15 @@
     private const int AutoLoadDebounceMilliseconds = 350;
     private readonly List<ConnectionEditor> _connections = [];
     private readonly List<GlobalMcpServerEditor> _globalMcpServers = [];
+    // Picker state for the Stdio MCP server editor (Command / Working directory).
+    // The same dialog handles file and directory modes, so the only difference between
+    // the two Browse buttons is which field it writes the chosen path back into.
+    private GlobalMcpServerEditor? _mcpPickerServer;
+    private string _mcpPickerField = string.Empty;
+    private DirectoryPickerMode _mcpPickerMode = DirectoryPickerMode.File;
+    private string _mcpPickerTitle = string.Empty;
+    private string _mcpPickerSubtitle = string.Empty;
+    private string? _mcpPickerStartPath;
     private readonly List<McpToolPolicyEditor> _toolPolicies = [];
     private Guid? _selectedConnectionId;
     private Guid? _selectedMcpServerId;
@@ -738,6 +758,50 @@
     /// A server the Host ships and runs itself. Its name, transport and existence are not the
     /// user's to edit. External servers also expose their connection configuration.
     /// </summary>
+    private void OpenMcpCommandPicker(GlobalMcpServerEditor server)
+    {
+        // Pass the current value straight through. DirectoryPickerState.StartAtAsync handles a host
+        // path that still exists (opens the parent and pre-selects the file), one that has gone
+        // (falls back to the roots), or a non-empty string the user typed but the host has not
+        // resolved yet — all the cases the user actually has once a value is in the field.
+        _mcpPickerServer = server;
+        _mcpPickerField = nameof(GlobalMcpServerEditor.Command);
+        _mcpPickerMode = DirectoryPickerMode.File;
+        _mcpPickerTitle = "Choose MCP server executable";
+        _mcpPickerSubtitle = "Select the file the MCP server runs. Empty means the file lives on PATH.";
+        _mcpPickerStartPath = server.Command;
+        StateHasChanged();
+    }
+
+    private void OpenMcpWorkingDirectoryPicker(GlobalMcpServerEditor server)
+    {
+        _mcpPickerServer = server;
+        _mcpPickerField = nameof(GlobalMcpServerEditor.WorkingDirectory);
+        _mcpPickerMode = DirectoryPickerMode.Directory;
+        _mcpPickerTitle = "Choose MCP working directory";
+        _mcpPickerSubtitle = "Select the directory the MCP server runs from. Empty leaves the server's default in place.";
+        _mcpPickerStartPath = server.WorkingDirectory;
+        StateHasChanged();
+    }
+
+    private void OnMcpPathPicked(string path)
+    {
+        if (_mcpPickerServer is null || string.IsNullOrEmpty(path))
+            return;
+        if (_mcpPickerField == nameof(GlobalMcpServerEditor.Command))
+            _mcpPickerServer.Command = path;
+        else if (_mcpPickerField == nameof(GlobalMcpServerEditor.WorkingDirectory))
+            _mcpPickerServer.WorkingDirectory = path;
+        CloseMcpPicker();
+    }
+
+    private void CloseMcpPicker()
+    {
+        _mcpPickerServer = null;
+        _mcpPickerStartPath = null;
+        StateHasChanged();
+    }
+
     private static bool IsHostProvided(Guid id) =>
         id == AI.Contracts.Settings.DefaultMcpServer.Id || id == AI.Contracts.Settings.AppMcpServer.Id;
 

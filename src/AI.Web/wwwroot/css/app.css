@@ -5866,6 +5866,26 @@ textarea {
     gap: 0.4rem;
 }
 
+/* Same shape for MCP server editor fields (Command / Working directory): an input that takes
+   the whole row, with the Browse… button pinned to the right edge. The input is monospace so
+   long absolute paths stay legible and align with the rest of the file-system inputs in the
+   app. */
+.settings-path-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: 100%;
+}
+
+.settings-path-row .settings-path-input {
+    flex: 1;
+    min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+}
+
+.settings-path-row button { flex: none; }
+
 .user-prompt-path-row .user-prompt-other-input {
     flex: 1;
     min-width: 0;

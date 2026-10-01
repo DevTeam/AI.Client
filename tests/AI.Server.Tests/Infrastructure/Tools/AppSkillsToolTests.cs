@@ -6,6 +6,7 @@ using AI.Application.Chat;
 using AI.Application.Chats;
 using AI.Application.Projects;
 using AI.Application.Settings;
+using AI.Application.Skills;
 using AI.Application.Tools;
 using AI.Contracts.Chats;
 using AI.Contracts.Projects;
@@ -139,6 +140,44 @@ public sealed class AppSkillsToolTests
         executed.IsError.ShouldBeFalse();
         executed.StructuredContent!.Value.GetProperty("status").GetString().ShouldBe("Completed");
         executed.StructuredContent.Value.GetProperty("output").GetString().ShouldBe("done");
+    }
+
+    [Theory]
+    [InlineData("parameters", "{\"path\":{\"type\":\"string\"}}")]
+    [InlineData("result", "{\"type\":\"unknown-type\"}")]
+    public async Task ShouldRejectInvalidSchemaAndAllowCorrectedSave(string field, string schema)
+    {
+        await using var composition = new SubtaskComposition(new ServerOptions("data", null, true),
+            new MemoryFileSystem(), Mock.Of<IChatCompletionClient>(), Mock.Of<IToolSessionFactory>());
+        await using var session = await composition.Resolve<AppToolSessionFactory>().OpenAsync([],
+            new ToolRunContext(Guid.Empty, Guid.Empty, Guid.Empty, true), TestContext.Current.CancellationToken);
+        var manage = session.Tools.Single(tool => tool.OriginalName == "app_skills");
+        var operationId = Guid.CreateVersion7();
+        var original = field == "parameters"
+            ? "parameters: {\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"
+            : "result: {\"type\":\"string\"}";
+        var rejected = await session.CallAsync(manage, JsonSerializer.Serialize(new
+        {
+            operation = "Save", operationId, scope = "User",
+            content = CustomSkill.Replace(original, $"{field}: {schema}"), revision = 0
+        }), null, TestContext.Current.CancellationToken);
+
+        rejected.IsError.ShouldBeTrue();
+        var error = rejected.StructuredContent!.Value;
+        error.GetProperty("applied").GetBoolean().ShouldBeFalse();
+        error.GetProperty("error").GetString()!.ShouldContain($"SKILL.md {field}");
+        error.GetProperty("error").GetString()!.ShouldContain("properties");
+        var catalog = composition.Resolve<ISkillCatalog>();
+        (await catalog.GetByIdAsync("short-summary", null, TestContext.Current.CancellationToken)).ShouldBeNull();
+
+        var corrected = await session.CallAsync(manage, JsonSerializer.Serialize(new
+        {
+            operation = "Save", operationId, scope = "User", content = CustomSkill, revision = 0
+        }), null, TestContext.Current.CancellationToken);
+        corrected.IsError.ShouldBeFalse();
+        corrected.StructuredContent!.Value.GetProperty("applied").GetBoolean().ShouldBeTrue();
+        corrected.StructuredContent.Value.GetProperty("replayed").GetBoolean().ShouldBeFalse();
+        (await catalog.GetByIdAsync("short-summary", null, TestContext.Current.CancellationToken))!.Revision.ShouldBe(1);
     }
 
     private sealed class StaticCompletion : IChatCompletionClient

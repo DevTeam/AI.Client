@@ -219,7 +219,8 @@ public sealed class McpToolSession : IToolSession
         // nobody is listening.
         var sink = progress is null ? null : new ProgressRelay(progress);
         var result = await _client.CallToolAsync(tool.OriginalName, values, sink, cancellationToken: cancellationToken);
-        if (_descriptors[tool.OriginalName].OutputSchema is { } outputSchema
+        // MCP tool errors may contain only text; the output schema describes successful results.
+        if (result.IsError != true && _descriptors[tool.OriginalName].OutputSchema is { } outputSchema
             && (result.StructuredContent is not { } content || !JsonSchema.Build(outputSchema).Evaluate(content).IsValid))
             throw new InvalidOperationException("Tool result does not match the output schema.");
         var blocks = (result.Content ?? []).Select(Describe).ToArray();

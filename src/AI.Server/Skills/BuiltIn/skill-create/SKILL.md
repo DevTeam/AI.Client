@@ -36,6 +36,8 @@ Skill conventions:
   changes application data or files.
 - `parameters` is a one-line JSON Schema object with `additionalProperties` false; keep optional
   everything the playbook can ask for.
+  Put input fields inside `properties`, not at the schema root, for example:
+  `parameters: {"type":"object","properties":{"path":{"type":"string"}},"additionalProperties":false}`.
 - A playbook body is numbered steps. Every change is confirmed with `ask_user` unless the exact
   value came from the user; the recommended option comes first with " (Recommended)"; say what
   dismissed, expired and interrupted answers do. A playbook whose result is something to read (a

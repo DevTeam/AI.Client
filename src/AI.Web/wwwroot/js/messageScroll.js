@@ -226,6 +226,16 @@ export function attach(scroller, owner) {
         notify();
     };
 
+    // Shrinking content or growing the viewport can reveal the tail without a scroll event.
+    // Only resume following here: newly appended content must not unpin a reader at the bottom.
+    const resumeIfAtBottom = () => {
+        if (!pinned && distanceFromBottom(scroller) <= PinThresholdPx) {
+            pinned = true;
+            anchor = null;
+            notify();
+        }
+    };
+
     // Content can change without any scroll event, which is exactly the case worth correcting.
     // There are two symmetric rules: a reader above the tail keeps their current anchor, while a
     // reader already at the tail keeps following it. The latter matters for content that grows in
@@ -247,9 +257,18 @@ export function attach(scroller, owner) {
     const observer = new MutationObserver(() => {
         if (pinned) scroller.scrollTop = scroller.scrollHeight;
         else restoreAnchor();
+        resumeIfAtBottom();
         bindWatchedElement();
     });
     observer.observe(scroller, { childList: true, subtree: true, characterData: true });
+
+    const resizeObserver = new ResizeObserver(() => {
+        if (pinned) scroller.scrollTop = scroller.scrollHeight;
+        else restoreAnchor();
+        resumeIfAtBottom();
+        captureAnchor();
+    });
+    resizeObserver.observe(scroller);
 
     const toBottom = smooth => {
         pinned = true;
@@ -359,11 +378,13 @@ export function attach(scroller, owner) {
     scroller.addEventListener("scroll", onScroll, { passive: true });
     document.addEventListener("keydown", onKeyDown);
     captureAnchor();
+    notify();
 
     return {
         // Called after new content rendered. Returns whether the feed actually followed it, so
         // the caller can light up the "there is something new below" affordance when it didn't.
         followIfPinned: () => {
+            resumeIfAtBottom();
             if (!pinned) return false;
             scroller.scrollTop = scroller.scrollHeight;
             return true;
@@ -424,6 +445,7 @@ export function attach(scroller, owner) {
         jumpToBottom: () => toBottom(true),
         dispose: () => {
             observer.disconnect();
+            resizeObserver.disconnect();
             visibilityObserver.disconnect();
             scroller.removeEventListener("scroll", onScroll);
             document.removeEventListener("keydown", onKeyDown);

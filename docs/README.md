@@ -32,6 +32,7 @@ The documents describe the agreed-upon architecture and are the source of truth 
 26. [Long-term memory and project instructions](25-memory-and-instructions.md)
 27. [Skills](27-skills.md)
 28. [Token usage](28-token-usage.md)
+29. [Chat widgets](29-chat-widgets.md)
 
 ## Accepted decisions
 

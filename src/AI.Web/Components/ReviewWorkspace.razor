@@ -89,6 +89,9 @@
     [Parameter, EditorRequired] public ChatDetails Chat { get; set; } = default!;
     [Parameter] public IReadOnlyList<ChatReview> Reviews { get; set; } = [];
     [Parameter] public Guid? StartReviewId { get; set; }
+
+    /// <summary>The file to open and scroll to, when the review was opened for it.</summary>
+    [Parameter] public string? StartPath { get; set; }
     [Parameter] public EventCallback<ChatReview> OnChanged { get; set; }
     [Parameter] public EventCallback<Guid> OnDelete { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
@@ -102,6 +105,7 @@
     private string? _error;
     private bool _saving;
     private bool _confirmingDelete;
+    private string? _revealPath;
 
     private async Task DeleteAsync()
     {
@@ -114,8 +118,13 @@
         if (_current is not null
             && (_current.SourceChanges ?? SourceOf(_current)?.WorkspaceChanges) is { } changes
             && FilesInTreeOrder(BuildFileTree(changes.Files, null))
-                .FirstOrDefault(file => _current.Files.Contains(file.Path, StringComparer.Ordinal)) is { } firstFile)
+                .Where(file => _current.Files.Contains(file.Path, StringComparer.Ordinal))
+                .OrderByDescending(file => file.Path == StartPath)
+                .FirstOrDefault() is { } firstFile)
+        {
             _expandedFiles.Add(firstFile.Path);
+            if (firstFile.Path == StartPath) _revealPath = StartPath;
+        }
     }
 
     private ChatMessageView? SourceOf(ChatReview review) => Chat.Messages.FirstOrDefault(item => item.Id == review.SourceMessageId);
@@ -242,6 +251,10 @@
     {
         if (_current is null) return;
         try { await JsRuntime.InvokeVoidAsync("reviewWorkspace.initialize", _bodyId); }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { }
+        if (_revealPath is not { } path) return;
+        _revealPath = null;
+        try { await JsRuntime.InvokeVoidAsync("reviewWorkspace.revealFile", _bodyId, FileId(path)); }
         catch (Exception error) when (error is JSException or ObjectDisposedException) { }
     }
 

@@ -6550,6 +6550,40 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .chat-usage-checkpoint { align-items: center; }
 .chat-usage-link:disabled { color: var(--color-text-subtle); cursor: default; text-decoration: none; }
 
+/* Files widget: counts sit in two fixed columns so they line up file under file, and each file's
+   share of the chat's churn runs as a thin bar beneath its name. */
+.chat-files-scope { display: flex; margin: .1rem 0 .5rem; padding: 2px; border-radius: calc(.45rem * var(--corner-scale)); background: var(--color-fill); }
+.chat-files-scope button { flex: 1; padding: .2rem .4rem; border: 0; border-radius: calc(.35rem * var(--corner-scale)); background: none; color: var(--color-text-subtle); font: inherit; font-size: .74rem; cursor: pointer; }
+.chat-files-scope button:hover { color: var(--color-text); }
+.chat-files-scope button.is-selected { background: var(--color-surface); color: var(--color-text); font-weight: 500; box-shadow: 0 0 0 1px var(--color-border-subtle); }
+.chat-files-total { display: flex; align-items: baseline; gap: .45rem; }
+.chat-files-count { color: var(--color-text); font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.chat-files-total-lines { display: inline-flex; gap: .45rem; margin-left: auto; font-size: .86rem; font-variant-numeric: tabular-nums; }
+.chat-files-bar, .chat-files-track { display: flex; overflow: hidden; background: var(--color-fill); }
+.chat-files-bar { gap: 1px; height: .35rem; border-radius: calc(.2rem * var(--corner-scale)); }
+.chat-files-bar > span, .chat-files-track > span { flex-basis: 0; }
+.chat-files-bar-added { background: var(--color-success); }
+.chat-files-bar-removed { background: var(--color-danger); }
+.chat-files-kind { display: inline-block; width: 1rem; color: var(--color-text-muted); font-size: .68rem; font-weight: 600; text-align: center; }
+.chat-files-kind-added { color: var(--color-success); }
+.chat-files-kind-deleted { color: var(--color-danger); }
+.chat-usage-legend .chat-files-kind { width: auto; margin-right: .1rem; }
+.chat-files-columns,
+.chat-files-row { display: grid; grid-template-columns: 1rem minmax(0, 1fr) 2.6rem 2.6rem; column-gap: .35rem; align-items: center; }
+.chat-files-columns { font-size: .7rem; }
+.chat-files-columns > span:first-child { grid-column: 1 / 3; }
+.chat-files-columns > span:not(:first-child) { text-align: center; }
+.chat-files-list { display: grid; margin: 0 -.35rem; padding: 0; list-style: none; }
+.chat-files-row { row-gap: .3rem; width: 100%; padding: .35rem; border: 0; border-radius: calc(.4rem * var(--corner-scale)); background: none; color: var(--color-text); font: inherit; text-align: left; cursor: pointer; }
+.chat-files-row:hover:not(:disabled) { background: var(--color-fill-hover); }
+.chat-files-row:disabled { cursor: default; }
+.chat-files-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-files-row .chat-files-figure { min-width: 0; font-size: .74rem; font-variant-numeric: tabular-nums; text-align: center; }
+.chat-files-binary { grid-column: 3 / 5; font-size: .72rem; text-align: center; }
+.chat-files-track { grid-column: 2 / 5; height: 3px; border-radius: 2px; }
+.chat-files-more { justify-self: start; font-size: .74rem; }
+.chat-files-footer { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+
 /* Where the model's view of the chat begins: a quiet rule with the summary behind a toggle. */
 .history-checkpoint-mark { width: min(100%, 48rem); margin: .2rem auto 1.1rem; color: var(--color-text-faint); font-size: .74rem; }
 .history-checkpoint-line { display: flex; align-items: center; gap: .6rem; }

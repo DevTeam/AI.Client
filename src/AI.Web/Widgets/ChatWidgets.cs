@@ -18,10 +18,12 @@ public interface IChatWidgetCatalog
 public sealed class ChatWidgetCatalog : IChatWidgetCatalog
 {
     public const string ChatUsage = "chat-usage";
+    public const string ChatFiles = "chat-files";
 
     public IReadOnlyList<ChatWidgetDefinition> Widgets { get; } =
     [
-        new(ChatUsage, "This chat", "gauge", "Context window, tokens and cost of the open chat")
+        new(ChatUsage, "This chat", "gauge", "Context window, tokens and cost of the open chat"),
+        new(ChatFiles, "Files", "diff", "Files the open chat changed, with lines added and removed")
     ];
 
     public ChatWidgetDefinition? Find(string id) => Widgets.FirstOrDefault(widget => widget.Id == id);

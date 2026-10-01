@@ -617,6 +617,12 @@
                                          OnCompact="CompactHistoryAsync"
                                          OnUndoCheckpoint="UndoCheckpointAsync" />
                         break;
+                    case ChatWidgetCatalog.ChatFiles:
+                        <ChatFilesWidget Widget="@widget"
+                                         Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
+                                         LiveChanges="@(widgetRun is { Status: not ChatRunStatus.Completed } ? widgetRun.WorkspaceChanges : null)"
+                                         OnReview="OpenReviewForFileAsync" />
+                        break;
                 }
             </WidgetTemplate>
         </ChatWidgetRail>
@@ -850,7 +856,7 @@
     @if (_reviewWorkspaceOpen && _selectedProject is not null && _selectedChat is not null)
     {
         <ReviewWorkspace @key="_reviewPanelKey" ProjectId="@_selectedProject.Id" Chat="@(_reviewChat ?? _selectedChat)"
-                         Reviews="@_reviews" StartReviewId="@_reviewStartId"
+                         Reviews="@_reviews" StartReviewId="@_reviewStartId" StartPath="@_reviewStartPath"
                          OnChanged="OnReviewChangedAsync" OnDelete="@(id => DeleteReviewAsync(_selectedChat.Id, id))" OnClose="CloseReviewAsync" />
     }
 </main>
@@ -1020,6 +1026,9 @@
     private ChatDetails? _reviewChat;
     private bool _reviewWorkspaceOpen;
     private Guid? _reviewStartId, _openingReviewSourceId;
+
+    // The file a review opens on, when it was opened for one file rather than for a whole turn.
+    private string? _reviewStartPath;
     private int _reviewPanelKey;
     private int _reviewVersion;
     private Guid? _directoryPickerGrantId;
@@ -5532,7 +5541,12 @@
         }
     }
 
-    private async Task OpenReviewFromChangesAsync(Guid sourceMessageId)
+    private Task OpenReviewFromChangesAsync(Guid sourceMessageId) => OpenReviewFromChangesAsync(sourceMessageId, null);
+
+    private Task OpenReviewForFileAsync(ChatFileReviewRequest request) =>
+        OpenReviewFromChangesAsync(request.SourceMessageId, request.Path);
+
+    private async Task OpenReviewFromChangesAsync(Guid sourceMessageId, string? path)
     {
         _ = ChatTips.MarkUsedAsync(AI.Web.Components.ChatTips.Review);
         if (_openingReviewSourceId == sourceMessageId) return;
@@ -5557,7 +5571,7 @@
                 _reviewVersion++;
             }
             else if (!await LoadFullReviewAsync(review.Id)) return;
-            OpenReviewPanel(review.Id);
+            OpenReviewPanel(review.Id, path);
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
         {
@@ -5585,10 +5599,11 @@
         }
     }
 
-    private void OpenReviewPanel(Guid reviewId)
+    private void OpenReviewPanel(Guid reviewId, string? path = null)
     {
         if (_selectedChat is null) return;
         _reviewStartId = reviewId;
+        _reviewStartPath = path;
         _reviewPanelKey++;
         _reviewWorkspaceOpen = true;
     }

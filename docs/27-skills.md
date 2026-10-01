@@ -122,6 +122,13 @@ in progress, or `POST` to the same URL, which writes one now. Settings → Chat 
 drafts and the automatic chat names off (`PUT /api/settings/chat-automation`); the explicit
 requests still work. See [Composer rules](15-composer-rules.md#suggested-reply).
 
+`chat-comment-suggest` works the same way for a review comment being written: one model call
+without tools gets the fragment, the message it is from or the file and diff around the lines, and
+returns one short comment or `NONE`. It changes nothing and nothing keeps the draft;
+`IReviewCommentSuggestions` runs it for `POST /api/projects/{p}/chats/{c}/reviews/comment-suggestion`
+and skips an automatic request while Settings → Chat switches automatic comment drafts off. See
+[Chat artifacts](24-chat-artifacts.md#suggested-comments).
+
 ## Tools
 
 `mcp_app__skill_search` exposes enabled effective skills, their kinds and schemas to the main model. An

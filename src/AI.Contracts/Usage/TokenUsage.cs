@@ -26,7 +26,9 @@ public enum TokenUsagePurpose
     /// <summary>Any other skill that calls the model.</summary>
     Skill,
     /// <summary>A request sent straight to the completion endpoint, outside any run.</summary>
-    Direct
+    Direct,
+    /// <summary>Drafting a review comment the user is writing.</summary>
+    CommentSuggestion
 }
 
 /// <summary>

@@ -39,6 +39,12 @@ public sealed class ChatEndpoints : IEndpointModule
             async (Guid projectId, Guid chatId, Guid reviewId, IReviewService service, CancellationToken token) =>
                 await service.GetAsync(projectId, chatId, reviewId, token) is { } review
                     ? Results.Ok(review) : Results.NotFound());
+        // Drafts a comment for the open comment box; neither the review nor the chat changes.
+        routes.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/reviews/comment-suggestion",
+            async (Guid projectId, Guid chatId, ReviewCommentSuggestionRequest request, IReviewCommentSuggestions suggestions,
+                    CancellationToken token) =>
+                await suggestions.SuggestAsync(projectId, chatId, request, token) is { } suggestion
+                    ? Results.Ok(suggestion) : Results.NoContent());
         routes.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/reviews",
             async (Guid projectId, Guid chatId, CreateReviewRequest request, IReviewService service, CancellationToken token) =>
                 Results.Ok(await service.CreateAsync(projectId, chatId, request, token)));

@@ -63,7 +63,7 @@ public class BuiltInSkillCatalogTests
     public void ShouldMakeEveryBundledSkillExceptTheExecutorsAPlaybookWithDeclaredTools()
     {
         var skills = new BuiltInSkillCatalog().List();
-        string[] executors = ["chat-rename", "chat-reply-suggest", "skill-route", "chat-tool-risk-assess"];
+        string[] executors = ["chat-rename", "chat-reply-suggest", "skill-route", "chat-tool-risk-assess", "chat-comment-suggest"];
 
         skills.Count.ShouldBeGreaterThanOrEqualTo(26);
         skills.Where(item => executors.Contains(item.Id)).ShouldAllBe(item => item.Kind == SkillKinds.Executor);

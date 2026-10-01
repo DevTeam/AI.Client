@@ -105,6 +105,7 @@ public sealed class UsagePresentation(IComposerContextPresentation context) : IU
         nameof(TokenUsagePurpose.ToolRisk) => "Approval checks",
         nameof(TokenUsagePurpose.Title) => "Chat title",
         nameof(TokenUsagePurpose.ReplySuggestion) => "Reply suggestions",
+        nameof(TokenUsagePurpose.CommentSuggestion) => "Comment suggestions",
         nameof(TokenUsagePurpose.Skill) => "Skills",
         nameof(TokenUsagePurpose.Direct) => "Direct requests",
         _ => key

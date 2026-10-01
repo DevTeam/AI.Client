@@ -41,6 +41,16 @@ public sealed class ReviewApi(HttpClient http) : IReviewApi
         return true;
     }
 
+    public async Task<ReviewCommentSuggestion?> SuggestCommentAsync(Guid projectId, Guid chatId,
+        ReviewCommentSuggestionRequest request, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync($"api/projects/{projectId}/chats/{chatId}/reviews/comment-suggestion",
+            request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NoContent) return null;
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<ReviewCommentSuggestion>(cancellationToken);
+    }
+
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode) return;

@@ -10,4 +10,8 @@ public interface IReviewApi
     Task<ChatReview> UpdateAsync(Guid projectId, Guid chatId, Guid reviewId, UpdateReviewRequest request,
         CancellationToken cancellationToken);
     Task<bool> DeleteAsync(Guid projectId, Guid chatId, Guid reviewId, CancellationToken cancellationToken);
+
+    /// <summary>The Host's draft of the comment being written, or null when it has none to offer.</summary>
+    Task<ReviewCommentSuggestion?> SuggestCommentAsync(Guid projectId, Guid chatId, ReviewCommentSuggestionRequest request,
+        CancellationToken cancellationToken);
 }

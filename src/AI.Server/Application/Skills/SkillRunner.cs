@@ -10,17 +10,18 @@ using AI.Application.Usage;
 public sealed class SkillRunner(ISkillCatalog catalog, ChatRenameSkill chatRenameSkill,
     GenericSkillExecutor? genericExecutor = null, ChatReplySuggestSkill? chatReplySuggestSkill = null,
     SkillRouteSkill? skillRouteSkill = null, ChatToolRiskAssessSkill? chatToolRiskAssessSkill = null,
-    ITokenUsageMeter? usageMeter = null) : ISkillRunner
+    ITokenUsageMeter? usageMeter = null, ChatCommentSuggestSkill? chatCommentSuggestSkill = null) : ISkillRunner
 {
     private readonly object _gate = new();
     private readonly List<SkillRunRecord> _recent = [];
     private readonly Dictionary<string, ISkillExecutor> _executors =
-        new ISkillExecutor?[] { chatRenameSkill, chatReplySuggestSkill, skillRouteSkill, chatToolRiskAssessSkill }.OfType<ISkillExecutor>()
+        new ISkillExecutor?[] { chatRenameSkill, chatReplySuggestSkill, skillRouteSkill, chatToolRiskAssessSkill, chatCommentSuggestSkill }.OfType<ISkillExecutor>()
             .ToDictionary(executor => executor.SkillId, StringComparer.Ordinal);
 
     private TokenUsagePurpose Purpose(string skillId) =>
         skillId == chatRenameSkill.SkillId ? TokenUsagePurpose.Title
         : skillId == chatReplySuggestSkill?.SkillId ? TokenUsagePurpose.ReplySuggestion
+        : skillId == chatCommentSuggestSkill?.SkillId ? TokenUsagePurpose.CommentSuggestion
         : skillId == skillRouteSkill?.SkillId ? TokenUsagePurpose.Routing
         : skillId == chatToolRiskAssessSkill?.SkillId ? TokenUsagePurpose.ToolRisk
         : TokenUsagePurpose.Skill;

@@ -49,7 +49,7 @@
     private Guid? _editingCommentId;
     private int? _pendingOldStart, _pendingOldEnd, _pendingNewStart, _pendingNewEnd;
     private string _commentBody = string.Empty;
-    private ElementReference _commentEditor;
+    private ReviewCommentInput? _commentInput;
     private bool _focusCommentEditor;
     private (int? Old, int? New)? _rangeStart;
     private string? _error;
@@ -64,7 +64,7 @@
     {
         if (!_focusCommentEditor || !_pending) return;
         _focusCommentEditor = false;
-        await _commentEditor.FocusAsync();
+        if (_commentInput is not null) await _commentInput.FocusAsync();
     }
 
     private void BeginFileComment() => BeginComment(null, null);
@@ -162,8 +162,9 @@
         {
             <small class="review-comment-range-hint">Shift-click another line to select a range.</small>
         }
-        <textarea @ref="_commentEditor" data-review-comment aria-label="Review comment" value="@_commentBody" @oninput="e => _commentBody = e.Value?.ToString() ?? string.Empty" @onkeydown="HandleCommentTextKeyDownAsync"></textarea>
+        <ReviewCommentInput @ref="_commentInput" @bind-Value="_commentBody" OnKeyDown="HandleCommentTextKeyDownAsync" Suggest="SuggestCommentAsync" />
         <div class="review-comment-actions">
+            <button class="review-comment-icon-action" type="button" title="Suggest a comment (Ctrl+Space)" aria-label="Suggest a comment" aria-keyshortcuts="Control+Space" disabled="@_saving" @onclick="() => _commentInput?.RequestAsync() ?? Task.CompletedTask"><AppIcon Name="lightbulb" /></button>
             <button class="review-comment-icon-action is-save" type="button" title="Save comment (Enter)" aria-label="Save comment" aria-keyshortcuts="Enter" disabled="@(_saving || string.IsNullOrWhiteSpace(_commentBody))" @onclick="SaveCommentAsync"><AppIcon Name="check" /></button>
             <button class="review-comment-icon-action" type="button" title="Cancel (Esc)" aria-label="Cancel comment" aria-keyshortcuts="Escape" @onclick="CancelComment"><AppIcon Name="x" /></button>
         </div>
@@ -181,7 +182,20 @@
 
     private void HandleCommentKeyDown(KeyboardEventArgs args)
     {
-        if (args.Key == "Escape") CancelComment();
+        // The first Esc hides a suggested comment, the next one closes the editor.
+        if (args.Key == "Escape" && _commentInput?.DismissSuggestion() != true) CancelComment();
+    }
+
+    // The commented lines are the fragment; the file's diff and the answer that made the change
+    // are what the Host reads around them. A comment on the whole file is about its path.
+    private async Task<string?> SuggestCommentAsync(bool automatic, CancellationToken token)
+    {
+        var lines = DiffParser.Parse(File.Diff).Where(line => line.Kind is not (DiffLineKind.Hunk or DiffLineKind.Note)
+            && IsInPendingRange(line));
+        var quote = string.Join('\n', lines.Select(line => line.Text));
+        var request = new ReviewCommentSuggestionRequest(quote.Length > 0 ? quote : File.Path,
+            SourceMessageId == Guid.Empty ? null : SourceMessageId, File.Path, File.Diff, automatic);
+        return (await ReviewsApi.SuggestCommentAsync(ProjectId, ChatId, request, token))?.Text;
     }
 
     private Task HandleCommentTextKeyDownAsync(KeyboardEventArgs args) =>

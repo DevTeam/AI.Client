@@ -1,0 +1,120 @@
+@using Microsoft.AspNetCore.Components.Web
+@implements IDisposable
+@inject INotificationService Notifications
+
+@* The text of a review comment, with the Host's draft of it shown as grey text while the box is
+   empty, like the composer's suggested reply. Tab or → takes it (messageReviews.js, which must
+   decide synchronously), the key cap does too, Esc hides it, Ctrl+Space asks for one. *@
+<div class="review-comment-input @(ShowsSuggestion ? "has-suggestion" : null)">
+    <textarea @ref="_textarea" data-review-comment data-suggestion="@(ShowsSuggestion ? _suggestion : null)"
+              aria-label="@AriaLabel" aria-keyshortcuts="Control+Space" placeholder="@PlaceholderText" value="@Value"
+              @oninput="HandleInputAsync" @onkeydown="HandleKeyDownAsync" @onfocus="HandleFocus"></textarea>
+    @if (ShowsSuggestion)
+    {
+        <button class="review-comment-suggestion-accept" type="button" tabindex="-1"
+                title="Use this comment (Tab) · Esc hides it" @onclick="AcceptAsync">Tab</button>
+    }
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public EventCallback<KeyboardEventArgs> OnKeyDown { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Review comment";
+
+    /// <summary>
+    /// Asks the Host for a draft; the flag says it was not asked for, which the Host serves only
+    /// while Settings → Chat allows automatic drafts.
+    /// </summary>
+    [Parameter, EditorRequired] public Func<bool, CancellationToken, Task<string?>> Suggest { get; set; } = default!;
+
+    private ElementReference _textarea;
+    private string? _suggestion;
+    private bool _loading, _autoAsked, _disposed;
+    private CancellationTokenSource? _cancellation;
+
+    private bool ShowsSuggestion => _suggestion is not null && Value.Length == 0;
+
+    private string PlaceholderText => ShowsSuggestion ? _suggestion!
+        : _loading ? "Suggesting a comment…"
+        : "Write a comment, or Ctrl+Space for a suggestion";
+
+    public ValueTask FocusAsync() => _textarea.FocusAsync();
+
+    /// <summary>Hides the draft on screen; false when none was, so Esc can close the editor instead.</summary>
+    public bool DismissSuggestion()
+    {
+        var shown = ShowsSuggestion || _loading && Value.Length == 0;
+        _cancellation?.Cancel();
+        _loading = false;
+        if (!shown) return false;
+        _suggestion = null;
+        StateHasChanged();
+        return true;
+    }
+
+    /// <summary>Asks for a draft now, also when automatic drafts are off or this one was hidden.</summary>
+    public Task RequestAsync() => LoadAsync(automatic: false);
+
+    // An empty box that has the focus is one the user is about to write in. The wait lets the
+    // first typed key land first: a box focused by typing into it needs no draft.
+    private async Task HandleFocus()
+    {
+        if (_autoAsked || Value.Length > 0) return;
+        _autoAsked = true;
+        await Task.Delay(400);
+        if (!_disposed && Value.Length == 0 && _suggestion is null) await LoadAsync(automatic: true);
+    }
+
+    private async Task LoadAsync(bool automatic)
+    {
+        _cancellation?.Cancel();
+        _cancellation?.Dispose();
+        var cancellation = _cancellation = new CancellationTokenSource();
+        _loading = true;
+        StateHasChanged();
+        string? text = null;
+        try { text = await Suggest(automatic, cancellation.Token); }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException or OperationCanceledException
+                                          or System.Text.Json.JsonException) { }
+        if (_disposed || cancellation.IsCancellationRequested) return;
+        _loading = false;
+        _suggestion = text;
+        if (text is null && !automatic) Notifications.ShowInfo("No comment to suggest for this fragment.");
+        StateHasChanged();
+        // Asked for from the button, the draft is taken with Tab from the box.
+        if (text is not null && !automatic) await _textarea.FocusAsync();
+    }
+
+    private async Task HandleInputAsync(ChangeEventArgs args)
+    {
+        Value = args.Value?.ToString() ?? string.Empty;
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args is { Key: " ", CtrlKey: true, AltKey: false, ShiftKey: false, MetaKey: false } && Value.Length == 0)
+        {
+            await RequestAsync();
+            return;
+        }
+        await OnKeyDown.InvokeAsync(args);
+    }
+
+    private async Task AcceptAsync()
+    {
+        if (!ShowsSuggestion) return;
+        Value = _suggestion!;
+        _suggestion = null;
+        await ValueChanged.InvokeAsync(Value);
+        await _textarea.FocusAsync();
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _cancellation?.Cancel();
+        _cancellation?.Dispose();
+    }
+}

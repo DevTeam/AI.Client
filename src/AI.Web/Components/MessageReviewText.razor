@@ -14,8 +14,10 @@
          class="message-review-editor @(_popupBelow ? "is-below" : null)" role="dialog" aria-label="Comment on selected text"
          style="left: @_popupXpx; top: @_popupYpx;" @onkeydown="HandleEditorKeyDown">
         <small>Comment on “@selected.Quote”</small>
-        <textarea data-review-comment aria-label="Message review comment" value="@_body" @oninput="e => _body = e.Value?.ToString() ?? string.Empty" @onkeydown="HandleTextKeyDownAsync"></textarea>
+        <ReviewCommentInput @ref="_input" @bind-Value="_body" AriaLabel="Message review comment" OnKeyDown="HandleTextKeyDownAsync"
+                            Suggest="(automatic, token) => SuggestAsync(selected, automatic, token)" />
         <div class="message-review-editor-actions">
+            <button class="review-comment-icon-action" type="button" title="Suggest a comment (Ctrl+Space)" aria-label="Suggest a comment" aria-keyshortcuts="Control+Space" disabled="@_saving" @onclick="() => _input?.RequestAsync() ?? Task.CompletedTask"><AppIcon Name="lightbulb" /></button>
             <button class="review-comment-icon-action is-save" type="button" title="Save comment (Enter)" aria-label="Save comment" aria-keyshortcuts="Enter" disabled="@(_saving || string.IsNullOrWhiteSpace(_body))" @onclick="SaveAsync"><AppIcon Name="check" /></button>
             @if (_editingId is { } editingId && _current?.MessageComments?.FirstOrDefault(item => item.Id == editingId) is { } editingComment)
             {
@@ -80,6 +82,7 @@
     private string _popupYpx => $"{_popupY.ToString(System.Globalization.CultureInfo.InvariantCulture)}px";
     private long _highlightRevision = -1;
     private bool _focusEditor;
+    private ReviewCommentInput? _input;
     private DotNetObjectReference<MessageReviewText>? _reference;
 
     protected override void OnParametersSet()
@@ -166,8 +169,13 @@
 
     private void HandleEditorKeyDown(KeyboardEventArgs args)
     {
-        if (args.Key == "Escape") Cancel();
+        // The first Esc hides a suggested comment, the next one closes the editor.
+        if (args.Key == "Escape" && _input?.DismissSuggestion() != true) Cancel();
     }
+
+    private async Task<string?> SuggestAsync(MessageTextHit selected, bool automatic, CancellationToken token) =>
+        (await ReviewsApi.SuggestCommentAsync(ProjectId, ChatId,
+            new ReviewCommentSuggestionRequest(selected.Quote, MessageId, Automatic: automatic), token))?.Text;
 
     private Task HandleTextKeyDownAsync(KeyboardEventArgs args) =>
         args is { Key: "Enter", ShiftKey: false, CtrlKey: false, AltKey: false, MetaKey: false } && !_saving

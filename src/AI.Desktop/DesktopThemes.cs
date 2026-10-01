@@ -16,4 +16,11 @@ internal static class DesktopThemes
     /// <c>x:Static</c> on this property rather than with the name.
     /// </remarks>
     public static ThemeVariant DarkBlue { get; } = new("DarkBlue", ThemeVariant.Dark);
+
+    /// <remarks>
+    /// Like <see cref="DarkBlue"/>, but for the neutral grey palette. The bridge sends <c>"gray"</c>
+    /// (matching <c>data-theme="gray"</c> in app.css and the wire token in js/theme.js); XAML
+    /// references this property instead of the literal so the dictionary key matches by reference.
+    /// </remarks>
+    public static ThemeVariant Gray { get; } = new("Gray", ThemeVariant.Dark);
 }

@@ -22,7 +22,7 @@ internal sealed partial class MainWindow : Window
     private PixelPoint _normalPosition;
     private Size _normalSize;
 
-    /// <summary>The page picked a theme: "system", "light", "dark" or "darkblue".</summary>
+    /// <summary>The page picked a theme: "system", "light", "dark", "darkblue" or "gray".</summary>
     public event Action<string>? ThemeRequested;
 
     public MainWindow(DesktopStart start, IWindowPlacementStore placements,
@@ -246,7 +246,7 @@ internal sealed partial class MainWindow : Window
             else if (type.GetString() == "theme"
                      && root.TryGetProperty("preference", out var preference)
                      && preference.ValueKind == JsonValueKind.String
-                     && preference.GetString() is "system" or "light" or "dark" or "darkblue")
+                     && preference.GetString() is "system" or "light" or "dark" or "darkblue" or "gray")
             {
                 var requested = preference.GetString()!;
                 Dispatcher.UIThread.Post(() => ThemeRequested?.Invoke(requested));

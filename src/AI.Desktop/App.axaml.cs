@@ -50,6 +50,7 @@ internal sealed partial class App(Func<MainWindow> mainWindow, IProcessSignals p
             "light" => ThemeVariant.Light,
             "dark" => ThemeVariant.Dark,
             "darkblue" => DesktopThemes.DarkBlue,
+            "gray" => DesktopThemes.Gray,
             _ => ThemeVariant.Default
         };
 }

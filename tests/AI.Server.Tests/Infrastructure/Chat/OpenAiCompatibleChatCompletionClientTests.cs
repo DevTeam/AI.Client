@@ -221,7 +221,9 @@ public class OpenAiCompatibleChatCompletionClientTests
 
     private OpenAiCompatibleChatCompletionClient CreateInstance(
         IChatCompletionSseParser? parser = null, IChatTransportPolicy? policy = null) =>
-        new(new HttpClient(_handler.Object), parser ?? new ChatCompletionSseParser(new ChatCompletionUsageReader()), policy ?? new ChatTransportPolicy(), new ChatCompletionUsageReader());
+        new(new HttpClient(_handler.Object), parser ?? new ChatCompletionSseParser(new ChatCompletionUsageReader()), policy ?? new ChatTransportPolicy(), new ChatCompletionUsageReader(),
+            new AI.Infrastructure.Chat.RateLimitHeaderReader(), new AI.Application.Usage.ConnectionRateLimits(),
+            new AI.Infrastructure.Projects.SystemClock());
 
     private sealed class DelayedParser : IChatCompletionSseParser
     {

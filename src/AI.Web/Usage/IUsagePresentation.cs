@@ -25,8 +25,29 @@ public interface IUsagePresentation
     /// <summary>The percentage of input served from the provider's cache; null when there was no input.</summary>
     int? CachePercent(TokenCounts tokens);
 
-    /// <summary>The cost, or null when nothing was priced. Partial sums are marked as such by the caller.</summary>
+    /// <summary>
+    /// The cost, or null when nothing was priced. A leading "≈" says part of it was worked out from
+    /// the endpoint's quotes for other requests. Partial sums are marked as such by the caller.
+    /// </summary>
     string? FormatCost(TokenUsageTotals totals);
+
+    /// <summary>
+    /// The share of input the provider's cache could have served — what each request shared with the
+    /// one before it — or null when no request was compared.
+    /// </summary>
+    int? ReusablePercent(TokenUsageTotals totals);
+
+    /// <summary>What broke the shared start of requests, "tools 2 · history 1"; null when nothing did.</summary>
+    string? FormatPrefixChanges(TokenUsageTotals totals);
+
+    /// <summary>
+    /// The provider's limits, "498 of 500 requests · 39k tokens left · resets in 6 min"; null when
+    /// the endpoint stated none or what it stated is too old to mean anything now.
+    /// </summary>
+    string? FormatRateLimits(RateLimitStatus? limits, DateTimeOffset now);
+
+    /// <summary>True when either window is down to its last tenth.</summary>
+    bool IsRateLimitLow(RateLimitStatus? limits);
 
     /// <summary>Output tokens per second of request time; null when too little was measured to say.</summary>
     int? OutputSpeed(TokenUsageTotals totals);

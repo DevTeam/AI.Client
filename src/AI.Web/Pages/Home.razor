@@ -1053,6 +1053,8 @@
     // Per-branch memory of whether the last seen run was Generating — used to detect the transition that
     // produced the new leaf. Cleared on chat/project switch.
     private readonly Dictionary<Guid, bool> _wasGeneratingByBranch = [];
+    // Summaries each branch's running turn has asked for, so a new one is noticed while the turn goes on.
+    private readonly Dictionary<Guid, int> _summariesByBranch = [];
     private Guid? _selectedBranchId;
     private Guid? _forkSourceId;
     private bool _isForking;
@@ -1919,6 +1921,12 @@
             }
             if (wasGenerating && !isGenerating) _ = RefreshChatUsageAfterTurnAsync(snapshot.ChatId);
             _wasGeneratingByBranch[snapshot.BranchId] = isGenerating;
+            var summaries = snapshot.TurnUsage?.ByPurpose
+                .Where(slice => slice.Key is nameof(TokenUsagePurpose.Compaction) or nameof(TokenUsagePurpose.Checkpoint))
+                .Sum(slice => slice.Totals.Requests) ?? 0;
+            if (summaries > _summariesByBranch.GetValueOrDefault(snapshot.BranchId) && isGenerating)
+                _ = RefreshChatUsageAfterSummaryAsync(snapshot.ChatId);
+            _summariesByBranch[snapshot.BranchId] = summaries;
         }
         if (chatOrderChanged) await RefreshChatOrderAsync();
         await InvokeAsync(StateHasChanged);
@@ -2821,6 +2829,17 @@
         if (_compactionNoteChatId == chatId) _compactionNote = null;
         await RefreshChatUsageAsync();
         await Task.Delay(TimeSpan.FromSeconds(5));
+        if (_selectedChat?.Id == chatId) await RefreshChatUsageAsync();
+    }
+
+    /// <summary>
+    /// A summary the running turn just wrote may be a history checkpoint the turn now runs on; the
+    /// feed and the widget show it without waiting for the turn to end. The checkpoint is kept a
+    /// moment after its summary is measured, hence the pause.
+    /// </summary>
+    private async Task RefreshChatUsageAfterSummaryAsync(Guid chatId)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(1));
         if (_selectedChat?.Id == chatId) await RefreshChatUsageAsync();
     }
 

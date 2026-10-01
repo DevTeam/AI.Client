@@ -129,6 +129,7 @@ internal sealed class Composition
                 AppDataChangeSignal, AppNavigationSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
             .Singleton<WorkspaceFileSearch, GitWorkspaceDiffReader, FileExcerptReader>()
             .Singleton<ChatCompletionUsageReader, TokenUsageMeter, JsonLinesTokenUsageLedger, TokenUsageAggregator, TokenUsageService>()
+            .Singleton<PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits, RateLimitHeaderReader>()
             .Singleton<ContextSummaryWriter, HistoryCheckpointService, JsonHistoryCheckpointRepository, ChatHistoryCompaction>()
             // Bound by their own types only: every executor is an ISkillExecutor, and SkillRunner takes each by type.
             .Bind<ChatReplySuggestSkill>().As(Lifetime.Singleton).To<ChatReplySuggestSkill>()
@@ -147,10 +148,11 @@ internal sealed class Composition
                 IChatTransportPolicy transportPolicy,
                 IChatTransportActivity transportActivity,
                 ITokenUsageMeter usageMeter,
-                IContextTokenEstimator usageEstimator) =>
+                IContextTokenEstimator usageEstimator,
+                IPromptPrefixTracker prefixes) =>
                 new MeteringChatCompletionClient(
                     new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity),
-                    usageMeter, usageEstimator))
+                    usageMeter, usageEstimator, prefixes))
             .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool,
                 AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool>(Tag.Unique)
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)

@@ -5,6 +5,7 @@
 <p class="turn-usage" aria-label="Token usage of this turn">
     <span>@Turn.Totals.Requests @(Turn.Totals.Requests == 1 ? "request" : "requests")</span>
     <span>in @(Estimated ? "≈" : null)@Usage.FormatExact(Turn.Totals.Tokens.InputTokens)@if (Usage.CachePercent(Turn.Totals.Tokens) is > 0 and var cache) { <small> (@cache% cached)</small> }</span>
+    @if (Usage.FormatPrefixChanges(Turn.Totals) is { } changes) { <span title="Requests whose start differed from the request before them, which costs the provider's cache">cache reset by @changes</span> }
     <span>out @(Estimated ? "≈" : null)@Usage.FormatExact(Turn.Totals.Tokens.OutputTokens)</span>
     @if (Turn.Totals.Tokens.ReasoningTokens > 0) { <span>reasoning @Usage.FormatTokens(Turn.Totals.Tokens.ReasoningTokens)</span> }
     @if (Part(nameof(TokenUsagePurpose.Subtask)) is { } subtasks) { <span>subtasks @Usage.FormatFlow(subtasks)</span> }

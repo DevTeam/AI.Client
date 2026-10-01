@@ -20,7 +20,8 @@ using System.Text;
 public sealed class MeteringChatCompletionClient(
     IChatCompletionClient inner,
     ITokenUsageMeter meter,
-    IContextTokenEstimator estimator) : IChatCompletionClient
+    IContextTokenEstimator estimator,
+    IPromptPrefixTracker prefixes) : IChatCompletionClient
 {
     public async Task<ChatCompletionResponse> CompleteAsync(ChatCompletionRequest request, CancellationToken cancellationToken)
     {
@@ -67,13 +68,16 @@ public sealed class MeteringChatCompletionClient(
         string content, List<ChatToolCall> calls, TimeSpan duration, TimeSpan? firstToken)
     {
         var name = string.IsNullOrWhiteSpace(model) ? request.Model.Trim() : model;
+        var shape = prefixes.Shape(request);
         if (usage is not null)
-            return new TokenUsageMeasurement(name, request.CredentialProfileId, usage.Tokens, false, duration, firstToken, usage.Cost);
+            return new TokenUsageMeasurement(name, request.CredentialProfileId, usage.Tokens, false, duration, firstToken,
+                usage.Cost, shape);
         IReadOnlyList<ChatCompletionMessage> sent = request.ContextMessages is { Count: > 0 } messages
             ? messages
             : [new ChatCompletionMessage("user", request.Message)];
         var input = estimator.EstimateMessages(sent) + (request.Tools is { Count: > 0 } tools ? estimator.EstimateTools(tools) : 0);
         var output = estimator.EstimateMessages([new ChatCompletionMessage("assistant", content, calls.Count > 0 ? calls : null)]);
-        return new TokenUsageMeasurement(name, request.CredentialProfileId, new TokenCounts(input, output), true, duration, firstToken);
+        return new TokenUsageMeasurement(name, request.CredentialProfileId, new TokenCounts(input, output), true, duration,
+            firstToken, Shape: shape);
     }
 }

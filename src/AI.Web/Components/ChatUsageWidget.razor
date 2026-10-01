@@ -32,6 +32,13 @@
                 <span>@Usage.FormatTokens(context.UsedTokens) of @(context.IsDefaultCapacity ? "~" : null)@Usage.FormatTokens(context.CapacityTokens)</span>
                 @if (ConnectionName is not null) { <span class="chat-usage-connection" title="@ConnectionName">@ConnectionName</span> }
             </div>
+            @if (Usage.FormatRateLimits(ChatUsage?.RateLimits, DateTimeOffset.UtcNow) is { } limits)
+            {
+                <div class="chat-usage-row chat-usage-muted @(Usage.IsRateLimitLow(ChatUsage?.RateLimits) ? "chat-usage-limit-low" : null)"
+                     title="What the provider said is left of its limits with its last response">
+                    <span>Limits: @limits</span>
+                </div>
+            }
             @if (ContextPresentation.Note(context) is { } note && CompactionNote is null)
             {
                 <div class="chat-usage-note context-note-@context.Level.ToString().ToLowerInvariant()">
@@ -75,7 +82,21 @@
             </div>
             <dl class="chat-usage-facts">
                 <dt>Requests</dt><dd>@turn.Totals.Requests</dd>
-                @if (Usage.CachePercent(turn.Totals.Tokens) is { } turnCache) { <dt>Cached input</dt><dd>@turnCache%</dd> }
+                @if (Usage.CachePercent(turn.Totals.Tokens) is { } turnCache)
+                {
+                    <dt>Cached input</dt>
+                    <dd>
+                        @turnCache%
+                        @if (Usage.ReusablePercent(turn.Totals) is { } reusable && reusable - turnCache >= 20)
+                        {
+                            <small title="The requests started the same as the ones before them, but the provider did not serve that from its cache: it may have expired or been dropped">of @reusable% possible</small>
+                        }
+                    </dd>
+                }
+                @if (Usage.FormatPrefixChanges(turn.Totals) is { } changes)
+                {
+                    <dt title="Requests whose start differed from the request before them, which costs the provider's cache">Cache reset by</dt><dd>@changes</dd>
+                }
                 @if (turn.Totals.Tokens.ReasoningTokens > 0) { <dt>Reasoning</dt><dd>@Usage.FormatTokens(turn.Totals.Tokens.ReasoningTokens)</dd> }
                 @if (Usage.OutputSpeed(turn.Totals) is { } speed) { <dt>Speed</dt><dd>@speed tok/s</dd> }
                 @if (Usage.FormatCost(turn.Totals) is { } turnCost) { <dt>Cost</dt><dd>@turnCost</dd> }
@@ -105,6 +126,7 @@
                     {
                         @cost
                         @if (chat.Totals.PricedRequests < chat.Totals.Requests) { <small title="Some requests went to a connection without prices">partial</small> }
+                        else if (chat.Totals.EstimatedCostRequests > 0) { <small title="@($"The endpoint quoted a cost for some requests only; the other {chat.Totals.EstimatedCostRequests} are worked out from those quotes")">estimated</small> }
                     }
                     else if (OnOpenConnections.HasDelegate)
                     {

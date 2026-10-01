@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 180" role="img" aria-labelledby="label-title label-desc">
+  <title id="label-title">AI Client</title>
+  <desc id="label-desc">Dark banner: the AI Client icon on the left and the words "AI Client" with the tagline "A local AI chat client" on the right.</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f1f1f"/>
+      <stop offset="1" stop-color="#0a0a0a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="720" height="180" rx="22" fill="url(#bg)"/>
+
+  <!-- Icon, in the style of the application icon -->
+  <g transform="translate(36 36)">
+    <rect width="108" height="108" rx="22" fill="#171717" stroke="#2a2a2a" stroke-width="1"/>
+    <g fill="#ffffff">
+      <rect x="18" y="22" width="58" height="5" rx="2.5"/>
+      <rect x="18" y="35" width="72" height="5" rx="2.5"/>
+      <rect x="18" y="48" width="40" height="5" rx="2.5"/>
+    </g>
+    <rect x="20" y="70" width="68" height="22" rx="6" fill="none" stroke="#4f91dc" stroke-width="3"/>
+    <circle cx="78" cy="81" r="6" fill="#ffffff"/>
+  </g>
+
+  <!-- Title -->
+  <text x="172" y="96" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="56" font-weight="700" fill="#ffffff" letter-spacing="-1">AI Client</text>
+
+  <!-- Tagline -->
+  <text x="174" y="132" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="400" fill="#a3a3a3">A local AI chat client</text>
+</svg>

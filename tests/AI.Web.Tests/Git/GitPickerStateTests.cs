@@ -78,4 +78,22 @@ public sealed class GitPickerStateTests
         picker.Items.ShouldHaveSingleItem();
         picker.Values.ShouldBe(["chosen"]);
     }
+
+    [Fact]
+    public async Task ChoicesShouldKeepTheirLabelsAfterTheListIsReloadedAndBeClearable()
+    {
+        var api = new Mock<IGitApi>();
+        api.Setup(item => item.CommitsAsync("repo", null, 0, CancellationToken.None))
+            .ReturnsAsync(new GitListing("repo", [new("one", "abc1234 First")], false));
+        api.Setup(item => item.CommitsAsync("repo", "topic", 0, CancellationToken.None))
+            .ReturnsAsync(new GitListing("repo", [new("two", "def5678 Second")], false));
+        var picker = new GitPickerState(api.Object);
+        await picker.OpenAsync("repo", "commit", true, null, ["earlier"], CancellationToken.None);
+        picker.Toggle("one");
+        await picker.ChangeRevisionAsync("topic", CancellationToken.None);
+        picker.LabelOf("one").ShouldBe("abc1234 First");
+        picker.LabelOf("earlier").ShouldBe("earlier");
+        picker.Clear();
+        picker.Values.ShouldBeEmpty();
+    }
 }

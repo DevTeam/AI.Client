@@ -6,6 +6,9 @@ public sealed class GitPickerState(IGitApi api) : IGitPickerState
 {
     private readonly List<GitChoice> _items = [];
     private readonly List<string> _values = [];
+    // Every label seen while the dialog is open, so a choice keeps its readable name after a
+    // different history branch is loaded and the row itself is gone from the list.
+    private readonly Dictionary<string, string> _labels = new(StringComparer.Ordinal);
     private string _repository = string.Empty;
     private string _kind = "branch";
     private string? _revision;
@@ -28,6 +31,7 @@ public sealed class GitPickerState(IGitApi api) : IGitPickerState
         _revision = revision;
         Filter = string.Empty;
         _items.Clear();
+        _labels.Clear();
         _values.Clear();
         _values.AddRange(selected.Distinct(StringComparer.Ordinal).Take(multiSelect ? 200 : 1));
         await LoadMoreAsync(token);
@@ -43,6 +47,7 @@ public sealed class GitPickerState(IGitApi api) : IGitPickerState
             var listing = _kind == "branch" ? await api.BranchesAsync(_repository, token)
                 : await api.CommitsAsync(_repository, _revision, _items.Count, token);
             _items.AddRange(listing.Items);
+            foreach (var item in listing.Items) _labels[item.Value] = item.Label;
             HasMore = listing.HasMore;
         }
         catch (HttpRequestException error) { ErrorMessage = error.Message; }
@@ -57,6 +62,10 @@ public sealed class GitPickerState(IGitApi api) : IGitPickerState
         HasMore = false;
         await LoadMoreAsync(token);
     }
+
+    public string LabelOf(string value) => _labels.GetValueOrDefault(value, value);
+
+    public void Clear() => _values.Clear();
 
     public void Toggle(string value)
     {

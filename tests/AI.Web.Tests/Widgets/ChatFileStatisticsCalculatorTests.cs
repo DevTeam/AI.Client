@@ -22,7 +22,7 @@ public class ChatFileStatisticsCalculatorTests
         var first = Answer(Change("src/app.css", FileChangeKind.Modified, 10, 0));
         var second = Answer(Change("src/app.css", FileChangeKind.Modified, 0, 4), Change("README.md", FileChangeKind.Added, 3, 0));
 
-        var stats = _calculator.Calculate([User(), first, User(), User(), second], null, ChatFileStatisticsScope.Chat);
+        var stats = _calculator.Calculate([User(), first, User(), User(), second], null, ChatWidgetScope.Chat);
 
         stats.Files.Select(file => (file.Path, file.Additions, file.Deletions, file.LatestSourceMessageId))
             .ShouldBe([("src/app.css", 10, 4, second.Id), ("README.md", 3, 0, second.Id)]);
@@ -35,7 +35,7 @@ public class ChatFileStatisticsCalculatorTests
     {
         var stats = _calculator.Calculate(
             [User(), Answer(Change("a.cs", FileChangeKind.Modified, 5, 1)), User(), Answer(Change("b.cs", FileChangeKind.Modified, 2, 2))],
-            null, ChatFileStatisticsScope.LastTurn);
+            null, ChatWidgetScope.LastTurn);
 
         stats.Files.Select(file => file.Path).ShouldBe(["b.cs"]);
         stats.Turns.ShouldBe(1);
@@ -48,7 +48,7 @@ public class ChatFileStatisticsCalculatorTests
         [
             User(), Answer(Change("new.cs", FileChangeKind.Added, 8, 0), Change("old.cs", FileChangeKind.Modified, 1, 1)),
             User(), Answer(Change("new.cs", FileChangeKind.Modified, 2, 1), Change("old.cs", FileChangeKind.Deleted, 0, 9))
-        ], null, ChatFileStatisticsScope.Chat);
+        ], null, ChatWidgetScope.Chat);
 
         stats.Files.ToDictionary(file => file.Path, file => file.Kind)
             .ShouldBe(new Dictionary<string, FileChangeKind> { ["new.cs"] = FileChangeKind.Added, ["old.cs"] = FileChangeKind.Deleted });
@@ -61,7 +61,7 @@ public class ChatFileStatisticsCalculatorTests
         [
             User(), Answer(Change("a.cs", FileChangeKind.Modified, 4, 0)),
             User(), Answer(Change("b.cs", FileChangeKind.Renamed, 1, 1, previousPath: "a.cs"))
-        ], null, ChatFileStatisticsScope.Chat);
+        ], null, ChatWidgetScope.Chat);
 
         var file = stats.Files.ShouldHaveSingleItem();
         (file.Path, file.Kind, file.PreviousPath, file.Additions, file.Deletions).ShouldBe(("b.cs", FileChangeKind.Renamed, "a.cs", 5, 1));
@@ -73,9 +73,9 @@ public class ChatFileStatisticsCalculatorTests
         IReadOnlyList<ChatMessageView> branch = [User(), Answer(Change("a.cs", FileChangeKind.Modified, 1, 0)), User()];
         var live = Changes(Change("a.cs", FileChangeKind.Modified, 2, 0));
 
-        var running = _calculator.Calculate(branch, live, ChatFileStatisticsScope.Chat);
+        var running = _calculator.Calculate(branch, live, ChatWidgetScope.Chat);
         _feed.Setup(item => item.LastTurnHasWorkspaceReceipt(branch)).Returns(true);
-        var saved = _calculator.Calculate(branch, live, ChatFileStatisticsScope.Chat);
+        var saved = _calculator.Calculate(branch, live, ChatWidgetScope.Chat);
 
         (running.IncludesLive, running.Additions, running.TurnsWithChanges).ShouldBe((true, 3, 2));
         (saved.IncludesLive, saved.Additions).ShouldBe((false, 1));
@@ -84,7 +84,7 @@ public class ChatFileStatisticsCalculatorTests
     [Fact]
     public void ShouldLeaveAFileOnlyChangedByTheRunningTurnWithoutAReview()
     {
-        var stats = _calculator.Calculate([User()], Changes(Change("a.cs", FileChangeKind.Added, 2, 0)), ChatFileStatisticsScope.LastTurn);
+        var stats = _calculator.Calculate([User()], Changes(Change("a.cs", FileChangeKind.Added, 2, 0)), ChatWidgetScope.LastTurn);
 
         stats.Files.ShouldHaveSingleItem().LatestSourceMessageId.ShouldBeNull();
         stats.LatestSourceMessageId.ShouldBeNull();
@@ -99,7 +99,7 @@ public class ChatFileStatisticsCalculatorTests
                 Change("logo.png", FileChangeKind.Modified, null, null, binary: true),
                 Change("big.json", FileChangeKind.Modified, null, null, confidence: FileChangeConfidence.Approximate),
                 Change("a.cs", FileChangeKind.Modified, 1, 0))
-        ], null, ChatFileStatisticsScope.Chat);
+        ], null, ChatWidgetScope.Chat);
 
         stats.Files.Select(file => (file.Path, file.IsApproximate))
             .ShouldBe([("a.cs", false), ("big.json", true), ("logo.png", false)]);

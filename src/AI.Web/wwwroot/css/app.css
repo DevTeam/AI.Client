@@ -6484,8 +6484,19 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .chat-usage-row { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; min-width: 0; }
 .chat-usage-heading { color: var(--color-text-secondary); font-weight: 500; }
 .chat-usage-figure { color: var(--color-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.chat-usage-figure.context-fill-warning { color: var(--color-warning); }
-.chat-usage-figure.context-fill-critical { color: var(--color-danger); }
+.chat-usage-figure .context-fill-warning { color: var(--color-warning); }
+.chat-usage-figure .context-fill-critical { color: var(--color-danger); }
+.chat-usage-heading .chat-usage-figure .chat-usage-muted { margin-right: .35rem; }
+.chat-usage-scope-figures { padding-top: .1rem; border-top: 0; }
+.chat-usage-headline { font-size: .9rem; font-weight: 500; }
+.chat-usage-headline small { margin-left: .3rem; color: var(--color-text-subtle); font-size: .7rem; font-weight: 400; }
+.chat-usage-grid { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); gap: .25rem .5rem; margin: 0; font-size: .76rem; }
+.chat-usage-grid dt { color: var(--color-text-subtle); }
+.chat-usage-grid dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chat-usage-grid dd:nth-of-type(odd):not(.chat-usage-grid-wide) { margin-right: .7rem; }
+.chat-usage-grid dd small { margin-left: .1rem; color: var(--color-text-subtle); font-size: .7rem; }
+.chat-usage-grid .chat-usage-grid-row { grid-column: 1; }
+.chat-usage-grid .chat-usage-grid-wide { grid-column: span 3; overflow: hidden; text-overflow: ellipsis; }
 .chat-usage-muted { color: var(--color-text-subtle); font-weight: 400; }
 .chat-usage-muted.chat-usage-limit-low { color: var(--color-warning-text); }
 .chat-usage-connection { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -6552,10 +6563,10 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 
 /* Files widget: counts sit in two fixed columns so they line up file under file, and each file's
    share of the chat's churn runs as a thin bar beneath its name. */
-.chat-files-scope { display: flex; margin: .1rem 0 .5rem; padding: 2px; border-radius: calc(.45rem * var(--corner-scale)); background: var(--color-fill); }
-.chat-files-scope button { flex: 1; padding: .2rem .4rem; border: 0; border-radius: calc(.35rem * var(--corner-scale)); background: none; color: var(--color-text-subtle); font: inherit; font-size: .74rem; cursor: pointer; }
-.chat-files-scope button:hover { color: var(--color-text); }
-.chat-files-scope button.is-selected { background: var(--color-surface); color: var(--color-text); font-weight: 500; box-shadow: 0 0 0 1px var(--color-border-subtle); }
+.chat-widget-scope { display: flex; margin: .1rem 0 .5rem; padding: 2px; border-radius: calc(.45rem * var(--corner-scale)); background: var(--color-fill); }
+.chat-widget-scope button { flex: 1; padding: .2rem .4rem; border: 0; border-radius: calc(.35rem * var(--corner-scale)); background: none; color: var(--color-text-subtle); font: inherit; font-size: .74rem; cursor: pointer; }
+.chat-widget-scope button:hover { color: var(--color-text); }
+.chat-widget-scope button.is-selected { background: var(--color-surface); color: var(--color-text); font-weight: 500; box-shadow: 0 0 0 1px var(--color-border-subtle); }
 .chat-files-total { display: flex; align-items: baseline; gap: .45rem; }
 .chat-files-count { color: var(--color-text); font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .chat-files-total-lines { display: inline-flex; gap: .45rem; margin-left: auto; font-size: .86rem; font-variant-numeric: tabular-nums; }

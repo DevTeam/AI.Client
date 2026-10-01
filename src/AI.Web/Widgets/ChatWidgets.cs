@@ -3,6 +3,13 @@ namespace AI.Web.Widgets;
 /// <summary>How one widget sits in the chat's widget column, as the person left it.</summary>
 public sealed record ChatWidgetPreference(string Id, bool Hidden = false, bool Collapsed = false);
 
+/// <summary>Which turns a widget's figures cover.</summary>
+public enum ChatWidgetScope
+{
+    Chat,
+    LastTurn,
+}
+
 /// <summary>A kind of widget the column can hold.</summary>
 /// <param name="Description">One line for the list where widgets are shown and hidden.</param>
 public sealed record ChatWidgetDefinition(string Id, string Title, string Icon, string Description);
@@ -22,7 +29,7 @@ public sealed class ChatWidgetCatalog : IChatWidgetCatalog
 
     public IReadOnlyList<ChatWidgetDefinition> Widgets { get; } =
     [
-        new(ChatUsage, "This chat", "gauge", "Context window, tokens and cost of the open chat"),
+        new(ChatUsage, "Usage", "gauge", "Context window, tokens and cost of the whole chat or the last turn"),
         new(ChatFiles, "Files", "diff", "Files the open chat changed, with lines added and removed")
     ];
 

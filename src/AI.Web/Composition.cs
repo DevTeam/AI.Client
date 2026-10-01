@@ -94,6 +94,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IChatPerformanceCalculator>().To<ChatPerformanceCalculator>()
             .RootBind<IChatKnowledgeStatisticsCalculator>().To<ChatKnowledgeStatisticsCalculator>()
             .RootBind<IChatSubtaskStatisticsCalculator>().To<ChatSubtaskStatisticsCalculator>()
+            .RootBind<IChatTimelineStatisticsCalculator>().To<ChatTimelineStatisticsCalculator>()
             .Bind<IChatUsageStore>().As(Lifetime.Singleton).To<ChatUsageStore>()
             .Root<IChatUsageStore>()
             .RootBind<IChatUsageApi>().To<ChatUsageApi>()

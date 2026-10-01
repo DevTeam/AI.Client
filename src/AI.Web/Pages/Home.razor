@@ -647,6 +647,14 @@
                                              Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
                                              Run="@widgetRun" />
                         break;
+                    case ChatWidgetCatalog.ChatTimeline:
+                        <ChatTimelineWidget Widget="@widget"
+                                            Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
+                                            ChatUsage="@ChatUsage.Find(widgetChat.Id)"
+                                            LiveTurn="@widgetRun?.TurnUsage"
+                                            IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
+                                            OnSelectTurn="ScrollToTurnAsync" />
+                        break;
                 }
             </WidgetTemplate>
         </ChatWidgetRail>
@@ -2748,6 +2756,15 @@
         _chatWidgetsOpen = !_chatWidgetsOpen;
         await ClientSettings.UpdateAsync(current => current with { ChatWidgetsOpen = _chatWidgetsOpen });
         if (_chatWidgetsOpen) await RefreshChatUsageAsync();
+    }
+
+    // The Timeline widget rows are also a table of contents: a click scrolls the transcript to
+    // the turn's first user message. The feed handles pending cases (branch switch, message not
+    // yet in the DOM) by re-trying after later renders.
+    private async Task ScrollToTurnAsync(Guid messageId)
+    {
+        if (_messageFeed is null) return;
+        await _messageFeed.ScrollToMessageAsync(messageId);
     }
 
     // Pressing the ring asks about the window, so the answer is the usage widget, open and unfolded,

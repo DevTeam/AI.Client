@@ -744,8 +744,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// </summary>
     private const string FinishingInstruction =
         "Keep working with tools until the request is done. A reply without a tool call ends your turn and is "
-        + "shown to the user as your answer, so do not stop to announce a next step: take it. End with the complete "
-        + "answer. If information or tools are missing, say what you did, what is left and what blocks it.";
+        + "shown to the user as your answer, so do not stop to announce a next step: take it. Do not end by asking "
+        + "permission to continue (\"Shall I…?\", \"Want me to…?\"): if the request already covers that step, do it. When a "
+        + "decision is genuinely the user's, call ask_user; a question written in the reply ends your turn unanswered. "
+        + "End with the complete answer. If information or tools are missing, say what you did, what is left and what "
+        + "blocks it.";
 
     private static string ToolDiscoveryInstruction(int availableCount, int selectedCount) =>
         $"Only {selectedCount} of {availableCount} permitted tools are shown. If a needed capability is missing, "

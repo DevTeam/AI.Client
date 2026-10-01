@@ -30,6 +30,15 @@ Choose:
   code-review, measured optimization code-performance-optimize, package updates code-dependencies-update,
   trust-boundary audits code-security-review, and documentation changes code-docs-update.
   code-changes-review is pre-commit housekeeping; code-review is a review of behavior and contracts.
+  DevOps tasks use the available devops skills: pipeline creation/failures devops-ci-create/
+  devops-ci-fix, containers devops-container-create, local stacks devops-compose-configure,
+  environment configuration review devops-config-review, release packaging devops-release-prepare,
+  live deployment devops-deploy, release rollback devops-rollback, operational diagnosis
+  devops-incident-diagnose, telemetry devops-observability-configure, IaC changes
+  devops-infrastructure-change, and backup/restoration verification devops-backup-verify.
+  Application compiler/analyzer failures still use code-build-fix. Preparing local release artifacts
+  is not a live deployment. A request to recover an incident changes a diagnostic task into the
+  matching deployment, rollback or implementation task; do not keep read-only diagnosis active.
   These are hints only: choose a named skill only when it is present in the input catalog.
 - `tools`: up to eight tool names the work will most likely need in its first steps, including the
   ones the chosen skills work with.

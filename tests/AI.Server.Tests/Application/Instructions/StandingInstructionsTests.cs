@@ -120,6 +120,8 @@ public sealed class StandingInstructionsTests : IDisposable
         var skills = preview.Layers.Single(layer => layer.Key == "skills.catalog");
         skills.Truncated.ShouldBeFalse();
         skills.Tokens.ShouldBeLessThanOrEqualTo(skills.BudgetTokens);
+        foreach (var skill in new BuiltInSkillCatalog().List().Where(skill => skill.Kind == AI.Contracts.Skills.SkillKinds.Playbook))
+            skills.Content.ShouldContain($"\n- {skill.Id}: ");
         // The catalog says when to check it, and how to leave one skill for another.
         skills.Content.ShouldContain("before other tools");
         skills.Content.ShouldContain("mcp_app__skill_search");

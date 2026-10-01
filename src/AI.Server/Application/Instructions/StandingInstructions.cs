@@ -25,7 +25,8 @@ public sealed class StandingInstructions(
     public const long BaseBudgetTokens = 5_120;
     public const long ProjectBudgetTokens = 4_096;
     public const long MemoryBudgetTokens = 2_048;
-    public const long SkillsBudgetTokens = 5_120;
+    // Keep the full bundled catalog visible; extra user/project skills still use bounded truncation.
+    public const long SkillsBudgetTokens = 7_168;
 
     /// <summary>
     /// Leads the catalog. A skill the model has to go looking for is a skill it skips: listing each

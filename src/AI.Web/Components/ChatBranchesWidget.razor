@@ -83,7 +83,25 @@
 
     private ChatBranchesStatistics _stats = ChatBranchesStatistics.Empty;
 
-    protected override void OnParametersSet() => Refresh();
+    private bool _statisticsInitialized;
+    private IReadOnlyList<ChatMessageView> _statisticsMessages = [];
+    private IReadOnlyList<ChatBranchView>? _statisticsBranches;
+    private Guid? _statisticsSelectedBranchId;
+
+    protected override void OnParametersSet()
+    {
+        // Parent renders also follow typing and modifier keys; only changed data needs statistics.
+        if (_statisticsInitialized
+            && ReferenceEquals(_statisticsMessages, Messages)
+            && ReferenceEquals(_statisticsBranches, Branches)
+            && _statisticsSelectedBranchId == SelectedBranchId) return;
+
+        Refresh();
+        _statisticsInitialized = true;
+        _statisticsMessages = Messages;
+        _statisticsBranches = Branches;
+        _statisticsSelectedBranchId = SelectedBranchId;
+    }
 
     private void Refresh() =>
         _stats = Calculator.Calculate(Branches, Messages, SelectedBranchId);

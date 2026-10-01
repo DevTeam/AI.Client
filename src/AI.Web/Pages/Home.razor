@@ -627,37 +627,37 @@
                         break;
                     case ChatWidgetCatalog.ChatFiles:
                         <ChatFilesWidget Widget="@widget"
-                                         Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
+                                         Messages="@GetWidgetMessages(widgetChat)"
                                          LiveChanges="@(widgetRun is { Status: not ChatRunStatus.Completed } ? widgetRun.WorkspaceChanges : null)"
                                          OnReview="OpenReviewForFileAsync" />
                         break;
                     case ChatWidgetCatalog.ChatTools:
                         <ChatToolsWidget Widget="@widget"
-                                         Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
+                                         Messages="@GetWidgetMessages(widgetChat)"
                                          Run="@widgetRun" />
                         break;
                     case ChatWidgetCatalog.ChatPerformance:
                         <ChatPerformanceWidget Widget="@widget"
                                               ChatUsage="@ChatUsage.Find(widgetChat.Id)"
                                               LiveTurn="@widgetRun?.TurnUsage"
-                                              Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
+                                              Messages="@GetWidgetMessages(widgetChat)"
                                               IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)" />
                         break;
                     case ChatWidgetCatalog.ChatSubtasks:
                         <ChatSubtasksWidget Widget="@widget"
                                             ChatUsage="@ChatUsage.Find(widgetChat.Id)"
                                             LiveTurn="@widgetRun?.TurnUsage"
-                                            Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
+                                            Messages="@GetWidgetMessages(widgetChat)"
                                             IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)" />
                         break;
                     case ChatWidgetCatalog.ChatKnowledge:
                         <ChatKnowledgeWidget Widget="@widget"
-                                             Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
+                                             Messages="@GetWidgetMessages(widgetChat)"
                                              Run="@widgetRun" />
                         break;
                     case ChatWidgetCatalog.ChatTimeline:
                         <ChatTimelineWidget Widget="@widget"
-                                            Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
+                                            Messages="@GetWidgetMessages(widgetChat)"
                                             ChatUsage="@ChatUsage.Find(widgetChat.Id)"
                                             LiveTurn="@widgetRun?.TurnUsage"
                                             IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
@@ -2795,6 +2795,21 @@
     private IReadOnlyList<ChatWidgetPreference> _chatWidgets = [];
     private bool _showTurnTokens;
     private Guid? _usageChatId;
+
+    private IReadOnlyList<ChatMessageView>? _widgetSourceMessages;
+    private Guid? _widgetBranchLeafId;
+    private IReadOnlyList<ChatMessageView> _widgetMessages = [];
+
+    private IReadOnlyList<ChatMessageView> GetWidgetMessages(ChatDetails chat)
+    {
+        if (!ReferenceEquals(_widgetSourceMessages, chat.Messages) || _widgetBranchLeafId != _branchLeafId)
+        {
+            _widgetMessages = Feed.BuildBranch(chat.Messages, _branchLeafId);
+            _widgetSourceMessages = chat.Messages;
+            _widgetBranchLeafId = _branchLeafId;
+        }
+        return _widgetMessages;
+    }
 
     private bool IsChatWidgetsVisible() => _chatWidgetsOpen && _selectedChat is not null;
 

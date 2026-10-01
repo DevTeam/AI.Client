@@ -8,7 +8,8 @@
 // - only message blocks that changed are scanned, on a short timer and in slices of a few
 //   milliseconds, so a streaming answer is looked at a few times a second at most, never per
 //   token, and a long transcript never holds the main thread (idle callbacks were not used: a
-//   hidden or background page runs them only on their timeout, one block at a time);
+//   hidden or background page runs them only on their timeout, one block at a time); paths already
+//   answered are decorated right away, before paint, so re-rendered markup does not blink;
 // - candidates are cheap string tests; the file system is asked only through the Host, in batches,
 //   with a plain fetch: marshalling a batch through .NET cost the WebAssembly runtime ~150 ms;
 // - every answer is cached per project, so re-rendered text is decorated without asking again.
@@ -166,15 +167,20 @@ export function attach(container, dotnet) {
         queue(input);
     };
 
-    const scanBlock = block => {
+    // cachedOnly decorates only what the cache already answers and asks the Host nothing: it runs
+    // as soon as a block is re-rendered, so a streaming answer, whose markup is replaced on every
+    // update, keeps its file links and their icons instead of losing them until the next scan.
+    const scanBlock = (block, cachedOnly = false) => {
         if (!block.isConnected) return;
+        const known = input => !cachedOnly || cache.has(input);
         for (const anchor of block.querySelectorAll('a[href]:not([data-path-state])')) {
             const href = anchor.getAttribute('href') ?? '';
             const direct = directPathOf(href);
             if (direct) {
                 // Usable at once; the Host's answer only adds the kind and the canonical form.
                 decorate(anchor, { path: direct, kind: null, access: null });
-                if (scope) consider(anchor, direct); else anchor.dataset.pathState = 'yes';
+                if (!scope) anchor.dataset.pathState = 'yes';
+                else if (known(direct)) consider(anchor, direct);
                 continue;
             }
             const relative = relativeTargetOf(href);
@@ -182,26 +188,26 @@ export function attach(container, dotnet) {
                 anchor.dataset.pathState = 'no';
                 continue;
             }
-            consider(anchor, relative);
+            if (known(relative)) consider(anchor, relative);
         }
         if (!scope) return;
         // Bare paths already wrapped by an earlier pass are checked again after a reset.
         for (const span of block.querySelectorAll('span.file-link[data-path-input]:not([data-path-state])'))
-            consider(span, span.dataset.pathInput);
+            if (known(span.dataset.pathInput)) consider(span, span.dataset.pathInput);
         for (const code of block.querySelectorAll('code:not([data-path-state])')) {
             if (code.closest('pre, a')) {
                 code.dataset.pathState = 'no';
                 continue;
             }
             const text = code.textContent.trim();
-            if (looksLikePath(text)) consider(code, text);
-            else code.dataset.pathState = 'no';
+            if (!looksLikePath(text)) code.dataset.pathState = 'no';
+            else if (known(text)) consider(code, text);
         }
-        scanText(block);
+        scanText(block, cachedOnly);
     };
 
     // Bare Windows paths in prose. A text node is split only around paths the Host confirmed.
-    const scanText = block => {
+    const scanText = (block, cachedOnly) => {
         const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
             acceptNode: node => node.data.indexOf(':\\') < 1 || node.parentElement?.closest(NOT_PROSE)
                 ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
@@ -215,11 +221,11 @@ export function attach(container, dotnet) {
             for (const item of found) {
                 if (!cache.has(item.path)) {
                     unknown = true;
-                    queue(item.path);
+                    if (!cachedOnly) queue(item.path);
                 }
             }
             if (unknown) {
-                block.dataset.pathTextPending = 'true';
+                if (!cachedOnly) block.dataset.pathTextPending = 'true';
                 continue;
             }
             const fragment = document.createDocumentFragment();
@@ -351,12 +357,26 @@ export function attach(container, dotnet) {
             target.dataset.fileKind ?? null, target.dataset.fileAccess === 'none' ? false : null);
     };
 
+    // Runs before the browser paints the re-rendered markup, within one slice; the blocks stay
+    // dirty, so the scan on the timer still asks the Host about whatever is new.
+    const decorateFromCache = () => {
+        const started = performance.now();
+        for (const block of dirty) {
+            scanBlock(block, true);
+            if (performance.now() - started > SLICE_MS) return;
+        }
+    };
+
     const observer = new MutationObserver(records => {
         for (const record of records) {
             markDirty(record.target);
             for (const node of record.addedNodes) markDirty(node);
         }
-        if (dirty.size > 0) scheduleScan(SCAN_DELAY_MS);
+        if (dirty.size === 0) return;
+        decorateFromCache();
+        // The pass above changes the DOM too; those records describe nothing new.
+        observer.takeRecords();
+        scheduleScan(SCAN_DELAY_MS);
     });
 
     container.addEventListener('click', onClick);

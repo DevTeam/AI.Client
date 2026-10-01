@@ -536,7 +536,24 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             message.ToolCallId,
             ToContract(message.WorkspaceChanges),
             contentOmitted,
-            ResourceReferences.ToContract(message.Resources));
+            ResourceReferences.ToContract(message.Resources),
+            message.Role == ChatMessageRole.Tool ? ToolResultErrorFlag(message.Content) : null);
+    }
+
+    private static bool? ToolResultErrorFlag(string content)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(content);
+            return document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                && document.RootElement.TryGetProperty("isError", out var flag)
+                && flag.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
+                    ? flag.GetBoolean() : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
     }
 
     private static ChatWorkspaceChangeSet? ToDomain(WorkspaceChangeSet? changes) => changes is null

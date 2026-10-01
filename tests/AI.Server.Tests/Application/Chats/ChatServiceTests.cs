@@ -129,6 +129,31 @@ public class ChatServiceTests
         content.Content.ShouldBe("very large result");
     }
 
+    [Theory]
+    [InlineData("{\"isError\":true,\"error\":\"Denied\"}", true)]
+    [InlineData("{\"isError\":false,\"content\":[]}", false)]
+    [InlineData("legacy result", null)]
+    [InlineData("{\"content\":[]}", null)]
+    [InlineData("{\"isError\":\"true\"}", null)]
+    public async Task ShouldKeepToolErrorStatusInCompactTranscript(string content, bool? expected)
+    {
+        var userId = new ChatMessageId(Guid.CreateVersion7());
+        var resultId = new ChatMessageId(Guid.CreateVersion7());
+        var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
+        chat.AddMessage(new ChatMessage(userId, null, ChatMessageRole.User, "Question", _now), _now);
+        chat.AddMessage(new ChatMessage(resultId, userId, ChatMessageRole.Tool, content, _now.AddSeconds(1),
+            toolCallId: "call-1"), _now.AddSeconds(1));
+        _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None))
+            .ReturnsAsync(new StoredChat(chat, 2));
+
+        var transcript = await CreateInstance().GetTranscriptAsync(_projectId.Value, _chatId.Value, CancellationToken.None);
+
+        var result = transcript!.Messages.Single(message => message.Id == resultId.Value);
+        result.Content.ShouldBeEmpty();
+        result.ContentOmitted.ShouldBeTrue();
+        result.ToolResultIsError.ShouldBe(expected);
+    }
+
     [Fact]
     public async Task ShouldIncludeOnlySmallAppCompactionResultsInExpandedActivity()
     {

@@ -623,6 +623,11 @@
                                          LiveChanges="@(widgetRun is { Status: not ChatRunStatus.Completed } ? widgetRun.WorkspaceChanges : null)"
                                          OnReview="OpenReviewForFileAsync" />
                         break;
+                    case ChatWidgetCatalog.ChatTools:
+                        <ChatToolsWidget Widget="@widget"
+                                         Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
+                                         Run="@widgetRun" />
+                        break;
                 }
             </WidgetTemplate>
         </ChatWidgetRail>

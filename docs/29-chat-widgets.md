@@ -13,6 +13,7 @@ Current widgets:
 | --- | --- | --- | --- | --- |
 | `chat-usage` | Usage | `gauge` | `ChatUsageWidget` | Context window, tokens, cost and where they went |
 | `chat-files` | Files | `diff` | `ChatFilesWidget` | Files changed, lines added and removed, links to review |
+| `chat-tools` | Tools | `tool` | `ChatToolsWidget` | Tool calls, outcomes and most used tools |
 
 ## UX
 
@@ -339,3 +340,27 @@ Files changed by the chat (`ChatFilesWidget`, `IChatFileStatisticsCalculator`).
   The button opens that turn's review — "Review" when the scope has one receipt, "Review latest"
   when it has several. A review of the whole chat would need a combined diff on the server.
 - **Folded summary:** `files · +added −removed` for the chosen scope.
+
+## Tools widget
+
+Tool use on the visible branch (`ChatToolsWidget`, `IChatToolStatisticsCalculator`).
+
+- **Scope.** Whole chat or last turn, split at user messages. Counts describe calls in this
+  branch's transcript; calls inside subtasks are not included unless recorded there.
+- **Source.** Assistant `ToolCalls`, paired with tool messages by `ToolCallId` within each turn.
+  Repeated snapshots of the same call id count once; repeated uses with distinct ids count separately.
+  Active invocations join the last turn only when the snapshot's `ActiveMessageId` is in it.
+  Stored results take precedence over active invocations, avoiding double counting on completion.
+- **Outcomes.** Succeeded and Errors follow `ToolResultIsError`, retained in the compact transcript
+  even when the full output is omitted, or the stored result decoded through `IToolResultCodec`;
+  refused calls count as errors. Active calls say Running; other calls in a live turn say
+  Awaiting result. Ended calls without a result say No result. Incomplete or unrecognized legacy
+  results, and omitted results without an error status, say Unknown result. Empty outcome rows are hidden.
+- **Layout.** Scope switch; total calls and distinct tools; outcome grid; Most used, sorted by
+  call count then name, six shown with Show more. Each tool shows its server, count, relative
+  usage bar and errors when present. The raw call name is in the tooltip; different servers
+  remain separate. The footer shows turns with calls and whether the current turn is running.
+- **Folded summary.** Call count and errors for the selected scope.
+- **Live data.** The headline says so far during a running or paused turn. Draft calls with
+  arguments still streaming are not counted until recorded or executing. No durations are inferred
+  from message timestamps, which do not measure tool execution time.

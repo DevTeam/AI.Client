@@ -22,6 +22,15 @@ Choose:
   first. When the message continues the active skill's task (answers its question, corrects or
   extends its work, asks for its next step), return the active skill alone. Return none for small
   talk, questions answered from knowledge, and tasks no skill covers.
+  A request to implement a read-only plan or fix review findings changes the task: choose the
+  appropriate implementation/fix skill instead of keeping the read-only skill active.
+  For code tasks, prefer a specific available skill over code-feature-implement: planning uses
+  code-plan, source explanations code-explain, behavior-preserving structural changes code-refactor,
+  adding tests code-tests-add, compiler/analyzer diagnostics code-build-fix, correctness review
+  code-review, measured optimization code-performance-optimize, package updates code-dependencies-update,
+  trust-boundary audits code-security-review, and documentation changes code-docs-update.
+  code-changes-review is pre-commit housekeeping; code-review is a review of behavior and contracts.
+  These are hints only: choose a named skill only when it is present in the input catalog.
 - `tools`: up to eight tool names the work will most likely need in its first steps, including the
   ones the chosen skills work with.
 

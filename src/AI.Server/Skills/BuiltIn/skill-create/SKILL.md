@@ -24,7 +24,9 @@ Skill conventions:
   variable, puzzle, blocks, filter, clipboard, clipboard-check, file-code, file-search, notebook,
   graduation-cap, bookmark, library, table, calculator, chart-line, chart-pie, trending-up, gauge,
   activity, timer, alarm, calendar-check, repeat, history, palette, brush, pen-tool, crop, camera,
-  video, microphone, headphones, music, map, git-rebase, git-rebase-auto, git-merge-auto. Only when the user asks for a picture none of these give,
+  video, microphone, headphones, music, map, git-rebase, git-rebase-auto, git-merge-auto, code-plan,
+  code-explain, code-refactor, code-tests-add, code-build-fix, code-review, code-performance-optimize,
+  code-dependencies-update, code-security-review, code-docs-update. Only when the user asks for a picture none of these give,
   `icon` is SVG path data instead: one line starting with `M`, drawn as a 2px stroke on a 24x24
   grid, such as `M12 3 3 8l9 5 9-5ZM3 13l9 5 9-5`.
 - `description` is one sentence that starts with a verb, leads with the task the skill is for (the

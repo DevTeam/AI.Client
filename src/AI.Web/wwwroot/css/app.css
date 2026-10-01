@@ -1665,6 +1665,9 @@ body {
     box-shadow: 0 2px 10px rgb(0 0 0 / calc(45% * var(--shadow-scale)));
     color: var(--color-accent);
     transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.messages-jump .app-icon {
     animation: messages-jump-pulse 1.6s ease-in-out infinite;
 }
 
@@ -1679,15 +1682,13 @@ body {
     outline-offset: 2px;
 }
 
-/* A color-only pulse remains visible when Windows disables movement animations. */
+/* Pulse only the arrow; the button's background and border stay steady. */
 @keyframes messages-jump-pulse {
     0%, 100% {
-        background-color: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
-        border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+        opacity: 1;
     }
     50% {
-        background-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-surface));
-        border-color: var(--color-accent);
+        opacity: 0.35;
     }
 }
 

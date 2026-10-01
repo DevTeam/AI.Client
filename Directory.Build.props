@@ -7,6 +7,10 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <Deterministic>true</Deterministic>
+    <Authors>Nikolay Pianikov</Authors>
+    <Copyright>Copyright 2026 Nikolay Pianikov</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/DevTeam/AI.Client</PackageProjectUrl>
     <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
 </Project>

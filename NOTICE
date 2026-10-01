@@ -1,0 +1,9 @@
+AI Client
+Copyright 2026 Nikolay Pianikov
+
+This product includes software developed by Nikolay Pianikov
+(https://github.com/DevTeam/AI.Client).
+
+This product bundles highlight.js (https://highlightjs.org/),
+licensed under the BSD 3-Clause License; see
+src/AI.Web/wwwroot/js/vendor/highlight.LICENSE.

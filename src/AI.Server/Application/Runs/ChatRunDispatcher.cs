@@ -910,8 +910,16 @@ public sealed class ChatRunDispatcher(
     // The open chat takes the run's messages from its snapshots. The question and the answer are
     // carried as well as the tool steps: a message missing from the tail made the client fetch the
     // whole transcript at the start and at the end of every turn, and redraw all of it.
-    private static void TrackMessage(Runtime runtime, long baseRevision, ChatDetails chat, Guid messageId) =>
-        runtime.TrackMessage(baseRevision, chat.Revision, chat.Messages.Single(item => item.Id == messageId), RecentMessageCapacity);
+    // A tool's output goes without its body, as in the transcript: the page loads it when the step is
+    // opened. A file read sent in full was hundreds of kilobytes for the page to parse on the thread
+    // that also handles typing, for a step that is folded away.
+    private static void TrackMessage(Runtime runtime, long baseRevision, ChatDetails chat, Guid messageId)
+    {
+        var message = chat.Messages.Single(item => item.Id == messageId);
+        if (message.Role == "Tool" && message.Content.Length > 0)
+            message = message with { Content = string.Empty, ContentOmitted = true };
+        runtime.TrackMessage(baseRevision, chat.Revision, message, RecentMessageCapacity);
+    }
 
     private static Guid ResumeHead(ChatDetails chat, Guid branchId, Guid userId)
     {

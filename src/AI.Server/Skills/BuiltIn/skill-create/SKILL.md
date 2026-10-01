@@ -10,7 +10,7 @@ tools: ["app_read","ask_user","app_skills","skill_search"]
 
 Skill conventions:
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. Domains: chat, project, memory,
-  skill, instructions, code, git, devops, qa, settings; start a new domain only for a new area such as `doc`. The action
+  skill, instructions, code, git, devops, qa, mermaid, settings; start a new domain only for a new area such as `doc`. The action
   is a verb: create, rename, compact, fork, add, remove, review, save, edit, implement, fix, run.
 - `name` is the id in words with the first letter capitalized: `project-directory-add` becomes
   "Project directory add".
@@ -32,7 +32,10 @@ Skill conventions:
   devops-infrastructure-change, devops-backup-verify, qa-plan, qa-acceptance-define, qa-cases-create,
   qa-exploratory-test, qa-ui-test, qa-api-test, qa-e2e-create, qa-regression-run,
   qa-test-data-prepare, qa-accessibility-review, qa-compatibility-test, qa-bug-report,
-  qa-failures-triage, qa-release-assess. Only when the user asks for a picture none of these give,
+  qa-failures-triage, qa-release-assess, mermaid-create, mermaid-create-flowchart,
+  mermaid-create-sequence, mermaid-create-class, mermaid-create-state, mermaid-create-er,
+  mermaid-create-architecture, mermaid-create-gantt, mermaid-create-mindmap, mermaid-create-gitgraph,
+  mermaid-edit, mermaid-fix, mermaid-review, mermaid-export. Only when the user asks for a picture none of these give,
   `icon` is SVG path data instead: one line starting with `M`, drawn as a 2px stroke on a 24x24
   grid, such as `M12 3 3 8l9 5 9-5ZM3 13l9 5 9-5`.
 - `description` is one sentence that starts with a verb, leads with the task the skill is for (the

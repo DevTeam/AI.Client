@@ -50,7 +50,15 @@ Choose:
   Generic unit/contract test creation and running existing tests use code-tests-add/code-tests-run.
   QA readiness assessment does not package or deploy a release. A request to fix reported defects
   switches to code-bug-fix or the matching implementation skill; planning/reporting alone does not
-  authorize execution or code edits. These are hints only: choose a named skill only when it is
+  authorize execution or code edits.
+  Mermaid tasks use mermaid-create to select an appropriate diagram, or the specific
+  mermaid-create-flowchart/sequence/class/state/er/architecture/gantt/mindmap/gitgraph skill
+  (each suffix is a separate complete id, e.g. mermaid-create-sequence) when its type is known.
+  Existing diagram changes use mermaid-edit, parsing/rendering repairs mermaid-fix, read-only
+  quality checks mermaid-review, and SVG/PNG/PDF output mermaid-export. A request to apply
+  review corrections switches to editing/fixing. Drawing a GitGraph changes no Git history;
+  a Mermaid architecture view does not authorize infrastructure changes or deployment.
+  These are hints only: choose a named skill only when it is
   present in the input catalog.
 - `tools`: up to eight tool names the work will most likely need in its first steps, including the
   ones the chosen skills work with.

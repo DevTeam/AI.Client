@@ -119,7 +119,28 @@
     /// <summary>Older turns folded behind "Show earlier"; the newest ones are the ones people come back to.</summary>
     private int HiddenTurns => _showAll ? 0 : Math.Max(0, _stats.Turns.Count - VisibleTurns);
 
-    protected override void OnParametersSet() => Refresh();
+    private bool _statisticsInitialized;
+    private IReadOnlyList<ChatMessageView> _statisticsMessages = [];
+    private ChatTokenUsage? _statisticsChatUsage;
+    private TurnTokenUsage? _statisticsLiveTurn;
+    private bool _statisticsIsGenerating;
+
+    protected override void OnParametersSet()
+    {
+        // Parent renders also follow typing and modifier keys; only changed data needs statistics.
+        if (_statisticsInitialized
+            && ReferenceEquals(_statisticsMessages, Messages)
+            && ReferenceEquals(_statisticsChatUsage, ChatUsage)
+            && ReferenceEquals(_statisticsLiveTurn, LiveTurn)
+            && _statisticsIsGenerating == IsGenerating) return;
+
+        Refresh();
+        _statisticsInitialized = true;
+        _statisticsMessages = Messages;
+        _statisticsChatUsage = ChatUsage;
+        _statisticsLiveTurn = LiveTurn;
+        _statisticsIsGenerating = IsGenerating;
+    }
 
     private void Refresh() =>
         _stats = Calculator.Calculate(Messages, ChatUsage, LiveTurn, IsGenerating);

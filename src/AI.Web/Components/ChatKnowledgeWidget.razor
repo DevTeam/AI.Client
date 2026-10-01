@@ -88,7 +88,22 @@
     private bool _hasAnyReads;
     private bool _showAll;
 
-    protected override void OnParametersSet() => Refresh();
+    private bool _statisticsInitialized;
+    private IReadOnlyList<ChatMessageView> _statisticsMessages = [];
+    private ChatRunSnapshot? _statisticsRun;
+
+    protected override void OnParametersSet()
+    {
+        // Parent renders also follow typing and modifier keys; only changed data needs statistics.
+        if (_statisticsInitialized
+            && ReferenceEquals(_statisticsMessages, Messages)
+            && ReferenceEquals(_statisticsRun, Run)) return;
+
+        Refresh();
+        _statisticsInitialized = true;
+        _statisticsMessages = Messages;
+        _statisticsRun = Run;
+    }
 
     private void SetScope(ChatWidgetScope scope)
     {

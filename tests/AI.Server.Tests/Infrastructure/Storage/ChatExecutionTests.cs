@@ -122,6 +122,9 @@ public sealed class ChatExecutionTests
         appends[^2].Revision.ShouldBe(appends[^1].BaseRevision);
         appends[^2].Message.ToolCalls.ShouldHaveSingleItem().Name.ShouldBe("mcp_built_in__process_run");
         appends[^1].Message.ToolCallId.ShouldBe("call-1");
+        // The output itself is loaded when the step is opened, as from the transcript.
+        appends[^1].Message.ContentOmitted.ShouldBeTrue();
+        appends[^1].Message.Content.ShouldBeEmpty();
         published.ChatRevision.ShouldBe(appends[^1].Revision);
 
         (await fixture.NextCallAsync()).Answer.SetResult("Done");

@@ -5,41 +5,42 @@ using AI.Contracts.Usage;
 
 /// <summary>
 /// Works out what a request cost from what the endpoint quoted for earlier requests of the same
-/// connection and model. Some gateways quote a cost on only some of their responses; without this
+/// connection. Keyed by the connection alone: the model name a response reports often differs from
+/// the one the request named, and a request the endpoint reported nothing for has only the latter. Some gateways quote a cost on only some of their responses; without this
 /// a chat on such a gateway shows a total that covers a few of its requests and says nothing about
 /// the rest.
 /// </summary>
 public interface IUsageCostEstimator
 {
-    void Learn(Guid connectionId, string model, TokenCounts tokens, decimal cost);
+    void Learn(Guid connectionId, TokenCounts tokens, decimal cost);
 
-    /// <summary>The estimated cost, or null while nothing has been quoted for the connection and model.</summary>
-    decimal? Estimate(Guid connectionId, string model, TokenCounts tokens);
+    /// <summary>The estimated cost, or null while nothing has been quoted for the connection.</summary>
+    decimal? Estimate(Guid connectionId, TokenCounts tokens);
 
-    /// <summary>True once the connection and model have a quote to learn from.</summary>
-    bool Knows(Guid connectionId, string model);
+    /// <summary>True once the connection has a quote to learn from.</summary>
+    bool Knows(Guid connectionId);
 }
 
 public sealed class UsageCostEstimator : IUsageCostEstimator
 {
-    /// <summary>The most recent quotes kept for each connection and model.</summary>
+    /// <summary>The most recent quotes kept for each connection.</summary>
     private const int MaximumSamples = 200;
 
-    private readonly ConcurrentDictionary<(Guid ConnectionId, string Model), Samples> _samples = new();
+    private readonly ConcurrentDictionary<Guid, Samples> _samples = new();
 
-    public void Learn(Guid connectionId, string model, TokenCounts tokens, decimal cost)
+    public void Learn(Guid connectionId, TokenCounts tokens, decimal cost)
     {
         ArgumentNullException.ThrowIfNull(tokens);
         if (cost < 0 || tokens.InputTokens + tokens.OutputTokens <= 0) return;
-        _samples.GetOrAdd((connectionId, model), _ => new Samples()).Add(Features(tokens), (double)cost);
+        _samples.GetOrAdd(connectionId, _ => new Samples()).Add(Features(tokens), (double)cost);
     }
 
-    public bool Knows(Guid connectionId, string model) => _samples.ContainsKey((connectionId, model));
+    public bool Knows(Guid connectionId) => _samples.ContainsKey(connectionId);
 
-    public decimal? Estimate(Guid connectionId, string model, TokenCounts tokens)
+    public decimal? Estimate(Guid connectionId, TokenCounts tokens)
     {
         ArgumentNullException.ThrowIfNull(tokens);
-        if (!_samples.TryGetValue((connectionId, model), out var samples)) return null;
+        if (!_samples.TryGetValue(connectionId, out var samples)) return null;
         var rates = samples.Rates();
         if (rates is null) return null;
         var features = Features(tokens);

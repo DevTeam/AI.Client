@@ -26,8 +26,8 @@ removing a tool already involved in the current protocol turn would make continu
 Within a run the list a step sends is carried on to the next one in its order, and only extended:
 tools come before every message in the provider's cache key, so a list that is reordered or loses a
 tool costs the whole cached conversation. A carried list that grows past one and a half times the
-budget is chosen afresh, once. A step that advertises only `app_finish_run` is a detour and does not
-replace the carried list.
+budget is chosen afresh, once. A stalled run keeps its tools offered too: it is told in words to
+stop calling them.
 
 ## Progressive tool discovery
 
@@ -49,13 +49,16 @@ Providers cache a request by its prefix, so the request is laid out from what ch
 changes most:
 
 1. standing instructions (base prompt, project instructions, memory, skill catalog);
-2. run instructions that hold for the whole run (completion protocol, run ids);
+2. run instructions that hold for the whole run (how to finish a turn, run ids);
 3. the conversation, with any history checkpoint summary at its start;
-4. a trailing note with this step's guidance — stalled run, empty response, completion required,
-   tool discovery, the skill route and the active skill (`ModelInstructionPlacement.Trailing`, and
-   any instruction whose lifetime is shorter than the run). It is one `user`-role message opened by
-   `ModelInstructionComposer.TrailingPrefix`: several chat templates reject a system message
-   anywhere but first. The planner counts it and never compacts it.
+4. this step's guidance — stalled run, empty response, continuation after truncation, tool
+   discovery, the skill route and the active skill (`ModelInstructionPlacement.Trailing`, and any
+   instruction whose lifetime is shorter than the run) — as an `<application-guidance>` block
+   added to the end of the request's last message, the user's question or a tool result. Several
+   chat templates reject a system message anywhere but first, and others two messages of one role
+   in a row, so it is not a message of its own; only after the model's own words (an answer being
+   continued) does it follow as a separate user message. Stored messages never carry it. The
+   planner counts it and never compacts it.
 
 The deterministic compaction is carried on rather than redone (`ContextCompactionMemory`): while the
 next request still starts with the previous input, the previous result plus the new messages is

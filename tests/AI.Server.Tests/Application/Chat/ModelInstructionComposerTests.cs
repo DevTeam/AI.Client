@@ -79,9 +79,8 @@ public sealed class ModelInstructionComposerTests
         var result = composer.Compose(run, context);
 
         result.Messages.Select(message => message.Content).ShouldBe(["Protocol", "Hello"]);
-        var note = result.TrailingMessages.ShouldHaveSingleItem();
-        note.Role.ShouldBe("user");
-        note.Content.ShouldBe(ModelInstructionComposer.TrailingPrefix + "Finish now\n\nActive skill");
+        result.Trailing.ShouldBe(ModelInstructionComposer.TrailingOpen + "Finish now\n\nActive skill"
+            + ModelInstructionComposer.TrailingClose);
         result.Keys.ShouldBe(["run.protocol", "run.stalled", "run.active-skill"]);
     }
 }

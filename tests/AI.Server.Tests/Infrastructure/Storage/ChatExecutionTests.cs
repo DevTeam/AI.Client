@@ -87,11 +87,11 @@ public sealed class ChatExecutionTests
         var context = first.Request.ContextMessages!;
         context.ShouldContain(message => message.Role == "assistant"
             && message.ToolCalls!.Single().Name == "mcp_app__run_skill");
-        // The playbook is the last of the conversation; only this step's guidance follows it.
-        context[^2].Role.ShouldBe("tool");
-        context[^2].ForModel.ShouldContain("Summarize the chat");
-        context[^1].Content.ShouldStartWith(ModelInstructionComposer.TrailingPrefix);
-        context[^1].Content.ShouldContain(
+        // The playbook is the last of the conversation, with this step's guidance attached to it.
+        context[^1].Role.ShouldBe("tool");
+        context[^1].ForModel.ShouldContain("Summarize the chat");
+        context[^1].ForModel.ShouldContain(ModelInstructionComposer.TrailingOpen);
+        context[^1].ForModel.ShouldContain(
             "Skill routing: the application loaded the skill chat-summary", Case.Sensitive);
         fixture.Tools.SkillRuns.ShouldHaveSingleItem().ShouldContain("\"skillId\":\"chat-summary\"");
         first.Answer.SetResult("We decided to ship on Friday.");
@@ -190,123 +190,49 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
-    public async Task ProvisionalTextAfterAToolMustNotBecomeTheFinalAnswer()
+    public async Task TextWithoutAToolCallAfterToolsShouldBeTheFinalAnswer()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Completion.AdaptLegacyFinalAnswers = false;
         await fixture.SetPolicyAsync("Allow");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Change a file"));
 
         var first = await fixture.NextCallAsync();
         first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
-        var premature = await fixture.NextCallAsync();
-        premature.Answer.SetResult("I will now verify the result.");
-
-        var corrective = await fixture.NextCallAsync();
-        corrective.Request.Tools!.ShouldContain(tool => tool.Name == "mcp_built_in__process_run");
-        var generating = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Generating);
-        generating.StreamingContent.ShouldBeEmpty();
-        corrective.Request.ContextMessages!.Where(IsInstruction)
-            .ShouldContain(message => message.Content.Contains("has not been published yet", StringComparison.Ordinal));
-        corrective.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
-            {"status":"complete","finalAnswer":"Done and verified.","includePreviousText":false,"completed":["Changed and verified the file"],"evidence":["Command succeeded"],"remaining":[]}
-            """)];
-        corrective.Answer.SetResult("");
+        var last = await fixture.NextCallAsync();
+        last.Request.Tools!.ShouldNotContain(tool => tool.Name.EndsWith("finish_run", StringComparison.Ordinal));
+        last.Answer.SetResult("Done and verified.");
 
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
             .ShouldHaveSingleItem().Content.ShouldBe("Done and verified.");
-        chat.Messages.ShouldNotContain(message => message.Content.Contains("has not been published yet", StringComparison.Ordinal));
-        chat.Messages.ShouldNotContain(message => message.Content == "I will now verify the result.");
     }
 
     [Fact]
-    public async Task ProvisionalTextFollowedByMoreWorkMustBePublishedAsItsPreamble()
+    public async Task TextBeforeMoreWorkShouldBePublishedAsThatWorksPreamble()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Completion.AdaptLegacyFinalAnswers = false;
         await fixture.SetPolicyAsync("Allow");
-        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Analyze a directory"));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Analyze and save"));
 
         var first = await fixture.NextCallAsync();
         first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
-        first.Answer.SetResult("");
-        (await fixture.NextCallAsync()).Answer.SetResult("## Report\n\n3 files.");
-        var save = await fixture.NextCallAsync();
-        save.ToolCalls = [new ChatToolCall("call-2", "mcp_built_in__process_run", "{}")];
-        save.Answer.SetResult("Saving it.");
-        var finish = await fixture.NextCallAsync();
-        finish.Request.ContextMessages!.Where(message => message.Role == "assistant")
-            .ShouldNotContain(message => message.Content == "## Report\n\n3 files.");
-        finish.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
-            {"status":"complete","finalAnswer":"Saved."}
-            """)];
-        finish.Answer.SetResult("");
+        first.Answer.SetResult("## Report\n\n3 files. Saving it.");
+        (await fixture.NextCallAsync()).Answer.SetResult("Saved.");
 
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Messages.ShouldContain(message => message.Role == "Assistant" && message.ToolCalls != null
-            && message.Content == "## Report\n\n3 files.\n\nSaving it.");
+            && message.Content == "## Report\n\n3 files. Saving it.");
+        chat.Messages[^1].Content.ShouldBe("Saved.");
     }
 
     [Fact]
-    public async Task CompletionMustPublishTheHeldBackTextUnlessTheModelDiscardsIt()
+    public async Task RepeatedToolResultsShouldBeAnsweredWithoutAnotherTool()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Completion.AdaptLegacyFinalAnswers = false;
-        await fixture.SetPolicyAsync("Allow");
-        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Analyze a directory"));
-
-        var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
-        first.Answer.SetResult("");
-        (await fixture.NextCallAsync()).Answer.SetResult("## Report\n\n3 files.");
-        var finish = await fixture.NextCallAsync();
-        finish.Request.ContextMessages!.Where(IsInstruction)
-            .ShouldContain(message => message.Content.Contains("published as written", StringComparison.Ordinal));
-        // As the model did: no flag, and a one-line summary claiming the report was already shown.
-        finish.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
-            {"status":"complete","finalAnswer":"report printed."}
-            """)];
-        finish.Answer.SetResult("");
-
-        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
-        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
-        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
-            .ShouldHaveSingleItem().Content.ShouldBe("## Report\n\n3 files.\n\nreport printed.");
-    }
-
-    [Fact]
-    public async Task CompletionCalledWithTheAppServerPrefixMustStillEndTheRun()
-    {
-        await using var fixture = await Fixture.CreateAsync();
-        fixture.Completion.AdaptLegacyFinalAnswers = false;
-        await fixture.SetPolicyAsync("Allow");
-        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "What is my name?"));
-
-        var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
-        first.Answer.SetResult("");
-        // The model has just read App tool names and spells the control tool the same way.
-        var finish = await fixture.NextCallAsync();
-        finish.ToolCalls = [new ChatToolCall("finish-1", ToolRef.AppPrefix + RunCompletionProtocol.Name, """
-            {"status":"complete","finalAnswer":"Your name is Kolya.","completed":["Read memory"],"evidence":["Profile entry"],"remaining":[]}
-            """)];
-        finish.Answer.SetResult("");
-
-        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
-        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
-        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
-            .ShouldHaveSingleItem().Content.ShouldBe("Your name is Kolya.");
-    }
-
-    [Fact]
-    public async Task RepeatedToolResultsRequireAnHonestFinalDecision()
-    {
-        await using var fixture = await Fixture.CreateAsync();
-        fixture.Completion.AdaptLegacyFinalAnswers = false;
         await fixture.SetPolicyAsync("Allow");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Find information"));
 
@@ -317,14 +243,12 @@ public sealed class ChatExecutionTests
             work.Answer.SetResult("");
         }
 
-        var finish = await fixture.NextCallAsync();
-        finish.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
-        finish.Request.ContextMessages!.Where(IsInstruction)
-            .ShouldContain(message => message.Content.Contains("no new information", StringComparison.Ordinal));
-        finish.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
-            {"status":"blocked","finalAnswer":"I could not find the answer with the available tools."}
-            """)];
-        finish.Answer.SetResult("");
+        var answer = await fixture.NextCallAsync();
+        // The tools stay offered, so the request starts as the ones before it did.
+        answer.Request.Tools!.ShouldContain(tool => tool.Name == "mcp_built_in__process_run");
+        answer.Request.ContextMessages!.Where(IsInstruction)
+            .ShouldContain(message => message.ForModel.Contains("no new information", StringComparison.Ordinal));
+        answer.Answer.SetResult("I could not find the answer with the available tools.");
 
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
         fixture.Tools.CallCount.ShouldBe(5);
@@ -337,7 +261,6 @@ public sealed class ChatExecutionTests
     public async Task StalledRunDoesNotExecuteAnotherToolCall()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Completion.AdaptLegacyFinalAnswers = false;
         await fixture.SetPolicyAsync("Allow");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Find information"));
 
@@ -349,7 +272,6 @@ public sealed class ChatExecutionTests
         }
 
         var ignored = await fixture.NextCallAsync();
-        ignored.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
         ignored.ToolCalls = [new ChatToolCall("call-ignored", "mcp_built_in__process_run", "{}")];
         ignored.Answer.SetResult("");
 
@@ -361,117 +283,37 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
-    public async Task LegacyContinueDecisionIsRejected()
+    public async Task AnEmptyResponseShouldBeAskedAgainAndTheAnswerPublished()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Completion.AdaptLegacyFinalAnswers = false;
-        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Find information"));
-
-        var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
-            {"status":"continue","nextAction":"Try again"}
-            """)];
-        first.Answer.SetResult("");
-
-        var corrected = await fixture.NextCallAsync();
-        corrected.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
-        corrected.ToolCalls = [new ChatToolCall("finish-2", RunCompletionProtocol.Name, """
-            {"status":"blocked","finalAnswer":"I cannot find the answer with the available tools."}
-            """)];
-        corrected.Answer.SetResult("");
-
-        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
-        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
-        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
-            .ShouldHaveSingleItem().Content.ShouldBe("I cannot find the answer with the available tools.");
-    }
-
-    [Fact]
-    public async Task ProseRepeatedAfterEveryCompletionCorrectionMustBePublishedInsteadOfFailing()
-    {
-        await using var fixture = await Fixture.CreateAsync();
-        fixture.Completion.AdaptLegacyFinalAnswers = false;
-        await fixture.SetPolicyAsync("Allow");
-        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "What is my name?"));
-
-        var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
-        first.Answer.SetResult("");
-        // An endpoint that never emits the control call: the answer arrives as prose every time,
-        // including when app_finish_run is the only tool offered.
-        (await fixture.NextCallAsync()).Answer.SetResult("Your name is Kolya.");
-        for (var correction = 0; correction < 2; correction++)
-            (await fixture.NextCallAsync()).Answer.SetResult("Your name is Kolya.");
-        var last = await fixture.NextCallAsync();
-        last.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
-        last.Answer.SetResult("Kolya.");
-
-        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
-        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
-        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
-            .ShouldHaveSingleItem().Content.ShouldBe("Kolya.");
-    }
-
-    [Fact]
-    public async Task EmptyResponsesAfterProvisionalProseMustPublishThatProse()
-    {
-        await using var fixture = await Fixture.CreateAsync();
-        fixture.Completion.AdaptLegacyFinalAnswers = false;
         await fixture.SetPolicyAsync("Allow");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Remember that I use DI"));
 
         var first = await fixture.NextCallAsync();
         first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
-        (await fixture.NextCallAsync()).Answer.SetResult("Saved: you use DI through interfaces.");
-        // Offered only the control tool, this endpoint falls silent.
-        for (var attempt = 0; attempt < 3; attempt++)
-            (await fixture.NextCallAsync()).Answer.SetResult("");
+        (await fixture.NextCallAsync()).Answer.SetResult("");
+        var retry = await fixture.NextCallAsync();
+        retry.Request.ContextMessages!.Where(IsInstruction)
+            .ShouldContain(message => message.ForModel.Contains("last response was empty", StringComparison.Ordinal));
+        retry.Answer.SetResult("Saved: you use DI through interfaces.");
 
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
-        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
-            .ShouldHaveSingleItem().Content.ShouldBe("Saved: you use DI through interfaces.");
+        chat!.Messages[^1].Content.ShouldBe("Saved: you use DI through interfaces.");
     }
 
     [Fact]
-    public async Task EmptyResponseMustKeepCompletionCorrectionUntilAValidDecision()
+    public async Task RepeatedEmptyResponsesShouldFailTheRun()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Completion.AdaptLegacyFinalAnswers = false;
-        await fixture.SetPolicyAsync("Allow");
-        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Change a file"));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Hello"));
 
-        var work = await fixture.NextCallAsync();
-        work.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
-        work.Answer.SetResult("");
+        for (var attempt = 0; attempt < 3; attempt++)
+            (await fixture.NextCallAsync()).Answer.SetResult("");
 
-        var invalid = await fixture.NextCallAsync();
-        invalid.ToolCalls = [new ChatToolCall("finish-invalid", RunCompletionProtocol.Name, """
-            {"status":"complete"}
-            """)];
-        invalid.Answer.SetResult("");
-
-        var empty = await fixture.NextCallAsync();
-        empty.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
-        empty.FinishReason = "stop";
-        empty.Answer.SetResult("");
-
-        var corrected = await fixture.NextCallAsync();
-        corrected.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
-        var hidden = corrected.Request.ContextMessages!.Where(IsInstruction)
-            .Select(message => message.Content).ToArray();
-        hidden.ShouldContain(message => message.Contains("call was rejected", StringComparison.Ordinal));
-        hidden.ShouldContain(message => message.Contains("last response was empty", StringComparison.Ordinal));
-        corrected.ToolCalls = [new ChatToolCall("finish-valid", RunCompletionProtocol.Name, """
-            {"status":"complete","finalAnswer":"Done and verified.","completed":["Changed the file"],"evidence":[],"remaining":[]}
-            """)];
-        corrected.Answer.SetResult("");
-
-        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
-        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
-        chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
-            .ShouldHaveSingleItem().Content.ShouldBe("Done and verified.");
+        var failed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Failed);
+        failed.Error.ShouldNotBeNull().ShouldContain("empty response");
     }
 
     [Fact]
@@ -765,7 +607,7 @@ public sealed class ChatExecutionTests
         await fixture.SetGlobalPolicyAsync("Allow");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.Request.Tools!.Count.ShouldBe(2);
+        first.Request.Tools!.Count.ShouldBe(1);
         first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         var second = await fixture.NextCallAsync();
@@ -783,7 +625,7 @@ public sealed class ChatExecutionTests
         await fixture.SetPolicyAsync(decision);
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.Request.Tools!.Count.ShouldBe(decision == "Deny" ? 1 : 2);
+        first.Request.Tools!.Count.ShouldBe(decision == "Deny" ? 0 : 1);
         first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         var second = await fixture.NextCallAsync();
@@ -1017,7 +859,7 @@ public sealed class ChatExecutionTests
         fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
         await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
         var call = await fixture.NextCallAsync();
-        call.Request.Tools!.Count.ShouldBe(2);
+        call.Request.Tools!.Count.ShouldBe(1);
         fixture.Tools.OpenCount.ShouldBe(1);
         call.Answer.SetResult("Reply");
         var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
@@ -1589,7 +1431,7 @@ public sealed class ChatExecutionTests
 
     /// <summary>A hidden instruction: leading the request, or in the guidance that follows the conversation.</summary>
     private static bool IsInstruction(ChatCompletionMessage message) =>
-        message.Role == "system" || message.Content.StartsWith(ModelInstructionComposer.TrailingPrefix, StringComparison.Ordinal);
+        message.Role == "system" || message.ForModel.Contains(ModelInstructionComposer.TrailingOpen, StringComparison.Ordinal);
 
     private static void AssertValidToolContext(IReadOnlyList<ChatCompletionMessage> context, string lastUserMessage)
     {
@@ -1717,7 +1559,7 @@ public sealed class ChatExecutionTests
         // The model was told to carry on, and the person was not: the instruction exists only in
         // the context the agent assembles, never in the chat it stores.
         rest.Request.ContextMessages!.Where(IsInstruction)
-            .ShouldContain(message => message.Content.Contains("cut off at the output token limit", StringComparison.Ordinal));
+            .ShouldContain(message => message.ForModel.Contains("cut off at the output token limit", StringComparison.Ordinal));
         chat.Messages.ShouldAllBe(message => !message.Content.Contains("cut off at the output token limit"));
     }
 
@@ -1752,7 +1594,6 @@ public sealed class ChatExecutionTests
     }
     private sealed class Completion : IChatCompletionClient
     {
-        private static readonly string[] TestCompleted = ["Completed the test scenario"];
         private TaskCompletionSource<bool>? _cancellationObserved;
         private TaskCompletionSource<bool>? _cancellationRelease;
         public Channel<Call> Calls { get; } = Channel.CreateUnbounded<Call>();
@@ -1765,7 +1606,6 @@ public sealed class ChatExecutionTests
 
         /// <summary>What the skill router answers; nowhere by default.</summary>
         public string RouteAnswer { get; set; } = "{}";
-        public bool AdaptLegacyFinalAnswers { get; set; } = true;
         /// <summary>What a summary request is answered with; summaries fail when it is null.</summary>
         public string? SummaryAnswer { get; set; }
         public int SummaryRequests;
@@ -1810,21 +1650,6 @@ public sealed class ChatExecutionTests
                 throw;
             }
             var toolCalls = call.ToolCalls;
-            if (AdaptLegacyFinalAnswers && toolCalls is null && !string.IsNullOrWhiteSpace(content)
-                && request.ContextMessages?.Any(message => message.Role == "tool") == true
-                && request.Tools?.Any(tool => tool.Name == RunCompletionProtocol.Name) == true)
-            {
-                toolCalls = [new ChatToolCall($"finish-{Guid.NewGuid():N}", RunCompletionProtocol.Name,
-                    JsonSerializer.Serialize(new
-                    {
-                        status = "complete",
-                        finalAnswer = content,
-                        completed = TestCompleted,
-                        evidence = Array.Empty<string>(),
-                        remaining = Array.Empty<string>()
-                    }))];
-                content = "";
-            }
             if (toolCalls is { Count: > 0 })
                 yield return new ChatCompletionChunk("", ToolCallsStarted: true);
             yield return new ChatCompletionChunk(content, ToolCalls: toolCalls, FinishReason: call.FinishReason);

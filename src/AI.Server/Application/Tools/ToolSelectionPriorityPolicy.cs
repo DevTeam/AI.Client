@@ -3,7 +3,7 @@ namespace AI.Application.Tools;
 using Contracts.Tools;
 
 /// <summary>
-/// Keeps the small control plane needed to discover tools, complete a run and operate the
+/// Keeps the small control plane needed to discover tools, ask the user and operate the
 /// application's primary project/subtask concepts in every model request. Other app tools are
 /// preferred over unrelated tools when relevance is equal, while task-specific file, process,
 /// web and third-party tools continue to win through textual relevance or app_tool_search.
@@ -14,7 +14,6 @@ public sealed class ToolSelectionPriorityPolicy : IToolSelectionPriorityPolicy
         "ask_user" or
         "tool_search" or
         "context_compact" or
-        "finish_run" or
         "app_read" or
         "app_projects" or
         "app_security" or
@@ -25,6 +24,5 @@ public sealed class ToolSelectionPriorityPolicy : IToolSelectionPriorityPolicy
     public bool IsPreferred(AgentTool tool) => IsAppTool(tool);
 
     private static bool IsAppTool(AgentTool tool) =>
-        tool.ModelDefinition.Name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal)
-        || tool.OriginalName == "finish_run";
+        tool.ModelDefinition.Name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal);
 }

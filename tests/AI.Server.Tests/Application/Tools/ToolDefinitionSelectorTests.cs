@@ -12,7 +12,7 @@ using Xunit;
 public sealed class ToolDefinitionSelectorTests
 {
     private static readonly string[] RequiredAppTools =
-        ["ask_user", "tool_search", "context_compact", "finish_run", "app_read", "app_projects", "app_security", "skill_search", "run_skill", "spawn_subtask"];
+        ["ask_user", "tool_search", "context_compact", "app_read", "app_projects", "app_security", "skill_search", "run_skill", "spawn_subtask"];
     private readonly ContextTokenEstimator _estimator = new();
 
     [Fact]
@@ -55,8 +55,7 @@ public sealed class ToolDefinitionSelectorTests
     [Fact]
     public void ShouldAlwaysIncludePrimaryAppCapabilities()
     {
-        var required = RequiredAppTools.Select(name => Tool(name, new string('x', 200),
-            name == "finish_run" ? "app_finish_run" : ToolRef.AppPrefix + name));
+        var required = RequiredAppTools.Select(name => Tool(name, new string('x', 200), ToolRef.AppPrefix + name));
         var smaller = Enumerable.Range(0, 30).Select(index =>
             Tool($"small_{index}", new string('x', 2_000), ToolRef.BuiltInPrefix + $"small_{index}"));
 
@@ -69,7 +68,6 @@ public sealed class ToolDefinitionSelectorTests
         selection.Tools.Select(item => item.OriginalName).ShouldContain("ask_user");
         selection.Tools.Select(item => item.OriginalName).ShouldContain("tool_search");
         selection.Tools.Select(item => item.OriginalName).ShouldContain("context_compact");
-        selection.Tools.Select(item => item.OriginalName).ShouldContain("finish_run");
         selection.Tools.Select(item => item.OriginalName).ShouldContain("skill_search");
         selection.Tools.Select(item => item.OriginalName).ShouldContain("run_skill");
     }

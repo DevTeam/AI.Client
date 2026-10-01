@@ -31,7 +31,6 @@ public sealed class SkillRouting(ISkillRunner runner, ISkillGuide guide, IGlobal
         var previous = context.Take(context.Count - 1).LastOrDefault(item => item is { Role: "assistant", Content.Length: > 0 });
         var active = await guide.ActivePlaybookAsync(run.ProjectId, context, cancellationToken);
         var offered = tools
-            .Where(tool => !tool.ModelDefinition.Name.EndsWith("finish_run", StringComparison.Ordinal))
             .Take(MaxTools)
             .Select(tool => $"{tool.ModelDefinition.Name}: {FirstSentence(tool.ModelDefinition.Description)}")
             .ToArray();

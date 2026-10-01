@@ -14,4 +14,9 @@ public interface IGitPickerState
     Task LoadMoreAsync(CancellationToken token);
     Task ChangeRevisionAsync(string? revision, CancellationToken token);
     void Toggle(string value);
+
+    /// <summary>The readable name of a chosen value; the value itself when it was never listed.</summary>
+    string LabelOf(string value);
+
+    void Clear();
 }

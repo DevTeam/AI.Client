@@ -1,3 +1,4 @@
+@using System.Globalization
 @using AI.Web.Git
 @using AI.Contracts.Git
 @inject IGitPickerState Picker
@@ -5,72 +6,107 @@
 @inject IJSRuntime JsRuntime
 @implements IAsyncDisposable
 
-<div class="modal-backdrop" @onclick="CancelAsync" @onkeydown:stopPropagation="true">
-    <section class="directory-picker-modal git-picker-modal @(Kind == "commit" ? "has-revision" : null)" role="dialog" aria-modal="true" aria-labelledby="git-picker-title"
+@* The same frame as the directory picker — header, one toolbar row, a filter, a list that scrolls
+   inside a fixed-height dialog, the choice repeated in the footer — so the two pickers a question
+   can open feel like one tool. Rows are buttons, not native checkboxes: the check is drawn, which
+   keeps the row a single target and out of the reach of the global `input` and `label` rules. *@
+<div class="modal-backdrop" @onclick="CancelAsync">
+    <section class="directory-picker-modal git-picker-modal @(IsCommit ? "has-revision" : null)" role="dialog" aria-modal="true" aria-labelledby="git-picker-title"
              @ref="_dialog" @onclick:stopPropagation="true">
         <header>
-            <div><strong id="git-picker-title">Select @(Kind == "branch" ? (MultiSelect ? "branches" : "branch") : (MultiSelect ? "commits" : "commit"))</strong><span>@RepositoryPath</span></div>
+            <div><strong id="git-picker-title">@Title</strong><span title="@RepositoryPath">@RepositoryPath</span></div>
             <button class="icon-action" type="button" title="Close" aria-label="Close Git picker" @onclick="CancelAsync"><AppIcon Name="x" /></button>
         </header>
-        @if (Kind == "commit")
+        @if (IsCommit)
         {
-            <div class="git-picker-controls">
-            <div class="directory-picker-toolbar">
-                <select class="directory-picker-path" aria-label="History branch" value="@_revision" @onchange="BranchChangedAsync" disabled="@Picker.IsLoading">
-                    <option value="">All branches</option>
-                    @if (!string.IsNullOrEmpty(_revision) && !_branches.Any(branch => branch.Value == _revision)) { <option value="@_revision">@_revision</option> }
-                    @foreach (var branch in _branches) { <option value="@branch.Value">@branch.Label</option> }
-                </select>
-            </div>
-            <div class="directory-picker-toolbar">
-                <input class="directory-picker-path" aria-label="Branch or revision" placeholder="All branches, or type a branch or revision"
-                       @bind="_revision" disabled="@Picker.IsLoading" />
-                <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" @onclick="ChangeRevisionAsync">Load</button>
-            </div>
+            @* One box for both ways in: the branches drop down from it, anything else rev-parse
+               understands — a tag, a hash, HEAD~3 — can be typed. Empty is the whole history. *@
+            <div class="directory-picker-toolbar git-picker-toolbar">
+                <AppIcon Name="git-branch" />
+                <input class="directory-picker-path git-picker-revision" list="git-picker-revisions" aria-label="History branch or revision"
+                       placeholder="All branches, or a branch, tag or revision" value="@_revision" @oninput="OnRevisionInput" @onchange="OnRevisionChangedAsync" />
+                <datalist id="git-picker-revisions">
+                    @foreach (var branch in _branches) { <option value="@branch.Label">@(IsRemote(branch) ? "Remote" : "Local")</option> }
+                </datalist>
+                <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" @onclick="ChangeRevisionAsync">Go</button>
             </div>
         }
         <div class="directory-picker-body">
-            <input class="directory-picker-filter" type="search" aria-label="Filter Git choices" placeholder="@(Kind == "branch" ? "Filter branches" : "Filter loaded commits by hash, message or author")"
-                   @bind="Picker.Filter" @bind:event="oninput" />
-            @if (Picker.IsLoading) { <p class="empty-hint">Loading…</p> }
-            @if (Picker.ErrorMessage is { } error) { <p class="error" role="alert">@error</p> }
-            else if (!Picker.IsLoading && Picker.Items.Count == 0) { <p class="empty-hint">No matching @(Kind == "branch" ? "branches" : "commits").</p> }
-            <ul class="directory-picker-list">
-                @foreach (var item in Picker.Items)
-                {
-                    <li @key="item.Value">
-                        <label class="directory-picker-item @(Picker.Values.Contains(item.Value) ? "selected" : null)" title="@item.Value">
-                            <input type="@(MultiSelect ? "checkbox" : "radio")" name="git-picker-choice"
-                                   checked="@Picker.Values.Contains(item.Value)" @onchange="() => Picker.Toggle(item.Value)" />
-                            <AppIcon Name="@(Kind == "branch" ? "git-branch" : "git-commit")" />
-                            <span>@item.Label<small class="user-prompt-option-description">@item.Description</small></span>
-                        </label>
-                    </li>
-                }
-            </ul>
-            @if (Kind == "commit" && Picker.HasMore)
+            <input class="directory-picker-filter" type="search" aria-label="@FilterLabel" placeholder="@FilterLabel"
+                   value="@Picker.Filter" @oninput="OnFilterInput" />
+            @{ var items = Picker.Items; }
+            @if (items.Count == 0)
             {
-                <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" @onclick="LoadMoreAsync">Load more commits</button>
-            }
-            @if (Kind == "branch" && Picker.HasMore) { <p class="empty-hint">Only the first 2,000 branches are shown.</p> }
-            @if (Picker.ErrorMessage is not null)
-            {
-                <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" @onclick="LoadMoreAsync">Retry</button>
-            }
-            @if (MultiSelect && Picker.Values.Count > 0)
-            {
-                @if (Picker.Values.Count == 200) { <p class="empty-hint">Selection limit reached (200).</p> }
-                <ol class="git-picker-selected" aria-label="Selection order">
-                    @foreach (var value in Picker.Values)
+                <div class="directory-picker-empty">
+                    @if (Picker.IsLoading) { <AppIcon Name="spinner" Class="git-picker-spinner" /><p>Loading…</p> }
+                    else if (Picker.ErrorMessage is { } error)
                     {
-                        <li><span title="@value">@value</span><button class="icon-action" type="button" title="Remove selection" aria-label="Remove @value" @onclick="() => Picker.Toggle(value)"><AppIcon Name="x" /></button></li>
+                        <AppIcon Name="error" />
+                        <p class="error" role="alert">@error</p>
+                        <button class="secondary-action compact-action" type="button" @onclick="LoadMoreAsync">Retry</button>
                     }
-                </ol>
+                    else
+                    {
+                        <AppIcon Name="@Icon" />
+                        <p>@(Picker.Filter.Length > 0 ? "Nothing matches the filter." : IsCommit ? "No commits here." : "No branches in this repository.")</p>
+                    }
+                </div>
+            }
+            else
+            {
+                var highlighted = HighlightedValue();
+                <ul class="directory-picker-list git-picker-list" role="listbox" aria-label="@FilterLabel" aria-multiselectable="@(MultiSelect ? "true" : null)">
+                    @if (IsCommit)
+                    {
+                        @foreach (var item in items) { @Row(item, highlighted) }
+                        @if (Picker.HasMore || Picker.ErrorMessage is not null)
+                        {
+                            <li class="git-picker-more" role="presentation">
+                                @if (Picker.ErrorMessage is { } error) { <span class="error" role="alert">@error</span> }
+                                <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" @onclick="LoadMoreAsync">
+                                    @(Picker.IsLoading ? "Loading…" : Picker.ErrorMessage is null ? "Load more commits" : "Retry")
+                                </button>
+                            </li>
+                        }
+                    }
+                    else
+                    {
+                        var local = items.Where(item => !IsRemote(item)).ToArray();
+                        var remote = items.Where(IsRemote).ToArray();
+                        @if (local.Length > 0 && remote.Length > 0) { <li class="git-picker-group" role="presentation">Local <span>@local.Length</span></li> }
+                        @foreach (var item in local) { @Row(item, highlighted) }
+                        @if (remote.Length > 0) { <li class="git-picker-group" role="presentation">Remote <span>@remote.Length</span></li> }
+                        @foreach (var item in remote) { @Row(item, highlighted) }
+                        @if (Picker.HasMore) { <li class="git-picker-more" role="presentation"><span>Only the first 2,000 branches are listed — filter to narrow them.</span></li> }
+                    }
+                </ul>
             }
         </div>
+        @if (MultiSelect && Picker.Values.Count > 0)
+        {
+            @* The order is the answer's order, so each choice carries its number. *@
+            <ol class="git-picker-selected" aria-label="Selected, in order">
+                @for (var index = 0; index < Picker.Values.Count; index++)
+                {
+                    var value = Picker.Values[index];
+                    var label = ChipLabel(value);
+                    <li @key="value" title="@value">
+                        <span class="git-picker-chip-order">@(index + 1)</span>
+                        <span class="git-picker-chip-label">@label</span>
+                        <button type="button" title="Remove" aria-label="Remove @label" @onclick="() => Picker.Toggle(value)"><AppIcon Name="x" /></button>
+                    </li>
+                }
+            </ol>
+        }
         <footer class="settings-modal-actions directory-picker-actions">
-            <span class="directory-picker-selection">@Picker.Values.Count selected@(MultiSelect ? " (in selection order)" : "")</span>
-            <button type="button" disabled="@(Picker.IsLoading || Picker.Values.Count == 0)" @onclick="SelectAsync">Select</button>
+            <span class="directory-picker-selection git-picker-summary" title="@SummaryTitle">
+                @Summary
+                @if (MultiSelect && Picker.Values.Count > 0)
+                {
+                    <button class="git-picker-clear" type="button" @onclick="Picker.Clear">Clear</button>
+                }
+            </span>
+            <button type="button" disabled="@(Picker.Values.Count == 0)" title="Ctrl+Enter" @onclick="SelectAsync">Select</button>
             <button class="secondary-action" type="button" @onclick="CancelAsync">Cancel</button>
         </footer>
     </section>
@@ -86,16 +122,36 @@
     [Parameter] public EventCallback Cancelled { get; set; }
     private readonly CancellationTokenSource _cancellation = new();
     private string? _revision;
+    private string? _loadedRevision;
     private IReadOnlyList<GitChoice> _branches = [];
     private ElementReference _dialog;
     private IJSObjectReference? _keys;
     private DotNetObjectReference<GitPickerDialog>? _self;
+    // The row the arrows moved to, by value so it survives a re-render; see DirectoryPickerDialog.
+    private string? _highlight;
+    private bool _scrollHighlight;
+
+    private bool IsCommit => Kind == "commit";
+    private string Icon => IsCommit ? "git-commit" : "git-branch";
+    private string Noun => IsCommit ? (MultiSelect ? "commits" : "commit") : (MultiSelect ? "branches" : "branch");
+    private string Title => "Select " + Noun;
+    private string FilterLabel => IsCommit ? "Filter by hash, message or author" : "Filter branches";
+
+    private string Summary => Picker.Values.Count switch
+    {
+        0 => IsCommit ? (MultiSelect ? "No commits selected" : "No commit selected") : (MultiSelect ? "No branches selected" : "No branch selected"),
+        _ when MultiSelect => $"{Picker.Values.Count} selected",
+        _ => ChipLabel(Picker.Values[0])
+    };
+
+    private string? SummaryTitle => !MultiSelect && Picker.Values.Count == 1 ? Picker.Values[0] : null;
 
     protected override async Task OnInitializedAsync()
     {
         _revision = Revision;
+        _loadedRevision = Revision;
         await Picker.OpenAsync(RepositoryPath, Kind, MultiSelect, Revision, Values, _cancellation.Token);
-        if (Kind == "commit")
+        if (IsCommit)
         {
             try { _branches = (await Api.BranchesAsync(RepositoryPath, _cancellation.Token)).Items; }
             catch (HttpRequestException) { /* History still works with an explicit revision. */ }
@@ -104,28 +160,183 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
         try
         {
-            _self = DotNetObjectReference.Create(this);
-            var module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/gitPicker.js");
-            _keys = await module.InvokeAsync<IJSObjectReference>("attach", _dialog, _self);
-            await module.DisposeAsync();
+            if (firstRender)
+            {
+                _self = DotNetObjectReference.Create(this);
+                var module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/gitPicker.js");
+                _keys = await module.InvokeAsync<IJSObjectReference>("attach", _dialog, _self);
+                await module.DisposeAsync();
+            }
+            if (_keys is not null && _scrollHighlight)
+            {
+                _scrollHighlight = false;
+                await _keys.InvokeVoidAsync("scrollHighlightIntoView");
+            }
         }
         catch (Exception error) when (error is JSException or JSDisconnectedException or TaskCanceledException) { }
     }
 
-    private Task BranchChangedAsync(ChangeEventArgs args)
+    private RenderFragment Row(GitChoice item, string? highlighted) => __builder =>
+    {
+        var selected = Picker.Values.Contains(item.Value);
+        var order = MultiSelect && selected ? Picker.Values.ToList().IndexOf(item.Value) + 1 : 0;
+        <li @key="item.Value" role="presentation">
+            <button type="button" role="option" aria-selected="@(selected ? "true" : "false")" data-value="@item.Value" title="@item.Value"
+                    class="directory-picker-item git-picker-row @(selected ? "selected" : null) @(item.Value == highlighted ? "highlighted" : null)"
+                    @onclick="() => Choose(item.Value)" @ondblclick="() => ConfirmAsync(item.Value)">
+                <span class="git-picker-check @(MultiSelect ? null : "is-radio")" aria-hidden="true">
+                    @if (selected) { @if (MultiSelect) { <AppIcon Name="check" /> } else { <i></i> } }
+                </span>
+                @if (IsCommit)
+                {
+                    var (hash, subject) = SplitCommit(item.Label);
+                    <span class="git-picker-text">
+                        <span class="git-picker-name">@subject</span>
+                        <span class="git-picker-meta"><code>@hash</code>@CommitMeta(item.Description)</span>
+                    </span>
+                }
+                else
+                {
+                    <AppIcon Name="@(IsRemote(item) ? "cloud" : "git-branch")" />
+                    <span class="git-picker-text"><span class="git-picker-name">@item.Label</span></span>
+                }
+                @if (order > 0) { <span class="git-picker-order" aria-label="Selected @order">@order</span> }
+            </button>
+        </li>
+    };
+
+    private static bool IsRemote(GitChoice item) => item.Value.StartsWith("refs/remotes/", StringComparison.Ordinal);
+
+    /// <summary>The host labels a commit "abc1234 subject"; the hash goes to the quiet second line.</summary>
+    private static (string Hash, string Subject) SplitCommit(string label)
+    {
+        var space = label.IndexOf(' ');
+        return space < 0 ? (label, label) : (label[..space], label[(space + 1)..]);
+    }
+
+    /// <summary>"author · ISO date" from the host, with the date shortened to the local minute.</summary>
+    private static string CommitMeta(string? description)
+    {
+        if (string.IsNullOrEmpty(description)) return string.Empty;
+        var separator = description.LastIndexOf(" · ", StringComparison.Ordinal);
+        if (separator < 0) return " · " + description;
+        var author = description[..separator];
+        var date = description[(separator + 3)..];
+        return DateTimeOffset.TryParse(date, CultureInfo.InvariantCulture, DateTimeStyles.None, out var when)
+            ? $" · {author} · {when.ToLocalTime():yyyy-MM-dd HH:mm}"
+            : " · " + description;
+    }
+
+    private string ChipLabel(string value)
+    {
+        var label = Picker.LabelOf(value);
+        if (!IsCommit) return label;
+        // A commit chosen before the dialog opened is known only by its full hash.
+        return label == value && value.Length > 12 ? value[..7] : label;
+    }
+
+    private IReadOnlyList<string> Rows()
+    {
+        var items = Picker.Items;
+        // Branches are shown local first; the arrows walk them in that same order.
+        return (IsCommit ? items : items.Where(item => !IsRemote(item)).Concat(items.Where(IsRemote)))
+            .Select(item => item.Value).ToArray();
+    }
+
+    /// <summary>The row that answers Enter: the one the arrows chose, or while filtering, the first match.</summary>
+    private string? HighlightedValue()
+    {
+        var rows = Rows();
+        if (_highlight is { } chosen && rows.Contains(chosen)) return chosen;
+        return Picker.Filter.Length > 0 ? rows.FirstOrDefault() : null;
+    }
+
+    /// <summary>
+    /// Keys from gitPicker.js, taken at the document while the picker is open. Up and Down move the
+    /// highlight; Enter toggles the highlighted row, and with one choice takes it and closes; Enter
+    /// with nothing highlighted, or Ctrl+Enter anywhere, selects; Enter in the revision box loads it.
+    /// </summary>
+    [JSInvokable]
+    public async Task OnPickerKey(string key, string source, string? rowValue)
+    {
+        switch (key)
+        {
+            case "Escape":
+                await CancelAsync();
+                return;
+            case "ArrowUp" or "ArrowDown":
+                MoveHighlight(key == "ArrowDown" ? 1 : -1);
+                StateHasChanged();
+                return;
+            case "Submit":
+                await SelectAsync();
+                return;
+            case "Enter" when source == "revision":
+                await ChangeRevisionAsync();
+                return;
+            case "Enter":
+                var row = source == "row" ? rowValue : HighlightedValue();
+                if (row is null) await SelectAsync();
+                else if (MultiSelect) { Choose(row); StateHasChanged(); }
+                else await ConfirmAsync(row);
+                return;
+        }
+    }
+
+    private void MoveHighlight(int direction)
+    {
+        var rows = Rows();
+        if (rows.Count == 0) return;
+        var index = HighlightedValue() is { } current ? rows.ToList().IndexOf(current) : -1;
+        index = index < 0 ? (direction > 0 ? 0 : rows.Count - 1) : (index + direction + rows.Count) % rows.Count;
+        _highlight = rows[index];
+        _scrollHighlight = true;
+    }
+
+    private void Choose(string value)
+    {
+        _highlight = value;
+        // A single choice is picked, not toggled off: clicking it again keeps it, like a radio.
+        if (!MultiSelect && Picker.Values.Contains(value)) return;
+        Picker.Toggle(value);
+    }
+
+    private async Task ConfirmAsync(string value)
+    {
+        if (!Picker.Values.Contains(value)) Picker.Toggle(value);
+        await SelectAsync();
+    }
+
+    private void OnFilterInput(ChangeEventArgs args)
+    {
+        Picker.Filter = args.Value?.ToString() ?? string.Empty;
+        _scrollHighlight = true;
+    }
+
+    private void OnRevisionInput(ChangeEventArgs args) => _revision = args.Value?.ToString();
+
+    // A branch picked from the drop-down is an answer on its own; no Go needed.
+    private Task OnRevisionChangedAsync(ChangeEventArgs args)
     {
         _revision = args.Value?.ToString();
-        return ChangeRevisionAsync();
+        return _branches.Any(branch => branch.Label == _revision) ? ChangeRevisionAsync() : Task.CompletedTask;
+    }
+
+    private async Task ChangeRevisionAsync()
+    {
+        var revision = string.IsNullOrWhiteSpace(_revision) ? null : _revision.Trim();
+        if (revision == _loadedRevision && Picker.ErrorMessage is null) return;
+        _loadedRevision = revision;
+        _highlight = null;
+        await Picker.ChangeRevisionAsync(revision, _cancellation.Token);
     }
 
     private Task LoadMoreAsync() => Picker.LoadMoreAsync(_cancellation.Token);
-    private Task ChangeRevisionAsync() => Picker.ChangeRevisionAsync(_revision, _cancellation.Token);
-    private Task SelectAsync() => Selected.InvokeAsync(Picker.Values.ToArray());
+    private Task SelectAsync() => Picker.Values.Count > 0 ? Selected.InvokeAsync(Picker.Values.ToArray()) : Task.CompletedTask;
     private Task CancelAsync() => Cancelled.InvokeAsync();
-    [JSInvokable] public Task CloseFromKeyboardAsync() => CancelAsync();
+
     public async ValueTask DisposeAsync()
     {
         _cancellation.Cancel();

@@ -16,6 +16,7 @@ Current widgets:
 | `chat-tools` | Tools | `tool` | `ChatToolsWidget` | Tool calls, outcomes and most used tools |
 | `chat-performance` | Performance | `timer` | `ChatPerformanceWidget` | Wall-clock vs active time, throughput and where request time was spent |
 | `chat-subtasks` | Subtasks | `fork` | `ChatSubtasksWidget` | Delegated work the chat ran on another model: requests, tokens and share of the whole chat or the last turn |
+| `chat-knowledge` | Knowledge | `book` | `ChatKnowledgeWidget` | Files and pages the assistant read on the visible branch, grouped by tool, with the most recent paths |
 
 ## UX
 

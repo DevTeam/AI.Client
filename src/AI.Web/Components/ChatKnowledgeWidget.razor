@@ -1,0 +1,139 @@
+@inject IChatKnowledgeStatisticsCalculator Calculator
+@* What the assistant read on the visible branch: the read-only tool calls, the sources they
+   named, and how often each one came up. Only built-in read tools and web fetches count; write,
+   edit, process_run and third-party tools do not, even when their results happen to land in the
+   model's context. A path or URL is shown once with its repeat count rather than once per call. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-knowledge-widget">
+    <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" />
+
+    @if (_stats.TotalReads == 0)
+    {
+        <p class="chat-usage-empty">@(_scope == ChatWidgetScope.LastTurn && _hasAnyReads
+            ? "The last turn read no files or pages."
+            : "Files and pages the assistant read appear here once it reads something.")</p>
+    }
+    else
+    {
+        <div class="chat-usage-section">
+            <div class="chat-knowledge-total">
+                <span class="chat-knowledge-count">@_stats.TotalReads</span>
+                <span class="chat-usage-muted">@(_stats.TotalReads == 1 ? "read" : "reads")@(_stats.IsRunning ? " so far" : null)</span>
+                <span class="chat-knowledge-turns chat-usage-muted">@_stats.TurnsWithReads @(_stats.TurnsWithReads == 1 ? "turn" : "turns")</span>
+            </div>
+        </div>
+
+        <div class="chat-usage-section">
+            <div class="chat-usage-row chat-usage-heading"><span>By tool</span><span class="chat-usage-muted">calls</span></div>
+            <ul class="chat-knowledge-list">
+                @foreach (var group in _showAll ? _stats.Groups : _stats.Groups.Take(VisibleGroups))
+                {
+                    var max = Math.Max(1, _stats.Groups[0].Calls);
+                    <li @key="@(group.Server + group.ToolName)">
+                        <span class="chat-knowledge-name">@group.ToolLabel
+                            @if (group.Server.Length > 0) { <small class="chat-usage-muted">@group.Server</small> }
+                        </span>
+                        <span class="chat-knowledge-figure">@group.Calls</span>
+                        <span class="chat-knowledge-track" aria-hidden="true"><span style="flex-grow: @group.Calls"></span><i style="flex-grow: @(max - group.Calls)"></i></span>
+                        @if (group.Recent.Count > 0)
+                        {
+                            <ul class="chat-knowledge-sources">
+                                @foreach (var source in group.Recent)
+                                {
+                                    var title = source.Occurrences > 1
+                                        ? $"{source.Display} · read {source.Occurrences} times"
+                                        : source.Display;
+                                    <li @key="source.Display" class="chat-knowledge-source" title="@title">
+                                        <span class="chat-knowledge-source-name">@source.Display</span>
+                                        @if (source.Occurrences > 1)
+                                        {
+                                            <span class="chat-knowledge-source-count chat-usage-muted">×@source.Occurrences</span>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </li>
+                }
+            </ul>
+            @if (_stats.Groups.Count > VisibleGroups)
+            {
+                <button class="chat-usage-link chat-knowledge-more" type="button" @onclick="() => _showAll = !_showAll">@(_showAll ? "Show fewer" : $"Show {_stats.Groups.Count - VisibleGroups} more")</button>
+            }
+        </div>
+
+        <div class="chat-usage-section chat-usage-footnote">
+            @if (_scope == ChatWidgetScope.Chat && _stats.TurnsWithReads > 0)
+            {
+                <span>In @_stats.TurnsWithReads of @GetScopeTurns() @(GetScopeTurns() == 1 ? "turn" : "turns")</span>
+            }
+            @if (_stats.IsRunning) { <span>This turn is still running</span> }
+        </div>
+    }
+</ChatWidget>
+
+@code {
+    private const int VisibleGroups = 6;
+
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>The visible branch, root to leaf.</summary>
+    [Parameter]
+    public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+
+    /// <summary>The run snapshot for the open chat, when one exists.</summary>
+    [Parameter]
+    public ChatRunSnapshot? Run { get; set; }
+
+    private ChatWidgetScope _scope = ChatWidgetScope.Chat;
+    private ChatKnowledgeStatistics _stats = ChatKnowledgeStatistics.Empty;
+    private bool _hasAnyReads;
+    private bool _showAll;
+
+    protected override void OnParametersSet() => Refresh();
+
+    private void SetScope(ChatWidgetScope scope)
+    {
+        _scope = scope;
+        _showAll = false;
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        _stats = Calculator.Calculate(Messages, Run, _scope);
+        _hasAnyReads = _scope == ChatWidgetScope.Chat
+            ? _stats.TotalReads > 0
+            : Calculator.Calculate(Messages, Run, ChatWidgetScope.Chat).TotalReads > 0;
+    }
+
+    private string? GetSummary()
+    {
+        if (_stats.TotalReads == 0) return null;
+        var parts = new List<string> { $"{_stats.TotalReads} {(_stats.TotalReads == 1 ? "read" : "reads")}" };
+        if (_scope == ChatWidgetScope.Chat && _stats.TurnsWithReads > 1)
+            parts.Add($"{_stats.TurnsWithReads} turns");
+        return string.Join(" · ", parts);
+    }
+
+    private int GetScopeTurns()
+    {
+        if (Messages.Count == 0) return 0;
+        var count = 0;
+        var started = false;
+        foreach (var message in Messages)
+        {
+            if (message.Role == "User")
+            {
+                count++;
+                started = true;
+            }
+            else if (!started)
+            {
+                count++;
+                started = true;
+            }
+        }
+        return count;
+    }
+}

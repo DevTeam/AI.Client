@@ -1604,7 +1604,10 @@
                 _loadingTurnIds.Add(turnId);
                 _expandedTurnsVersion++;
                 StateHasChanged();
-                if (!await LoadTurnActivityAsync(turnId))
+                // A running turn stays open when its activity could not be loaded: what the run's
+                // snapshots carry is enough to list the steps, and each step loads its own result
+                // when opened. Folding it back made the turn spring shut under the click.
+                if (!await LoadTurnActivityAsync(turnId) && !IsRunningTurn(turn))
                 {
                     _expandedTurns.Remove(turnId);
                     _expandedTurnItemLimits.Remove(turnId);
@@ -1634,9 +1637,11 @@
                 turnId,
                 branchLeafId,
                 cancellation.Token);
+            // Not tied to the revision: messages never change once written, so activity read a
+            // step behind the page is still true. A running turn moves the revision with every
+            // step, and requiring a match turned away almost every load made while it ran.
             if (activity is null || cancellation.IsCancellationRequested
-                || SelectedChat?.Id != chat.Id || BranchLeafId != branchLeafId
-                || activity.Revision != SelectedChat.Revision) return false;
+                || SelectedChat?.Id != chat.Id || BranchLeafId != branchLeafId) return false;
             foreach (var message in activity.Messages) _activityMessages[message.Id] = message;
             _activityVersion++;
             _appliedSearchChatId = null;

@@ -75,3 +75,7 @@ Shared Rider run configurations are stored in [`.run`](.run). Select one from Ri
 ## Data format
 
 Backward compatibility of formats has been removed. Use a new directory via `AI_CLIENT_DATA_DIRECTORY`. Details: [architecture](docs/02-architecture.md) and [storage](docs/04-storage.md).
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE). See [NOTICE](NOTICE) for attributions.

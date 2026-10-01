@@ -47,6 +47,10 @@ public static class SkillIcons
         "qa-accessibility-review", "qa-compatibility-test", "qa-bug-report", "qa-failures-triage", "qa-release-assess",
         "mermaid-create", "mermaid-create-flowchart", "mermaid-create-sequence", "mermaid-create-class",
         "mermaid-create-state", "mermaid-create-er", "mermaid-create-architecture", "mermaid-create-gantt",
-        "mermaid-create-mindmap", "mermaid-create-gitgraph", "mermaid-edit", "mermaid-fix", "mermaid-review", "mermaid-export"
+        "mermaid-create-mindmap", "mermaid-create-gitgraph", "mermaid-edit", "mermaid-fix", "mermaid-review", "mermaid-export",
+        "svg-create", "svg-create-icon", "svg-create-illustration", "svg-create-schematic",
+        "svg-create-diagram", "svg-create-chart", "svg-create-infographic", "svg-create-logo",
+        "svg-create-pattern", "svg-create-animation", "svg-create-sprite", "svg-edit",
+        "svg-fix", "svg-optimize", "svg-review", "svg-export"
     ];
 }

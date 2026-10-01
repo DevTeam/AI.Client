@@ -39,7 +39,7 @@ application permissions, and every write still goes through tool approval.
 ## Naming
 
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. The domains are `chat`,
-  `project`, `memory`, `skill`, `instructions`, `code`, `git`, `devops`, `qa`, `mermaid` and `settings`; a new area gets a new domain. The
+  `project`, `memory`, `skill`, `instructions`, `code`, `git`, `devops`, `qa`, `mermaid`, `svg` and `settings`; a new area gets a new domain. The
   action is a verb: create, rename, compact, fork, add, remove, review, save, edit, suggest,
   implement, fix, run, commit.
 - `name` is the id in words with the first letter capitalized (`project-directory-add` →
@@ -132,6 +132,22 @@ application permissions, and every write still goes through tool approval.
 | `mermaid-fix` | Fix a Mermaid syntax or rendering failure using the actual source, diagnostic and target runtime while preserving the intended diagram. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
 | `mermaid-review` | Review a Mermaid diagram for syntax, source fidelity, readability, accessibility and target compatibility without editing project files. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
 | `mermaid-export` | Export a Mermaid source to requested SVG, PNG or PDF using an available compatible renderer, preserving source and verifying the actual artifact. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-create` | Create an editable SVG image from the user's description, choosing suitable vector geometry and delivering a complete preview or requested files. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-create-icon` | Draw original SVG icons with consistent geometry, optical alignment and readable details at the intended small sizes. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-create-illustration` | Draw an original SVG illustration or vector painting with deliberate composition, layered shapes, color and editable detail. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-create-schematic` | Draw an SVG schematic with verified components, labeled connections and precise layout without inventing system or engineering facts. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-create-diagram` | Draw a precise SVG diagram of relationships, flows or structure with source-based meaning, readable labels and clear connectors. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-create-chart` | Draw an SVG data chart from supplied values with honest scales, units, labels and a readable visual encoding. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-create-infographic` | Draw an SVG infographic with a clear information hierarchy, accurate supplied facts and readable typography. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-create-logo` | Draw an original SVG logo or wordmark with a recognizable silhouette, coherent lettering and usable monochrome variants. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-create-pattern` | Draw a reusable SVG pattern or ornament with deliberate tile geometry, palette and verified seamless repetition. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-create-animation` | Create a script-free SVG animation with a usable static fallback and target-aware motion verification. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-create-sprite` | Create an SVG symbol sprite from requested icons with stable unique IDs, preserved geometry and a complete usage preview. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-edit` | Edit an existing SVG image for requested visual changes while preserving unrelated geometry, references and consumers. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-fix` | Fix an SVG parsing, geometry or rendering defect using the actual source and target while preserving intended artwork. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-optimize` | Optimize SVG source size or rendering cost with measured before-and-after results while preserving appearance and consumer contracts. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-review` | Review SVG source and rendered output for correctness, readability, accessibility, portability and unnecessary complexity without editing files. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `svg-export` | Export an SVG image to requested PNG, WebP, JPEG or PDF with an available renderer, explicit dimensions/background and verified output. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
 | `git-commit` | On request only: drafts a message in the log's style and commits the chosen paths; never pushes | `process_run` |
 | `git-commit-message-suggest` | Drafts a message for staged/local changes or selected commits; changes nothing | `process_run`, `ask_user` commit picker |
 | `git-rebase` | Rebases the current branch onto a selected branch, keeps a recovery ref and pauses at conflicts | `process_run`, `ask_user` branch picker |
@@ -210,6 +226,21 @@ and do not upload private source to an external editor. GitGraph is a visualizat
 branch/commit selection uses the existing Git pickers without executing history operations.
 See the [Mermaid skill guide](mermaid-skills.md) for official references and workflow details.
 
+SVG skills draw original editable vector artwork and return a complete `svg` fenced document
+in chat unless file delivery is requested or needed by the existing implementation task.
+They cover icons, illustrations/paintings, schematics, precise diagrams, charts, infographics,
+logos, patterns, script-free animation and symbol sprites, plus editing, repair, measured
+optimization, read-only review and actual export. Each has a dedicated SVG icon in the picker.
+Files/directories use the existing scope pickers; known values bypass questions.
+
+Chat SVG is an image context that does not inherit application theme/currentColor. Artwork uses
+explicit colors/backgrounds with a namespace, useful viewBox, valid XML and local references.
+Skills distinguish XML validation, compatible rendering and visual inspection. They preserve
+host restrictions, require no external resources, and report unavailable checks honestly.
+Animation needs real motion/fallback verification; optimization preserves accessibility and public
+IDs; export verifies actual format, dimensions and background. Review changes no project files.
+See the [SVG skill guide](svg-skills.md) for workflow details and official references.
+
 Git skills use the [Git pickers in ask_user](19-ask-user.md#git-pickers) when the user has not named
 the branches or commits. Explicit values from the request bypass selection. History operations
 check for local work and ongoing operations first, and do not silently stash, discard changes or
@@ -283,7 +314,7 @@ in the project, and the model's copy of the message starts with an instruction t
 When the App tools are available, the standing `skills.catalog` layer lists every enabled skill
 in effect for the project: its id, description and parameter names, with `*` marking required ones.
 Only executors the application runs on its own (`chat-reply-suggest`, `chat-tool-risk-assess`) are left out. It follows
-memory, has its own 10,240-token budget and ends with a pointer to `mcp_app__skill_search` when it is
+memory, has its own 12,288-token budget and ends with a pointer to `mcp_app__skill_search` when it is
 cut. Its lead tells the model to check the list before acting and when the user changes task, to
 run a fitting skill before other tools even for requests that look simple, and to run only listed
 or user-named ids. `skill_search` and `run_skill` are always in the request's tool schema, so a skill from the catalog

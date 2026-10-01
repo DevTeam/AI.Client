@@ -58,7 +58,16 @@ Choose:
   quality checks mermaid-review, and SVG/PNG/PDF output mermaid-export. A request to apply
   review corrections switches to editing/fixing. Drawing a GitGraph changes no Git history;
   a Mermaid architecture view does not authorize infrastructure changes or deployment.
-  These are hints only: choose a named skill only when it is
+  SVG artwork uses svg-create for a general brief, svg-create-icon for icons,
+  svg-create-illustration for illustrations/vector paintings, svg-create-schematic for technical
+  schematics, svg-create-diagram for precise relationships/flows, svg-create-chart for data plots,
+  svg-create-infographic for information layouts, svg-create-logo for logos/wordmarks,
+  svg-create-pattern for repeated ornament, svg-create-animation for script-free motion and
+  svg-create-sprite for reusable symbol sets. Existing SVG changes use svg-edit, defects svg-fix,
+  measured simplification svg-optimize, read-only checks svg-review and format conversion svg-export.
+  Applying review findings switches to editing/fixing. Use Mermaid for explicitly requested
+  Mermaid source; choose SVG for exact vector layout or artwork. SVG export does not imply
+  publication or product implementation. These are hints only: choose a named skill only when it is
   present in the input catalog.
 - `tools`: up to eight tool names the work will most likely need in its first steps, including the
   ones the chosen skills work with.

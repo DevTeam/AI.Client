@@ -82,6 +82,16 @@ application permissions, and every write still goes through tool approval.
 | `code-bug-fix` | Reproduces a bug, finds the root cause, adds a failing test, fixes it and reruns the tests | file tools, `process_run` |
 | `code-tests-run` | Finds the project's test command, runs it and reports each failure; offers `code-bug-fix` | `process_run`, `run_skill` |
 | `code-changes-review` | Reviews uncommitted changes for stray files, secrets, debug leftovers and unrelated edits; cleans up what the user picks | `process_run`, `edit_file`, `delete_file` |
+| `code-plan` | Researches a change and produces alternatives, affected files, implementation steps and acceptance checks; changes nothing | file readers, `process_run`, path picker |
+| `code-explain` | Traces selected code, callers and data flow and explains behavior with source references; changes nothing | file readers, `process_run`, path picker |
+| `code-refactor` | Improves structure while preserving behavior and public contracts, then verifies the change | file tools, `process_run`, path picker |
+| `code-tests-add` | Adds meaningful behavior, boundary and regression tests using the existing framework and runs them | file tools, `process_run`, path picker |
+| `code-build-fix` | Reproduces and fixes compiler, build and analyzer diagnostics, then follows residual errors | file tools, `process_run`, path picker |
+| `code-review` | Reviews selected code, working-tree changes, branches or commits for correctness and compatibility; changes nothing | file readers, `process_run`, path/branch/commit pickers |
+| `code-performance-optimize` | Measures a bottleneck, makes a focused optimization and compares equivalent before/after runs | file tools, `process_run`, path picker |
+| `code-dependencies-update` | Updates chosen package versions and lockfiles, adapts APIs and verifies compatibility | file tools, `process_run`, path picker, version choices |
+| `code-security-review` | Traces trust boundaries and reports supported vulnerabilities and mitigations; changes nothing | file readers, `process_run`, path picker |
+| `code-docs-update` | Updates documentation and examples from inspected behavior and verifies applicable links/examples | file tools, `process_run`, path picker |
 | `git-commit` | On request only: drafts a message in the log's style and commits the chosen paths; never pushes | `process_run` |
 | `git-commit-message-suggest` | Drafts a message for staged/local changes or selected commits; changes nothing | `process_run`, `ask_user` commit picker |
 | `git-rebase` | Rebases the current branch onto a selected branch, keeps a recovery ref and pauses at conflicts | `process_run`, `ask_user` branch picker |
@@ -96,6 +106,21 @@ application permissions, and every write still goes through tool approval.
 | `settings-add-connections` | Discovers models from API URLs and adds or merges Connections by URL + model, preserving credentials and unrelated settings; offers comparison | `app_read`, `app_security`, `ask_user`, `run_skill` |
 | `settings-review-connections` | Compares selected Connections with bounded synthetic tasks, reports quality, measured run time and errors, then applies approved defaults, subtask pools or cleanup | `app_read`, `spawn_subtask`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
 | `settings-select-connection` | Selects an enabled connection for the global default, current project/chat or subtask pool; can restore project/chat inheritance | `app_read`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
+
+Code skills take their scope from the request or optional `paths`; only ambiguous scope opens
+the file/directory picker. A picked file returns in `other`, several directories in `paths`;
+selection never grants access. All ten specialized code skills have their own SVG icon in the
+shared picker. Their optional inputs also allow automatic playbook loading by the turn router.
+The router prefers a specific code workflow and switches from a read-only plan/review to the
+appropriate implementation skill when the user asks to carry it out.
+
+Planning, explanation, correctness review and security review produce complete reports without
+editing source. The mutating skills preserve existing work, perform the requested changes without
+a redundant blanket confirmation, and clarify only new scope or consequential decisions. They
+do not commit, push, deploy or run database migrations. Refactoring preserves behavior; test
+creation checks observable contracts; build repair addresses causes rather than suppressing
+diagnostics; performance claims require comparable measurements; dependency versions are checked
+against the configured registry and official migration notes; documentation follows actual code.
 
 Git skills use the [Git pickers in ask_user](19-ask-user.md#git-pickers) when the user has not named
 the branches or commits. Explicit values from the request bypass selection. History operations

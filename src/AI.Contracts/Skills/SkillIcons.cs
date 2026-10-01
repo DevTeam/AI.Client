@@ -36,6 +36,8 @@ public static class SkillIcons
         "clipboard", "clipboard-check", "file-code", "file-search", "notebook", "graduation-cap", "bookmark", "library", "table", "calculator",
         "chart-line", "chart-pie", "trending-up", "gauge", "activity", "timer", "alarm", "calendar-check", "repeat", "history",
         "palette", "brush", "pen-tool", "crop", "camera", "video", "microphone", "headphones", "music", "map",
-        "git-rebase", "git-rebase-auto", "git-merge-auto"
+        "git-rebase", "git-rebase-auto", "git-merge-auto",
+        "code-plan", "code-explain", "code-refactor", "code-tests-add", "code-build-fix",
+        "code-review", "code-performance-optimize", "code-dependencies-update", "code-security-review", "code-docs-update"
     ];
 }

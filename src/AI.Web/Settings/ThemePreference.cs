@@ -5,5 +5,8 @@ public enum ThemePreference
 {
     System,
     Light,
-    Dark
+    Dark,
+
+    /// <summary>A dark palette tinted blue: the surfaces move towards blue, the accent stays the user's.</summary>
+    DarkBlue
 }

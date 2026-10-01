@@ -41,13 +41,15 @@ internal sealed partial class App(Func<MainWindow> mainWindow, IProcessSignals p
 
     /// <summary>
     /// The titlebar's brushes live in this application's theme dictionaries, so the variant is set
-    /// here rather than on the window. "system" leaves it to the OS, which is what the page does too.
+    /// here rather than on the window. "system" leaves it to the OS, which is what the page does too;
+    /// an unknown preference keeps following the OS rather than guessing.
     /// </summary>
     private void ApplyTheme(string preference) =>
         RequestedThemeVariant = preference switch
         {
             "light" => ThemeVariant.Light,
             "dark" => ThemeVariant.Dark,
+            "darkblue" => DesktopThemes.DarkBlue,
             _ => ThemeVariant.Default
         };
 }

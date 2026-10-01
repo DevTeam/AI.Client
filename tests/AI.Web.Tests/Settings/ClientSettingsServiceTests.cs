@@ -49,15 +49,17 @@ public class ClientSettingsServiceTests
         (await service.GetAsync()).ShowContextWindowUsage.ShouldBeTrue();
     }
 
-    [Fact]
-    public async Task ShouldReadAnEntryWrittenBeforeAccentExisted()
+    [Theory]
+    [InlineData("{\"theme\":\"light\"}")]
+    [InlineData("{\"theme\":\"darkBlue\"}")]
+    public async Task ShouldReadAnEntryWrittenBeforeAccentExisted(string saved)
     {
         var js = new FakeJSRuntime();
-        js.Entries[StorageKey] = "{\"theme\":\"light\"}";
+        js.Entries[StorageKey] = saved;
 
         var settings = await new ClientSettingsService(js).GetAsync();
 
-        settings.Theme.ShouldBe(ThemePreference.Light);
+        settings.Theme.ShouldBe(saved.Contains("darkBlue") ? ThemePreference.DarkBlue : ThemePreference.Light);
         settings.Accent.ShouldBe(AccentColor.Blue);
         settings.CornerRoundnessPercent.ShouldBe(100);
         settings.NotificationSoundEnabled.ShouldBeTrue();
@@ -127,6 +129,19 @@ public class ClientSettingsServiceTests
     }
 
     [Fact]
+    public async Task ShouldSpellDarkBlueTheWayThePageReadsIt()
+    {
+        var js = new FakeJSRuntime();
+        var service = new ClientSettingsService(js);
+
+        await service.UpdateAsync(settings => settings with { Theme = ThemePreference.DarkBlue });
+
+        // js/theme.js lowercases the value before matching it, and the enum is camelCased here.
+        js.Entries[StorageKey].ShouldContain("\"theme\":\"darkBlue\"");
+        (await service.GetAsync()).Theme.ShouldBe(ThemePreference.DarkBlue);
+    }
+
+    [Fact]
     public async Task ThemeServiceShouldSaveAndApplyThePreference()
     {
         var js = new FakeJSRuntime();
@@ -136,6 +151,19 @@ public class ClientSettingsServiceTests
 
         (await theme.GetAsync()).ShouldBe(ThemePreference.Dark);
         js.Calls.ShouldContain(call => call.Identifier == "aiClientTheme.apply" && Equals(call.Args[0], "dark"));
+    }
+
+    [Fact]
+    public async Task ThemeServiceShouldApplyDarkBlueAsThePageNamesIt()
+    {
+        var js = new FakeJSRuntime();
+        var theme = new ThemeService(new ClientSettingsService(js), js);
+
+        await theme.SetAsync(ThemePreference.DarkBlue);
+
+        (await theme.GetAsync()).ShouldBe(ThemePreference.DarkBlue);
+        // Must be the data-theme attribute value app.css and Desktop's variant are keyed on.
+        js.Calls.ShouldContain(call => call.Identifier == "aiClientTheme.apply" && Equals(call.Args[0], "darkblue"));
     }
 
     [Fact]

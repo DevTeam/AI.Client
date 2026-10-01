@@ -6,7 +6,7 @@ namespace AI.Desktop;
 /// </summary>
 internal interface IThemePreferenceStore
 {
-    /// <returns>"system", "light" or "dark"; "system" when nothing readable is saved.</returns>
+    /// <returns>"system", "light", "dark" or "darkblue"; "system" when nothing readable is saved.</returns>
     string Load();
 
     void Save(string preference);

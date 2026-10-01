@@ -1,12 +1,13 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:desktop="using:AI.Desktop"
              x:Class="AI.Desktop.App"
              RequestedThemeVariant="Dark">
     <!--
         The drawn titlebar is not a child of the window, so its brushes resolve here, not in
         Window.Resources. Caption* and TitleBarBackgroundBrush are the names Fluent's
         WindowDrawnDecorations theme looks up; the rest are the window's own. The values follow
-        the page's tokens (app.css): App.ApplyTheme switches between the two sets when the page
+        the page's tokens (app.css): App.ApplyTheme switches between the sets when the page
         changes its theme.
     -->
     <Application.Resources>
@@ -22,6 +23,18 @@
                     <SolidColorBrush x:Key="WindowFrameBrush" Color="#3A3A3A" />
                     <SolidColorBrush x:Key="StatusTitleBrush" Color="#E5E5E5" />
                     <SolidColorBrush x:Key="StatusDetailBrush" Color="#A3A3A3" />
+                </ResourceDictionary>
+                <!-- The page's dark blue palette (app.css), for the chrome it cannot paint. -->
+                <ResourceDictionary x:Key="{x:Static desktop:DesktopThemes.DarkBlue}">
+                    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#17212D" />
+                    <SolidColorBrush x:Key="TitleBarBorderBrush" Color="#24313F" />
+                    <SolidColorBrush x:Key="CaptionButtonForeground" Color="#E8EDF4" />
+                    <SolidColorBrush x:Key="CaptionButtonBackground" Color="#212C39" />
+                    <SolidColorBrush x:Key="CaptionButtonBorderBrush" Color="#3A4A5C" />
+                    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#101720" />
+                    <SolidColorBrush x:Key="WindowFrameBrush" Color="#2D3A4A" />
+                    <SolidColorBrush x:Key="StatusTitleBrush" Color="#E8EDF4" />
+                    <SolidColorBrush x:Key="StatusDetailBrush" Color="#A3B0C0" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#F3F3F3" />

@@ -6,7 +6,7 @@
 @* Picking, not typing: the host walks its own file system for us because the browser cannot name
    an absolute path. The path box stays anyway — pasting a path is faster than clicking down to it,
    and it is the only way in when the list is long or the thing is not there yet. *@
-<div class="modal-backdrop" @onclick="CancelAsync">
+<div class="modal-backdrop @BackdropClass" @onclick="CancelAsync">
     <section class="directory-picker-modal" role="dialog" aria-modal="true" aria-labelledby="directory-picker-title"
              @ref="_dialog" @onclick:stopPropagation="true">
         <header>
@@ -87,6 +87,11 @@
 
     /// <summary>What the picked path is for, shown under the title.</summary>
     [Parameter] public string Subtitle { get; set; } = string.Empty;
+
+    /// <summary>Extra CSS class on the backdrop. Settings drawers sit at z-index 45, so anything
+    /// opened from them needs a class that lifts the backdrop above that (46+); the picker is used
+    /// in other places too, so this is opt-in rather than hard-coded.</summary>
+    [Parameter] public string? BackdropClass { get; set; }
 
     [Parameter] public EventCallback<string> Selected { get; set; }
 

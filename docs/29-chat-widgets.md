@@ -18,6 +18,7 @@ Current widgets:
 | `chat-subtasks` | Subtasks | `fork` | `ChatSubtasksWidget` | Delegated work the chat ran on another model: requests, tokens and share of the whole chat or the last turn |
 | `chat-knowledge` | Knowledge | `book` | `ChatKnowledgeWidget` | Files and pages the assistant read on the visible branch, grouped by tool, with the most recent paths |
 | `chat-timeline` | Timeline | `history` | `ChatTimelineWidget` | One row per turn on the visible branch: when it started, how long it ran, its requests and tokens, and the tools and files it touched |
+| `chat-branches` | Branches | `git-branch` | `ChatBranchesWidget` | Every stored branch of the chat: title, depth, message count, child branches and head timestamp, with a click that switches the visible branch |
 
 ## UX
 
@@ -505,3 +506,65 @@ One row per turn on the visible branch (`ChatTimelineWidget`,
   timeline layout (rail, dot, chips) uses widget-specific classes (`chat-timeline-*`). Clicking
   a row raises `OnSelectTurn(messageId)` and `Home.ScrollToTurnAsync` forwards it to
   `MessageFeed.ScrollToMessageAsync`, so the timeline doubles as a table of contents.
+
+## Branches widget
+
+The branches the chat actually has, with everything a person needs to pick one without going back
+to the sidebar: title, depth, how many messages it owns, how many child branches it has, and when
+its head message was recorded. The widget is also the only place that shows a branch's depth at a
+glance and lets a person jump to it with one click from the column — the sidebar already lists
+branches, but only here do they line up with the rest of the column's widgets and stay in scope
+while the transcript is being read.
+
+- **Scope.** Chat only, no scope switch. A single branch never has sub-branches of its own, so
+  "branches of the last turn" would always be empty; "branches of the chat" is what the page
+  already means by the open chat.
+- **Source of truth.** Three stored values: `ChatDetails.Branches` (the list),
+  `ChatMessageView.CreatedAt` (for head timestamps and message-count walks), and
+  `ChatMessageView.ParentId` (to walk the message tree from each branch's root). Anything that
+  cannot be inferred from those three — branch-local token accounting, tool execution time on the
+  branch, TTFT — is left out and the widget does not pretend to know it. If a provider later
+  reports branch-scoped usage, the calculator gains a new field; the widget's contract stays the
+  same.
+- **What's shown.** For every stored branch:
+  - **Title** from `ChatBranchView.Title`, falling back to `Branch` when the stored title is blank
+    (a cycle in the parent chain falls back too, with a finite depth).
+  - **Message count** = how many messages walk from the branch's root through `ParentId`. The
+    root message itself counts, and so do descendants that have not yet been given their own
+    branch.
+  - **Child branches** = how many other stored branches have this one as `ParentBranchId`. A
+    branch with no children is not a dead end — it can still own messages that have not been
+    forked yet.
+  - **Head timestamp** from the head message's `CreatedAt`. The UI marks it with "≈" and the
+    tooltip says so: a long idle pause before the last message counts as part of the branch's age
+    rather than the user's, the same convention Timeline and Performance use.
+  - **Active state**: the row whose id matches the currently visible branch gets the same accent
+    bar the sidebar uses for a selected chat nav row, and `aria-current="true"` so screen readers
+    announce it.
+- **Honesty rules.**
+  - Head timestamps come from message `CreatedAt`, not from a provider timestamp, and so are
+    marked approximate. The footer states this in plain text.
+  - A branch whose head message is missing is reported with zero messages and a `null` head
+    timestamp — it is not silently dropped, and the row is still rendered so the user sees the
+    branch exists.
+  - A cycle in `ParentBranchId` is walked with a visited set so depth stays finite; the row is
+    still listed, with the depth the walker reached.
+- **Empty state.** "Branches appear here once a branch is created." — the chat itself is not a
+  branch, and an empty `Branches` list means none have been forked yet.
+- **Folded summary.** `N branches` (`N branch` when there is only one).
+- **Interactivity.** Each row is a button. Clicking it raises
+  `OnSelectBranch(ChatBranchSummary)` and `Home.OnWidgetBranchSelectedAsync` adapts it to a
+  `BranchTreeItem` and calls the same `SelectBranchTreeItemAsync` the sidebar's branch links use,
+  so the two surfaces switch branches through one code path.
+- **Data.** `ChatDetails.Branches`, `ChatDetails.Messages`, and the id of the currently visible
+  branch (`Home.GetSelectedBranchId()`). No scope switch, no live turn, no token ledger.
+- **Architecture.** `IChatBranchesStatisticsCalculator` in `src/AI.Web/Widgets` returns a
+  `ChatBranchesStatistics` record holding one `ChatBranchSummary` per stored branch. Bound in
+  `Composition.cs` and tested in `tests/AI.Web.Tests/Widgets`. The widget itself is a `ChatWidget`
+  with `Summary` and the shared `chat-usage-*` building blocks (`chat-usage-empty`,
+  `chat-usage-section`, `chat-usage-footnote`); the row layout, depth indent, and active accent
+  use widget-specific classes (`chat-branches-*`) and reuse the sidebar's `.branch-tree-line` for
+  the elbow guide on child branches (depth 0 draws none), so a branch row in the widget and a
+  branch row in the sidebar read as the same shape. The row is a two-column grid (icon, body); the
+  guide is absolutely positioned and so takes no grid column. Meta items never wrap inside
+  themselves and are separated by a CSS `·`, so a narrow panel moves whole items to the next line.

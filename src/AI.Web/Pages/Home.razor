@@ -663,6 +663,13 @@
                                             IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
                                             OnSelectTurn="ScrollToTurnAsync" />
                         break;
+                    case ChatWidgetCatalog.ChatBranches:
+                        <ChatBranchesWidget Widget="@widget"
+                                            Branches="@widgetChat.Branches"
+                                            Messages="@widgetChat.Messages"
+                                            SelectedBranchId="@GetSelectedBranchId()"
+                                            OnSelectBranch="OnWidgetBranchSelectedAsync" />
+                        break;
                 }
             </WidgetTemplate>
         </ChatWidgetRail>
@@ -2774,6 +2781,14 @@
         if (_messageFeed is null) return;
         await _messageFeed.ScrollToMessageAsync(messageId);
     }
+
+    // The Branches widget lists every stored branch and lets the person click one to make it the
+    // visible branch — the same action the sidebar's branch links perform. The widget hands back
+    // a ChatBranchSummary; the existing SelectBranchTreeItemAsync takes the sidebar's
+    // BranchTreeItem, and the two records carry the same fields (root id, title, depth, leaf id),
+    // so the page just adapts and delegates.
+    private async Task OnWidgetBranchSelectedAsync(ChatBranchSummary branch) =>
+        await SelectBranchTreeItemAsync(new BranchTreeItem(branch.RootId, branch.Title, branch.Depth, branch.LeafId));
 
     // Pressing the ring asks about the window, so the answer is the usage widget, open and unfolded,
     // wherever the person had put it.

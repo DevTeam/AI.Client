@@ -63,9 +63,11 @@ Current widgets:
   the cost, the file count — and puts detail below it.
 - **Scope.** Widgets whose figures can cover either the whole chat or the last turn start with the
   shared "Whole chat / Last turn" switch. Everything below it — headline, grid, breakdown, folded
-  summary — follows the choice. The choice is the widget's own and starts at "Whole chat".
+  summary — follows the choice. The choice is the widget's own and starts at "Whole chat". The
+  switch is hidden while the chat has nothing to count at all, so an empty widget is just its
+  empty-state line.
 - **The turn in progress.** A running turn counts as the last turn, and its figures grow as it
-  goes. The widget says that they are not final ("so far", "This turn is still running").
+  goes. The headline says that they are not final ("so far"); the footer does not repeat it.
 - **Empty states.** Every widget says what will appear and when: "Token usage appears here once
   the chat sends its first request." In the last-turn scope a widget with data elsewhere says what
   the last turn did not do: "The last turn changed no files."
@@ -118,8 +120,8 @@ The body is a stack of sections (`chat-usage-section`): a 1px rule between them,
 
 | Size | Use |
 | --- | --- |
-| 1.35rem, 500 | One headline count (Files: number of files) |
-| .86–.9rem, 500 | Headline figures (Usage: `154k → 7k` and cost; Files: `+307 −76`) |
+| 1.35rem, 500 | One headline count (`chat-widget-count`: files, calls, reads, turns, branches, subtask requests, wall-clock) |
+| .86–.9rem, 500 | Headline figures (Usage: `154k → 7k` and cost; Files: `+307 −76`; `chat-widget-secondary`: tok/s, subtask share) |
 | .78rem | Body text and rows |
 | .74–.76rem | Grids, list figures, the scope switch, inline links |
 | .7–.72rem | Legends, column headers, footnotes, `small` qualifiers |
@@ -132,7 +134,8 @@ Figures always use tabular digits (`font-variant-numeric: tabular-nums`) and do 
 | --- | --- | --- |
 | Scope switch | `chat-widget-scope` (component `ChatWidgetScopeSwitch`) | Two equal segments on `--color-fill`; the chosen one raised on `--color-surface` with a hairline ring |
 | Heading row | `chat-usage-row chat-usage-heading` | Label left, figure right, baseline aligned |
-| Headline | `chat-usage-row chat-usage-headline` | The scope's main figures, .9rem 500, qualifiers in `small` |
+| Headline | `chat-usage-row chat-usage-headline` | The scope's main figures, .9rem 500, qualifiers in `small` (Usage) |
+| Count headline | `chat-widget-headline`, `chat-widget-count`, `chat-widget-headline-aside`, `chat-widget-secondary` | Every other widget: one large count and its muted unit, an optional smaller figure pushed to the right edge |
 | Fact grid | `chat-usage-grid` (a `dl`) | Two label–value pairs per line: `auto 1fr auto 1fr`; labels subtle, values right-aligned; a long value takes a row of its own (`chat-usage-grid-row` + `chat-usage-grid-wide`) |
 | Bar | `chat-usage-bar`, `chat-files-bar` | .35–.45rem high on `--color-fill`, segments `flex-grow` by value |
 | Legend | `chat-usage-legend`, `context-swatch` | A wrapping line of swatch, label and value |
@@ -364,7 +367,7 @@ Tool use on the visible branch (`ChatToolsWidget`, `IChatToolStatisticsCalculato
 - **Layout.** Scope switch; total calls and distinct tools; outcome grid; Most used, sorted by
   call count then name, six shown with Show more. Each tool shows its server, count, relative
   usage bar and errors when present. The raw call name is in the tooltip; different servers
-  remain separate. The footer shows turns with calls and whether the current turn is running.
+  remain separate. In the whole-chat scope the footer shows turns with calls.
 - **Folded summary.** Call count and errors for the selected scope.
 - **Live data.** The headline says so far during a running or paused turn. Draft calls with
   arguments still streaming are not counted until recorded or executing. No durations are inferred
@@ -385,10 +388,9 @@ Latency, throughput and where request time was spent (`ChatPerformanceWidget`,
   in front of them and the tooltip says so ("Whole time from the first user message to the latest,
   including pauses while you were not in the chat").
 - **What it shows.**
-  - **Headline — wall-clock vs active time.** "11 min ≈ wall-clock · 4 min active" — the time
-    from the first user message to the latest, and the sum of request durations inside it. When
-    there is only one request, the two lines collapse into one. The active line is omitted when
-    no request was timed.
+  - **Headline — wall-clock.** "11 min ≈ wall-clock" — the time from the first user message to
+    the latest. When the branch has no wall-clock span, the headline shows active time instead
+    ("4 min active").
   - **Throughput.** Output tokens per second for the chosen scope, computed through
     `IUsagePresentation.OutputSpeed` so the widget honours the same "too little was measured"
     guard as Usage. The speed figure carries a plain `tok/s` label and lives on the right of the
@@ -398,9 +400,10 @@ Latency, throughput and where request time was spent (`ChatPerformanceWidget`,
     speed; Other is whatever is left inside the active window. The bar is hidden when there is
     only one phase (a single timed request with no reasoning and no remainder). Each segment
     has a label in the legend with its duration, so the bar never stands alone.
-  - **Meta rows.** Idle (wall-clock minus active), Requests, Output, and Reasoning when there is
-    any. Idle keeps the "≈" qualifier; the others are provider figures.
-  - **Footer.** "In X turns" for the chosen scope, "This turn is still running" while it is.
+  - **Meta rows.** Active (the sum of request durations, when the headline shows wall-clock),
+    Idle (wall-clock minus active), Requests, Output, and Reasoning when there is any. Idle keeps
+    the "≈" qualifier; the others are provider figures.
+  - **Footer.** "In X turns" for the chosen scope.
 - **Honesty about numbers.**
   - Provider-reported figures (request duration, throughput, token counts) are quoted as they
     came in. They are the only ones the widget treats as billed.
@@ -419,8 +422,8 @@ Latency, throughput and where request time was spent (`ChatPerformanceWidget`,
   branch and returns a `PerformanceStatistics` record that the widget renders. The calculator is
   bound in `Composition.cs` and tested in `tests/AI.Web.Tests/Widgets`. The widget itself is a
   `ChatWidget` like the others, with `ChatWidgetScopeSwitch`, `Summary`, and the same
-  `chat-usage-*` building blocks — only the phase bar and headline use widget-specific classes
-  (`chat-performance-*`).
+  `chat-usage-*` building blocks and the shared count headline — only the phase bar uses
+  widget-specific classes (`chat-performance-*`).
 
 ## Subtasks widget
 
@@ -439,8 +442,7 @@ Delegated work the chat ran on another model (`ChatSubtasksWidget`,
   - **Token breakdown.** Input, output, and reasoning (a muted row only when reasoning is
     non-zero, so an empty breakdown stays out of the way). All three come from the same
     `Subtask` slice.
-  - **Footer.** "In N of M turns delegated work", and "This turn is still running" while it
-    does.
+  - **Footer.** "In N of M turns delegated work".
 - **Honesty about numbers.**
   - Provider-reported figures (requests, input, output, reasoning) are quoted as they came in.
   - The share is `(subtask input + subtask output) / (scope input + scope output)`, not a
@@ -457,8 +459,8 @@ Delegated work the chat ran on another model (`ChatSubtasksWidget`,
   uses the same chat-vs-turn rule the Performance widget uses (`ChooseTurn`), so the three
   widgets agree on what the last turn is. Bound in `Composition.cs` and tested in
   `tests/AI.Web.Tests/Widgets`. The widget itself is a `ChatWidget` with `ChatWidgetScopeSwitch`,
-  `Summary`, and the same `chat-usage-*` building blocks; only the headline layout uses
-  widget-specific classes (`chat-subtasks-*`).
+  `Summary`, the same `chat-usage-*` building blocks and the shared count headline; it has no
+  widget-specific classes.
 
 ## Timeline widget
 
@@ -474,7 +476,8 @@ One row per turn on the visible branch (`ChatTimelineWidget`,
   turn and the live slice starts no earlier than the stored one (the same rule Performance and
   Subtasks use, so the widgets agree). Durations and timestamps come from message
   `CreatedAt` and so are marked "≈" in markup, the same way Performance marks wall-clock.
-- **What it shows.** One row per turn, newest last:
+- **What it shows.** One row per turn, newest last. Only the newest eight are shown; older ones
+  sit behind "Show N earlier turns" at the top of the list:
   - **Head.** Turn index (`Turn N`), local start time (`HH:mm` with full timestamp in the
     tooltip), duration when the turn has more than one message (`≈ N s` / `min` / `h`), and
     `running` while the last turn is the live one. The opening assistant turn (before the first
@@ -483,10 +486,10 @@ One row per turn on the visible branch (`ChatTimelineWidget`,
     them. Missing slices say "No usage reported" instead of a row of zeroes.
   - **Chips.** Distinct tool call names in the order they first appeared (server prefix stripped,
     same form the Tools widget uses), then the distinct files changed by the turn, taken from
-    saved receipts.
-  - **Action.** A click on "Open in transcript" scrolls the feed to the turn's first user message
-    via `OnSelectTurn`; the opening turn has no anchor and so no button.
-  - **Footer.** "This turn is still running" while it is.
+    saved receipts. A file chip shows the file name; the full path is in its tooltip.
+  - **Action.** A click anywhere on the row scrolls the feed to the turn's first user message via
+    `OnSelectTurn`. The row's head is a button, so the keyboard reaches each turn too; the opening
+    turn has no anchor, so its head is disabled and its row does not react.
 - **Honesty about numbers.**
   - Provider-reported figures (requests, input, output) are quoted as they came in. A turn with
     no ledger slice shows nothing rather than a placeholder.

@@ -72,7 +72,7 @@
         </div>
     }
 
-    <ChatWidgetScopeSwitch @bind-Value="_scope" />
+    @if (HasAnyFigures) { <ChatWidgetScopeSwitch @bind-Value="_scope" /> }
     @if (GetFigures() is { } figures)
     {
         var totals = figures.Totals;
@@ -190,6 +190,9 @@
     private sealed record ScopeFigures(TokenUsageTotals Totals, IReadOnlyList<TokenUsageSlice> ByPurpose, int? Turns = null, bool Running = false);
 
     private ChatWidgetScope _scope = ChatWidgetScope.Chat;
+
+    // The switch only earns its place once either scope has something to show.
+    private bool HasAnyFigures => ChatUsage?.Totals.Requests > 0 || GetTurn()?.Totals.Requests > 0;
 
     private ScopeFigures? GetFigures()
     {

@@ -4,7 +4,7 @@
    edit, process_run and third-party tools do not, even when their results happen to land in the
    model's context. A path or URL is shown once with its repeat count rather than once per call. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-knowledge-widget">
-    <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" />
+    @if (_hasAnyReads) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
 
     @if (_stats.TotalReads == 0)
     {
@@ -15,10 +15,9 @@
     else
     {
         <div class="chat-usage-section">
-            <div class="chat-knowledge-total">
-                <span class="chat-knowledge-count">@_stats.TotalReads</span>
+            <div class="chat-widget-headline">
+                <span class="chat-widget-count">@_stats.TotalReads</span>
                 <span class="chat-usage-muted">@(_stats.TotalReads == 1 ? "read" : "reads")@(_stats.IsRunning ? " so far" : null)</span>
-                <span class="chat-knowledge-turns chat-usage-muted">@_stats.TurnsWithReads @(_stats.TurnsWithReads == 1 ? "turn" : "turns")</span>
             </div>
         </div>
 
@@ -61,13 +60,12 @@
             }
         </div>
 
-        <div class="chat-usage-section chat-usage-footnote">
-            @if (_scope == ChatWidgetScope.Chat && _stats.TurnsWithReads > 0)
-            {
+        @if (_scope == ChatWidgetScope.Chat && _stats.TurnsWithReads > 0)
+        {
+            <div class="chat-usage-section chat-usage-footnote">
                 <span>In @_stats.TurnsWithReads of @GetScopeTurns() @(GetScopeTurns() == 1 ? "turn" : "turns")</span>
-            }
-            @if (_stats.IsRunning) { <span>This turn is still running</span> }
-        </div>
+            </div>
+        }
     }
 </ChatWidget>
 

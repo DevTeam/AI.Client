@@ -30,7 +30,7 @@
     @* The same splash as index.html, so a browser that is already connected, or is about to be,
        never sees a page asking it anything. *@
     <main class="app-loading" aria-label="Connecting to Host" aria-live="polite">
-        <img class="app-loading-mark" src="app-icon.svg" width="48" height="48" alt="" />
+        <img class="app-loading-mark" src="app-icon.svg" width="72" height="72" alt="" />
         <div class="app-loading-copy"><strong>AI Client</strong><span>@(_stage == Stage.Redirecting ? "Opening Host confirmation" : "Connecting to Host")</span></div>
         <div class="app-loading-track" role="progressbar" aria-label="Connecting" aria-valuetext="Connecting to Host"><span></span></div>
     </main>

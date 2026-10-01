@@ -278,7 +278,7 @@
 }
 
 .app-loading { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 1rem; background: var(--color-bg-sunken); color: var(--color-text); }
-.app-loading-mark { display: block; width: 3rem; height: 3rem; }
+.app-loading-mark { display: block; width: 4.5rem; height: 4.5rem; }
 .app-loading-copy { display: grid; justify-items: center; gap: 0.35rem; }
 .app-loading-copy strong { font-size: 1.05rem; font-weight: 500; letter-spacing: 0.01em; }
 .app-loading-copy span { color: var(--color-text-subtle); font-size: 0.85rem; }
@@ -5204,15 +5204,21 @@ textarea {
 }
 
 /* SVG fences are displayed in an image context, keeping model-authored markup
-   out of the page DOM. Large drawings stay within the message width. */
-.svg-block {
+   out of the page DOM. Large drawings stay within the message width. The block is the
+   fence's own <pre> (Blazor owns it), so it overrides the code-block look and hides the source. */
+.svg-block,
+.markdown-content pre.svg-block,
+.workspace-message.user .markdown-content pre.svg-block {
     margin: 0.85rem 0;
     padding: 0.85rem;
     border: 1px solid var(--color-border-translucent);
     border-radius: calc(0.5rem * var(--corner-scale));
     background: var(--color-overlay-faint);
     text-align: center;
+    white-space: normal;
 }
+
+.svg-block > code { display: none; }
 
 .svg-block img {
     display: block;

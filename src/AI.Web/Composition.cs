@@ -6,6 +6,7 @@ namespace AI.Web;
 using Chats;
 using Composer;
 using FileSystem;
+using Git;
 using AI.Contracts.Workspace;
 using Layout;
 using Markdown;
@@ -46,6 +47,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IClientMetadata>()
             .Root<IProjectApi>()
             .Root<IFileSystemApi>()
+            .Root<IGitApi>()
+            .RootBind<IGitPickerState>().To<GitPickerState>()
             .Root<IChatHistoryApi>()
             .Root<IChatMessageDeltaMerger>()
             .Root<IMarkdownRenderer>()
@@ -104,7 +107,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Bind<INotificationService>("base").As(Lifetime.Singleton).To<NotificationService>()
             .Singleton<DesktopBadgeNotificationService, DesktopUnreadCountPublisher, ApiBaseUrl, ClientMode, HostConnection, ClientMetadata, SafeMarkdownRenderer, WorkspaceLayoutService,
                 WorkspaceStateService, ChatComposerService, RunStateService, ChatMessageDeltaMerger, ClientSettingsService, ThemeService>()
-            .Transient<ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi, ResourceApi, ReviewApi, MemoryApi, SkillApi>()
+            .Transient<ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi, GitApi, ResourceApi, ReviewApi, MemoryApi, SkillApi>()
             .Transient((IApiBaseUrl arg, IClientMode mode, IJSRuntime jsRuntime) =>
                 new HttpClient(new BridgeAuthorizationHandler(mode, jsRuntime)
                 {

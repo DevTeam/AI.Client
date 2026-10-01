@@ -170,6 +170,19 @@ public sealed class AppToolPresentationTests
             .Detail.ShouldBe("older shape");
     }
 
+    [Fact]
+    public void ShouldShowGitPickerValuesInTheAnswerSummary()
+    {
+        var result = Structured("""
+            {"answers":[{"id":"branch","selected":[],"other":null,"values":["refs/heads/main","refs/heads/topic"]}],
+             "outcome":"answered","guidance":"Proceed on these answers."}
+            """);
+        var presentation = _tools.Presentations.DescribeResult("mcp_app__ask_user",
+            """{"questions":[{"id":"branch","label":"Branches","text":"Choose branches"}]}""", result);
+        presentation.Summary.ShouldBe("Branches: refs/heads/main, refs/heads/topic");
+        presentation.Severity.ShouldBe(ToolResultSeverity.Ok);
+    }
+
     private static ToolCallResult Structured(string json, bool isError = false)
     {
         var content = JsonDocument.Parse(json).RootElement.Clone();

@@ -39,7 +39,24 @@
                     </span>
                 </label>
             }
-            @if (PathMode(question) is { } mode)
+            @if (question.PickerKind is "branch" or "commit")
+            {
+                <div class="user-prompt-paths">
+                    @if (_values[questionIndex].Count > 0)
+                    {
+                        <ul>
+                            @foreach (var value in _values[questionIndex])
+                            {
+                                <li><span title="@value">@value</span><button class="icon-action" type="button" title="Remove selection" aria-label="Remove @value" disabled="@_sending" @onclick="() => _values[questionIndex].Remove(value)"><AppIcon Name="x" /></button></li>
+                            }
+                        </ul>
+                    }
+                    <button class="secondary-action compact-action" type="button" disabled="@_sending" @onclick="() => _gitPickerQuestion = questionIndex" @onkeydown:stopPropagation="true">
+                        <AppIcon Name="@(question.PickerKind == "branch" ? "git-branch" : "git-commit")" /> Select @(question.PickerKind == "branch" ? (question.MultiSelect ? "branches" : "branch") : (question.MultiSelect ? "commits" : "commit"))…
+                    </button>
+                </div>
+            }
+            else if (PathMode(question) is { } mode)
             {
                 @if (IsMultiplePaths(question))
                 {
@@ -90,7 +107,7 @@
                 </label>
                 }
             }
-            else if (question.AllowOther)
+            @if (question.AllowOther && PathMode(question) is null)
             {
                 <label class="user-prompt-option user-prompt-other">
                     <input type="@(question.MultiSelect ? "checkbox" : "radio")"
@@ -150,6 +167,13 @@
                            Subtitle="@Prompt.Questions[picking].Label"
                            Selected="path => PickedAsync(picking, path)" Cancelled="ClosePicker" />
 }
+@if (_gitPickerQuestion is { } gitPicking)
+{
+    var question = Prompt.Questions[gitPicking];
+    <GitPickerDialog @key="gitPicking" Kind="@(question.PickerKind!)" RepositoryPath="@(question.RepositoryPath!)"
+                     Revision="@question.Revision" MultiSelect="@question.MultiSelect" Values="@_values[gitPicking]"
+                     Selected="values => GitPickedAsync(gitPicking, values)" Cancelled="() => _gitPickerQuestion = null" />
+}
 
 @code {
     [Parameter, EditorRequired] public UserPrompt Prompt { get; set; } = default!;
@@ -160,10 +184,12 @@
     private readonly Dictionary<int, HashSet<int>> _selected = [];
     private readonly Dictionary<int, string> _other = [];
     private readonly Dictionary<int, List<string>> _paths = [];
+    private readonly Dictionary<int, List<string>> _values = [];
     private bool _sending;
     private string? _error;
     private Guid _rendered;
     private int? _pickerQuestion;
+    private int? _gitPickerQuestion;
     private DirectoryPickerMode _pickerMode;
 
     /// <summary>Which picker a question wants, or null for a question that is not about a path.</summary>
@@ -186,6 +212,18 @@
     }
 
     private void ClosePicker() => _pickerQuestion = null;
+
+    private Task GitPickedAsync(int question, IReadOnlyList<string> values)
+    {
+        _gitPickerQuestion = null;
+        _values[question] = values.ToList();
+        if (!Prompt.Questions[question].MultiSelect)
+        {
+            _selected[question].Clear();
+            _other[question] = string.Empty;
+        }
+        return Task.CompletedTask;
+    }
 
     /// <summary>
     /// A picked path is an answer, not just text in a box: it goes in through the same door typing
@@ -210,7 +248,8 @@
     private bool IsReady => Prompt.Questions
         .Select((_, index) => _selected.GetValueOrDefault(index)?.Count > 0
             || !string.IsNullOrWhiteSpace(_other.GetValueOrDefault(index))
-            || _paths.GetValueOrDefault(index)?.Count > 0)
+            || _paths.GetValueOrDefault(index)?.Count > 0
+            || _values.GetValueOrDefault(index)?.Count > 0)
         .All(answered => answered);
 
     protected override void OnParametersSet()
@@ -222,16 +261,19 @@
         _selected.Clear();
         _other.Clear();
         _paths.Clear();
+        _values.Clear();
         for (var index = 0; index < Prompt.Questions.Count; index++)
         {
             _selected[index] = [];
             _other[index] = string.Empty;
             _paths[index] = [];
+            _values[index] = [];
         }
 
         _sending = false;
         _error = null;
         _pickerQuestion = null;
+        _gitPickerQuestion = null;
     }
 
     private bool IsSelected(int question, int option) => _selected[question].Contains(option);
@@ -242,6 +284,7 @@
         if (!multiSelect)
         {
             _selected[question].Clear();
+            _values[question].Clear();
             // Picking a listed option is also how you abandon the free-text one: with radios the
             // browser clears its control but not what was typed into it, and a stale "other"
             // travelling alongside a chosen option is an answer nobody gave.
@@ -253,7 +296,11 @@
 
     private void SelectOther(int question, bool multiSelect, ChangeEventArgs args)
     {
-        if (!multiSelect) _selected[question].Clear();
+        if (!multiSelect)
+        {
+            _selected[question].Clear();
+            _values[question].Clear();
+        }
         if (args.Value is false or "false") _other[question] = string.Empty;
     }
 
@@ -262,7 +309,11 @@
     {
         var text = args.Value?.ToString() ?? string.Empty;
         _other[question] = text;
-        if (text.Length > 0 && !Prompt.Questions[question].MultiSelect) _selected[question].Clear();
+        if (text.Length > 0 && !Prompt.Questions[question].MultiSelect)
+        {
+            _selected[question].Clear();
+            _values[question].Clear();
+        }
     }
 
     private Task AnswerAsync() => SendAsync(UserPromptOutcome.Answered);
@@ -288,8 +339,9 @@
                     .Select((question, index) => new UserPromptAnswer(question.Id,
                         _selected[index].Order().ToArray(),
                         string.IsNullOrWhiteSpace(_other[index]) ? null : _other[index].Trim(),
-                        _paths[index].Count == 0 ? null : _paths[index].ToArray()))
-                    .Where(answer => answer.Selected.Count > 0 || answer.Other is not null || answer.Paths is { Count: > 0 })
+                        _paths[index].Count == 0 ? null : _paths[index].ToArray(),
+                        _values[index].Count == 0 ? null : _values[index].ToArray()))
+                    .Where(answer => answer.Selected.Count > 0 || answer.Other is not null || answer.Paths is { Count: > 0 } || answer.Values is { Count: > 0 })
                     .ToArray()
                 : [];
             // Answering nothing at all is telling the assistant to decide, which is what the other

@@ -1,0 +1,140 @@
+@using AI.Web.Git
+@using AI.Contracts.Git
+@inject IGitPickerState Picker
+@inject IGitApi Api
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
+
+<div class="modal-backdrop" @onclick="CancelAsync" @onkeydown:stopPropagation="true">
+    <section class="directory-picker-modal git-picker-modal @(Kind == "commit" ? "has-revision" : null)" role="dialog" aria-modal="true" aria-labelledby="git-picker-title"
+             @ref="_dialog" @onclick:stopPropagation="true">
+        <header>
+            <div><strong id="git-picker-title">Select @(Kind == "branch" ? (MultiSelect ? "branches" : "branch") : (MultiSelect ? "commits" : "commit"))</strong><span>@RepositoryPath</span></div>
+            <button class="icon-action" type="button" title="Close" aria-label="Close Git picker" @onclick="CancelAsync"><AppIcon Name="x" /></button>
+        </header>
+        @if (Kind == "commit")
+        {
+            <div class="git-picker-controls">
+            <div class="directory-picker-toolbar">
+                <select class="directory-picker-path" aria-label="History branch" value="@_revision" @onchange="BranchChangedAsync" disabled="@Picker.IsLoading">
+                    <option value="">All branches</option>
+                    @if (!string.IsNullOrEmpty(_revision) && !_branches.Any(branch => branch.Value == _revision)) { <option value="@_revision">@_revision</option> }
+                    @foreach (var branch in _branches) { <option value="@branch.Value">@branch.Label</option> }
+                </select>
+            </div>
+            <div class="directory-picker-toolbar">
+                <input class="directory-picker-path" aria-label="Branch or revision" placeholder="All branches, or type a branch or revision"
+                       @bind="_revision" disabled="@Picker.IsLoading" />
+                <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" @onclick="ChangeRevisionAsync">Load</button>
+            </div>
+            </div>
+        }
+        <div class="directory-picker-body">
+            <input class="directory-picker-filter" type="search" aria-label="Filter Git choices" placeholder="@(Kind == "branch" ? "Filter branches" : "Filter loaded commits by hash, message or author")"
+                   @bind="Picker.Filter" @bind:event="oninput" />
+            @if (Picker.IsLoading) { <p class="empty-hint">Loading…</p> }
+            @if (Picker.ErrorMessage is { } error) { <p class="error" role="alert">@error</p> }
+            else if (!Picker.IsLoading && Picker.Items.Count == 0) { <p class="empty-hint">No matching @(Kind == "branch" ? "branches" : "commits").</p> }
+            <ul class="directory-picker-list">
+                @foreach (var item in Picker.Items)
+                {
+                    <li @key="item.Value">
+                        <label class="directory-picker-item @(Picker.Values.Contains(item.Value) ? "selected" : null)" title="@item.Value">
+                            <input type="@(MultiSelect ? "checkbox" : "radio")" name="git-picker-choice"
+                                   checked="@Picker.Values.Contains(item.Value)" @onchange="() => Picker.Toggle(item.Value)" />
+                            <AppIcon Name="@(Kind == "branch" ? "git-branch" : "git-commit")" />
+                            <span>@item.Label<small class="user-prompt-option-description">@item.Description</small></span>
+                        </label>
+                    </li>
+                }
+            </ul>
+            @if (Kind == "commit" && Picker.HasMore)
+            {
+                <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" @onclick="LoadMoreAsync">Load more commits</button>
+            }
+            @if (Kind == "branch" && Picker.HasMore) { <p class="empty-hint">Only the first 2,000 branches are shown.</p> }
+            @if (Picker.ErrorMessage is not null)
+            {
+                <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" @onclick="LoadMoreAsync">Retry</button>
+            }
+            @if (MultiSelect && Picker.Values.Count > 0)
+            {
+                @if (Picker.Values.Count == 200) { <p class="empty-hint">Selection limit reached (200).</p> }
+                <ol class="git-picker-selected" aria-label="Selection order">
+                    @foreach (var value in Picker.Values)
+                    {
+                        <li><span title="@value">@value</span><button class="icon-action" type="button" title="Remove selection" aria-label="Remove @value" @onclick="() => Picker.Toggle(value)"><AppIcon Name="x" /></button></li>
+                    }
+                </ol>
+            }
+        </div>
+        <footer class="settings-modal-actions directory-picker-actions">
+            <span class="directory-picker-selection">@Picker.Values.Count selected@(MultiSelect ? " (in selection order)" : "")</span>
+            <button type="button" disabled="@(Picker.IsLoading || Picker.Values.Count == 0)" @onclick="SelectAsync">Select</button>
+            <button class="secondary-action" type="button" @onclick="CancelAsync">Cancel</button>
+        </footer>
+    </section>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string RepositoryPath { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Kind { get; set; } = "branch";
+    [Parameter] public bool MultiSelect { get; set; }
+    [Parameter] public string? Revision { get; set; }
+    [Parameter] public IReadOnlyList<string> Values { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyList<string>> Selected { get; set; }
+    [Parameter] public EventCallback Cancelled { get; set; }
+    private readonly CancellationTokenSource _cancellation = new();
+    private string? _revision;
+    private IReadOnlyList<GitChoice> _branches = [];
+    private ElementReference _dialog;
+    private IJSObjectReference? _keys;
+    private DotNetObjectReference<GitPickerDialog>? _self;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _revision = Revision;
+        await Picker.OpenAsync(RepositoryPath, Kind, MultiSelect, Revision, Values, _cancellation.Token);
+        if (Kind == "commit")
+        {
+            try { _branches = (await Api.BranchesAsync(RepositoryPath, _cancellation.Token)).Items; }
+            catch (HttpRequestException) { /* History still works with an explicit revision. */ }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _self = DotNetObjectReference.Create(this);
+            var module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/gitPicker.js");
+            _keys = await module.InvokeAsync<IJSObjectReference>("attach", _dialog, _self);
+            await module.DisposeAsync();
+        }
+        catch (Exception error) when (error is JSException or JSDisconnectedException or TaskCanceledException) { }
+    }
+
+    private Task BranchChangedAsync(ChangeEventArgs args)
+    {
+        _revision = args.Value?.ToString();
+        return ChangeRevisionAsync();
+    }
+
+    private Task LoadMoreAsync() => Picker.LoadMoreAsync(_cancellation.Token);
+    private Task ChangeRevisionAsync() => Picker.ChangeRevisionAsync(_revision, _cancellation.Token);
+    private Task SelectAsync() => Selected.InvokeAsync(Picker.Values.ToArray());
+    private Task CancelAsync() => Cancelled.InvokeAsync();
+    [JSInvokable] public Task CloseFromKeyboardAsync() => CancelAsync();
+    public async ValueTask DisposeAsync()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+        if (_keys is not null)
+        {
+            try { await _keys.InvokeVoidAsync("dispose"); await _keys.DisposeAsync(); }
+            catch (Exception error) when (error is JSException or JSDisconnectedException or TaskCanceledException) { }
+        }
+        _self?.Dispose();
+    }
+}

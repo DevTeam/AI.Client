@@ -68,11 +68,42 @@ In `spawn_subtask` nobody is watching the run, and it has no card of its own. Th
 | Constraint | Value |
 |---|---|
 | questions per call | 1–5, `id` is unique and non-empty |
-| options per question | 0–8; zero is allowed only when `allowOther: true` |
+| options per question | 0–8; zero is allowed with `allowOther: true`, a path picker or a Git picker |
 | lengths | `text` ≤ 500, `label` ≤ 24, option ≤ 80, option description ≤ 160 |
 | `allowOther` | defaults to `true` |
 
 A violation is a tool error with text the model can correct itself by, not a schema rejection it can only repeat. Such a call does not reach the broker.
+
+### Git pickers
+
+Set `pickerKind` to `branch` or `commit`, and `repositoryPath` to an absolute directory in the
+repository. `multiSelect` controls single or multiple selection for either kind. Leave `pathKind`
+unset; `options: []` and `allowOther: false` are supported. Optional `revision` starts commit
+history at a particular branch or revision. For example:
+
+```json
+{"questions":[{"id":"commits","label":"Commits","text":"Which commits should be applied?",
+  "pickerKind":"commit","repositoryPath":"C:\\Projects\\Example","revision":"main",
+  "multiSelect":true,"allowOther":false,"options":[]}]}
+```
+
+The card opens a dialog in the same style as the file/directory picker. Branches include local
+and remote-tracking refs (excluding symbolic remote HEAD). Commits show short hashes, subjects,
+authors and dates, with a branch selector and 100-row history pages. Filtering searches loaded
+rows; loading another page keeps the selection. Up to 200 values can be selected. Multiple
+selections retain click order, shown in the dialog, which matters for cherry-pick and revert.
+Escape or Cancel closes the picker without changing the answer; Select applies it to the card.
+
+Both the UI response and the tool result carry `values`: full, case-sensitive ref names such as
+`refs/heads/main`, or full commit object ids, in selection order. Display labels are never used
+as Git arguments. The model must still validate the selected refs/objects before mutation,
+because repository state can change while a question is open. Old clients/questions remain
+compatible: these fields are optional, and `selected`, `other` and `paths` keep their meanings.
+
+Read-only `/api/git/branches` and `/api/git/commits` use the host's installed Git with argument
+arrays, without a shell, fetch or working-tree changes. Like filesystem browsing, they are
+available only with `FileSystem:BrowseEnabled`. Git errors appear in the dialog with Retry;
+branch lists are capped at 2,000 and commit pagination at an offset of 100,000.
 
 Result:
 

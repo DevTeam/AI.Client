@@ -92,6 +92,10 @@ public sealed class AskUserPresentationAdapter : BuiltInToolPresentationAdapter
                 .Select(item => item.GetString()!)
                 .Where(item => item.Length > 0));
         if (Text(answer, "other") is { Length: > 0 } other) parts.Add(other);
+        foreach (var property in new[] { "paths", "values" })
+            if (answer.TryGetProperty(property, out var values) && values.ValueKind == JsonValueKind.Array)
+                parts.AddRange(values.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
+                    .Select(item => item.GetString()!).Where(item => item.Length > 0));
         return string.Join(", ", parts);
     }
 

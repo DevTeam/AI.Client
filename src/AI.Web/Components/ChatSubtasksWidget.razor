@@ -1,0 +1,101 @@
+@inject IChatSubtaskStatisticsCalculator Calculator
+
+@* What the chat spent on delegated work. The ledger keeps a Subtask slice on the chat and on
+   each turn, and that is the only honest source: the transcript does not record how many
+   distinct subtasks ran, how each one finished or how long it took, so the widget does not
+   invent those figures. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-subtasks-widget">
+    <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" />
+
+    @if (!_stats.HasData)
+    {
+        <p class="chat-usage-empty">Subtask usage appears here once the chat delegates work to another model.</p>
+    }
+    else
+    {
+        <div class="chat-usage-section chat-subtasks-headline">
+            <div class="chat-subtasks-time">
+                <span class="chat-subtasks-figure" title="How many requests the model ran on behalf of a delegated subtask">@_stats.Requests</span>
+                <span class="chat-usage-muted">@(_stats.Requests == 1 ? "subtask request" : "subtask requests")@(_stats.IsRunning ? " so far" : null)</span>
+            </div>
+            @if (_stats.Share is { } share)
+            {
+                <div class="chat-subtasks-share" title="Part of this scope's tokens that went to subtask requests">
+                    <span class="chat-subtasks-share-figure">@FormatPercent(share)</span><span class="chat-usage-muted">of scope</span>
+                </div>
+            }
+        </div>
+
+        <div class="chat-usage-section">
+            <div class="chat-usage-row">
+                <span>Input</span>
+                <span>@Usage.FormatTokens(_stats.InputTokens)</span>
+            </div>
+            <div class="chat-usage-row">
+                <span>Output</span>
+                <span>@Usage.FormatTokens(_stats.OutputTokens)</span>
+            </div>
+            @if (_stats.ReasoningTokens > 0)
+            {
+                <div class="chat-usage-row chat-usage-muted" title="Reasoning tokens are part of the subtask output above">
+                    <span>Reasoning</span>
+                    <span>@Usage.FormatTokens(_stats.ReasoningTokens)</span>
+                </div>
+            }
+        </div>
+
+        <div class="chat-usage-section chat-usage-footnote">
+            <span>In @_stats.TurnsWithSubtasks of @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns") delegated work</span>
+            @if (_stats.IsRunning) { <span>This turn is still running</span> }
+        </div>
+    }
+</ChatWidget>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>Whole-chat usage; null when nothing has been measured yet.</summary>
+    [Parameter]
+    public ChatTokenUsage? ChatUsage { get; set; }
+
+    /// <summary>The turn the run is on, as the run snapshot reports it while it happens.</summary>
+    [Parameter]
+    public TurnTokenUsage? LiveTurn { get; set; }
+
+    /// <summary>The visible branch, root to leaf.</summary>
+    [Parameter]
+    public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+
+    [Parameter]
+    public bool IsGenerating { get; set; }
+
+    [Inject]
+    private IUsagePresentation Usage { get; set; } = null!;
+
+    private ChatWidgetScope _scope = ChatWidgetScope.Chat;
+    private SubtaskStatistics _stats = SubtaskStatistics.Empty;
+
+    protected override void OnParametersSet() => Refresh();
+
+    private void SetScope(ChatWidgetScope scope)
+    {
+        _scope = scope;
+        Refresh();
+    }
+
+    private void Refresh() =>
+        _stats = Calculator.Calculate(ChatUsage, LiveTurn, Messages, IsGenerating, _scope);
+
+    private string? GetSummary()
+    {
+        if (!_stats.HasData) return null;
+        var parts = new List<string>();
+        parts.Add($"{_stats.Requests} {(_stats.Requests == 1 ? "request" : "requests")}");
+        if (_stats.Share is { } share) parts.Add(FormatPercent(share));
+        return string.Join(" · ", parts);
+    }
+
+    private static string FormatPercent(double share) =>
+        $"{(int)Math.Round(Math.Clamp(share, 0d, 1d) * 100)}%";
+}

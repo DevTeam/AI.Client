@@ -12,7 +12,7 @@
 
     // The browser chrome colour cannot come from CSS: this script runs before the stylesheet,
     // so these mirror --color-bg of each theme in app.css.
-    const chromeColors = { dark: "#171717", light: "#ffffff", darkblue: "#101620" };
+    const chromeColors = { dark: "#171717", light: "#ffffff", darkblue: "#101620", gray: "#212121" };
 
     function render() {
         const root = document.documentElement;
@@ -38,7 +38,7 @@
     // Must match ThemePreference, lowercased by ThemeService. The stored JSON spells the value in
     // camelCase ("darkBlue"), so the value is folded before the lookup. "system" follows the OS;
     // anything else (an older or newer build's value) leaves that to the OS as well.
-    const preferences = ["system", "light", "dark", "darkblue"];
+    const preferences = ["system", "light", "dark", "darkblue", "gray"];
 
     function apply(value, notifyHost = true) {
         const normalized = typeof value === "string" ? value.toLowerCase() : "";

@@ -241,6 +241,83 @@
     --scrim-scale: 1;
 }
 
+/* Gray (Settings → Theme). Like dark blue above but with the blue tint pulled out: the surfaces
+   step up through neutral greys that stay clearly visible, so the workspace reads as dark grey
+   rather than almost-black or cool blue. The accent and status tokens are copied unchanged on
+   purpose: they belong to the accent the user picked, and switching between dark, dark blue and
+   gray must not recolour them. */
+:root[data-theme="gray"] {
+    color-scheme: dark;
+    --color-bg-sunken: #1a1a1a;
+    --color-bg-inset: #1e1e1e;
+    --color-bg: #212121;
+    --color-surface: #262626;
+    --color-surface-raised: #2c2c2c;
+    --color-input-bg: #1c1c1c;
+    --color-fill: #2e2e2e;
+    --color-fill-hover: #343434;
+    --color-fill-active: #3b3b3b;
+    --color-fill-strong: #434343;
+    --color-fill-stronger: #4d4d4d;
+    --color-overlay-faint: rgb(255 255 255 / 2%);
+    --color-overlay-hover: rgb(255 255 255 / 6%);
+    --color-overlay-active: rgb(255 255 255 / 9%);
+    --color-overlay-sunken: rgb(0 0 0 / 28%);
+    --color-inverse: #f2f2f2;
+    --color-inverse-hover: #ffffff;
+    --color-inverse-active: #d4d4d4;
+    --color-on-inverse: #212121;
+    --color-text-strong: #ffffff;
+    --color-text: #ececec;
+    --color-text-secondary: #d6d6d6;
+    --color-text-muted: #aaaaaa;
+    --color-text-subtle: #959595;
+    --color-text-faint: #858585;
+    --color-text-disabled: #707070;
+    --color-border-subtle: #2e2e2e;
+    --color-border: #3c3c3c;
+    --color-border-strong: #4c4c4c;
+    --color-border-stronger: #5f5f5f;
+    --color-border-translucent: rgb(255 255 255 / 8%);
+    --color-accent: #7eb4ed;
+    --color-accent-strong: #4f91dc;
+    --color-accent-text: #bcd7f5;
+    --color-accent-bg: #2c323a;
+    --color-accent-bg-hover: #36404c;
+    --color-accent-bg-active: #3e4a58;
+    --color-accent-fill: #345f91;
+    --color-on-accent: #ffffff;
+    --color-danger: #e0665f;
+    --color-danger-text: #ffabab;
+    --color-danger-text-strong: #ff8a8a;
+    --color-danger-bg: #3b292a;
+    --color-danger-bg-hover: #4d3031;
+    --color-danger-bg-active: #603838;
+    --color-danger-border: #704346;
+    --color-danger-border-strong: #8c5054;
+    --color-warning: #d9a441;
+    --color-warning-text: #e5c47a;
+    --color-success: #5dc97c;
+    --color-success-text: #a6dcb1;
+    --color-success-border: #39744b;
+    --color-unread: var(--color-accent-strong);
+    --color-user-bubble: color-mix(in srgb, var(--color-accent-strong) 16%, var(--color-bg));
+    --color-user-bubble-border: color-mix(in srgb, var(--color-accent-strong) 30%, transparent);
+    --color-user-bubble-inset: rgb(0 0 0 / 28%);
+    --color-diff-added-bg: color-mix(in srgb, var(--color-success) 10%, transparent);
+    --color-diff-removed-bg: color-mix(in srgb, var(--color-danger) 10%, transparent);
+    --color-highlight-bg: var(--color-accent-bg-active);
+    --color-highlight-fg: var(--color-accent-text);
+    --color-context-instructions: color-mix(in srgb, var(--accent-swatch-purple) 80%, #ffffff);
+    --color-context-tools: color-mix(in srgb, var(--accent-swatch-teal) 80%, #ffffff);
+    --color-context-history: color-mix(in srgb, var(--accent-swatch-green) 80%, #ffffff);
+    --color-context-draft: color-mix(in srgb, var(--accent-swatch-blue) 80%, #ffffff);
+    --color-context-reserve: color-mix(in srgb, var(--accent-swatch-amber) 80%, #ffffff);
+    --color-context-overhead: color-mix(in srgb, var(--accent-swatch-pink) 80%, #ffffff);
+    --shadow-scale: 1;
+    --scrim-scale: 1;
+}
+
 :root[data-theme="light"] {
     color-scheme: light;
     --color-bg-sunken: #f3f3f3;

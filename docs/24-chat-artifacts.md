@@ -46,6 +46,16 @@ The Host exposes list/get/create/update review routes under `/api/projects/{proj
 
 Message review is a second review resource type. It does not appear in chat or branch review lists, nor as a visible resource chip on a sent message. Selecting text in a saved user or assistant message opens an inline comment editor. The resource records the source message ID, visible-text offsets, the selected quote, and the comment. Clicking highlighted text or opening the message's comment list allows editing and deletion. Commented text uses the application's standard `--accent-color`. Highlighting checks the saved quote against the current rendered text before drawing, so a changed rendering does not silently mark a different fragment. The user can manually attach the review to the composer from its inline comment list. The list shows each comment as the quoted fragment over its text, ordered as in the message; edit and delete appear on the row under the pointer, and that comment's mark in the message is emphasized.
 
+The editor of a new comment does not take the focus, so the selection stays and can still be copied: copying closes the editor, typing a character moves into it with that character, Esc closes it, and a click anywhere else saves a non-empty comment and closes it. A right click keeps it open for the copy menu.
+
+## Suggested comments
+
+Both comment editors, on message text and on diff lines, offer a draft of the comment the way the composer offers a [suggested reply](15-composer-rules.md#suggested-reply): grey italic text in the empty box with a `Tab` key cap. `Tab` or `→` (or a click on the key cap) takes it as typed text, typing replaces it, the first `Esc` hides it and the next closes the editor. The draft is never saved by itself: closing the editor with only the draft on screen saves nothing.
+
+An empty box that has the focus asks for a draft by itself after a short wait, so a box focused by typing into it asks for none, and a message editor opened only to copy asks for none either. `Ctrl+Space` in the empty box, or the lightbulb button beside Save, asks for one now; the placeholder of the empty box names `Ctrl+Space` and the button's tooltip names it again. **Settings → Chat → Suggest a comment when writing a review comment** switches the automatic draft off; the explicit request still works.
+
+`POST /api/projects/{p}/chats/{c}/reviews/comment-suggestion` with `ReviewCommentSuggestionRequest` (the quote, and the source message ID or the file path and its diff; `Automatic` for the unasked draft) runs the `chat-comment-suggest` executor and answers `ReviewCommentSuggestion` or 204. Nothing is kept: the fragment exists only in the open editor.
+
 ## Limits and follow-up
 
 - Review comments are mutable in place by product choice. Existing sent messages keep their reference, and the next model run sees the latest state. UI should make this shared behavior clear when a review appears in several messages.

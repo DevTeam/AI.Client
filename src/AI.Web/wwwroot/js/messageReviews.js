@@ -244,6 +244,20 @@
             event.preventDefault();
     }, true);
 
+    // Tab or → in an empty comment box takes the Host's draft shown in it (ReviewCommentInput) as
+    // typed text. Decided here because only a synchronous handler can keep Tab from moving focus.
+    document.addEventListener("keydown", event => {
+        const textarea = event.target;
+        if (!(textarea instanceof HTMLTextAreaElement) || !textarea.dataset.suggestion || textarea.value.length > 0) return;
+        if (event.key !== "Tab" && event.key !== "ArrowRight") return;
+        if (event.ctrlKey || event.altKey || event.shiftKey || event.metaKey || event.isComposing) return;
+        event.preventDefault();
+        const text = textarea.dataset.suggestion;
+        textarea.value = text;
+        textarea.setSelectionRange(text.length, text.length);
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    }, true);
+
     // The open comment editor. A new comment's editor does not take focus, which would drop the
     // selection the user may only have made to copy: copying closes it, typing moves into it, and
     // a click anywhere else saves what was typed and closes it.

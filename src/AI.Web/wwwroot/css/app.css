@@ -5591,6 +5591,14 @@ textarea {
 .review-comment-editor textarea { display: block; box-sizing: border-box; width: 100%; min-height: 2.5rem; margin-bottom: .2rem; font: inherit; resize: vertical; }
 .review-comment-icon-action, .message-review-editor-actions .review-comment-icon-action { display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; padding: 0; border: 0; border-radius: calc(.3rem * var(--corner-scale)); background: transparent; color: var(--color-text-muted); cursor: pointer; }
 .review-comment-icon-action .app-icon { width: .85rem; height: .85rem; }
+/* The Host's draft of a comment is the empty box's placeholder (ReviewCommentInput), grey italic
+   like the composer's suggested reply; the box grows to show all of it, and its Tab key cap sits
+   in the corner. */
+.review-comment-input { position: relative; }
+.review-comment-input.has-suggestion textarea { field-sizing: content; max-height: 12rem; padding-right: 2.6rem; }
+.review-comment-input.has-suggestion textarea::placeholder { color: var(--color-text-faint); font-style: italic; opacity: 1; }
+.review-comment-suggestion-accept { position: absolute; right: .3rem; bottom: .55rem; padding: 0 .35rem; border: 1px solid var(--color-border); border-radius: calc(.3rem * var(--corner-scale)); background: var(--color-surface-raised); color: var(--color-text-muted); font: inherit; font-size: .68rem; line-height: 1.5; cursor: pointer; }
+.review-comment-suggestion-accept:hover { color: var(--color-text-strong); border-color: var(--color-border-strong); }
 .review-comment-icon-action:hover:not(:disabled), .review-comment-icon-action:focus-visible { background: var(--color-fill-strong); color: var(--color-text-strong); }
 .review-comment-icon-action.is-save { color: var(--color-accent); }
 .review-comment-icon-action.is-danger:hover:not(:disabled), .review-comment-icon-action.is-danger:focus-visible { background: var(--color-danger-bg-hover); color: var(--color-danger-text); }

@@ -114,15 +114,22 @@ public sealed class ChatExecutionTests
         first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
 
-        var published = await fixture.WaitAsync(run => run.MessageDelta?.Appends.Count >= 2);
+        var published = await fixture.WaitAsync(run => run.MessageDelta?.Appends.Any(append => append.Message.ToolCallId == "call-1") == true);
         var appends = published.MessageDelta!.Appends;
+        // The question leads the tail as well: without it the open chat had to load the transcript.
+        appends[0].Message.Content.ShouldBe("Run command");
+        appends.Zip(appends.Skip(1)).ShouldAllBe(pair => pair.First.Revision == pair.Second.BaseRevision);
         appends[^2].Revision.ShouldBe(appends[^1].BaseRevision);
         appends[^2].Message.ToolCalls.ShouldHaveSingleItem().Name.ShouldBe("mcp_built_in__process_run");
         appends[^1].Message.ToolCallId.ShouldBe("call-1");
         published.ChatRevision.ShouldBe(appends[^1].Revision);
 
         (await fixture.NextCallAsync()).Answer.SetResult("Done");
-        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        // So does the answer, which ends the turn.
+        var last = completed.MessageDelta!.Appends[^1];
+        last.Message.Content.ShouldBe("Done");
+        completed.ChatRevision.ShouldBe(last.Revision);
     }
 
     [Fact]

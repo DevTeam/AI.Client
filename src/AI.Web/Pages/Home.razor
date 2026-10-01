@@ -1914,19 +1914,52 @@
         await GoBackAsync();
     }
 
+    private static readonly JsonSerializerOptions RunSnapshotJsonOptions = new(JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// The run frames that arrived since the last call, oldest first. Each is a change against the
+    /// one before it, so all are applied; the page is drawn once for the lot, and not at all when
+    /// they only carried text for chats that are not on screen — those show nothing of it.
+    /// </summary>
     [JSInvokable]
-    public async Task OnRunSnapshot(string json)
+    public async Task OnRunSnapshots(string[] frames)
     {
-        var update = JsonSerializer.Deserialize<ChatRunSnapshotUpdate>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        if (update is null) return;
+        var chatOrderChanged = false;
+        var visible = false;
+        foreach (var json in frames)
+        {
+            var update = JsonSerializer.Deserialize<ChatRunSnapshotUpdate>(json, RunSnapshotJsonOptions);
+            if (update is null) continue;
+            visible |= update.IsFull || update.Runs.Count > 0 || update.Removed.Count > 0
+                || update.StreamingAppends.Any(append => append.ChatId == _selectedChat?.Id)
+                || update.DraftAppends?.Any(append => append.ChatId == _selectedChat?.Id) == true;
+            chatOrderChanged |= await ApplyRunSnapshotAsync(update);
+        }
+        if (chatOrderChanged) await RefreshChatOrderAsync();
+        if (visible || chatOrderChanged) await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Applies one run frame; returns whether a chat moved in the sidebar.</summary>
+    private async Task<bool> ApplyRunSnapshotAsync(ChatRunSnapshotUpdate update)
+    {
         var snapshots = update.Runs;
+        if (update.KeptWorkspaceChanges is { Count: > 0 } kept)
+        {
+            var keys = kept.Select(key => new RunKey(key.ChatId, key.BranchId)).ToHashSet();
+            snapshots = snapshots.Select(run => keys.Contains(new RunKey(run.ChatId, run.BranchId))
+                ? run with { WorkspaceChanges = RunState.Runs.GetValueOrDefault(new RunKey(run.ChatId, run.BranchId))?.WorkspaceChanges }
+                : run).ToArray();
+        }
 
         if (update.IsFull) RunState.RemoveMissing(snapshots);
         else RunState.Remove(update.Removed);
         RunState.AppendStreaming(update.StreamingAppends);
+        RunState.AppendDraft(update.DraftAppends ?? []);
 
-        var updatedSnapshots = snapshots.Concat(update.StreamingAppends.Select(append =>
-            RunState.Runs.GetValueOrDefault(new RunKey(append.ChatId, append.BranchId))).OfType<ChatRunSnapshot>());
+        var appendedKeys = update.StreamingAppends.Select(append => new RunKey(append.ChatId, append.BranchId))
+            .Concat((update.DraftAppends ?? []).Select(append => new RunKey(append.ChatId, append.BranchId)))
+            .Distinct();
+        var updatedSnapshots = snapshots.Concat(appendedKeys.Select(key => RunState.Runs.GetValueOrDefault(key)).OfType<ChatRunSnapshot>());
         var chatOrderChanged = false;
         foreach (var snapshot in updatedSnapshots)
         {
@@ -1984,8 +2017,7 @@
                 _ = RefreshChatUsageAfterSummaryAsync(snapshot.ChatId);
             _summariesByBranch[snapshot.BranchId] = summaries;
         }
-        if (chatOrderChanged) await RefreshChatOrderAsync();
-        await InvokeAsync(StateHasChanged);
+        return chatOrderChanged;
     }
 
     /// <summary>
@@ -3793,7 +3825,12 @@
         _chats.AddRange(chats);
         await CheckArchiveSuggestionsAsync();
 
-        if (refreshSelected && _selectedChat is { } selected)
+        // Every save moves the chat's revision, and a run's messages reach the open chat with its
+        // snapshots: when the list says the copy here is current, the reload brought the same chat
+        // with every message as a new object, and the transcript redrew all of its turns for it on
+        // each step of a run.
+        if (refreshSelected && _selectedChat is { } selected
+            && chats.SingleOrDefault(item => item.Id == selected.Id)?.Revision != selected.Revision)
         {
             var refreshed = await ChatHistoryApi.GetTranscriptAsync(projectId, selected.Id, CancellationToken.None);
             if (_selectedChat?.Id == selected.Id && refreshed is not null && refreshed.Revision >= _selectedChat.Revision)

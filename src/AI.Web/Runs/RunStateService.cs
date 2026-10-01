@@ -44,6 +44,19 @@ public sealed class RunStateService : IRunStateService
         }
     }
 
+    public void AppendDraft(IReadOnlyList<ChatRunDraftAppend> appends)
+    {
+        foreach (var append in appends)
+        {
+            var key = new RunKey(append.ChatId, append.BranchId);
+            // Anything else means a publication in between was not seen; the next whole snapshot
+            // brings the draft as it is.
+            if (!_runs.TryGetValue(key, out var current) || append.Revision != current.Revision
+                || (current.DraftContent?.Length ?? 0) != append.BaseLength) continue;
+            _runs[key] = current with { DraftContent = (current.DraftContent ?? string.Empty) + append.Content };
+        }
+    }
+
     public void Store(ChatRunSnapshot run)
     {
         var key = new RunKey(run.ChatId, run.BranchId);

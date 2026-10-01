@@ -1,0 +1,40 @@
+@* One turn of the transcript. The feed's own boundary has to let through every tick of the running
+   turn — its timer, its growing draft, its tools reporting progress — and without this one each of
+   them rebuilt every turn above it as well, several times a second, on the thread that also
+   handles the composer's keystrokes. A finished turn only changes when its messages do or when
+   something the whole transcript shows moves. *@
+@ChildContent
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public TranscriptTurnStamp Stamp { get; set; }
+    /// <summary>
+    /// The turn's messages as the feed shows them. Compared by reference: an appended message
+    /// leaves the earlier ones as they were, and a reloaded transcript replaces all of them.
+    /// </summary>
+    [Parameter] public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+    private TranscriptTurnStamp _renderedStamp;
+    private IReadOnlyList<ChatMessageView> _renderedMessages = [];
+
+    protected override void OnInitialized()
+    {
+        _renderedStamp = Stamp;
+        _renderedMessages = Messages;
+    }
+
+    protected override bool ShouldRender()
+    {
+        var changed = _renderedStamp != Stamp || !SameMessages(_renderedMessages, Messages);
+        _renderedStamp = Stamp;
+        _renderedMessages = Messages;
+        return changed;
+    }
+
+    private static bool SameMessages(IReadOnlyList<ChatMessageView> left, IReadOnlyList<ChatMessageView> right)
+    {
+        if (left.Count != right.Count) return false;
+        for (var index = 0; index < left.Count; index++)
+            if (!ReferenceEquals(left[index], right[index])) return false;
+        return true;
+    }
+}

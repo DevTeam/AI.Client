@@ -16,6 +16,9 @@ public interface IRunStateService
 
     void AppendStreaming(IReadOnlyList<ChatRunStreamingAppend> appends);
 
+    /// <summary>Extends the draft of each run whose draft is the one the append was made from.</summary>
+    void AppendDraft(IReadOnlyList<ChatRunDraftAppend> appends);
+
     void Store(ChatRunSnapshot run);
 
     /// <summary>Elapsed time spent with the model itself generating, excluding tool and approval waits.</summary>

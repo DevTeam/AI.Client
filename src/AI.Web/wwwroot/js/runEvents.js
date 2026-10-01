@@ -6,17 +6,21 @@ export function subscribe(baseUrl, dotNetReference) {
     const trimmed = (baseUrl || "").replace(/\/+$/, "");
     const url = trimmed + "/api/runs/events";
     const controller = new AbortController();
-    let latest = null;
+    // Every frame after the first is a change against the one before it, so none may be skipped.
+    // Frames that arrive while the page is still applying earlier ones go over together, and the
+    // page draws once for all of them: drawing each on its own kept the page busy for as long as
+    // a run streamed, and typing in the composer waited behind it.
+    let pending = [];
     let dispatching = false;
     let disposed = false;
     const dispatch = async () => {
         if (dispatching || disposed) return;
         dispatching = true;
         try {
-            while (latest !== null && !disposed) {
-                const snapshot = latest;
-                latest = null;
-                await dotNetReference.invokeMethodAsync("OnRunSnapshot", snapshot);
+            while (pending.length > 0 && !disposed) {
+                const frames = pending;
+                pending = [];
+                await dotNetReference.invokeMethodAsync("OnRunSnapshots", frames);
             }
         } catch (error) {
             if (!disposed) console.error("Run snapshot could not be applied", error);
@@ -24,7 +28,7 @@ export function subscribe(baseUrl, dotNetReference) {
             dispatching = false;
         }
     };
-    const onSnapshot = data => { latest = data; void dispatch(); };
+    const onSnapshot = data => { pending.push(data); void dispatch(); };
     // The Host says only that something changed, never what. One pending reload is enough however
     // many signals arrive while it runs, so they collapse into a flag rather than a queue.
     let reloadPending = false;
@@ -103,7 +107,7 @@ export function subscribe(baseUrl, dotNetReference) {
         }
     };
     void readEvents();
-    return { dispose: () => { disposed = true; latest = null; reloadPending = false; controller.abort(); } };
+    return { dispose: () => { disposed = true; pending = []; reloadPending = false; controller.abort(); } };
 }
 export function isFocused() { return document.visibilityState === "visible" && document.hasFocus(); }
 

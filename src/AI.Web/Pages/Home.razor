@@ -642,6 +642,11 @@
                                             Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
                                             IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)" />
                         break;
+                    case ChatWidgetCatalog.ChatKnowledge:
+                        <ChatKnowledgeWidget Widget="@widget"
+                                             Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
+                                             Run="@widgetRun" />
+                        break;
                 }
             </WidgetTemplate>
         </ChatWidgetRail>

@@ -6670,3 +6670,25 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .chat-subtasks-figure { font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .chat-subtasks-share { display: inline-flex; align-items: baseline; gap: .25rem; }
 .chat-subtasks-share-figure { font-size: .9rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* Knowledge widget: what the assistant read on the visible branch. Reuses chat-usage-*
+   building blocks (rows, footnote, empty state, more-link); the only new piece is the per-tool
+   list of recent sources with a repeat count. The headline row mirrors chat-files so a turn that
+   only reads a couple of files still shows the same shape. */
+.chat-knowledge-total { display: flex; align-items: baseline; gap: .55rem; flex-wrap: wrap; }
+.chat-knowledge-count { font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.chat-knowledge-turns { margin-left: auto; }
+.chat-knowledge-list { display: grid; gap: .45rem; margin: 0; padding: 0; list-style: none; }
+.chat-knowledge-list > li { display: grid; grid-template-columns: minmax(0,1fr) auto 2.5rem; column-gap: .6rem; row-gap: .25rem; align-items: baseline; padding: .15rem 0; border-top: 1px solid var(--color-border-subtle); }
+.chat-knowledge-list > li:first-child { border-top: 0; }
+.chat-knowledge-name { min-width: 0; }
+.chat-knowledge-name small { font-weight: 400; margin-left: .3rem; }
+.chat-knowledge-figure { font-variant-numeric: tabular-nums; }
+.chat-knowledge-track { display: flex; grid-column: 1 / -1; height: 4px; background: var(--color-fill); border-radius: calc(.2rem * var(--corner-scale)); overflow: hidden; }
+.chat-knowledge-track > span { background: var(--color-accent-text); min-width: 2px; }
+.chat-knowledge-track > i { display: block; }
+.chat-knowledge-sources { grid-column: 1 / -1; display: grid; gap: .15rem; margin: .15rem 0 0; padding: 0; list-style: none; font-size: .76rem; color: var(--color-text-secondary); }
+.chat-knowledge-source { display: flex; gap: .35rem; min-width: 0; align-items: baseline; }
+.chat-knowledge-source-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.chat-knowledge-source-count { font-variant-numeric: tabular-nums; }
+.chat-knowledge-more { align-self: flex-start; }

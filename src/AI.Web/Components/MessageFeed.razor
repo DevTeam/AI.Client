@@ -18,6 +18,7 @@
 @implements IAsyncDisposable
 @using AI.Contracts.Tools
 @using AI.Contracts.Resources
+@using AI.Contracts.Workspace
 
 <div class="messages-area">
 @if (SelectedChat is not null)
@@ -138,6 +139,19 @@
                     {
                         <span class="turn-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-right" /></span>
                     }
+                    @* The running turn's file changes, in the one line of the turn that never moves.
+                       The full card is docked above the composer; under the live text it was pushed
+                       up and down by every note that replaced the last. *@
+                    @if (IsRunningTurn(summary) && GetLiveChanges() is { } summaryChanges)
+                    {
+                        <span class="turn-summary-changes" title="Files changed so far · the list is above the composer"
+                              aria-label="@summaryChanges.Files.Count @(summaryChanges.Files.Count == 1 ? "file" : "files") changed, @summaryChanges.Additions additions, @summaryChanges.Deletions deletions">
+                            <AppIcon Name="diff" />
+                            <span class="turn-summary-changes-files">@summaryChanges.Files.Count @(summaryChanges.Files.Count == 1 ? "file" : "files")</span>
+                            <span class="workspace-added">+@summaryChanges.Additions</span>
+                            <span class="workspace-removed">−@summaryChanges.Deletions</span>
+                        </span>
+                    }
                 </text>;
                 @if (canExpand)
                 {
@@ -208,11 +222,17 @@
             {
                 @* What the turn is doing with its hands while the text above waits: a preamble ending
                    in "…and run:" is followed by the call it announces, not by a blank. Static on
-                   purpose — with animations off it still reads as work in progress. *@
+                   purpose — with animations off it still reads as work in progress.
+                   The line keeps its place while the model writes, empty: dropping it and bringing
+                   it back with the next call jolted everything below by a line each time. One
+                   element for both states — two keyed branches made Blazor patch one into the
+                   other and lose its class. *@
                 var activityKey = (entry.TurnId, "turn-activity");
-                <div @key="activityKey" class="turn-activity" role="status">
+                var idle = ReferenceEquals(activity, TurnActivity.None);
+                <div @key="activityKey" class="turn-activity @(idle ? "is-idle" : null)"
+                     role="@(idle ? null : "status")" aria-hidden="@(idle ? "true" : null)">
                     <span class="turn-activity-glyph" aria-hidden="true">›</span>
-                    <span class="turn-activity-title">@activity.Title</span>
+                    <span class="turn-activity-title">@(idle ? " " : activity.Title)</span>
                     @if (activity.Detail is { Length: > 0 } activityDetail)
                     {
                         <span class="turn-activity-detail" title="@activityDetail">@activityDetail</span>
@@ -386,15 +406,12 @@
             }
         }
         </TranscriptRenderBoundary>
-        @if (SelectedRun is { Status: not ChatRunStatus.Completed, WorkspaceChanges: { IsEmpty: false } liveChanges }
-            && !Feed.LastTurnHasWorkspaceReceipt(GetVisibleBranchMessages()))
-        {
-            <WorkspaceChanges Changes="@liveChanges" Live="true" />
-        }
+        @* The changes of a run not yet saved as a receipt are docked above the composer by the
+           page, not drawn here: at the end of the feed they sat under the live text and jumped
+           with it. *@
         @* Why the turn stopped, and what can be done about it. Only for a turn that is NOT
            running: while it generates, the composer already says so and already offers Stop, and
-           a second copy of both here was pure duplication. Placed after the file-change summary
-           so the receipt for what the run did reads before the question of what to do next. *@
+           a second copy of both here was pure duplication. *@
         @if (GetTurnState() is { } turn)
         {
             <section class="turn-status turn-status-@turn.Kind" role="status">
@@ -1250,7 +1267,18 @@
         bool LivePreamble = false,
         TurnActivity? Activity = null);
 
-    private sealed record TurnActivity(string Title, string? Detail);
+    private sealed record TurnActivity(string Title, string? Detail)
+    {
+        /// <summary>Nothing to report: the line stays, empty, so it does not come and go.</summary>
+        public static TurnActivity None { get; } = new(string.Empty, null);
+    }
+
+    /// <summary>The changes of the run in progress, until its receipt lands in the transcript.</summary>
+    private WorkspaceChangeSet? GetLiveChanges() =>
+        SelectedRun is { Status: not ChatRunStatus.Completed, WorkspaceChanges: { IsEmpty: false } changes }
+        && !Feed.LastTurnHasWorkspaceReceipt(GetVisibleBranchMessages())
+            ? changes
+            : null;
 
     private readonly HashSet<Guid> _expandedTurns = [];
     private readonly Dictionary<Guid, int> _expandedTurnItemLimits = [];
@@ -1324,8 +1352,7 @@
                         if (_liveFrame.Text is { } liveText)
                             entries.Add(new RenderedFeedEntry(LiveText: liveText, LiveVersion: _liveFrame.Version, TurnId: turn.Id,
                                 LivePreamble: IsPreamble(turn, liveText)));
-                        if (GetTurnActivity() is { } activity)
-                            entries.Add(new RenderedFeedEntry(Activity: activity, TurnId: turn.Id));
+                        entries.Add(new RenderedFeedEntry(Activity: GetTurnActivity() ?? TurnActivity.None, TurnId: turn.Id));
                     }
                     // Expanded, the notes are already there as themselves; only the step still in
                     // flight has nowhere else to appear.
@@ -1443,7 +1470,9 @@
         SelectedRun?.Wait is null,
         string.IsNullOrEmpty(SelectedRun?.StreamingContent),
         _liveTextTick,
-        _liveTextHeld);
+        _liveTextHeld,
+        // The changes chip in the running turn's summary line.
+        HashCode.Combine(SelectedRun?.WorkspaceChanges?.Files.Count, SelectedRun?.WorkspaceChanges?.Additions, SelectedRun?.WorkspaceChanges?.Deletions));
 
     private void SetLiveTextHeld(bool held)
     {

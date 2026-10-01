@@ -137,12 +137,16 @@ public class ChatTimelineStatisticsCalculatorTests
     [Fact]
     public void ShouldKeepStoredTurnWhenLiveIsNotAhead()
     {
-        var stored = TurnUsage(Totals(Requests: 2, InputTokens: 200, OutputTokens: 100),
+        // Live could replace the last stored slice, but starts earlier — the same rule the
+        // Subtasks widget uses to decide between stored and live.
+        var storedFirst = TurnUsage(Totals(Requests: 1, InputTokens: 100, OutputTokens: 50),
+            startedAt: T0);
+        var storedLast = TurnUsage(Totals(Requests: 2, InputTokens: 200, OutputTokens: 100),
             startedAt: T0.AddMinutes(2));
-        var live = TurnUsage(Totals(Requests: 1, InputTokens: 50, OutputTokens: 25),
+        var live = TurnUsage(Totals(Requests: 3, InputTokens: 400, OutputTokens: 200),
             startedAt: T0.AddMinutes(1));
-        var chat = ChatUsage(Totals(Requests: 3, InputTokens: 250, OutputTokens: 125),
-            turns: [stored]);
+        var chat = ChatUsage(Totals(Requests: 3, InputTokens: 300, OutputTokens: 150),
+            turns: [storedFirst, storedLast]);
 
         var stats = _calculator.Calculate(
             [User(T0), Assistant(T0.AddSeconds(5)), User(T0.AddMinutes(2)), Assistant(T0.AddMinutes(3))],

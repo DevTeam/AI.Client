@@ -10,4 +10,10 @@ public interface IRunSnapshotComparer
     /// streamed text, so the UI can be sent the new tail instead of the whole snapshot.
     /// </summary>
     bool IsStreamingAppend(ChatRunSnapshot old, ChatRunSnapshot current);
+
+    /// <summary>
+    /// True when <paramref name="current"/> differs from <paramref name="old"/> only by more
+    /// prose of the model step in flight, which is published several times a second.
+    /// </summary>
+    bool IsDraftAppend(ChatRunSnapshot old, ChatRunSnapshot current);
 }

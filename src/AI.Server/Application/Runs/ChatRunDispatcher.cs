@@ -419,6 +419,7 @@ public sealed class ChatRunDispatcher(
                     if (chat.Messages.All(message => message.Id != queued.Id))
                     {
                         var parent = ResolveParent(chat, runtime.State.BranchId, queued);
+                        var baseRevision = chat.Revision;
                         chat = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
                             new AppendChatMessageRequest(queued.Id, parent, "User", queued.Content, chat.Revision,
                                 BranchId: runtime.State.BranchId, ParentBranchId: queued.ParentBranchId,
@@ -426,6 +427,7 @@ public sealed class ChatRunDispatcher(
                                 Resources: ResourceReferences.ToContract(queued.Resources)),
                             RetainedMessageIds(chat.Id, queued.Id), token)
                             ?? throw new InvalidOperationException("Message conflict.");
+                        TrackMessage(runtime, baseRevision, chat, queued.Id);
                     }
                     runtime.State.MarkUserCommitted(queued.Id);
                     request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
@@ -479,12 +481,16 @@ public sealed class ChatRunDispatcher(
                     // Stable reply id avoids duplicate assistant messages if the process stops between chat and run commits.
                     var replyId = ReplyId(queued.Id);
                     if (chat.Messages.All(message => message.Id != replyId))
+                    {
+                        var baseRevision = chat.Revision;
                         chat = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
                             new AppendChatMessageRequest(replyId, runtime.ToolHead ?? queued.Id, "Assistant", runtime.State.StreamingContent, chat.Revision,
                                 BranchId: runtime.State.BranchId,
                                 WorkspaceChanges: workspaceChanges.IsEmpty ? null : workspaceChanges),
                             RetainedMessageIds(chat.Id), token)
                             ?? throw new InvalidOperationException("Response conflict.");
+                        TrackMessage(runtime, baseRevision, chat, replyId);
+                    }
                     runtime.State.Remove(queued.Id);
                     runtime.State.Complete(true);
                     // The persisted reply now owns the final copy; keeping the live copy would
@@ -892,8 +898,7 @@ public sealed class ChatRunDispatcher(
                 BranchId: runtime.State.BranchId, ToolCalls: message.ToolCalls, ToolCallId: message.ToolCallId),
             RetainedMessageIds(chat.Id), token)
             ?? throw new InvalidOperationException("Tool history conflict.");
-        runtime.TrackMessage(baseRevision, chat.Revision,
-            chat.Messages.Single(item => item.Id == id), RecentMessageCapacity);
+        TrackMessage(runtime, baseRevision, chat, id);
         runtime.ToolHead = id;
         if (runtime.State.Status == RunStatus.Generating)
         {
@@ -901,6 +906,12 @@ public sealed class ChatRunDispatcher(
         }
         await SaveAsync(runtime, chat, token);
     }
+
+    // The open chat takes the run's messages from its snapshots. The question and the answer are
+    // carried as well as the tool steps: a message missing from the tail made the client fetch the
+    // whole transcript at the start and at the end of every turn, and redraw all of it.
+    private static void TrackMessage(Runtime runtime, long baseRevision, ChatDetails chat, Guid messageId) =>
+        runtime.TrackMessage(baseRevision, chat.Revision, chat.Messages.Single(item => item.Id == messageId), RecentMessageCapacity);
 
     private static Guid ResumeHead(ChatDetails chat, Guid branchId, Guid userId)
     {

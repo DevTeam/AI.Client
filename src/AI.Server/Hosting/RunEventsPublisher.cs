@@ -82,12 +82,14 @@ public sealed class RunEventsPublisher(
                 ChatRunSnapshotUpdate update;
                 if (previous is null)
                 {
-                    update = new ChatRunSnapshotUpdate(true, snapshot, [], []);
+                    update = new ChatRunSnapshotUpdate(true, snapshot, [], [], []);
                 }
                 else
                 {
                     var changed = new List<ChatRunSnapshot>();
                     var appends = new List<ChatRunStreamingAppend>();
+                    var drafts = new List<ChatRunDraftAppend>();
+                    var keptChanges = new List<ChatRunKey>();
                     foreach (var (key, run) in current)
                     {
                         if (!previous.TryGetValue(key, out var old)) changed.Add(run);
@@ -95,16 +97,46 @@ public sealed class RunEventsPublisher(
                         else if (comparer.IsStreamingAppend(old, run))
                             appends.Add(new ChatRunStreamingAppend(run.ChatId, run.BranchId, run.Revision,
                                 run.StreamingContent[old.StreamingContent.Length..]));
-                        else changed.Add(run);
+                        // The whole snapshot carries the file changes and the recent messages;
+                        // sent for every draft publication it cost the page more than the text did.
+                        else if (comparer.IsDraftAppend(old, run))
+                        {
+                            var baseLength = old.DraftContent?.Length ?? 0;
+                            drafts.Add(new ChatRunDraftAppend(run.ChatId, run.BranchId, run.Revision, baseLength,
+                                run.DraftContent![baseLength..]));
+                        }
+                        else
+                        {
+                            var sent = WithoutSentMessages(old, run);
+                            if (sent.WorkspaceChanges is not null && Equals(sent.WorkspaceChanges, old.WorkspaceChanges))
+                            {
+                                sent = sent with { WorkspaceChanges = null };
+                                keptChanges.Add(key);
+                            }
+                            changed.Add(sent);
+                        }
                     }
                     update = new ChatRunSnapshotUpdate(false, changed,
-                        previous.Keys.Where(key => !current.ContainsKey(key)).ToArray(), appends);
+                        previous.Keys.Where(key => !current.ContainsKey(key)).ToArray(), appends, drafts, keptChanges);
                 }
                 previous = current;
-                if (!update.IsFull && update.Runs.Count == 0 && update.Removed.Count == 0 && update.StreamingAppends.Count == 0) continue;
+                if (!update.IsFull && update.Runs.Count == 0 && update.Removed.Count == 0 && update.StreamingAppends.Count == 0
+                    && update.DraftAppends is not { Count: > 0 }) continue;
                 frames.TryWrite($"event: snapshot\ndata: {JsonSerializer.Serialize(update)}\n\n");
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    // A run's snapshot carries the last few messages it wrote, so a client can add them without
+    // loading the chat. This stream already sent the ones up to the previous revision, and every
+    // snapshot sending them again — tool arguments, file contents and all — was most of what the
+    // page had to parse during a run. A client that missed them loads the chat as before.
+    private static ChatRunSnapshot WithoutSentMessages(ChatRunSnapshot old, ChatRunSnapshot run)
+    {
+        if (run.MessageDelta is not { } delta || old.MessageDelta is null) return run;
+        var unsent = delta.Appends.Where(append => append.Revision > old.ChatRevision).ToArray();
+        if (unsent.Length == delta.Appends.Count) return run;
+        return run with { MessageDelta = unsent.Length == 0 ? null : new ChatMessageDelta(unsent) };
     }
 }

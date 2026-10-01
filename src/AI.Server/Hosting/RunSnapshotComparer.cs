@@ -6,9 +6,24 @@ public sealed class RunSnapshotComparer : IRunSnapshotComparer
 {
     public bool IsStreamingAppend(ChatRunSnapshot old, ChatRunSnapshot current) =>
         current.Revision >= old.Revision
-        && current.Status == old.Status
         && current.StreamingContent.Length > old.StreamingContent.Length
         && current.StreamingContent.StartsWith(old.StreamingContent, StringComparison.Ordinal)
+        && current.DraftContent == old.DraftContent
+        && SameApartFromText(old, current);
+
+    public bool IsDraftAppend(ChatRunSnapshot old, ChatRunSnapshot current)
+    {
+        var previous = old.DraftContent ?? string.Empty;
+        return current.Revision == old.Revision
+            && current.DraftContent is { } draft
+            && draft.Length > previous.Length
+            && draft.StartsWith(previous, StringComparison.Ordinal)
+            && current.StreamingContent == old.StreamingContent
+            && SameApartFromText(old, current);
+    }
+
+    private static bool SameApartFromText(ChatRunSnapshot old, ChatRunSnapshot current) =>
+        current.Status == old.Status
         && current.Queue.Count == old.Queue.Count
         && current.Queue.Zip(old.Queue).All(pair => QueueItemEqual(pair.First, pair.Second))
         && current.HasUnreadResponse == old.HasUnreadResponse
@@ -23,8 +38,9 @@ public sealed class RunSnapshotComparer : IRunSnapshotComparer
         && current.BranchRevision == old.BranchRevision
         && (current.RecoveryActions ?? []).SequenceEqual(old.RecoveryActions ?? [])
         && current.ActiveMessageId == old.ActiveMessageId
-        && current.DraftContent == old.DraftContent
         && current.DraftToolCall == old.DraftToolCall
+        && Equals(current.Wait, old.Wait)
+        && Equals(current.Context, old.Context)
         && Equals(current.WorkspaceChanges, old.WorkspaceChanges)
         && ReferenceEquals(current.TurnUsage, old.TurnUsage);
 

@@ -1,6 +1,8 @@
 namespace AI.Infrastructure.Tests.Chat;
 
 using AI.Application.Chat;
+using AI.Application.Usage;
+using AI.Infrastructure.Projects;
 using AI.Contracts.Usage;
 using AI.Infrastructure.Chat;
 using Moq;
@@ -14,6 +16,7 @@ using Xunit;
 public class ChatCompletionUsageTests
 {
     private readonly Mock<HttpMessageHandler> _handler = new(MockBehavior.Strict);
+    private readonly ConnectionRateLimits _rateLimits = new();
 
     [Fact]
     public async Task ShouldReadUsageThatArrivesAfterTheFinishReason()
@@ -168,7 +171,29 @@ public class ChatCompletionUsageTests
 
     private OpenAiCompatibleChatCompletionClient CreateInstance() =>
         new(new HttpClient(_handler.Object), new ChatCompletionSseParser(new ChatCompletionUsageReader()),
-            new ChatTransportPolicy(), new ChatCompletionUsageReader());
+            new ChatTransportPolicy(), new ChatCompletionUsageReader(), new RateLimitHeaderReader(), _rateLimits, new SystemClock());
+
+    [Fact]
+    public async Task ShouldKeepTheLimitsTheEndpointStatesForItsConnection()
+    {
+        var connection = Guid.NewGuid();
+        var response = Response(HttpStatusCode.OK, "data: [DONE]\n\n");
+        response.Headers.Add("x-ratelimit-limit-requests", "500");
+        response.Headers.Add("x-ratelimit-remaining-requests", "499");
+        response.Headers.Add("x-ratelimit-reset-requests", "120ms");
+        response.Headers.Add("x-ratelimit-remaining-tokens", "39000");
+        _handler.Protected().Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(response);
+
+        await foreach (var _ in CreateInstance().StreamAsync(
+                           new ChatCompletionRequest("https://llm.example/v1", "m", null, "Hi", connection), CancellationToken.None)) { }
+
+        var limits = _rateLimits.Find(connection).ShouldNotBeNull();
+        limits.Requests.ShouldNotBeNull().Remaining.ShouldBe(499);
+        limits.Requests.Limit.ShouldBe(500);
+        limits.Tokens.ShouldNotBeNull().Remaining.ShouldBe(39_000);
+        limits.Tokens.Limit.ShouldBeNull();
+    }
 
     private static HttpResponseMessage Response(HttpStatusCode statusCode, string content) =>
         new(statusCode) { Content = new StringContent(content, Encoding.UTF8, "application/json") };

@@ -1,6 +1,8 @@
 namespace AI.Infrastructure.Chat;
 
 using AI.Application.Chat;
+using AI.Application.Projects;
+using AI.Application.Usage;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
@@ -11,7 +13,10 @@ public sealed class OpenAiCompatibleChatCompletionClient(
     HttpClient httpClient,
     IChatCompletionSseParser sseParser,
     IChatTransportPolicy policy,
-    IChatCompletionUsageReader usageReader) : IChatCompletionClient
+    IChatCompletionUsageReader usageReader,
+    IRateLimitHeaderReader rateLimitReader,
+    IConnectionRateLimits rateLimits,
+    IClock clock) : IChatCompletionClient
 {
     // Endpoints that refused stream_options. Usage is asked for by default because nearly every
     // OpenAI-compatible server accepts it; the few strict ones that reject unknown fields are
@@ -63,7 +68,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", request.ApiKey.Trim());
         }
 
-        using var response = await SendAsync(message, cancellationToken);
+        using var response = await SendAsync(message, request.CredentialProfileId, cancellationToken);
         var body = await ReadBodyAsync(response, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -91,7 +96,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         var endpointKey = request.BaseUrl.Trim().TrimEnd('/');
         var askUsage = !_withoutStreamUsage.ContainsKey(endpointKey);
         using var message = CreateRequest(request, true, askUsage);
-        var response = await SendAsync(message, cancellationToken);
+        var response = await SendAsync(message, request.CredentialProfileId, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await ReadBodyAsync(response, cancellationToken);
@@ -103,7 +108,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             response.Dispose();
             _withoutStreamUsage[endpointKey] = true;
             using var retry = CreateRequest(request, true, false);
-            response = await SendAsync(retry, cancellationToken);
+            response = await SendAsync(retry, request.CredentialProfileId, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 var retryBody = await ReadBodyAsync(response, cancellationToken);
@@ -140,13 +145,18 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         }
     }
 
-    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage message, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage message, Guid? connectionId,
+        CancellationToken cancellationToken)
     {
         using var headers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         headers.CancelAfter(policy.ResponseHeadersTimeout);
         try
         {
-            return await httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, headers.Token);
+            var response = await httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, headers.Token);
+            // A refusal states its limits as much as an answer does, and is when they matter most.
+            if (connectionId is { } connection && rateLimitReader.Read(response.Headers, clock.UtcNow) is { } limits)
+                rateLimits.Record(connection, limits);
+            return response;
         }
         catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested)
         {

@@ -23,6 +23,12 @@ The schema budget is the smaller of 6,000 tokens and 25% of the effective contex
 selection contains at most 16 non-pinned tools. Pinned tools may exceed those limits because
 removing a tool already involved in the current protocol turn would make continuation unreliable.
 
+Within a run the list a step sends is carried on to the next one in its order, and only extended:
+tools come before every message in the provider's cache key, so a list that is reordered or loses a
+tool costs the whole cached conversation. A carried list that grows past one and a half times the
+budget is chosen afresh, once. A step that advertises only `app_finish_run` is a detour and does not
+replace the carried list.
+
 ## Progressive tool discovery
 
 `app_tool_search` receives a capability query and searches only tools that already passed the run's
@@ -36,6 +42,41 @@ The registry is keyed by project, chat and branch and is removed when the agent 
 normal 3,000-character head plus 1,000-character tail projection does not fit, it retries with
 progressively smaller model-only projections down to 384 head characters and 128 tail characters.
 Tool-call groups remain intact and the current user request is never truncated.
+
+## Prompt-cache stability
+
+Providers cache a request by its prefix, so the request is laid out from what changes least to what
+changes most:
+
+1. standing instructions (base prompt, project instructions, memory, skill catalog);
+2. run instructions that hold for the whole run (completion protocol, run ids);
+3. the conversation, with any history checkpoint summary at its start;
+4. a trailing note with this step's guidance — stalled run, empty response, completion required,
+   tool discovery, the skill route and the active skill (`ModelInstructionPlacement.Trailing`, and
+   any instruction whose lifetime is shorter than the run). It is one `user`-role message opened by
+   `ModelInstructionComposer.TrailingPrefix`: several chat templates reject a system message
+   anywhere but first. The planner counts it and never compacts it.
+
+The deterministic compaction is carried on rather than redone (`ContextCompactionMemory`): while the
+next request still starts with the previous input, the previous result plus the new messages is
+used as long as it fits, so its cut, trimmed tool results and digests stay put. When it has to be
+redone it compacts to 80% of the limit, leaving room for the following steps.
+
+## Compaction by the model, ahead of the limit
+
+When a request — instructions, tools and messages — reaches 70% of the connection's input window,
+`ChatAgent` has the model summarize before anything has to be cut:
+
+1. the earlier turns, kept as an automatic history checkpoint (below), when that frees at least a
+   tenth of the window;
+2. otherwise the completed steps of the turn in progress (`CompactTurnAheadAsync`): the latest steps
+   that fit the keep budget stay in full, at least the last one, and an earlier summary of the turn
+   is folded into the new one. This lasts for the run.
+
+The summary costs one request and one cache miss; the requests after it share a stable, smaller
+prefix. An attempt that frees too little or gets no summary is not repeated until the request has
+grown by another tenth of the window. The deterministic compaction and the planner's LLM fallback
+below remain for what is left: a summary that failed, or a single step larger than the window.
 
 ## Explicit checkpoints
 
@@ -62,13 +103,17 @@ everything up to the first user message after it; a fork taken before that messa
 Stored messages and the visible transcript never change, and deleting the checkpoint restores the
 full history for the next request.
 
-Checkpoints are made three ways:
+Checkpoints are made four ways:
 
 - the person presses Compact in the chat usage widget (`POST .../branches/{branchId}/compact`),
   which summarizes the history with the chat's connection, between turns only;
 - the model calls `app_context_compact` with scope `History`;
+- the agent compacts ahead of the limit (above), origin `Automatic`;
 - the planner's LLM fallback: a summary it writes so that a request fits is kept and pinned for the
   rest of the run, instead of being written again for every step that would not fit without it.
+
+The web client reads the checkpoints again as soon as a running turn reports a new summary
+request, so the transcript mark appears while the turn is still going.
 
 What stays in full is decided by size, not by count (`HistoryKeepPolicy`): recent turns are kept
 from the newest back while together they fit a fifth of the connection's input window, at most
@@ -84,6 +129,14 @@ history, with the summary behind a toggle and an Undo.
 Structured logs contain available and selected tool counts, available and selected schema-token
 estimates, and the effective schema budget. A final context-window failure reports whether
 compaction ran, how many messages were omitted and the remaining token deficit.
+
+Every usage record of a chat request carries a `PromptPrefix`: the estimated tokens it shared with
+the previous request of the same branch and purpose, and what broke the shared start — `Tools`,
+`Instructions` or `History` — or nothing (`PromptPrefixTracker`, fingerprints only, in memory). The
+previous request's last message is allowed to be missing, since the trailing note and a continued
+answer go every step. The usage widget shows, for the turn, the cached share against what could
+have been cached (a large gap with no change means the provider dropped its cache) and the count of
+resets by cause.
 
 ## Automatic LLM fallback
 

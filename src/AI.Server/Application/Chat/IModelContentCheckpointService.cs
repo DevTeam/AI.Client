@@ -36,6 +36,16 @@ public interface IModelContentCheckpointService
     Task<ModelContentCompactionResult> CompactAsync(ToolRunContext run, int targetTokens, ContextCompactionScope scope,
         CancellationToken cancellationToken, HistoryCheckpointOrigin origin = HistoryCheckpointOrigin.Model);
 
+    /// <summary>
+    /// Summarizes the completed steps of the turn in progress, as a turn compaction does, with no
+    /// <c>context_compact</c> call to mark where: the most recent steps that fit
+    /// <paramref name="keepTokens"/> stay in full, at least the last one. An earlier summary of this
+    /// turn is folded into the new one. Nothing happens when less than
+    /// <paramref name="minimumTokens"/> would be covered.
+    /// </summary>
+    Task<ModelContentCompactionResult> CompactTurnAheadAsync(ToolRunContext run, long keepTokens, long minimumTokens,
+        int targetTokens, CancellationToken cancellationToken);
+
     /// <summary>Drops the turn checkpoint, or for the history the checkpoint the run now applies.</summary>
     Task<bool> ResetAsync(ToolRunContext run, ContextCompactionScope scope, CancellationToken cancellationToken);
 }

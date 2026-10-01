@@ -23,6 +23,7 @@ public class TokenUsageTests
     private static readonly Guid ConnectionId = Guid.NewGuid();
     private readonly MemoryFileSystem _files = new();
     private readonly Mock<IGlobalSettingsRepository> _settings = new();
+    private readonly PromptPrefixTracker _prefixes = new(new ContextTokenEstimator());
     private DateTimeOffset _now = new(2026, 9, 30, 12, 0, 0, TimeSpan.Zero);
 
     public TokenUsageTests() => _settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
@@ -75,7 +76,8 @@ public class TokenUsageTests
         var ledger = new Mock<ITokenUsageLedger>();
         ledger.Setup(item => item.AppendAsync(It.IsAny<TokenUsageRecord>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new IOException("disk full"));
-        var meter = new TokenUsageMeter(ledger.Object, _settings.Object, Clock(), Ids(), NullLogger<TokenUsageMeter>.Instance);
+        var meter = new TokenUsageMeter(ledger.Object, _settings.Object, Clock(), Ids(), NullLogger<TokenUsageMeter>.Instance,
+            new PromptPrefixTracker(new ContextTokenEstimator()), new UsageCostEstimator());
         var observed = 0;
 
         using (meter.Begin(new TokenUsageScope(Observer: (_, _) => { observed++; return Task.CompletedTask; })))
@@ -93,9 +95,9 @@ public class TokenUsageTests
         await DrainAsync(new MeteringChatCompletionClient(new FakeClient(
             new ChatCompletionChunk("Hello", "m-2026"),
             new ChatCompletionChunk("", "m-2026", Usage: new ChatCompletionUsage(new TokenCounts(42, 3)))), meter,
-            new ContextTokenEstimator()), request);
+            new ContextTokenEstimator(), _prefixes), request);
         await DrainAsync(new MeteringChatCompletionClient(new FakeClient(new ChatCompletionChunk("Hello")), meter,
-            new ContextTokenEstimator()), request);
+            new ContextTokenEstimator(), _prefixes), request);
 
         var records = await ledger.ReadAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, CancellationToken.None);
         records[0].Estimated.ShouldBeFalse();
@@ -114,7 +116,7 @@ public class TokenUsageTests
     {
         var (meter, ledger) = CreateMeter();
         var client = new MeteringChatCompletionClient(new FakeClient(new ChatCompletionChunk("a"), new ChatCompletionChunk("b")),
-            meter, new ContextTokenEstimator());
+            meter, new ContextTokenEstimator(), _prefixes);
 
         await foreach (var _ in client.StreamAsync(new ChatCompletionRequest("https://llm.example/v1", "m", null, "Hi"),
                            CancellationToken.None))
@@ -192,10 +194,80 @@ public class TokenUsageTests
         report.ByPurpose.Single().Key.ShouldBe(nameof(TokenUsagePurpose.Answer));
     }
 
+    [Fact]
+    public async Task ShouldSayWhatChangedAtTheStartOfARequestSinceThePreviousOne()
+    {
+        var (meter, ledger) = CreateMeter();
+        var schema = System.Text.Json.JsonDocument.Parse("{}").RootElement.Clone();
+        ChatToolDefinition[] tools = [new("read", "Read a file", schema)];
+        ChatCompletionMessage[] start = [new("system", "Base"), new("user", "Question " + new string('q', 2_000))];
+        async Task SendAsync(IReadOnlyList<ChatCompletionMessage> messages, IReadOnlyList<ChatToolDefinition> sent)
+        {
+            using var scope = meter.Begin(new TokenUsageScope(TokenUsagePurpose.Answer, ProjectId, ChatId, ChatId));
+            await DrainAsync(new MeteringChatCompletionClient(new FakeClient(new ChatCompletionChunk("ok", "m",
+                    Usage: new ChatCompletionUsage(new TokenCounts(1_000, 1)))), meter, new ContextTokenEstimator(), _prefixes),
+                new ChatCompletionRequest("https://llm.example/v1", "m", null, "", ConnectionId, messages, sent));
+        }
+
+        await SendAsync(start, tools);
+        // Carried on, with this step's guidance at the end.
+        await SendAsync([.. start, new("assistant", "Answer"), new("user", "Guidance")], tools);
+        // The guidance went and the conversation carried on: still a continuation.
+        await SendAsync([.. start, new("assistant", "Answer"), new("user", "Next")], tools);
+        await SendAsync([new("system", "Base, changed"), start[1], new("assistant", "Answer"), new("user", "Next")], tools);
+        await SendAsync([new("system", "Base, changed"), new("user", "Summary"), new("user", "Next")], tools);
+        await SendAsync([new("system", "Base, changed"), new("user", "Summary"), new("user", "Next")], []);
+
+        var records = await ledger.ReadAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, CancellationToken.None);
+        records[0].Prefix.ShouldBeNull();
+        records[1].Prefix.ShouldNotBeNull().Change.ShouldBeNull();
+        records[1].Prefix!.ReusableTokens.ShouldBeGreaterThan(1_000);
+        records[2].Prefix!.Change.ShouldBeNull();
+        records[3].Prefix!.Change.ShouldBe(PromptPrefixChange.Instructions);
+        records[4].Prefix!.Change.ShouldBe(PromptPrefixChange.History);
+        records[5].Prefix.ShouldBe(new PromptPrefix(0, PromptPrefixChange.Tools));
+        var totals = new TokenUsageAggregator().Total(records);
+        (totals.ToolChanges, totals.InstructionChanges, totals.HistoryChanges).ShouldBe((1, 1, 1));
+    }
+
+    [Fact]
+    public async Task ShouldEstimateAnUnquotedCostFromTheEndpointsEarlierQuotes()
+    {
+        var (meter, ledger) = CreateMeter();
+        // Quoted at 1 per million fresh input, 0.1 cached and 4 output.
+        await meter.RecordAsync(Measurement(new TokenCounts(1_000_000, 100_000)) with { ReportedCost = 1.4m }, CancellationToken.None);
+        await meter.RecordAsync(Measurement(new TokenCounts(2_000_000, 0, 1_000_000)) with { ReportedCost = 1.1m }, CancellationToken.None);
+        await meter.RecordAsync(Measurement(new TokenCounts(500_000, 500_000)) with { ReportedCost = 2.5m }, CancellationToken.None);
+        await meter.RecordAsync(Measurement(new TokenCounts(3_000_000, 200_000, 2_000_000)) with { ReportedCost = 2m }, CancellationToken.None);
+        await meter.RecordAsync(Measurement(new TokenCounts(2_000_000, 250_000)) with { ReportedCost = 3m }, CancellationToken.None);
+        await meter.RecordAsync(Measurement(new TokenCounts(1_000_000, 1_000_000, 500_000)), CancellationToken.None);
+
+        var unquoted = (await ledger.ReadAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, CancellationToken.None))[^1];
+        unquoted.CostEstimated.ShouldBeTrue();
+        unquoted.Cost.ShouldNotBeNull().ShouldBe(0.5m + 0.05m + 4m, 0.0001m);
+    }
+
+    [Fact]
+    public async Task ShouldEstimateFromQuotesTheLedgerKeptBeforeTheApplicationStarted()
+    {
+        var (first, ledger) = CreateMeter();
+        await first.RecordAsync(Measurement(new TokenCounts(1_000_000, 0)) with { ReportedCost = 2m }, CancellationToken.None);
+        var meter = new TokenUsageMeter(ledger, _settings.Object, Clock(), Ids(), NullLogger<TokenUsageMeter>.Instance,
+            new PromptPrefixTracker(new ContextTokenEstimator()), new UsageCostEstimator());
+
+        await meter.RecordAsync(Measurement(new TokenCounts(500_000, 0)), CancellationToken.None);
+
+        var records = await ledger.ReadAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, CancellationToken.None);
+        records[^1].Cost.ShouldBe(1m);
+        records[^1].CostEstimated.ShouldBeTrue();
+        new TokenUsageAggregator().Total(records).EstimatedCostRequests.ShouldBe(1);
+    }
+
     private (TokenUsageMeter Meter, JsonLinesTokenUsageLedger Ledger) CreateMeter()
     {
         var ledger = new JsonLinesTokenUsageLedger(Location(), _files);
-        return (new TokenUsageMeter(ledger, _settings.Object, Clock(), Ids(), NullLogger<TokenUsageMeter>.Instance), ledger);
+        return (new TokenUsageMeter(ledger, _settings.Object, Clock(), Ids(), NullLogger<TokenUsageMeter>.Instance,
+            new PromptPrefixTracker(new ContextTokenEstimator()), new UsageCostEstimator()), ledger);
     }
 
     private IClock Clock()

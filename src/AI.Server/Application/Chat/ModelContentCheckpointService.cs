@@ -14,7 +14,8 @@ public sealed class ModelContentCheckpointService(
     IContextSummaryWriter summaryWriter,
     IHistoryCheckpointService history,
     IClock clock,
-    IIdGenerator ids) : IModelContentCheckpointService
+    IIdGenerator ids,
+    IContextTokenEstimator estimator) : IModelContentCheckpointService
 {
     /// <summary>
     /// A history compaction always leaves the turn in progress, and the one before it when both fit
@@ -46,7 +47,7 @@ public sealed class ModelContentCheckpointService(
         var user = FindCurrentUser(context, boundary);
         if (boundary <= user + 1) return context;
         return context.Take(user + 1)
-            .Append(new ChatCompletionMessage("user", "Compacted completed work from this turn:\n" + checkpoint.Summary))
+            .Append(new ChatCompletionMessage("user", TurnSummaryPrefix + checkpoint.Summary))
             .Concat(context.Skip(boundary)).ToArray();
     }
 
@@ -92,6 +93,52 @@ public sealed class ModelContentCheckpointService(
         await history.DeleteAsync(run.ProjectId, run.ChatId, active.Id, cancellationToken);
         return true;
     }
+
+    public async Task<ModelContentCompactionResult> CompactTurnAheadAsync(ToolRunContext run, long keepTokens,
+        long minimumTokens, int targetTokens, CancellationToken cancellationToken)
+    {
+        if (!_entries.TryGetValue(Key.Of(run), out var entry)) return new(0, 0, 0, false, "No active run context is available.");
+        var context = entry.Context;
+        var user = -1;
+        for (var index = context.Count - 1; index >= 0 && user < 0; index--)
+            if (context[index].Role == "user") user = index;
+        if (user < 0) return new(0, 0, 0, false, "There is no turn in progress.");
+        var previous = entry.Checkpoint;
+        var start = previous is null ? user + 1 : FindBoundary(context, previous.BoundaryCallId);
+        if (start <= user)
+        {
+            previous = null;
+            start = user + 1;
+        }
+
+        // A boundary is the start of a step: an assistant message with its calls, which stays with
+        // their results. The steps kept are the latest that fit, and always the last one.
+        var boundary = -1;
+        long tail = 0;
+        for (var index = context.Count - 1; index > start; index--)
+        {
+            tail += estimator.EstimateMessages([context[index]]);
+            if (tail > keepTokens && boundary >= 0) break;
+            if (context[index] is { Role: "assistant", ToolCalls.Count: > 0 }) boundary = index;
+        }
+        if (boundary <= start) return new(0, 0, 0, false, "There are no completed steps to compact before the recent ones.");
+        var covered = context.Skip(start).Take(boundary - start).ToArray();
+        var characters = covered.Sum(message => (long)message.ForModel.Length);
+        if (estimator.EstimateMessages(covered) < minimumTokens)
+            return new(covered.Length, characters, 0, false, "The completed steps are too small to be worth a summary.");
+
+        // An earlier summary of this turn is folded in, so the new one covers the turn from its start.
+        ChatCompletionMessage[] source = previous is null
+            ? covered
+            : [new ChatCompletionMessage("user", TurnSummaryPrefix + previous.Summary), .. covered];
+        var summary = await summaryWriter.WriteAsync(source, targetTokens, new Summarizer(entry.Summarize), cancellationToken);
+        if (summary is null) return new(covered.Length, characters, 0, false, "The compaction task returned no summary.");
+        entry.Checkpoint = new Checkpoint(context[boundary].ToolCalls![0].Id, summary.Text);
+        return new(covered.Length, characters, summary.Text.Length, true,
+            "Completed steps of this turn were replaced by a summary for the rest of this run.");
+    }
+
+    private const string TurnSummaryPrefix = "Compacted completed work from this turn:\n";
 
     private async Task<ModelContentCompactionResult> CompactTurnAsync(Entry entry, int targetTokens,
         CancellationToken cancellationToken)

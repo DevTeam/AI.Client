@@ -23,7 +23,7 @@ public sealed class ModelContentCheckpointServiceTests
         clock.SetupGet(item => item.UtcNow).Returns(new DateTimeOffset(2026, 9, 30, 12, 0, 0, TimeSpan.Zero));
         var ids = new Mock<IIdGenerator>();
         ids.Setup(item => item.Create()).Returns(Guid.CreateVersion7);
-        _service = new ModelContentCheckpointService(new ContextSummaryWriter(), _history, clock.Object, ids.Object);
+        _service = new ModelContentCheckpointService(new ContextSummaryWriter(), _history, clock.Object, ids.Object, new ContextTokenEstimator());
     }
 
     [Fact]
@@ -54,6 +54,63 @@ public sealed class ModelContentCheckpointServiceTests
 
         (await _service.ResetAsync(_run, ContextCompactionScope.Turn, CancellationToken.None)).ShouldBeTrue();
         _service.Apply(_run, complete).ShouldBeSameAs(complete);
+    }
+
+    [Fact]
+    public async Task ShouldSummarizeTheCompletedStepsOfALongTurnAndKeepTheRecentOnes()
+    {
+        var prompts = new List<string>();
+        var context = new List<ChatCompletionMessage> { new("user", "Investigate") };
+        void Step(int index) => context.AddRange(
+        [
+            new ChatCompletionMessage("assistant", $"step {index}", [new ChatToolCall($"read-{index}", "file_read", "{}")]),
+            new ChatCompletionMessage("tool", $"marker-{index} " + new string('x', 4_000), ToolCallId: $"read-{index}")
+        ]);
+        for (var index = 0; index < 6; index++) Step(index);
+        using var scope = _service.Begin(_run, "m", 100_000, (prompt, _) =>
+        {
+            prompts.Add(prompt);
+            return Task.FromResult($"summary {prompts.Count}");
+        });
+        _service.Update(_run, context);
+
+        // Room for two steps of about 2k tokens each: the four before them are summarized.
+        var first = await _service.CompactTurnAheadAsync(_run, 4_500, 1_000, 500, CancellationToken.None);
+        var projected = _service.Apply(_run, context);
+
+        first.Applied.ShouldBeTrue();
+        first.CoveredMessages.ShouldBe(8);
+        projected.Select(message => message.Content).ShouldBe(
+            ["Investigate", "Compacted completed work from this turn:\nsummary 1", "step 4", context[10].Content, "step 5", context[12].Content]);
+
+        // Later steps are summarized with the earlier summary folded in, never the steps it replaced.
+        for (var index = 6; index < 9; index++) Step(index);
+        _service.Update(_run, context);
+        var second = await _service.CompactTurnAheadAsync(_run, 4_500, 1_000, 500, CancellationToken.None);
+
+        second.Applied.ShouldBeTrue();
+        prompts[^1].ShouldContain("summary 1");
+        prompts[^1].ShouldNotContain("marker-0");
+        prompts[^1].ShouldContain("marker-4");
+        _service.Apply(_run, context)[1].Content.ShouldEndWith("summary 2");
+    }
+
+    [Fact]
+    public async Task ShouldNotSummarizeTurnStepsTooSmallToBeWorthIt()
+    {
+        ChatCompletionMessage[] context =
+        [
+            new("user", "Investigate"),
+            new("assistant", "", [new ChatToolCall("read-1", "file_read", "{}")]),
+            new("tool", "short", ToolCallId: "read-1"),
+            new("assistant", "", [new ChatToolCall("read-2", "file_read", "{}")]),
+            new("tool", "short", ToolCallId: "read-2")
+        ];
+        using var scope = _service.Begin(_run, "m", 100_000, (_, _) => Task.FromResult("summary"));
+        _service.Update(_run, context);
+
+        (await _service.CompactTurnAheadAsync(_run, 10, 1_000, 500, CancellationToken.None)).Applied.ShouldBeFalse();
+        _service.Apply(_run, context).ShouldBeSameAs(context);
     }
 
     [Fact]

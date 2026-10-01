@@ -159,8 +159,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         // What the request carried in the previous step: kept, so the next request starts the same.
         var compactionMemory = new ContextCompactionMemory();
         IReadOnlyList<AgentTool>? sentTools = null;
-        // One failed or fruitless attempt is enough: retried at every step, each would cost a summary.
-        var compactAhead = true;
+        // After a failed or fruitless attempt the next waits until the request has grown again:
+        // retried at every step, each would cost a summary.
+        long compactAheadFrom = 0;
         // Runs mcp_app__run_skill for the routed playbook as if the model had called it: the call and its
         // result are persisted like any other, so the transcript shows the skill and a resumed run
         // sees its instructions. True when the playbook's instructions are now in the context.
@@ -278,18 +279,20 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var chunkCount = 0;
             var composition = instructionComposer.Compose(run, modelContext);
             // Measured with the instructions and tools the request carries: they share the window.
-            if (compactAhead && NeedsCompactionAhead(configuredConnection, composition, available))
+            if (CompactionAheadSize(configuredConnection, composition, available) is { } size && size >= compactAheadFrom)
             {
+                bool compacted;
                 compactingAhead = true;
                 try
                 {
-                    compactAhead = await CompactAheadAsync(run, configuredConnection, token);
+                    compacted = await CompactAheadAsync(run, configuredConnection, token);
                 }
                 finally
                 {
                     compactingAhead = false;
                 }
-                if (compactAhead)
+                compactAheadFrom = compacted ? 0 : size + CompactAheadRetryTokens(configuredConnection);
+                if (compacted)
                 {
                     modelContext = checkpoints.Apply(run, context);
                     composition = instructionComposer.Compose(run, modelContext);
@@ -640,31 +643,43 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// <summary>A whole conversation deserves a longer summary than the last-resort one.</summary>
     private const int HistorySummaryTargetTokens = 3_000;
 
-    private bool NeedsCompactionAhead(ConnectionSettings? connection, ModelInstructionComposition composition,
+    /// <summary>The request's estimated size when it has passed the threshold, otherwise null.</summary>
+    private long? CompactionAheadSize(ConnectionSettings? connection, ModelInstructionComposition composition,
         IReadOnlyList<ChatToolDefinition> tools)
     {
-        var limits = contextLimits.Resolve(connection);
-        var input = Math.Max(0, limits.ContextWindowTokens - limits.ReservedOutputTokens);
+        var input = InputTokens(connection);
         var request = estimator.EstimateMessages([.. composition.Messages, .. composition.TrailingMessages])
                       + estimator.EstimateTools(tools);
-        return input > 0 && request >= input / 100 * CompactAheadPercent;
+        return input > 0 && request >= input / 100 * CompactAheadPercent ? request : null;
+    }
+
+    private long CompactAheadRetryTokens(ConnectionSettings? connection) =>
+        Math.Max(1, InputTokens(connection) / 100 * CompactAheadMinimumGainPercent);
+
+    private long InputTokens(ConnectionSettings? connection)
+    {
+        var limits = contextLimits.Resolve(connection);
+        return Math.Max(0, limits.ContextWindowTokens - limits.ReservedOutputTokens);
     }
 
     /// <summary>
-    /// Summarizes the earlier turns of a context that is filling up. False when there was nothing
-    /// worth covering or the model gave no summary, so the run stops trying.
+    /// Summarizes what fills a context that is filling up: the earlier turns, kept as a history
+    /// checkpoint, or — when they are already summarized or too small — the completed steps of a
+    /// long turn in progress. False when neither was worth a summary or the model gave none.
     /// </summary>
     private async Task<bool> CompactAheadAsync(ToolRunContext run, ConnectionSettings? connection, CancellationToken token)
     {
-        var limits = contextLimits.Resolve(connection);
-        var input = Math.Max(0, limits.ContextWindowTokens - limits.ReservedOutputTokens);
-        var preview = checkpoints.Preview(run, ContextCompactionScope.History);
-        // About two characters a token, the estimator's own rate.
-        if (!preview.CanCompact || preview.SourceCharacters / 2 < input / 100 * CompactAheadMinimumGainPercent) return false;
+        var minimum = InputTokens(connection) / 100 * CompactAheadMinimumGainPercent;
         try
         {
-            return (await checkpoints.CompactAsync(run, HistorySummaryTargetTokens, ContextCompactionScope.History, token,
-                HistoryCheckpointOrigin.Automatic)).Applied;
+            var preview = checkpoints.Preview(run, ContextCompactionScope.History);
+            // About two characters a token, the estimator's own rate.
+            if (preview.CanCompact && preview.SourceCharacters / 2 >= minimum
+                && (await checkpoints.CompactAsync(run, HistorySummaryTargetTokens, ContextCompactionScope.History, token,
+                    HistoryCheckpointOrigin.Automatic)).Applied)
+                return true;
+            return (await checkpoints.CompactTurnAheadAsync(run, HistoryKeepTokens(connection), minimum,
+                SummaryTargetTokens, token)).Applied;
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {

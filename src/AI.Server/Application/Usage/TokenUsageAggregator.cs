@@ -19,7 +19,12 @@ public sealed class TokenUsageAggregator : ITokenUsageAggregator
         totals.EstimatedRequests + (record.Estimated ? 1 : 0),
         record.Cost is { } cost ? (totals.Cost ?? 0) + cost : totals.Cost,
         totals.PricedRequests + (record.Cost is null ? 0 : 1),
-        totals.DurationMs + record.DurationMs);
+        totals.DurationMs + record.DurationMs,
+        totals.EstimatedCostRequests + (record is { Cost: not null, CostEstimated: true } ? 1 : 0),
+        totals.ReusableInputTokens + (record.Prefix?.ReusableTokens ?? 0),
+        totals.ToolChanges + (record.Prefix?.Change == PromptPrefixChange.Tools ? 1 : 0),
+        totals.InstructionChanges + (record.Prefix?.Change == PromptPrefixChange.Instructions ? 1 : 0),
+        totals.HistoryChanges + (record.Prefix?.Change == PromptPrefixChange.History ? 1 : 0));
 
     /// <summary>Groups, largest first: the question a breakdown answers is where most of it went.</summary>
     public IReadOnlyList<TokenUsageSlice> Group(IEnumerable<TokenUsageRecord> records, Func<TokenUsageRecord, string> key) =>

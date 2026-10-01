@@ -628,6 +628,13 @@
                                          Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
                                          Run="@widgetRun" />
                         break;
+                    case ChatWidgetCatalog.ChatPerformance:
+                        <ChatPerformanceWidget Widget="@widget"
+                                              ChatUsage="@ChatUsage.Find(widgetChat.Id)"
+                                              LiveTurn="@widgetRun?.TurnUsage"
+                                              Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
+                                              IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)" />
+                        break;
                 }
             </WidgetTemplate>
         </ChatWidgetRail>

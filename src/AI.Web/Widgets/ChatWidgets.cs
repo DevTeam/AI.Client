@@ -27,12 +27,14 @@ public sealed class ChatWidgetCatalog : IChatWidgetCatalog
     public const string ChatUsage = "chat-usage";
     public const string ChatFiles = "chat-files";
     public const string ChatTools = "chat-tools";
+    public const string ChatPerformance = "chat-performance";
 
     public IReadOnlyList<ChatWidgetDefinition> Widgets { get; } =
     [
         new(ChatUsage, "Usage", "gauge", "Context window, tokens and cost of the whole chat or the last turn"),
         new(ChatFiles, "Files", "diff", "Files the open chat changed, with lines added and removed"),
-        new(ChatTools, "Tools", "tool", "Tool calls, results and most used tools in the whole chat or the last turn")
+        new(ChatTools, "Tools", "tool", "Tool calls, results and most used tools in the whole chat or the last turn"),
+        new(ChatPerformance, "Performance", "timer", "Wall-clock, throughput and how request time was spent in the whole chat or the last turn")
     ];
 
     public ChatWidgetDefinition? Find(string id) => Widgets.FirstOrDefault(widget => widget.Id == id);

@@ -7,18 +7,18 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text;
 
-public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageReader) : IChatCompletionSseParser
+public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageReader, IChatTransportPolicy policy)
+    : IChatCompletionSseParser
 {
-    // Once the model has started streaming, a gap this long between chunks means the connection
-    // has stalled. Waiting for the very first chunk is a different situation — the endpoint may
-    // legitimately spend a while "thinking" (a large tool-result context, a slow provider, a
-    // reasoning model) before sending anything at all, so that wait gets a much longer allowance
-    // below rather than reusing this one; conflating the two used to fail a merely-slow-to-start
-    // response with a bare "The operation has timed out." after only 10 seconds.
+    // Once the model has started streaming, a gap of the policy's idle timeout between lines means
+    // the connection has stalled. Waiting for the very first chunk is a different situation — the
+    // endpoint may legitimately spend a while "thinking" (a large tool-result context, a slow
+    // provider, a reasoning model) before sending anything at all, so that wait gets a much longer
+    // allowance below rather than reusing this one; conflating the two used to fail a
+    // merely-slow-to-start response with a bare "The operation has timed out." after only 10 seconds.
     /// <summary>How many tool calls one assistant message may carry before the stream is rejected as malformed.</summary>
     private const int MaxParallelToolCalls = 1024;
 
-    private static readonly TimeSpan StreamIdleTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan FirstTokenTimeout = TimeSpan.FromSeconds(120);
 
     /// <summary>
@@ -50,14 +50,10 @@ public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageRead
                 var readTimeout = finished
                     ? UsageWait - finishTimer.Elapsed
                     : hasContent
-                        ? StreamIdleTimeout - contentIdleTimer.Elapsed
+                        ? policy.StreamIdleTimeout - contentIdleTimer.Elapsed
                         : FirstTokenTimeout;
                 if (finished && readTimeout <= TimeSpan.Zero) break;
-                if (hasContent && readTimeout <= TimeSpan.Zero)
-                {
-                    if (calls.Count > 0) throw new InvalidOperationException("Tool call stream timed out before completion.");
-                    break;
-                }
+                if (hasContent && readTimeout <= TimeSpan.Zero) throw Stalled(calls.Count);
 
                 line = await reader.ReadLineAsync(cancellationToken).AsTask()
                     .WaitAsync(readTimeout, cancellationToken);
@@ -66,8 +62,7 @@ public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageRead
             {
                 if (finished) break;
                 if (!hasContent) throw new TimeoutException($"The model did not send a response within {FirstTokenTimeout.TotalSeconds:0} seconds.");
-                if (calls.Count > 0) throw new InvalidOperationException("Tool call stream timed out before completion.");
-                break;
+                throw Stalled(calls.Count);
             }
 
             if (line is null)
@@ -76,16 +71,14 @@ public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageRead
                 break;
             }
 
-            if (!line.StartsWith("data:", StringComparison.Ordinal))
-            {
-                if (!finished && hasContent && contentIdleTimer.Elapsed >= StreamIdleTimeout)
-                {
-                    if (calls.Count > 0) throw new InvalidOperationException("Tool call stream timed out before completion.");
-                    break;
-                }
-
-                continue;
-            }
+            // Comments and blank lines are the transport keeping itself open, not the model working,
+            // and must not hold a run in Generating forever.
+            if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
+            // Any event, though — a reasoning delta, a role-only delta — is the model still at it.
+            // Only answer text and tool calls used to count, so a model that wrote a sentence and
+            // then thought before its tool call was cut off mid-thought, and the sentence was taken
+            // for its whole answer.
+            if (hasContent) contentIdleTimer.Restart();
 
             var data = line[5..].TrimStart();
             if (data == "[DONE]")
@@ -183,4 +176,14 @@ public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageRead
 
         if (usage is not null) yield return new ChatCompletionChunk("", lastModel, Usage: usage);
     }
+
+    /// <summary>
+    /// A stream that falls silent before its finish reason has not finished. Ending it quietly made
+    /// whatever text had arrived — often only "Now I'll create the files." — the run's final
+    /// answer, and the run reported success with the work not done.
+    /// </summary>
+    private InvalidOperationException Stalled(int pendingToolCalls) => pendingToolCalls > 0
+        ? new InvalidOperationException("Tool call stream timed out before completion.")
+        : new InvalidOperationException(
+            $"The model stopped sending its answer for {policy.StreamIdleTimeout.TotalSeconds:0} seconds before finishing it.");
 }

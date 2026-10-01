@@ -4,6 +4,7 @@
 @inject IReviewApi ReviewsApi
 @inject INotificationService Notifications
 @inject IJSRuntime JsRuntime
+@implements IDisposable
 
 <div id="review-message-@MessageId" class="markdown-content message-review-text"
      @onmouseup="CaptureAsync" @onkeyup="CaptureKeyboardAsync">@Content</div>
@@ -78,6 +79,8 @@
     private string _popupXpx => $"{_popupX.ToString(System.Globalization.CultureInfo.InvariantCulture)}px";
     private string _popupYpx => $"{_popupY.ToString(System.Globalization.CultureInfo.InvariantCulture)}px";
     private long _highlightRevision = -1;
+    private bool _focusEditor;
+    private DotNetObjectReference<MessageReviewText>? _reference;
 
     protected override void OnParametersSet()
     {
@@ -89,7 +92,10 @@
     {
         if (_editing)
         {
-            try { await JsRuntime.InvokeVoidAsync("messageReviews.showEditor", MessageId); }
+            _reference ??= DotNetObjectReference.Create(this);
+            var focus = _focusEditor;
+            _focusEditor = false;
+            try { await JsRuntime.InvokeVoidAsync("messageReviews.showEditor", MessageId, _reference, focus); }
             catch (Exception error) when (error is JSException or ObjectDisposedException) { }
         }
         var revision = _current?.Revision ?? 0;
@@ -107,6 +113,8 @@
 
     private async Task CaptureAsync(MouseEventArgs? args)
     {
+        // A right click opens the menu the user copies from; it does not start a comment.
+        if (args is { Button: not 0 }) return;
         MessageTextHit? hit;
         try
         {
@@ -145,6 +153,7 @@
         _editingId = comment.Id;
         _body = comment.Body;
         _editing = true;
+        _focusEditor = true;
         _error = null;
     }
 
@@ -168,6 +177,19 @@
     {
         if (args.Key == "Escape") _showComments = false;
     }
+
+    // Called by messageReviews.js when the user copies, presses Escape or clicks outside the editor.
+    [JSInvokable]
+    public async Task DismissEditor(bool save)
+    {
+        if (!_editing) return;
+        var unchanged = _editingId is { } id && _current?.MessageComments?.FirstOrDefault(item => item.Id == id)?.Body == _body.Trim();
+        if (save && !_saving && !unchanged && !string.IsNullOrWhiteSpace(_body)) await SaveAsync();
+        else Cancel();
+        StateHasChanged();
+    }
+
+    public void Dispose() => _reference?.Dispose();
 
     private void Cancel() { _selection = null; _editing = false; _editingId = null; _body = string.Empty; _error = null; }
 
@@ -195,7 +217,8 @@
             }
             await OnChanged.InvokeAsync(_current);
             _error = null;
-            Cancel();
+            // The user may have selected other text while this was saving; that comment stays open.
+            if (ReferenceEquals(_selection, selected)) Cancel();
             Notifications.ShowSuccess(editing ? "Message comment updated." : "Message comment added.");
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)

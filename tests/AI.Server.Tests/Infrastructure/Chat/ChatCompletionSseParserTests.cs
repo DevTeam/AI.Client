@@ -18,7 +18,7 @@ public class ChatCompletionSseParserTests
             """;
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         var chunks = new List<ChatCompletionChunk>();
-        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
+        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader(), new ChatTransportPolicy()).ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
         chunks.Count.ShouldBe(2);
         chunks[0].ToolCallsStarted.ShouldBeTrue();
         chunks[0].ToolCallName.ShouldBe("run");
@@ -39,7 +39,7 @@ public class ChatCompletionSseParserTests
             """;
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         var chunks = new List<ChatCompletionChunk>();
-        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
+        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader(), new ChatTransportPolicy()).ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
         chunks.Where(chunk => chunk.ToolCallsStarted).Select(chunk => chunk.ToolCallName).ShouldBe([null, "run"]);
         chunks[^1].ToolCalls!.Single().Name.ShouldBe("run");
     }
@@ -54,7 +54,7 @@ public class ChatCompletionSseParserTests
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None)) { }
+            await foreach (var _ in new ChatCompletionSseParser(new ChatCompletionUsageReader(), new ChatTransportPolicy()).ParseAsync(stream, CancellationToken.None)) { }
         });
     }
     [Fact]
@@ -66,7 +66,7 @@ public class ChatCompletionSseParserTests
             """;
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         var chunks = new List<ChatCompletionChunk>();
-        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
+        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader(), new ChatTransportPolicy()).ParseAsync(stream, CancellationToken.None)) chunks.Add(chunk);
 
         // The text, then the fact that there was meant to be more of it.
         chunks.Select(chunk => chunk.Content).ShouldBe(["Half a sen", ""]);
@@ -91,7 +91,7 @@ public class ChatCompletionSseParserTests
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         var chunks = new List<string>();
 
-        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None))
+        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader(), new ChatTransportPolicy()).ParseAsync(stream, CancellationToken.None))
         {
             chunks.Add(chunk.Content);
             chunk.Model.ShouldBe("test-model");
@@ -112,7 +112,7 @@ public class ChatCompletionSseParserTests
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sse));
         var chunks = new List<string>();
 
-        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader()).ParseAsync(stream, CancellationToken.None))
+        await foreach (var chunk in new ChatCompletionSseParser(new ChatCompletionUsageReader(), new ChatTransportPolicy()).ParseAsync(stream, CancellationToken.None))
         {
             chunks.Add(chunk.Content);
         }
@@ -120,4 +120,49 @@ public class ChatCompletionSseParserTests
         // The trailing empty chunk is the one that carries the finish reason.
         chunks.ShouldBe(["Complete", ""]);
     }
+
+    [Fact]
+    public async Task ShouldKeepAStreamAliveWhileTheModelReasonsBetweenTextAndAToolCall()
+    {
+        var pipe = new System.IO.Pipelines.Pipe();
+        var parser = new ChatCompletionSseParser(new ChatCompletionUsageReader(),
+            new ChatTransportPolicy(streamIdleTimeout: TimeSpan.FromMilliseconds(300)));
+        var writing = Task.Run(async () =>
+        {
+            await Write(pipe, """data: {"choices":[{"delta":{"content":"Creating the files now."}}]}""");
+            // Thinking for well past the idle timeout, in deltas the parser does not show.
+            for (var step = 0; step < 8; step++)
+            {
+                await Task.Delay(100, TestContext.Current.CancellationToken);
+                await Write(pipe, """data: {"choices":[{"delta":{"reasoning_content":"..."}}]}""");
+            }
+            await Write(pipe, """data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"one","function":{"name":"write_file","arguments":"{}"}}]}}]}""");
+            await Write(pipe, """data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}""");
+            await pipe.Writer.CompleteAsync();
+        }, TestContext.Current.CancellationToken);
+
+        var chunks = new List<ChatCompletionChunk>();
+        await foreach (var chunk in parser.ParseAsync(pipe.Reader.AsStream(), CancellationToken.None)) chunks.Add(chunk);
+        await writing;
+
+        chunks[^1].ToolCalls!.Single().Name.ShouldBe("write_file");
+    }
+
+    [Fact]
+    public async Task ShouldNotTakeAStreamThatFellSilentForAFinishedAnswer()
+    {
+        var pipe = new System.IO.Pipelines.Pipe();
+        var parser = new ChatCompletionSseParser(new ChatCompletionUsageReader(),
+            new ChatTransportPolicy(streamIdleTimeout: TimeSpan.FromMilliseconds(100)));
+        await Write(pipe, """data: {"choices":[{"delta":{"content":"Creating the files now."}}]}""");
+
+        await Should.ThrowAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in parser.ParseAsync(pipe.Reader.AsStream(), CancellationToken.None)) { }
+        });
+        await pipe.Writer.CompleteAsync();
+    }
+
+    private static async Task Write(System.IO.Pipelines.Pipe pipe, string line) =>
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes(line + "\n\n"), TestContext.Current.CancellationToken);
 }

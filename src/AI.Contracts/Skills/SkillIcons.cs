@@ -41,6 +41,9 @@ public static class SkillIcons
         "code-review", "code-performance-optimize", "code-dependencies-update", "code-security-review", "code-docs-update",
         "devops-ci-create", "devops-ci-fix", "devops-container-create", "devops-compose-configure",
         "devops-config-review", "devops-release-prepare", "devops-deploy", "devops-rollback",
-        "devops-incident-diagnose", "devops-observability-configure", "devops-infrastructure-change", "devops-backup-verify"
+        "devops-incident-diagnose", "devops-observability-configure", "devops-infrastructure-change", "devops-backup-verify",
+        "qa-plan", "qa-acceptance-define", "qa-cases-create", "qa-exploratory-test", "qa-ui-test",
+        "qa-api-test", "qa-e2e-create", "qa-regression-run", "qa-test-data-prepare",
+        "qa-accessibility-review", "qa-compatibility-test", "qa-bug-report", "qa-failures-triage", "qa-release-assess"
     ];
 }

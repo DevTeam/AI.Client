@@ -39,7 +39,19 @@ Choose:
   Application compiler/analyzer failures still use code-build-fix. Preparing local release artifacts
   is not a live deployment. A request to recover an incident changes a diagnostic task into the
   matching deployment, rollback or implementation task; do not keep read-only diagnosis active.
-  These are hints only: choose a named skill only when it is present in the input catalog.
+  QA tasks use qa-plan for risk-based test planning, qa-acceptance-define for observable acceptance
+  criteria, qa-cases-create for test cases, qa-exploratory-test for chartered exploration,
+  qa-ui-test for rendered UI behavior, qa-api-test for API contracts and authorization,
+  qa-e2e-create for integrated journey automation, qa-regression-run for change-based regression,
+  qa-test-data-prepare for synthetic fixtures, qa-accessibility-review for accessibility,
+  qa-compatibility-test for an actual platform matrix, qa-bug-report for reproducible defect reports,
+  qa-failures-triage for evidence-based failure/flakiness diagnosis, and qa-release-assess for
+  candidate readiness based on actual checks and remaining risks.
+  Generic unit/contract test creation and running existing tests use code-tests-add/code-tests-run.
+  QA readiness assessment does not package or deploy a release. A request to fix reported defects
+  switches to code-bug-fix or the matching implementation skill; planning/reporting alone does not
+  authorize execution or code edits. These are hints only: choose a named skill only when it is
+  present in the input catalog.
 - `tools`: up to eight tool names the work will most likely need in its first steps, including the
   ones the chosen skills work with.
 

@@ -39,7 +39,7 @@ application permissions, and every write still goes through tool approval.
 ## Naming
 
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. The domains are `chat`,
-  `project`, `memory`, `skill`, `instructions`, `code`, `git`, `devops` and `settings`; a new area gets a new domain. The
+  `project`, `memory`, `skill`, `instructions`, `code`, `git`, `devops`, `qa` and `settings`; a new area gets a new domain. The
   action is a verb: create, rename, compact, fork, add, remove, review, save, edit, suggest,
   implement, fix, run, commit.
 - `name` is the id in words with the first letter capitalized (`project-directory-add` →
@@ -104,6 +104,20 @@ application permissions, and every write still goes through tool approval.
 | `devops-observability-configure` | Configures and tests useful logs, metrics, tracing, health checks and alerts; remote settings/notifications need specific authorization | file tools, `process_run`, `ask_user` |
 | `devops-infrastructure-change` | Edits and validates existing IaC, generates the actual plan/change set and applies only authorized reviewed changes | file tools, `process_run`, environment/workspace choices |
 | `devops-backup-verify` | Checks backup metadata/integrity and verifies restoration at an explicitly isolated authorized destination; never overwrites live data | file tools, `process_run`, backup/destination choices |
+| `qa-plan` | Creates a risk-based QA plan with scope, layers, dependencies, environments and exit criteria | file readers, `process_run`, `ask_user` |
+| `qa-acceptance-define` | Defines observable acceptance criteria and identifies unresolved requirements | file readers, `ask_user` |
+| `qa-cases-create` | Produces traceable positive, negative and boundary test cases with setup and cleanup | file readers, `ask_user` |
+| `qa-exploratory-test` | Runs a bounded exploratory session and reports actual observations and reproducible defects | file readers, `process_run`, `tool_search`, `ask_user` |
+| `qa-ui-test` | Checks rendered UI states and interactions through an available browser or test runner | file readers, `process_run`, `tool_search`, `ask_user` |
+| `qa-api-test` | Checks actual API responses, authorization and effects against the contract | file readers, `process_run`, `tool_search`, `ask_user` |
+| `qa-e2e-create` | Adds and runs stable integrated journey tests using the existing framework | file tools, `process_run`, `tool_search`, `ask_user` |
+| `qa-regression-run` | Selects and runs regression checks based on actual changes and affected contracts | file readers, `process_run`, `tool_search`, Git pickers |
+| `qa-test-data-prepare` | Creates deterministic synthetic fixtures and loads them only into an authorized isolated target | file tools, `process_run`, `tool_search`, `ask_user` |
+| `qa-accessibility-review` | Reviews actual semantics, keyboard/focus behavior and accessibility findings | file readers, `process_run`, `tool_search`, `ask_user` |
+| `qa-compatibility-test` | Executes the available supported platform matrix and records unavailable combinations | file readers, `process_run`, `tool_search`, platform choices |
+| `qa-bug-report` | Writes a reproducible defect report with expected/actual behavior, evidence and impact; never submits an issue | file readers, `ask_user` |
+| `qa-failures-triage` | Diagnoses failed or flaky tests using bounded reruns and evidence; changes nothing | file readers, `process_run`, `tool_search`, `ask_user` |
+| `qa-release-assess` | Assesses a specific release candidate against actual gates, defects and remaining risks | file readers, `process_run`, Git pickers |
 | `git-commit` | On request only: drafts a message in the log's style and commits the chosen paths; never pushes | `process_run` |
 | `git-commit-message-suggest` | Drafts a message for staged/local changes or selected commits; changes nothing | `process_run`, `ask_user` commit picker |
 | `git-rebase` | Rebases the current branch onto a selected branch, keeps a recovery ref and pauses at conflicts | `process_run`, `ask_user` branch picker |
@@ -151,6 +165,22 @@ assuming a binary rollback reverses migrations. IaC uses the actual reviewed pla
 checks for drift before applying. Backup restoration is tested only in an explicitly isolated
 destination. Observability tests do not notify real recipients without authorization. Results
 distinguish configuration preparation, submitted operations and verified completion.
+
+QA skills use file/directory pickers for ambiguous scope and Git branch/commit pickers for an
+unspecified source revision; supplied values bypass selection. Environments, accounts, scenarios
+and platforms use ordinary `ask_user` choices from available evidence. They discover browser/API
+tools through `tool_search` or use the project's existing runner; missing access/tools block the
+affected check. Source inspection alone never proves rendered behavior or a passing runtime check.
+Every QA skill has its own SVG icon in the shared picker, and `qa` is a skill domain.
+
+Planning, criteria, cases, bug reports and release assessments produce chat reports. E2E creation
+and test-data preparation may edit the requested tests/fixtures while preserving product behavior.
+Execution uses exact authorized environments and disposable synthetic data; live deletion,
+charges or messages to real recipients require the corresponding authorization. Cleanup touches
+only task-owned records. Results identify the actual revision/environment and distinguish passed,
+failed, blocked and not-run checks. No discovered tests, an unavailable platform or a pending run
+is not a pass; a passing retry does not erase a flaky failure. Release readiness assesses evidence
+and risks without implicitly publishing, deploying or waiving a quality gate.
 
 Git skills use the [Git pickers in ask_user](19-ask-user.md#git-pickers) when the user has not named
 the branches or commits. Explicit values from the request bypass selection. History operations
@@ -225,7 +255,7 @@ in the project, and the model's copy of the message starts with an instruction t
 When the App tools are available, the standing `skills.catalog` layer lists every enabled skill
 in effect for the project: its id, description and parameter names, with `*` marking required ones.
 Only executors the application runs on its own (`chat-reply-suggest`, `chat-tool-risk-assess`) are left out. It follows
-memory, has its own 7,168-token budget and ends with a pointer to `mcp_app__skill_search` when it is
+memory, has its own 8,192-token budget and ends with a pointer to `mcp_app__skill_search` when it is
 cut. Its lead tells the model to check the list before acting and when the user changes task, to
 run a fitting skill before other tools even for requests that look simple, and to run only listed
 or user-named ids. `skill_search` and `run_skill` are always in the request's tool schema, so a skill from the catalog

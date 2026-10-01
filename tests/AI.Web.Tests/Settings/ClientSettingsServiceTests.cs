@@ -180,6 +180,19 @@ public class ClientSettingsServiceTests
     }
 
     [Fact]
+    public async Task ThemeServiceShouldApplyLightGrayAsThePageNamesIt()
+    {
+        var js = new FakeJSRuntime();
+        var theme = new ThemeService(new ClientSettingsService(js), js);
+
+        await theme.SetAsync(ThemePreference.LightGray);
+
+        (await theme.GetAsync()).ShouldBe(ThemePreference.LightGray);
+        // Must be the data-theme attribute value app.css and Desktop's variant are keyed on.
+        js.Calls.ShouldContain(call => call.Identifier == "aiClientTheme.apply" && Equals(call.Args[0], "lightgray"));
+    }
+
+    [Fact]
     public async Task ThemeServiceShouldSaveAndApplyTheAccent()
     {
         var js = new FakeJSRuntime();

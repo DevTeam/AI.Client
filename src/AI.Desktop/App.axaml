@@ -50,6 +50,20 @@
                     <SolidColorBrush x:Key="StatusTitleBrush" Color="#ECECEC" />
                     <SolidColorBrush x:Key="StatusDetailBrush" Color="#AAAAAA" />
                 </ResourceDictionary>
+                <!-- The page's light grey palette (app.css), for the chrome it cannot paint. The
+                     colours mirror the CSS tokens one-for-one so the drawn titlebar reads as the
+                     same soft grey as the rest of the workspace. -->
+                <ResourceDictionary x:Key="{x:Static desktop:DesktopThemes.LightGray}">
+                    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#F5F5F5" />
+                    <SolidColorBrush x:Key="TitleBarBorderBrush" Color="#D6D6D6" />
+                    <SolidColorBrush x:Key="CaptionButtonForeground" Color="#1F1F1F" />
+                    <SolidColorBrush x:Key="CaptionButtonBackground" Color="#E2E2E2" />
+                    <SolidColorBrush x:Key="CaptionButtonBorderBrush" Color="#C5C5C5" />
+                    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F2F2F2" />
+                    <SolidColorBrush x:Key="WindowFrameBrush" Color="#C5C5C5" />
+                    <SolidColorBrush x:Key="StatusTitleBrush" Color="#1F1F1F" />
+                    <SolidColorBrush x:Key="StatusDetailBrush" Color="#5C5C5C" />
+                </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#F3F3F3" />
                     <SolidColorBrush x:Key="TitleBarBorderBrush" Color="#E0E0E0" />

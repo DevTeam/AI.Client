@@ -318,6 +318,71 @@
     --scrim-scale: 1;
 }
 
+/* Light grey (Settings → Theme). Like light above but with every surface pulled a hair darker
+   than pure white: the workspace reads as soft grey paper rather than glassy white, while the
+   accent and status tokens are copied unchanged on purpose — they belong to the accent the user
+   picked, and switching between light and light grey must not recolour them. */
+:root[data-theme="lightgray"] {
+    color-scheme: light;
+    --color-bg-sunken: #ececec;
+    --color-bg-inset: #efefef;
+    --color-bg: #f2f2f2;
+    --color-surface: #f5f5f5;
+    --color-surface-raised: #f8f8f8;
+    --color-input-bg: #ffffff;
+    --color-fill: #e8e8e8;
+    --color-fill-hover: #e1e1e1;
+    --color-fill-active: #dadada;
+    --color-fill-strong: #d0d0d0;
+    --color-fill-stronger: #c2c2c2;
+    --color-overlay-faint: rgb(0 0 0 / 2%);
+    --color-overlay-hover: rgb(0 0 0 / 5%);
+    --color-overlay-active: rgb(0 0 0 / 8%);
+    --color-overlay-sunken: rgb(0 0 0 / 4%);
+    --color-inverse: #1f1f1f;
+    --color-inverse-hover: #000000;
+    --color-inverse-active: #3a3a3a;
+    --color-on-inverse: #ffffff;
+    --color-text-strong: #0f0f0f;
+    --color-text: #1f1f1f;
+    --color-text-secondary: #3d3d3d;
+    --color-text-muted: #505050;
+    --color-text-subtle: #5c5c5c;
+    --color-text-faint: #646464;
+    --color-text-disabled: #a3a3a3;
+    --color-border-subtle: #e3e3e3;
+    --color-border: #d6d6d6;
+    --color-border-strong: #c5c5c5;
+    --color-border-stronger: #a8a8a8;
+    --color-border-translucent: rgb(0 0 0 / 10%);
+    --color-accent: #1a64b8;
+    --color-accent-strong: #2a78d0;
+    --color-accent-text: #1b5aa0;
+    --color-accent-bg: #e7eef9;
+    --color-accent-bg-hover: #d8e4f5;
+    --color-accent-bg-active: #c9d9ee;
+    --color-accent-fill: #2a78d0;
+    --color-on-accent: #ffffff;
+    --color-danger: #d0392f;
+    --color-danger-text: #b3261e;
+    --color-danger-text-strong: #8f1a13;
+    --color-danger-bg: #fdeceb;
+    --color-danger-bg-hover: #fbdcd9;
+    --color-danger-bg-active: #f6c7c2;
+    --color-danger-border: #efb4ae;
+    --color-danger-border-strong: #de8a82;
+    --color-warning: #b57700;
+    --color-warning-text: #8a5a00;
+    --color-success: #1f8f4a;
+    --color-success-text: #17703a;
+    --color-success-border: #9ed4b0;
+    --color-user-bubble: color-mix(in srgb, var(--color-accent-strong) 13%, var(--color-bg));
+    --color-user-bubble-border: color-mix(in srgb, var(--color-accent-strong) 22%, transparent);
+    --color-user-bubble-inset: rgb(255 255 255 / 60%);
+    --shadow-scale: 0.3;
+    --scrim-scale: 0.55;
+}
+
 :root[data-theme="light"] {
     color-scheme: light;
     --color-bg-sunken: #f3f3f3;

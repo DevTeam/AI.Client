@@ -23,4 +23,11 @@ internal static class DesktopThemes
     /// references this property instead of the literal so the dictionary key matches by reference.
     /// </remarks>
     public static ThemeVariant Gray { get; } = new("Gray", ThemeVariant.Dark);
+
+    /// <remarks>
+    /// Like <see cref="Gray"/>, but for the light grey palette. The bridge sends <c>"lightgray"</c>
+    /// (matching <c>data-theme="lightgray"</c> in app.css and the wire token in js/theme.js); XAML
+    /// references this property instead of the literal so the dictionary key matches by reference.
+    /// </remarks>
+    public static ThemeVariant LightGray { get; } = new("LightGray", ThemeVariant.Light);
 }

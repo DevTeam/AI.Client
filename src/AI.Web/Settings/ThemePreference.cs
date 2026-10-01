@@ -11,5 +11,8 @@ public enum ThemePreference
     DarkBlue,
 
     /// <summary>A dark, neutral grey palette: surfaces stay in step with each other rather than fading to near-black, so the workspace reads grey rather than blue or almost-black. The accent stays the user's.</summary>
-    Gray
+    Gray,
+
+    /// <summary>A light, soft grey palette: surfaces stay clearly visible against each other rather than fading to white, so the workspace reads grey rather than near-white. The accent stays the user's.</summary>
+    LightGray
 }

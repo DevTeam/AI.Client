@@ -2624,7 +2624,13 @@ body {
     font-size: 0.9rem;
 }
 
-.chat-queue { grid-row: 3; grid-column: 1; width: min(48rem, calc(100% - 3rem)); margin: 0 auto .4rem; }
+/* What belongs to the run but not to any one line of the feed: its file changes and the queue.
+   Out of the scroller, so neither is pushed around by the text above it. */
+.composer-dock { grid-row: 3; grid-column: 1; min-width: 0; }
+.composer-dock > .workspace-changes { width: min(48rem, calc(100% - 3rem)); margin: 0 auto .4rem; }
+/* Opened, the list scrolls inside the dock instead of shoving the transcript off the screen. */
+.composer-dock > .workspace-changes.is-expanded .workspace-changes-details-inner { max-height: min(22rem, 40vh); overflow-y: auto; }
+.chat-queue { width: min(48rem, calc(100% - 3rem)); margin: 0 auto .4rem; }
 .queue-header { display: flex; align-items: center; justify-content: space-between; gap: .45rem; }
 .queue-summary, .queue-actions { display: flex; align-items: center; gap: .45rem; }
 .queue-summary { padding: .35rem .5rem; border-color: transparent; background: transparent; color: var(--color-text-muted); }
@@ -4149,6 +4155,31 @@ textarea {
     transform: rotate(90deg);
 }
 
+/* The running turn's changes, pushed to the far end of its summary line. The counts sit in two
+   fixed tabular columns, so "+99" becoming "+100" moves neither the other count nor the label. */
+.turn-summary-changes {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: auto;
+    padding-left: 0.75rem;
+    color: var(--color-text-subtle);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.turn-summary-changes .app-icon {
+    width: 0.8rem;
+    height: 0.8rem;
+    color: var(--color-text-disabled);
+}
+
+.turn-summary-changes .workspace-added,
+.turn-summary-changes .workspace-removed {
+    min-width: 4.5ch;
+}
+
 /* A model-only context checkpoint belongs to the expanded work log. Its slim label signals
    that earlier work was summarized without making it look like another assistant answer. */
 .context-checkpoint {
@@ -4286,6 +4317,10 @@ textarea {
     color: var(--color-text-faint);
     font-size: 0.76rem;
     white-space: nowrap;
+}
+
+.turn-activity.is-idle {
+    visibility: hidden;
 }
 
 .turn-activity-glyph {

@@ -445,6 +445,13 @@
             OnResumeRun="ResumeQueueAsync"
             OnRebaseRun="RebaseQueueAsync"
             OnDiscardRun="DiscardCommandAsync" />
+        <div class="composer-dock">
+        @if (GetDockedChanges() is { } dockedChanges)
+        {
+            @* The run's changes so far, fixed above the composer while it works. In the feed the
+               card sat under the live text and moved every time a new note replaced the last. *@
+            <WorkspaceChanges Changes="@dockedChanges" Live="true" />
+        }
         @if (GetSelectedRun() is { } selectedRun && GetPendingQueue(selectedRun) is { Count: > 0 } pendingQueue)
         {
             @* Only what has not been sent yet. A command that is already a message in the
@@ -452,6 +459,7 @@
                that it can still be edited, reordered or removed. *@
             <section class="chat-queue @(_queueActionPending ? "queue-busy" : null)" aria-busy="@(_queueActionPending ? "true" : "false")"><div class="queue-header"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @pendingQueue.Count</span><AppIcon Name="chevron-right" /></button><div class="queue-actions">@if (_isConfirmingQueueClearAll) { <span class="queue-clear-confirm"><span>Stop the run and drop everything?</span><button class="danger compact-action" type="button" @onclick="ClearEverythingAsync">Clear all</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="() => _isConfirmingQueueClearAll = false"><AppIcon Name="x" /></button></span> } else { <button type="button" class="queue-action-button queue-action-clear" title="@($"Remove the {pendingQueue.Count} message(s) still waiting in the queue")" aria-label="Clear queued messages" @onclick="ClearQueueAsync"><AppIcon Name="queue-clear" /></button>@if (HasCommittedCommand(selectedRun)) { <button type="button" class="queue-action-button destructive-action" title="Stop the run and clear everything, including the message already sent" aria-label="Stop and clear everything" @onclick="() => _isConfirmingQueueClearAll = true"><AppIcon Name="trash" /></button> } }</div></div>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in pendingQueue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span title="@item.Content">@(string.IsNullOrWhiteSpace(item.Content) ? "Workspace references" : GetSingleLine(item.Content))@if (item.Resources is { Count: > 0 }) { <span class="queue-resource-count"> refs: @item.Resources.Count</span> }</span><button class="icon-action queue-send-now" type="button" title="Interrupt and send this message now" aria-label="Interrupt and send this message now" @onclick="() => SendQueuedMessageNowAsync(item.Id)"><AppIcon Name="zap" /></button><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }</section>
         }
+        </div>
         <div class="composer-prelude">
             @if (_navigationCue is { } cue)
             {
@@ -3476,6 +3484,14 @@
     private ChatRunSnapshot? GetRun(Guid chatId, Guid branchId) => RunState.Runs.GetValueOrDefault(new RunKey(chatId, branchId));
     private ChatRunSnapshot? GetBranchRun(Guid chatId, BranchTreeItem branch) => GetRun(chatId, branch.RootId);
     private ChatRunSnapshot? GetSelectedRun() => _selectedChat is not null ? GetRun(_selectedChat.Id, GetSelectedRunBranchId()) : null;
+    /// <summary>The selected run's changes until its receipt is saved into the transcript.</summary>
+    private AI.Contracts.Workspace.WorkspaceChangeSet? GetDockedChanges() =>
+        _selectedChat is not null
+        && GetSelectedRun() is { Status: not ChatRunStatus.Completed, WorkspaceChanges: { IsEmpty: false } changes }
+        && !Feed.LastTurnHasWorkspaceReceipt(Feed.BuildBranch(_selectedChat.Messages, _branchLeafId))
+            ? changes
+            : null;
+
     private int GetTranscriptRunPresentationVersion()
     {
         if (_selectedChat is null) return 0;

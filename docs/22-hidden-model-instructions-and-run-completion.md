@@ -35,8 +35,9 @@ assistant message. They are counted by the normal context planner and are never 
 A model response without tool calls ends the turn and is published as the answer, as the models
 are trained to work and as other agents do. Text that comes with tool calls is that step's
 preamble and is published with them. The run-wide `run.finishing` instruction tells the model to
-keep working until the request is done, not to stop to announce a next step, and, when blocked, to
-say what it did, what is left and what blocks it.
+keep working until the request is done, not to stop to announce a next step or to ask permission
+to take it ("Shall I…?"), to put a decision that is genuinely the user's through `ask_user` rather
+than into the reply, and, when blocked, to say what it did, what is left and what blocks it.
 
 What remains of the earlier machinery:
 

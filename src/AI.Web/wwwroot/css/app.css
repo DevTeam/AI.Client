@@ -5476,6 +5476,165 @@ textarea {
 
 .directory-picker-file svg { opacity: 0.75; }
 
+/* Git picker ------------------------------------------------------------- */
+
+/* A column, not the directory picker's fixed grid: the chosen-in-order strip comes and goes, and
+   only the list should give way to it. */
+.git-picker-modal { display: flex; flex-direction: column; }
+.git-picker-modal > header > div { min-width: 0; }
+.git-picker-modal > header span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-picker-modal .directory-picker-body { flex: 1; }
+
+.git-picker-toolbar { grid-template-columns: auto minmax(0, 1fr) auto; }
+.git-picker-toolbar > svg { width: 1rem; height: 1rem; margin-left: 0.2rem; color: var(--color-text-faint); }
+
+.git-picker-list { padding: 0.2rem 0; }
+
+.git-picker-group {
+    display: flex;
+    gap: 0.4rem;
+    padding: 0.55rem 0.65rem 0.2rem;
+    color: var(--color-text-faint);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.git-picker-group:not(:first-child) { margin-top: 0.2rem; border-top: 1px solid var(--color-border); }
+.git-picker-group span { font-weight: 400; }
+
+.git-picker-row { gap: 0.55rem; padding: 0.35rem 0.65rem; }
+.git-picker-row > svg { width: 1rem; height: 1rem; color: var(--color-text-faint); }
+.git-picker-row.selected > svg { color: inherit; }
+
+/* The check is drawn, a box for several choices and a dot for one. */
+.git-picker-check {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 1rem;
+    height: 1rem;
+    box-sizing: border-box;
+    border: 1.5px solid var(--color-border-strong);
+    border-radius: calc(0.25rem * var(--corner-scale));
+    background: var(--color-bg-inset);
+}
+
+.git-picker-check.is-radio { border-radius: 50%; }
+.selected .git-picker-check { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-surface); }
+.selected .git-picker-check.is-radio { background: var(--color-bg-inset); }
+.git-picker-check svg { width: 0.7rem; height: 0.7rem; stroke-width: 3.5; }
+.git-picker-check i { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--color-accent); }
+
+.git-picker-text { display: grid; flex: 1; min-width: 0; gap: 0.1rem; }
+.directory-picker-item .git-picker-text { overflow: visible; white-space: normal; }
+.git-picker-name,
+.git-picker-meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-picker-meta { color: var(--color-text-faint); font-size: 0.75rem; }
+.selected .git-picker-meta { color: inherit; opacity: 0.75; }
+.git-picker-meta code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; }
+
+.git-picker-order {
+    flex: none;
+    min-width: 1.1rem;
+    padding: 0 0.3rem;
+    box-sizing: border-box;
+    border-radius: 999px;
+    background: var(--color-accent);
+    color: var(--color-surface);
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.1rem;
+    text-align: center;
+}
+
+.git-picker-more {
+    display: grid;
+    justify-items: center;
+    gap: 0.35rem;
+    padding: 0.5rem;
+    color: var(--color-text-faint);
+    font-size: 0.75rem;
+    text-align: center;
+}
+
+.directory-picker-empty .git-picker-spinner { animation: git-picker-spin 1s linear infinite; }
+@keyframes git-picker-spin { to { transform: rotate(360deg); } }
+.directory-picker-empty svg { width: 1.4rem; height: 1.4rem; }
+
+/* Chosen, in answer order: chips that wrap, scrolling past a few rows rather than eating the list. */
+.git-picker-selected {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    max-height: 4.4rem;
+    margin: 0.6rem 0 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.git-picker-selected li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 0.1rem 0.15rem 0.1rem 0.2rem;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 999px;
+    background: var(--color-accent-bg);
+    font-size: 0.75rem;
+}
+
+.git-picker-chip-order {
+    min-width: 1rem;
+    border-radius: 999px;
+    background: var(--color-accent);
+    color: var(--color-surface);
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 1rem;
+    text-align: center;
+}
+
+.git-picker-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.git-picker-selected button {
+    display: inline-grid;
+    place-items: center;
+    width: 1.1rem;
+    height: 1.1rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-text-faint);
+    cursor: pointer;
+}
+
+.git-picker-selected button:hover { background: var(--color-fill); color: var(--color-text); }
+.git-picker-selected button svg { width: 0.7rem; height: 0.7rem; }
+
+.git-picker-summary { display: flex; align-items: center; gap: 0.5rem; font-family: inherit; font-size: 0.8rem; }
+
+.git-picker-clear {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-accent);
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.git-picker-clear:hover { text-decoration: underline; }
+.settings-modal-actions .git-picker-clear { min-width: 0; }
+.directory-picker-empty .error,
+.git-picker-more .error { margin: 0; }
+
 /* The path a question was answered with, with the picker one click away. */
 .user-prompt-path-row {
     display: flex;
@@ -5522,7 +5681,13 @@ textarea {
     white-space: nowrap;
 }
 
-.user-prompt-paths > button { justify-self: start; }
+/* Icon and text in one line, centred on each other: left inline, the icon sat on the baseline. */
+.user-prompt-paths > button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    justify-self: start;
+}
 .chat-menu > .review-submenu-trigger { width: 100%; }
 .review-submenu-trigger > span { flex: 1; min-width: 0; }
 .review-submenu-trigger > .app-icon:last-child { width: .8rem; height: .8rem; color: var(--color-text-subtle); }

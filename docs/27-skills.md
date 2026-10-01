@@ -39,7 +39,7 @@ application permissions, and every write still goes through tool approval.
 ## Naming
 
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. The domains are `chat`,
-  `project`, `memory`, `skill`, `instructions`, `code`, `git`, `devops`, `qa` and `settings`; a new area gets a new domain. The
+  `project`, `memory`, `skill`, `instructions`, `code`, `git`, `devops`, `qa`, `mermaid` and `settings`; a new area gets a new domain. The
   action is a verb: create, rename, compact, fork, add, remove, review, save, edit, suggest,
   implement, fix, run, commit.
 - `name` is the id in words with the first letter capitalized (`project-directory-add` →
@@ -118,6 +118,20 @@ application permissions, and every write still goes through tool approval.
 | `qa-bug-report` | Writes a reproducible defect report with expected/actual behavior, evidence and impact; never submits an issue | file readers, `ask_user` |
 | `qa-failures-triage` | Diagnoses failed or flaky tests using bounded reruns and evidence; changes nothing | file readers, `process_run`, `tool_search`, `ask_user` |
 | `qa-release-assess` | Assesses a specific release candidate against actual gates, defects and remaining risks | file readers, `process_run`, Git pickers |
+| `mermaid-create` | Create a Mermaid diagram from the user's explanation or inspected sources, selecting a compatible type and returning source or requested documentation edits. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-create-flowchart` | Create a Mermaid flowchart of an inspected algorithm, process or decision tree with labeled outcomes and compatible syntax. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-create-sequence` | Create a Mermaid sequence diagram of an actual interaction with ordered participants, messages, alternatives and error paths. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-create-class` | Create a Mermaid class diagram from actual type contracts with relevant members, inheritance and supported relationship notation. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-create-state` | Create a Mermaid state diagram of a lifecycle with verified transitions, events, initial states and terminal outcomes. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-create-er` | Create a Mermaid entity relationship diagram from schemas or models with verified attributes, keys and relationship cardinalities. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-create-architecture` | Create a Mermaid architecture view with verified service boundaries and connections, using target-supported syntax or a clear flowchart fallback. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-create-gantt` | Create a Mermaid Gantt schedule from supplied dates, durations and dependencies without inventing commitments or completion status. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-create-mindmap` | Create a Mermaid mindmap from concepts or an inspected outline with a clear hierarchy, consistent indentation and supported styling. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-create-gitgraph` | Create a Mermaid GitGraph of an actual or proposed branching workflow without changing repository history or fabricating commit ancestry. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-edit` | Edit an existing Mermaid diagram for requested content or layout changes while preserving unrelated documentation and meaning. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-fix` | Fix a Mermaid syntax or rendering failure using the actual source, diagnostic and target runtime while preserving the intended diagram. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-review` | Review a Mermaid diagram for syntax, source fidelity, readability, accessibility and target compatibility without editing project files. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
+| `mermaid-export` | Export a Mermaid source to requested SVG, PNG or PDF using an available compatible renderer, preserving source and verifying the actual artifact. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
 | `git-commit` | On request only: drafts a message in the log's style and commits the chosen paths; never pushes | `process_run` |
 | `git-commit-message-suggest` | Drafts a message for staged/local changes or selected commits; changes nothing | `process_run`, `ask_user` commit picker |
 | `git-rebase` | Rebases the current branch onto a selected branch, keeps a recovery ref and pauses at conflicts | `process_run`, `ask_user` branch picker |
@@ -181,6 +195,20 @@ only task-owned records. Results identify the actual revision/environment and di
 failed, blocked and not-run checks. No discovered tests, an unavailable platform or a pending run
 is not a pass; a passing retry does not erase a flaky failure. Release readiness assesses evidence
 and risks without implicitly publishing, deploying or waiving a quality gate.
+
+Mermaid skills return a complete fenced diagram in chat by default, editing documentation/source
+files only within the requested scope. Each has a dedicated SVG icon in the shared picker.
+They inspect the target version/build and fetch official syntax documentation; current upstream
+features are not assumed to exist in the host. General creation covers types beyond the specialized
+flowchart, sequence, class, state, ER, architecture, Gantt, mindmap and GitGraph workflows.
+Editing preserves unrelated content, repair preserves meaning, review is read-only, and export
+uses an actual available compatible renderer without implicitly installing tooling.
+
+Validation distinguishes parsing, rendering and visual inspection. Missing tools leave checks
+unverified. Diagrams preserve host security settings, use accessible descriptions where supported,
+and do not upload private source to an external editor. GitGraph is a visualization workflow:
+branch/commit selection uses the existing Git pickers without executing history operations.
+See the [Mermaid skill guide](mermaid-skills.md) for official references and workflow details.
 
 Git skills use the [Git pickers in ask_user](19-ask-user.md#git-pickers) when the user has not named
 the branches or commits. Explicit values from the request bypass selection. History operations
@@ -255,7 +283,7 @@ in the project, and the model's copy of the message starts with an instruction t
 When the App tools are available, the standing `skills.catalog` layer lists every enabled skill
 in effect for the project: its id, description and parameter names, with `*` marking required ones.
 Only executors the application runs on its own (`chat-reply-suggest`, `chat-tool-risk-assess`) are left out. It follows
-memory, has its own 8,192-token budget and ends with a pointer to `mcp_app__skill_search` when it is
+memory, has its own 10,240-token budget and ends with a pointer to `mcp_app__skill_search` when it is
 cut. Its lead tells the model to check the list before acting and when the user changes task, to
 run a fitting skill before other tools even for requests that look simple, and to run only listed
 or user-named ids. `skill_search` and `run_skill` are always in the request's tool schema, so a skill from the catalog

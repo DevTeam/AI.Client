@@ -7,7 +7,7 @@ using Xunit;
 
 public class BuiltInSkillCatalogTests
 {
-    private static readonly string[] Domains = ["chat", "project", "memory", "skill", "instructions", "code", "git", "settings"];
+    private static readonly string[] Domains = ["chat", "project", "memory", "skill", "instructions", "code", "git", "devops", "settings"];
 
     [Fact]
     public void ShouldExposeBundledChatRenameInstructions()

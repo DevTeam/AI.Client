@@ -5870,6 +5870,7 @@ a.resource-pill-target.file-link { cursor: context-menu; }
     -webkit-mask: var(--mention-icon) center / contain no-repeat;
     mask: var(--mention-icon) center / contain no-repeat;
 }
+.markdown-content :is(a.mention-link, .file-link)::before { vertical-align: text-bottom; }
 .resource-pill-target::before { width: 1em; height: 1em; margin-right: .3em; }
 .markdown-content .file-link:not(.mention-link) { --mention-icon: var(--file-icon); }
 .markdown-content .file-link:not(.mention-link)[data-file-kind="Directory"] { --mention-icon: var(--directory-icon); }
@@ -6757,3 +6758,20 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .chat-timeline-jump { justify-self: start; margin-top: .15rem; }
 @keyframes chat-timeline-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .chat-timeline-row.is-running .chat-timeline-dot { animation: none; } }
+/* Branches widget: one row per stored branch of the chat. Reuses the sidebar's branch tree line
+   to keep depth indentation consistent with the rest of the app; the active branch gets the same
+   accent the sidebar uses for a selected chat nav row. */
+.chat-branches-headline { display: flex; align-items: baseline; gap: .55rem; flex-wrap: wrap; }
+.chat-branches-count { font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.chat-branches-list { display: grid; gap: .15rem; margin: 0; padding: 0; list-style: none; }
+.chat-branches-row { position: relative; display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); align-items: start; column-gap: .45rem; width: 100%; padding: .35rem .45rem .35rem calc((min(var(--branch-depth, 0), 3) * 1rem) + .45rem); background: transparent; border: 0; border-radius: calc(.45rem * var(--corner-scale)); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color .12s ease; }
+.chat-branches-row:hover, .chat-branches-row:focus-visible { background: var(--color-fill); outline: none; }
+.chat-branches-row.is-active { background: var(--color-fill); box-shadow: inset 2px 0 0 var(--color-accent-text); }
+.chat-branches-row > .branch-tree-line { top: 0; bottom: auto; height: .95rem; left: calc((min(var(--branch-depth, 0), 3) * 1rem) + .45rem); }
+.chat-branches-mark { display: inline-flex; align-items: center; justify-content: center; height: 1.2rem; color: var(--color-text-secondary); }
+.chat-branches-row.is-active .chat-branches-mark { color: var(--color-accent-text); }
+.chat-branches-body { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+.chat-branches-title { font-weight: 500; line-height: 1.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-branches-meta { display: flex; flex-wrap: wrap; gap: .1rem 0; font-size: .72rem; }
+.chat-branches-meta > span { white-space: nowrap; }
+.chat-branches-meta > span + span::before { content: "·"; margin: 0 .35rem; }

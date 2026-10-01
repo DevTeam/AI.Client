@@ -1,0 +1,114 @@
+@inject IChatBranchesStatisticsCalculator Calculator
+
+@* Branches of the chat, one row per stored branch: title, depth, how many messages it owns,
+   how many child branches it has, and when its head message was recorded. Head timestamps come
+   from message CreatedAt and so are marked approximate — a long idle pause before the last
+   message counts as part of the branch's age rather than the user's. A click on a row switches
+   the visible branch, the same way the sidebar's branch links do. The scope switch is not shown
+   because "branches" is a chat-level fact by definition: a single branch never has sub-branches
+   of its own. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-branches-widget">
+    @if (!_stats.HasBranches)
+    {
+        <p class="chat-usage-empty">Branches appear here once a branch is created.</p>
+    }
+    else
+    {
+        <div class="chat-usage-section chat-branches-headline">
+            <span class="chat-branches-count">@_stats.Branches.Count</span>
+            <span class="chat-usage-muted">@(_stats.Branches.Count == 1 ? "branch" : "branches")</span>
+        </div>
+
+        <div class="chat-usage-section chat-branches-list" role="list">
+            @foreach (var branch in _stats.Branches)
+            {
+                <button @key="branch.RootId"
+                        type="button"
+                        class="chat-branches-row @(branch.IsActive ? "is-active" : null)"
+                        style="--branch-depth: @Math.Min(branch.Depth, 3)"
+                        role="listitem"
+                        title="@GetRowTitle(branch)"
+                        aria-current="@(branch.IsActive ? "true" : null)"
+                        @onclick="() => OnSelectBranch.InvokeAsync(branch)">
+                    @if (branch.Depth > 0)
+                    {
+                        <span class="branch-tree-line" aria-hidden="true"></span>
+                    }
+                    <span class="chat-branches-mark" aria-hidden="true">
+                        <AppIcon Name="git-branch" />
+                    </span>
+                    <span class="chat-branches-body">
+                        <span class="chat-branches-title">@branch.Title</span>
+                        <span class="chat-branches-meta chat-usage-muted">
+                            <span>@FormatMessages(branch.MessageCount)</span>
+                            @if (branch.ChildCount > 0)
+                            {
+                                <span>@FormatChildren(branch.ChildCount)</span>
+                            }
+                            @if (branch.HeadAt is { } headAt)
+                            {
+                                <span title="@headAt.LocalDateTime.ToString("F")">≈ @FormatHeadAt(headAt)</span>
+                            }
+                        </span>
+                    </span>
+                </button>
+            }
+        </div>
+
+        <div class="chat-usage-section chat-usage-footnote">
+            <span>≈ — when the branch's last message was recorded.</span>
+        </div>
+    }
+</ChatWidget>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>Every stored branch of the chat, in stored order.</summary>
+    [Parameter]
+    public IReadOnlyList<ChatBranchView>? Branches { get; set; }
+
+    /// <summary>The chat's messages, in stored order. Used to count descendants and read the head timestamp.</summary>
+    [Parameter]
+    public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+
+    /// <summary>The branch currently visible in the transcript, when one has been chosen.</summary>
+    [Parameter]
+    public Guid? SelectedBranchId { get; set; }
+
+    /// <summary>Asks the page to switch the visible branch to the one the row represents.</summary>
+    [Parameter]
+    public EventCallback<ChatBranchSummary> OnSelectBranch { get; set; }
+
+    private ChatBranchesStatistics _stats = ChatBranchesStatistics.Empty;
+
+    protected override void OnParametersSet() => Refresh();
+
+    private void Refresh() =>
+        _stats = Calculator.Calculate(Branches, Messages, SelectedBranchId);
+
+    private string? GetSummary()
+    {
+        if (!_stats.HasBranches) return null;
+        var count = _stats.Branches.Count;
+        return $"{count} {(count == 1 ? "branch" : "branches")}";
+    }
+
+    private string GetRowTitle(ChatBranchSummary branch)
+    {
+        var head = branch.HeadAt is { } headAt
+            ? $"Head ≈ {headAt.LocalDateTime:F}"
+            : "Head message missing";
+        return $"{branch.Title} — {branch.MessageCount} {(branch.MessageCount == 1 ? "message" : "messages")}, {branch.ChildCount} {(branch.ChildCount == 1 ? "child branch" : "child branches")}. {head}.";
+    }
+
+    private static string FormatMessages(int count) =>
+        $"{count} {(count == 1 ? "message" : "messages")}";
+
+    private static string FormatChildren(int count) =>
+        $"{count} {(count == 1 ? "child" : "children")}";
+
+    private static string FormatHeadAt(DateTimeOffset at) =>
+        at.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
+}

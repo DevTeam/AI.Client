@@ -2822,7 +2822,7 @@ body {
     font: inherit;
     font-size: .75em;
     line-height: 1.5;
-    vertical-align: .1em;
+    vertical-align: baseline;
     cursor: pointer;
     pointer-events: auto;
 }

@@ -87,10 +87,12 @@ public sealed class ChatExecutionTests
         var context = first.Request.ContextMessages!;
         context.ShouldContain(message => message.Role == "assistant"
             && message.ToolCalls!.Single().Name == "mcp_app__run_skill");
-        context[^1].Role.ShouldBe("tool");
-        context[^1].ForModel.ShouldContain("Summarize the chat");
-        context.ShouldContain(message => message.Role == "system" && message.Content.StartsWith(
-            "Skill routing: the application loaded the skill chat-summary", StringComparison.Ordinal));
+        // The playbook is the last of the conversation; only this step's guidance follows it.
+        context[^2].Role.ShouldBe("tool");
+        context[^2].ForModel.ShouldContain("Summarize the chat");
+        context[^1].Content.ShouldStartWith(ModelInstructionComposer.TrailingPrefix);
+        context[^1].Content.ShouldContain(
+            "Skill routing: the application loaded the skill chat-summary", Case.Sensitive);
         fixture.Tools.SkillRuns.ShouldHaveSingleItem().ShouldContain("\"skillId\":\"chat-summary\"");
         first.Answer.SetResult("We decided to ship on Friday.");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
@@ -205,7 +207,7 @@ public sealed class ChatExecutionTests
         corrective.Request.Tools!.ShouldContain(tool => tool.Name == "mcp_built_in__process_run");
         var generating = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Generating);
         generating.StreamingContent.ShouldBeEmpty();
-        corrective.Request.ContextMessages!.Where(message => message.Role == "system")
+        corrective.Request.ContextMessages!.Where(IsInstruction)
             .ShouldContain(message => message.Content.Contains("has not been published yet", StringComparison.Ordinal));
         corrective.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
             {"status":"complete","finalAnswer":"Done and verified.","includePreviousText":false,"completed":["Changed and verified the file"],"evidence":["Command succeeded"],"remaining":[]}
@@ -262,7 +264,7 @@ public sealed class ChatExecutionTests
         first.Answer.SetResult("");
         (await fixture.NextCallAsync()).Answer.SetResult("## Report\n\n3 files.");
         var finish = await fixture.NextCallAsync();
-        finish.Request.ContextMessages!.Where(message => message.Role == "system")
+        finish.Request.ContextMessages!.Where(IsInstruction)
             .ShouldContain(message => message.Content.Contains("published as written", StringComparison.Ordinal));
         // As the model did: no flag, and a one-line summary claiming the report was already shown.
         finish.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
@@ -317,7 +319,7 @@ public sealed class ChatExecutionTests
 
         var finish = await fixture.NextCallAsync();
         finish.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
-        finish.Request.ContextMessages!.Where(message => message.Role == "system")
+        finish.Request.ContextMessages!.Where(IsInstruction)
             .ShouldContain(message => message.Content.Contains("no new information", StringComparison.Ordinal));
         finish.ToolCalls = [new ChatToolCall("finish-1", RunCompletionProtocol.Name, """
             {"status":"blocked","finalAnswer":"I could not find the answer with the available tools."}
@@ -457,7 +459,7 @@ public sealed class ChatExecutionTests
 
         var corrected = await fixture.NextCallAsync();
         corrected.Request.Tools!.ShouldHaveSingleItem().Name.ShouldBe(RunCompletionProtocol.Name);
-        var hidden = corrected.Request.ContextMessages!.Where(message => message.Role == "system")
+        var hidden = corrected.Request.ContextMessages!.Where(IsInstruction)
             .Select(message => message.Content).ToArray();
         hidden.ShouldContain(message => message.Contains("call was rejected", StringComparison.Ordinal));
         hidden.ShouldContain(message => message.Contains("last response was empty", StringComparison.Ordinal));
@@ -1055,6 +1057,36 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task AFillingContextShouldBeSummarizedByTheModelOnceAndKeptForLaterTurns()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetConnectionLimitsAsync(20_000, 2_000);
+        fixture.Completion.SummaryAnswer = "The user asked for three reports.";
+        var requests = Enumerable.Range(1, 4)
+            .Select(index => $"request-{index} " + new string((char)('a' + index), 10_000))
+            .ToArray();
+        var calls = new List<Call>();
+        foreach (var request in requests)
+        {
+            await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), request));
+            var call = await fixture.NextCallAsync();
+            calls.Add(call);
+            call.Answer.SetResult("done");
+            await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        }
+
+        // Once the context filled up, the earlier turns went into a model-written summary that later
+        // requests start from; nothing had to be cut deterministically.
+        fixture.Completion.SummaryRequests.ShouldBeGreaterThan(0);
+        var last = calls[^1].Request.ContextMessages!.Where(message => message.Role != "system").ToArray();
+        last[0].Content.ShouldStartWith(HistoryCheckpointService.SummaryPrefix);
+        last[0].Content.ShouldContain("three reports");
+        last[^1].Content.ShouldBe(requests[^1]);
+        calls.SelectMany(call => call.Request.ContextMessages!)
+            .ShouldNotContain(message => message.Content.Contains("(deterministic;", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task LongHistoryShouldBeCompactedOnlyForTransport()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -1555,6 +1587,10 @@ public sealed class ChatExecutionTests
         return messageId;
     }
 
+    /// <summary>A hidden instruction: leading the request, or in the guidance that follows the conversation.</summary>
+    private static bool IsInstruction(ChatCompletionMessage message) =>
+        message.Role == "system" || message.Content.StartsWith(ModelInstructionComposer.TrailingPrefix, StringComparison.Ordinal);
+
     private static void AssertValidToolContext(IReadOnlyList<ChatCompletionMessage> context, string lastUserMessage)
     {
         var expectedResults = new Queue<string>();
@@ -1680,7 +1716,7 @@ public sealed class ChatExecutionTests
 
         // The model was told to carry on, and the person was not: the instruction exists only in
         // the context the agent assembles, never in the chat it stores.
-        rest.Request.ContextMessages!.Where(message => message.Role == "system")
+        rest.Request.ContextMessages!.Where(IsInstruction)
             .ShouldContain(message => message.Content.Contains("cut off at the output token limit", StringComparison.Ordinal));
         chat.Messages.ShouldAllBe(message => !message.Content.Contains("cut off at the output token limit"));
     }
@@ -1730,7 +1766,15 @@ public sealed class ChatExecutionTests
         /// <summary>What the skill router answers; nowhere by default.</summary>
         public string RouteAnswer { get; set; } = "{}";
         public bool AdaptLegacyFinalAnswers { get; set; } = true;
-        public Task<ChatCompletionResponse> CompleteAsync(ChatCompletionRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        /// <summary>What a summary request is answered with; summaries fail when it is null.</summary>
+        public string? SummaryAnswer { get; set; }
+        public int SummaryRequests;
+        public Task<ChatCompletionResponse> CompleteAsync(ChatCompletionRequest request, CancellationToken cancellationToken)
+        {
+            if (SummaryAnswer is null) throw new NotSupportedException();
+            Interlocked.Increment(ref SummaryRequests);
+            return Task.FromResult(new ChatCompletionResponse(SummaryAnswer, request.Model));
+        }
         public async IAsyncEnumerable<ChatCompletionChunk> StreamAsync(ChatCompletionRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // Skill routing asks the model once before a turn's first step. It routes nowhere here, so

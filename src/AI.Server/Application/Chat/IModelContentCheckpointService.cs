@@ -32,8 +32,9 @@ public interface IModelContentCheckpointService
     void PinHistory(ToolRunContext run, HistoryCheckpoint checkpoint);
 
     ModelContentCompactionPreview Preview(ToolRunContext run, ContextCompactionScope scope = ContextCompactionScope.Turn);
+    /// <param name="origin">Who asked for a history compaction, recorded on the checkpoint it keeps.</param>
     Task<ModelContentCompactionResult> CompactAsync(ToolRunContext run, int targetTokens, ContextCompactionScope scope,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, HistoryCheckpointOrigin origin = HistoryCheckpointOrigin.Model);
 
     /// <summary>Drops the turn checkpoint, or for the history the checkpoint the run now applies.</summary>
     Task<bool> ResetAsync(ToolRunContext run, ContextCompactionScope scope, CancellationToken cancellationToken);

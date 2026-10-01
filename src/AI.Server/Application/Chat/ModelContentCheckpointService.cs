@@ -69,12 +69,13 @@ public sealed class ModelContentCheckpointService(
     }
 
     public Task<ModelContentCompactionResult> CompactAsync(ToolRunContext run, int targetTokens,
-        ContextCompactionScope scope, CancellationToken cancellationToken)
+        ContextCompactionScope scope, CancellationToken cancellationToken,
+        HistoryCheckpointOrigin origin = HistoryCheckpointOrigin.Model)
     {
         if (!_entries.TryGetValue(Key.Of(run), out var entry))
             return Task.FromResult(new ModelContentCompactionResult(0, 0, 0, false, "No active run context is available."));
         return scope == ContextCompactionScope.History
-            ? CompactHistoryAsync(run, entry, targetTokens, cancellationToken)
+            ? CompactHistoryAsync(run, entry, targetTokens, origin, cancellationToken)
             : CompactTurnAsync(entry, targetTokens, cancellationToken);
     }
 
@@ -106,7 +107,7 @@ public sealed class ModelContentCheckpointService(
     }
 
     private async Task<ModelContentCompactionResult> CompactHistoryAsync(ToolRunContext run, Entry entry, int targetTokens,
-        CancellationToken cancellationToken)
+        HistoryCheckpointOrigin origin, CancellationToken cancellationToken)
     {
         // The context the run was given may already open with a summary; covering it again folds
         // the older summary into the new one.
@@ -118,7 +119,7 @@ public sealed class ModelContentCheckpointService(
         var sourceCharacters = coverable.Sum(message => (long)message.ForModel.Length);
         if (summary is null) return new(coverable.Count, sourceCharacters, 0, false, "The compaction task returned no summary.");
         var checkpoint = new HistoryCheckpoint(ids.Create(), coverable.Last(message => message.MessageId is not null).MessageId!.Value,
-            summary.Text, coverable.Count, summary.SourceCharacters, entry.Model, clock.UtcNow, HistoryCheckpointOrigin.Model);
+            summary.Text, coverable.Count, summary.SourceCharacters, entry.Model, clock.UtcNow, origin);
         await history.AddAsync(run.ProjectId, run.ChatId, checkpoint, cancellationToken);
         entry.History = checkpoint;
         return new(coverable.Count, sourceCharacters, summary.Text.Length, true,

@@ -8,6 +8,9 @@ using Contracts.Settings;
 /// Keeps tool schemas inside a bounded share of the context window. Selection is deterministic:
 /// tools already used by this turn and user-facing escape hatches win, then textual relevance,
 /// then smaller schemas so an oversized catalogue cannot consume the message budget by itself.
+/// Within a run the list the previous step was given is kept in its order and only extended:
+/// providers cache a request by its prefix, and the tools come before every message, so a list
+/// that is reordered or loses a tool from one step to the next costs the whole cached conversation.
 /// </summary>
 public sealed partial class ToolDefinitionSelector(
     IContextTokenEstimator estimator,
@@ -17,9 +20,34 @@ public sealed partial class ToolDefinitionSelector(
     private const long AbsoluteBudget = 6_000;
     private const int MaximumTools = 16;
 
+    /// <summary>How far past the budget a carried-on list may grow before it is chosen afresh.</summary>
+    private const int CarriedOverPercent = 150;
+
     public ToolSelection Choose(ConnectionSettings? connection, string request,
         IReadOnlyList<ChatCompletionMessage> context, IReadOnlyList<AgentTool> availableTools,
-        IReadOnlySet<string>? pinnedTools = null)
+        IReadOnlySet<string>? pinnedTools = null, IReadOnlyList<AgentTool>? previousTools = null)
+    {
+        var fresh = ChooseFresh(connection, request, context, availableTools, pinnedTools);
+        if (previousTools is not { Count: > 0 }) return fresh;
+        var current = availableTools.GroupBy(tool => tool.ModelDefinition.Name, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        var carried = previousTools.Select(tool => current.GetValueOrDefault(tool.ModelDefinition.Name))
+            .OfType<AgentTool>().ToList();
+        var names = carried.Select(tool => tool.ModelDefinition.Name).ToHashSet(StringComparer.Ordinal);
+        carried.AddRange(fresh.Tools.Where(tool => names.Add(tool.ModelDefinition.Name)));
+        var tokens = estimator.EstimateTools(carried.Select(tool => tool.ModelDefinition).ToArray());
+        // A list that has outgrown its budget is chosen afresh: one cache miss, against a schema
+        // share that would otherwise only grow for the rest of the run.
+        return tokens <= Math.Max(fresh.AvailableTokens <= fresh.BudgetTokens ? fresh.AvailableTokens : 0,
+                   fresh.BudgetTokens * CarriedOverPercent / 100)
+               && carried.Count <= Math.Max(MaximumTools * CarriedOverPercent / 100, fresh.Tools.Count)
+            ? fresh with { Tools = carried, SelectedTokens = tokens }
+            : fresh;
+    }
+
+    private ToolSelection ChooseFresh(ConnectionSettings? connection, string request,
+        IReadOnlyList<ChatCompletionMessage> context, IReadOnlyList<AgentTool> availableTools,
+        IReadOnlySet<string>? pinnedTools)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(availableTools);

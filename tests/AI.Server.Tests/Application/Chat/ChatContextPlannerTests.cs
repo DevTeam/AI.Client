@@ -372,6 +372,71 @@ public sealed class ChatContextPlannerTests
         public long EstimateTools(IReadOnlyList<ChatToolDefinition> tools) => long.MaxValue;
     }
 
+    [Fact]
+    public void ShouldCarryOnTheRunsCompactionWhileItStillFitsSoTheRequestStartsTheSame()
+    {
+        var messages = Enumerable.Range(1, 6).SelectMany(index => new ChatCompletionMessage[]
+        {
+            new("user", $"request-{index} " + new string((char)('a' + index), 10_000)),
+            new("assistant", $"outcome-{index}")
+        }).ToList();
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
+            new FixedLimitsResolver(24_000, 1_000));
+        var memory = new ContextCompactionMemory();
+
+        var first = planner.Plan(null, "small-model", messages, [], memory: memory);
+        messages.Add(new ChatCompletionMessage("user", "next"));
+        messages.Add(new ChatCompletionMessage("assistant", "", [new ChatToolCall("call-1", "read", "{}")]));
+        messages.Add(new ChatCompletionMessage("tool", new string('t', 2_000), ToolCallId: "call-1"));
+        var second = planner.Plan(null, "small-model", messages, [], memory: memory);
+
+        first.WasCompacted.ShouldBeTrue();
+        second.Fits.ShouldBeTrue();
+        second.Messages.Take(first.Messages.Count).ShouldBe(first.Messages);
+        second.Messages.Count.ShouldBe(first.Messages.Count + 3);
+        // Compacted below the limit, so there was room for this step to append to it.
+        first.EstimatedInputTokens.ShouldBeLessThanOrEqualTo(first.InputLimit * 80 / 100);
+    }
+
+    [Fact]
+    public void ShouldCompactAfreshOnceTheCarriedOnRequestNoLongerFits()
+    {
+        var messages = Enumerable.Range(1, 6).SelectMany(index => new ChatCompletionMessage[]
+        {
+            new("user", $"request-{index} " + new string((char)('a' + index), 10_000)),
+            new("assistant", $"outcome-{index}")
+        }).ToList();
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
+            new FixedLimitsResolver(24_000, 1_000));
+        var memory = new ContextCompactionMemory();
+
+        planner.Plan(null, "small-model", messages, [], memory: memory);
+        messages.Add(new ChatCompletionMessage("user", "next " + new string('n', 12_000)));
+        var second = planner.Plan(null, "small-model", messages, [], memory: memory);
+
+        second.Fits.ShouldBeTrue();
+        second.Messages[^1].Content.ShouldStartWith("next ");
+    }
+
+    [Fact]
+    public void ShouldSendTheTrailingGuidanceLastAndCountItAgainstTheLimit()
+    {
+        var messages = Enumerable.Range(1, 6).SelectMany(index => new ChatCompletionMessage[]
+        {
+            new("user", $"request-{index} " + new string((char)('a' + index), 10_000)),
+            new("assistant", $"outcome-{index}")
+        }).ToArray();
+        ChatCompletionMessage[] trailing = [new("user", ModelInstructionComposer.TrailingPrefix + new string('g', 4_000))];
+        var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
+            new FixedLimitsResolver(24_000, 1_000));
+
+        var plan = planner.Plan(null, "small-model", messages, [], trailing);
+
+        plan.Fits.ShouldBeTrue();
+        plan.Messages[^1].ShouldBeSameAs(trailing[0]);
+        plan.InstructionTokens.ShouldBeGreaterThanOrEqualTo(_estimator.EstimateMessages(trailing));
+    }
+
     private sealed class FixedLimitsResolver(long contextWindow, long reservedOutput) : IConnectionContextLimitsResolver
     {
         public ResolvedConnectionContextLimits Resolve(ConnectionSettings? connection) =>

@@ -94,9 +94,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 $"This run: projectId {projectId}, chatId {chatId}, branchId {branchId}. The main branch id equals the chat id.",
                 900, ModelInstructionLifetime.Run));
         await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), token);
+        // Set while the application compacts the history itself, so its summary is accounted as a
+        // compaction rather than as a checkpoint the model asked for.
+        var compactingAhead = false;
         using var checkpointScope = checkpoints.Begin(run, request.Model, HistoryKeepTokens(configuredConnection), async (prompt, ct) =>
         {
-            using var usageScope = usageMeter.Begin(new TokenUsageScope(TokenUsagePurpose.Checkpoint));
+            using var usageScope = usageMeter.Begin(new TokenUsageScope(
+                compactingAhead ? TokenUsagePurpose.Compaction : TokenUsagePurpose.Checkpoint));
             return (await completion.CompleteAsync(request with
             {
                 Message = prompt,
@@ -152,6 +156,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         string? provisionalAnswer = null;
         var completionRequired = counts.Count > 0;
         var routed = false;
+        // What the request carried in the previous step: kept, so the next request starts the same.
+        var compactionMemory = new ContextCompactionMemory();
+        IReadOnlyList<AgentTool>? sentTools = null;
+        // One failed or fruitless attempt is enough: retried at every step, each would cost a summary.
+        var compactAhead = true;
         // Runs mcp_app__run_skill for the routed playbook as if the model had called it: the call and its
         // result are persisted like any other, so the transcript shows the skill and a resumed run
         // sees its instructions. True when the playbook's instructions are now in the context.
@@ -248,8 +257,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     970, ModelInstructionLifetime.Request));
             var completionToolForced = completionRequired && (empty > 0 || invalidCompletion || missingCompletion >= 2 || stalled);
             IReadOnlyList<AgentTool> requestTools = completionToolForced ? [completionProtocol.Tool] : permitted;
+            // A forced completion step is a detour: the list it sends is not the one to carry on.
             var selection = toolSelector.Choose(configuredConnection, request.Message, modelContext, requestTools,
-                toolCatalog.GetPinned(run));
+                toolCatalog.GetPinned(run), completionToolForced ? null : sentTools);
+            if (!completionToolForced) sentTools = selection.Tools;
             var selectedTools = toolSearchEnricher.Enrich(selection.Tools, permitted, selection.BudgetTokens);
             var available = selectedTools.Select(item => item.ModelDefinition).ToArray();
             contextDiagnostics.RecordToolSelection(request.Model, selection.AvailableCount, selectedTools.Count,
@@ -266,9 +277,28 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             string? finish = null;
             var chunkCount = 0;
             var composition = instructionComposer.Compose(run, modelContext);
+            // Measured with the instructions and tools the request carries: they share the window.
+            if (compactAhead && NeedsCompactionAhead(configuredConnection, composition, available))
+            {
+                compactingAhead = true;
+                try
+                {
+                    compactAhead = await CompactAheadAsync(run, configuredConnection, token);
+                }
+                finally
+                {
+                    compactingAhead = false;
+                }
+                if (compactAhead)
+                {
+                    modelContext = checkpoints.Apply(run, context);
+                    composition = instructionComposer.Compose(run, modelContext);
+                }
+            }
             instructionDiagnostics.RecordInstructions(request.Model, composition.Keys, composition.EstimatedTokens);
             var plan = await contextPlanner.PlanAsync(configuredConnection, request.Model, composition.Messages, available,
-                new CompletionClientSummarizer(completion, request, usageMeter), SummaryTargetTokens, token);
+                new CompletionClientSummarizer(completion, request, usageMeter), SummaryTargetTokens, token,
+                composition.TrailingMessages, compactionMemory);
             contextDiagnostics.Record(request.Model, plan, composition.Messages.Count, available.Length);
             lastPlan = plan;
             if (plan.HistorySummary is { } written)
@@ -597,6 +627,53 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     private const int SummaryTargetTokens = 1500;
 
     /// <summary>
+    /// The share of the input the connection allows at which the earlier turns are summarized by
+    /// the model and kept as a history checkpoint, before the request has to be cut to fit. Early,
+    /// so the summary is written once and the requests after it keep one stable prefix; at the
+    /// limit itself only the deterministic cut is left, and that moves with every step.
+    /// </summary>
+    private const int CompactAheadPercent = 70;
+
+    /// <summary>The smallest share of that input a summary has to free to be worth its request and its cache miss.</summary>
+    private const int CompactAheadMinimumGainPercent = 10;
+
+    /// <summary>A whole conversation deserves a longer summary than the last-resort one.</summary>
+    private const int HistorySummaryTargetTokens = 3_000;
+
+    private bool NeedsCompactionAhead(ConnectionSettings? connection, ModelInstructionComposition composition,
+        IReadOnlyList<ChatToolDefinition> tools)
+    {
+        var limits = contextLimits.Resolve(connection);
+        var input = Math.Max(0, limits.ContextWindowTokens - limits.ReservedOutputTokens);
+        var request = estimator.EstimateMessages([.. composition.Messages, .. composition.TrailingMessages])
+                      + estimator.EstimateTools(tools);
+        return input > 0 && request >= input / 100 * CompactAheadPercent;
+    }
+
+    /// <summary>
+    /// Summarizes the earlier turns of a context that is filling up. False when there was nothing
+    /// worth covering or the model gave no summary, so the run stops trying.
+    /// </summary>
+    private async Task<bool> CompactAheadAsync(ToolRunContext run, ConnectionSettings? connection, CancellationToken token)
+    {
+        var limits = contextLimits.Resolve(connection);
+        var input = Math.Max(0, limits.ContextWindowTokens - limits.ReservedOutputTokens);
+        var preview = checkpoints.Preview(run, ContextCompactionScope.History);
+        // About two characters a token, the estimator's own rate.
+        if (!preview.CanCompact || preview.SourceCharacters / 2 < input / 100 * CompactAheadMinimumGainPercent) return false;
+        try
+        {
+            return (await checkpoints.CompactAsync(run, HistorySummaryTargetTokens, ContextCompactionScope.History, token,
+                HistoryCheckpointOrigin.Automatic)).Applied;
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            // A summary that could not be written leaves the request to the deterministic compaction.
+            return false;
+        }
+    }
+
+    /// <summary>
     /// How many times in a row an answer may be cut off at the token ceiling and asked to continue.
     /// Each continuation is progress — a truncated turn always produced a ceiling's worth of text —
     /// so this is not a budget for patience but a stop for the pathological case: a model that has
@@ -689,7 +766,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             + "reached, including their checks and final report; do not start over. Run it again only if its instructions "
             + "are no longer in the conversation. If the message is a different task, leave this skill and pick the one "
             + "from the skill catalog that fits the new task, or none.",
-            880, ModelInstructionLifetime.Run));
+            // Trailing: it appears once a playbook is loaded and goes once the task moves on, and
+            // either change would otherwise cost the cached conversation after it.
+            880, ModelInstructionLifetime.Run, ModelInstructionPlacement.Trailing));
     }
 
     private const string ActiveSkillKey = "run.active-skill";

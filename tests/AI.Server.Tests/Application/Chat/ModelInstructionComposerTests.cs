@@ -62,4 +62,26 @@ public sealed class ModelInstructionComposerTests
         result.Keys.ShouldBe(["app.base", "project.instructions", "run.completion-protocol"]);
         result.Messages[^1].Role.ShouldBe("user");
     }
+
+    [Fact]
+    public void ShouldSendStepGuidanceAfterTheConversationSoTheCachedPrefixStays()
+    {
+        var registry = new ModelInstructionRegistry();
+        var composer = new ModelInstructionComposer(registry, new ContextTokenEstimator());
+        var run = new ToolRunContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), true);
+        using var scope = registry.Begin(run);
+        registry.Upsert(run, new ModelInstruction("run.protocol", "Protocol", 1_000));
+        registry.Upsert(run, new ModelInstruction("run.stalled", "Finish now", 970, ModelInstructionLifetime.Request));
+        registry.Upsert(run, new ModelInstruction("run.active-skill", "Active skill", 880,
+            Placement: ModelInstructionPlacement.Trailing));
+        ChatCompletionMessage[] context = [new("user", "Hello")];
+
+        var result = composer.Compose(run, context);
+
+        result.Messages.Select(message => message.Content).ShouldBe(["Protocol", "Hello"]);
+        var note = result.TrailingMessages.ShouldHaveSingleItem();
+        note.Role.ShouldBe("user");
+        note.Content.ShouldBe(ModelInstructionComposer.TrailingPrefix + "Finish now\n\nActive skill");
+        result.Keys.ShouldBe(["run.protocol", "run.stalled", "run.active-skill"]);
+    }
 }

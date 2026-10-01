@@ -1,0 +1,176 @@
+@inject IChatPerformanceCalculator Calculator
+
+@* How long the open chat took and where the time went: the wall-clock span of the visible
+   branch vs the time the model was actually asked for an answer, the output speed, and where
+   the active time went. Wall-clock and idle are marked "≈" because they come from message
+   timestamps, which include the time you were not in the chat. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-performance-widget">
+    <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" />
+
+    @if (_stats.Requests == 0 && !_stats.HasWallClock)
+    {
+        <p class="chat-usage-empty">Performance figures appear here once the chat sends its first request.</p>
+    }
+    else
+    {
+        <div class="chat-usage-section chat-performance-headline">
+            <div class="chat-performance-time">
+                @if (_stats.HasWallClock)
+                {
+                    <span class="chat-performance-time-figure" title="Whole time from the first user message to the latest, including pauses while you were not in the chat">@FormatDuration(_stats.WallClockMs)</span>
+                    <span class="chat-usage-muted">≈ wall-clock</span>
+                }
+                @if (_stats.ActiveMs is { } active)
+                {
+                    <span class="chat-performance-time-figure" title="Sum of every request the provider timed, in this scope">@FormatDuration(active) active</span>
+                }
+            </div>
+            @if (_stats.OutputSpeedTokensPerSecond is { } speed)
+            {
+                <div class="chat-performance-speed" title="Output tokens per second of provider-reported request time">
+                    <span class="chat-performance-speed-figure">@speed</span><span class="chat-usage-muted">tok/s</span>
+                </div>
+            }
+        </div>
+
+        @if (Phases().Count > 1)
+        {
+            <div class="chat-usage-section">
+                <div class="chat-performance-phases" role="img"
+                     aria-label="@PhasesAriaLabel()">
+                    @foreach (var phase in Phases())
+                    {
+                        <span @key="phase.Key" class="chat-performance-phase chat-performance-phase-@phase.Key"
+                              style="flex-grow: @phase.Fraction.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)"
+                              title="@phase.Label · @FormatDuration(phase.Ms)"></span>
+                    }
+                </div>
+                <div class="chat-usage-legend">
+                    @foreach (var phase in Phases())
+                    {
+                        <span @key="phase.Key"><span class="chat-performance-phase-swatch chat-performance-phase-@phase.Key" aria-hidden="true"></span>@phase.Label <b>@FormatDuration(phase.Ms)</b></span>
+                    }
+                </div>
+            </div>
+        }
+
+        <div class="chat-usage-section chat-performance-meta">
+            @if (_stats.HasWallClock)
+            {
+                <div class="chat-usage-row chat-usage-muted" title="Wall-clock minus the time the model was asked for an answer: pauses, between-turn gaps, and tool execution not reported as part of any request">
+                    <span>Idle</span>
+                    <span>≈ @FormatDuration(_stats.IdleMs)</span>
+                </div>
+            }
+            <div class="chat-usage-row">
+                <span>Requests</span>
+                <span>@_stats.Requests</span>
+            </div>
+            @if (_stats.OutputTokens > 0)
+            {
+                <div class="chat-usage-row">
+                    <span>Output</span>
+                    <span>@Usage.FormatTokens(_stats.OutputTokens)</span>
+                </div>
+            }
+            @if (_stats.ReasoningTokens > 0)
+            {
+                <div class="chat-usage-row">
+                    <span>Reasoning</span>
+                    <span>@Usage.FormatTokens(_stats.ReasoningTokens)</span>
+                </div>
+            }
+        </div>
+
+        <div class="chat-usage-section chat-usage-footnote">
+            <span>In @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns")</span>
+            @if (_stats.IsRunning) { <span>This turn is still running</span> }
+        </div>
+    }
+</ChatWidget>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>Whole-chat usage; null when nothing has been measured yet.</summary>
+    [Parameter]
+    public ChatTokenUsage? ChatUsage { get; set; }
+
+    /// <summary>The turn the run is on, as the run snapshot reports it while it happens.</summary>
+    [Parameter]
+    public TurnTokenUsage? LiveTurn { get; set; }
+
+    /// <summary>The visible branch, root to leaf.</summary>
+    [Parameter]
+    public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+
+    [Parameter]
+    public bool IsGenerating { get; set; }
+
+    [Inject]
+    private IUsagePresentation Usage { get; set; } = null!;
+
+    private ChatWidgetScope _scope = ChatWidgetScope.Chat;
+    private PerformanceStatistics _stats = PerformanceStatistics.Empty;
+
+    protected override void OnParametersSet() => Refresh();
+
+    private void SetScope(ChatWidgetScope scope)
+    {
+        _scope = scope;
+        Refresh();
+    }
+
+    private void Refresh() =>
+        _stats = Calculator.Calculate(ChatUsage, LiveTurn, Messages, IsGenerating, _scope);
+
+    private sealed record Phase(string Key, string Label, long Ms, double Fraction);
+
+    private List<Phase> Phases()
+    {
+        var active = _stats.ActiveMs ?? 0;
+        if (active <= 0) return [];
+        // Generation: output tokens at the scope's output speed. Reasoning is whatever the
+        // provider counted as reasoning tokens, also at the output speed. Anything else inside
+        // the active window — input tokenization, function-call assembly, tool streaming on the
+        // provider side — is "other".
+        var outputSpeed = _stats.OutputSpeedTokensPerSecond;
+        var generationMs = outputSpeed is > 0 ? Math.Min(active, (long)Math.Round(_stats.OutputTokens * 1000d / outputSpeed.Value)) : 0;
+        var reasoningMs = outputSpeed is > 0 && _stats.ReasoningTokens > 0
+            ? Math.Min(active - generationMs, (long)Math.Round(_stats.ReasoningTokens * 1000d / outputSpeed.Value))
+            : 0;
+        var otherMs = Math.Max(0, active - generationMs - reasoningMs);
+
+        var phases = new List<Phase>();
+        if (generationMs > 0) phases.Add(new("generation", "Generation", generationMs, (double)generationMs / active));
+        if (reasoningMs > 0) phases.Add(new("reasoning", "Reasoning", reasoningMs, (double)reasoningMs / active));
+        if (otherMs > 0) phases.Add(new("other", "Other", otherMs, (double)otherMs / active));
+        return phases;
+    }
+
+    private string PhasesAriaLabel()
+    {
+        var parts = Phases().Select(phase => $"{phase.Label} {FormatDuration(phase.Ms)}");
+        return $"Where the active time went: {string.Join(", ", parts)}";
+    }
+
+    private string? GetSummary()
+    {
+        if (_stats.Requests == 0 && !_stats.HasWallClock) return null;
+        var parts = new List<string>();
+        if (_stats.OutputSpeedTokensPerSecond is { } speed) parts.Add($"{speed} tok/s");
+        if (_stats.HasWallClock) parts.Add($"≈ {FormatDuration(_stats.WallClockMs)}");
+        return parts.Count == 0 ? null : string.Join(" · ", parts);
+    }
+
+    private static string FormatDuration(long ms)
+    {
+        if (ms <= 0) return "0 s";
+        var span = TimeSpan.FromMilliseconds(ms);
+        if (span.TotalSeconds < 1) return $"{(int)Math.Max(1, ms)} ms";
+        if (span.TotalSeconds < 60) return $"{(int)Math.Ceiling(span.TotalSeconds)} s";
+        if (span.TotalMinutes < 60) return $"{(int)Math.Ceiling(span.TotalMinutes)} min";
+        return $"{(int)Math.Ceiling(span.TotalHours)} h";
+    }
+}

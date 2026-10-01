@@ -6630,3 +6630,24 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
     line-height: 1.5;
     white-space: pre-wrap;
 }
+
+/* Performance widget: wall-clock vs active time, output speed, and where the active time went.
+   Reuses the chat-usage-* building blocks (legend, rows, footnote); only phase-specific styles
+   live here. Wall-clock and idle carry "≈" in markup; the bar never stands alone, every segment
+   has its duration in the legend right under it. */
+.chat-performance-headline { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; }
+.chat-performance-time { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .4rem; font-size: .78rem; }
+.chat-performance-time-figure { font-size: .9rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.chat-performance-speed { display: inline-flex; align-items: baseline; gap: .25rem; }
+.chat-performance-speed-figure { font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.chat-performance-phases { display: flex; gap: 1px; height: .35rem; overflow: hidden; background: var(--color-fill); border-radius: calc(.2rem * var(--corner-scale)); }
+.chat-performance-phases > span { flex-basis: 0; }
+.chat-performance-phase-generation { background: var(--color-accent-text); }
+.chat-performance-phase-reasoning { background: var(--color-text-muted); }
+.chat-performance-phase-other { background: var(--color-text-faint); }
+.chat-performance-phase-swatch { display: inline-block; width: .55rem; height: .55rem; margin-right: .2rem; border-radius: 2px; vertical-align: -1px; }
+.chat-performance-phase-swatch.chat-performance-phase-generation { background: var(--color-accent-text); }
+.chat-performance-phase-swatch.chat-performance-phase-reasoning { background: var(--color-text-muted); }
+.chat-performance-phase-swatch.chat-performance-phase-other { background: var(--color-text-faint); }
+.chat-performance-meta .chat-usage-row { font-size: .76rem; }
+.chat-performance-meta .chat-usage-row > span:last-child { font-variant-numeric: tabular-nums; }

@@ -14,6 +14,7 @@ Current widgets:
 | `chat-usage` | Usage | `gauge` | `ChatUsageWidget` | Context window, tokens, cost and where they went |
 | `chat-files` | Files | `diff` | `ChatFilesWidget` | Files changed, lines added and removed, links to review |
 | `chat-tools` | Tools | `tool` | `ChatToolsWidget` | Tool calls, outcomes and most used tools |
+| `chat-performance` | Performance | `timer` | `ChatPerformanceWidget` | Wall-clock vs active time, throughput and where request time was spent |
 
 ## UX
 
@@ -364,3 +365,55 @@ Tool use on the visible branch (`ChatToolsWidget`, `IChatToolStatisticsCalculato
 - **Live data.** The headline says so far during a running or paused turn. Draft calls with
   arguments still streaming are not counted until recorded or executing. No durations are inferred
   from message timestamps, which do not measure tool execution time.
+
+## Performance widget
+
+Latency, throughput and where request time was spent (`ChatPerformanceWidget`,
+`IChatPerformanceCalculator`).
+
+- **Scope.** Whole chat or last turn, with the same switch as the other widgets. The running turn
+  is treated like any last turn: its figures grow as it goes, and the widget says "so far" while
+  it does. The folded summary shows the scope's throughput and wall-clock when one is known.
+- **Source of truth.** Provider-reported figures come from the chat's stored usage
+  (`ChatTokenUsage`) for the whole chat, and from the run snapshot's `TurnUsage` for the last
+  turn — the same `ResolveTotals` rule the Usage widget uses, so the two widgets agree. Wall-clock
+  and idle are worked out from message timestamps and are flagged approximate: a leading "≈" sits
+  in front of them and the tooltip says so ("Whole time from the first user message to the latest,
+  including pauses while you were not in the chat").
+- **What it shows.**
+  - **Headline — wall-clock vs active time.** "11 min ≈ wall-clock · 4 min active" — the time
+    from the first user message to the latest, and the sum of request durations inside it. When
+    there is only one request, the two lines collapse into one. The active line is omitted when
+    no request was timed.
+  - **Throughput.** Output tokens per second for the chosen scope, computed through
+    `IUsagePresentation.OutputSpeed` so the widget honours the same "too little was measured"
+    guard as Usage. The speed figure carries a plain `tok/s` label and lives on the right of the
+    headline; nothing is inferred from message timestamps.
+  - **Phases.** Where the active time went, as a stacked bar and a legend. Generation is the
+    output tokens at the scope's output speed; Reasoning is the reasoning tokens at the same
+    speed; Other is whatever is left inside the active window. The bar is hidden when there is
+    only one phase (a single timed request with no reasoning and no remainder). Each segment
+    has a label in the legend with its duration, so the bar never stands alone.
+  - **Meta rows.** Idle (wall-clock minus active), Requests, Output, and Reasoning when there is
+    any. Idle keeps the "≈" qualifier; the others are provider figures.
+  - **Footer.** "In X turns" for the chosen scope, "This turn is still running" while it is.
+- **Honesty about numbers.**
+  - Provider-reported figures (request duration, throughput, token counts) are quoted as they
+    came in. They are the only ones the widget treats as billed.
+  - Wall-clock and idle are always marked approximate: they include whatever time passed between
+    two messages, which is not the model thinking.
+  - No durations are inferred from message timestamps for tool execution, the same note the Tools
+    widget carries. The phases bar is built from output speed and the token counts the provider
+    reported, never from message spans.
+- **Folded summary.** `28 tok/s · ≈ 11 min` for the chosen scope, or the throughput alone when
+  wall-clock is the same as active. Null when nothing can be said.
+- **Data.** `ChatTokenUsage`, `TurnTokenUsage` and the visible branch's `ChatMessageView`; shared
+  formatting in `IUsagePresentation`. No new presentation service — durations are formatted inside
+  the widget, and only one rule (`ms → "N s" / "N min" / "N h"`) needed to live there.
+- **Architecture.** A `IChatPerformanceCalculator` in `src/AI.Web/Widgets` takes the same pair
+  the Usage widget reads from Home (`ChatTokenUsage?` and `TurnTokenUsage?`) plus the visible
+  branch and returns a `PerformanceStatistics` record that the widget renders. The calculator is
+  bound in `Composition.cs` and tested in `tests/AI.Web.Tests/Widgets`. The widget itself is a
+  `ChatWidget` like the others, with `ChatWidgetScopeSwitch`, `Summary`, and the same
+  `chat-usage-*` building blocks — only the phase bar and headline use widget-specific classes
+  (`chat-performance-*`).

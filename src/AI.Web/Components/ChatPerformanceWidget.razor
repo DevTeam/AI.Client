@@ -5,7 +5,7 @@
    the active time went. Wall-clock and idle are marked "≈" because they come from message
    timestamps, which include the time you were not in the chat. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-performance-widget">
-    <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" />
+    @if (_hasAnyData) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
 
     @if (_stats.Requests == 0 && !_stats.HasWallClock)
     {
@@ -13,23 +13,22 @@
     }
     else
     {
-        <div class="chat-usage-section chat-performance-headline">
-            <div class="chat-performance-time">
-                @if (_stats.HasWallClock)
-                {
-                    <span class="chat-performance-time-figure" title="Whole time from the first user message to the latest, including pauses while you were not in the chat">@FormatDuration(_stats.WallClockMs)</span>
-                    <span class="chat-usage-muted">≈ wall-clock</span>
-                }
-                @if (_stats.ActiveMs is { } active)
-                {
-                    <span class="chat-performance-time-figure" title="Sum of every request the provider timed, in this scope">@FormatDuration(active) active</span>
-                }
-            </div>
+        <div class="chat-usage-section chat-widget-headline">
+            @if (_stats.HasWallClock)
+            {
+                <span class="chat-widget-count" title="Whole time from the first user message to the latest, including pauses while you were not in the chat">@FormatDuration(_stats.WallClockMs)</span>
+                <span class="chat-usage-muted">≈ wall-clock@(_stats.IsRunning ? " so far" : null)</span>
+            }
+            else if (_stats.ActiveMs is { } activeOnly)
+            {
+                <span class="chat-widget-count" title="Sum of every request the provider timed, in this scope">@FormatDuration(activeOnly)</span>
+                <span class="chat-usage-muted">active@(_stats.IsRunning ? " so far" : null)</span>
+            }
             @if (_stats.OutputSpeedTokensPerSecond is { } speed)
             {
-                <div class="chat-performance-speed" title="Output tokens per second of provider-reported request time">
-                    <span class="chat-performance-speed-figure">@speed</span><span class="chat-usage-muted">tok/s</span>
-                </div>
+                <span class="chat-widget-headline-aside" title="Output tokens per second of provider-reported request time">
+                    <span class="chat-widget-secondary">@speed</span> <span class="chat-usage-muted">tok/s</span>
+                </span>
             }
         </div>
 
@@ -55,6 +54,13 @@
         }
 
         <div class="chat-usage-section chat-performance-meta">
+            @if (_stats.HasWallClock && _stats.ActiveMs is { } active)
+            {
+                <div class="chat-usage-row" title="Sum of every request the provider timed, in this scope">
+                    <span>Active</span>
+                    <span>@FormatDuration(active)</span>
+                </div>
+            }
             @if (_stats.HasWallClock)
             {
                 <div class="chat-usage-row chat-usage-muted" title="Wall-clock minus the time the model was asked for an answer: pauses, between-turn gaps, and tool execution not reported as part of any request">
@@ -84,7 +90,6 @@
 
         <div class="chat-usage-section chat-usage-footnote">
             <span>In @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns")</span>
-            @if (_stats.IsRunning) { <span>This turn is still running</span> }
         </div>
     }
 </ChatWidget>
@@ -113,6 +118,7 @@
 
     private ChatWidgetScope _scope = ChatWidgetScope.Chat;
     private PerformanceStatistics _stats = PerformanceStatistics.Empty;
+    private bool _hasAnyData;
 
     protected override void OnParametersSet() => Refresh();
 
@@ -122,8 +128,14 @@
         Refresh();
     }
 
-    private void Refresh() =>
+    private void Refresh()
+    {
         _stats = Calculator.Calculate(ChatUsage, LiveTurn, Messages, IsGenerating, _scope);
+        var chat = _scope == ChatWidgetScope.Chat
+            ? _stats
+            : Calculator.Calculate(ChatUsage, LiveTurn, Messages, IsGenerating, ChatWidgetScope.Chat);
+        _hasAnyData = chat.Requests > 0 || chat.HasWallClock;
+    }
 
     private sealed record Phase(string Key, string Label, long Ms, double Fraction);
 

@@ -1,7 +1,7 @@
 @inject IChatToolStatisticsCalculator Calculator
 
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-tools-widget">
-    <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" />
+    @if (_hasAnyCalls) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
     @if (_stats.Calls == 0)
     {
         <p class="chat-usage-empty">@(_scope == ChatWidgetScope.LastTurn && _hasAnyCalls
@@ -11,10 +11,10 @@
     else
     {
         <div class="chat-usage-section">
-            <div class="chat-tools-total">
-                <span class="chat-tools-count">@_stats.Calls</span>
+            <div class="chat-widget-headline">
+                <span class="chat-widget-count">@_stats.Calls</span>
                 <span class="chat-usage-muted">@(_stats.Calls == 1 ? "call" : "calls")@(_stats.IsRunning ? " so far" : null)</span>
-                <span class="chat-tools-distinct chat-usage-muted">@_stats.Tools.Count @(_stats.Tools.Count == 1 ? "tool" : "tools")</span>
+                <span class="chat-widget-headline-aside chat-usage-muted">@_stats.Tools.Count @(_stats.Tools.Count == 1 ? "tool" : "tools")</span>
             </div>
             <dl class="chat-usage-grid">
                 @foreach (var outcome in Enum.GetValues<ChatToolOutcome>())
@@ -47,11 +47,10 @@
                 <button class="chat-usage-link chat-tools-more" type="button" @onclick="() => _showAll = !_showAll">@(_showAll ? "Show fewer" : $"Show {_stats.Tools.Count - VisibleTools} more")</button>
             }
         </div>
-        @if (_scope == ChatWidgetScope.Chat || _stats.IsRunning)
+        @if (_scope == ChatWidgetScope.Chat)
         {
             <div class="chat-usage-section chat-usage-footnote">
-                @if (_scope == ChatWidgetScope.Chat) { <span>In @_stats.TurnsWithTools of @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns")</span> }
-                @if (_stats.IsRunning) { <span>This turn is still running</span> }
+                <span>In @_stats.TurnsWithTools of @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns")</span>
             </div>
         }
     }

@@ -3,7 +3,7 @@
 @* One row per turn on the visible branch: when it started, how long it ran, its requests and
    tokens, and the tools and files it touched. Durations come from message timestamps and so are
    marked approximate, the same way the Performance widget marks wall-clock. The list is the
-   whole branch — the scope switch is not shown because the timeline of one turn is that turn,
+   whole branch, newest turns first in view and older ones folded behind "Show earlier" — the scope switch is not shown because the timeline of one turn is that turn,
    and the widget's own empty state says so. A click on a row scrolls the transcript to the turn's
    first user message, so the timeline doubles as a table of contents. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-timeline-widget">
@@ -13,21 +13,27 @@
     }
     else
     {
-        <div class="chat-usage-section chat-timeline-headline">
-            <span class="chat-timeline-count">@_stats.Turns.Count</span>
+        <div class="chat-usage-section chat-widget-headline">
+            <span class="chat-widget-count">@_stats.Turns.Count</span>
             <span class="chat-usage-muted">@(_stats.Turns.Count == 1 ? "turn" : "turns")@(_stats.HasProviderData ? "" : " · no usage data yet")</span>
         </div>
 
         <div class="chat-usage-section chat-timeline-list" role="list">
-            @foreach (var turn in _stats.Turns)
+            @if (HiddenTurns > 0)
             {
-                <div @key="turn.TurnIndex" class="chat-timeline-row @(turn.IsRunning ? "is-running" : null) @(turn.UserMessageId is null ? "is-opening" : null)"
-                     role="listitem">
+                <button class="chat-usage-link chat-timeline-more" type="button" @onclick="() => _showAll = true">Show @HiddenTurns earlier @(HiddenTurns == 1 ? "turn" : "turns")</button>
+            }
+            @foreach (var turn in _stats.Turns.Skip(HiddenTurns))
+            {
+                <div @key="turn.TurnIndex" class="chat-timeline-row @(turn.IsRunning ? "is-running" : null) @(turn.UserMessageId is null ? "is-opening" : "is-openable")"
+                     role="listitem" @onclick="() => OpenTurnAsync(turn)">
                     <div class="chat-timeline-line" aria-hidden="true">
                         <span class="chat-timeline-dot"></span>
                     </div>
                     <div class="chat-timeline-body">
-                        <div class="chat-timeline-head">
+                        @* The head is the row's keyboard handle: its click bubbles to the row, which scrolls the transcript. *@
+                        <button class="chat-timeline-head" type="button" disabled="@(turn.UserMessageId is null)"
+                                title="@(turn.UserMessageId is null ? "The chat's opening turn has no message of yours to scroll to" : "Scroll the transcript to this turn")">
                             <span class="chat-timeline-index">Turn @turn.TurnIndex</span>
                             <span class="chat-usage-muted" title="@turn.StartedAt.LocalDateTime.ToString("F")">@FormatStartedAt(turn.StartedAt)</span>
                             @if (turn.HasDuration)
@@ -38,7 +44,7 @@
                             {
                                 <span class="chat-timeline-running chat-usage-muted">running</span>
                             }
-                        </div>
+                        </button>
                         <div class="chat-timeline-figures">
                             @if (turn.Requests is { } requests)
                             {
@@ -58,7 +64,7 @@
                             <ul class="chat-timeline-chips" aria-label="Tools used in this turn">
                                 @foreach (var tool in turn.ToolCalls)
                                 {
-                                    <li @key="tool" class="chat-timeline-chip"><AppIcon Name="tool" />@tool</li>
+                                    <li @key="tool" class="chat-timeline-chip" title="@tool"><AppIcon Name="tool" /><span>@tool</span></li>
                                 }
                             </ul>
                         }
@@ -67,27 +73,14 @@
                             <ul class="chat-timeline-chips" aria-label="Files changed in this turn">
                                 @foreach (var path in turn.FilesChanged)
                                 {
-                                    <li @key="path" class="chat-timeline-chip chat-timeline-chip-file"><AppIcon Name="diff" /><span title="@path">@path</span></li>
+                                    <li @key="path" class="chat-timeline-chip" title="@path"><AppIcon Name="diff" /><span>@FileName(path)</span></li>
                                 }
                             </ul>
-                        }
-                        @if (turn.UserMessageId is { } userId)
-                        {
-                            <button class="chat-usage-link chat-timeline-jump" type="button"
-                                    title="Scroll the transcript to this turn"
-                                    @onclick="() => OnSelectTurn.InvokeAsync(userId)">Open in transcript</button>
                         }
                     </div>
                 </div>
             }
         </div>
-
-        @if (_stats.Turns[^1].IsRunning)
-        {
-            <div class="chat-usage-section chat-usage-footnote">
-                <span>This turn is still running</span>
-            </div>
-        }
     }
 </ChatWidget>
 
@@ -118,7 +111,13 @@
     [Inject]
     private IUsagePresentation Usage { get; set; } = null!;
 
+    private const int VisibleTurns = 8;
+
     private ChatTimelineStatistics _stats = ChatTimelineStatistics.Empty;
+    private bool _showAll;
+
+    /// <summary>Older turns folded behind "Show earlier"; the newest ones are the ones people come back to.</summary>
+    private int HiddenTurns => _showAll ? 0 : Math.Max(0, _stats.Turns.Count - VisibleTurns);
 
     protected override void OnParametersSet() => Refresh();
 
@@ -132,6 +131,15 @@
         var count = _stats.Turns.Count;
         var label = count == 1 ? "turn" : "turns";
         return $"{count} {label}";
+    }
+
+    private Task OpenTurnAsync(TimelineTurn turn) =>
+        turn.UserMessageId is { } userId ? OnSelectTurn.InvokeAsync(userId) : Task.CompletedTask;
+
+    private static string FileName(string path)
+    {
+        var index = path.LastIndexOfAny(['/', '\\']);
+        return index < 0 ? path : path[(index + 1)..];
     }
 
     private static string FormatStartedAt(DateTimeOffset at) =>

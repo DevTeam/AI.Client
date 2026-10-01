@@ -6567,6 +6567,12 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .chat-usage-share-track { height: .3rem; overflow: hidden; border-radius: .15rem; background: var(--color-fill); }
 .chat-usage-share-track > span { display: block; height: 100%; border-radius: inherit; background: var(--color-text-muted); }
 .chat-usage-share-value { color: var(--color-text-subtle); text-align: right; font-variant-numeric: tabular-nums; }
+/* Every widget opens with the same headline: one large count, its unit, and an optional figure
+   pushed to the right edge in a smaller size. */
+.chat-widget-headline { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .45rem; }
+.chat-widget-count { color: var(--color-text); font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.chat-widget-headline-aside { margin-left: auto; white-space: nowrap; }
+.chat-widget-secondary { color: var(--color-text); font-size: .9rem; font-weight: 500; font-variant-numeric: tabular-nums; }
 .chat-usage-footnote, .chat-usage-empty { margin: .2rem 0 0; color: var(--color-text-subtle); font-size: .72rem; line-height: 1.45; }
 
 /* What a turn used: after its time in the turn line, and in full under an opened turn. */
@@ -6612,9 +6618,7 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .chat-widget-scope button { flex: 1; padding: .2rem .4rem; border: 0; border-radius: calc(.35rem * var(--corner-scale)); background: none; color: var(--color-text-subtle); font: inherit; font-size: .74rem; cursor: pointer; }
 .chat-widget-scope button:hover { color: var(--color-text); }
 .chat-widget-scope button.is-selected { background: var(--color-surface); color: var(--color-text); font-weight: 500; box-shadow: 0 0 0 1px var(--color-border-subtle); }
-.chat-files-total { display: flex; align-items: baseline; gap: .45rem; }
-.chat-files-count { color: var(--color-text); font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
-.chat-files-total-lines { display: inline-flex; gap: .45rem; margin-left: auto; font-size: .86rem; font-variant-numeric: tabular-nums; }
+.chat-files-total-lines { display: inline-flex; gap: .45rem; font-size: .86rem; font-variant-numeric: tabular-nums; }
 .chat-files-bar, .chat-files-track { display: flex; overflow: hidden; background: var(--color-fill); }
 .chat-files-bar { gap: 1px; height: .35rem; border-radius: calc(.2rem * var(--corner-scale)); }
 .chat-files-bar > span, .chat-files-track > span { flex-basis: 0; }
@@ -6640,9 +6644,6 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .chat-files-more { justify-self: start; font-size: .74rem; }
 .chat-files-footer { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
 
-.chat-tools-total { display: flex; align-items: baseline; gap: .35rem; }
-.chat-tools-count { color: var(--color-text); font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
-.chat-tools-distinct { margin-left: auto; font-size: .74rem; white-space: nowrap; }
 .chat-tools-list { display: grid; gap: .6rem; margin: 0; padding: 0; list-style: none; }
 .chat-tools-list li { display: grid; grid-template-columns: minmax(0, 1fr) 2.6rem; align-items: baseline; gap: .2rem .55rem; }
 .chat-tools-name { min-width: 0; overflow-wrap: anywhere; font-size: .76rem; }
@@ -6680,11 +6681,6 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
    Reuses the chat-usage-* building blocks (legend, rows, footnote); only phase-specific styles
    live here. Wall-clock and idle carry "≈" in markup; the bar never stands alone, every segment
    has its duration in the legend right under it. */
-.chat-performance-headline { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; }
-.chat-performance-time { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .4rem; font-size: .78rem; }
-.chat-performance-time-figure { font-size: .9rem; font-weight: 500; font-variant-numeric: tabular-nums; }
-.chat-performance-speed { display: inline-flex; align-items: baseline; gap: .25rem; }
-.chat-performance-speed-figure { font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .chat-performance-phases { display: flex; gap: 1px; height: .35rem; overflow: hidden; background: var(--color-fill); border-radius: calc(.2rem * var(--corner-scale)); }
 .chat-performance-phases > span { flex-basis: 0; }
 .chat-performance-phase-generation { background: var(--color-accent-text); }
@@ -6701,25 +6697,17 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
    share of the scope that went to them. Reuses chat-usage-* building blocks (rows, footnote,
    empty state); only headline layout is widget-specific. Wall-clock and "how many distinct
    subtasks" are not shown because the ledger does not record them. */
-.chat-subtasks-headline { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; }
-.chat-subtasks-time { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .4rem; font-size: .78rem; }
-.chat-subtasks-figure { font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
-.chat-subtasks-share { display: inline-flex; align-items: baseline; gap: .25rem; }
-.chat-subtasks-share-figure { font-size: .9rem; font-weight: 500; font-variant-numeric: tabular-nums; }
 
 /* Knowledge widget: what the assistant read on the visible branch. Reuses chat-usage-*
    building blocks (rows, footnote, empty state, more-link); the only new piece is the per-tool
    list of recent sources with a repeat count. The headline row mirrors chat-files so a turn that
    only reads a couple of files still shows the same shape. */
-.chat-knowledge-total { display: flex; align-items: baseline; gap: .55rem; flex-wrap: wrap; }
-.chat-knowledge-count { font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
-.chat-knowledge-turns { margin-left: auto; }
 .chat-knowledge-list { display: grid; gap: .45rem; margin: 0; padding: 0; list-style: none; }
-.chat-knowledge-list > li { display: grid; grid-template-columns: minmax(0,1fr) auto 2.5rem; column-gap: .6rem; row-gap: .25rem; align-items: baseline; padding: .15rem 0; border-top: 1px solid var(--color-border-subtle); }
+.chat-knowledge-list > li { display: grid; grid-template-columns: minmax(0, 1fr) 2.6rem; column-gap: .6rem; row-gap: .25rem; align-items: baseline; padding: .15rem 0; border-top: 1px solid var(--color-border-subtle); }
 .chat-knowledge-list > li:first-child { border-top: 0; }
 .chat-knowledge-name { min-width: 0; }
 .chat-knowledge-name small { font-weight: 400; margin-left: .3rem; }
-.chat-knowledge-figure { font-variant-numeric: tabular-nums; }
+.chat-knowledge-figure { text-align: right; font-variant-numeric: tabular-nums; }
 .chat-knowledge-track { display: flex; grid-column: 1 / -1; height: 4px; background: var(--color-fill); border-radius: calc(.2rem * var(--corner-scale)); overflow: hidden; }
 .chat-knowledge-track > span { background: var(--color-accent-text); min-width: 2px; }
 .chat-knowledge-track > i { display: block; }
@@ -6734,35 +6722,33 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
    with a left rail and dot, so the eye can scan turn boundaries; chips for tool calls and files
    changed use the same pill shape as the rest of the app. Durations are marked "≈" in markup
    because they come from message timestamps, the same convention Performance uses. */
-.chat-timeline-headline { display: flex; align-items: baseline; gap: .55rem; flex-wrap: wrap; }
-.chat-timeline-count { font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .chat-timeline-list { display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none; }
-.chat-timeline-row { position: relative; display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); column-gap: .6rem; padding: .15rem 0; border-top: 1px solid var(--color-border-subtle); }
-.chat-timeline-row:first-child { border-top: 0; }
+.chat-timeline-row { position: relative; display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); column-gap: .6rem; margin: 0 -.35rem; padding: .3rem .35rem; border-radius: calc(.45rem * var(--corner-scale)); transition: background-color .12s ease; }
+.chat-timeline-row.is-openable { cursor: pointer; }
+.chat-timeline-row.is-openable:hover, .chat-timeline-row:has(.chat-timeline-head:focus-visible) { background: var(--color-fill); }
 .chat-timeline-row.is-running .chat-timeline-dot { background: var(--color-accent-text); box-shadow: 0 0 0 3px var(--color-fill); animation: chat-timeline-pulse 1.6s ease-in-out infinite; }
 .chat-timeline-row.is-opening .chat-timeline-index { color: var(--color-text-secondary); }
 .chat-timeline-line { position: relative; }
-.chat-timeline-line::before { content: ""; position: absolute; left: 50%; top: 0; bottom: -.5rem; width: 1px; background: var(--color-border-subtle); transform: translateX(-50%); }
-.chat-timeline-row:first-child .chat-timeline-line::before { top: .35rem; }
-.chat-timeline-row:last-child .chat-timeline-line::before { bottom: 50%; }
+.chat-timeline-line::before { content: ""; position: absolute; left: 50%; top: -.3rem; bottom: -.8rem; width: 1px; background: var(--color-border-subtle); transform: translateX(-50%); }
+.chat-timeline-row:first-of-type .chat-timeline-line::before { top: .45rem; }
+.chat-timeline-row:last-child .chat-timeline-line::before { bottom: auto; height: .45rem; }
 .chat-timeline-dot { position: absolute; left: 50%; top: .45rem; width: .55rem; height: .55rem; border-radius: 50%; background: var(--color-text-muted); transform: translate(-50%, 0); }
 .chat-timeline-body { display: grid; gap: .2rem; min-width: 0; }
-.chat-timeline-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem .55rem; font-size: .78rem; }
+.chat-timeline-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem .55rem; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-size: .78rem; text-align: left; cursor: inherit; }
+.chat-timeline-head:focus-visible { outline: none; }
 .chat-timeline-index { font-weight: 500; }
 .chat-timeline-running { font-style: italic; }
 .chat-timeline-figures { display: flex; flex-wrap: wrap; gap: .25rem .6rem; font-size: .76rem; }
 .chat-timeline-chips { display: flex; flex-wrap: wrap; gap: .25rem; margin: .15rem 0 0; padding: 0; list-style: none; }
 .chat-timeline-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .45rem; border-radius: calc(.35rem * var(--corner-scale)); background: var(--color-fill); font-size: .72rem; line-height: 1.3; max-width: 100%; }
-.chat-timeline-chip > :last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.chat-timeline-chip-file > :last-child { max-width: 18rem; }
-.chat-timeline-jump { justify-self: start; margin-top: .15rem; }
+.chat-timeline-chip > .app-icon { flex: none; }
+.chat-timeline-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.chat-timeline-more { justify-self: start; font-size: .74rem; }
 @keyframes chat-timeline-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .chat-timeline-row.is-running .chat-timeline-dot { animation: none; } }
 /* Branches widget: one row per stored branch of the chat. Reuses the sidebar's branch tree line
    to keep depth indentation consistent with the rest of the app; the active branch gets the same
    accent the sidebar uses for a selected chat nav row. */
-.chat-branches-headline { display: flex; align-items: baseline; gap: .55rem; flex-wrap: wrap; }
-.chat-branches-count { font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .chat-branches-list { display: grid; gap: .15rem; margin: 0; padding: 0; list-style: none; }
 .chat-branches-row { position: relative; display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); align-items: start; column-gap: .45rem; width: 100%; padding: .35rem .45rem .35rem calc((min(var(--branch-depth, 0), 3) * 1rem) + .45rem); background: transparent; border: 0; border-radius: calc(.45rem * var(--corner-scale)); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color .12s ease; }
 .chat-branches-row:hover, .chat-branches-row:focus-visible { background: var(--color-fill); outline: none; }

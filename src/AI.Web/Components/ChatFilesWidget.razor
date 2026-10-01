@@ -6,7 +6,7 @@
    changed it. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-files-widget">
     @{ var stats = _stats; }
-    <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" />
+    @if (_hasAnyChanges) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
 
     @if (stats.Files.Count == 0)
     {
@@ -15,10 +15,10 @@
     else
     {
         <div class="chat-usage-section">
-            <div class="chat-files-total">
-                <span class="chat-files-count">@stats.Files.Count</span>
+            <div class="chat-widget-headline">
+                <span class="chat-widget-count">@stats.Files.Count</span>
                 <span class="chat-usage-muted">@(stats.Files.Count == 1 ? "file" : "files")@(stats.IncludesLive ? " so far" : null)</span>
-                <span class="chat-files-total-lines" aria-label="@stats.Additions lines added, @stats.Deletions lines removed"
+                <span class="chat-widget-headline-aside chat-files-total-lines" aria-label="@stats.Additions lines added, @stats.Deletions lines removed"
                       title="Summed over the turns: a line changed in two turns counts twice">
                     <span class="workspace-added">+@stats.Additions</span>
                     <span class="workspace-removed">−@stats.Deletions</span>
@@ -85,15 +85,11 @@
             }
         </div>
 
-        <div class="chat-usage-section chat-files-footer">
-            <span class="chat-usage-muted">
+        <div class="chat-usage-section chat-usage-footnote chat-files-footer">
+            <span>
                 @if (_scope == ChatWidgetScope.Chat)
                 {
                     @($"In {stats.TurnsWithChanges} of {stats.Turns} {(stats.Turns == 1 ? "turn" : "turns")}")
-                }
-                else if (stats.IncludesLive)
-                {
-                    @("This turn is still running")
                 }
             </span>
             @if (stats.LatestSourceMessageId is { } latest && OnReview.HasDelegate)

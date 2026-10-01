@@ -909,7 +909,11 @@ public sealed class ChatExecutionTests
     public async Task AFillingContextShouldBeSummarizedByTheModelOnceAndKeptForLaterTurns()
     {
         await using var fixture = await Fixture.CreateAsync();
-        await fixture.SetConnectionLimitsAsync(20_000, 2_000);
+        // Keep the space for history bounded independently of the growing bundled skill catalog.
+        // Two requests fit; later turns must still trigger a model-written summary.
+        var instructions = await fixture.StandingInstructions.BuildAsync(
+            fixture.ProjectId, true, CancellationToken.None);
+        await fixture.SetConnectionLimitsAsync(instructions.TotalTokens + 16_000, 2_000);
         fixture.Completion.SummaryAnswer = "The user asked for three reports.";
         var requests = Enumerable.Range(1, 4)
             .Select(index => $"request-{index} " + new string((char)('a' + index), 10_000))
@@ -1681,6 +1685,8 @@ public sealed class ChatExecutionTests
         public IChatService Chats => _composition.Resolve<IChatService>();
         public IChatRunDispatcher Dispatcher => _composition.Resolve<IChatRunDispatcher>();
         public IChatContextBuilder Context => _composition.Resolve<IChatContextBuilder>();
+        public AI.Application.Instructions.IStandingInstructions StandingInstructions =>
+            _composition.Resolve<AI.Application.Instructions.IStandingInstructions>();
         public IUserPromptBroker Broker => _composition.Resolve<IUserPromptBroker>();
         public IToolResultCodec Codec => _composition.Resolve<IToolResultCodec>();
         private IProjectService Projects => _composition.Resolve<IProjectService>();

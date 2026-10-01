@@ -6651,3 +6651,13 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .chat-performance-phase-swatch.chat-performance-phase-other { background: var(--color-text-faint); }
 .chat-performance-meta .chat-usage-row { font-size: .76rem; }
 .chat-performance-meta .chat-usage-row > span:last-child { font-variant-numeric: tabular-nums; }
+
+/* Subtasks widget: how many requests and tokens the chat spent on delegated work, and the
+   share of the scope that went to them. Reuses chat-usage-* building blocks (rows, footnote,
+   empty state); only headline layout is widget-specific. Wall-clock and "how many distinct
+   subtasks" are not shown because the ledger does not record them. */
+.chat-subtasks-headline { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; }
+.chat-subtasks-time { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .4rem; font-size: .78rem; }
+.chat-subtasks-figure { font-size: 1.35rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.chat-subtasks-share { display: inline-flex; align-items: baseline; gap: .25rem; }
+.chat-subtasks-share-figure { font-size: .9rem; font-weight: 500; font-variant-numeric: tabular-nums; }

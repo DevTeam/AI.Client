@@ -635,6 +635,13 @@
                                               Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
                                               IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)" />
                         break;
+                    case ChatWidgetCatalog.ChatSubtasks:
+                        <ChatSubtasksWidget Widget="@widget"
+                                            ChatUsage="@ChatUsage.Find(widgetChat.Id)"
+                                            LiveTurn="@widgetRun?.TurnUsage"
+                                            Messages="@Feed.BuildBranch(widgetChat.Messages, _branchLeafId)"
+                                            IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)" />
+                        break;
                 }
             </WidgetTemplate>
         </ChatWidgetRail>

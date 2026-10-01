@@ -15,6 +15,7 @@ Current widgets:
 | `chat-files` | Files | `diff` | `ChatFilesWidget` | Files changed, lines added and removed, links to review |
 | `chat-tools` | Tools | `tool` | `ChatToolsWidget` | Tool calls, outcomes and most used tools |
 | `chat-performance` | Performance | `timer` | `ChatPerformanceWidget` | Wall-clock vs active time, throughput and where request time was spent |
+| `chat-subtasks` | Subtasks | `fork` | `ChatSubtasksWidget` | Delegated work the chat ran on another model: requests, tokens and share of the whole chat or the last turn |
 
 ## UX
 
@@ -417,3 +418,41 @@ Latency, throughput and where request time was spent (`ChatPerformanceWidget`,
   `ChatWidget` like the others, with `ChatWidgetScopeSwitch`, `Summary`, and the same
   `chat-usage-*` building blocks — only the phase bar and headline use widget-specific classes
   (`chat-performance-*`).
+
+## Subtasks widget
+
+Delegated work the chat ran on another model (`ChatSubtasksWidget`,
+`IChatSubtaskStatisticsCalculator`).
+
+- **Scope.** Whole chat or last turn, with the same switch as the other widgets. The running
+  turn says "so far", just like Usage and Performance.
+- **Source of truth.** The provider's usage ledger carries a `Subtask` slice on the chat and on
+  each turn (`ChatTokenUsage.ByPurpose`, `TurnTokenUsage.ByPurpose`). That is the only honest
+  source: the transcript does not record how many distinct subtasks ran, how each one finished
+  or how long it took, and the widget does not invent those figures.
+- **What it shows.**
+  - **Headline.** Number of subtask requests in the scope, with the share of the scope's tokens
+    that went to them on the right.
+  - **Token breakdown.** Input, output, and reasoning (a muted row only when reasoning is
+    non-zero, so an empty breakdown stays out of the way). All three come from the same
+    `Subtask` slice.
+  - **Footer.** "In N of M turns delegated work", and "This turn is still running" while it
+    does.
+- **Honesty about numbers.**
+  - Provider-reported figures (requests, input, output, reasoning) are quoted as they came in.
+  - The share is `(subtask input + subtask output) / (scope input + scope output)`, not a
+    fraction of requests. Null when the scope used nothing and the share would divide by zero.
+  - Number of distinct subtasks, outcomes per subtask and wall-clock per subtask are not in the
+    ledger and are not shown.
+- **Folded summary.** `N requests · M%` when there is data; null when the scope used nothing.
+- **Data.** `ChatTokenUsage`, `TurnTokenUsage` and the visible branch's `ChatMessageView`;
+  formatting by `IUsagePresentation`. The widget injects the same presentation service Usage
+  does, so token counts read identically across widgets.
+- **Architecture.** `IChatSubtaskStatisticsCalculator` in `src/AI.Web/Widgets` takes the same
+  pair the Usage and Performance widgets read from Home (`ChatTokenUsage?` and `TurnTokenUsage?`)
+  plus the visible branch and the running flag, and returns a `SubtaskStatistics` record. It
+  uses the same chat-vs-turn rule the Performance widget uses (`ChooseTurn`), so the three
+  widgets agree on what the last turn is. Bound in `Composition.cs` and tested in
+  `tests/AI.Web.Tests/Widgets`. The widget itself is a `ChatWidget` with `ChatWidgetScopeSwitch`,
+  `Summary`, and the same `chat-usage-*` building blocks; only the headline layout uses
+  widget-specific classes (`chat-subtasks-*`).

@@ -6,7 +6,7 @@
   <rect width="64" height="64" rx="14" ry="14" fill="#171717"/>
 
   <!-- Три строки сообщений (убывающая длина для эффекта стенограммы) -->
-  <g fill="#ececec">
+  <g fill="#ffffff">
     <rect x="12" y="14" width="34" height="3" rx="1.5"/>
     <rect x="12" y="21" width="40" height="3" rx="1.5"/>
     <rect x="12" y="28" width="22" height="3" rx="1.5"/>
@@ -17,5 +17,5 @@
         fill="none" stroke="#4f91dc" stroke-width="2"/>
 
   <!-- Кнопка отправки в правой нижней части поля -->
-  <circle cx="45" cy="47" r="3" fill="#ffffff"/>
+  <circle cx="46" cy="49" r="3" fill="#ffffff"/>
 </svg>

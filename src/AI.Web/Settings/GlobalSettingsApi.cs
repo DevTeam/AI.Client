@@ -8,6 +8,15 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
 {
     public async Task<IReadOnlyList<McpToolInfo>> GetDefaultToolsAsync(CancellationToken cancellationToken) =>
         await httpClient.GetFromJsonAsync<McpToolInfo[]>("api/mcp/default/tools", cancellationToken) ?? [];
+
+    public async Task<IReadOnlyList<McpToolInfo>> DiscoverMcpToolsAsync(
+        DiscoverMcpToolsRequest request, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PostAsJsonAsync("api/mcp/tools/discover", request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(await ReadProblemDetailAsync(response, cancellationToken));
+        return await response.Content.ReadFromJsonAsync<McpToolInfo[]>(cancellationToken) ?? [];
+    }
     public async Task<GlobalSettings> GetAsync(CancellationToken cancellationToken) =>
         await httpClient.GetFromJsonAsync<GlobalSettings>("api/settings", cancellationToken)
         ?? new GlobalSettings([], [], []);

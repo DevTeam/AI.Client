@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\AI.Mcp.BuiltIn\AI.Mcp.BuiltIn.csproj" />
+    <ProjectReference Include="..\..\src\AI.Mcp.CSharp\AI.Mcp.CSharp.csproj" />
     <ProjectReference Include="..\..\src\AI.Server\AI.Server.csproj" />
     <Compile Include="..\..\src\AI.Contracts\Composition.cs" Link="Contracts\Composition.cs" />
     <Compile Include="..\..\src\AI.Server\Composition.cs" Link="Server\Composition.cs" />
@@ -15,9 +16,15 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Moq" />
     <PackageReference Include="Pure.DI" PrivateAssets="all" />
+    <PackageReference Include="Pure.DI.MS" />
     <PackageReference Include="Shouldly" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
   <Import Project="..\..\build\McpBuiltIn.targets" />
+  <!-- Launch CSharp with its standalone dependencies, independently of the ASP.NET test host. -->
+  <Target Name="CopyCSharpMcpServer" AfterTargets="Build">
+    <ItemGroup><CSharpMcpFiles Include="..\..\src\AI.Mcp.CSharp\bin\$(Configuration)\$(TargetFramework)\*" /></ItemGroup>
+    <Copy SourceFiles="@(CSharpMcpFiles)" DestinationFolder="$(OutDir)mcp-csharp" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

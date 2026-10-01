@@ -86,6 +86,7 @@ internal sealed class Composition
             .Root<IToolUserInterface>()
             .Root<IAppToolReply>()
             .Root<IToolSessionFactory>()
+            .Root<ExternalToolSessionFactory>()
             .Root<IAppDataChangeSignal>()
             .Root<IAppNavigationSignal>()
             .Root<IRunEventsPublisher>()
@@ -128,7 +129,7 @@ internal sealed class Composition
                 ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator, ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService, KeyringOrFileMasterKeyStore, ChatRenameSkill,
                 ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher,
                 ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff, MasterKeyFormat, ProcessCommandRunner,
-                AppDataChangeSignal, AppNavigationSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ChatBranchIds, ToolUserInterface>()
+                AppDataChangeSignal, AppNavigationSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ExternalToolSessionFactory, ChatBranchIds, ToolUserInterface>()
             .Singleton<WorkspaceFileSearch, GitWorkspaceDiffReader, GitBrowser, FileExcerptReader>()
             .Singleton<ChatCompletionUsageReader, TokenUsageMeter, JsonLinesTokenUsageLedger, TokenUsageAggregator, TokenUsageService>()
             .Singleton<PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits, RateLimitHeaderReader>()

@@ -1,6 +1,7 @@
 namespace AI.Infrastructure.Tools;
 
 using Application.Tools;
+using Application.Settings;
 using Contracts.Tools;
 
 /// <summary>
@@ -8,7 +9,10 @@ using Contracts.Tools;
 /// identity and its own policies; this only decides which sessions to open and routes each call to
 /// the session the tool came from.
 /// </summary>
-public sealed class CompositeToolSessionFactory(IEnumerable<IMcpServerConnection> connections) : IToolSessionFactory
+public sealed class CompositeToolSessionFactory(
+    IEnumerable<IMcpServerConnection> connections,
+    IGlobalSettingsRepository settings,
+    ExternalToolSessionFactory external) : IToolSessionFactory
 {
     public async Task<IToolSession> OpenAsync(
         IReadOnlyList<ToolDirectoryGrant> directoryGrants,
@@ -23,6 +27,18 @@ public sealed class CompositeToolSessionFactory(IEnumerable<IMcpServerConnection
             foreach (var connection in connections)
                 if (servers.Contains(connection.ServerId))
                     sessions.Add(await connection.OpenAsync(directoryGrants, run, cancellationToken));
+            var hostIds = connections.Select(connection => connection.ServerId).ToHashSet();
+            var externalIds = servers.Where(id => !hostIds.Contains(id)).ToArray();
+            if (externalIds.Length > 0)
+            {
+                var global = await settings.LoadAsync(cancellationToken);
+                foreach (var id in externalIds)
+                {
+                    var server = global.McpServers.SingleOrDefault(item => item.Id == id)
+                        ?? throw new InvalidOperationException("MCP server not found.");
+                    sessions.Add(await external.OpenAsync(server, cancellationToken));
+                }
+            }
         }
         catch
         {

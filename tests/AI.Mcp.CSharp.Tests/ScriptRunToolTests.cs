@@ -42,7 +42,7 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
     {
         var tool = (await _client.ListToolsAsync(cancellationToken: Token)).ShouldHaveSingleItem();
 
-        tool.Name.ShouldBe("csx_run");
+        tool.Name.ShouldBe("cs_run");
         // The Host validates every result against the declared output schema, and shows the input
         // schema to the model, so both have to survive the round trip.
         tool.ProtocolTool.OutputSchema.ShouldNotBeNull();
@@ -202,7 +202,7 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
 
     private async Task<JsonElement> CallAsync(object arguments)
     {
-        var result = await _client.CallToolAsync("csx_run",
+        var result = await _client.CallToolAsync("cs_run",
             JsonSerializer.Deserialize<Dictionary<string, object?>>(JsonSerializer.Serialize(arguments))!,
             cancellationToken: Token);
 

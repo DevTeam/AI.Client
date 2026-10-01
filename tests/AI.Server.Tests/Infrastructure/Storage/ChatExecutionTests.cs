@@ -31,6 +31,25 @@ public sealed class ChatExecutionTests
 {
 
     [Fact]
+    public async Task ChatConnectsExternalServersWhileRespectingGlobalAndProjectRestrictions()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var allowed = Guid.NewGuid();
+        var disabled = Guid.NewGuid();
+        var denied = Guid.NewGuid();
+        var projectDisabled = Guid.NewGuid();
+        await fixture.SetExternalServersAsync(allowed, disabled, denied, projectDisabled);
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run C# scripts"));
+        var call = await fixture.NextCallAsync();
+        fixture.Tools.Servers.ShouldContain(allowed);
+        fixture.Tools.Servers.ShouldNotContain(disabled);
+        fixture.Tools.Servers.ShouldNotContain(denied);
+        fixture.Tools.Servers.ShouldNotContain(projectDisabled);
+        call.Answer.SetResult("Connected");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task DirectoryGrantAddedDuringRunReopensToolSessionBeforeNextModelStep()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -1775,6 +1794,20 @@ public sealed class ChatExecutionTests
 
         public Task<ProjectDetails?> GetProjectAsync() => Projects.GetAsync(ProjectId, CancellationToken.None);
         public Task<GlobalSettings> GetGlobalAsync() => Settings.LoadAsync(CancellationToken.None);
+        public async Task SetExternalServersAsync(Guid allowed, Guid disabled, Guid denied, Guid projectDisabled)
+        {
+            var global = await Settings.LoadAsync(CancellationToken.None);
+            Contracts.Settings.McpServerSettings Server(Guid id, bool enabled = true, string policy = "Ask") =>
+                new(id, "CSharp " + id, "Stdio", enabled, policy, null, "probe.exe", [], null, [], false);
+            await Settings.SaveAsync(global with
+            {
+                McpServers = [DefaultMcpServer.Settings, Server(allowed), Server(disabled, false),
+                    Server(denied, policy: "Deny"), Server(projectDisabled)]
+            }, CancellationToken.None);
+            var project = await Projects.GetAsync(ProjectId, CancellationToken.None);
+            await Projects.UpdateSecurityAsync(ProjectId, new UpdateProjectSecurityRequest(project!.Revision, [],
+                [new Contracts.Projects.McpServerSettings(projectDisabled, "CSharp", "Stdio", false)], []), CancellationToken.None);
+        }
         public IChatReplySuggestions ReplySuggestions => _composition.Resolve<IChatReplySuggestions>();
         public async Task SetChatAutomationAsync(ChatAutomationSettings automation)
         {

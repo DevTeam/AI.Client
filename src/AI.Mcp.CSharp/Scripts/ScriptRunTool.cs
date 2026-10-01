@@ -23,7 +23,7 @@ public sealed class ScriptRunTool(IScriptRunner runner, IToolReply reply) : IToo
                           + $"Host OS: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})."
         });
 
-    [McpServerTool(Name = "csx_run", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = true,
+    [McpServerTool(Name = "cs_run", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = true,
         UseStructuredContent = true, OutputSchemaType = typeof(ScriptResult))]
     private async Task<CallToolResult> RunAsync(
         [Description("C# script code: top-level statements, optional `using` directives, and an optional trailing expression whose value is returned as `returnValue`. Example: `var total = Args.Length; Console.WriteLine(total); total * 2`")]

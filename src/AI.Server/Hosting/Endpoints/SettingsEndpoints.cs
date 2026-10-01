@@ -3,6 +3,7 @@ namespace AI.Server.Hosting.Endpoints;
 using Application.Settings;
 using Application.Tools;
 using Contracts.Settings;
+using AI.Infrastructure.Tools;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -59,6 +60,32 @@ public sealed class SettingsEndpoints : IEndpointModule
                 new HashSet<Guid> { DefaultMcpServer.Id, AppMcpServer.Id },
                 ToolRunContext.None, timeout.Token);
             return session.Tools.Select(tool => new McpToolInfo(tool.ServerId, tool.OriginalName, tool.ModelDefinition.Description, tool.SchemaHash)).ToArray();
+        });
+
+        routes.MapPost("/api/mcp/tools/discover", async (DiscoverMcpToolsRequest request,
+            IToolSessionFactory factory, ExternalToolSessionFactory external, CancellationToken token) =>
+        {
+            if (!request.Server.Enabled || request.Server.Policy == "Deny")
+                return Results.Problem("Enable the server and choose Ask or Allow before discovery.", statusCode: 400);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            try
+            {
+                var id = request.Server.Id;
+                await using var session = id == DefaultMcpServer.Id || id == AppMcpServer.Id
+                    ? await factory.OpenAsync([], new HashSet<Guid> { id }, ToolRunContext.None, timeout.Token)
+                    : await external.OpenAsync(request.Server, timeout.Token, request.Credential);
+                return Results.Ok(session.Tools.Select(tool => new McpToolInfo(
+                    tool.ServerId, tool.OriginalName, tool.ModelDefinition.Description, tool.SchemaHash)).ToArray());
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                return Results.Problem("MCP tool discovery timed out after 15 seconds.", statusCode: 504);
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                return Results.Problem($"Could not discover MCP tools: {error.Message}", statusCode: 400);
+            }
         });
     }
 }

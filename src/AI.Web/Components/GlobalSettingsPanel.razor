@@ -143,36 +143,33 @@
                             <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true">
                                 <div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="server.Enabled" /> Enabled</label></div>
                                 <label>Name<InputText autocomplete="off" @bind-Value="server.Name" readonly="@IsHostProvided(server.Id)" /></label>
-                                <label>Transport<select disabled="@IsHostProvided(server.Id)" @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option><option>InProcess</option></select></label>
+                                <label>Transport<select disabled="@IsHostProvided(server.Id)" @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option>@if (IsHostProvided(server.Id)) { <option>InProcess</option> }</select></label>
                                 <label>Server policy<select @bind="server.Policy"><option>Allow</option><option>Ask</option><option>Deny</option></select></label>
-                                @if (IsHostProvided(server.Id))
-                                {
-                                    <section class="mcp-tool-policies">
-                                        <div class="section-heading"><div><h3>Tool defaults</h3><p>Used by every project unless that project has an override.</p></div><button class="secondary-action" type="button" @onclick="DiscoverDefaultToolsAsync">Discover tools</button></div>
-                                        @if (_toolPolicies.All(item => item.ServerId != server.Id))
-                                        {
-                                            <p class="empty-hint">No tools discovered. Unknown tools will ask for approval.</p>
-                                        }
-                                        @foreach (var policy in _toolPolicies.Where(item => item.ServerId == server.Id))
-                                        {
-                                            <div class="mcp-tool-policy-row">
-                                                <div class="mcp-tool-name"><span>Tool</span><strong title="@policy.SchemaHash">@policy.Name</strong></div>
-                                                <label>Policy<select @bind="policy.Decision" aria-label="Policy for @policy.Name"><option>Ask</option><option>Allow</option><option>Deny</option></select></label>
-                                                <label>Calls/run<input type="number" min="1" max="2147483647" @bind="policy.MaxCallsPerRun" /></label>
-                                                <label>Timeout, sec<input type="number" min="1" max="600" @bind="policy.TimeoutSeconds" /></label>
-                                            </div>
-                                        }
-                                        <p class="mcp-policy-note">Deny disables the server. Otherwise a tool-specific Allow can run without confirmation; unknown tools ask by default.</p>
-                                    </section>
-                                }
-                                else if (server.Transport == "StreamableHttp")
+                                @if (!IsHostProvided(server.Id) && server.Transport == "StreamableHttp")
                                 {
                                     <label>URL<InputText autocomplete="url" @bind-Value="server.Url" /></label><label>Credential<InputText type="password" autocomplete="new-password" @bind-Value="server.Secret" placeholder="@(server.HasCredential ? "Saved; enter to replace" : server.CredentialMissing ? "Needed: imported without it" : "Optional")" class="@(server.MissingSecrets.Count > 0 ? "needs-key" : null)" /></label>
                                 }
-                                else
+                                else if (!IsHostProvided(server.Id))
                                 {
                                     <label>Command<InputText @bind-Value="server.Command" /></label><label>Arguments<InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label><label>Working directory<InputText @bind-Value="server.WorkingDirectory" /></label><label>Environment variables<InputTextArea @bind-Value="server.EnvironmentText" placeholder="NAME=value" />@if (server.MissingSecrets.Count > 0) { <small class="settings-needs-key-hint">Needs a value: @string.Join(", ", server.MissingSecrets). Type it after the = on its secret: line.</small> }</label>
                                 }
+                                <section class="mcp-tool-policies">
+                                    <div class="section-heading"><div><h3>Tool defaults</h3><p>Used by every project unless that project has an override.</p></div><button class="secondary-action" type="button" disabled="@(_discoveringTools || _saving || !server.Enabled || server.Policy == "Deny")" @onclick="DiscoverToolsAsync">@(_discoveringTools ? "Discovering…" : "Discover tools")</button></div>
+                                    @if (_toolPolicies.All(item => item.ServerId != server.Id))
+                                    {
+                                        <p class="empty-hint">No tools discovered. Unknown tools will ask for approval.</p>
+                                    }
+                                    @foreach (var policy in _toolPolicies.Where(item => item.ServerId == server.Id))
+                                    {
+                                        <div class="mcp-tool-policy-row">
+                                            <div class="mcp-tool-name"><span>Tool</span><strong title="@policy.SchemaHash">@policy.Name</strong></div>
+                                            <label>Policy<select @bind="policy.Decision" aria-label="Policy for @policy.Name"><option>Ask</option><option>Allow</option><option>Deny</option></select></label>
+                                            <label>Calls/run<input type="number" min="1" max="2147483647" @bind="policy.MaxCallsPerRun" /></label>
+                                            <label>Timeout, sec<input type="number" min="1" max="600" @bind="policy.TimeoutSeconds" /></label>
+                                        </div>
+                                    }
+                                    <p class="mcp-policy-note">Deny disables the server. Otherwise a tool-specific Allow can run without confirmation; unknown tools ask by default.</p>
+                                </section>
                             </form>
                         }
                     </div>
@@ -739,17 +736,23 @@
 
     /// <summary>
     /// A server the Host ships and runs itself. Its name, transport and existence are not the
-    /// user's to edit — there is no command line behind it to get wrong — so it shows its tool
-    /// defaults where a third-party server shows its process configuration.
+    /// user's to edit. External servers also expose their connection configuration.
     /// </summary>
     private static bool IsHostProvided(Guid id) =>
         id == AI.Contracts.Settings.DefaultMcpServer.Id || id == AI.Contracts.Settings.AppMcpServer.Id;
 
-    private async Task DiscoverDefaultToolsAsync()
+    private bool _discoveringTools;
+
+    private async Task DiscoverToolsAsync()
     {
+        if (_discoveringTools || GetSelectedMcpServer() is not { } server) return;
+        var request = new DiscoverMcpToolsRequest(server.ToSettings(), server.Secret);
+        _discoveringTools = true;
         try
         {
-            var tools = await GlobalSettingsApi.GetDefaultToolsAsync(CancellationToken.None);
+            var tools = await GlobalSettingsApi.DiscoverMcpToolsAsync(request, CancellationToken.None);
+            var identities = tools.Select(tool => (tool.Name, tool.SchemaHash)).ToHashSet();
+            _toolPolicies.RemoveAll(item => item.ServerId == server.Id && !identities.Contains((item.Name, item.SchemaHash)));
             foreach (var tool in tools)
             {
                 var previous = _toolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId
@@ -760,10 +763,11 @@
             if (tools.Count == 0) Notifications.ShowInfo("No tools were found.");
             else Notifications.ShowSuccess($"Discovered {tools.Count} tool(s).");
         }
-        catch (HttpRequestException)
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
-            Notifications.ShowError("Could not connect to the default tools server.");
+            Notifications.ShowError($"Could not discover tools for {server.Name}: {error.Message}");
         }
+        finally { _discoveringTools = false; }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

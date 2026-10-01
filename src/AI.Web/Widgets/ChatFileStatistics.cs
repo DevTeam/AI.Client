@@ -4,12 +4,6 @@ using AI.Contracts.Chats;
 using AI.Contracts.Workspace;
 using AI.Web.Components;
 
-public enum ChatFileStatisticsScope
-{
-    Chat,
-    LastTurn,
-}
-
 /// <summary>One file across the turns in scope.</summary>
 /// <param name="Kind">What the file is now compared with before its first change in scope.</param>
 /// <param name="Additions">
@@ -57,15 +51,15 @@ public interface IChatFileStatisticsCalculator
 {
     /// <param name="branch">The visible branch, root to leaf.</param>
     /// <param name="live">The changes of the run in progress, before they are saved as a receipt.</param>
-    ChatFileStatistics Calculate(IReadOnlyList<ChatMessageView> branch, WorkspaceChangeSet? live, ChatFileStatisticsScope scope);
+    ChatFileStatistics Calculate(IReadOnlyList<ChatMessageView> branch, WorkspaceChangeSet? live, ChatWidgetScope scope);
 }
 
 public sealed class ChatFileStatisticsCalculator(IChatFeedProjection feed) : IChatFileStatisticsCalculator
 {
-    public ChatFileStatistics Calculate(IReadOnlyList<ChatMessageView> branch, WorkspaceChangeSet? live, ChatFileStatisticsScope scope)
+    public ChatFileStatistics Calculate(IReadOnlyList<ChatMessageView> branch, WorkspaceChangeSet? live, ChatWidgetScope scope)
     {
         var turns = SplitTurns(branch);
-        if (scope == ChatFileStatisticsScope.LastTurn && turns.Count > 1) turns = turns[^1..];
+        if (scope == ChatWidgetScope.LastTurn && turns.Count > 1) turns = turns[^1..];
 
         // The receipt and the run snapshot arrive independently; once the receipt is in, the live
         // copy describes the same edits and would count them twice.

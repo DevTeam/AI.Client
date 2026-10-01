@@ -1,7 +1,7 @@
 @inject IUsagePresentation Usage
 @inject IComposerContextPresentation ContextPresentation
-@* What the open chat holds and has spent: the context window now, the turn in progress (or the
-   last one), the chat's totals, and where the tokens went. Figures the endpoint did not report are
+@* What the open chat holds and has spent: the context window now, then one set of figures for the
+   whole chat or for the turn in progress (or the last one), and where the tokens went. Figures the endpoint did not report are
    marked "≈" rather than passed off as billed ones. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-usage-widget">
     @if (Context is { } context)
@@ -9,8 +9,11 @@
         var free = Math.Max(0, context.CapacityTokens - context.UsedTokens);
         <div class="chat-usage-section">
             <div class="chat-usage-row chat-usage-heading">
-                <span>Context now</span>
-                <span class="chat-usage-figure context-fill-@context.Level.ToString().ToLowerInvariant()">@context.Percent%</span>
+                <span class="chat-usage-connection" title="@ConnectionName">Context@(ConnectionName is null ? null : " · ")<span class="chat-usage-muted">@ConnectionName</span></span>
+                <span class="chat-usage-figure">
+                    <span class="chat-usage-muted">@Usage.FormatTokens(context.UsedTokens) / @(context.IsDefaultCapacity ? "~" : null)@Usage.FormatTokens(context.CapacityTokens)</span>
+                    <span class="context-fill-@context.Level.ToString().ToLowerInvariant()">@context.Percent%</span>
+                </span>
             </div>
             <div class="chat-usage-bar" role="img"
                  aria-label="@($"{context.Percent}% of the context window used: {Usage.FormatTokens(context.UsedTokens)} of {Usage.FormatTokens(context.CapacityTokens)}")">
@@ -27,10 +30,6 @@
                     <span @key="layer.Kind"><span class="context-swatch context-layer-@layer.CssName"></span>@layer.Label <b>@Usage.FormatTokens(layer.Tokens)</b></span>
                 }
                 <span><span class="context-swatch"></span>Free <b>@Usage.FormatTokens(free)</b></span>
-            </div>
-            <div class="chat-usage-row chat-usage-muted">
-                <span>@Usage.FormatTokens(context.UsedTokens) of @(context.IsDefaultCapacity ? "~" : null)@Usage.FormatTokens(context.CapacityTokens)</span>
-                @if (ConnectionName is not null) { <span class="chat-usage-connection" title="@ConnectionName">@ConnectionName</span> }
             </div>
             @if (Usage.FormatRateLimits(ChatUsage?.RateLimits, DateTimeOffset.UtcNow) is { } limits)
             {
@@ -73,75 +72,52 @@
         </div>
     }
 
-    @if (GetTurn() is { } turn)
+    <ChatWidgetScopeSwitch @bind-Value="_scope" />
+    @if (GetFigures() is { } figures)
     {
-        <div class="chat-usage-section">
-            <div class="chat-usage-row chat-usage-heading">
-                <span>@(IsGenerating && LiveTurn?.TurnId == turn.TurnId ? "This turn" : "Last turn")</span>
-                <span class="chat-usage-figure">@Usage.FormatFlow(turn.Totals)</span>
-            </div>
-            <dl class="chat-usage-facts">
-                <dt>Requests</dt><dd>@turn.Totals.Requests</dd>
-                @if (Usage.CachePercent(turn.Totals.Tokens) is { } turnCache)
+        var totals = figures.Totals;
+        <div class="chat-usage-section chat-usage-scope-figures">
+            <div class="chat-usage-row chat-usage-headline">
+                <span class="chat-usage-figure" title="Input → output tokens">@Usage.FormatFlow(totals)@if (figures.Running) { <small>so far</small> }</span>
+                @if (Usage.FormatCost(totals) is { } cost)
                 {
-                    <dt>Cached input</dt>
-                    <dd>
-                        @turnCache%
-                        @if (Usage.ReusablePercent(turn.Totals) is { } reusable && reusable - turnCache >= 20)
-                        {
-                            <small title="The requests started the same as the ones before them, but the provider did not serve that from its cache: it may have expired or been dropped">of @reusable% possible</small>
-                        }
+                    <span class="chat-usage-figure">
+                        @cost
+                        @if (totals.PricedRequests < totals.Requests) { <small title="Some requests went to a connection without prices">partial</small> }
+                        else if (totals.EstimatedCostRequests > 0) { <small title="@($"The endpoint quoted a cost for some requests only; the other {totals.EstimatedCostRequests} are worked out from those quotes")">estimated</small> }
+                    </span>
+                }
+                else if (OnOpenConnections.HasDelegate)
+                {
+                    <button class="chat-usage-link" type="button" @onclick="OnOpenConnections">Set prices</button>
+                }
+            </div>
+            <dl class="chat-usage-grid">
+                @if (figures.Turns is { } turns) { <dt>Turns</dt><dd>@turns</dd> }
+                <dt>Requests</dt><dd>@totals.Requests</dd>
+                @if (Usage.CachePercent(totals.Tokens) is { } cache)
+                {
+                    var reusable = Usage.ReusablePercent(totals);
+                    var missed = reusable is { } possible && possible - cache >= 20;
+                    <dt>Cached</dt>
+                    <dd title="@(missed ? $"Up to {reusable}% could have come from the cache: the requests started the same as the ones before them, but the provider did not serve that, so it may have expired or been dropped" : "Input served from the provider's cache")">
+                        @cache%@if (missed) { <small>/@reusable%</small> }
                     </dd>
                 }
-                @if (Usage.FormatPrefixChanges(turn.Totals) is { } changes)
+                @if (totals.Tokens.ReasoningTokens > 0) { <dt>Reasoning</dt><dd>@Usage.FormatTokens(totals.Tokens.ReasoningTokens)</dd> }
+                @if (Usage.OutputSpeed(totals) is { } speed) { <dt>Speed</dt><dd>@speed tok/s</dd> }
+                @if (Usage.FormatPrefixChanges(totals) is { } changes)
                 {
-                    <dt title="Requests whose start differed from the request before them, which costs the provider's cache">Cache reset by</dt><dd>@changes</dd>
+                    <dt class="chat-usage-grid-row" title="Requests whose start differed from the request before them, which costs the provider's cache">Cache reset</dt>
+                    <dd class="chat-usage-grid-wide">@changes</dd>
                 }
-                @if (turn.Totals.Tokens.ReasoningTokens > 0) { <dt>Reasoning</dt><dd>@Usage.FormatTokens(turn.Totals.Tokens.ReasoningTokens)</dd> }
-                @if (Usage.OutputSpeed(turn.Totals) is { } speed) { <dt>Speed</dt><dd>@speed tok/s</dd> }
-                @if (Usage.FormatCost(turn.Totals) is { } turnCost) { <dt>Cost</dt><dd>@turnCost</dd> }
-            </dl>
-        </div>
-    }
-
-    @if (ChatUsage is { Totals.Requests: > 0 } chat)
-    {
-        <div class="chat-usage-section">
-            <div class="chat-usage-row chat-usage-heading">
-                <span>Whole chat</span>
-                <span class="chat-usage-figure chat-usage-muted">@chat.Turns.Count @(chat.Turns.Count == 1 ? "turn" : "turns")</span>
-            </div>
-            <dl class="chat-usage-facts">
-                <dt>Input</dt>
-                <dd>
-                    @(Usage.IsEstimated(chat.Totals) ? "≈" : null)@Usage.FormatExact(chat.Totals.Tokens.InputTokens)
-                    @if (Usage.CachePercent(chat.Totals.Tokens) is { } cache) { <small>@cache% cached</small> }
-                </dd>
-                <dt>Output</dt><dd>@(Usage.IsEstimated(chat.Totals) ? "≈" : null)@Usage.FormatExact(chat.Totals.Tokens.OutputTokens)</dd>
-                @if (chat.Totals.Tokens.ReasoningTokens > 0) { <dt>Reasoning</dt><dd>@Usage.FormatExact(chat.Totals.Tokens.ReasoningTokens)</dd> }
-                <dt>Requests</dt><dd>@chat.Totals.Requests</dd>
-                <dt>Cost</dt>
-                <dd>
-                    @if (Usage.FormatCost(chat.Totals) is { } cost)
-                    {
-                        @cost
-                        @if (chat.Totals.PricedRequests < chat.Totals.Requests) { <small title="Some requests went to a connection without prices">partial</small> }
-                        else if (chat.Totals.EstimatedCostRequests > 0) { <small title="@($"The endpoint quoted a cost for some requests only; the other {chat.Totals.EstimatedCostRequests} are worked out from those quotes")">estimated</small> }
-                    }
-                    else if (OnOpenConnections.HasDelegate)
-                    {
-                        <button class="chat-usage-link" type="button" @onclick="OnOpenConnections">Set prices</button>
-                    }
-                    else { <span class="chat-usage-muted">—</span> }
-                </dd>
             </dl>
         </div>
 
-        var shares = Usage.Shares(chat.ByPurpose);
+        var shares = Usage.Shares(figures.ByPurpose);
         @if (shares.Count > 1)
         {
             <div class="chat-usage-section">
-                <div class="chat-usage-row chat-usage-heading"><span>Where it went</span></div>
                 <ul class="chat-usage-shares">
                     @foreach (var share in shares)
                     {
@@ -155,12 +131,12 @@
             </div>
         }
 
-        @if (Usage.IsEstimated(chat.Totals))
+        @if (Usage.IsEstimated(totals))
         {
-            <p class="chat-usage-footnote">≈ estimated: @chat.Totals.EstimatedRequests of @chat.Totals.Requests requests went to an endpoint that does not report usage.</p>
+            <p class="chat-usage-footnote">≈ estimated: @totals.EstimatedRequests of @totals.Requests requests went to an endpoint that does not report usage.</p>
         }
     }
-    else if (GetTurn() is null)
+    else
     {
         <p class="chat-usage-empty">Token usage appears here once the chat sends its first request.</p>
     }
@@ -210,6 +186,22 @@
     [Parameter]
     public EventCallback<HistoryCheckpoint> OnUndoCheckpoint { get; set; }
 
+    /// <summary>What the chosen scope used; <see cref="ScopeFigures.Running"/> for a turn still going.</summary>
+    private sealed record ScopeFigures(TokenUsageTotals Totals, IReadOnlyList<TokenUsageSlice> ByPurpose, int? Turns = null, bool Running = false);
+
+    private ChatWidgetScope _scope = ChatWidgetScope.Chat;
+
+    private ScopeFigures? GetFigures()
+    {
+        if (_scope == ChatWidgetScope.LastTurn)
+            return GetTurn() is { Totals.Requests: > 0 } turn
+                ? new ScopeFigures(turn.Totals, turn.ByPurpose, Running: IsGenerating && LiveTurn?.TurnId == turn.TurnId)
+                : null;
+        return ChatUsage is { Totals.Requests: > 0 } chat
+            ? new ScopeFigures(chat.Totals, chat.ByPurpose, chat.Turns.Count)
+            : null;
+    }
+
     // A running turn built its request already; the history is compacted between turns.
     private bool CanCompact => OnCompact.HasDelegate && !IsGenerating;
 
@@ -224,8 +216,7 @@
     {
         var parts = new List<string>();
         if (Context is { } context) parts.Add($"{context.Percent}%");
-        if (ChatUsage is { Totals.Requests: > 0 } chat)
-            parts.Add(Usage.FormatCost(chat.Totals) ?? Usage.FormatFlow(chat.Totals));
+        if (GetFigures() is { } figures) parts.Add(Usage.FormatCost(figures.Totals) ?? Usage.FormatFlow(figures.Totals));
         return parts.Count == 0 ? null : string.Join(" · ", parts);
     }
 

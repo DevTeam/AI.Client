@@ -1,0 +1,19 @@
+@* The "Whole chat / Last turn" choice widgets share, so it reads and behaves the same in each. *@
+<div class="chat-widget-scope" role="radiogroup" aria-label="Which turns to count">
+    @foreach (var (scope, label) in Scopes)
+    {
+        <button @key="scope" type="button" role="radio" aria-checked="@(Value == scope ? "true" : "false")"
+                class="@(Value == scope ? "is-selected" : null)" @onclick="() => ValueChanged.InvokeAsync(scope)">@label</button>
+    }
+</div>
+
+@code {
+    private static readonly (ChatWidgetScope Scope, string Label)[] Scopes =
+        [(ChatWidgetScope.Chat, "Whole chat"), (ChatWidgetScope.LastTurn, "Last turn")];
+
+    [Parameter]
+    public ChatWidgetScope Value { get; set; }
+
+    [Parameter]
+    public EventCallback<ChatWidgetScope> ValueChanged { get; set; }
+}

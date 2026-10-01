@@ -6,16 +6,11 @@
    changed it. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-files-widget">
     @{ var stats = _stats; }
-    <div class="chat-files-scope" role="radiogroup" aria-label="Which turns to count">
-        <button type="button" role="radio" aria-checked="@(_scope == ChatFileStatisticsScope.Chat ? "true" : "false")"
-                class="@(_scope == ChatFileStatisticsScope.Chat ? "is-selected" : null)" @onclick="() => SetScope(ChatFileStatisticsScope.Chat)">Whole chat</button>
-        <button type="button" role="radio" aria-checked="@(_scope == ChatFileStatisticsScope.LastTurn ? "true" : "false")"
-                class="@(_scope == ChatFileStatisticsScope.LastTurn ? "is-selected" : null)" @onclick="() => SetScope(ChatFileStatisticsScope.LastTurn)">Last turn</button>
-    </div>
+    <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" />
 
     @if (stats.Files.Count == 0)
     {
-        <p class="chat-usage-empty">@(_scope == ChatFileStatisticsScope.LastTurn && _hasAnyChanges ? "The last turn changed no files." : "Files the chat changes on disk appear here, with lines added and removed.")</p>
+        <p class="chat-usage-empty">@(_scope == ChatWidgetScope.LastTurn && _hasAnyChanges ? "The last turn changed no files." : "Files the chat changes on disk appear here, with lines added and removed.")</p>
     }
     else
     {
@@ -92,7 +87,7 @@
 
         <div class="chat-usage-section chat-files-footer">
             <span class="chat-usage-muted">
-                @if (_scope == ChatFileStatisticsScope.Chat)
+                @if (_scope == ChatWidgetScope.Chat)
                 {
                     @($"In {stats.TurnsWithChanges} of {stats.Turns} {(stats.Turns == 1 ? "turn" : "turns")}")
                 }
@@ -135,7 +130,7 @@
     [Parameter]
     public EventCallback<ChatFileReviewRequest> OnReview { get; set; }
 
-    private ChatFileStatisticsScope _scope = ChatFileStatisticsScope.Chat;
+    private ChatWidgetScope _scope = ChatWidgetScope.Chat;
     private bool _showAll;
 
     private ChatFileStatistics _stats = ChatFileStatistics.Empty;
@@ -143,7 +138,7 @@
 
     protected override void OnParametersSet() => Refresh();
 
-    private void SetScope(ChatFileStatisticsScope scope)
+    private void SetScope(ChatWidgetScope scope)
     {
         _scope = scope;
         _showAll = false;
@@ -153,9 +148,9 @@
     private void Refresh()
     {
         _stats = Calculator.Calculate(Messages, LiveChanges, _scope);
-        _hasAnyChanges = _scope == ChatFileStatisticsScope.Chat
+        _hasAnyChanges = _scope == ChatWidgetScope.Chat
             ? _stats.Files.Count > 0
-            : Calculator.Calculate(Messages, LiveChanges, ChatFileStatisticsScope.Chat).Files.Count > 0;
+            : Calculator.Calculate(Messages, LiveChanges, ChatWidgetScope.Chat).Files.Count > 0;
     }
 
     private string? GetSummary() =>

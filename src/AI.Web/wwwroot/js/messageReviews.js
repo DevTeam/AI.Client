@@ -230,7 +230,8 @@
             range.startContainer.parentElement?.scrollIntoView({ block: "center" });
             rect = range.getClientRects()[0] || range.getBoundingClientRect();
         }
-        const halfWidth = Math.min(136, Math.max(0, window.innerWidth / 2 - 12));
+        // Half the editor's width (22rem in app.css), so it stays inside the window.
+        const halfWidth = Math.min(176, Math.max(0, window.innerWidth / 2 - 12));
         const x = Math.max(halfWidth + 12, Math.min(rect.left + rect.width / 2, window.innerWidth - halfWidth - 12));
         const below = rect.top < 150;
         return { x, y: below ? rect.bottom + 8 : rect.top - 8, below };

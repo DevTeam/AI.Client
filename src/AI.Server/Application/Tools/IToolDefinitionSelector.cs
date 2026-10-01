@@ -10,7 +10,8 @@ public interface IToolDefinitionSelector
         string request,
         IReadOnlyList<ChatCompletionMessage> context,
         IReadOnlyList<AgentTool> availableTools,
-        IReadOnlySet<string>? pinnedTools = null);
+        IReadOnlySet<string>? pinnedTools = null,
+        IReadOnlyList<AgentTool>? previousTools = null);
 }
 
 public sealed record ToolSelection(

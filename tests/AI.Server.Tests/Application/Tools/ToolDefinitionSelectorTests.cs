@@ -89,6 +89,31 @@ public sealed class ToolDefinitionSelectorTests
         selection.Tools.ShouldContain(item => item.OriginalName == name);
     }
 
+    [Fact]
+    public void ShouldKeepThePreviousStepsToolsInTheirOrderAndOnlyAddToThem()
+    {
+        var tools = Enumerable.Range(0, 20).Select(index => Tool($"tool_{index}", "generic operation " + new string('x', 1_000)))
+            .Append(Tool("github_issue_get", "Read a GitHub issue " + new string('x', 1_000)))
+            .Append(Tool("jira_ticket_get", "Read a Jira ticket " + new string('x', 1_000))).ToArray();
+        var previous = Selector().Choose(null, "Read the GitHub issue", [], tools).Tools;
+
+        var next = Selector().Choose(null, "Read the Jira ticket", [], tools, previousTools: previous);
+
+        next.Tools.Take(previous.Count).ShouldBe(previous);
+        next.Tools.ShouldContain(item => item.OriginalName == "jira_ticket_get");
+    }
+
+    [Fact]
+    public void ShouldDropAPreviousToolThatIsNoLongerAvailable()
+    {
+        var kept = Tool("kept", "kept");
+        var gone = Tool("gone", "gone");
+
+        var next = Selector().Choose(null, "anything", [], [kept], previousTools: [gone, kept]);
+
+        next.Tools.ShouldBe([kept]);
+    }
+
     private static AgentTool Tool(string name, string description, string? providerName = null)
     {
         var schema = JsonDocument.Parse("""{"type":"object","properties":{}}""").RootElement.Clone();

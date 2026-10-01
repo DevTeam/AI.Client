@@ -11,18 +11,26 @@ public sealed class ChatContextPlanner(
     IChatContextCompactor compactor,
     IConnectionContextLimitsResolver limitsResolver) : IChatContextPlanner
 {
+    /// <summary>
+    /// When a compaction is needed and the run keeps a memory of it, the request is compacted to
+    /// this share of the limit, leaving room for the steps that follow to append to it unchanged.
+    /// </summary>
+    private const int CompactionSlackPercent = 80;
+
     public ContextPlan Plan(
         ConnectionSettings? connection,
         string model,
         IReadOnlyList<ChatCompletionMessage> messages,
-        IReadOnlyList<ChatToolDefinition> tools)
+        IReadOnlyList<ChatToolDefinition> tools,
+        IReadOnlyList<ChatCompletionMessage>? trailing = null,
+        ContextCompactionMemory? memory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(model);
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(tools);
 
-        var (effective, limits, inputLimit, toolTokens, compaction) = PlanCore(connection, messages, tools);
-        return BuildPlan(effective, limits, inputLimit, toolTokens, compaction);
+        var core = PlanCore(connection, messages, tools, trailing ?? [], memory);
+        return BuildPlan(core, core.Compaction);
     }
 
     public async Task<ContextPlan> PlanAsync(
@@ -32,27 +40,32 @@ public sealed class ChatContextPlanner(
         IReadOnlyList<ChatToolDefinition> tools,
         IContextSummarizer? summarizer,
         int summaryTargetTokens,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<ChatCompletionMessage>? trailing = null,
+        ContextCompactionMemory? memory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(model);
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(tools);
 
-        var (effective, limits, inputLimit, toolTokens, compaction) = PlanCore(connection, messages, tools);
-        if (estimator.EstimateMessages(compaction.Messages) > inputLimit && summarizer is not null)
+        var core = PlanCore(connection, messages, tools, trailing ?? [], memory);
+        var compaction = core.Compaction;
+        if (estimator.EstimateMessages(compaction.Messages) > core.ConversationLimit && summarizer is not null)
         {
-            compaction = await compactor.CompactWithLlmAsync(messages, inputLimit, summaryTargetTokens,
-                summarizer, cancellationToken);
+            compaction = await compactor.CompactWithLlmAsync(messages, Target(core.ConversationLimit, memory),
+                summaryTargetTokens, summarizer, cancellationToken);
+            memory?.Remember(messages, compaction);
         }
 
-        return BuildPlan(effective, limits, inputLimit, toolTokens, compaction);
+        return BuildPlan(core, compaction);
     }
 
-    private (ResolvedConnectionContextLimits Effective, ChatContextLimits Limits, long InputLimit, long ToolTokens,
-        ContextCompactionResult Compaction) PlanCore(
+    private PlanBasis PlanCore(
         ConnectionSettings? connection,
         IReadOnlyList<ChatCompletionMessage> messages,
-        IReadOnlyList<ChatToolDefinition> tools)
+        IReadOnlyList<ChatToolDefinition> tools,
+        IReadOnlyList<ChatCompletionMessage> trailing,
+        ContextCompactionMemory? memory)
     {
         var effective = limitsResolver.Resolve(connection);
         var limits = new ChatContextLimits(
@@ -64,29 +77,54 @@ public sealed class ChatContextPlanner(
         var fixedCost = Add(limits.ReservedOutputTokens, toolTokens,
             limits.ProtocolOverheadTokens, limits.SafetyMarginTokens);
         var inputLimit = Math.Max(0, limits.ContextWindowTokens - Math.Min(limits.ContextWindowTokens, fixedCost));
-        var estimated = estimator.EstimateMessages(messages);
-        var compaction = estimated > inputLimit
-            ? compactor.Compact(messages, inputLimit)
-            : new ContextCompactionResult(messages, 0, false);
-        return (effective, limits, inputLimit, toolTokens, compaction);
+        // The trailing note is never compacted: it is what this step is asked to do.
+        var conversationLimit = Math.Max(0, inputLimit - (trailing.Count == 0 ? 0 : estimator.EstimateMessages(trailing)));
+        ContextCompactionResult compaction;
+        if (estimator.EstimateMessages(messages) <= conversationLimit)
+        {
+            compaction = new ContextCompactionResult(messages, 0, false);
+            memory?.Forget();
+        }
+        else if (memory?.Continue(messages) is { } continued
+                 && estimator.EstimateMessages(continued.Messages) <= conversationLimit)
+        {
+            compaction = continued;
+        }
+        else
+        {
+            compaction = compactor.Compact(messages, Target(conversationLimit, memory));
+            memory?.Remember(messages, compaction);
+        }
+        return new PlanBasis(effective, limits, inputLimit, conversationLimit, toolTokens, compaction, trailing);
     }
 
-    private ContextPlan BuildPlan(ResolvedConnectionContextLimits effective, ChatContextLimits limits,
-        long inputLimit, long toolTokens, ContextCompactionResult compaction) =>
-        new(
-            inputLimit,
-            estimator.EstimateMessages(compaction.Messages),
-            effective.ReservedOutputTokens,
-            toolTokens,
-            effective.ContextWindowTokens,
-            effective.ContextWindowSource,
-            effective.ReservedOutputSource,
+    /// <summary>A run that remembers its compaction compacts below the limit, so later steps can reuse it.</summary>
+    private static long Target(long limit, ContextCompactionMemory? memory) =>
+        memory is null ? limit : limit / 100 * CompactionSlackPercent;
+
+    private sealed record PlanBasis(ResolvedConnectionContextLimits Effective, ChatContextLimits Limits,
+        long InputLimit, long ConversationLimit, long ToolTokens, ContextCompactionResult Compaction,
+        IReadOnlyList<ChatCompletionMessage> Trailing);
+
+    private ContextPlan BuildPlan(PlanBasis basis, ContextCompactionResult compaction)
+    {
+        var messages = basis.Trailing.Count == 0 ? compaction.Messages : compaction.Messages.Concat(basis.Trailing).ToArray();
+        return new(
+            basis.InputLimit,
+            estimator.EstimateMessages(messages),
+            basis.Effective.ReservedOutputTokens,
+            basis.ToolTokens,
+            basis.Effective.ContextWindowTokens,
+            basis.Effective.ContextWindowSource,
+            basis.Effective.ReservedOutputSource,
             compaction.WasCompacted,
             compaction.OmittedMessages,
-            compaction.Messages,
-            estimator.EstimateMessages(compaction.Messages.Where(message => message.Role == "system").ToArray()),
-            Add(limits.ProtocolOverheadTokens, limits.SafetyMarginTokens),
+            messages,
+            estimator.EstimateMessages(compaction.Messages.Where(message => message.Role == "system").ToArray())
+            + (basis.Trailing.Count == 0 ? 0 : estimator.EstimateMessages(basis.Trailing)),
+            Add(basis.Limits.ProtocolOverheadTokens, basis.Limits.SafetyMarginTokens),
             compaction.Summary);
+    }
 
     private static long Add(params long[] values)
     {

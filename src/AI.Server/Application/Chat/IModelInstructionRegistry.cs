@@ -14,12 +14,15 @@ public enum ModelInstructionLifetime
 /// Where an instruction sits in the system preamble. Standing layers — the base prompt, project
 /// instructions and memory — change rarely, so they come first and keep the request prefix stable
 /// for provider-side prompt caching; each is bounded by its own budget where it is built. Run
-/// instructions follow and share the composer's run budget.
+/// instructions follow and share the composer's run budget. Trailing instructions change from step
+/// to step and go after the conversation, where a change costs no cached prefix; an instruction
+/// whose lifetime is shorter than the run is always trailing.
 /// </summary>
 public enum ModelInstructionPlacement
 {
-    Run,
-    Standing
+    Trailing = -1,
+    Run = 0,
+    Standing = 1
 }
 
 /// <summary>

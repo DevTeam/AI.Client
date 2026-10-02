@@ -65,6 +65,14 @@ public interface IChatWidgetLayout
 
     IReadOnlyList<ChatWidgetPreference> Update(IReadOnlyList<ChatWidgetPreference> widgets, string id,
         Func<ChatWidgetPreference, ChatWidgetPreference> change);
+
+    /// <summary>
+    /// Sets <see cref="ChatWidgetPreference.Collapsed"/> on every *visible* widget. Hidden widgets
+    /// keep their saved state — the person is not looking at them, so changing what they would see
+    /// when next shown would be surprising. Order and <see cref="ChatWidgetPreference.Hidden"/>
+    /// are preserved.
+    /// </summary>
+    IReadOnlyList<ChatWidgetPreference> SetCollapsed(IReadOnlyList<ChatWidgetPreference> widgets, bool collapsed);
 }
 
 public sealed class ChatWidgetLayout(IChatWidgetCatalog catalog) : IChatWidgetLayout
@@ -107,6 +115,9 @@ public sealed class ChatWidgetLayout(IChatWidgetCatalog catalog) : IChatWidgetLa
     public IReadOnlyList<ChatWidgetPreference> Update(IReadOnlyList<ChatWidgetPreference> widgets, string id,
         Func<ChatWidgetPreference, ChatWidgetPreference> change) =>
         widgets.Select(item => item.Id == id ? change(item) with { Id = id } : item).ToArray();
+
+    public IReadOnlyList<ChatWidgetPreference> SetCollapsed(IReadOnlyList<ChatWidgetPreference> widgets, bool collapsed) =>
+        widgets.Select(item => item.Hidden ? item : item with { Collapsed = collapsed }).ToArray();
 }
 
 /// <summary>

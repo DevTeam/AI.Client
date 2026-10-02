@@ -40,7 +40,12 @@ Current widgets:
   offers "Choose widgets" instead of standing empty.
 - **Folding.** The title is a button that folds the widget to its header (`aria-expanded`). A
   folded widget still states the one figure that matters in its header (`Summary`), so a column
-  of folded widgets reads as a status bar.
+  of folded widgets reads as a status bar. The column header has a single button — `chevrons-up`
+  when at least one visible widget is open, `chevrons-down` when every visible widget is folded —
+  that collapses or expands every visible widget in one click (`aria-pressed` reflects the
+  current direction). Hidden widgets keep their saved folded state: the button only acts on what
+  is actually on screen, so bringing a hidden widget back into the column later still shows it
+  the way it was left. The button is disabled while no widget is visible.
 - **Hiding.** The `x` in a widget header hides it; it comes back through the menu. Like the drag
   handle, the button appears on hover or focus, and always on touch screens.
 - **Reordering.**
@@ -179,7 +184,7 @@ made; they do not repeat it.
 | `ChatWidgetDefinition` | `src/AI.Web/Widgets/ChatWidgets.cs` | Id, title, icon, description of a kind of widget |
 | `IChatWidgetCatalog` | same | Every widget this build has, in the order a new column shows them |
 | `ChatWidgetPreference` | same | One widget as the person left it: `Id`, `Hidden`, `Collapsed` |
-| `IChatWidgetLayout` | same | `Arrange` saved preferences against the catalog; `Move`, `MoveBy`, `Update` |
+| `IChatWidgetLayout` | same | `Arrange` saved preferences against the catalog; `Move`, `MoveBy`, `Update`; `SetCollapsed` for the column-wide toggle |
 | `ChatWidgetContext` | same | What the column hands a widget: definition, preference, `ToggleCollapsed`, `Hide`, `Move` |
 | `ChatWidgetScope` | same | `Chat` or `LastTurn` |
 | `ChatWidgetRail` | `src/AI.Web/Components/ChatWidgetRail.razor` | The column: header, menu, list, reordering, empty state |

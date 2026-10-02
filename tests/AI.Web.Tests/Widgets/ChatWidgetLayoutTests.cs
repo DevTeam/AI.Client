@@ -62,5 +62,45 @@ public class ChatWidgetLayoutTests
         updated.ShouldBe([new("a"), new("b", Hidden: true), new("c"), new("d")]);
     }
 
+    [Fact]
+    public void ShouldCollapseEveryVisibleWidgetWhenAsked()
+    {
+        IReadOnlyList<ChatWidgetPreference> widgets =
+        [
+            new("a"), new("b", Collapsed: true), new("c", Hidden: true), new("d", Collapsed: false)
+        ];
+
+        var collapsed = _layout.SetCollapsed(widgets, true);
+
+        collapsed.ShouldBe([new("a", Collapsed: true), new("b", Collapsed: true), new("c", Hidden: true), new("d", Collapsed: true)]);
+    }
+
+    [Fact]
+    public void ShouldExpandEveryVisibleWidgetWhenAsked()
+    {
+        IReadOnlyList<ChatWidgetPreference> widgets =
+        [
+            new("a", Collapsed: true), new("b"), new("c", Hidden: true, Collapsed: true), new("d", Collapsed: true)
+        ];
+
+        var expanded = _layout.SetCollapsed(widgets, false);
+
+        expanded.ShouldBe([new("a"), new("b"), new("c", Hidden: true, Collapsed: true), new("d")]);
+    }
+
+    [Fact]
+    public void ShouldLeaveHiddenWidgetsUntouchedWhenSettingCollapsed()
+    {
+        IReadOnlyList<ChatWidgetPreference> widgets =
+        [
+            new("a"), new("hidden-one", Hidden: true, Collapsed: true), new("b", Hidden: true)
+        ];
+
+        var updated = _layout.SetCollapsed(widgets, true);
+
+        updated[1].ShouldBe(new("hidden-one", Hidden: true, Collapsed: true));
+        updated[2].ShouldBe(new("b", Hidden: true));
+    }
+
     private static ChatWidgetDefinition Widget(string id) => new(id, id, "gauge", id);
 }

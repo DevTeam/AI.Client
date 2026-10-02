@@ -117,7 +117,9 @@ public sealed class ChatWidgetLayout(IChatWidgetCatalog catalog) : IChatWidgetLa
         widgets.Select(item => item.Id == id ? change(item) with { Id = id } : item).ToArray();
 
     public IReadOnlyList<ChatWidgetPreference> SetCollapsed(IReadOnlyList<ChatWidgetPreference> widgets, bool collapsed) =>
-        widgets.Select(item => item.Hidden ? item : item with { Collapsed = collapsed }).ToArray();
+        widgets.Select(item => item.Hidden || item.Collapsed == collapsed
+            ? item
+            : item with { Collapsed = collapsed }).ToArray();
 }
 
 /// <summary>

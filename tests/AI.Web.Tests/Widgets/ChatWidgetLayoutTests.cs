@@ -102,5 +102,18 @@ public class ChatWidgetLayoutTests
         updated[2].ShouldBe(new("b", Hidden: true));
     }
 
+    [Fact]
+    public void ShouldReuseTheSameRecordWhenCollapsedAlreadyMatches()
+    {
+        // Record equality is structural, so identity matters here: the rail and the widget compare
+        // references to decide whether to re-render, and creating a new record for an unchanged
+        // widget would force that re-render. With the short-circuit, a widget whose Collapsed
+        // already matches comes back unchanged.
+        var alreadyCollapsed = new ChatWidgetPreference("a", Collapsed: true);
+        var updated = _layout.SetCollapsed([alreadyCollapsed], true);
+
+        ReferenceEquals(updated[0], alreadyCollapsed).ShouldBeTrue();
+    }
+
     private static ChatWidgetDefinition Widget(string id) => new(id, id, "gauge", id);
 }

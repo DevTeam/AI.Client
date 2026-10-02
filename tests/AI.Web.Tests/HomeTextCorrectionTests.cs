@@ -18,27 +18,39 @@ public sealed class HomeTextCorrectionTests
         var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var preparation = new Mock<ITextCorrectionPreparation>();
         preparation.Setup(value => value.PrepareAsync(It.IsAny<IReadOnlyCollection<string>>())).Returns(loaded.Task);
-        var analyzer = new Mock<ITextCorrectionAnalyzer>();
-        analyzer.Setup(value => value.Analyze("ghbdtn", It.IsAny<IReadOnlyCollection<string>>()))
+        var analyzer = new Mock<ITextAutoCorrectionAnalyzer>();
+        analyzer.Setup(value => value.Analyze("ghbdtn", It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<IReadOnlyList<TextRange>>()))
             .Returns([new TextReplacement(0, 6, "привет", "ru", 0.98)]);
         var page = CreatePage(["en", "ru"], preparation.Object, analyzer.Object);
 
         var pending = page.AnalyzeComposerLayout("ghbdtn");
         pending.IsCompleted.ShouldBeFalse();
-        analyzer.Verify(value => value.Analyze(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>>()), Times.Never);
+        analyzer.Verify(value => value.Analyze(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<IReadOnlyList<TextRange>>()), Times.Never);
         loaded.SetResult();
         (await pending).Single().Text.ShouldBe("привет");
     }
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    public async Task WithoutTwoSupportedLayoutsCorrectionDoesNotWaitForDictionaries(int selectedCount)
+    [Fact]
+    public async Task WithoutSelectedLanguagesCorrectionDoesNotWaitForDictionaries()
     {
         var preparation = new Mock<ITextCorrectionPreparation>(MockBehavior.Strict);
-        var analyzer = new Mock<ITextCorrectionAnalyzer>(MockBehavior.Strict);
-        var page = CreatePage(selectedCount == 0 ? [] : ["en"], preparation.Object, analyzer.Object);
+        var analyzer = new Mock<ITextAutoCorrectionAnalyzer>(MockBehavior.Strict);
+        var page = CreatePage([], preparation.Object, analyzer.Object);
         (await page.AnalyzeComposerLayout("ghbdtn")).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task OneLanguagePreparesItsDictionaryAndPassesPasteExclusionsToTheAnalyzer()
+    {
+        var preparation = new Mock<ITextCorrectionPreparation>();
+        preparation.Setup(value => value.PrepareAsync(It.IsAny<IReadOnlyCollection<string>>())).Returns(Task.CompletedTask);
+        var analyzer = new Mock<ITextAutoCorrectionAnalyzer>();
+        TextRange[] excluded = [new(0, 6)];
+        analyzer.Setup(value => value.Analyze("helllo dictioanry", It.IsAny<IReadOnlyCollection<string>>(), excluded))
+            .Returns([new TextReplacement(7, 9, "dictionary", "en", 0.95)]);
+        var page = CreatePage(["en"], preparation.Object, analyzer.Object);
+        (await page.AnalyzeComposerLayout("helllo dictioanry", excluded)).Single().Text.ShouldBe("dictionary");
+        preparation.Verify(value => value.PrepareAsync(It.IsAny<IReadOnlyCollection<string>>()), Times.Once);
     }
 
     [Fact]
@@ -47,7 +59,7 @@ public sealed class HomeTextCorrectionTests
         var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var preparation = new Mock<ITextCorrectionPreparation>();
         preparation.Setup(value => value.PrepareAsync(It.IsAny<IReadOnlyCollection<string>>())).Returns(loaded.Task);
-        var analyzer = new Mock<ITextCorrectionAnalyzer>(MockBehavior.Strict);
+        var analyzer = new Mock<ITextAutoCorrectionAnalyzer>(MockBehavior.Strict);
         var languages = new Mock<ITextCorrectionLanguages>();
         languages.SetupSequence(value => value.GetLayoutIdsAsync())
             .Returns(new ValueTask<IReadOnlyCollection<string>>(["en", "ru"]))
@@ -59,7 +71,7 @@ public sealed class HomeTextCorrectionTests
         (await pending).ShouldBeEmpty();
     }
 
-    private Home CreatePage(IReadOnlyCollection<string> layoutIds, ITextCorrectionPreparation preparation, ITextCorrectionAnalyzer analyzer)
+    private Home CreatePage(IReadOnlyCollection<string> layoutIds, ITextCorrectionPreparation preparation, ITextAutoCorrectionAnalyzer analyzer)
     {
         var layouts = new Mock<ITextCorrectionLanguages>();
         layouts.Setup(value => value.GetLayoutIdsAsync()).Returns(new ValueTask<IReadOnlyCollection<string>>(layoutIds));

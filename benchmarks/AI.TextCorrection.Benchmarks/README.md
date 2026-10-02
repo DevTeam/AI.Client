@@ -2,6 +2,7 @@
 
 Initial measurements are saved in [Baselines/2026-10-03](Baselines/2026-10-03/README.md).
 The optimized comparison is in [Baselines/2026-10-03-optimized](Baselines/2026-10-03-optimized/README.md).
+Spelling correction measurements are in [Baselines/2026-10-03-spelling](Baselines/2026-10-03-spelling/README.md).
 
 Run from the repository root using Release configuration:
 
@@ -31,6 +32,8 @@ resolve services through the production Pure.DI composition. No mock lexicon is 
 - `FirstCorrectionBenchmarks`: one first request per process, including preparation, with three launches.
 - `WarmCorrectionBenchmarks`: prepares once outside timing and measures repeated analysis in both directions,
   already correct text, unknown words, French/Spanish conversion, and a long message containing protected code and URLs.
+- `SpellingCorrectionBenchmarks`: measures cached combined correction with one or two selected languages
+  and uncached one-edit dictionary searches. Run with `--filter '*SpellingCorrectionBenchmarks*'`.
 
 Every class reports managed allocations and GC through MemoryDiagnoser. Cold measurements include
 the intentional cooperative delays in the production preparation path. Process startup itself is

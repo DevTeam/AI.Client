@@ -1,11 +1,27 @@
 # Text correction
 
-Local keyboard layout analysis for the chat composer. `TextCorrectionComposition`
-provides `ITextCorrectionAnalyzer` and `IKeyboardLayouts` through Pure.DI.
+Local keyboard layout and spelling correction for the chat composer. `TextCorrectionComposition`
+provides the combined `ITextAutoCorrectionAnalyzer` as `AutoCorrection`, the
+layout-only `ITextCorrectionAnalyzer` as `Analyzer`, and `IKeyboardLayouts` through Pure.DI.
 Registrations live in `Configuration.TextCorrectionComposition` in `Composition.cs`.
 Build and Web link that setup and reuse it with `DependsOn`; the public standalone
 composition adds only roots for library consumers, tests and benchmarks.
 All handwritten services and composition methods are instance members.
+
+The combined analyzer restores the layout first, then checks spelling on the
+converted words and the remaining original tokens. All returned edits use the
+original text's offsets, even when spelling changes word length. One selected
+language enables spelling only; two or more also enable layout correction.
+`ISpellingCorrection` accepts only one unambiguous dictionary word one insertion,
+deletion, substitution or adjacent transposition away. Words shorter than four
+letters, acronyms, mixed-case identifiers, protected syntax and technical chunks
+are preserved. Words known in any selected dictionary remain unchanged.
+`IWordSuggestions` reuses the same Hunspell dictionary instance and checks
+one-edit candidates in stack-allocated spans instead of running its general fuzzy
+suggestion search. Candidate letters come from each dictionary's `TRY` directive
+and its catalog keyboard maps, without language-specific rules. The search stops
+as soon as two matches prove ambiguity. Positive and negative spelling results
+are cached by word and language set with a bounded cache of 2048 entries.
 
 The analyzer considers the enabled layouts, preserves known words in any of them,
 and accepts a unique dictionary-backed conversion. Short words, including single
@@ -39,8 +55,9 @@ The score is a conservative heuristic, not a calibrated probability.
 `LanguageId` has an available dictionary. The application's general Settings panel
 lists correction languages inside a collapsed disclosure, using
 the same design as Update options. No languages are
-selected by default. Fewer than two selected languages disables correction and
-dictionary preparation. The analyzer identifies the
+selected by default. No selected languages disables correction and dictionary
+preparation. One language prepares only its spelling dictionary; layout models
+are loaded when at least two languages are selected. The analyzer identifies the
 correction direction from the text. Language preferences are stored on the device.
 `ITextCorrectionPreparation` prepares those languages in the background when the
 page initializes. Hunspell loading
@@ -71,10 +88,17 @@ derives ambiguous separators from the maps, without language-specific lists.
 Pauses and ordinary letters never complete the last token. Punctuation such as
 dots and commas can represent letters in a different keyboard layout.
 Appending another word does not cancel analysis of a completed prefix. During
-typing, pastes and IME composition are excluded. Recent edits are applied only
+typing, pastes and IME composition are excluded. The composer tracks pasted and
+dropped ranges through subsequent edits and length-changing corrections. Those
+ranges are excluded before analysis and again before applying edits, including on
+send. A manual word edit re-enables that word; typing a separator does not.
+Restored drafts and programmatically inserted text have unknown input provenance
+and are preserved until manually edited. If sending occurs before the DOM handle
+is attached, the draft is preserved. Excluded text cannot supply or bridge layout
+context. Recent edits are applied only
 while the completed prefix is unchanged and the caret and focus remain valid.
 All submit modes, including Enter and the send button, await dictionary preparation
-and analyze the entire message including its final word. Editing the draft while
+and analyze the eligible message text including its final typed word. Editing the draft while
 this check is pending aborts that submission. Ctrl+Z immediately after a
 correction restores the original and suppresses those words until the composer
 is reattached. The operating system's active keyboard layout is unchanged.

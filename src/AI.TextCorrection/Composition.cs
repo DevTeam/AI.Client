@@ -19,7 +19,9 @@ internal sealed class TextCorrectionComposition
         .Bind<ITrigramIndexFormat>().As(Lifetime.Singleton).To<TrigramIndexFormat>()
         .Bind<IWordPlausibility, IWordPlausibilityPreparation>().As(Lifetime.Singleton).To<DictionaryWordPlausibility>()
         .Bind<WordLexicon>().As(Lifetime.Singleton).To<WordLexicon>()
-        .Bind<IWordLexicon, IWordLexiconPreparation>().As(Lifetime.Singleton).To<HunspellWordLexicon>()
+        .Bind<IWordLexicon, IWordLexiconPreparation, IWordSuggestions>().As(Lifetime.Singleton).To<HunspellWordLexicon>()
+        .Bind<ISpellingCorrection>().As(Lifetime.Singleton).To<SpellingCorrection>()
+        .Bind<ITextAutoCorrectionAnalyzer>().As(Lifetime.Singleton).To<TextAutoCorrectionAnalyzer>()
         .Bind<ITextCorrectionPreparation>().As(Lifetime.Singleton).To<TextCorrectionPreparation>()
         .Bind<ITextCorrectionAnalyzer>().As(Lifetime.Singleton).To<TextCorrectionAnalyzer>();
 }

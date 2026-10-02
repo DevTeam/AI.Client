@@ -413,6 +413,7 @@ export function attach(textarea, dotNetReference) {
             // which doesn't always fire — so the user would see their text still there. Force
             // a clear here, then let the next resize run naturally.
             textarea.value = "";
+            detachCorrection.reset();
             historyActive = false;
             skillListOpen = false;
             mentionListOpen = false;

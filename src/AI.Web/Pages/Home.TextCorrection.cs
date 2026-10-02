@@ -9,14 +9,37 @@ public partial class Home
         TextWordBoundaries.AmbiguousSeparators(await CorrectionLanguages.GetLayoutIdsAsync());
 
     [JSInvokable]
-    public async Task<IReadOnlyList<AI.TextCorrection.TextReplacement>> AnalyzeComposerLayout(string text)
+    public async Task<IReadOnlyList<AI.TextCorrection.TextReplacement>> AnalyzeComposerLayout(string text, AI.TextCorrection.TextRange[]? excludedRanges = null)
     {
         var layouts = await CorrectionLanguages.GetLayoutIdsAsync();
-        if (layouts.Count < 2) return [];
+        if (layouts.Count == 0) return [];
         await TextCorrectionPreparation.PrepareAsync(layouts);
         // A language may have been deselected while its dictionary was loading.
         if (!layouts.Order().SequenceEqual((await CorrectionLanguages.GetLayoutIdsAsync()).Order())) return [];
-        return TextCorrection.Analyze(text, layouts);
+        return TextCorrection.Analyze(text, layouts, excludedRanges);
+    }
+
+    // Settings and the switch beside the editor share it; the editor shows the switch only while a language is selected.
+    private AI.Web.Settings.TextCorrectionState _textCorrection = new([], true);
+
+    private void OnTextCorrectionChanged() => _ = InvokeAsync(async () =>
+    {
+        _textCorrection = await CorrectionLanguages.GetStateAsync();
+        StateHasChanged();
+    });
+
+    private async Task ToggleTextCorrectionAsync()
+    {
+        try
+        {
+            await CorrectionLanguages.SetEnabledAsync(!_textCorrection.Enabled);
+            _textCorrection = await CorrectionLanguages.GetStateAsync();
+            await PrepareTextCorrectionAsync();
+        }
+        catch (Exception error)
+        {
+            Notifications.ShowError($"Could not switch text correction: {error.Message}");
+        }
     }
 
     private async Task PrepareTextCorrectionAsync()
@@ -24,11 +47,11 @@ public partial class Home
         try
         {
             var layouts = await CorrectionLanguages.GetLayoutIdsAsync();
-            if (layouts.Count >= 2) await TextCorrectionPreparation.PrepareAsync(layouts);
+            if (layouts.Count > 0) await TextCorrectionPreparation.PrepareAsync(layouts);
         }
         catch (Exception error)
         {
-            await InvokeAsync(() => Notifications.ShowError($"Could not prepare keyboard layout correction: {error.Message}"));
+            await InvokeAsync(() => Notifications.ShowError($"Could not prepare text correction: {error.Message}"));
         }
     }
 
@@ -38,12 +61,7 @@ public partial class Home
             return await _composerHandle.InvokeAsync<string?>("prepareForSend");
 
         // Sending can happen before the DOM handle is attached.
-        var original = _chat.Message;
-        var edits = await AnalyzeComposerLayout(original);
-        if (_chat.Message != original) return null;
-        var corrected = original;
-        foreach (var edit in edits.OrderByDescending(edit => edit.Start))
-            corrected = corrected[..edit.Start] + edit.Text + corrected[(edit.Start + edit.Length)..];
-        return corrected;
+        // Without input provenance, preserve the draft rather than correcting pasted text.
+        return _chat.Message;
     }
 }

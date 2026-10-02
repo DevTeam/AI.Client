@@ -5,12 +5,12 @@ import assert from "node:assert/strict";
 
 const source = readFileSync(new URL("../../../src/AI.Web/wwwroot/js/textCorrection.js", import.meta.url), "utf8").replace("export function", "function");
 
-function fixture(analyze = async () => [{ start: 0, length: 6, text: "привет" }]) {
+function fixture(analyze = async () => [{ start: 0, length: 6, text: "привет" }], initial = "ghbdtn ", ambiguous = ",.;:'\"[]{}<>`~") {
     const listeners = new Map();
     const timers = new Map();
     let id = 0, calls = 0, changes = 0;
     const textarea = {
-        value: "ghbdtn ", selectionStart: 7, selectionEnd: 7,
+        value: "", selectionStart: 0, selectionEnd: 0,
         addEventListener(name, handler) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(handler); },
         removeEventListener(name, handler) { listeners.get(name)?.delete(handler); },
         setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; },
@@ -19,13 +19,23 @@ function fixture(analyze = async () => [{ start: 0, length: 6, text: "приве
     const context = createContext({ console, Event, document: { activeElement: textarea },
         setTimeout(callback) { timers.set(++id, callback); return id; }, clearTimeout(key) { timers.delete(key); } });
     runInContext(source, context);
-    const detach = context.attachLayoutCorrection(textarea, { async invokeMethodAsync(method, text) {
-        if (method === "GetComposerAmbiguousSeparators") return ",.;:'\"[]{}<>`~";
-        calls++; assert.equal(method, "AnalyzeComposerLayout"); return analyze(text);
+    const requests = [];
+    const detach = context.attachLayoutCorrection(textarea, { async invokeMethodAsync(method, text, excluded) {
+        if (method === "GetComposerAmbiguousSeparators") return ambiguous;
+        calls++; requests.push({ text, excluded }); assert.equal(method, "AnalyzeComposerLayout"); return analyze(text, excluded);
     } });
     const input = (inputType = "insertText", isComposing = false, data = " ") => textarea.dispatchEvent({ type: "input", inputType, isComposing, data });
     const flush = async () => { const pending = [...timers.values()]; timers.clear(); await Promise.all(pending.map(callback => callback())); };
-    return { textarea, context, input, flush, detach, calls: () => calls, changes: () => changes };
+    const edit = (start, end, text, inputType = "insertText") => {
+        textarea.setSelectionRange(start, end);
+        if (inputType.startsWith("insertFromPaste")) textarea.dispatchEvent({ type: "paste" });
+        textarea.dispatchEvent({ type: "beforeinput", inputType });
+        textarea.value = textarea.value.slice(0, start) + text + textarea.value.slice(end);
+        textarea.setSelectionRange(start + text.length, start + text.length);
+        input(inputType, false, text);
+    };
+    if (initial) { edit(0, 0, initial); timers.clear(); changes = 0; }
+    return { textarea, context, input, flush, detach, edit, requests, calls: () => calls, changes: () => changes };
 }
 
 test("corrects typed text, keeps caret, and emits input for Blazor", async () => {
@@ -124,6 +134,7 @@ test("send waits for analysis and includes the final word without a separator", 
     let finish;
     const f = fixture(text => { assert.equal(text, "ghbdtn"); return new Promise(resolve => { finish = resolve; }); });
     f.textarea.value = "ghbdtn"; f.textarea.setSelectionRange(6, 6);
+    f.input("insertText", false, "n");
     f.textarea.dispatchEvent({ type: "keydown", key: "Enter" });
     let completed = false;
     const sending = f.detach.prepareForSend().then(text => { completed = true; return text; });
@@ -135,6 +146,7 @@ test("send waits for analysis and includes the final word without a separator", 
 test("send corrects the entire message even when focus is on the button", async () => {
     const f = fixture(); f.context.document.activeElement = null;
     f.textarea.value = "ghbdtn " + "a".repeat(140); f.textarea.setSelectionRange(147, 147);
+    f.input("insertText", false, "a");
     assert.equal(await f.detach.prepareForSend(), "привет " + "a".repeat(140));
 });
 
@@ -167,4 +179,109 @@ test("unambiguous punctuation finishes a word while preserving the unfinished su
         f.input("insertText", false, "t"); await f.flush();
         assert.equal(f.textarea.value, "привет" + character + "next");
     }
+});
+
+test("pasted words remain excluded after typing a separator and on send", async () => {
+    const f = fixture(undefined, "");
+    f.edit(0, 0, "ghbdtn", "insertFromPaste"); await f.flush();
+    assert.equal(f.calls(), 0);
+    f.edit(6, 6, " "); await f.flush();
+    assert.equal(f.textarea.value, "ghbdtn ");
+    assert.equal(await f.detach.prepareForSend(), "ghbdtn ");
+    assert.equal(f.requests.at(-1).excluded[0].length, 6);
+});
+
+test("only typed words are corrected in a draft containing pasted words", async () => {
+    const f = fixture(async () => [
+        { start: 0, length: 6, text: "привет" }, { start: 7, length: 6, text: "привет" }
+    ], "");
+    f.edit(0, 0, "ghbdtn ", "insertFromPaste");
+    f.edit(7, 7, "ghbdtn "); await f.flush();
+    assert.equal(f.textarea.value, "ghbdtn привет ");
+    assert.equal(await f.detach.prepareForSend(), "ghbdtn привет ");
+});
+
+test("a manual edit re-enables the edited pasted word but preserves its neighbours", async () => {
+    const f = fixture(async () => [
+        { start: 0, length: 6, text: "привет" }, { start: 7, length: 6, text: "привет" }
+    ], "");
+    f.edit(0, 0, "ghbdtn ghbdtn ", "insertFromPaste");
+    f.edit(1, 2, "h"); f.edit(14, 14, " "); await f.flush();
+    assert.equal(f.textarea.value, "привет ghbdtn  ");
+    assert.equal(await f.detach.prepareForSend(), "привет ghbdtn  ");
+});
+
+test("paste replacing a selection with identical text is still excluded", async () => {
+    const f = fixture();
+    f.edit(0, 6, "ghbdtn", "insertFromPaste");
+    assert.equal(await f.detach.prepareForSend(), "ghbdtn ");
+});
+
+test("length-changing corrections move pasted ranges and undo restores their positions", async () => {
+    const f = fixture(async text => text.startsWith("helo ") ? [
+        { start: 0, length: 4, text: "hello" }, { start: 5, length: 6, text: "привет" }
+    ] : [], "");
+    f.edit(0, 0, "helo ");
+    f.edit(5, 5, "ghbdtn ", "insertFromPaste");
+    f.edit(12, 12, " "); await f.flush();
+    assert.equal(f.textarea.value, "hello ghbdtn  ");
+    assert.equal(f.requests.at(-1).excluded[0].index, 5);
+    assert.equal(await f.detach.prepareForSend(), "hello ghbdtn  ");
+    assert.equal(f.requests.at(-1).excluded[0].index, 6);
+    f.textarea.dispatchEvent({ type: "keydown", key: "z", ctrlKey: true, preventDefault() {}, stopImmediatePropagation() {} });
+    assert.equal(f.textarea.value, "helo ghbdtn  ");
+    assert.equal(await f.detach.prepareForSend(), "helo ghbdtn  ");
+    assert.equal(f.requests.at(-1).excluded[0].index, 5);
+});
+
+test("partial pastes exclude the whole word and dropped text is protected", async () => {
+    for (const type of ["insertFromPaste", "insertFromDrop"]) {
+        const f = fixture(undefined, "");
+        f.edit(0, 0, "ghb"); f.edit(3, 3, "dtn", type); f.edit(6, 6, " "); await f.flush();
+        assert.equal(f.textarea.value, "ghbdtn ");
+        assert.equal(await f.detach.prepareForSend(), "ghbdtn ");
+        assert.equal(f.requests.at(-1).excluded[0].index, 0);
+        assert.equal(f.requests.at(-1).excluded[0].length, 6);
+    }
+});
+
+test("a paste cancels an outstanding typed-word correction", async () => {
+    let finish;
+    const f = fixture(() => new Promise(resolve => { finish = resolve; }));
+    f.input(); const pending = f.flush(); await new Promise(setImmediate);
+    f.edit(0, 6, "ghbdtn", "insertFromPaste");
+    finish([{ start: 0, length: 6, text: "привет" }]); await pending;
+    assert.equal(f.textarea.value, "ghbdtn ");
+});
+
+test("reset clears paste protection and undo suppression for the next message", async () => {
+    const f = fixture(undefined, "");
+    f.edit(0, 0, "ghbdtn", "insertFromPaste");
+    f.textarea.value = ""; f.textarea.setSelectionRange(0, 0); f.detach.reset();
+    f.edit(0, 0, "ghbdtn "); await f.flush();
+    assert.equal(f.textarea.value, "привет ");
+});
+
+test("programmatically replaced text is preserved on send", async () => {
+    const f = fixture(undefined, "");
+    f.textarea.value = "ghbdtn"; f.textarea.setSelectionRange(6, 6);
+    assert.equal(await f.detach.prepareForSend(), "ghbdtn");
+});
+
+test("one-language punctuation completes a spelling correction", async () => {
+    const f = fixture(async () => [{ start: 0, length: 6, text: "hello" }], "", "");
+    f.edit(0, 0, "helllo"); await f.flush(); assert.equal(f.calls(), 0);
+    f.edit(6, 6, "."); await f.flush();
+    assert.equal(f.textarea.value, "hello.");
+});
+
+test("reattaching a restored draft preserves words whose provenance is unknown", async () => {
+    const f = fixture(undefined, ""); f.textarea.value = "ghbdtn"; f.textarea.setSelectionRange(6, 6);
+    f.detach();
+    const restored = f.context.attachLayoutCorrection(f.textarea, { async invokeMethodAsync(method) {
+        return method === "GetComposerAmbiguousSeparators" ? "" : [{ start: 0, length: 6, text: "привет" }];
+    } });
+    f.input("insertText", false, " ");
+    assert.equal(await restored.prepareForSend(), "ghbdtn");
+    restored();
 });

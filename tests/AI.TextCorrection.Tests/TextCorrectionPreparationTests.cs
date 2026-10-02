@@ -28,7 +28,24 @@ public sealed class TextCorrectionPreparationTests
         await preparation.PrepareAsync(["en"]);
         await Task.WhenAll(preparation.PrepareAsync(["en"]), preparation.PrepareAsync(["en"]));
         lexicon.Count.ShouldBe(1);
-        model.Count.ShouldBe(1);
+        model.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ASecondLanguageLoadsLayoutModelsAfterSpellingOnlyPreparation()
+    {
+        var lexicon = new CountingLexiconPreparation();
+        var model = new CountingModelPreparation();
+        var preparation = new TextCorrectionPreparation(new KeyboardLayouts(), lexicon, model);
+        await preparation.PrepareAsync(["en"]);
+        model.Count.ShouldBe(0);
+        preparation.IsReady(["en"]).ShouldBeTrue();
+        preparation.IsReady(["en", "ru"]).ShouldBeFalse();
+        await preparation.PrepareAsync(["en", "ru"]);
+        model.Count.ShouldBe(2);
+        preparation.IsReady(["en", "ru"]).ShouldBeTrue();
+        await preparation.PrepareAsync(["en"]);
+        model.Count.ShouldBe(2);
     }
 
     [Fact]

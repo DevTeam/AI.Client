@@ -17,7 +17,7 @@
             <button class="icon-action" type="button" title="Up one level" aria-label="Up one level" disabled="@(!Picker.CanGoUp || Picker.IsLoading)" @onclick="GoUpAsync"><AppIcon Name="arrow-up" /></button>
             <input class="directory-picker-path" @ref="_pathInput" value="@Picker.PathText" aria-label="@PathLabel" placeholder="Type or paste a path"
                    @oninput="OnPathInput" />
-            <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" @onclick="GoToTypedPathAsync">Go</button>
+            <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" title="Open the typed or pasted path" @onclick="GoToTypedPathAsync">Go</button>
         </div>
         <div class="directory-picker-body">
             @if (Picker.IsUnavailable)

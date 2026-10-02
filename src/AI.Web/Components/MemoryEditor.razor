@@ -40,11 +40,11 @@
             <div class="settings-card">
                 <label class="settings-row">
                     <span class="settings-row-label">Enabled</span>
-                    <input class="settings-switch" type="checkbox" role="switch" @bind="entry.Enabled" />
+                    <input class="settings-switch" type="checkbox" role="switch" title="Make this entry available to the assistant; switching it off keeps the saved text" @bind="entry.Enabled" />
                 </label>
                 <label class="settings-row">
                     <span class="settings-row-text"><span class="settings-row-label">Pinned</span><span class="settings-row-hint">Reaches the model in full on every run</span></span>
-                    <input class="settings-switch" type="checkbox" role="switch" @bind="entry.Pinned" @bind:after="() => Changed.InvokeAsync()" />
+                    <input class="settings-switch" type="checkbox" role="switch" title="Include the full enabled entry in the model context on every run" @bind="entry.Pinned" @bind:after="() => Changed.InvokeAsync()" />
                 </label>
                 <div class="settings-row" role="radiogroup" aria-labelledby="memory-kind-label">
                     <span class="settings-row-label" id="memory-kind-label">Kind</span>

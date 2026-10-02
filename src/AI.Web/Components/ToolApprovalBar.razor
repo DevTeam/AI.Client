@@ -18,7 +18,7 @@
                     }
                     @if (Approval.BatchSize > 1)
                     {
-                        <span class="tool-approval-count">Call @Approval.CallIndex of @Approval.BatchSize</span>
+                        <span class="tool-approval-count" title="Position in this batch of tool calls; each call is confirmed separately">Call @Approval.CallIndex of @Approval.BatchSize</span>
                     }
                 </span>
                 @* "Approve for me" judged this call and left it to the person; its reason is what to check. *@
@@ -29,9 +29,9 @@
             </span>
         </button>
         <div class="tool-approval-actions">
-            <button class="secondary-action tool-approval-deny" type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Deny)">Deny</button>
+            <button class="secondary-action tool-approval-deny" type="button" title="Refuse this call without saving a permission rule" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Deny)">Deny</button>
             <div class="tool-approval-allow">
-                <button class="tool-approval-once" type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Allow)">Allow once</button>
+                <button class="tool-approval-once" type="button" title="Run this call once without saving a permission rule" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Allow)">Allow once</button>
                 <div class="tool-approval-more @(_allowMenuOpen ? "is-open" : null)">
                     <button type="button" title="More allow options" aria-label="More allow options" aria-expanded="@_allowMenuOpen" @onclick="ToggleAllowMenu"><AppIcon Name="chevron-down" /></button>
                     @if (_allowMenuOpen)

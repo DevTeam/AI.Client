@@ -1,7 +1,7 @@
 @using AI.Contracts.Chats
 
 <div class="composer-approval" @onkeydown="OnKeyDown">
-    <button class="composer-approval-trigger @ModeClass(Mode)" type="button" title="Change permissions" aria-label="Tool permissions: @Title(Mode)"
+    <button class="composer-approval-trigger @ModeClass(Mode)" type="button" title="@($"{Description(Mode)}. Change tool approval mode for this chat")" aria-label="Tool permissions: @Title(Mode)"
             aria-haspopup="true" aria-expanded="@(_isOpen ? "true" : "false")" disabled="@Disabled" @onclick="Toggle">
         <AppIcon Name="@Icon(Mode)" />
         <span>@Title(Mode)</span>

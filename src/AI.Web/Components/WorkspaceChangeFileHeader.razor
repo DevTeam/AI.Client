@@ -15,9 +15,9 @@
         <span class="workspace-change-comments" title="@CommentCount @(CommentCount == 1 ? "comment" : "comments")" aria-label="@CommentCount @(CommentCount == 1 ? "comment" : "comments")"><AppIcon Name="message-circle" />@CommentCount</span>
     }
     <span class="workspace-change-counts">
-        <AnimatedCount Value="@File.Additions" Sign="+" Class="workspace-added" CountIn="@Live" />
-        <AnimatedCount Value="@File.Deletions" Sign="−" Class="workspace-removed" CountIn="@Live" />
-        @if (File.IsBinary) { <span class="workspace-change-binary">binary</span> }
+        <AnimatedCount Value="@File.Additions" Title="Net lines added to this file during the run; repeated edits are combined" Sign="+" Class="workspace-added" CountIn="@Live" />
+        <AnimatedCount Value="@File.Deletions" Title="Net lines removed from this file during the run; repeated edits are combined" Sign="−" Class="workspace-removed" CountIn="@Live" />
+        @if (File.IsBinary) { <span class="workspace-change-binary" title="Binary file; text line counts are unavailable">binary</span> }
     </span>
 </button>
 

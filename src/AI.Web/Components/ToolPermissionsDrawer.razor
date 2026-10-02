@@ -10,8 +10,8 @@
         <button class="icon-action" type="button" title="Close" aria-label="Close permissions" @onclick="() => Close.InvokeAsync()"><AppIcon Name="drawer-close" /></button>
     </header>
     <nav class="permissions-tabs" aria-label="Permission view">
-        <button class="@(!_showAll ? "selected" : string.Empty)" type="button" @onclick="() => _showAll = false">Overrides <span>@Overrides.Count</span></button>
-        <button class="@(_showAll ? "selected" : string.Empty)" type="button" @onclick="() => _showAll = true">All effective</button>
+        <button class="@(!_showAll ? "selected" : string.Empty)" type="button" title="Show permission rules saved in this scope" @onclick="() => _showAll = false">Overrides <span>@Overrides.Count</span></button>
+        <button class="@(_showAll ? "selected" : string.Empty)" type="button" title="Show saved rules after applying chat, project and global precedence" @onclick="() => _showAll = true">All effective</button>
     </nav>
     <div class="permissions-content">
         <p class="permissions-intro">@Description</p>
@@ -33,12 +33,12 @@
                     {
                         <div class="permission-item">
                             <div>
-                                <div class="permission-item-title"><code>@policy.Name</code><span class="permission-decision">@policy.Decision</span></div>
+                                <div class="permission-item-title"><code>@policy.Name</code><span class="permission-decision" title="Allow runs without asking; Ask requires approval; Deny refuses the tool call">@policy.Decision</span></div>
                                 <p>
-                                    <span>@policy.Source</span>
+                                    <span title="@($"This rule comes from {policy.Source.ToLowerInvariant()} permissions; chat rules override project rules, which override global rules")">@policy.Source</span>
                                     @if (policy.Fallback is not null)
                                     {
-                                        <span> · fallback: @policy.Fallback</span>
+                                        <span title="Decision that applies when this override is reset"> · fallback: @policy.Fallback</span>
                                     }
                                 </p>
                             </div>
@@ -57,7 +57,7 @@
         <span>@FooterText</span>
         @if (Overrides.Count > 0)
         {
-            <button class="secondary-action permissions-reset-all" type="button" disabled="@_saving" @onclick="ResetAllAsync">Reset all</button>
+            <button class="secondary-action permissions-reset-all" type="button" title="@($"Reset all {Scope.ToLowerInvariant()} overrides to inherited defaults")" disabled="@_saving" @onclick="ResetAllAsync">Reset all</button>
         }
     </footer>
 </aside>

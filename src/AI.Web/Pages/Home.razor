@@ -762,11 +762,16 @@
                 <button class="icon-action" type="button" title="Close" aria-label="Close project settings" @onclick="RequestCloseProjectSettingsAsync"><AppIcon Name="drawer-close" /></button>
             </header>
             <div class="permissions-content project-settings-content">
-                <EditForm Model="_editor" class="workspace-form">
+                <EditForm Model="_editor" class="settings-form project-settings-form">
                     <DataAnnotationsValidator />
-                    <label>Name<InputText @bind-Value="_editor.Name" /></label>
-                    <label>Description<InputTextArea @bind-Value="_editor.Description" /></label>
-                    <label>Connection<select @bind="_editor.ConnectionId"><option value="">— Default —</option>@foreach (var connection in _connections) { <option value="@connection.Id" disabled="@(!connection.Enabled)">@connection.Name@(!connection.Enabled ? " (Unavailable)" : string.Empty)</option> }</select></label>
+                    <div class="settings-card">
+                        <label class="settings-row settings-field"><span class="settings-row-label">Name</span><InputText @bind-Value="_editor.Name" /></label>
+                        <label class="settings-row settings-field">
+                            <span class="settings-row-label">Connection</span>
+                            <select @bind="_editor.ConnectionId"><option value="">— Default —</option>@foreach (var connection in _connections) { <option value="@connection.Id" disabled="@(!connection.Enabled)">@connection.Name@(!connection.Enabled ? " (Unavailable)" : string.Empty)</option> }</select>
+                        </label>
+                        <label class="settings-row is-stacked"><span class="settings-row-label">Description</span><InputTextArea @bind-Value="_editor.Description" rows="2" /></label>
+                    </div>
                 </EditForm>
                 <ProjectInstructionsEditor @ref="_instructionsEditor" ProjectId="@_selectedProject.Id" />
                 @if (!string.IsNullOrEmpty(_error)) { <p class="error" role="alert">@_error</p> }

@@ -2,46 +2,66 @@
 @using AI.Web.Memory
 @inject IMemoryApi MemoryApi
 
-<section class="project-instructions" aria-label="Project instructions">
-    <div class="section-heading">
-        <div><h3>Instructions</h3><p>Used at the start of each run. Changes save when you close settings.</p></div>
-    </div>
-    <textarea class="project-instructions-text" rows="8" maxlength="32000" disabled="@(_stored is null)"
-              placeholder="Rules for the assistant here: code style, commands to run, what not to touch…"
-              @bind="_text" @bind:event="oninput"></textarea>
-    <label class="checkbox"><input type="checkbox" disabled="@(_stored is null)" @bind="_includeFiles" /><span>Include AGENTS.md and CLAUDE.md from project directories</span></label>
-    @if (ProjectLayer is { } layer)
-    {
-        <ul class="instruction-sources">
-            @foreach (var source in layer.Sources)
+<section class="settings-group settings-form project-instructions" aria-labelledby="project-instructions-heading">
+    <h3 id="project-instructions-heading">Instructions</h3>
+    <div class="settings-card">
+        <label class="settings-row is-stacked">
+            <span class="settings-row-text"><span class="settings-row-label">Rules for the assistant</span><span class="settings-row-hint">Used at the start of each run</span></span>
+            <textarea class="project-instructions-text" rows="8" maxlength="32000" disabled="@(_stored is null)"
+                      placeholder="Code style, commands to run, what not to touch…"
+                      @bind="_text" @bind:event="oninput"></textarea>
+        </label>
+        <label class="settings-row">
+            <span class="settings-row-text"><span class="settings-row-label">Include AGENTS.md and CLAUDE.md</span><span class="settings-row-hint">From the project directories</span></span>
+            <input class="settings-switch" type="checkbox" role="switch" disabled="@(_stored is null)" @bind="_includeFiles" />
+        </label>
+        @if (ProjectLayer is { } layer)
+        {
+            <details class="settings-disclosure">
+                <summary class="settings-row">
+                    <span class="settings-row-text"><span class="settings-row-label">Project context</span><span class="settings-row-hint @(layer.Truncated ? "instruction-budget-over" : null)">@(layer.Truncated ? "Some content omitted: over budget" : "What these instructions add, as saved")</span></span>
+                    <span class="settings-row-value">@layer.Tokens / @layer.BudgetTokens</span>
+                    <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
+                </summary>
+                @foreach (var source in layer.Sources)
+                {
+                    <div class="settings-row instruction-source @(source.Included ? string.Empty : "excluded")">
+                        <span class="settings-row-label" title="@source.Name">@source.Name</span>
+                        <span class="settings-row-value">@(source.Included ? $"{source.Tokens} tokens" : "left out: over budget")</span>
+                    </div>
+                }
+            </details>
+        }
+        <details class="settings-disclosure">
+            <summary class="settings-row">
+                <span class="settings-row-text"><span class="settings-row-label">What the model sees</span><span class="settings-row-hint">System instructions for the next run, in order</span></span>
+                @if (_preview is { } total) { <span class="settings-row-value">@total.TotalTokens tokens</span> }
+                <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
+            </summary>
+            @if (IsDirty) { <div class="settings-row"><span class="settings-row-hint">Shows the last saved instructions. Close settings to update it.</span></div> }
+            @if (_previewError is not null) { <div class="settings-row" role="status"><span class="settings-row-hint">@_previewError</span></div> }
+            @if (_preview is { } preview)
             {
-                <li class="@(source.Included ? string.Empty : "excluded")"><span title="@source.Name">@source.Name</span><small>@(source.Included ? $"{source.Tokens} tokens" : "left out: over budget")</small></li>
+                @foreach (var item in preview.Layers)
+                {
+                    <details class="settings-disclosure model-context-layer">
+                        <summary class="settings-row">
+                            <span class="settings-row-label">@item.Title</span>
+                            <span class="settings-row-value">@item.Tokens / @item.BudgetTokens@(item.Truncated ? " · cut" : string.Empty)</span>
+                            <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
+                        </summary>
+                        <pre>@item.Content</pre>
+                    </details>
+                }
+                <div class="settings-row"><span class="settings-row-hint">Run-control instructions follow.</span></div>
             }
-        </ul>
-        <p class="instruction-budget @(layer.Truncated ? "over" : string.Empty)">Saved project context: @layer.Tokens / @layer.BudgetTokens tokens@(layer.Truncated ? " · some content omitted" : string.Empty)</p>
-    }
+        </details>
+    </div>
     @if (_error is { Length: > 0 })
     {
         <p class="settings-drawer-error" role="alert">@_error</p>
     }
-    <details class="model-context-disclosure">
-        <summary><AppIcon Name="chevron-right" /><span>What the model sees</span></summary>
-        @if (IsDirty) { <p class="model-context-stale">Preview shows the last saved instructions. Close settings to update it.</p> }
-        @if (_previewError is not null) { <p class="model-context-stale" role="status">@_previewError</p> }
-        @if (_preview is { } preview)
-        {
-            <div class="model-context-preview">
-                <p>System instructions for the next run, in order. Run-control instructions follow. @preview.TotalTokens tokens in total.</p>
-                @foreach (var item in preview.Layers)
-                {
-                    <details>
-                        <summary><strong>@item.Title</strong><small>@item.Tokens / @item.BudgetTokens tokens@(item.Truncated ? " · cut" : string.Empty)</small></summary>
-                        <pre>@item.Content</pre>
-                    </details>
-                }
-            </div>
-        }
-    </details>
+    <p class="settings-note">Changes save when you close settings.</p>
 </section>
 
 @code {

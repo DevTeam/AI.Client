@@ -86,6 +86,15 @@
         case "chevron-down":
             <path d="m7 10 5 5 5-5" />
             break;
+        @* Pair of chevrons. Used by the column header for "Collapse all" (up) and "Expand all"
+           (down): one button, one action, and the icon that comes next to it is the direction the
+           widgets will move toward. Same 24×24 viewBox as the single chevrons, just stacked. *@
+        case "chevrons-up":
+            <path d="m7 18 5-5 5 5" /><path d="m7 11 5-5 5 5" />
+            break;
+        case "chevrons-down":
+            <path d="m7 13 5 5 5-5" /><path d="m7 6 5 5 5-5" />
+            break;
         case "drag":
             <path d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01" stroke-width="3" stroke-linecap="round" />
             break;

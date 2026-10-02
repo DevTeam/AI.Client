@@ -30,6 +30,19 @@
                 </span>
             }
         </span>
+        @{
+            var visible = Widgets.Where(item => !item.Hidden).ToList();
+            var anyExpanded = visible.Any(item => !item.Collapsed);
+            var collapseAll = visible.Count > 0 && anyExpanded;
+        }
+        <button class="icon-action" type="button"
+                title="@(collapseAll ? "Collapse all widgets" : "Expand all widgets")"
+                aria-label="@(collapseAll ? "Collapse all widgets" : "Expand all widgets")"
+                aria-pressed="@(collapseAll ? "true" : "false")"
+                disabled="@(visible.Count == 0)"
+                @onclick="ToggleAllCollapsedAsync">
+            <AppIcon Name="@(collapseAll ? "chevrons-up" : "chevrons-down")" />
+        </button>
         <button class="icon-action" type="button" title="Close widgets" aria-label="Close widgets" @onclick="OnClose">
             <AppIcon Name="drawer-close" />
         </button>
@@ -97,6 +110,19 @@
 
     private Task SetShownAsync(string id, ChangeEventArgs args) =>
         ChangeAsync(Layout.Update(Widgets, id, item => item with { Hidden = args.Value is not true, Collapsed = false }));
+
+    /// <summary>
+    /// Collapses every visible widget when at least one is open; otherwise expands them all.
+    /// Hidden widgets keep their saved folded state — the person is not looking at them, so the
+    /// button only acts on what is actually on screen.
+    /// </summary>
+    private Task ToggleAllCollapsedAsync()
+    {
+        var visible = Widgets.Where(item => !item.Hidden).ToList();
+        if (visible.Count == 0) return Task.CompletedTask;
+        var collapse = visible.Any(item => !item.Collapsed);
+        return ChangeAsync(Layout.SetCollapsed(Widgets, collapse));
+    }
 
     private void ToggleMenu() => _menuOpen = !_menuOpen;
 

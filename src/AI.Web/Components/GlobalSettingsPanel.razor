@@ -15,7 +15,7 @@
 @implements IAsyncDisposable
 
 <div class="permissions-drawer-backdrop"></div>
-<aside class="permissions-drawer settings-drawer" aria-label="@Title" @ref="_drawer" @onclick:stopPropagation="true">
+<aside class="permissions-drawer settings-drawer @(Section == "Settings" ? "is-narrow" : null)" aria-label="@Title" @ref="_drawer" @onclick:stopPropagation="true">
     <header>
         <div><h2>@Title</h2><p>@Description</p></div>
         <div class="settings-drawer-header-actions">
@@ -33,51 +33,6 @@
                 case "Settings":
                 {
                     <div class="app-settings">
-                        <UpdatesPanel />
-                        <fieldset class="app-settings-group">
-                            <legend>Theme</legend>
-                            <div class="theme-options">
-                                @foreach (var option in ThemeOptions)
-                                {
-                                    <label class="theme-option @(_theme == option.Value ? "selected" : string.Empty)"><input type="radio" name="theme" checked="@(_theme == option.Value)" @onchange="() => SetThemeAsync(option.Value)" /><span>@option.Label</span></label>
-                                }
-                            </div>
-                        </fieldset>
-                        <fieldset class="app-settings-group">
-                            <legend>Accent color</legend>
-                            <div class="accent-options">
-                                @foreach (var accent in Enum.GetValues<AccentColor>())
-                                {
-                                    var name = accent.ToString();
-                                    <label class="accent-option @(_accent == accent ? "selected" : string.Empty)" style="--swatch: var(--accent-swatch-@name.ToLowerInvariant())" title="@name"><input type="radio" name="accent" aria-label="@name" checked="@(_accent == accent)" @onchange="() => SetAccentAsync(accent)" /></label>
-                                }
-                            </div>
-                        </fieldset>
-                        <fieldset class="app-settings-group">
-                            <legend>Corner roundness</legend>
-                            <div class="corner-roundness-control">
-                                <input type="range" min="0" max="200" step="25" value="@_cornerRoundnessPercent"
-                                       aria-label="Corner roundness" aria-valuetext="@($"{_cornerRoundnessPercent}%")"
-                                       @oninput="SetCornerRoundnessAsync" />
-                                <output>@_cornerRoundnessPercent%</output>
-                            </div>
-                        </fieldset>
-                        <fieldset class="app-settings-group">
-                            <legend>Sounds</legend>
-                            <label class="checkbox"><input type="checkbox" checked="@_notificationSoundEnabled" @onchange="SetNotificationSoundAsync" /> Play a sound for new chat notifications</label>
-                            <label class="checkbox"><input type="checkbox" checked="@_otherSoundsEnabled" @onchange="SetOtherSoundsAsync" /> Play other sounds</label>
-                        </fieldset>
-                        <fieldset class="app-settings-group">
-                            <legend>Chat</legend>
-                            <label class="checkbox"><input type="checkbox" checked="@_showContextWindowUsage" @onchange="SetShowContextWindowUsageAsync" /> Show context window usage</label>
-                            <label class="checkbox"><input type="checkbox" checked="@_showTurnTokens" @onchange="SetShowTurnTokensAsync" /> Show tokens next to each turn's time</label>
-                            @* These are the Host's: it makes the model calls, whichever window is open. *@
-                            <label class="checkbox"><input type="checkbox" checked="@_chatAutomation.AutoTitle" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { AutoTitle = args.Value is true })" /> Name new chats after the first answer</label>
-                            <label class="checkbox"><input type="checkbox" checked="@_chatAutomation.SuggestReplies" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { SuggestReplies = args.Value is true })" /> Suggest a reply after each answer</label>
-                            <label class="checkbox"><input type="checkbox" checked="@_chatAutomation.SuggestComments" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { SuggestComments = args.Value is true })" /> Suggest a comment when writing a review comment</label>
-                            <label class="checkbox"><input type="checkbox" checked="@_chatAutomation.RouteSkills" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { RouteSkills = args.Value is true })" /> Pick a skill for each new message</label>
-                            <p class="host-status-note">Naming, suggestions and skill picking each make one more request to the chat's connection.</p>
-                        </fieldset>
                         @if (ClientMode.PublicWeb)
                         {
                             var (hostState, hostLabel) = HostConnection.Status switch
@@ -87,23 +42,110 @@
                                 _ => ("is-connecting", "Connecting…")
                             };
                             var session = HostConnection.Session;
-                            <fieldset class="app-settings-group">
-                                <legend>Host</legend>
-                                <div class="host-status-card">
-                                    <span class="host-status-dot @hostState" aria-hidden="true"></span>
-                                    <div class="host-status-copy" role="status">
-                                        <strong>@hostLabel</strong>
-                                        <span>@(session is null ? "AI Client Host" : $"AI Client Host {(Version.TryParse(session.Version, out var version) ? version.ToString(3) : session.Version)}") · @HostConnection.Address.Authority</span>
+                            <section class="settings-group" aria-label="Host">
+                                <div class="settings-card">
+                                    <div class="settings-row">
+                                        <span class="host-status-dot @hostState" aria-hidden="true"></span>
+                                        <span class="settings-row-text" role="status">
+                                            <span class="settings-row-label">@hostLabel</span>
+                                            <span class="settings-row-hint" title="Projects, chats and credentials stay on this computer. Disconnect removes this browser's access; connecting again takes one click.">@(session is null ? "AI Client Host" : $"AI Client Host {(Version.TryParse(session.Version, out var version) ? version.ToString(3) : session.Version)}") · @HostConnection.Address.Authority</span>
+                                        </span>
+                                        <button class="compact-action" type="button" disabled="@_disconnectingHost" @onclick="DisconnectHostAsync">Disconnect</button>
                                     </div>
-                                    <button class="secondary-action" type="button" disabled="@_disconnectingHost" @onclick="DisconnectHostAsync">Disconnect</button>
+                                    @if (session is not { DesktopInstalled: true })
+                                    {
+                                        <div class="settings-row">
+                                            <span class="settings-row-text"><span class="settings-row-label">Desktop app</span><span class="settings-row-hint">A separate window with the same projects and chats</span></span>
+                                            <a href="https://github.com/DevTeam/AI.Client/releases/latest" target="_blank" rel="noopener noreferrer">Get it</a>
+                                        </div>
+                                    }
                                 </div>
-                                <p class="host-status-note">Projects, chats and credentials stay on this computer. Disconnect removes this browser's access; connecting again takes one click.</p>
-                                @if (session is not { DesktopInstalled: true })
-                                {
-                                    <p class="host-status-note">Prefer a separate window? <a href="https://github.com/DevTeam/AI.Client/releases/latest" target="_blank" rel="noopener noreferrer">Get the Desktop app</a>. It shares projects and chats with this Host.</p>
-                                }
-                            </fieldset>
+                            </section>
                         }
+                        <UpdatesPanel />
+                        <section class="settings-group" aria-labelledby="settings-appearance">
+                            <h3 id="settings-appearance">Appearance</h3>
+                            <div class="settings-card">
+                                <div class="settings-row is-stacked" role="radiogroup" aria-labelledby="settings-theme">
+                                    <span class="settings-row-label" id="settings-theme">Theme</span>
+                                    <span class="theme-options">
+                                        @foreach (var option in ThemeOptions)
+                                        {
+                                            <label class="theme-option @(_theme == option.Value ? "selected" : string.Empty)"><input type="radio" name="theme" checked="@(_theme == option.Value)" @onchange="() => SetThemeAsync(option.Value)" /><span>@option.Label</span></label>
+                                        }
+                                    </span>
+                                </div>
+                                <div class="settings-row" role="radiogroup" aria-labelledby="settings-accent">
+                                    <span class="settings-row-label" id="settings-accent">Accent</span>
+                                    <span class="accent-options">
+                                        @foreach (var accent in Enum.GetValues<AccentColor>())
+                                        {
+                                            var name = accent.ToString();
+                                            <label class="accent-option @(_accent == accent ? "selected" : string.Empty)" style="--swatch: var(--accent-swatch-@name.ToLowerInvariant())" title="@name"><input type="radio" name="accent" aria-label="@name" checked="@(_accent == accent)" @onchange="() => SetAccentAsync(accent)" /></label>
+                                        }
+                                    </span>
+                                </div>
+                                <div class="settings-row">
+                                    <span class="settings-row-label">Corners</span>
+                                    <span class="corner-roundness-control">
+                                        <input type="range" min="0" max="200" step="25" value="@_cornerRoundnessPercent"
+                                               aria-label="Corner roundness" aria-valuetext="@($"{_cornerRoundnessPercent}%")"
+                                               @oninput="SetCornerRoundnessAsync" />
+                                        <output>@_cornerRoundnessPercent%</output>
+                                    </span>
+                                </div>
+                            </div>
+                        </section>
+                        <section class="settings-group" aria-labelledby="settings-chat">
+                            <h3 id="settings-chat">Chat</h3>
+                            <div class="settings-card">
+                                <label class="settings-row">
+                                    <span class="settings-row-label">Context window usage</span>
+                                    <input class="settings-switch" type="checkbox" role="switch" checked="@_showContextWindowUsage" @onchange="SetShowContextWindowUsageAsync" />
+                                </label>
+                                <label class="settings-row">
+                                    <span class="settings-row-text"><span class="settings-row-label">Tokens per turn</span><span class="settings-row-hint">Next to each turn's time</span></span>
+                                    <input class="settings-switch" type="checkbox" role="switch" checked="@_showTurnTokens" @onchange="SetShowTurnTokensAsync" />
+                                </label>
+                                @* These are the Host's: it makes the model calls, whichever window is open. *@
+                                <details class="settings-disclosure">
+                                    <summary class="settings-row">
+                                        <span class="settings-row-text"><span class="settings-row-label">Model helpers</span><span class="settings-row-hint">Each makes one more request to the chat's connection</span></span>
+                                        <span class="settings-row-value">@ChatHelpersOn of 4</span>
+                                        <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
+                                    </summary>
+                                    <label class="settings-row">
+                                        <span class="settings-row-label">Name new chats after the first answer</span>
+                                        <input class="settings-switch" type="checkbox" role="switch" checked="@_chatAutomation.AutoTitle" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { AutoTitle = args.Value is true })" />
+                                    </label>
+                                    <label class="settings-row">
+                                        <span class="settings-row-label">Suggest a reply after each answer</span>
+                                        <input class="settings-switch" type="checkbox" role="switch" checked="@_chatAutomation.SuggestReplies" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { SuggestReplies = args.Value is true })" />
+                                    </label>
+                                    <label class="settings-row">
+                                        <span class="settings-row-label">Suggest review comments</span>
+                                        <input class="settings-switch" type="checkbox" role="switch" checked="@_chatAutomation.SuggestComments" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { SuggestComments = args.Value is true })" />
+                                    </label>
+                                    <label class="settings-row">
+                                        <span class="settings-row-label">Pick a skill for each new message</span>
+                                        <input class="settings-switch" type="checkbox" role="switch" checked="@_chatAutomation.RouteSkills" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { RouteSkills = args.Value is true })" />
+                                    </label>
+                                </details>
+                            </div>
+                        </section>
+                        <section class="settings-group" aria-labelledby="settings-sounds">
+                            <h3 id="settings-sounds">Sounds</h3>
+                            <div class="settings-card">
+                                <label class="settings-row">
+                                    <span class="settings-row-label">New chat notifications</span>
+                                    <input class="settings-switch" type="checkbox" role="switch" checked="@_notificationSoundEnabled" @onchange="SetNotificationSoundAsync" />
+                                </label>
+                                <label class="settings-row">
+                                    <span class="settings-row-label">Other sounds</span>
+                                    <input class="settings-switch" type="checkbox" role="switch" checked="@_otherSoundsEnabled" @onchange="SetOtherSoundsAsync" />
+                                </label>
+                            </div>
+                        </section>
                     </div>
                     break;
                 }
@@ -128,7 +170,70 @@
                         </div>
                         @if (GetSelectedConnection() is { } connection)
                         {
-                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true"><div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="connection.Enabled" /> Enabled</label><label class="checkbox"><input type="checkbox" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" /> Default</label><label class="checkbox"><input type="checkbox" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" /> For subtasks</label></div><label>Name<InputText autocomplete="off" @bind-Value="connection.Name" /></label><label>Base URL<input type="url" autocomplete="url" class="text-input" placeholder="https://api.openai.com/v1" @bind="connection.BaseUrl" @bind:event="oninput" @bind:after="() => OnEndpointChanged(connection.Id)" /></label><div class="model-field-row"><div class="model-field"><span>Model</span><ModelPicker @bind-Value="connection.Model" AriaLabel="Model" Models="@(_resolvedModels.TryGetValue(connection.Id, out var list) ? list : null)" Loading="@(_resolvingModelsForId == connection.Id)" Error="@(_resolvedErrors.TryGetValue(connection.Id, out var err) ? err : null)" OnRetry="@(() => LoadModelsIfStaleAsync(connection.Id, force: true))" Placeholder="@ModelPickerPlaceholder(connection)" EmptyHint="@ModelPickerEmptyHint(connection)" /></div>@if (_resolvingModelsForId == connection.Id) { <span class="model-loading" aria-label="Loading models" role="status"><AppIcon Name="spinner" Class="tool-row-spinner" /></span> }</div><div class="connection-ratings"><label>Context window tokens<input type="number" min="1024" max="4000000" step="1" @bind="connection.ContextWindowTokens" /><small>Effective: @EffectiveLimits(connection).ContextWindowTokens (@SourceLabel(EffectiveLimits(connection).ContextWindowSource))</small></label><label>Reserved output tokens<input type="number" min="256" max="1000000" step="1" @bind="connection.ReservedOutputTokens" /><small>Effective: @EffectiveLimits(connection).ReservedOutputTokens (@SourceLabel(EffectiveLimits(connection).ReservedOutputSource))</small></label></div><div class="connection-ratings connection-prices"><label>Input price<input type="number" min="0" max="10000" step="0.01" @bind="connection.InputPrice" /><small>Per million tokens</small></label><label>Output price<input type="number" min="0" max="10000" step="0.01" @bind="connection.OutputPrice" /><small>Per million tokens</small></label><label>Cached input<input type="number" min="0" max="10000" step="0.01" @bind="connection.CachedInputPrice" /><small>Empty: same as input</small></label></div><p class="connection-prices-note">Prices cost the usage of an endpoint that does not price requests itself. Leave them empty to show tokens only.</p><div class="connection-ratings"><label>Capability<input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><small>@RatingLabel(connection.Capability, Capabilities)</small></label></div><label>Good for<InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="What the ratings cannot say: vision, long context, local" /></label><label>API key<InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" @bind-Value:after="() => OnEndpointChanged(connection.Id)" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : connection.KeyMissing ? "Needed: imported without its key" : "Optional")" class="@(connection.NeedsKey ? "needs-key" : null)" /></label></form>
+                            var limits = EffectiveLimits(connection);
+                            <form class="global-form settings-form" autocomplete="off" @onsubmit:preventDefault="true">
+                                <div class="settings-card">
+                                    <label class="settings-row">
+                                        <span class="settings-row-label">Enabled</span>
+                                        <input class="settings-switch" type="checkbox" role="switch" @bind="connection.Enabled" />
+                                    </label>
+                                    <label class="settings-row">
+                                        <span class="settings-row-text"><span class="settings-row-label">Default</span><span class="settings-row-hint">Used when a chat names no other</span></span>
+                                        <input class="settings-switch" type="checkbox" role="switch" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" />
+                                    </label>
+                                    <label class="settings-row">
+                                        <span class="settings-row-text"><span class="settings-row-label">For subtasks</span><span class="settings-row-hint">Delegated work may go here</span></span>
+                                        <input class="settings-switch" type="checkbox" role="switch" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" />
+                                    </label>
+                                </div>
+                                <section class="settings-group" aria-labelledby="connection-endpoint">
+                                    <h3 id="connection-endpoint">Endpoint</h3>
+                                    <div class="settings-card">
+                                        <label class="settings-row settings-field"><span class="settings-row-label">Name</span><InputText autocomplete="off" @bind-Value="connection.Name" /></label>
+                                        <label class="settings-row settings-field"><span class="settings-row-label">Base URL</span><input type="url" autocomplete="url" class="text-input" placeholder="https://api.openai.com/v1" @bind="connection.BaseUrl" @bind:event="oninput" @bind:after="() => OnEndpointChanged(connection.Id)" /></label>
+                                        <label class="settings-row settings-field"><span class="settings-row-label">API key</span><InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" @bind-Value:after="() => OnEndpointChanged(connection.Id)" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : connection.KeyMissing ? "Needed: imported without its key" : "Optional")" class="@(connection.NeedsKey ? "needs-key" : null)" /></label>
+                                        @* A div, not a label: a label refocuses the picker on any click inside it. *@
+                                        <div class="settings-row settings-field">
+                                            <span class="settings-row-label">Model</span>
+                                            <span class="settings-field-control"><ModelPicker @bind-Value="connection.Model" AriaLabel="Model" Models="@(_resolvedModels.TryGetValue(connection.Id, out var list) ? list : null)" Loading="@(_resolvingModelsForId == connection.Id)" Error="@(_resolvedErrors.TryGetValue(connection.Id, out var err) ? err : null)" OnRetry="@(() => LoadModelsIfStaleAsync(connection.Id, force: true))" Placeholder="@ModelPickerPlaceholder(connection)" EmptyHint="@ModelPickerEmptyHint(connection)" /></span>
+                                            @if (_resolvingModelsForId == connection.Id) { <span class="model-loading" aria-label="Loading models" role="status"><AppIcon Name="spinner" Class="tool-row-spinner" /></span> }
+                                        </div>
+                                    </div>
+                                </section>
+                                <section class="settings-group" aria-labelledby="connection-more">
+                                    <h3 id="connection-more">Details</h3>
+                                    <div class="settings-card">
+                                        <details class="settings-disclosure">
+                                            <summary class="settings-row">
+                                                <span class="settings-row-text"><span class="settings-row-label">Profile</span><span class="settings-row-hint">How subtasks pick a connection</span></span>
+                                                <span class="settings-row-value">@RatingLabel(connection.Capability, Capabilities)</span>
+                                                <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
+                                            </summary>
+                                            <label class="settings-row settings-field"><span class="settings-row-label">Capability</span><span class="settings-field-control settings-range"><input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><output>@RatingLabel(connection.Capability, Capabilities)</output></span></label>
+                                            <label class="settings-row settings-field"><span class="settings-row-label">Good for</span><InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="Vision, long context, local" /></label>
+                                        </details>
+                                        <details class="settings-disclosure">
+                                            <summary class="settings-row">
+                                                <span class="settings-row-text"><span class="settings-row-label">Context limits</span><span class="settings-row-hint">Empty fields use the model's defaults</span></span>
+                                                <span class="settings-row-value">@FormatTokens(limits.ContextWindowTokens) / @FormatTokens(limits.ReservedOutputTokens)</span>
+                                                <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
+                                            </summary>
+                                            <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Context window</span><span class="settings-row-hint">@limits.ContextWindowTokens tokens, @SourceLabel(limits.ContextWindowSource)</span></span><input type="number" min="1024" max="4000000" step="1" placeholder="@limits.ContextWindowTokens" @bind="connection.ContextWindowTokens" /></label>
+                                            <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Reserved output</span><span class="settings-row-hint">@limits.ReservedOutputTokens tokens, @SourceLabel(limits.ReservedOutputSource)</span></span><input type="number" min="256" max="1000000" step="1" placeholder="@limits.ReservedOutputTokens" @bind="connection.ReservedOutputTokens" /></label>
+                                        </details>
+                                        <details class="settings-disclosure">
+                                            <summary class="settings-row">
+                                                <span class="settings-row-text"><span class="settings-row-label">Prices</span><span class="settings-row-hint">Per million tokens, for endpoints that do not price requests</span></span>
+                                                <span class="settings-row-value">@PriceSummary(connection)</span>
+                                                <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
+                                            </summary>
+                                            <label class="settings-row settings-field"><span class="settings-row-label">Input</span><input type="number" min="0" max="10000" step="0.01" @bind="connection.InputPrice" /></label>
+                                            <label class="settings-row settings-field"><span class="settings-row-label">Output</span><input type="number" min="0" max="10000" step="0.01" @bind="connection.OutputPrice" /></label>
+                                            <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Cached input</span><span class="settings-row-hint">Empty: same as input</span></span><input type="number" min="0" max="10000" step="0.01" @bind="connection.CachedInputPrice" /></label>
+                                        </details>
+                                    </div>
+                                </section>
+                            </form>
                         }
                     </div>
                     break;
@@ -137,41 +242,101 @@
                 {
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
-                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => _selectedMcpServerId = serverItem.Id"><span>@serverItem.Name</span><small>@McpServerStatus(serverItem)</small></button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without secrets)" aria-label="Copy MCP server as JSON" @onclick="() => CopyMcpServerAsync(serverItem)"><AppIcon Name="copy" /></button><button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button></span> }</div> }</nav>
+                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectMcpServer(serverItem.Id)"><span>@serverItem.Name</span><small>@McpServerStatus(serverItem)</small></button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without secrets)" aria-label="Copy MCP server as JSON" @onclick="() => CopyMcpServerAsync(serverItem)"><AppIcon Name="copy" /></button><button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button></span> }</div> }</nav>
                             <button class="icon-action settings-list-add" type="button" title="Add MCP server" aria-label="Add MCP server" @onclick="AddGlobalMcpServer"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedMcpServer() is { } server)
                         {
-                            <form class="global-form" autocomplete="off" @onsubmit:preventDefault="true">
-                                <div class="connection-flags"><label class="checkbox"><input type="checkbox" @bind="server.Enabled" /> Enabled</label></div>
-                                <label>Name<InputText autocomplete="off" @bind-Value="server.Name" readonly="@IsHostProvided(server.Id)" /></label>
-                                <label>Transport<select disabled="@IsHostProvided(server.Id)" @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option>@if (IsHostProvided(server.Id)) { <option>InProcess</option> }</select></label>
-                                <label>Server policy<select @bind="server.Policy"><option>Allow</option><option>Ask</option><option>Deny</option></select></label>
-                                @if (!IsHostProvided(server.Id) && server.Transport == "StreamableHttp")
+                            var hostProvided = IsHostProvided(server.Id);
+                            var tools = _toolPolicies.Where(item => item.ServerId == server.Id).ToList();
+                            <form class="global-form settings-form" autocomplete="off" @onsubmit:preventDefault="true">
+                                @* The tool list can run to dozens of rows, so it gets a page of its own
+                                   rather than burying the server's few fields under it. *@
+                                <div class="settings-page-tabs" role="tablist" aria-label="@server.Name">
+                                    <button type="button" role="tab" class="theme-option @(_mcpTab == McpTab.Server ? "selected" : null)" aria-selected="@(_mcpTab == McpTab.Server)" @onclick="() => _mcpTab = McpTab.Server">Server</button>
+                                    <button type="button" role="tab" class="theme-option @(_mcpTab == McpTab.Tools ? "selected" : null)" aria-selected="@(_mcpTab == McpTab.Tools)" @onclick="() => _mcpTab = McpTab.Tools">Tools <span class="settings-tab-count">@tools.Count</span></button>
+                                </div>
+                                @if (_mcpTab == McpTab.Server)
                                 {
-                                    <label>URL<InputText autocomplete="url" @bind-Value="server.Url" /></label><label>Credential<InputText type="password" autocomplete="new-password" @bind-Value="server.Secret" placeholder="@(server.HasCredential ? "Saved; enter to replace" : server.CredentialMissing ? "Needed: imported without it" : "Optional")" class="@(server.MissingSecrets.Count > 0 ? "needs-key" : null)" /></label>
+                                    <div class="settings-card">
+                                        <label class="settings-row">
+                                            <span class="settings-row-label">Enabled</span>
+                                            <input class="settings-switch" type="checkbox" role="switch" @bind="server.Enabled" />
+                                        </label>
+                                        <label class="settings-row settings-field">
+                                            <span class="settings-row-text"><span class="settings-row-label">Server policy</span><span class="settings-row-hint">Deny turns the server off</span></span>
+                                            <select @bind="server.Policy"><option>Allow</option><option>Ask</option><option>Deny</option></select>
+                                        </label>
+                                    </div>
+                                    <section class="settings-group" aria-labelledby="mcp-connection">
+                                        <h3 id="mcp-connection">Connection</h3>
+                                        <div class="settings-card">
+                                            <label class="settings-row settings-field"><span class="settings-row-label">Name</span><InputText autocomplete="off" @bind-Value="server.Name" readonly="@hostProvided" /></label>
+                                            <label class="settings-row settings-field"><span class="settings-row-label">Transport</span><select disabled="@hostProvided" @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option>@if (hostProvided) { <option>InProcess</option> }</select></label>
+                                            @if (!hostProvided && server.Transport == "StreamableHttp")
+                                            {
+                                                <label class="settings-row settings-field"><span class="settings-row-label">URL</span><InputText autocomplete="url" @bind-Value="server.Url" /></label>
+                                                <label class="settings-row settings-field"><span class="settings-row-label">Credential</span><InputText type="password" autocomplete="new-password" @bind-Value="server.Secret" placeholder="@(server.HasCredential ? "Saved; enter to replace" : server.CredentialMissing ? "Needed: imported without it" : "Optional")" class="@(server.MissingSecrets.Count > 0 ? "needs-key" : null)" /></label>
+                                            }
+                                            else if (!hostProvided)
+                                            {
+                                                <label class="settings-row settings-field"><span class="settings-row-label">Command</span><span class="settings-field-control settings-path-row"><InputText class="settings-path-input" @bind-Value="server.Command" placeholder="Path to the executable" /><button class="secondary-action compact-action" type="button" title="Browse for the command executable" aria-label="Browse for the command executable" @onclick="() => OpenMcpCommandPicker(server)">Browse…</button></span></label>
+                                                <label class="settings-row settings-field"><span class="settings-row-label">Arguments</span><InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label>
+                                                <label class="settings-row settings-field"><span class="settings-row-label">Working directory</span><span class="settings-field-control settings-path-row"><InputText class="settings-path-input" @bind-Value="server.WorkingDirectory" placeholder="Path to a directory" /><button class="secondary-action compact-action" type="button" title="Browse for a working directory" aria-label="Browse for a working directory" @onclick="() => OpenMcpWorkingDirectoryPicker(server)">Browse…</button></span></label>
+                                                <label class="settings-row is-stacked">
+                                                    <span class="settings-row-text"><span class="settings-row-label">Environment variables</span><span class="settings-row-hint">NAME=value, one per line</span></span>
+                                                    <InputTextArea @bind-Value="server.EnvironmentText" placeholder="NAME=value" />
+                                                    @if (server.MissingSecrets.Count > 0) { <small class="settings-needs-key-hint">Needs a value: @string.Join(", ", server.MissingSecrets). Type it after the = on its secret: line.</small> }
+                                                </label>
+                                            }
+                                        </div>
+                                    </section>
                                 }
-                                else if (!IsHostProvided(server.Id))
+                                else
                                 {
-                                    <label>Command<div class="settings-path-row"><InputText class="settings-path-input" @bind-Value="server.Command" placeholder="Path to the executable" /><button class="secondary-action compact-action" type="button" title="Browse for the command executable" aria-label="Browse for the command executable" @onclick="() => OpenMcpCommandPicker(server)">Browse…</button></div></label><label>Arguments<InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label><label>Working directory<div class="settings-path-row"><InputText class="settings-path-input" @bind-Value="server.WorkingDirectory" placeholder="Path to a directory" /><button class="secondary-action compact-action" type="button" title="Browse for a working directory" aria-label="Browse for a working directory" @onclick="() => OpenMcpWorkingDirectoryPicker(server)">Browse…</button></div></label><label>Environment variables<InputTextArea @bind-Value="server.EnvironmentText" placeholder="NAME=value" />@if (server.MissingSecrets.Count > 0) { <small class="settings-needs-key-hint">Needs a value: @string.Join(", ", server.MissingSecrets). Type it after the = on its secret: line.</small> }</label>
-                                }
-                                <section class="mcp-tool-policies">
-                                    <div class="section-heading"><div><h3>Tool defaults</h3><p>Used by every project unless that project has an override.</p></div><button class="secondary-action" type="button" disabled="@(_discoveringTools || _saving || !server.Enabled || server.Policy == "Deny")" @onclick="DiscoverToolsAsync">@(_discoveringTools ? "Discovering…" : "Discover tools")</button></div>
-                                    @if (_toolPolicies.All(item => item.ServerId != server.Id))
+                                    var shown = string.IsNullOrWhiteSpace(_toolFilter) ? tools
+                                        : tools.Where(item => item.Name.Contains(_toolFilter.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+                                    <div class="settings-toolbar">
+                                        <input class="settings-search" type="search" placeholder="Filter tools" aria-label="Filter tools" value="@_toolFilter" @oninput="args => _toolFilter = args.Value?.ToString() ?? string.Empty" />
+                                        <select class="settings-bulk" aria-label="Set every shown tool" value="" disabled="@(shown.Count == 0)" @key="_bulkKey" @onchange="args => SetToolDecisions(shown, args.Value?.ToString())">
+                                            <option value="">Set all…</option><option>Ask</option><option>Allow</option><option>Deny</option>
+                                        </select>
+                                        <button class="compact-action" type="button" disabled="@(_discoveringTools || _saving || !server.Enabled || server.Policy == "Deny")" @onclick="DiscoverToolsAsync">@(_discoveringTools ? "Discovering…" : "Discover")</button>
+                                    </div>
+                                    <p class="settings-note">Defaults for every project unless it overrides them. @ToolDecisionSummary(tools)</p>
+                                    @if (tools.Count == 0)
                                     {
                                         <p class="empty-hint">No tools discovered. Unknown tools will ask for approval.</p>
                                     }
-                                    @foreach (var policy in _toolPolicies.Where(item => item.ServerId == server.Id))
+                                    else if (shown.Count == 0)
                                     {
-                                        <div class="mcp-tool-policy-row">
-                                            <div class="mcp-tool-name"><span>Tool</span><strong title="@policy.SchemaHash">@policy.Name</strong></div>
-                                            <label>Policy<select @bind="policy.Decision" aria-label="Policy for @policy.Name"><option>Ask</option><option>Allow</option><option>Deny</option></select></label>
-                                            <label>Calls/run<input type="number" min="1" max="2147483647" @bind="policy.MaxCallsPerRun" /></label>
-                                            <label>Timeout, sec<input type="number" min="1" max="600" @bind="policy.TimeoutSeconds" /></label>
+                                        <p class="empty-hint">No tools match “@_toolFilter.Trim()”.</p>
+                                    }
+                                    else
+                                    {
+                                        <div class="settings-card">
+                                            @foreach (var policy in shown)
+                                            {
+                                                var expanded = _expandedTool == policy.Name;
+                                                <div class="settings-row mcp-tool-row">
+                                                    <span class="settings-row-text">
+                                                        <span class="settings-row-label mcp-tool-title" title="@policy.SchemaHash">@policy.Name</span>
+                                                        @if (ToolLimitsSummary(policy) is { } limitsSummary) { <span class="settings-row-hint">@limitsSummary</span> }
+                                                    </span>
+                                                    <select class="mcp-tool-decision is-@policy.Decision.ToLowerInvariant()" @bind="policy.Decision" aria-label="Policy for @policy.Name"><option>Ask</option><option>Allow</option><option>Deny</option></select>
+                                                    <button class="icon-action mcp-tool-limits-toggle @(expanded ? "selected" : null)" type="button" title="Limits" aria-label="Limits for @policy.Name" aria-expanded="@expanded" @onclick="() => _expandedTool = expanded ? null : policy.Name"><AppIcon Name="@(expanded ? "chevron-up" : "chevron-down")" /></button>
+                                                </div>
+                                                @if (expanded)
+                                                {
+                                                    <div class="settings-row mcp-tool-limits">
+                                                        <label>Calls per run<input type="number" min="1" max="2147483647" @bind="policy.MaxCallsPerRun" /></label>
+                                                        <label>Timeout, sec<input type="number" min="1" max="600" @bind="policy.TimeoutSeconds" /></label>
+                                                    </div>
+                                                }
+                                            }
                                         </div>
                                     }
-                                    <p class="mcp-policy-note">Deny disables the server. Otherwise a tool-specific Allow can run without confirmation; unknown tools ask by default.</p>
-                                </section>
+                                }
                             </form>
                         }
                     </div>
@@ -332,6 +497,8 @@
     }
 
     /// <summary>The footer line, counted the way the permissions drawer counts its overrides.</summary>
+    private int ChatHelpersOn => new[] { _chatAutomation.AutoTitle, _chatAutomation.SuggestReplies, _chatAutomation.SuggestComments, _chatAutomation.RouteSkills }.Count(value => value);
+
     private string Stats => Section switch
     {
         "Settings" => "Applied right away",
@@ -728,6 +895,59 @@
         ContextLimitSource.Override => "override",
         _ => "default"
     };
+
+    private enum McpTab { Server, Tools }
+
+    private McpTab _mcpTab;
+    private string _toolFilter = string.Empty;
+    private string? _expandedTool;
+    private int _bulkKey;
+
+    private void SelectMcpServer(Guid id)
+    {
+        if (_selectedMcpServerId == id) return;
+        _selectedMcpServerId = id;
+        _toolFilter = string.Empty;
+        _expandedTool = null;
+    }
+
+    private void SetToolDecisions(IEnumerable<McpToolPolicyEditor> tools, string? decision)
+    {
+        if (decision is "Ask" or "Allow" or "Deny")
+        {
+            foreach (var tool in tools) tool.Decision = decision;
+        }
+        // A new element drops the choice, so the menu reads "Set all…" again.
+        _bulkKey++;
+    }
+
+    private static string ToolDecisionSummary(IReadOnlyCollection<McpToolPolicyEditor> tools) =>
+        string.Join(" · ", tools.GroupBy(tool => tool.Decision)
+            .OrderBy(group => Array.IndexOf(Decisions, group.Key))
+            .Select(group => $"{group.Count()} {group.Key.ToLowerInvariant()}"));
+
+    private static readonly string[] Decisions = ["Allow", "Ask", "Deny"];
+
+    private static string? ToolLimitsSummary(McpToolPolicyEditor tool)
+    {
+        var defaults = new McpToolPolicyEditor();
+        var parts = new List<string>(2);
+        if (tool.MaxCallsPerRun != defaults.MaxCallsPerRun) parts.Add($"{tool.MaxCallsPerRun} calls per run");
+        if (tool.TimeoutSeconds != defaults.TimeoutSeconds) parts.Add($"{tool.TimeoutSeconds} s timeout");
+        return parts.Count == 0 ? null : string.Join(" · ", parts);
+    }
+
+    private static string FormatTokens(long tokens) => tokens switch
+    {
+        >= 1_000_000 => $"{tokens / 1_000_000d:0.#}M",
+        >= 1_000 => $"{tokens / 1_000d:0.#}k",
+        _ => tokens.ToString()
+    };
+
+    private static string PriceSummary(ConnectionEditor connection) =>
+        connection is { InputPrice: null, OutputPrice: null, CachedInputPrice: null }
+            ? "Not set"
+            : $"{connection.InputPrice?.ToString("0.##") ?? "–"} / {connection.OutputPrice?.ToString("0.##") ?? "–"}";
 
     private static string McpServerStatus(GlobalMcpServerEditor server)
     {

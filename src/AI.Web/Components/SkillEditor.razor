@@ -37,53 +37,78 @@
     @if (Selected is { } selected)
     {
         var stored = selected.Stored;
-        <form class="global-form skill-form" autocomplete="off" @onsubmit:preventDefault="true">
-            <div class="connection-flags">
+        SkillRunRecord[] recent = stored is null ? [] : _runs.Where(run => run.SkillId == stored.Id).Take(10).ToArray();
+        <form class="global-form settings-form skill-form" autocomplete="off" @onsubmit:preventDefault="true">
+            <div class="settings-card">
                 @if (selected.ReadOnly)
                 {
-                    <span class="skill-state">@(selected.Enabled ? "Enabled" : "Disabled")</span>
+                    <div class="settings-row">
+                        <span class="settings-row-text"><span class="settings-row-label">Enabled</span><span class="settings-row-hint">Built in, read only</span></span>
+                        <span class="settings-row-value skill-state">@(selected.Enabled ? "On" : "Off")</span>
+                    </div>
                 }
                 else
                 {
-                    <label class="checkbox"><input type="checkbox" @bind="selected.Enabled" @bind:after="() => Changed.InvokeAsync()" /> Enabled</label>
-                }
-            </div>
-            @if (!selected.ReadOnly)
-            {
-                @* Writes the icon line of the SKILL.md below, so the text stays the one source of truth. *@
-                <div class="skill-icon-field">
-                    <span>Icon</span>
-                    <SkillIconPicker Value="@selected.Icon" ValueChanged="icon => selected.Icon = icon" />
-                </div>
-            }
-            @if (stored is not null)
-            {
-                <label>Description<textarea rows="2" readonly>@stored.Description</textarea></label>
-                <label>Parameters<textarea class="skill-parameters" rows="8" readonly spellcheck="false">@FormatSchema(stored)</textarea></label>
-            }
-            <label>SKILL.md<textarea class="skill-content" rows="18" readonly="@selected.ReadOnly" spellcheck="false"
-                                     @bind="selected.Content" @bind:event="oninput"></textarea></label>
-            <p class="memory-meta">@Meta(selected)</p>
-            @if (stored is not null)
-            {
-                <div class="skill-runs-heading"><strong>Recent runs</strong>
-                    <button class="secondary-action" type="button" @onclick="RefreshRunsAsync">Refresh</button></div>
-                @if (_runs.Where(run => run.SkillId == stored.Id).Take(10).ToArray() is { Length: > 0 } recent)
-                {
-                    <div class="skill-runs" aria-live="polite">
-                        @foreach (var run in recent)
-                        {
-                            <div class="skill-run">
-                                <span class="skill-run-status">@run.Status</span>
-                                <span>@run.StartedAt.ToLocalTime().ToString("g")</span>
-                                <span>@run.Message</span>
-                                @if (run.Output is { } output) { <pre>@output.GetRawText()</pre> }
-                                @if (run.ChatId is { } chatId) { <small>Chat @chatId</small> }
-                            </div>
-                        }
+                    <label class="settings-row">
+                        <span class="settings-row-label">Enabled</span>
+                        <input class="settings-switch" type="checkbox" role="switch" @bind="selected.Enabled" @bind:after="() => Changed.InvokeAsync()" />
+                    </label>
+                    @* Writes the icon line of the SKILL.md below, so the text stays the one source of truth. *@
+                    <div class="settings-row settings-field">
+                        <span class="settings-row-label">Icon</span>
+                        <span class="settings-field-control"><SkillIconPicker Value="@selected.Icon" ValueChanged="icon => selected.Icon = icon" /></span>
                     </div>
                 }
-                else { <p class="memory-meta">No runs recorded for this skill.</p> }
+                @if (stored is { Description.Length: > 0 })
+                {
+                    <div class="settings-row is-stacked">
+                        <span class="settings-row-label">Description</span>
+                        <span class="skill-description">@stored.Description</span>
+                    </div>
+                }
+            </div>
+            <div class="settings-card">
+                <label class="settings-row is-stacked">
+                    <span class="settings-row-text"><span class="settings-row-label">SKILL.md</span><span class="settings-row-hint">@Meta(selected)</span></span>
+                    <textarea class="skill-content" rows="18" readonly="@selected.ReadOnly" spellcheck="false"
+                              @bind="selected.Content" @bind:event="oninput"></textarea>
+                </label>
+            </div>
+            @if (stored is not null)
+            {
+                <div class="settings-card">
+                    <details class="settings-disclosure">
+                        <summary class="settings-row">
+                            <span class="settings-row-text"><span class="settings-row-label">Parameters</span><span class="settings-row-hint">What a call passes in, as JSON Schema</span></span>
+                            <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
+                        </summary>
+                        <div class="settings-row is-stacked"><textarea class="skill-parameters" rows="8" readonly spellcheck="false" aria-label="Parameters">@FormatSchema(stored)</textarea></div>
+                    </details>
+                    <details class="settings-disclosure">
+                        <summary class="settings-row">
+                            <span class="settings-row-label">Recent runs</span>
+                            <span class="settings-row-value">@(recent.Length == 0 ? "None" : recent.Length.ToString())</span>
+                            <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
+                        </summary>
+                        <div class="settings-row">
+                            <span class="settings-row-hint">The last ten runs of this skill</span>
+                            <button class="compact-action" type="button" @onclick="RefreshRunsAsync">Refresh</button>
+                        </div>
+                        @if (recent.Length > 0)
+                        {
+                            <div class="skill-runs" aria-live="polite">
+                                @foreach (var run in recent)
+                                {
+                                    <div class="settings-row is-stacked skill-run">
+                                        <span class="skill-run-heading"><span class="skill-run-status">@run.Status</span><span class="settings-row-hint">@run.StartedAt.ToLocalTime().ToString("g")@(run.ChatId is { } chatId ? $" · Chat {chatId}" : null)</span></span>
+                                        @if (!string.IsNullOrWhiteSpace(run.Message)) { <span>@run.Message</span> }
+                                        @if (run.Output is { } output) { <pre>@output.GetRawText()</pre> }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </details>
+                </div>
             }
             @if (_error is { Length: > 0 })
             {

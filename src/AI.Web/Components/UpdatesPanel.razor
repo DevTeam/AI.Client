@@ -3,47 +3,73 @@
 @implements IDisposable
 @inject IUpdateClient Updates
 
-<fieldset class="app-settings-group updates-settings" id="updates-settings">
-    <legend>Updates</legend>
+@* One row says where updates stand and offers the next step; the preferences behind it are
+   changed rarely, so they wait under a disclosure. *@
+<section class="settings-group" id="updates-settings" aria-label="Updates">
     @if (Updates.State is { } state)
     {
-        <div class="updates-version"><strong>@state.Product · @state.CurrentVersion</strong>
-            @if (state.CurrentVersion.Contains('-')) { <span class="updates-preview">Pre-release</span> }
-        </div>
-        <label>Update channel
-            <select disabled="@Busy" value="@((int)state.Preferences.Channel)" @onchange="ChangeChannelAsync">
-                <option value="0">Stable</option><option value="1">Preview</option>
-            </select>
-        </label>
-        <p class="updates-note">@(state.Preferences.Channel == UpdateChannel.Preview ? "Includes stable and preliminary releases." : "Stable releases only.")</p>
-        <label class="checkbox"><input type="checkbox" disabled="@Busy" checked="@state.Preferences.CheckAutomatically" @onchange="args => SaveAsync(state.Preferences with { CheckAutomatically = args.Value is true })" /> Check for updates automatically</label>
-        <label class="checkbox"><input type="checkbox" disabled="@Busy" checked="@state.Preferences.DownloadAutomatically" @onchange="args => SaveAsync(state.Preferences with { DownloadAutomatically = args.Value is true })" /> Download updates automatically</label>
-        <label class="checkbox"><input type="checkbox" disabled="@Busy" checked="@state.Preferences.InstallAutomatically" @onchange="args => SaveAsync(state.Preferences with { InstallAutomatically = args.Value is true })" /> Install automatically when tasks finish</label>
-        <p class="updates-note">Checks at startup and every 6 hours. Installation restarts @state.Product and restores your workspace. The operating system may request authorization.</p>
-        @if (!state.Supported) { <p class="updates-note">Automatic installation is available in installed releases.</p> }
-        <div class="updates-status @(state.Error is null ? "" : "updates-error")" role="status" aria-live="polite">@Status(state)</div>
-        @if (state.Release is { } release)
-        {
-            <div class="updates-version">Version @release.Version
-                @if (release.Prerelease) { <span class="updates-preview">Pre-release</span> }
-                <a href="@release.NotesUrl" target="_blank" rel="noopener noreferrer">What’s new</a>
+        <div class="settings-card">
+            <div class="settings-row updates-row">
+                <span class="updates-dot @DotClass(state)" aria-hidden="true"></span>
+                <span class="settings-row-text">
+                    <span class="settings-row-label @(state.Error is null ? null : "updates-error")" role="status" aria-live="polite">@Headline(state)</span>
+                    <span class="settings-row-hint">@state.Product @state.CurrentVersion@(state.CurrentVersion.Contains('-') ? " (pre-release)" : null)@(state.LastChecked is { } checkedAt ? $" · Checked {checkedAt.ToLocalTime():g}" : null)</span>
+                </span>
+                <span class="updates-actions">
+                    @if (state.Release is { } release)
+                    {
+                        <a href="@release.NotesUrl" target="_blank" rel="noopener noreferrer">What’s new</a>
+                        @if (state.Phase is UpdatePhase.Available or UpdatePhase.Failed)
+                        {
+                            <button class="compact-action" type="button" disabled="@(Busy || !state.Supported)" @onclick='() => ExecuteAsync("download")'>Download</button>
+                        }
+                        <button class="compact-action" type="button" disabled="@(Busy || !state.Supported || state.Phase == UpdatePhase.WaitingForTasks)" @onclick='() => ExecuteAsync("install")'>@(state.Product == "Desktop" ? "Restart and update" : "Update Host")</button>
+                    }
+                    else
+                    {
+                        <button class="compact-action" type="button" disabled="@Busy" @onclick='() => ExecuteAsync("check")'>Check now</button>
+                    }
+                </span>
             </div>
-        }
-        @if (state.LastChecked is { } checkedAt) { <small>Last checked: @checkedAt.ToLocalTime().ToString("g")</small> }
-        <div class="updates-actions">
-            <button class="secondary-action" type="button" disabled="@Busy" @onclick='() => ExecuteAsync("check")'>Check now</button>
-            @if (state.Release is not null)
-            {
-                @if (state.Phase is UpdatePhase.Available or UpdatePhase.Failed)
+            <details class="settings-disclosure">
+                <summary class="settings-row">
+                    <span class="settings-row-label">Update options</span>
+                    <span class="settings-row-value">@(state.Preferences.Channel == UpdateChannel.Preview ? "Preview" : "Stable")</span>
+                    <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
+                </summary>
+                <label class="settings-row">
+                    <span class="settings-row-text"><span class="settings-row-label">Channel</span><span class="settings-row-hint">@(state.Preferences.Channel == UpdateChannel.Preview ? "Stable and preliminary releases" : "Stable releases only")</span></span>
+                    <select disabled="@Busy" value="@((int)state.Preferences.Channel)" @onchange="ChangeChannelAsync">
+                        <option value="0">Stable</option><option value="1">Preview</option>
+                    </select>
+                </label>
+                <label class="settings-row">
+                    <span class="settings-row-text"><span class="settings-row-label">Check automatically</span><span class="settings-row-hint">At startup and every 6 hours</span></span>
+                    <input class="settings-switch" type="checkbox" role="switch" disabled="@Busy" checked="@state.Preferences.CheckAutomatically" @onchange="args => SaveAsync(state.Preferences with { CheckAutomatically = args.Value is true })" />
+                </label>
+                <label class="settings-row">
+                    <span class="settings-row-text"><span class="settings-row-label">Download automatically</span></span>
+                    <input class="settings-switch" type="checkbox" role="switch" disabled="@Busy" checked="@state.Preferences.DownloadAutomatically" @onchange="args => SaveAsync(state.Preferences with { DownloadAutomatically = args.Value is true })" />
+                </label>
+                <label class="settings-row">
+                    <span class="settings-row-text"><span class="settings-row-label">Install when tasks finish</span><span class="settings-row-hint">@(state.Supported ? $"Restarts {state.Product} and restores your workspace" : "Available in installed releases")</span></span>
+                    <input class="settings-switch" type="checkbox" role="switch" disabled="@Busy" checked="@state.Preferences.InstallAutomatically" @onchange="args => SaveAsync(state.Preferences with { InstallAutomatically = args.Value is true })" />
+                </label>
+                @if (state.Release is not null)
                 {
-                    <button class="secondary-action" type="button" disabled="@(Busy || !state.Supported)" @onclick='() => ExecuteAsync("download")'>Download</button>
+                    <div class="settings-row">
+                        <span class="settings-row-text"><span class="settings-row-label">Check again</span></span>
+                        <button class="compact-action" type="button" disabled="@Busy" @onclick='() => ExecuteAsync("check")'>Check now</button>
+                    </div>
                 }
-                <button class="secondary-action" type="button" disabled="@(Busy || !state.Supported || state.Phase == UpdatePhase.WaitingForTasks)" @onclick='() => ExecuteAsync("install")'>@(state.Product == "Desktop" ? "Restart and update" : "Update Host")</button>
-            }
+            </details>
         </div>
     }
-    else { <p role="status">Connecting to the update service…</p> }
-</fieldset>
+    else
+    {
+        <div class="settings-card"><div class="settings-row"><span class="updates-dot" aria-hidden="true"></span><span class="settings-row-text"><span class="settings-row-label" role="status">Connecting to the update service…</span></span></div></div>
+    }
+</section>
 
 @code {
     private bool _requesting;
@@ -79,5 +105,11 @@
             UpdatePhase.Installing => "Saving your workspace. Restarting to install the update…",
             _ => !state.StableAvailable && state.Preferences.Channel == UpdateChannel.Stable ? "Stable releases have not been published yet."
                 : state.LastChecked is null ? "Not checked yet." : "You’re up to date." });
+    private string Headline(UpdateState state) => state is { Release: { } release, Error: null, Phase: UpdatePhase.Available } && !Updates.Reconnecting
+        ? $"Version {release.Version}{(release.Prerelease ? " (pre-release)" : null)} is available"
+        : Status(state).TrimEnd('.');
+    private string? DotClass(UpdateState state) => state.Error is not null ? "is-error"
+        : state.Release is not null || Updates.Reconnecting || state.Phase is not UpdatePhase.Idle ? "is-pending"
+        : state.LastChecked is null ? null : "is-ok";
     public void Dispose() => Updates.Changed -= OnChanged;
 }

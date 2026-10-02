@@ -23,6 +23,88 @@ export function isUserBusy(quietMs) {
     return focused.matches("textarea, select, input:not([type=button]):not([type=checkbox]):not([type=radio]):not([type=submit])");
 }
 
+const CURSOR_HTML = '<span class="ghost-cursor-halo"></span>'
+    + '<svg viewBox="0 0 24 24" width="26" height="26">'
+    + '<path class="ghost-cursor-body" d="M4 3l7 17 2.5-7L21 10.5z"/>'
+    + '<path class="ghost-cursor-shine" d="M5.9 5.9l4.9 11.6 1-2.9z"/></svg>';
+
+/** Creates the virtual pointer; its tip sits exactly at the point its transform moves it to. */
+export function createCursor(className = "") {
+    const element = document.createElement("div");
+    element.className = `ghost-cursor ${className}`.trim();
+    element.setAttribute("aria-hidden", "true");
+    element.innerHTML = CURSOR_HTML;
+    return element;
+}
+
+/**
+ * Leaves a fading trail behind the pointer while it travels. The trail follows painted frames,
+ * so a page that never paints simply gets none; it stops by itself when the pointer leaves.
+ * Returns a function that stops it early.
+ */
+export function startTrail(element) {
+    if (reducedMotion() || typeof requestAnimationFrame !== "function") return () => { };
+    element.classList.add("is-moving");
+    let stopped = false, last = null;
+    const step = () => {
+        if (stopped || !element.isConnected || element.classList.contains("is-leaving")) {
+            element.classList.remove("is-moving");
+            return;
+        }
+        const { left: x, top: y } = element.getBoundingClientRect();
+        if (!last || Math.hypot(x - last.x, y - last.y) >= 7) {
+            if (last) {
+                const dot = document.createElement("span");
+                dot.className = "ghost-cursor-trail";
+                dot.setAttribute("aria-hidden", "true");
+                dot.style.transform = `translate(${x}px, ${y}px)`;
+                document.body.appendChild(dot);
+                setTimeout(() => dot.remove(), 600);
+            }
+            last = { x, y };
+        }
+        requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+    return () => { stopped = true; element.classList.remove("is-moving"); };
+}
+
+/**
+ * Plays a press: the pointer dips and springs back, rings and sparks burst from the tip, and the
+ * target, when given, answers like a pressed control.
+ */
+export function pressCursor(element, target = null) {
+    element.querySelectorAll(".ghost-cursor-ripple,.ghost-cursor-flash,.ghost-cursor-spark").forEach(item => item.remove());
+    element.classList.remove("is-pressing", "is-released");
+    void element.getBoundingClientRect();
+    element.classList.add("is-pressing");
+    const add = (className, style) => {
+        const span = document.createElement("span");
+        span.className = className;
+        if (style) for (const [key, value] of Object.entries(style)) span.style.setProperty(key, value);
+        element.appendChild(span);
+        setTimeout(() => span.remove(), 900);
+    };
+    add("ghost-cursor-flash");
+    add("ghost-cursor-ripple");
+    if (!reducedMotion()) {
+        add("ghost-cursor-ripple is-echo");
+        const count = 8;
+        for (let i = 0; i < count; i++)
+            add("ghost-cursor-spark", { "--spark-angle": `${i * 360 / count + 22.5}deg`, "--spark-distance": `${18 + (i % 2) * 8}px` });
+    }
+    setTimeout(() => {
+        element.classList.remove("is-pressing");
+        element.classList.add("is-released");
+    }, 180);
+    if (target) {
+        target.classList.remove("ghost-cursor-pressed");
+        void target.getBoundingClientRect();
+        target.classList.add("ghost-cursor-pressed");
+        setTimeout(() => target.classList.remove("ghost-cursor-pressed"), 650);
+    }
+}
+
 function targetRow(projectId, chatId) {
     return (chatId && document.querySelector(`.chat-nav-row[data-chat-id="${chatId}"]`))
         || document.querySelector(`.project-nav-row[data-project-id="${projectId}"]`);
@@ -61,10 +143,7 @@ export function playCursor(projectId, chatId, durationMs) {
     if (!target || !origin) return;
     const from = origin.getBoundingClientRect();
     const to = target.getBoundingClientRect();
-    const element = document.createElement("div");
-    element.className = still ? "ghost-cursor is-still" : "ghost-cursor";
-    element.setAttribute("aria-hidden", "true");
-    element.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 3l7 17 2.5-7L21 10.5z"/></svg>';
+    const element = createCursor(still ? "is-still" : "");
     const end = `translate(${to.left + Math.min(28, to.width / 3)}px, ${to.top + to.height / 2}px)`;
     element.style.transform = still ? end : `translate(${from.left + from.width / 2}px, ${from.top + from.height / 2}px)`;
     document.body.appendChild(element);
@@ -75,13 +154,12 @@ export function playCursor(projectId, chatId, durationMs) {
         void element.getBoundingClientRect();
         element.style.transitionDuration = `${travel}ms`;
         element.style.transform = end;
+        const stopTrail = startTrail(element);
+        timers.push(setTimeout(stopTrail, travel));
     }
     timers.push(setTimeout(() => {
-        element.classList.add("is-pressing");
         target.classList.add("ghost-cursor-target");
-        const ripple = document.createElement("span");
-        ripple.className = "ghost-cursor-ripple";
-        element.appendChild(ripple);
+        pressCursor(element, target);
     }, travel + 150));
     timers.push(setTimeout(() => target.classList.remove("ghost-cursor-target"), durationMs + 400));
 }

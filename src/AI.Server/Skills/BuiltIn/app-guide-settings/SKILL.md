@@ -3,7 +3,7 @@ id: app-guide-settings
 name: App guide settings
 icon: book
 kind: playbook
-description: Explain appearance, model connections, tools and idle guide preferences within application settings.
+description: Explain appearance, text correction, model connections, tools and idle guide preferences within application settings.
 parameters: {"type":"object","properties":{"mode":{"type":"string","enum":["show","click"]},"language":{"type":"string","description":"Explicit language for guide explanations and questions; otherwise use the user's conversation language."},"interest":{"type":"string","description":"What the person wants to understand; skip the opening interest question when already supplied."}},"additionalProperties":false}
 tools: ["app_navigate","ask_user"]
 ---
@@ -106,8 +106,8 @@ explaining an unavailable feature at length in chat. A safe example belongs in a
 comment, with hypothetical values clearly labeled; never claim it is the user's actual setting.
 ## Routes and application facts
 
-Opening choices: model connections and context; understand helpers and usage; tools, memory
-and skills; appearance, sounds and guide preferences. Invite a custom interest.
+Opening choices: model connections and context; understand helpers, usage and text correction;
+tools, memory and skills; appearance, sounds and guide preferences. Invite a custom interest.
 
 Connections: show settings.connection.url, settings.connection.model and settings.connection.credential;
 then settings.connection.enabled, settings.connection.default and settings.connection.subtasks.
@@ -127,6 +127,33 @@ The helpers each use another request to the chat's connection: automation saves 
 work but consumes tokens and time. Turning a helper off does not disable ordinary chat.
 Settings stored by the Host apply across its clients; appearance, usage display, sounds and
 guide preferences are client preferences. Avoid describing all preferences as globally shared.
+
+Text correction: show settings.chat.text_correction, the collapsed Text correction block
+below Chats, then settings.chat.text_correction.languages. Show a specific language switch
+with settings.chat.text_correction.en, settings.chat.text_correction.ru,
+settings.chat.text_correction.fr or settings.chat.text_correction.es as available in action=targets;
+these are English (US), Russian, French and Spanish. No languages are selected by default.
+No selection disables correction; one language enables spelling only; two or more also
+enable wrong-layout correction. Recommend the two languages the person actually types in
+for optimal performance when they need layout correction; do not select switches for them.
+The choices are stored on this client and take effect when a language switch is changed.
+settings.chat.text_correction.enabled ("Correct while typing") pauses correction without
+clearing the languages; chat.text_correction beside "+" in the message editor is the same switch.
+
+Explain the typing behavior in a separate step beside chat.composer: completed words are
+checked after a separator, and the final typed word is checked before sending. A unique
+nearby spelling correction can replace a typo such as првиет with привет. With English and
+Russian selected, ghbdtn can become привет. These are hypothetical examples, not a reason
+to overwrite a draft or send a demo message. Corrections run locally using dictionaries,
+without another model request, and leave ambiguous spelling alternatives unchanged.
+Pasted and dropped text stays excluded even after further typing and when sending. Manually
+editing a pasted word makes that word eligible again. Immediately after a correction, Ctrl+Z
+restores it and suppresses repeated correction of that word. Code, links, paths and identifiers
+are preserved for spelling correction. The browser's own red spellcheck underline is a
+separate mechanism and does not indicate whether these selected dictionaries are active.
+Split language selection, typing behavior and undo/paste behavior into short visual steps
+when the person wants this topic; do not dump all facts into one comment or change preferences
+as a demonstration.
 
 Tools/memory/skills: show settings.tools, settings.memory and settings.skills as requested.
 Tools execute concrete capabilities behind permissions; memory supplies reusable facts;

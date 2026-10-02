@@ -11,6 +11,7 @@ public sealed partial class TextCorrectionComposition
     private void Setup() => DI.Setup()
         .DependsOn("AI.TextCorrection.Configuration.TextCorrectionComposition")
         .Root<ITextCorrectionAnalyzer>("Analyzer")
+        .Root<ITextAutoCorrectionAnalyzer>("AutoCorrection")
         .Root<IKeyboardLayouts>("Layouts")
         .Root<ISupportedCorrectionLayouts>("SupportedLayouts")
         .Root<IWordBoundaries>("Boundaries")

@@ -40,6 +40,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .DependsOn("AI.TextCorrection.Configuration.TextCorrectionComposition")
             .RootBind<ITextCorrectionLanguages>().As(Lifetime.Singleton).To<TextCorrectionLanguages>()
             .Root<AI.TextCorrection.ITextCorrectionAnalyzer>()
+            .Root<AI.TextCorrection.ITextAutoCorrectionAnalyzer>()
             .Root<AI.TextCorrection.ISupportedCorrectionLayouts>()
             .Root<AI.TextCorrection.IWordBoundaries>()
             .Root<AI.TextCorrection.ITextCorrectionPreparation>()

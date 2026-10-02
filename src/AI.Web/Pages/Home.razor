@@ -40,7 +40,7 @@
 @inject IChatTipsState ChatTips
 @inject IComposerContextPresentation ContextPresentation
 @inject IClientSettingsService ClientSettings
-@inject AI.TextCorrection.ITextCorrectionAnalyzer TextCorrection
+@inject AI.TextCorrection.ITextAutoCorrectionAnalyzer TextCorrection
 @inject AI.TextCorrection.ITextCorrectionPreparation TextCorrectionPreparation
 @inject AI.TextCorrection.IWordBoundaries TextWordBoundaries
 @inject ITextCorrectionLanguages CorrectionLanguages
@@ -587,6 +587,10 @@
                         </div>
                     }
                 </div>
+                @if (_textCorrection.Languages.Count > 0)
+                {
+                    <TextCorrectionToggle State="@_textCorrection" OnToggle="ToggleTextCorrectionAsync" />
+                }
                 <ApprovalModePicker Mode="@GetApprovalMode()" ModeChanged="SetApprovalModeAsync" Disabled="@(_selectedProject is null)" />
                 <div class="composer-endpoint">
                     <button class="composer-endpoint-trigger" type="button" title="Endpoint for this chat" aria-label="Endpoint for this chat" aria-haspopup="true" aria-expanded="@(_isEndpointMenuOpen ? "true" : "false")" @onclick="ToggleEndpointMenu" disabled="@(_connections.Count == 0)">
@@ -1433,6 +1437,8 @@ else if (_guideInvitation is { } guideInvitation)
     {
         var clientSettings = await ClientSettings.GetAsync();
         _ = PrepareTextCorrectionAsync();
+        _textCorrection = await CorrectionLanguages.GetStateAsync();
+        CorrectionLanguages.Changed += OnTextCorrectionChanged;
         _showContextWindowUsage = clientSettings.ShowContextWindowUsage;
         _showTurnTokens = clientSettings.ShowTurnTokens;
         _chatWidgetsOpen = clientSettings.ChatWidgetsOpen;
@@ -6518,6 +6524,7 @@ else if (_guideInvitation is { } guideInvitation)
         Notifications.Changed -= OnNotificationsChanged;
         HostConnection.Changed -= OnHostStatusChanged;
         ReplySuggestions.Changed -= OnReplySuggestionChanged;
+        CorrectionLanguages.Changed -= OnTextCorrectionChanged;
         Notifications.OpenRequested -= OnNotificationOpenRequested;
         Notifications.CenterRequested -= OnNotificationCenterRequested;
         CancelChatSelection();

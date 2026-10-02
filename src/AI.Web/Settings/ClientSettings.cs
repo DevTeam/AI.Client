@@ -17,8 +17,11 @@ public sealed record ClientSettings
 
     public bool OtherSoundsEnabled { get; init; } = true;
 
-    /// <summary>Explicitly selected language IDs for preview layout correction.</summary>
+    /// <summary>Explicitly selected language IDs for spelling and keyboard layout correction.</summary>
     public IReadOnlyList<string> TextCorrectionLanguages { get; init; } = [];
+
+    /// <summary>The quick switch beside the message editor; off pauses correction but keeps the languages.</summary>
+    public bool TextCorrectionEnabled { get; init; } = true;
 
     public bool ShowContextWindowUsage { get; init; } = true;
 

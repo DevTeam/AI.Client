@@ -1,22 +1,38 @@
+@implements IDisposable
 @inject AI.Web.Settings.ITextCorrectionLanguages Languages
 @inject AI.TextCorrection.ITextCorrectionPreparation Preparation
 @inject INotificationService Notifications
 
-<section class="settings-group" aria-label="Keyboard layout correction">
+<section class="settings-group" aria-label="Text correction">
     <div class="settings-card">
         <details class="settings-disclosure">
-            <summary class="settings-row">
-                <span class="settings-row-label">Keyboard layout correction</span>
+            <summary class="settings-row" data-app-target="settings.chat.text_correction">
+                <span class="settings-row-label">Text correction</span>
                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
             </summary>
-            <div class="settings-row">
+            <label class="settings-row" data-app-target="settings.chat.text_correction.enabled">
+                <span class="settings-row-text">
+                    <span class="settings-row-label">Correct while typing</span>
+                    <span class="settings-row-hint">The same switch sits in the message editor while a language is selected.</span>
+                </span>
+                <input class="settings-switch" type="checkbox" role="switch" checked="@_state.Enabled" disabled="@_saving" @onchange="args => SetEnabledAsync(args.Value is true)" />
+            </label>
+            <div class="settings-row" data-app-target="settings.chat.text_correction.languages">
                 <span class="settings-row-text">
                     <span class="settings-row-label">Languages</span>
-                    @if (_selected.Count < 2)
+                    @if (_state.Languages.Count == 0)
                     {
-                        <span class="settings-row-hint">Select at least two languages to correct text typed in the wrong layout.</span>
+                        <span class="settings-row-hint">Select a language for spelling correction. Select two or more to also correct text typed in the wrong layout.</span>
                     }
-                    else if (_selected.Count > 2)
+                    else if (!_state.Enabled)
+                    {
+                        <span class="settings-row-hint">Correction is paused. Your languages stay selected until you turn it back on.</span>
+                    }
+                    else if (_state.Languages.Count == 1)
+                    {
+                        <span class="settings-row-hint">Spelling correction is enabled. Select another language to also correct text typed in the wrong layout.</span>
+                    }
+                    else if (_state.Languages.Count > 2)
                     {
                         <span class="settings-row-hint">For optimal performance, we recommend selecting only two languages.</span>
                     }
@@ -24,9 +40,9 @@
             </div>
             @foreach (var language in Languages.Available)
             {
-                <label class="settings-row">
+                <label class="settings-row" data-app-target="@($"settings.chat.text_correction.{language.LanguageId}")">
                     <span class="settings-row-label">@language.Name</span>
-                    <input class="settings-switch" type="checkbox" role="switch" checked="@_selected.Contains(language.Id)" disabled="@_saving" @onchange="args => SetLanguageAsync(language.LanguageId, args.Value is true)" />
+                    <input class="settings-switch" type="checkbox" role="switch" checked="@_state.Languages.Any(item => item.LanguageId == language.LanguageId)" disabled="@_saving" @onchange="args => SetLanguageAsync(language.LanguageId, args.Value is true)" />
                 </label>
             }
         </details>
@@ -34,23 +50,43 @@
 </section>
 
 @code {
-    private IReadOnlyCollection<string> _selected = [];
+    private AI.Web.Settings.TextCorrectionState _state = new([], true);
     private bool _saving;
 
-    protected override async Task OnInitializedAsync() => _selected = await Languages.GetLayoutIdsAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        _state = await Languages.GetStateAsync();
+        Languages.Changed += OnLanguagesChanged;
+    }
 
-    private async Task SetLanguageAsync(string languageId, bool enabled)
+    public void Dispose() => Languages.Changed -= OnLanguagesChanged;
+
+    // The switch in the message editor changes the same setting while this panel is open.
+    private void OnLanguagesChanged() => _ = InvokeAsync(async () =>
+    {
+        _state = await Languages.GetStateAsync();
+        StateHasChanged();
+    });
+
+    private Task SetLanguageAsync(string languageId, bool enabled) =>
+        SaveAsync(() => Languages.SetLanguageAsync(languageId, enabled), "Could not update correction languages");
+
+    private Task SetEnabledAsync(bool enabled) =>
+        SaveAsync(() => Languages.SetEnabledAsync(enabled), "Could not switch text correction");
+
+    private async Task SaveAsync(Func<ValueTask> save, string failure)
     {
         _saving = true;
         try
         {
-            await Languages.SetLanguageAsync(languageId, enabled);
-            _selected = await Languages.GetLayoutIdsAsync();
-            if (_selected.Count >= 2) await Preparation.PrepareAsync(_selected);
+            await save();
+            _state = await Languages.GetStateAsync();
+            var layouts = await Languages.GetLayoutIdsAsync();
+            if (layouts.Count > 0) await Preparation.PrepareAsync(layouts);
         }
         catch (Exception error)
         {
-            Notifications.ShowError($"Could not update correction languages: {error.Message}");
+            Notifications.ShowError($"{failure}: {error.Message}");
         }
         finally { _saving = false; }
     }

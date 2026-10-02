@@ -44,6 +44,35 @@ public sealed class TextCorrectionLanguagesTests
         await Should.ThrowAsync<ArgumentException>(() => CreateSelection().SetLanguageAsync("tr", true).AsTask());
     }
 
+    [Fact]
+    public async Task PausingStopsCorrectionButKeepsTheLanguagesForResuming()
+    {
+        var selection = CreateSelection();
+        var changes = 0;
+        selection.Changed += () => changes++;
+        await selection.SetLanguageAsync("en", true);
+        await selection.SetLanguageAsync("ru", true);
+
+        await selection.SetEnabledAsync(false);
+        (await selection.GetLayoutIdsAsync()).ShouldBeEmpty();
+        var paused = await selection.GetStateAsync();
+        paused.Languages.Select(layout => layout.LanguageId).ShouldBe(["en", "ru"]);
+        paused.IsActive.ShouldBeFalse();
+
+        await selection.SetEnabledAsync(true);
+        (await selection.GetLayoutIdsAsync()).ShouldBe(["en", "ru"]);
+        (await selection.GetStateAsync()).IsActive.ShouldBeTrue();
+        changes.ShouldBe(4);
+    }
+
+    [Fact]
+    public async Task CorrectionIsSwitchedOnUntilPausedAndInactiveWithoutLanguages()
+    {
+        var state = await CreateSelection().GetStateAsync();
+        state.Enabled.ShouldBeTrue();
+        state.IsActive.ShouldBeFalse();
+    }
+
     private TextCorrectionLanguages CreateSelection() =>
         new(_settings, _composition.Layouts, _composition.SupportedLayouts);
 

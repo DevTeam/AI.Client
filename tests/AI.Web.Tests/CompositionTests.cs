@@ -21,6 +21,8 @@ public sealed class CompositionTests
         client.BaseAddress.ShouldBe(new Uri("http://127.0.0.1:52173/"));
         provider.GetRequiredService<AI.TextCorrection.ITextCorrectionAnalyzer>()
             .Analyze("ghbdtn", ["en", "ru"]).Single().Text.ShouldBe("привет");
+        provider.GetRequiredService<AI.TextCorrection.ITextAutoCorrectionAnalyzer>()
+            .Analyze("helllo", ["en"]).Single().Text.ShouldBe("hello");
         provider.GetRequiredService<AI.TextCorrection.ISupportedCorrectionLayouts>().Ids.ShouldBe(["en", "ru", "fr", "es"]);
         provider.GetRequiredService<AI.Web.Settings.ITextCorrectionLanguages>().Available.Count.ShouldBe(4);
         provider.GetRequiredService<AI.TextCorrection.ITextCorrectionPreparation>().ShouldNotBeNull();

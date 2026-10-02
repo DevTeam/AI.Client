@@ -7,18 +7,24 @@ public sealed class TextCorrectionPreparation(IKeyboardLayouts layouts, IWordLex
 {
     private readonly ConcurrentDictionary<string, bool> _ready = new(StringComparer.Ordinal);
 
-    public bool IsReady(IReadOnlyCollection<string> layoutIds) => Languages(layoutIds).All(_ready.ContainsKey);
+    public bool IsReady(IReadOnlyCollection<string> layoutIds)
+    {
+        var languages = Languages(layoutIds).ToArray();
+        return languages.All(language => _ready.TryGetValue(language, out var modelReady) && (languages.Length < 2 || modelReady));
+    }
 
     public async Task PrepareAsync(IReadOnlyCollection<string> layoutIds)
     {
         // Start after the caller has returned to the browser event loop.
         await Task.Delay(1).ConfigureAwait(false);
-        foreach (var language in Languages(layoutIds))
+        var languages = Languages(layoutIds).ToArray();
+        var withModels = languages.Length >= 2;
+        foreach (var language in languages)
         {
-            if (_ready.ContainsKey(language)) continue;
+            if (_ready.TryGetValue(language, out var modelReady) && (!withModels || modelReady)) continue;
             await lexicon.PrepareAsync(language).ConfigureAwait(false);
-            await model.PrepareAsync(language).ConfigureAwait(false);
-            _ready.TryAdd(language, true);
+            if (withModels) await model.PrepareAsync(language).ConfigureAwait(false);
+            _ready.AddOrUpdate(language, withModels, (_, ready) => ready || withModels);
         }
     }
 

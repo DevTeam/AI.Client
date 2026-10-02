@@ -117,6 +117,19 @@ Enter sends, Ctrl+Enter queues and Shift+Enter inserts a newline. Queueing lets 
 prepare the next request while current work runs; it does not make several messages execute
 simultaneously on the same branch. Never send a demo message or replace an existing draft.
 
+For spelling or wrong-layout typing interests, show settings.chat.text_correction below Chats
+in Settings, then settings.chat.text_correction.languages; return to chat.composer to explain
+the result. No languages are selected by default. One enables spelling only, two or more also
+enable layout correction; choosing just the needed two is recommended for layout performance.
+Correction uses local dictionaries and no extra model request. It checks completed typed words
+and the final typed word before sending, preserving ambiguous spelling alternatives and pasted
+text. Ctrl+Z immediately after a replacement restores the original and prevents repeating it.
+A manual edit makes that pasted word eligible again. Keep these as short visual steps; do not
+change languages, overwrite a draft or send an example while demonstrating the feature.
+While a language is selected, chat.text_correction appears next to "+" in the editor: accent
+coloured when correction runs, crossed out when paused. Clicking it pauses or resumes correction
+without forgetting the languages; settings.chat.text_correction.enabled is the same switch.
+
 Show chat.widgets and settings.chat.context_usage. Explain input/output tokens and that a turn
 may involve multiple model requests plus tool execution. Waiting for a user decision is distinct
 from generating an answer. Context is finite: selected tool definitions and references share

@@ -5,8 +5,10 @@
 @using AI.Web.FileSystem
 @using AI.Web.Markdown
 @inject IMarkdownRenderer MarkdownRenderer
+@inject IJSRuntime JsRuntime
+@implements IDisposable
 
-<section class="user-prompt" role="region" aria-label="Question from the assistant" @onkeydown="HandleKeyDownAsync">
+<section class="@CssClass" role="region" aria-label="Question from the assistant" @onkeydown="HandleKeyDownAsync" @onfocusin="PauseDefaults">
     <strong class="user-prompt-title">@(Prompt.Questions.Count > 1 ? $"Questions ({Prompt.Questions.Count})" : "Question")</strong>
     @for (var index = 0; index < Prompt.Questions.Count; index++)
     {
@@ -131,19 +133,35 @@
         {
             <span>All questions answered. Press <kbd>Enter</kbd> to continue.</span>
         }
+        else if (Prompt.Presentation == "overlay" && IsTimed)
+        {
+            <span>This question expires automatically. No action will be taken without an answer.</span>
+        }
         else
         {
             <span>Answer what matters to you — anything you leave blank is left to the assistant to decide.</span>
         }
     </p>
+    @* The countdown reads like the guide step's: a timer line, a bar that drains along the bottom
+       edge, and a warning in the last seconds — accent when the defaults are about to be sent,
+       amber when the question is about to close unanswered. *@
+    @if (_secondsLeft is { } seconds)
+    {
+        <div class="user-prompt-timeout" role="timer" aria-live="off"><AppIcon Name="timer" />@(AutoContinue
+            ? "Continues with recommended answers" : "Closes automatically") in @(seconds / 60):@((seconds % 60).ToString("00"))</div>
+    }
     <div class="user-prompt-actions">
         @* Two ways not to answer, and they mean opposite things: "decide yourself" hands the choice
            over and the work goes on, "decline" refuses it and the work stops until they say more. *@
         <button class="secondary-action user-prompt-decline" type="button" disabled="@_sending" @onclick="DeclineAsync" @onkeydown:stopPropagation="true"
                 title="Don't answer and stop the assistant here"><span>Decline</span></button>
-        <button class="secondary-action" type="button" disabled="@_sending" @onclick="DismissAsync" @onkeydown:stopPropagation="true"
-                title="Let the assistant choose and carry on"><span>Decide yourself</span></button>
-        <button type="button" disabled="@_sending" @onclick="AnswerAsync" @onkeydown:stopPropagation="true">
+        @if (Prompt.Presentation != "overlay")
+        {
+            <button class="secondary-action" type="button" disabled="@_sending" @onclick="DismissAsync" @onkeydown:stopPropagation="true"
+                    title="Let the assistant choose and carry on"><span>Decide yourself</span></button>
+        }
+        <button @ref="_submitButton" class="user-prompt-submit" type="button" disabled="@_sending" @onclick="AnswerAsync" @onkeydown:stopPropagation="true"
+                title="@(AutoContinue ? "Pressed automatically when the time runs out" : null)">
             @if (_sending)
             {
                 <span>Continuing…</span>
@@ -159,6 +177,10 @@
         </button>
     </div>
     @if (_error is not null) { <p class="user-prompt-error" role="alert">@_error</p> }
+    @if (_secondsLeft is not null)
+    {
+        <div class="user-prompt-progress" aria-hidden="true"><span style="transform: scaleX(@Remaining.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture))"></span></div>
+    }
 </section>
 
 @if (_pickerQuestion is { } picking)
@@ -191,6 +213,87 @@
     private int? _pickerQuestion;
     private int? _gitPickerQuestion;
     private DirectoryPickerMode _pickerMode;
+    private CancellationTokenSource? _timer;
+    private int? _secondsLeft;
+    private bool _defaultsPaused;
+
+    private int _totalSeconds;
+    private ElementReference _submitButton;
+    private bool _pressed;
+    private static readonly TimeSpan PressLead = TimeSpan.FromMilliseconds(1200);
+
+    private async Task PressSubmitAsync()
+    {
+        try
+        {
+            var module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/appGuide.js");
+            await module.InvokeAsync<bool>("press", _submitButton);
+        }
+        catch (Exception error) when (error is JSException or InvalidOperationException or TaskCanceledException) { }
+    }
+    private bool? _countingAuto;
+
+    private void PauseDefaults() => _defaultsPaused = true;
+
+    /// <summary>When the time runs out the recommended answers are sent, as if Continue was pressed.</summary>
+    private bool AutoContinue => Prompt.SubmitDefaults && !_defaultsPaused;
+
+    private bool Expiring => _secondsLeft <= AppGuideStep.ExpiringSeconds;
+
+    // A question asked without a time limit (the guide waiting while the person gets a view ready)
+    // arrives with no expiry and a zero timeout; counting down from zero would close it at once.
+    private bool IsTimed => Prompt.ExpiresAt is not null || Prompt.TimeoutSeconds > 0;
+
+    private string CssClass => $"user-prompt{(_secondsLeft is not null ? " is-timed" : null)}{(AutoContinue ? " is-auto" : null)}{(_secondsLeft is not null && Expiring ? " is-expiring" : null)}";
+
+    private double Remaining => Math.Clamp((double)(_secondsLeft ?? 0) / Math.Max(1, _totalSeconds), 0, 1);
+
+    private async Task CountDownAsync(Guid promptId, CancellationToken token)
+    {
+        if (Prompt.TimeoutSeconds <= 0 && Prompt.ExpiresAt is null) return;
+        var expiry = Prompt.ExpiresAt ?? DateTimeOffset.UtcNow.AddSeconds(Prompt.TimeoutSeconds);
+        try
+        {
+            while (!token.IsCancellationRequested && _rendered == promptId)
+            {
+                var deadline = AutoContinue ? Prompt.DefaultSubmitAt ?? expiry : expiry;
+                _secondsLeft = Math.Max(0, (int)Math.Ceiling((deadline - DateTimeOffset.UtcNow).TotalSeconds));
+                // The bar measures the deadline being counted: the whole question's lifetime for the
+                // expiry, and what was left when it started for the defaults, whose start is not sent.
+                if (_countingAuto != AutoContinue)
+                {
+                    _countingAuto = AutoContinue;
+                    _totalSeconds = AutoContinue ? _secondsLeft.Value : (int)Prompt.TimeoutSeconds;
+                }
+                _totalSeconds = Math.Max(_totalSeconds, _secondsLeft.Value);
+                await InvokeAsync(StateHasChanged);
+                if (_secondsLeft == 0)
+                {
+                    if (!_sending) await InvokeAsync(() => SendAsync(Prompt.SubmitDefaults && !_defaultsPaused && IsReady
+                        ? UserPromptOutcome.Answered : UserPromptOutcome.Expired));
+                    return;
+                }
+                var left = deadline - DateTimeOffset.UtcNow;
+                // The recommended answers go out through Continue, so the virtual pointer presses it
+                // just before they do; the send below is the same either way.
+                if (AutoContinue && IsReady && !_pressed && left <= PressLead)
+                {
+                    _pressed = true;
+                    await InvokeAsync(PressSubmitAsync);
+                    continue;
+                }
+                var step = AutoContinue && IsReady && !_pressed ? left - PressLead : left;
+                await Task.Delay(TimeSpan.FromMilliseconds(Math.Clamp(step.TotalMilliseconds, 50, 1000)), token);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    public void Dispose()
+    {
+        _timer?.Cancel();
+        _timer?.Dispose();
+    }
 
     /// <summary>Which picker a question wants, or null for a question that is not about a path.</summary>
     private static DirectoryPickerMode? PathMode(UserPromptQuestion question) => question.PathKind switch
@@ -258,13 +361,21 @@
         // that has gone should be carried into the one that arrived.
         if (_rendered == Prompt.Id) return;
         _rendered = Prompt.Id;
+        _timer?.Cancel();
+        _timer?.Dispose();
+        _secondsLeft = null;
+        _totalSeconds = 0;
+        _countingAuto = null;
+        _pressed = false;
+        _defaultsPaused = false;
         _selected.Clear();
         _other.Clear();
         _paths.Clear();
         _values.Clear();
         for (var index = 0; index < Prompt.Questions.Count; index++)
         {
-            _selected[index] = [];
+            _selected[index] = Prompt.Questions[index].Options.Select((option, position) => (option, position))
+                .Where(item => item.option.Recommended).Select(item => item.position).ToHashSet();
             _other[index] = string.Empty;
             _paths[index] = [];
             _values[index] = [];
@@ -274,6 +385,11 @@
         _error = null;
         _pickerQuestion = null;
         _gitPickerQuestion = null;
+        if ((Prompt.Presentation == "overlay" || Prompt.SubmitDefaults) && IsTimed)
+        {
+            _timer = new CancellationTokenSource();
+            _ = CountDownAsync(Prompt.Id, _timer.Token);
+        }
     }
 
     private bool IsSelected(int question, int option) => _selected[question].Contains(option);
@@ -330,6 +446,7 @@
 
     private async Task SendAsync(UserPromptOutcome outcome)
     {
+        if (_sending) return;
         _sending = true;
         _error = null;
         try

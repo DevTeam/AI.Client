@@ -7,6 +7,13 @@
 @inject ISkillApi SkillApi
 @implements IDisposable
 
+@* The guide is an offer, not a tip: one wide row above the grid, so the six tips below form an
+   even 3 × 2 block. Setting up a model takes its place while none is enabled, and stays even when
+   the tips are hidden: without one nothing on this screen can work yet. *@
+@if (_loaded && (!HasModel || !TipsState.IsHidden))
+{
+    <GuideBanner HasModel="@HasModel" OnStartGuide="@OnStartGuide" />
+}
 @if (!_loaded)
 {
 }
@@ -47,7 +54,30 @@ else
                             break;
                         case Context:
                             <p class="chat-tip-text"><kbd>@@</kbd> links a file, folder, chat, diff or review. <kbd>/</kbd> starts a skill.</p>
-                            <p class="chat-tip-actions">
+                            break;
+                        case Branches:
+                            <p class="chat-tip-text">Fork from any message, or edit one to take another path. The earlier answers stay in their own branch.</p>
+                            <div class="chat-tip-keys"><span>Send as a new branch</span><span><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Enter</kbd></span></div>
+                            break;
+                        case Projects:
+                            <p class="chat-tip-text">A project holds chats together with folder access, memory, skills and tool permissions.</p>
+                            break;
+                        case Review:
+                            <p class="chat-tip-text">When a reply changes files, open its changes, comment on lines and attach the review to your next message.</p>
+                            break;
+                        default:
+                            <p class="chat-tip-text">Select text in any message to comment on it, then attach the comments to your next message.</p>
+                            break;
+                    }
+                    @if (expanded) { <p class="chat-tip-more">@More(tip)</p> }
+                    @* Every card ends in the same row: what to try right here on the left, and on the
+                       right the guide's tour of the same feature, shown on the real controls. *@
+                    @if (tip is Context or Projects || tip == Review && !HasDirectories || HasModel && GuideTopic(tip) is not null)
+                    {
+                    <p class="chat-tip-actions">
+                        @switch (tip)
+                        {
+                            case Context:
                                 <button type="button" class="chat-tip-action" @onclick="InsertMention">Type @@</button>
                                 @if (_skillCount == 0)
                                 {
@@ -57,28 +87,20 @@ else
                                 {
                                     <button type="button" class="chat-tip-action" @onclick="InsertSkillCommand">Type /</button>
                                 }
-                            </p>
-                            break;
-                        case Branches:
-                            <p class="chat-tip-text">Fork from any message, or edit one to take another path. The earlier answers stay in their own branch.</p>
-                            <div class="chat-tip-keys"><span>Send as a new branch</span><span><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Enter</kbd></span></div>
-                            break;
-                        case Projects:
-                            <p class="chat-tip-text">A project holds chats together with folder access, memory, skills and tool permissions.</p>
-                            <p class="chat-tip-actions"><button type="button" class="chat-tip-action" @onclick="args => OnOpenProjectMenu.InvokeAsync(args)">Project menu</button></p>
-                            break;
-                        case Review:
-                            <p class="chat-tip-text">When a reply changes files, open its changes, comment on lines and attach the review to your next message.</p>
-                            @if (!HasDirectories)
-                            {
-                                <p class="chat-tip-actions"><button type="button" class="chat-tip-action is-primary" @onclick="() => OnAddDirectory.InvokeAsync()"><AppIcon Name="folder-plus" />Add a directory</button></p>
-                            }
-                            break;
-                        default:
-                            <p class="chat-tip-text">Select text in any message to comment on it, then attach the comments to your next message.</p>
-                            break;
+                                break;
+                            case Projects:
+                                <button type="button" class="chat-tip-action" @onclick="args => OnOpenProjectMenu.InvokeAsync(args)">Project menu</button>
+                                break;
+                            case Review when !HasDirectories:
+                                <button type="button" class="chat-tip-action is-primary" @onclick="() => OnAddDirectory.InvokeAsync()"><AppIcon Name="folder-plus" />Add a directory</button>
+                                break;
+                        }
+                        @if (HasModel && GuideTopic(tip) is { } topic)
+                        {
+                            <button type="button" class="chat-tip-tour" title="Start the guide's tour of this" @onclick="() => OnStartTopic.InvokeAsync(topic)"><AppIcon Name="book" />Tour</button>
+                        }
+                    </p>
                     }
-                    @if (expanded) { <p class="chat-tip-more">@More(tip)</p> }
                 </article>
             }
         </div>
@@ -101,6 +123,10 @@ else
     [Parameter] public Guid? ProjectId { get; set; }
     [Parameter] public bool HasDirectories { get; set; }
     [Parameter] public bool IsComposerEmpty { get; set; }
+    [Parameter] public EventCallback OnStartGuide { get; set; }
+    [Parameter] public bool HasModel { get; set; } = true;
+    /// <summary>Starts the guide on one topic, by its id in <c>AppGuideTopics</c>.</summary>
+    [Parameter] public EventCallback<string> OnStartTopic { get; set; }
     [Parameter] public EventCallback<string> OnInsertText { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnOpenProjectMenu { get; set; }
     [Parameter] public EventCallback OnAddDirectory { get; set; }
@@ -167,6 +193,17 @@ else
         Projects => "project",
         Review => "diff",
         _ => "message-circle"
+    };
+
+    // The guide topic that walks through the same feature as the card.
+    private static string? GuideTopic(string tip) => tip switch
+    {
+        Send => "chats",
+        Context => "skills",
+        Branches => "branches",
+        Projects => "projects",
+        Review or Comments => "review",
+        _ => null
     };
 
     private static string Title(string tip) => tip switch

@@ -25,6 +25,11 @@ public sealed record ClientSettings
     /// <summary>Whether the column of chat widgets is open beside the conversation.</summary>
     public bool ChatWidgetsOpen { get; init; }
 
+    public bool GuideSuggestionsEnabled { get; init; } = true;
+    public int GuideIdleMinutes { get; init; } = 5;
+    public DateTimeOffset? GuideLastOfferedAt { get; init; }
+    public IReadOnlyList<string> CompletedGuideTopics { get; init; } = [];
+
     /// <summary>The widgets of that column in the person's order, with what each one shows.</summary>
     public IReadOnlyList<AI.Web.Widgets.ChatWidgetPreference> ChatWidgets { get; init; } = [];
 }

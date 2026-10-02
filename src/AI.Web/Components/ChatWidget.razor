@@ -1,33 +1,34 @@
 @* The shell every chat widget sits in, so the column reads as one set: a header with the drag
    handle, the title that folds the widget, room for the widget's own actions, and a hide button.
    Folded, the header still says the one figure that matters through Summary. *@
-<section class="chat-widget @(Widget.Preference.Collapsed ? "is-collapsed" : null) @Class"
-         data-widget-id="@Widget.Definition.Id" aria-labelledby="chat-widget-title-@Widget.Definition.Id">
+<section class="chat-widget @(Collapsed ? "is-collapsed" : null) @Class"
+         data-widget-id="@Widget.Definition.Id" data-app-target="@("widgets." + Widget.Definition.Id)" aria-labelledby="chat-widget-title-@Widget.Definition.Id">
     <header class="chat-widget-header">
         <button class="chat-widget-handle" type="button" title="Drag to reorder · Alt+↑ or Alt+↓ to move"
-                aria-label="Move @Widget.Definition.Title" @onkeydown="HandleHandleKeyAsync">
+                data-app-target="@("widgets." + Widget.Definition.Id + ".move")" aria-label="Move @Widget.Definition.Title" @onkeydown="HandleHandleKeyAsync">
             <AppIcon Name="drag" />
         </button>
-        <button class="chat-widget-title" id="chat-widget-title-@Widget.Definition.Id" type="button"
-                aria-expanded="@(Widget.Preference.Collapsed ? "false" : "true")" @onclick="Widget.ToggleCollapsed">
+        <button class="chat-widget-title" data-app-target="@("widgets." + Widget.Definition.Id + ".title")" id="chat-widget-title-@Widget.Definition.Id" type="button"
+                aria-expanded="@(Collapsed ? "false" : "true")" @onclick="Widget.ToggleCollapsed">
             <AppIcon Name="@Widget.Definition.Icon" Class="chat-widget-icon" />
             <span class="chat-widget-name">@Widget.Definition.Title</span>
-            @if (Widget.Preference.Collapsed && Summary is not null) { <span class="chat-widget-summary" title="@($"{Widget.Definition.Description} · {Summary}")">@Summary</span> }
+            @if (Collapsed && Summary is not null) { <span class="chat-widget-summary" title="@($"{Widget.Definition.Description} · {Summary}")">@Summary</span> }
             <AppIcon Name="chevron-down" Class="chat-widget-chevron" />
         </button>
         @HeaderActions
-        <button class="icon-action chat-widget-hide" type="button" title="Hide widget" aria-label="Hide @Widget.Definition.Title"
+        <button class="icon-action chat-widget-hide" type="button" title="Hide widget" data-app-target="@("widgets." + Widget.Definition.Id + ".hide")" aria-label="Hide @Widget.Definition.Title"
                 @onclick="Widget.Hide">
             <AppIcon Name="x" />
         </button>
     </header>
-    @if (!Widget.Preference.Collapsed)
+    @if (!Collapsed)
     {
         <div class="chat-widget-body">@ChildContent</div>
     }
 </section>
 
 @code {
+    private bool Collapsed => Widget.Preference.Collapsed && !Widget.GuideExpanded;
     [Parameter, EditorRequired]
     public ChatWidgetContext Widget { get; set; } = null!;
 

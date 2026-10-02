@@ -32,6 +32,7 @@ public sealed class ChatWidgetCatalog : IChatWidgetCatalog
     public const string ChatKnowledge = "chat-knowledge";
     public const string ChatTimeline = "chat-timeline";
     public const string ChatBranches = "chat-branches";
+    public const string AppGuide = "app-guide";
 
     public IReadOnlyList<ChatWidgetDefinition> Widgets { get; } =
     [
@@ -42,7 +43,8 @@ public sealed class ChatWidgetCatalog : IChatWidgetCatalog
         new(ChatSubtasks, "Subtasks", "fork", "Delegated work the chat ran on another model: requests, tokens and share of the whole chat or the last turn"),
         new(ChatKnowledge, "Knowledge", "book", "Files and pages the assistant read on the visible branch, by tool and most recent paths"),
         new(ChatTimeline, "Timeline", "history", "One row per turn on the visible branch: when it started, how long it ran, its requests and tokens, and the tools and files it touched"),
-        new(ChatBranches, "Branches", "git-branch", "Every stored branch of the chat: title, depth, message count, child branches and head timestamp, with a click that switches the visible branch")
+        new(ChatBranches, "Branches", "git-branch", "Every stored branch of the chat: title, depth, message count, child branches and head timestamp, with a click that switches the visible branch"),
+        new(AppGuide, "Application guide", "book", "Learn projects, chats, branches and settings step by step")
     ];
 
     public ChatWidgetDefinition? Find(string id) => Widgets.FirstOrDefault(widget => widget.Id == id);
@@ -131,4 +133,5 @@ public sealed record ChatWidgetContext(
     ChatWidgetPreference Preference,
     Func<Task> ToggleCollapsed,
     Func<Task> Hide,
-    Func<int, Task> Move);
+    Func<int, Task> Move,
+    bool GuideExpanded = false);

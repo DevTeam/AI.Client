@@ -1,0 +1,31 @@
+@using AI.Contracts.Navigation
+@inject AppGuideTopics Topics
+
+<div class="app-guide-topics">
+    <div class="app-guide-progress" title="@($"{CompletedCount} of {Topics.All.Count} guide topics completed")">
+        <span>@CompletedCount of @Topics.All.Count topics completed</span>
+        <span class="app-guide-progress-bar" aria-hidden="true"><span style="width: @(Topics.All.Count == 0 ? 0 : CompletedCount * 100 / Topics.All.Count)%"></span></span>
+    </div>
+    <div class="app-guide-mode" role="radiogroup" aria-label="Guide mode">
+        <button type="button" role="radio" aria-checked="@(_mode == "show" ? "true" : "false")" class="@(_mode == "show" ? "is-selected" : null)" disabled="@Running" title="The guide points at each control and explains it" @onclick='() => _mode = "show"'><AppIcon Name="eye" />Show controls</button>
+        <button type="button" role="radio" aria-checked="@(_mode == "click" ? "true" : "false")" class="@(_mode == "click" ? "is-selected" : null)" disabled="@Running" title="The guide also presses the controls it explains" @onclick='() => _mode = "click"'><AppIcon Name="play" />Demonstrate actions</button>
+    </div>
+    @foreach (var topic in Topics.All)
+    {
+        var completed = Completed.Contains(topic.Id);
+        <button class="app-guide-topic@(completed ? " is-completed" : null)" type="button" disabled="@Running" @onclick="() => OnStart.InvokeAsync(new GuideTopicSelection(topic.Id, _mode))">
+            <span class="app-guide-topic-icon"><AppIcon Name="@(completed ? "check" : "book")" /></span>
+            <span><strong>@topic.Title</strong><small>@topic.Description</small></span>
+            <AppIcon Name="chevron-right" />
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<string> Completed { get; set; } = [];
+    [Parameter] public bool Running { get; set; }
+    [Parameter] public EventCallback<GuideTopicSelection> OnStart { get; set; }
+    private string _mode = "show";
+    private int CompletedCount => Topics.All.Count(topic => Completed.Contains(topic.Id));
+    public sealed record GuideTopicSelection(string Topic, string Mode);
+}

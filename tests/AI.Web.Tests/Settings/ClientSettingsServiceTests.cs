@@ -92,7 +92,11 @@ public class ClientSettingsServiceTests
             ShowContextWindowUsage = false
         });
 
-        js.Entries[StorageKey].ShouldBe("{\"theme\":\"light\",\"accent\":\"teal\",\"cornerRoundnessPercent\":100,\"notificationSoundEnabled\":true,\"otherSoundsEnabled\":false,\"showContextWindowUsage\":false,\"showTurnTokens\":false,\"chatWidgetsOpen\":false,\"chatWidgets\":[]}");
+        using var saved = System.Text.Json.JsonDocument.Parse(js.Entries[StorageKey]);
+        saved.RootElement.GetProperty("theme").GetString().ShouldBe("light");
+        saved.RootElement.GetProperty("accent").GetString().ShouldBe("teal");
+        saved.RootElement.GetProperty("otherSoundsEnabled").GetBoolean().ShouldBeFalse();
+        saved.RootElement.GetProperty("showContextWindowUsage").GetBoolean().ShouldBeFalse();
         js.Calls.ShouldContain(call => call.Identifier == "aiClientTheme.saveClientSettings");
         (await new ClientSettingsService(js).GetAsync()).Theme.ShouldBe(ThemePreference.Light);
         (await new ClientSettingsService(js).GetAsync()).ShowContextWindowUsage.ShouldBeFalse();

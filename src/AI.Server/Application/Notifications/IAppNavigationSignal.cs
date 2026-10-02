@@ -12,5 +12,9 @@ public interface IAppNavigationSignal
     /// <summary>Records the request. Never blocks and never throws; with nobody listening it is lost.</summary>
     void Navigate(AppNavigation target);
 
+    Task<AppNavigationResponse> RequestAsync(AppNavigation target, CancellationToken cancellationToken);
+    bool Claim(Guid requestId, Guid clientId);
+    bool Complete(Guid requestId, AppNavigationDecision decision);
+
     IAsyncEnumerable<AppNavigation> SubscribeAsync(CancellationToken cancellationToken);
 }

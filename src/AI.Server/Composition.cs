@@ -16,6 +16,7 @@ using Application.Tools;
 using Application.Workspace;
 using Application.Usage;
 using AI.Contracts.Workspace;
+using AI.Contracts.Navigation;
 using Hosting;
 using Hosting.Endpoints;
 using Infrastructure.Chat;
@@ -71,6 +72,7 @@ internal sealed class Composition
             .Root<IChatEndpoint>()
             .Root<IChatRunRepository>()
             .Root<IChatRunDispatcher>()
+            .Root<IGuideChats>()
             .Root<IChatReplySuggestions>()
             .Root<IResourceService>()
             .Root<IResourceRepository>()
@@ -97,7 +99,7 @@ internal sealed class Composition
             .Root<IUpdateManagerFactory>()
             .Singleton<HostUpdateService, UpdateManagerFactory, GitHubUpdateFeed, UpdateInstaller, UpdateInstallationProvider>()
             .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, BrowserAccessService, InstalledDesktop>()
-            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, GitEndpoints, MemoryEndpoints, SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints>(Tag.Unique)
+            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, GitEndpoints, MemoryEndpoints, SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints, AppGuideEndpoints>(Tag.Unique)
             .Singleton<ProjectStorageLocation, DataDirectoryLock, JsonLineFileLoggerProvider, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.
@@ -145,6 +147,8 @@ internal sealed class Composition
             .Bind<ChatToolRiskAssessSkill>().As(Lifetime.Singleton).To<ChatToolRiskAssessSkill>()
             .Bind<IToolAutoApprover>().As(Lifetime.Singleton).To<ToolAutoApprover>()
             .Bind<IChatReplySuggestions>().As(Lifetime.Singleton).To<ChatReplySuggestions>()
+            .Bind<IGuideChats>().As(Lifetime.Singleton).To<GuideChats>()
+            .Bind<IConnectionChoice>().As(Lifetime.Singleton).To<ConnectionChoice>()
             .Bind<IReviewCommentSuggestions>().As(Lifetime.Singleton).To<ReviewCommentSuggestions>()
             .Transient<AppToolReply>()
             .Bind<BuiltInSkillCatalog>().As(Lifetime.Singleton).To<BuiltInSkillCatalog>()
@@ -163,7 +167,7 @@ internal sealed class Composition
                     new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity),
                     usageMeter, usageEstimator, prefixes))
             .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool,
-                AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool>(Tag.Unique)
+                AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool, AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>(Tag.Unique)
             .Singleton<DefaultToolSessionFactory, AppToolSessionFactory, CSharpToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
 }

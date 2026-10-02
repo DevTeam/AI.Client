@@ -15,7 +15,7 @@ public sealed class ChatThread
         string title,
         DateTimeOffset createdAt,
         ConnectionId? connectionId = null,
-        bool autoTitlePending = false)
+        bool autoTitlePending = false, bool isGuide = false, string guideMode = "show")
     {
         if (string.IsNullOrWhiteSpace(title))
         {
@@ -30,6 +30,8 @@ public sealed class ChatThread
         LastActivityAt = createdAt;
         ConnectionId = connectionId;
         AutoTitlePending = autoTitlePending;
+        IsGuide = isGuide;
+        GuideMode = guideMode;
         _branches[id.Value] = new ChatBranch(id.Value, null, title.Trim());
     }
 
@@ -37,6 +39,8 @@ public sealed class ChatThread
     public ProjectId ProjectId { get; }
     public string Title { get; private set; }
     public bool AutoTitlePending { get; private set; }
+    public bool IsGuide { get; }
+    public string GuideMode { get; }
     public DateTimeOffset CreatedAt { get; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset LastActivityAt { get; private set; }

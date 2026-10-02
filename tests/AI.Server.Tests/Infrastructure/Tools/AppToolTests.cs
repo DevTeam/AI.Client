@@ -796,14 +796,21 @@ public sealed class AppToolTests
 
         var missing = await AppFixture.CallAsync(session, "app_navigate",
             new { projectId = fixture.ProjectId, chatId = Guid.NewGuid() }, expectError: true);
-        var opened = await AppFixture.CallAsync(session, "app_navigate", new { projectId = fixture.ProjectId, chatId = chat.Id });
+        var opening = AppFixture.CallAsync(session, "app_navigate", new { projectId = fixture.ProjectId, chatId = chat.Id });
+        (await requests.MoveNextAsync()).ShouldBeTrue();
+        var request = requests.Current;
+        var clientId = Guid.NewGuid();
+        fixture.Navigation.Claim(request.RequestId, clientId).ShouldBeTrue();
+        opening.IsCompleted.ShouldBeFalse();
+        fixture.Navigation.Complete(request.RequestId, new AppNavigationDecision(clientId, "applied")).ShouldBeTrue();
+        var opened = await opening;
 
         missing.GetProperty("opened").GetBoolean().ShouldBeFalse();
         opened.GetProperty("opened").GetBoolean().ShouldBeTrue();
-        opened.GetProperty("effect").GetString().ShouldBe("Opened chat 'Next'.");
+        opened.GetProperty("effect").GetString().ShouldBe("Applied click to chat 'Next'.");
         // Only the request that passed its checks reaches the window.
-        (await requests.MoveNextAsync()).ShouldBeTrue();
-        requests.Current.ShouldBe(new AppNavigation(fixture.ProjectId, chat.Id, null, fixture.ChatId, "Test", "Next"));
+        request.ShouldBe(new AppNavigation(fixture.ProjectId, chat.Id, null, fixture.ChatId, "Test", "Next",
+            Target: "chat", RequestId: request.RequestId, ExpiresAt: request.ExpiresAt));
         await requests.DisposeAsync();
     }
 
@@ -816,6 +823,239 @@ public sealed class AppToolTests
         var result = await AppFixture.CallAsync(session, "app_navigate", new { projectId = fixture.ProjectId }, expectError: true);
 
         result.GetProperty("opened").GetBoolean().ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GuideLearningQuestionsShouldWaitWithoutExpiry()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync(interactive: false, isGuide: true);
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            timeoutSeconds = 0, timeoutBehavior = "cancel",
+            questions = new[] { new { id = "next", text = "What next?", allowOther = true,
+                options = new[] { new { label = "Models", recommended = true }, new { label = "Finish", recommended = false } } } }
+        });
+        fixture.Broker.LastRequest.ShouldNotBeNull().Presentation.ShouldBe("overlay");
+        fixture.Broker.LastRequest.SubmitDefaults.ShouldBeFalse();
+        fixture.Broker.LastTimeout.ShouldBe(Timeout.InfiniteTimeSpan);
+        result.GetProperty("outcome").GetString().ShouldBe("answered");
+    }
+
+    [Theory]
+    [InlineData(false, "cancel")]
+    [InlineData(true, "submit_defaults")]
+    public async Task UntimedQuestionsShouldBeLimitedToExplicitGuideChoices(bool isGuide, string behavior)
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync(isGuide: isGuide);
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            presentation = "overlay", timeoutSeconds = 0, timeoutBehavior = behavior,
+            questions = new[] { new { id = "next", text = "What next?",
+                options = new[] { new { label = "Models", recommended = true } } } }
+        }, expectError: true);
+        result.GetProperty("outcome").GetString().ShouldBe("invalid");
+        fixture.Broker.LastRequest.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task OutsideChatQuestionsShouldReachBackgroundRunsAndCancelOnSilence()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        fixture.Broker.Answer = _ => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Expired, []);
+        await using var session = await fixture.OpenAsync(interactive: false);
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            presentation = "overlay", timeoutSeconds = 10,
+            questions = new[] { new { id = "guide", text = "Start a guide?", options = new[] { new { label = "Start" }, new { label = "Not now" } } } }
+        });
+        fixture.Broker.LastRequest.ShouldNotBeNull().Presentation.ShouldBe("overlay");
+        fixture.Broker.LastTimeout.ShouldBe(TimeSpan.FromSeconds(10));
+        result.GetProperty("outcome").GetString().ShouldBe("expired");
+        result.GetProperty("guidance").GetString()!.ShouldContain("Stop the dependent action");
+        result.GetProperty("guidance").GetString()!.ShouldNotContain("Continue with the option");
+    }
+
+    [Fact]
+    public async Task DefaultCountdownShouldRequireExplicitRecommendationsForEveryQuestion()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var missing = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            presentation = "overlay", timeoutBehavior = "submit_defaults",
+            questions = new[] { new { id = "mode", text = "Guide mode?", options = new[] { new { label = "Show" } } } }
+        }, expectError: true);
+        missing.GetProperty("outcome").GetString().ShouldBe("invalid");
+        fixture.Broker.LastRequest.ShouldBeNull();
+        await AppFixture.CallAsync(session, "ask_user", new
+        {
+            presentation = "overlay", timeoutBehavior = "submit_defaults", timeoutSeconds = 15,
+            questions = new[] { new { id = "mode", text = "Guide mode?", options = new[] { new { label = "Show", recommended = true } } } }
+        });
+        fixture.Broker.LastRequest.ShouldNotBeNull().SubmitDefaults.ShouldBeTrue();
+        fixture.Broker.LastRequest.Questions[0].Options[0].Recommended.ShouldBeTrue();
+        fixture.Broker.LastTimeout.ShouldBe(TimeSpan.FromSeconds(15));
+    }
+
+    [Fact]
+    public async Task ShouldShowSettingsWithoutActivatingTheControlAndReportAStoppedClick()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var requests = fixture.Navigation.SubscribeAsync(timeout.Token).GetAsyncEnumerator(timeout.Token);
+        var showing = AppFixture.CallAsync(session, "app_navigate", new
+        {
+            target = "settings.guide.enabled", action = "show", comment = "This switch controls guide invitations.", waitForContinue = true,
+            timeoutSeconds = 7
+        });
+        (await requests.MoveNextAsync()).ShouldBeTrue();
+        requests.Current.Action.ShouldBe("show");
+        requests.Current.ExpiresAt.ShouldNotBeNull().ShouldBeInRange(
+            DateTimeOffset.UtcNow.AddSeconds(6), DateTimeOffset.UtcNow.AddSeconds(8));
+        requests.Current.WaitForContinue.ShouldBeTrue();
+        var owner = Guid.NewGuid();
+        fixture.Navigation.Claim(requests.Current.RequestId, owner).ShouldBeTrue();
+        fixture.Navigation.Complete(requests.Current.RequestId, new(owner, "applied")).ShouldBeTrue();
+        (await showing).GetProperty("opened").GetBoolean().ShouldBeTrue();
+        var clicking = AppFixture.CallAsync(session, "app_navigate", new { target = "settings.guide.enabled", action = "click" });
+        (await requests.MoveNextAsync()).ShouldBeTrue();
+        requests.Current.WaitForContinue.ShouldBeTrue();
+        fixture.Navigation.Claim(requests.Current.RequestId, owner).ShouldBeTrue();
+        fixture.Navigation.Complete(requests.Current.RequestId, new(owner, "stopped")).ShouldBeTrue();
+        var stopped = await clicking;
+        stopped.GetProperty("opened").GetBoolean().ShouldBeFalse();
+        stopped.GetProperty("outcome").GetString().ShouldBe("stopped");
+        stopped.GetProperty("effect").GetString()!.ShouldContain("Stop this guide");
+    }
+
+    [Fact]
+    public async Task ShouldTellAGuideToContinueWithAVisibleControlWhenOneIsNotInTheView()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync(isGuide: true);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var requests = fixture.Navigation.SubscribeAsync(timeout.Token).GetAsyncEnumerator(timeout.Token);
+        var showing = AppFixture.CallAsync(session, "app_navigate", new { target = "chat.fork", action = "show", comment = "Fork here." });
+        (await requests.MoveNextAsync()).ShouldBeTrue();
+        var owner = Guid.NewGuid();
+        fixture.Navigation.Claim(requests.Current.RequestId, owner).ShouldBeTrue();
+        fixture.Navigation.Complete(requests.Current.RequestId, new(owner, "unavailable", "The target is not available in this view.")).ShouldBeTrue();
+        var result = await showing;
+        result.GetProperty("outcome").GetString().ShouldBe("unavailable");
+        var effect = result.GetProperty("effect").GetString()!;
+        effect.ShouldContain("Do not stop");
+        effect.ShouldContain("action='targets'");
+        effect.ShouldContain("ask_user");
+    }
+
+    [Fact]
+    public async Task ShouldNeverNavigateToAGuideServiceChat()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync(isGuide: true);
+        var guide = await fixture.Chats.CreateAsync(fixture.ProjectId, new CreateChatRequest("Guide · Branches", IsGuide: true), CancellationToken.None);
+
+        var other = await AppFixture.CallAsync(session, "app_navigate",
+            new { projectId = fixture.ProjectId, chatId = guide.Id, target = "chat.fork", action = "show" }, expectError: true);
+        var own = await AppFixture.CallAsync(session, "app_navigate",
+            new { projectId = fixture.ProjectId, chatId = fixture.ChatId, action = "show" }, expectError: true);
+
+        other.GetProperty("opened").GetBoolean().ShouldBeFalse();
+        other.GetProperty("error").GetString()!.ShouldContain("hidden service chat");
+        own.GetProperty("error").GetString()!.ShouldContain("hidden service chat");
+    }
+
+    [Fact]
+    public async Task ShouldSetUpADemoChatWithAQuestionAndAnAnswerAndOpenIt()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync(isGuide: true);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var requests = fixture.Navigation.SubscribeAsync(timeout.Token).GetAsyncEnumerator(timeout.Token);
+        var opening = AppFixture.CallAsync(session, "app_navigate", new { target = "chat.demo", comment = "A chat to practise on." });
+        (await requests.MoveNextAsync()).ShouldBeTrue();
+        var request = requests.Current;
+        request.Target.ShouldBe("chat");
+        request.Action.ShouldBe("click");
+        request.WaitForContinue.ShouldBeTrue();
+        request.Comment.ShouldBe("A chat to practise on.");
+        var owner = Guid.NewGuid();
+        fixture.Navigation.Claim(request.RequestId, owner).ShouldBeTrue();
+        fixture.Navigation.Complete(request.RequestId, new(owner, "applied")).ShouldBeTrue();
+        var opened = await opening;
+
+        opened.GetProperty("opened").GetBoolean().ShouldBeTrue();
+        var demo = await fixture.Chats.GetAsync(fixture.ProjectId, request.ChatId.ShouldNotBeNull(), CancellationToken.None);
+        demo.ShouldNotBeNull();
+        demo.IsGuide.ShouldBeFalse();
+        demo.GuideMode.ShouldBe(GuideChats.DemoMode);
+        demo.Messages.Select(message => message.Role).ShouldBe(["User", "Assistant"]);
+    }
+
+    [Fact]
+    public async Task ShouldSetUpNoDemoChatOutsideAGuide()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var refused = await AppFixture.CallAsync(session, "app_navigate", new { target = "chat.demo" }, expectError: true);
+
+        refused.GetProperty("opened").GetBoolean().ShouldBeFalse();
+        (await fixture.Chats.ListAsync(fixture.ProjectId, CancellationToken.None)).ShouldNotContain(chat => chat.Title == GuideChats.DemoTitle);
+    }
+
+    [Fact]
+    public async Task ShouldPreventActivationInAShowOnlyGuide()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync(isGuide: true);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var requests = fixture.Navigation.SubscribeAsync(timeout.Token).GetAsyncEnumerator(timeout.Token);
+        var action = AppFixture.CallAsync(session, "app_navigate", new { target = "settings.guide.enabled", action = "click" });
+        (await requests.MoveNextAsync()).ShouldBeTrue();
+        var request = requests.Current;
+        request.Action.ShouldBe("show");
+        request.WaitForContinue.ShouldBeTrue();
+        var owner = Guid.NewGuid();
+        fixture.Navigation.Claim(request.RequestId, owner).ShouldBeTrue();
+        fixture.Navigation.Complete(request.RequestId, new(owner, "applied")).ShouldBeTrue();
+        (await action).GetProperty("effect").GetString()!.ShouldContain("Applied show");
+    }
+
+    [Fact]
+    public async Task ShouldDiscoverVisibilityFromTheAttachedWindow()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var requests = fixture.Navigation.SubscribeAsync(timeout.Token).GetAsyncEnumerator(timeout.Token);
+        var action = AppFixture.CallAsync(session, "app_navigate", new { action = "targets" });
+        (await requests.MoveNextAsync()).ShouldBeTrue();
+        var request = requests.Current;
+        request.Action.ShouldBe("targets");
+        var owner = Guid.NewGuid();
+        fixture.Navigation.Claim(request.RequestId, owner).ShouldBeTrue();
+        var targets = new AppNavigationTargets().All.Select(target => target with { Visible = target.Id == "project" }).ToArray();
+        fixture.Navigation.Complete(request.RequestId, new(owner, "applied", Targets: targets)).ShouldBeTrue();
+        var result = await action;
+        result.GetProperty("outcome").GetString().ShouldBe("targets");
+        result.GetProperty("targets").EnumerateArray().Single(target => target.GetProperty("id").GetString() == "project")
+            .GetProperty("visible").GetBoolean().ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ShouldKeepServiceGuideChatsOutOfTheNormalChatList()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        var guide = await fixture.Chats.CreateAsync(fixture.ProjectId,
+            new CreateChatRequest("Guide", IsGuide: true, GuideMode: "click"), CancellationToken.None);
+        (await fixture.Chats.ListAsync(fixture.ProjectId, CancellationToken.None)).ShouldNotContain(chat => chat.Id == guide.Id);
+        var restored = await fixture.Chats.GetAsync(fixture.ProjectId, guide.Id, CancellationToken.None);
+        restored.ShouldNotBeNull().IsGuide.ShouldBeTrue();
+        restored.GuideMode.ShouldBe("click");
     }
 
     [Fact]
@@ -988,8 +1228,8 @@ public sealed class AppToolTests
             return fixture;
         }
 
-        public Task<IToolSession> OpenAsync(bool interactive = true) =>
-            Sessions.OpenAsync([], AppServerOnly, new ToolRunContext(ProjectId, ChatId, ChatId, interactive),
+        public Task<IToolSession> OpenAsync(bool interactive = true, bool isGuide = false) =>
+            Sessions.OpenAsync([], AppServerOnly, new ToolRunContext(ProjectId, ChatId, ChatId, interactive, IsGuide: isGuide),
                 TestContext.Current.CancellationToken);
 
         /// <summary>Calls a tool the way the agent does, and hands back its structured result.</summary>
@@ -1017,6 +1257,7 @@ public sealed class AppToolTests
     private sealed class TestPromptBroker : IUserPromptBroker
     {
         public UserPromptRequest? LastRequest { get; private set; }
+        public TimeSpan LastTimeout { get; private set; }
 
         public Func<UserPromptRequest, UserPromptResponse> Answer { get; set; } =
             request => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Answered,
@@ -1026,6 +1267,7 @@ public sealed class AppToolTests
             CancellationToken cancellationToken)
         {
             LastRequest = request;
+            LastTimeout = timeout;
             return Task.FromResult(Answer(request));
         }
     }

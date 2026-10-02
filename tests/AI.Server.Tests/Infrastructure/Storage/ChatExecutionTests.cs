@@ -636,6 +636,29 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task UntimedPromptShouldStayPendingUntilCancelled()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Show the guide"));
+        var first = await fixture.NextCallAsync();
+        using var cancellation = new CancellationTokenSource();
+        var asking = fixture.Broker.AskAsync(
+            new ToolRunContext(fixture.ProjectId, fixture.ChatId, fixture.ChatId, Interactive: true),
+            new UserPromptRequest([new UserPromptQuestion("next", "What next?", null, [], false, true)], "overlay"),
+            Timeout.InfiniteTimeSpan, cancellation.Token);
+        var pending = await fixture.WaitAsync(run => run.PendingPrompt is not null);
+        pending.PendingPrompt!.TimeoutSeconds.ShouldBe(0);
+        pending.PendingPrompt.ExpiresAt.ShouldBeNull();
+        asking.IsCompleted.ShouldBeFalse();
+
+        await cancellation.CancelAsync();
+        await Should.ThrowAsync<OperationCanceledException>(async () => await asking);
+        (await fixture.WaitAsync(run => run.PendingPrompt is null)).PendingPrompt.ShouldBeNull();
+        first.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task BackgroundRunShouldBeToldAtOnceThatNobodyIsThere()
     {
         await using var fixture = await Fixture.CreateAsync();

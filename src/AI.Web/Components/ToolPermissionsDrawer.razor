@@ -4,14 +4,14 @@
 @inject INotificationService Notifications
 
 <div class="permissions-drawer-backdrop"></div>
-<aside class="permissions-drawer" aria-label="Tool permissions" @onclick:stopPropagation="true">
+<aside class="permissions-drawer" data-app-target="@GuideTarget" aria-label="Tool permissions" @onclick:stopPropagation="true">
     <header>
         <div><h2>Tool permissions</h2><p>@Scope · @Title</p></div>
         <button class="icon-action" type="button" title="Close" aria-label="Close permissions" @onclick="() => Close.InvokeAsync()"><AppIcon Name="drawer-close" /></button>
     </header>
     <nav class="permissions-tabs" aria-label="Permission view">
-        <button class="@(!_showAll ? "selected" : string.Empty)" type="button" title="Show permission rules saved in this scope" @onclick="() => _showAll = false">Overrides <span>@Overrides.Count</span></button>
-        <button class="@(_showAll ? "selected" : string.Empty)" type="button" title="Show saved rules after applying chat, project and global precedence" @onclick="() => _showAll = true">All effective</button>
+        <button class="@(!_showAll ? "selected" : string.Empty)" data-app-target="@(GuideTarget + ".overrides")" type="button" title="Show permission rules saved in this scope" @onclick="() => _showAll = false">Overrides <span>@Overrides.Count</span></button>
+        <button class="@(_showAll ? "selected" : string.Empty)" data-app-target="@(GuideTarget + ".effective")" type="button" title="Show saved rules after applying chat, project and global precedence" @onclick="() => _showAll = true">All effective</button>
     </nav>
     <div class="permissions-content">
         <p class="permissions-intro">@Description</p>
@@ -63,6 +63,7 @@
 </aside>
 
 @code {
+    private string GuideTarget => Scope == "Chat" ? "chat.permissions" : "project.permissions";
     [Parameter, EditorRequired] public string Scope { get; set; } = "Project";
     [Parameter, EditorRequired] public Guid ProjectId { get; set; }
     [Parameter] public Guid? ChatId { get; set; }

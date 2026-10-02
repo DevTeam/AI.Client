@@ -1,0 +1,31 @@
+<ChatWidget Widget="@Widget" Summary="@(Running ? $"{(Paused ? "Paused" : "Step")} {StepNumber}" : $"{Completed.Count} topics completed")">
+    @if (Running)
+    {
+        <div class="app-guide-run@(Paused ? " is-paused" : null)" role="status">
+            <span class="app-guide-run-dot" aria-hidden="true"></span>
+            <span class="app-guide-run-text">
+                <strong>@(TopicTitle ?? "Application guide")</strong>
+                <small>@(Paused ? $"Paused · step {StepNumber}" : StepNumber > 0 ? $"Step {StepNumber}" : "Starting…")</small>
+            </span>
+            <span class="chat-usage-note-actions">
+                <button class="compact-action" type="button" @onclick="OnPause">@(Paused ? "Resume" : "Pause")</button>
+                <button class="compact-action" type="button" @onclick="OnStop">Stop</button>
+            </span>
+        </div>
+    }
+    @if (Note is { Length: > 0 }) { <p class="app-guide-note" role="status">@Note</p> }
+    <AppGuideTopicsView Completed="@Completed" Running="@Running" OnStart="@OnStart" />
+</ChatWidget>
+
+@code {
+    [Parameter, EditorRequired] public ChatWidgetContext Widget { get; set; } = default!;
+    [Parameter] public IReadOnlyList<string> Completed { get; set; } = [];
+    [Parameter] public bool Running { get; set; }
+    [Parameter] public bool Paused { get; set; }
+    [Parameter] public int StepNumber { get; set; }
+    [Parameter] public string? TopicTitle { get; set; }
+    [Parameter] public string? Note { get; set; }
+    [Parameter] public EventCallback<AppGuideTopicsView.GuideTopicSelection> OnStart { get; set; }
+    [Parameter] public EventCallback OnPause { get; set; }
+    [Parameter] public EventCallback OnStop { get; set; }
+}

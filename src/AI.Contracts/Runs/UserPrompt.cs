@@ -13,11 +13,14 @@ namespace AI.Contracts.Runs;
 /// <param name="TimeoutSeconds">
 /// How long the prompt stays answerable. Reaching it is not a failure: the run continues with
 /// <see cref="UserPromptOutcome.Expired"/>, because a person who walked away has not refused.
+/// A nonpositive value with no ExpiresAt means it waits for an answer or cancellation without a timer.
 /// </param>
 public sealed record UserPrompt(
     Guid Id,
     IReadOnlyList<UserPromptQuestion> Questions,
-    long TimeoutSeconds);
+    long TimeoutSeconds,
+    string Presentation = "chat", bool SubmitDefaults = false, DateTimeOffset? ExpiresAt = null,
+    DateTimeOffset? DefaultSubmitAt = null);
 
 /// <param name="Text">
 /// Question text. An inline subset of markdown is rendered — emphasis, code spans, links — because
@@ -49,7 +52,7 @@ public sealed record UserPromptQuestion(
     string? Revision = null);
 
 /// <summary>One choice. Plain text in both fields: these are captions on controls, never markup.</summary>
-public sealed record UserPromptOption(string Label, string? Description);
+public sealed record UserPromptOption(string Label, string? Description, bool Recommended = false);
 
 /// <summary>
 /// What the person chose for one question. Options are identified by position, so the answer cannot

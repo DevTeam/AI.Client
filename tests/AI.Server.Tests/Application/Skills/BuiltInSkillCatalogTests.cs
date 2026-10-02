@@ -7,7 +7,7 @@ using Xunit;
 
 public class BuiltInSkillCatalogTests
 {
-    private static readonly string[] Domains = ["chat", "project", "memory", "skill", "instructions", "code", "git", "devops", "qa", "mermaid", "svg", "settings"];
+    private static readonly string[] Domains = ["chat", "project", "memory", "skill", "instructions", "code", "git", "devops", "qa", "mermaid", "svg", "settings", "app"];
 
     [Fact]
     public void ShouldExposeBundledChatRenameInstructions()
@@ -21,6 +21,55 @@ public class BuiltInSkillCatalogTests
         skill.Kind.ShouldBe(SkillKinds.Executor);
         skill.Content.ShouldContain("read_chat");
         catalog.List().ShouldContain(item => item.Id == skill.Id);
+    }
+
+    [Fact]
+    public void ShouldResolveEverySelectableGuideToABundledSkill()
+    {
+        var catalog = new BuiltInSkillCatalog();
+        var topics = new AI.Contracts.Navigation.AppGuideTopics();
+        topics.Find("permissions").ShouldNotBeNull();
+        topics.Find("navigation").ShouldNotBeNull();
+        topics.Find("widgets").ShouldNotBeNull();
+        foreach (var topic in topics.All)
+            catalog.GetById(topic.SkillId).ShouldNotBeNull(topic.Id);
+    }
+
+    [Fact]
+    public void ShouldLimitEveryBundledGuideStepToFifteenSeconds()
+    {
+        var guides = new BuiltInSkillCatalog().List().Where(skill => skill.Id.StartsWith("app-guide-", StringComparison.Ordinal)).ToArray();
+        guides.Length.ShouldBe(11);
+        foreach (var guide in guides) guide.Content.Contains("`timeoutSeconds=15`", StringComparison.Ordinal).ShouldBeTrue(guide.Id);
+    }
+
+    [Fact]
+    public void ShouldGiveEveryGuideTheSameLanguagePriorityForHiddenAndRegularChats()
+    {
+        var guides = new BuiltInSkillCatalog().List().Where(skill => skill.Id.StartsWith("app-guide-", StringComparison.Ordinal)).ToArray();
+        guides.Length.ShouldBe(11);
+        foreach (var guide in guides)
+        {
+            guide.Content.ShouldContain("`requestedLanguage`");
+            guide.Content.ShouldContain("`lastUserMessage`");
+            guide.Content.ShouldContain("`clientLocale`");
+            guide.Content.ShouldContain("Preserve actual control labels verbatim");
+        }
+    }
+
+    [Fact]
+    public void ShouldKeepGuidesVisualAndOfferInterestChoicesWithFreeText()
+    {
+        var catalog = new BuiltInSkillCatalog();
+        foreach (var guide in catalog.List().Where(skill => skill.Id.StartsWith("app-guide-", StringComparison.Ordinal)))
+        {
+            guide.ParametersSchema.GetProperty("properties").GetProperty("interest").GetProperty("type").GetString().ShouldBe("string");
+            guide.Content.ShouldContain("allowOther=true");
+            guide.Content.ShouldContain("blocks of 2–3 steps");
+            guide.Content.ShouldContain("every substantive explanation belongs in the comment");
+            guide.Content.ShouldContain("only brief progress markers");
+        }
+        catalog.GetById("app-guide-models").ShouldNotBeNull().Content.ShouldContain("provider's real model limits");
     }
 
     [Fact]

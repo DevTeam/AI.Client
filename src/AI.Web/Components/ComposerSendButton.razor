@@ -9,7 +9,7 @@
     {
         <button class="composer-send-context-open" type="button" tabindex="-1" aria-label="Show chat usage" @onclick="OnContextClick"></button>
     }
-    <button class="composer-send" type="button" disabled="@Disabled" aria-label="@GetAriaLabel()" @onclick="OnClick">
+    <button class="composer-send" data-app-target="chat.send" type="button" disabled="@Disabled" aria-label="@GetAriaLabel()" @onclick="OnClick">
         <AppIcon Name="@GetIcon()" Class="@(Busy ? "tool-row-spinner" : null)" />
     </button>
     <span class="composer-send-tooltip" role="tooltip">

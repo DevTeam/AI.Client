@@ -34,6 +34,9 @@
 @inject AI.Web.Updates.IUpdateClient Updates
 @inject IReplySuggestionState ReplySuggestions
 @inject AI.Web.Navigation.INavigationCues NavigationCues
+@inject AI.Web.Navigation.IAppGuideApi GuideApi
+@inject AI.Contracts.Navigation.AppNavigationTargets GuideTargets
+@inject AI.Contracts.Navigation.AppGuideTopics GuideTopics
 @inject IChatTipsState ChatTips
 @inject IComposerContextPresentation ContextPresentation
 @inject IClientSettingsService ClientSettings
@@ -47,19 +50,19 @@
 <PageTitle>@ClientMetadata.ProductName</PageTitle>
 
 <main class="workspace-shell @(IsChatWidgetsVisible() ? "widgets-open" : null)" @ref="_workspace">
-    <aside class="workspace-sidebar" id="workspace-sidebar">
+    <aside class="workspace-sidebar" id="workspace-sidebar" data-app-target="workspace.sidebar">
         <div class="sidebar-projects">
         @* The projects list is the sidebar's top level now, so it has no heading of its own and
            nothing to collapse it into. Creating a project is an action row at the head of the
            list — the position the button already occupied, minus the section chrome around it. *@
         @* Search opens in the right-hand drawer slot, like the settings sections: the results sit
            beside the transcript they lead into instead of replacing the project tree. *@
-        <button class="workspace-nav-item search-nav-action @(_isSearchOpen ? "selected" : string.Empty)" type="button" data-search-open
+        <button class="workspace-nav-item search-nav-action @(_isSearchOpen ? "selected" : string.Empty)" type="button" data-app-target="workspace.search" data-search-open
                 title="Search messages (Ctrl+K)" aria-keyshortcuts="Control+K" aria-expanded="@(_isSearchOpen ? "true" : "false")" aria-controls="search-drawer" @onclick="ToggleSearchPanelAsync">
             <AppIcon Name="search" /><span class="nav-item-label">Search</span><kbd class="nav-item-shortcut" aria-hidden="true">Ctrl+K</kbd>
         </button>
         <div id="projects-nav">
-        <button class="workspace-nav-item new-project-action" type="button" title="New project (Alt+Shift+N)" data-hotkey="Alt+Shift+KeyN" aria-keyshortcuts="Alt+Shift+N" @onclick="BeginProjectCreation"><AppIcon Name="plus" /><span class="nav-item-label">New project</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+Shift+N</kbd></button>
+        <button class="workspace-nav-item new-project-action" data-app-target="projects.create" type="button" title="New project (Alt+Shift+N)" data-hotkey="Alt+Shift+KeyN" aria-keyshortcuts="Alt+Shift+N" @onclick="BeginProjectCreation"><AppIcon Name="plus" /><span class="nav-item-label">New project</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+Shift+N</kbd></button>
         @if (ProjectsBusy.IsVisible)
         {
             <div class="sidebar-skeleton" role="status" aria-label="Loading projects">
@@ -90,12 +93,12 @@
                        Without the same-project shortcut the user would have to reach for the
                        "+" button every time they wanted to start a new conversation in the
                        project they were already in. *@
-                    <button class="workspace-nav-item" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => HandleProjectItemClickAsync(project)"><span class="status-dot @GetProjectStatusClass(project.Id)"></span><span class="nav-item-label">@project.Name</span></button>
+                    <button class="workspace-nav-item project-link" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => HandleProjectItemClickAsync(project)"><span class="status-dot @GetProjectStatusClass(project.Id)"></span><span class="nav-item-label">@project.Name</span></button>
                 }
-                <button class="icon-action project-action-button project-new-chat-button" type="button" title="@(project.Id == _selectedProject?.Id ? "New chat (Alt+N)" : "New chat")" aria-label="New chat"
+                <button class="icon-action project-action-button project-new-chat-button" data-app-target="@(project.Id == _selectedProject?.Id ? "chat.new" : null)" type="button" title="@(project.Id == _selectedProject?.Id ? "New chat (Alt+N)" : "New chat")" aria-label="New chat"
                         data-hotkey="@(project.Id == _selectedProject?.Id ? "Alt+KeyN" : null)" aria-keyshortcuts="@(project.Id == _selectedProject?.Id ? "Alt+N" : null)" @onclick="() => CreateChatForProjectAsync(project)"><AppIcon Name="plus" /></button>
                 <button class="icon-action project-action-button project-rename-button" type="button" title="Rename" aria-label="Rename project" @onclick="() => BeginProjectRenameAsync(project)"><AppIcon Name="edit" /></button>
-                <button class="icon-action project-action-button project-menu-button @(_isProjectMenuOpen && project.Id == _selectedProject?.Id ? "menu-open" : string.Empty)" type="button" title="Project settings" aria-label="Project settings" @onclick="() => ToggleProjectMenuAsync(project)"><AppIcon Name="more" /></button>
+                <button class="icon-action project-action-button project-menu-button @(_isProjectMenuOpen && project.Id == _selectedProject?.Id ? "menu-open" : string.Empty)" data-app-target="@(project.Id == _selectedProject?.Id ? "project.menu" : null)" type="button" title="Project settings" aria-label="Project settings" @onclick="() => ToggleProjectMenuAsync(project)"><AppIcon Name="more" /></button>
             </div>
             @if (project.Id == _selectedProject?.Id)
             {
@@ -185,7 +188,7 @@
                         {
                             @foreach (var branch in GetBranchTreeItems())
                             {
-                                <div class="chat-nav-row branch-nav-row @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" title="@GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
+                                <div class="chat-nav-row branch-nav-row @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" data-branch-id="@branch.RootId" title="@GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
                                     <span class="branch-tree-line" aria-hidden="true"></span>
                                     @if (_editingBranchId == branch.RootId)
                                     {
@@ -355,12 +358,12 @@
         <header class="workspace-header">
             @* Hiding the sidebar is a layout preference kept by workspaceLayout.js, which also
                handles this button; the edge of a hidden sidebar is easy to miss, this is not. *@
-            <button class="icon-action sidebar-toggle-button" type="button" data-sidebar-toggle
+            <button class="icon-action sidebar-toggle-button" type="button" data-app-target="workspace.sidebar.toggle" data-sidebar-toggle
                     aria-controls="workspace-sidebar" aria-label="Toggle sidebar" title="Toggle sidebar (Ctrl+B)">
                 <AppIcon Name="panel-left" />
             </button>
             <div class="notification-quick-access @(_hideNotificationPreview ? "preview-hidden" : null)" @onpointerleave="RestoreNotificationPreview">
-                <button class="history-notifications-button" type="button" aria-label="Notifications" aria-expanded="@_notificationsOpen" @onclick="ToggleNotificationsAsync">
+                <button class="history-notifications-button" data-app-target="workspace.notifications" type="button" aria-label="Notifications" aria-expanded="@_notificationsOpen" @onclick="ToggleNotificationsAsync">
                     <AppIcon Name="bell" />
                     @if (Notifications.UnreadCount > 0) { <span class="notification-count">@Notifications.UnreadCount</span> }
                 </button>
@@ -388,9 +391,9 @@
                 <button class="icon-action" type="button" title="Forward" aria-label="Forward" disabled="@(!_canNavigateForward)" @onclick="GoForwardAsync"><AppIcon Name="chevron-right" /></button>
             </div>
             <span class="workspace-location" title="@GetWorkspaceLocation()">@GetWorkspaceLocation()</span>
-            @if (_selectedChat is not null)
+            @if (_selectedProject is not null)
             {
-                <button class="icon-action workspace-widgets-toggle @(_chatWidgetsOpen ? "is-active" : null)" type="button"
+                <button class="icon-action workspace-widgets-toggle @(_chatWidgetsOpen ? "is-active" : null)" data-app-target="chat.widgets" type="button"
                         aria-label="Chat widgets" aria-pressed="@(_chatWidgetsOpen ? "true" : "false")"
                         title="@(_chatWidgetsOpen ? "Hide chat widgets" : "Show chat widgets")" @onclick="ToggleChatWidgetsAsync">
                     <AppIcon Name="panel-right" />
@@ -407,6 +410,11 @@
             OnInsertComposerText="InsertComposerTextAsync"
             OnAddDirectory="OpenDirectoryPickerForNewGrant"
             OnCreateSkill='() => OpenGlobalSection("ProjectSkills")'
+            OnStartGuide='() => StartGuideTopicAsync(new AppGuideTopicsView.GuideTopicSelection("basic", "show"))'
+            HasModel="@HasEnabledModel"
+            OnCreateProject="BeginProjectCreation"
+            OnStartGuideTopic='topic => StartGuideTopicAsync(new AppGuideTopicsView.GuideTopicSelection(topic, "show"))'
+            OnOpenSettings="OpenGlobalSection"
             SearchQuery="@_searchQuery"
             OnSearchPositionChanged="OnFeedSearchPositionChanged"
             SelectedChat="@_selectedChat"
@@ -541,7 +549,7 @@
                 <ResourceMentionMenu Items="_mentionItems" SelectedIndex="_mentionIndex" OnPick="PickMentionSuggestionAsync" OnHover="HoverMentionSuggestion" />
             }
             @* chatComposer.js draws the draft's "@" links as pills under the text; nothing here renders into it. *@
-            <div class="composer-input">
+            <div class="composer-input" data-app-target="chat.composer">
                 <div class="composer-mention-highlight" aria-hidden="true" hidden></div>
                 <div class="composer-suggestion" hidden><span class="composer-suggestion-text"></span><button class="composer-suggestion-accept" type="button" tabindex="-1" title="Use this reply (Tab) · Esc hides it">Tab</button></div>
                 <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@GetComposerPlaceholder()" aria-label="Message"
@@ -550,7 +558,7 @@
             </div>
             <div class="composer-footer">
                 <div class="composer-resource-menu-anchor">
-                    <button class="icon-action composer-add-resource" type="button" title="Add to chat" aria-label="Add to chat" aria-expanded="@_isResourceMenuOpen" @onclick="ToggleResourceMenu"><AppIcon Name="plus" /></button>
+                    <button class="icon-action composer-add-resource" data-app-target="chat.context" type="button" title="Add to chat" aria-label="Add to chat" aria-expanded="@_isResourceMenuOpen" @onclick="ToggleResourceMenu"><AppIcon Name="plus" /></button>
                     @if (_isResourceMenuOpen)
                     {
                         <div class="composer-resource-menu-backdrop" @onclick="CloseResourceMenu"></div>
@@ -604,17 +612,27 @@
         </footer>
     </section>
 
-    @if (IsChatWidgetsVisible() && _selectedChat is { } widgetChat)
+    @if (IsChatWidgetsVisible())
     {
+        // A new chat has no stored chat yet: its widgets show their empty state until the first message.
+        var widgetChat = _selectedChat;
         var widgetRun = GetSelectedRun();
-        <ChatWidgetRail Widgets="@_chatWidgets" WidgetsChanged="SaveChatWidgetsAsync" OnClose="ToggleChatWidgetsAsync">
+        var widgetUsage = widgetChat is null ? null : ChatUsage.Find(widgetChat.Id);
+        var widgetMessages = widgetChat is null ? [] : GetWidgetMessages(widgetChat);
+        <ChatWidgetRail Widgets="@_chatWidgets" GuideExpandedWidgetId="@_guideExpandedWidgetId" GuideExpansionDismissed="() => _guideExpandedWidgetId = null" WidgetsChanged="SaveChatWidgetsAsync" OnClose="ToggleChatWidgetsAsync">
             <WidgetTemplate Context="widget">
                 @switch (widget.Definition.Id)
                 {
+                    case ChatWidgetCatalog.AppGuide:
+                        <AppGuideWidget Widget="@widget" Completed="@_completedGuideTopics" Running="@GuideRunning"
+                                        Paused="@_guidePaused" StepNumber="@_guideStepNumber" Note="@_guideNote"
+                                        TopicTitle="@(_guideTopic is { } guideTopic ? GuideTopics.Find(guideTopic)?.Title : null)"
+                                        OnStart="StartGuideTopicAsync" OnPause="ToggleGuidePauseAsync" OnStop="StopGuideStepAsync" />
+                        break;
                     case ChatWidgetCatalog.ChatUsage:
                         <ChatUsageWidget Widget="@widget"
                                          Context="@(_showContextWindowUsage ? GetComposerContext() : null)"
-                                         ChatUsage="@ChatUsage.Find(widgetChat.Id)"
+                                         ChatUsage="@widgetUsage"
                                          LiveTurn="@widgetRun?.TurnUsage"
                                          IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
                                          ConnectionName="@GetComposerConnection()?.Name"
@@ -622,52 +640,52 @@
                                          OnOpenConnections='() => OpenGlobalSection("Connections")'
                                          ActiveCheckpoint="@GetActiveCheckpoint()"
                                          Compacting="@_compactingHistory"
-                                         CompactionNote="@(_compactionNoteChatId == widgetChat.Id ? _compactionNote : null)"
+                                         CompactionNote="@(widgetChat is not null && _compactionNoteChatId == widgetChat.Id ? _compactionNote : null)"
                                          OnCompact="CompactHistoryAsync"
                                          OnUndoCheckpoint="UndoCheckpointAsync" />
                         break;
                     case ChatWidgetCatalog.ChatFiles:
                         <ChatFilesWidget Widget="@widget"
-                                         Messages="@GetWidgetMessages(widgetChat)"
+                                         Messages="@widgetMessages"
                                          LiveChanges="@(widgetRun is { Status: not ChatRunStatus.Completed } ? widgetRun.WorkspaceChanges : null)"
                                          OnReview="OpenReviewForFileAsync" />
                         break;
                     case ChatWidgetCatalog.ChatTools:
                         <ChatToolsWidget Widget="@widget"
-                                         Messages="@GetWidgetMessages(widgetChat)"
+                                         Messages="@widgetMessages"
                                          Run="@widgetRun" />
                         break;
                     case ChatWidgetCatalog.ChatPerformance:
                         <ChatPerformanceWidget Widget="@widget"
-                                              ChatUsage="@ChatUsage.Find(widgetChat.Id)"
+                                              ChatUsage="@widgetUsage"
                                               LiveTurn="@widgetRun?.TurnUsage"
-                                              Messages="@GetWidgetMessages(widgetChat)"
+                                              Messages="@widgetMessages"
                                               IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)" />
                         break;
                     case ChatWidgetCatalog.ChatSubtasks:
                         <ChatSubtasksWidget Widget="@widget"
-                                            ChatUsage="@ChatUsage.Find(widgetChat.Id)"
+                                            ChatUsage="@widgetUsage"
                                             LiveTurn="@widgetRun?.TurnUsage"
-                                            Messages="@GetWidgetMessages(widgetChat)"
+                                            Messages="@widgetMessages"
                                             IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)" />
                         break;
                     case ChatWidgetCatalog.ChatKnowledge:
                         <ChatKnowledgeWidget Widget="@widget"
-                                             Messages="@GetWidgetMessages(widgetChat)"
+                                             Messages="@widgetMessages"
                                              Run="@widgetRun" />
                         break;
                     case ChatWidgetCatalog.ChatTimeline:
                         <ChatTimelineWidget Widget="@widget"
-                                            Messages="@GetWidgetMessages(widgetChat)"
-                                            ChatUsage="@ChatUsage.Find(widgetChat.Id)"
+                                            Messages="@widgetMessages"
+                                            ChatUsage="@widgetUsage"
                                             LiveTurn="@widgetRun?.TurnUsage"
                                             IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
                                             OnSelectTurn="ScrollToTurnAsync" />
                         break;
                     case ChatWidgetCatalog.ChatBranches:
                         <ChatBranchesWidget Widget="@widget"
-                                            Branches="@widgetChat.Branches"
-                                            Messages="@widgetChat.Messages"
+                                            Branches="@widgetChat?.Branches"
+                                            Messages="@(widgetChat?.Messages ?? [])"
                                             SelectedBranchId="@GetSelectedBranchId()"
                                             OnSelectBranch="OnWidgetBranchSelectedAsync" />
                         break;
@@ -756,7 +774,7 @@
     @if (_isProjectSettingsOpen && _selectedProject is not null)
     {
         <div class="permissions-drawer-backdrop"></div>
-        <aside class="permissions-drawer project-settings-drawer" aria-label="Project settings">
+        <aside class="permissions-drawer project-settings-drawer" data-app-target="project.settings" aria-label="Project settings">
             <header>
                 <div class="project-settings-heading"><h2>Project settings</h2><p title="@_selectedProject.Name">@_selectedProject.Name</p></div>
                 <button class="icon-action" type="button" title="Close" aria-label="Close project settings" @onclick="RequestCloseProjectSettingsAsync"><AppIcon Name="drawer-close" /></button>
@@ -765,15 +783,15 @@
                 <EditForm Model="_editor" class="settings-form project-settings-form">
                     <DataAnnotationsValidator />
                     <div class="settings-card">
-                        <label class="settings-row settings-field"><span class="settings-row-label">Name</span><InputText @bind-Value="_editor.Name" /></label>
+                        <label class="settings-row settings-field" data-app-target="project.name"><span class="settings-row-label">Name</span><InputText @bind-Value="_editor.Name" /></label>
                         <label class="settings-row settings-field">
                             <span class="settings-row-label">Connection</span>
                             <select @bind="_editor.ConnectionId"><option value="">— Default —</option>@foreach (var connection in _connections) { <option value="@connection.Id" disabled="@(!connection.Enabled)">@connection.Name@(!connection.Enabled ? " (Unavailable)" : string.Empty)</option> }</select>
                         </label>
-                        <label class="settings-row is-stacked"><span class="settings-row-label">Description</span><InputTextArea @bind-Value="_editor.Description" rows="2" /></label>
+                        <label class="settings-row is-stacked" data-app-target="project.description"><span class="settings-row-label">Description</span><InputTextArea @bind-Value="_editor.Description" rows="2" /></label>
                     </div>
                 </EditForm>
-                <ProjectInstructionsEditor @ref="_instructionsEditor" ProjectId="@_selectedProject.Id" />
+                <div data-app-target="project.instructions"><ProjectInstructionsEditor @ref="_instructionsEditor" ProjectId="@_selectedProject.Id" /></div>
                 @if (!string.IsNullOrEmpty(_error)) { <p class="error" role="alert">@_error</p> }
             </div>
             @if (!string.IsNullOrEmpty(_error))
@@ -790,21 +808,21 @@
     {
         @* No backdrop and no close on an outside press: the point of the panel is reading the chat
            beside it while stepping through what was found. *@
-        <aside class="permissions-drawer search-drawer" id="search-drawer" aria-label="Search messages">
+        <aside class="permissions-drawer search-drawer" id="search-drawer" data-app-target="search" aria-label="Search messages">
             <header>
                 <h2>Search</h2>
-                <button class="icon-action" type="button" title="Close (Esc)" aria-label="Close search" @onclick="CloseSearchPanelAsync"><AppIcon Name="drawer-close" /></button>
+                <button class="icon-action" type="button" title="Close (Esc)" aria-label="Close search" data-app-target="search.close" @onclick="CloseSearchPanelAsync"><AppIcon Name="drawer-close" /></button>
             </header>
             <div class="search-drawer-controls">
                 @* A combobox in the ARIA sense: focus stays in the box while Up/Down move the active
                    result, so the query can still be edited between steps. *@
-                <input type="search" class="search-drawer-input" @ref="_searchInput" value="@_searchQuery" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown"
+                <input type="search" class="search-drawer-input" data-app-target="search.query" @ref="_searchInput" value="@_searchQuery" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown"
                        placeholder="Search messages in all chats" aria-label="Search messages in all chats" aria-keyshortcuts="Control+K"
                        role="combobox" aria-autocomplete="list" aria-controls="search-results"
                        aria-expanded="@(_searchGroups.Count > 0 ? "true" : "false")"
                        aria-activedescendant="@(_searchActiveMessageId is { } activeRow ? SearchRowId(activeRow) : null)" />
                 <div class="search-drawer-options">
-                    <label class="archive-search-toggle"><input type="checkbox" @bind="_searchIncludeArchived" @bind:after="RunSearchAsync" /> Include archived chats</label>
+                    <label class="archive-search-toggle" data-app-target="search.archived"><input type="checkbox" @bind="_searchIncludeArchived" @bind:after="RunSearchAsync" /> Include archived chats</label>
                     @* Steps through the occurrences in the open chat. It counts only what is rendered:
                        a match inside a collapsed turn shows up once that turn is opened. *@
                     @if (_selectedChat is not null && _searchQuery.Trim().Length >= 2)
@@ -844,7 +862,7 @@
             {
                 @* Results of the previous query stay while the next one runs, dimmed once the wait
                    is long enough to notice, instead of blinking out on every keystroke. *@
-                <div class="search-drawer-results @(_isSearching && SearchBusy.IsVisible ? "stale" : string.Empty)" id="search-results" role="listbox" aria-label="Search results" aria-busy="@(_isSearching ? "true" : "false")">
+                <div class="search-drawer-results @(_isSearching && SearchBusy.IsVisible ? "stale" : string.Empty)" id="search-results" data-app-target="search.results" role="listbox" aria-label="Search results" aria-busy="@(_isSearching ? "true" : "false")">
                     @* A failure is reported by the status line alone. *@
                     @if (found.Matches.Count == 0 && found.Error is not { Length: > 0 })
                     {
@@ -914,6 +932,28 @@
     }
 </main>
 
+@if (_guideStep is { } guideStep)
+{
+    <AppGuideStep @key="_guideStepNumber" Step="@guideStep" StepNumber="@_guideStepNumber" TotalSeconds="@_guideStepSeconds"
+                  Title="@((_guideChatId is not null || _bootstrapStep > 0 ? GuideTopics.Find(_guideTopic ?? "basic")?.Title : null) ?? "Assistant navigation")"
+                  TargetLabel="@(GuideTargets.Find(guideStep.Target ?? "project")?.Label ?? "this control")"
+                  Busy="@_guideStepBusy" Paused="@_guidePaused" TargetUsed="@_guideTargetUsed"
+                  SecondsLeft="@Math.Max(0, (int)Math.Ceiling((_guideStepDeadlineAt - DateTimeOffset.UtcNow).TotalSeconds))" AutoContinue="@_guideStepAutoContinue"
+                  OnContinue="ContinueGuideStepAsync" OnStop="StopGuideStepAsync" />
+}
+@if (OutsideChatQuestion is { PendingPrompt: { } outsidePrompt } outsideRun)
+{
+    <aside class="app-guide-question" aria-label="Question outside chat">
+        <span class="app-guide-question-source">@(outsideRun.IsGuide ? "Application guide" : "Assistant · question outside chat")</span>
+        <UserPromptCard @key="outsidePrompt.Id" Prompt="@outsidePrompt" OnAnswer="response => AnswerOutsideChatQuestionAsync(outsideRun, response)" />
+    </aside>
+}
+else if (_guideInvitation is { } guideInvitation)
+{
+    <aside class="app-guide-question" aria-label="Application guide invitation">
+        <UserPromptCard @key="guideInvitation.Id" Prompt="@guideInvitation" OnAnswer="AnswerGuideInvitationAsync" />
+    </aside>
+}
 @if (_globalSection is not null)
 {
     <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" ContextWindowUsageChanged="value => _showContextWindowUsage = value" TurnTokensChanged="value => _showTurnTokens = value" />
@@ -929,7 +969,7 @@
 @if (_notificationsOpen)
 {
     <div class="permissions-drawer-backdrop"></div>
-    <section class="permissions-drawer notifications-drawer" aria-label="Notifications">
+    <section class="permissions-drawer notifications-drawer" data-app-target="notifications" aria-label="Notifications">
         <header><h2>Notifications</h2><button class="icon-action" type="button" title="Close notifications" aria-label="Close notifications" @onclick="ToggleNotificationsAsync"><AppIcon Name="drawer-close" /></button></header>
         <div class="notification-filters">
             <button type="button" class="@(!_showAttentionOnly ? "selected" : string.Empty)" @onclick="() => _showAttentionOnly = false">All</button>
@@ -1028,6 +1068,9 @@
     public sealed record NavigationButtons(bool CanBack, bool CanForward);
     private GlobalSettingsPanel? _globalSettingsPanel;
     private readonly List<ConnectionSettings> _connections = [];
+    // Until the settings arrive there is no telling whether a model is missing, so nothing says so.
+    private bool _connectionsLoaded;
+    private bool HasEnabledModel => !_connectionsLoaded || _connections.Any(item => item.Enabled);
     private int _enabledMcpServerCount;
     private int _userMemoryCount;
     private int _skillCount;
@@ -1303,7 +1346,7 @@
         await SyncWorkspaceUrlAsync();
     }
 
-    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings, Review, Search }
+    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings, Review, Search, Widgets }
 
     /// <summary>
     /// All right-hand drawers share one slot, so opening one closes the rest instead of stacking
@@ -1424,7 +1467,8 @@
         {
             try { await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken); }
             catch (OperationCanceledException) { break; }
-            if (GetSelectedRun()?.Status == ChatRunStatus.Generating) await InvokeAsync(StateHasChanged);
+            if (_guideStep is not null || GetSelectedRun()?.Status == ChatRunStatus.Generating) await InvokeAsync(StateHasChanged);
+            if (_workspaceInitialized && _guideModule is not null) await InvokeAsync(CheckGuideStateAsync);
         }
     }
 
@@ -1496,6 +1540,7 @@
                 _drawerDismissSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchDrawerDismiss", _dotNetReference);
                 _queueDragSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchQueueDrag", _dotNetReference);
                 _applicationFocused = await _runEventsModule.InvokeAsync<bool>("isFocused");
+                await AttachGuideAsync();
                 _chatListDragModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatListDrag.js");
                 _chatListDragHandle = await _chatListDragModule.InvokeAsync<IJSObjectReference>("attach", _workspace, _dotNetReference);
                 _navigationModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/workspaceNavigation.js");
@@ -1812,6 +1857,11 @@
         var target = JsonSerializer.Deserialize<AI.Contracts.Navigation.AppNavigation>(json,
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
         if (target is null) return;
+        if (target.RequestId != Guid.Empty || target.Target is not null)
+        {
+            await HandleGuideNavigationAsync(target);
+            return;
+        }
         try
         {
             var projects = await ProjectApi.ListAsync(CancellationToken.None);
@@ -2126,6 +2176,7 @@
 
     private async Task ShowRunNotificationAsync(ChatRunSnapshot? previous, ChatRunSnapshot current)
     {
+        if (current.IsGuide) return;
         if (!StatusPresentation.NeedsAttention(current) && current.Status != ChatRunStatus.Failed)
             Notifications.ResolveChatAttention(current.ChatId, current.BranchId);
         if (!_workspaceInitialized || previous is null || current.Revision <= previous.Revision) return;
@@ -2824,7 +2875,7 @@
         return _widgetMessages;
     }
 
-    private bool IsChatWidgetsVisible() => _chatWidgetsOpen && _selectedChat is not null;
+    private bool IsChatWidgetsVisible() => _chatWidgetsOpen && _selectedProject is not null;
 
     private async Task ToggleChatWidgetsAsync()
     {
@@ -3631,7 +3682,7 @@
     private string GetProjectRunTooltip(Guid projectId) { var runs = GetProjectRuns(projectId).ToArray(); return $"{runs.Count(item => item.Status == ChatRunStatus.Generating)} generating · {runs.Count(item => item.HasUnreadResponse)} unread · {runs.Count(item => item.Status == ChatRunStatus.Failed)} failed"; }
     private IEnumerable<ChatRunSnapshot> GetProjectRuns(Guid projectId)
     {
-        return RunState.Runs.Values.Where(run => run.ProjectId == projectId);
+        return RunState.Runs.Values.Where(run => run.ProjectId == projectId && !run.IsGuide);
     }
     // The open project's own status is already visible per-chat below it, so the project row
     // itself shows nothing — repeating it there would be the same redundant echo we just
@@ -4701,6 +4752,11 @@
     [JSInvokable]
     public async Task OnEscapePressed()
     {
+        if (_guideStep is not null || _guideInvitation is not null)
+        {
+            await StopGuideAsync();
+            return;
+        }
         if (_showArchive)
         {
             CloseArchive();
@@ -6254,6 +6310,7 @@
         var settings = await GlobalSettingsApi.GetAsync(CancellationToken.None);
         _connections.Clear();
         _connections.AddRange(settings.Connections);
+        _connectionsLoaded = true;
         _enabledMcpServerCount = settings.McpServers.Count(item => item.Enabled);
         await LoadSidebarCountsAsync();
     }
@@ -6443,6 +6500,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        await DisposeGuideAsync();
         Notifications.Changed -= OnNotificationsChanged;
         HostConnection.Changed -= OnHostStatusChanged;
         ReplySuggestions.Changed -= OnReplySuggestionChanged;

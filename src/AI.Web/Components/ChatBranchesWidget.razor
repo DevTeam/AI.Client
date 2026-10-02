@@ -15,7 +15,7 @@
     else
     {
         <div class="chat-usage-section chat-widget-headline">
-            <span class="chat-widget-count">@_stats.Branches.Count</span>
+            <span class="chat-widget-count" title="Explicitly stored branches of this chat, including the selected branch">@_stats.Branches.Count</span>
             <span class="chat-usage-muted">@(_stats.Branches.Count == 1 ? "branch" : "branches")</span>
         </div>
 
@@ -40,14 +40,14 @@
                     <span class="chat-branches-body">
                         <span class="chat-branches-title">@branch.Title</span>
                         <span class="chat-branches-meta chat-usage-muted">
-                            <span>@FormatMessages(branch.MessageCount)</span>
+                            <span title="Messages reachable from this branch root, including descendants on child branches">@FormatMessages(branch.MessageCount)</span>
                             @if (branch.ChildCount > 0)
                             {
-                                <span>@FormatChildren(branch.ChildCount)</span>
+                                <span title="Branches whose direct parent is this branch">@FormatChildren(branch.ChildCount)</span>
                             }
                             @if (branch.HeadAt is { } headAt)
                             {
-                                <span title="@headAt.LocalDateTime.ToString("F")">≈ @FormatHeadAt(headAt)</span>
+                                <span title="@($"Last message on this branch was recorded at {headAt.LocalDateTime:F}")">≈ @FormatHeadAt(headAt)</span>
                             }
                         </span>
                     </span>

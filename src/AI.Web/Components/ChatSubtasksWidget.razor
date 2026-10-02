@@ -27,23 +27,23 @@
         <div class="chat-usage-section">
             <div class="chat-usage-row">
                 <span>Input</span>
-                <span>@Usage.FormatTokens(_stats.InputTokens)</span>
+                <span title="@($"{Usage.FormatExact(_stats.InputTokens)} input tokens sent in delegated model requests in the selected scope")">@Usage.FormatTokens(_stats.InputTokens)</span>
             </div>
             <div class="chat-usage-row">
                 <span>Output</span>
-                <span>@Usage.FormatTokens(_stats.OutputTokens)</span>
+                <span title="@($"{Usage.FormatExact(_stats.OutputTokens)} output tokens from delegated model requests in the selected scope")">@Usage.FormatTokens(_stats.OutputTokens)</span>
             </div>
             @if (_stats.ReasoningTokens > 0)
             {
                 <div class="chat-usage-row chat-usage-muted" title="Reasoning tokens are part of the subtask output above">
                     <span>Reasoning</span>
-                    <span>@Usage.FormatTokens(_stats.ReasoningTokens)</span>
+                    <span title="@($"{Usage.FormatExact(_stats.ReasoningTokens)} reasoning tokens, included in the subtask output above")">@Usage.FormatTokens(_stats.ReasoningTokens)</span>
                 </div>
             }
         </div>
 
         <div class="chat-usage-section chat-usage-footnote">
-            <span>In @_stats.TurnsWithSubtasks of @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns") delegated work</span>
+            <span title="Turns with delegated model requests, out of all turns in the selected scope">In @_stats.TurnsWithSubtasks of @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns") delegated work</span>
         </div>
     }
 </ChatWidget>

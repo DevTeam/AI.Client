@@ -12,7 +12,7 @@
                 aria-expanded="@(Widget.Preference.Collapsed ? "false" : "true")" @onclick="Widget.ToggleCollapsed">
             <AppIcon Name="@Widget.Definition.Icon" Class="chat-widget-icon" />
             <span class="chat-widget-name">@Widget.Definition.Title</span>
-            @if (Widget.Preference.Collapsed && Summary is not null) { <span class="chat-widget-summary">@Summary</span> }
+            @if (Widget.Preference.Collapsed && Summary is not null) { <span class="chat-widget-summary" title="@($"{Widget.Definition.Description} · {Summary}")">@Summary</span> }
             <AppIcon Name="chevron-down" Class="chat-widget-chevron" />
         </button>
         @HeaderActions

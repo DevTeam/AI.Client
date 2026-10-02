@@ -16,7 +16,7 @@
     {
         <div class="chat-usage-section">
             <div class="chat-widget-headline">
-                <span class="chat-widget-count">@_stats.TotalReads</span>
+                <span class="chat-widget-count" title="Read attempts by supported file and web tools in the selected scope; a stored batch counts each source, including repeated reads">@_stats.TotalReads</span>
                 <span class="chat-usage-muted">@(_stats.TotalReads == 1 ? "read" : "reads")@(_stats.IsRunning ? " so far" : null)</span>
             </div>
         </div>
@@ -31,7 +31,7 @@
                         <span class="chat-knowledge-name">@group.ToolLabel
                             @if (group.Server.Length > 0) { <small class="chat-usage-muted">@group.Server</small> }
                         </span>
-                        <span class="chat-knowledge-figure">@group.Calls</span>
+                        <span class="chat-knowledge-figure" title="Read attempts attributed to this tool; stored batches count each source">@group.Calls</span>
                         <span class="chat-knowledge-track" aria-hidden="true"><span style="flex-grow: @group.Calls"></span><i style="flex-grow: @(max - group.Calls)"></i></span>
                         @if (group.Recent.Count > 0)
                         {
@@ -45,7 +45,7 @@
                                         <span class="chat-knowledge-source-name">@source.Display</span>
                                         @if (source.Occurrences > 1)
                                         {
-                                            <span class="chat-knowledge-source-count chat-usage-muted">×@source.Occurrences</span>
+                                            <span class="chat-knowledge-source-count chat-usage-muted" title="Number of times this source was requested in the selected scope">×@source.Occurrences</span>
                                         }
                                     </li>
                                 }
@@ -63,7 +63,7 @@
         @if (_scope == ChatWidgetScope.Chat && _stats.TurnsWithReads > 0)
         {
             <div class="chat-usage-section chat-usage-footnote">
-                <span>In @_stats.TurnsWithReads of @GetScopeTurns() @(GetScopeTurns() == 1 ? "turn" : "turns")</span>
+                <span title="Turns with at least one supported read call, out of all turns on the visible branch">In @_stats.TurnsWithReads of @GetScopeTurns() @(GetScopeTurns() == 1 ? "turn" : "turns")</span>
             </div>
         }
     }

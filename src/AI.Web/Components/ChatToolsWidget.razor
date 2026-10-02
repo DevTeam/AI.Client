@@ -12,9 +12,9 @@
     {
         <div class="chat-usage-section">
             <div class="chat-widget-headline">
-                <span class="chat-widget-count">@_stats.Calls</span>
+                <span class="chat-widget-count" title="Tool invocations on the visible branch in the selected scope, including calls still awaiting a result">@_stats.Calls</span>
                 <span class="chat-usage-muted">@(_stats.Calls == 1 ? "call" : "calls")@(_stats.IsRunning ? " so far" : null)</span>
-                <span class="chat-widget-headline-aside chat-usage-muted">@_stats.Tools.Count @(_stats.Tools.Count == 1 ? "tool" : "tools")</span>
+                <span class="chat-widget-headline-aside chat-usage-muted" title="Distinct tools called in the selected scope">@_stats.Tools.Count @(_stats.Tools.Count == 1 ? "tool" : "tools")</span>
             </div>
             <dl class="chat-usage-grid">
                 @foreach (var outcome in Enum.GetValues<ChatToolOutcome>())
@@ -22,7 +22,7 @@
                     if (_stats.Count(outcome) is > 0 and var count)
                     {
                         <dt title="@OutcomeTitle(outcome)">@OutcomeLabel(outcome)</dt>
-                        <dd class="@(outcome == ChatToolOutcome.Failed ? "chat-tools-errors" : null)">@count</dd>
+                        <dd title="@OutcomeTitle(outcome)" class="@(outcome == ChatToolOutcome.Failed ? "chat-tools-errors" : null)">@count</dd>
                     }
                 }
             </dl>
@@ -36,9 +36,9 @@
                         <span class="chat-tools-name">@tool.Label
                             @if (tool.Server.Length > 0) { <small class="chat-usage-muted">@tool.Server</small> }
                         </span>
-                        <span class="chat-tools-figure">@tool.Calls</span>
+                        <span class="chat-tools-figure" title="@($"Invocations of {tool.Name} in the selected scope")">@tool.Calls</span>
                         <span class="chat-tools-track" aria-hidden="true"><span style="flex-grow: @tool.Calls"></span><i style="flex-grow: @(_stats.Tools[0].Calls - tool.Calls)"></i></span>
-                        @if (tool.Errors > 0) { <small class="chat-tools-errors">@tool.Errors @(tool.Errors == 1 ? "error" : "errors")</small> }
+                        @if (tool.Errors > 0) { <small class="chat-tools-errors" title="Stored results for this tool that report an error, including refused calls">@tool.Errors @(tool.Errors == 1 ? "error" : "errors")</small> }
                     </li>
                 }
             </ul>
@@ -50,7 +50,7 @@
         @if (_scope == ChatWidgetScope.Chat)
         {
             <div class="chat-usage-section chat-usage-footnote">
-                <span>In @_stats.TurnsWithTools of @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns")</span>
+                <span title="Turns with at least one tool call, out of all turns on the visible branch">In @_stats.TurnsWithTools of @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns")</span>
             </div>
         }
     }

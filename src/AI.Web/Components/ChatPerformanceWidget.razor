@@ -41,13 +41,13 @@
                     {
                         <span @key="phase.Key" class="chat-performance-phase chat-performance-phase-@phase.Key"
                               style="flex-grow: @phase.Fraction.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)"
-                              title="@phase.Label · @FormatDuration(phase.Ms)"></span>
+                              title="@PhaseTitle(phase)"></span>
                     }
                 </div>
                 <div class="chat-usage-legend">
                     @foreach (var phase in Phases())
                     {
-                        <span @key="phase.Key"><span class="chat-performance-phase-swatch chat-performance-phase-@phase.Key" aria-hidden="true"></span>@phase.Label <b>@FormatDuration(phase.Ms)</b></span>
+                        <span @key="phase.Key"><span class="chat-performance-phase-swatch chat-performance-phase-@phase.Key" aria-hidden="true"></span>@phase.Label <b title="@PhaseTitle(phase)">@FormatDuration(phase.Ms)</b></span>
                     }
                 </div>
             </div>
@@ -70,26 +70,26 @@
             }
             <div class="chat-usage-row">
                 <span>Requests</span>
-                <span>@_stats.Requests</span>
+                <span title="Model requests recorded in the selected scope, including supporting requests">@_stats.Requests</span>
             </div>
             @if (_stats.OutputTokens > 0)
             {
                 <div class="chat-usage-row">
                     <span>Output</span>
-                    <span>@Usage.FormatTokens(_stats.OutputTokens)</span>
+                    <span title="@($"{Usage.FormatExact(_stats.OutputTokens)} output tokens recorded in the selected scope")">@Usage.FormatTokens(_stats.OutputTokens)</span>
                 </div>
             }
             @if (_stats.ReasoningTokens > 0)
             {
                 <div class="chat-usage-row">
                     <span>Reasoning</span>
-                    <span>@Usage.FormatTokens(_stats.ReasoningTokens)</span>
+                    <span title="@($"{Usage.FormatExact(_stats.ReasoningTokens)} reasoning tokens reported by the endpoint in the selected scope")">@Usage.FormatTokens(_stats.ReasoningTokens)</span>
                 </div>
             }
         </div>
 
         <div class="chat-usage-section chat-usage-footnote">
-            <span>In @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns")</span>
+            <span title="Number of turns covered by the selected scope">In @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns")</span>
         </div>
     }
 </ChatWidget>
@@ -181,6 +181,13 @@
         if (otherMs > 0) phases.Add(new("other", "Other", otherMs, (double)otherMs / active));
         return phases;
     }
+
+    private static string PhaseTitle(Phase phase) => phase.Key switch
+    {
+        "generation" => "Estimated generation time: output tokens divided by the scope's output speed",
+        "reasoning" => "Estimated reasoning time at the same output speed, limited to the remaining active time",
+        _ => "Recorded active time left after the generation and reasoning estimates"
+    };
 
     private string PhasesAriaLabel()
     {

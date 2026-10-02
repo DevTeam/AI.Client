@@ -10,7 +10,7 @@
         <div class="chat-usage-section">
             <div class="chat-usage-row chat-usage-heading">
                 <span class="chat-usage-connection" title="@ConnectionName">Context@(ConnectionName is null ? null : " · ")<span class="chat-usage-muted">@ConnectionName</span></span>
-                <span class="chat-usage-figure">
+                <span class="chat-usage-figure" title="@($"Estimated context use: {Usage.FormatExact(context.UsedTokens)} of {Usage.FormatExact(context.CapacityTokens)} tokens. Includes reserved space; capacity {(context.IsDefaultCapacity ? "uses the default limit" : "comes from the connection settings")}")">
                     <span class="chat-usage-muted">@Usage.FormatTokens(context.UsedTokens) / @(context.IsDefaultCapacity ? "~" : null)@Usage.FormatTokens(context.CapacityTokens)</span>
                     <span class="context-fill-@context.Level.ToString().ToLowerInvariant()">@context.Percent%</span>
                 </span>
@@ -20,16 +20,16 @@
                 @foreach (var layer in context.Layers.Where(layer => layer.Tokens > 0))
                 {
                     <span @key="layer.Kind" class="chat-usage-bar-segment context-layer-@layer.CssName @(layer.Reserved ? "reserved" : null)"
-                          style="flex-grow: @Grow(layer.Tokens, context.CapacityTokens)" title="@layer.Label: @Usage.FormatTokens(layer.Tokens)"></span>
+                          style="flex-grow: @Grow(layer.Tokens, context.CapacityTokens)" title="@($"{layer.Label}: {Usage.FormatExact(layer.Tokens)} estimated context tokens{(layer.Kind == ContextLayerKind.ReservedOutput ? " reserved for the response" : layer.Kind == ContextLayerKind.Overhead ? " for protocol framing and the safety margin" : "")}")"></span>
                 }
-                <span class="chat-usage-bar-free" style="flex-grow: @Grow(free, context.CapacityTokens)"></span>
+                <span class="chat-usage-bar-free" title="@($"{Usage.FormatExact(free)} tokens left after estimated context use and reserved space")" style="flex-grow: @Grow(free, context.CapacityTokens)"></span>
             </div>
             <div class="chat-usage-legend">
                 @foreach (var layer in context.Layers.Where(layer => layer.Tokens > 0 && !layer.Reserved))
                 {
-                    <span @key="layer.Kind"><span class="context-swatch context-layer-@layer.CssName"></span>@layer.Label <b>@Usage.FormatTokens(layer.Tokens)</b></span>
+                    <span @key="layer.Kind"><span class="context-swatch context-layer-@layer.CssName"></span>@layer.Label <b title="@($"{layer.Label}: {Usage.FormatExact(layer.Tokens)} estimated context tokens")">@Usage.FormatTokens(layer.Tokens)</b></span>
                 }
-                <span><span class="context-swatch"></span>Free <b>@Usage.FormatTokens(free)</b></span>
+                <span><span class="context-swatch"></span>Free <b title="@($"{Usage.FormatExact(free)} tokens left after estimated context use and reserved space")">@Usage.FormatTokens(free)</b></span>
             </div>
             @if (Usage.FormatRateLimits(ChatUsage?.RateLimits, DateTimeOffset.UtcNow) is { } limits)
             {
@@ -58,7 +58,7 @@
             @if (ActiveCheckpoint is { } checkpoint)
             {
                 <div class="chat-usage-row chat-usage-muted chat-usage-checkpoint">
-                    <span title="@checkpoint.CreatedAt.LocalDateTime.ToString("g")">Earlier turns summarized · @checkpoint.CoveredMessages @(checkpoint.CoveredMessages == 1 ? "message" : "messages")</span>
+                    <span title="@($"{checkpoint.CoveredMessages} earlier messages covered by the summary created at {checkpoint.CreatedAt.LocalDateTime:g}")">Earlier turns summarized · @checkpoint.CoveredMessages @(checkpoint.CoveredMessages == 1 ? "message" : "messages")</span>
                     @if (OnUndoCheckpoint.HasDelegate) { <button class="chat-usage-link" type="button" @onclick="() => OnUndoCheckpoint.InvokeAsync(checkpoint)">Undo</button> }
                 </div>
             }
@@ -78,10 +78,10 @@
         var totals = figures.Totals;
         <div class="chat-usage-section chat-usage-scope-figures">
             <div class="chat-usage-row chat-usage-headline">
-                <span class="chat-usage-figure" title="Input → output tokens">@Usage.FormatFlow(totals)@if (figures.Running) { <small>so far</small> }</span>
+                <span class="chat-usage-figure" title="@($"Input: {Usage.FormatExact(totals.Tokens.InputTokens)} tokens sent to the model, including cached input. Output: {Usage.FormatExact(totals.Tokens.OutputTokens)} tokens returned by the model. Summed over requests in the selected scope{(Usage.IsEstimated(totals) ? "; includes estimates where usage was not reported" : "")}")">@Usage.FormatFlow(totals)@if (figures.Running) { <small>so far</small> }</span>
                 @if (Usage.FormatCost(totals) is { } cost)
                 {
-                    <span class="chat-usage-figure">
+                    <span class="chat-usage-figure" title="Cost of priced requests in the selected scope, using endpoint quotes or connection prices. May include estimates; unpriced requests are excluded">
                         @cost
                         @if (totals.PricedRequests < totals.Requests) { <small title="Some requests went to a connection without prices">partial</small> }
                         else if (totals.EstimatedCostRequests > 0) { <small title="@($"The endpoint quoted a cost for some requests only; the other {totals.EstimatedCostRequests} are worked out from those quotes")">estimated</small> }
@@ -93,8 +93,8 @@
                 }
             </div>
             <dl class="chat-usage-grid">
-                @if (figures.Turns is { } turns) { <dt>Turns</dt><dd>@turns</dd> }
-                <dt>Requests</dt><dd>@totals.Requests</dd>
+                @if (figures.Turns is { } turns) { <dt>Turns</dt><dd title="Turns recorded in the usage ledger for the whole chat">@turns</dd> }
+                <dt>Requests</dt><dd title="Model requests in the selected scope, including supporting requests such as subtasks and summaries">@totals.Requests</dd>
                 @if (Usage.CachePercent(totals.Tokens) is { } cache)
                 {
                     var reusable = Usage.ReusablePercent(totals);
@@ -104,12 +104,12 @@
                         @cache%@if (missed) { <small>/@reusable%</small> }
                     </dd>
                 }
-                @if (totals.Tokens.ReasoningTokens > 0) { <dt>Reasoning</dt><dd>@Usage.FormatTokens(totals.Tokens.ReasoningTokens)</dd> }
-                @if (Usage.OutputSpeed(totals) is { } speed) { <dt>Speed</dt><dd>@speed tok/s</dd> }
+                @if (totals.Tokens.ReasoningTokens > 0) { <dt>Reasoning</dt><dd title="@($"{Usage.FormatExact(totals.Tokens.ReasoningTokens)} reasoning tokens reported by the endpoint in the selected scope")">@Usage.FormatTokens(totals.Tokens.ReasoningTokens)</dd> }
+                @if (Usage.OutputSpeed(totals) is { } speed) { <dt>Speed</dt><dd title="Output tokens divided by total recorded request duration in the selected scope">@speed tok/s</dd> }
                 @if (Usage.FormatPrefixChanges(totals) is { } changes)
                 {
                     <dt class="chat-usage-grid-row" title="Requests whose start differed from the request before them, which costs the provider's cache">Cache reset</dt>
-                    <dd class="chat-usage-grid-wide">@changes</dd>
+                    <dd class="chat-usage-grid-wide" title="Requests where tools, instructions or history changed the reusable input prefix; each number counts changes of that kind">@changes</dd>
                 }
             </dl>
         </div>
@@ -124,7 +124,7 @@
                         <li @key="share.Key">
                             <span class="chat-usage-share-label">@share.Label</span>
                             <span class="chat-usage-share-track"><span style="width: @Percent(share.Fraction)%"></span></span>
-                            <span class="chat-usage-share-value">@(share.Fraction < 0.005 ? "<1" : Math.Round(share.Fraction * 100).ToString(System.Globalization.CultureInfo.InvariantCulture))%</span>
+                            <span class="chat-usage-share-value" title="@($"{share.Label}: {Usage.FormatExact(share.Tokens)} input and output tokens, as a share of all tokens in the selected scope")">@(share.Fraction < 0.005 ? "<1" : Math.Round(share.Fraction * 100).ToString(System.Globalization.CultureInfo.InvariantCulture))%</span>
                         </li>
                     }
                 </ul>

@@ -14,7 +14,7 @@
     else
     {
         <div class="chat-usage-section chat-widget-headline">
-            <span class="chat-widget-count">@_stats.Turns.Count</span>
+            <span class="chat-widget-count" title="Turns on the visible branch, including the opening turn and any turn still running">@_stats.Turns.Count</span>
             <span class="chat-usage-muted">@(_stats.Turns.Count == 1 ? "turn" : "turns")@(_stats.HasProviderData ? "" : " · no usage data yet")</span>
         </div>
 
@@ -48,11 +48,11 @@
                         <div class="chat-timeline-figures">
                             @if (turn.Requests is { } requests)
                             {
-                                <span><b>@requests</b> <span class="chat-usage-muted">@FormatRequests(requests)</span></span>
+                                <span title="Model requests recorded for this turn, including supporting requests"><b>@requests</b> <span class="chat-usage-muted">@FormatRequests(requests)</span></span>
                             }
                             @if (turn.InputTokens is { } input && turn.OutputTokens is { } output)
                             {
-                                <span title="Input → output tokens for the turn, provider-reported"><span class="chat-usage-muted">tokens</span> @Usage.FormatTokens(input) → @Usage.FormatTokens(output)</span>
+                                <span title="@($"Input: {Usage.FormatExact(input)} tokens. Output: {Usage.FormatExact(output)} tokens. Recorded usage for this turn, including estimates when the endpoint does not report usage")"><span class="chat-usage-muted">tokens</span> @Usage.FormatTokens(input) → @Usage.FormatTokens(output)</span>
                             }
                             @if (turn.Requests is null && turn.InputTokens is null)
                             {

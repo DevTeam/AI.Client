@@ -253,7 +253,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             request.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null,
             clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
-        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+        return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
     }
 
     public async Task<ChatDetails?> UpdateApprovalModeAsync(
@@ -270,7 +270,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         // Saved against the revision just read, under the chat's lease: a run appending messages
         // must not turn the person's choice into a conflict they have to repeat.
         var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
-        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+        return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
     }
 
     private static ChatApprovalMode ToDomain(ToolApprovalMode mode) => mode switch
@@ -388,7 +388,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         if (stored is null) return null;
         stored.Chat.Rename(request.Title, clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
-        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+        return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
     }
 
     public async Task<ChatDetails?> ApplyAutomaticTitleAsync(
@@ -418,7 +418,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         if (stored is null) return null;
         stored.Chat.RenameBranch(new ChatMessageId(branchId), request.Title, clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
-        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+        return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
     }
 
     public async Task<ChatDetails?> SetToolPolicyAsync(Guid projectId, Guid chatId,
@@ -429,7 +429,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         if (stored is null) return null;
         stored.Chat.SetToolPolicy(ToPolicy(policy), clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
-        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+        return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
     }
 
     public async Task<ChatDetails?> RemoveToolPolicyAsync(Guid projectId, Guid chatId,
@@ -440,7 +440,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         if (stored is null) return null;
         stored.Chat.RemoveToolPolicy(new ToolIdentity(new McpServerId(serverId), name, schemaHash), clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
-        return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
+        return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
     }
 
     public async Task<ChatBranchDeleteResult> DeleteBranchAsync(Guid projectId, Guid chatId, Guid branchId, long revision,
@@ -472,6 +472,9 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
         chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode));
 
+    // Also the answer to a change of the chat's settings (connection, approval mode, titles, tool
+    // policies): the page may keep it as the open chat, and the full chat carries every tool
+    // output — megabytes for a long run — for the page to parse and re-read on each render.
     private static ChatDetails ToTranscript(ChatThread chat, long revision)
     {
         var messages = chat.Messages.OrderBy(item => item.CreatedAt).ToArray();

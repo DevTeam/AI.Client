@@ -129,6 +129,34 @@ public class ChatServiceTests
         content.Content.ShouldBe("very large result");
     }
 
+    [Fact]
+    public async Task ShouldAnswerEndpointChangeWithoutToolOutput()
+    {
+        var userId = new ChatMessageId(Guid.CreateVersion7());
+        var resultId = new ChatMessageId(Guid.CreateVersion7());
+        var connectionId = Guid.CreateVersion7();
+        var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
+        chat.AddMessage(new ChatMessage(userId, null, ChatMessageRole.User, "Question", _now), _now);
+        chat.AddMessage(new ChatMessage(resultId, userId, ChatMessageRole.Tool, "very large result", _now.AddSeconds(1),
+            toolCallId: "call-1"), _now.AddSeconds(1));
+        _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None))
+            .ReturnsAsync(new StoredChat(chat, 2));
+        _clock.SetupGet(i => i.UtcNow).Returns(_now.AddMinutes(1));
+        _repository.Setup(i => i.SaveAsync(chat, 2, CancellationToken.None))
+            .ReturnsAsync(ChatSaveResult.Saved(3));
+
+        var result = await CreateInstance().UpdateEndpointAsync(
+            _projectId.Value, _chatId.Value, new UpdateChatEndpointRequest(connectionId, 2), CancellationToken.None);
+
+        result.ShouldNotBeNull();
+        result.ConnectionId.ShouldBe(connectionId);
+        result.Revision.ShouldBe(3);
+        result.Messages.Single(message => message.Id == userId.Value).Content.ShouldBe("Question");
+        var toolResult = result.Messages.Single(message => message.Id == resultId.Value);
+        toolResult.Content.ShouldBeEmpty();
+        toolResult.ContentOmitted.ShouldBeTrue();
+    }
+
     [Theory]
     [InlineData("{\"isError\":true,\"error\":\"Denied\"}", true)]
     [InlineData("{\"isError\":false,\"content\":[]}", false)]

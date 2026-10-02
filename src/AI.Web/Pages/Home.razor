@@ -4956,13 +4956,22 @@
     private async Task SelectChatProfileAsync(ChangeEventArgs args)
     {
         SelectChatProfile(args);
-        if (_selectedProject is not null && _selectedChat is not null)
+        if (_selectedProject is not null && _selectedChat is { } chat)
         {
-            _selectedChat = await ChatHistoryApi.UpdateEndpointAsync(
+            var updated = await ChatHistoryApi.UpdateEndpointAsync(
                 _selectedProject.Id,
-                _selectedChat.Id,
-                new UpdateChatEndpointRequest(_chat.CredentialProfileId, _selectedChat.Revision),
+                chat.Id,
+                new UpdateChatEndpointRequest(_chat.CredentialProfileId, chat.Revision),
                 CancellationToken.None);
+            if (updated is null)
+            {
+                Notifications.ShowError("The chat endpoint could not be updated.");
+                return;
+            }
+            // Only the connection and the revision it was saved at, as for the approval mode: the
+            // page keeps the transcript it loaded and the run frames merged into it since.
+            if (_selectedChat?.Id == updated.Id)
+                _selectedChat = _selectedChat with { ConnectionId = updated.ConnectionId, Revision = Math.Max(_selectedChat.Revision, updated.Revision), UpdatedAt = updated.UpdatedAt };
             Notifications.ShowSuccess("Chat endpoint updated.");
         }
     }

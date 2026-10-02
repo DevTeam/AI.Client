@@ -5514,6 +5514,8 @@ textarea {
 }
 
 .mermaid-block .mermaid-svg svg {
+    /* Preserve the zoomed width inside the flex holder so the drawing scales and scrolls. */
+    flex-shrink: 0;
     max-width: 100%;
     height: auto;
 }

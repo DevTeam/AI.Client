@@ -206,7 +206,9 @@ const applyZoom = (block, requested) => {
         svg.setAttribute("style", base);
         const fitted = svg.getBoundingClientRect();
         if (value !== 1 && fitted.width > 0 && fitted.height > 0) {
-            const size = `max-width: none; width: ${fitted.width * value}px; height: ${fitted.height * value}px;`;
+            // Keep both dimensions proportional even if the holder's flex layout would shrink
+            // the width to fit. Otherwise only the viewport height grows past the column width.
+            const size = `flex-shrink: 0; max-width: none; width: ${fitted.width * value}px; height: ${fitted.height * value}px;`;
             svg.setAttribute("style", base.length === 0 || base.trimEnd().endsWith(";") ? `${base} ${size}` : `${base}; ${size}`);
         }
     }

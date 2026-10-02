@@ -8,7 +8,7 @@ using ModelContextProtocol.Server;
 
 /// <summary>One choice offered to the person. Plain text: these are captions on controls, not content.</summary>
 /// <param name="Description">A line of nuance under the label, for a choice whose consequence is not obvious.</param>
-public sealed record AskUserOption(string Label, string? Description = null);
+public sealed record AskUserOption(string Label, string? Description = null, bool Recommended = false);
 
 /// <param name="Id">Names this question in the answer. Must be unique within the call.</param>
 /// <param name="Text">
@@ -130,26 +130,50 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                         + "Leave 'pathKind' unset; options may be empty. The Git picker returns full ref names or commit hashes in 'values', in selection order. The user may "
                         + "answer some questions and not others, or none at all: an absent answer means the choice is yours to "
                         + "make, never an invitation to ask again. The user may also decline the question outright "
-                        + "(outcome 'declined'): then stop that work and wait for them instead of choosing."
+                        + "(outcome 'declined'): then stop that work and wait for them instead of choosing. "
+                        + "presentation='overlay' asks outside the chat, including from a hidden/background chat; by default it expires "
+                        + "and cancels the dependent action if unanswered. timeoutSeconds is 5..120 for overlays. "
+                        + "In an already started application guide, opening interests and questions within an unfinished topic "
+                        + "must explicitly use timeoutSeconds=0 with timeoutBehavior='cancel': wait without countdown or expiry. "
+                        + "Recommend useful continuation, not Stop. A timed cancelling learning question belongs only at an important "
+                        + "topic fork after the current branch and takeaway are complete; Finish may be recommended there. "
+                        + "Automatic invitations must still expire. "
+                        + "Mark recommended options with recommended=true. timeoutBehavior='submit_defaults' displays a countdown "
+                        + "only when every question has explicit recommended options; use it for choices within a guide the user started, "
+                        + "never to start a guide, change settings, send messages or create objects. Editing stops automatic submission."
                 });
 
         [McpServerTool(Name = "ask_user", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false,
             UseStructuredContent = true, OutputSchemaType = typeof(AskUserResult))]
-        private async Task<CallToolResult> AskAsync(AskUserQuestion[] questions, CancellationToken cancellationToken)
+        private async Task<CallToolResult> AskAsync(AskUserQuestion[] questions, string presentation = "chat",
+            int? timeoutSeconds = null, string timeoutBehavior = "cancel", CancellationToken cancellationToken = default)
         {
+            if (run.IsGuide) presentation = "overlay";
             if (Validate(questions) is { } invalid)
                 return reply.Reply(new AskUserResult([], "invalid", "Fix the call and ask again.", invalid), isError: true);
+            if (presentation is not ("chat" or "overlay") || timeoutBehavior is not ("cancel" or "submit_defaults")
+                || ((timeoutSeconds is < 5 or > 900) && !(run.IsGuide && timeoutSeconds == 0 && timeoutBehavior == "cancel"))
+                || presentation == "overlay" && timeoutSeconds is > 120)
+                return reply.Reply(new AskUserResult([], "invalid", "Fix the presentation, timeout or timeout behavior."), true);
+            var submitDefaults = timeoutBehavior == "submit_defaults";
+            if (submitDefaults && questions.Any(question => !question.Options.Any(option => option.Recommended)
+                || !question.MultiSelect && question.Options.Count(option => option.Recommended) != 1
+                || question.PathKind is not null || question.PickerKind is not null))
+                return reply.Reply(new AskUserResult([], "invalid", "Automatic answers require explicit recommended options for every question."), true);
 
             // A background run has nobody watching it, so it is told so at once rather than made to wait
             // out a timeout no one will interrupt. The caller that started it is the one with a user.
-            if (!run.Interactive)
+            if (!run.Interactive && presentation != "overlay")
                 return reply.Reply(new AskUserResult([], "dismissed",
                     "You are running as a background subtask; there is no user to answer you and there will not be one. "
                     + "Do what you can without this decision, and name the unresolved choice in your final answer so the "
                     + "conversation that started you can put it to the user."));
 
             var response = await broker().AskAsync(run,
-                new UserPromptRequest(questions.Select(Question).ToArray()), Patience, cancellationToken);
+                new UserPromptRequest(questions.Select(Question).ToArray(), presentation, submitDefaults),
+                timeoutSeconds == 0 ? Timeout.InfiniteTimeSpan
+                    : timeoutSeconds is { } seconds ? TimeSpan.FromSeconds(seconds)
+                    : presentation == "overlay" || submitDefaults ? TimeSpan.FromSeconds(30) : Patience, cancellationToken);
 
             var answers = response.Answers
                 .Select(answer => Reply(questions, answer))
@@ -157,7 +181,10 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
                 .Where(reply => reply.Selected.Length > 0 || !string.IsNullOrWhiteSpace(reply.Other) || reply.Paths is { Count: > 0 } || reply.Values is { Count: > 0 })
                 .ToArray();
 
-            return reply.Reply(new AskUserResult(answers, Outcome(response.Outcome), Guidance(response.Outcome, answers, questions)));
+            var guidance = presentation == "overlay" && response.Outcome is not UserPromptOutcome.Answered
+                ? "The outside-chat question was cancelled or unanswered. Stop the dependent action and this guide; do not choose defaults or ask again."
+                : Guidance(response.Outcome, answers, questions);
+            return reply.Reply(new AskUserResult(answers, Outcome(response.Outcome), guidance));
         }
 
         private static string Outcome(UserPromptOutcome outcome) => outcome switch
@@ -185,7 +212,7 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
             // what they just refused, so the only thing left to do is stop and listen.
             UserPromptOutcome.Declined =>
                 "The user declined to answer and does not want you to choose for them. Do not proceed with the work "
-                + "this question was about and do not ask it again. End your turn with a short reply that says what "
+                        + "this question was about and do not ask it again. End your turn with a short reply that says what "
                 + "you stopped and wait for the user's next message.",
             _ => "The user declined to decide. " + DecideYourself
         };
@@ -194,7 +221,7 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
             question.Id,
             question.Text,
             question.Label,
-            (question.Options ?? []).Select(option => new UserPromptOption(option.Label, option.Description)).ToArray(),
+            (question.Options ?? []).Select(option => new UserPromptOption(option.Label, option.Description, option.Recommended)).ToArray(),
             question.MultiSelect,
             question.AllowOther,
             question.PathKind?.Trim().ToLowerInvariant(),

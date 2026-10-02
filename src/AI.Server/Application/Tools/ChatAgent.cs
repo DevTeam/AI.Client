@@ -79,13 +79,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         bool Enabled(Guid serverId) =>
             global.McpServers.SingleOrDefault(server => server.Id == serverId) is { Enabled: true, Policy: not "Deny" }
             && project.McpServers.SingleOrDefault(server => server.Id == serverId) is not { Enabled: false };
-        var servers = global.McpServers.Select(server => server.Id).Where(Enabled).ToHashSet();
-        var grants = project.DirectoryGrants
+        var servers = global.McpServers.Select(server => server.Id).Where(Enabled)
+            .Where(id => !request.IsGuide || id == AppMcpServer.Id).ToHashSet();
+        var grants = project.DirectoryGrants.Where(_ => !request.IsGuide)
             .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
-        var run = new ToolRunContext(projectId, chatId, branchId, interactive);
+        var run = new ToolRunContext(projectId, chatId, branchId, interactive, request.IsGuide, request.GuideMode);
         using var catalogScope = toolCatalog.Begin(run);
         using var instructionScope = instructions.Begin(run);
-        instructions.Upsert(run, new ModelInstruction("run.finishing", FinishingInstruction,
+        instructions.Upsert(run, new ModelInstruction("run.finishing", request.IsGuide ? GuideFinishingInstruction : FinishingInstruction,
             1_000, ModelInstructionLifetime.Run));
         // Several app tools take the project and chat they act on as ids, and nothing else in the
         // context says which ones this run belongs to; a model left to guess reads lists to find them.
@@ -93,7 +94,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             instructions.Upsert(run, new ModelInstruction("run.context",
                 $"This run: projectId {projectId}, chatId {chatId}, branchId {branchId}. The main branch id equals the chat id.",
                 900, ModelInstructionLifetime.Run));
-        await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), token);
+        if (!request.IsGuide) await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), token);
         // Set while the application compacts the history itself, so its summary is accounted as a
         // compaction rather than as a checkpoint the model asked for.
         var compactingAhead = false;
@@ -220,14 +221,16 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var permitted = new List<AgentTool>();
             if (session is not null)
                 foreach (var tool in session.Tools)
-                    if ((await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") permitted.Add(tool);
+                    if ((!request.IsGuide || tool.ServerId == AppMcpServer.Id && tool.OriginalName is "app_navigate" or "ask_user")
+                        && (await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") permitted.Add(tool);
+            if (request.IsGuide) toolCatalog.Pin(run, ["app_navigate", "ask_user"]);
             toolCatalog.Update(run, permitted);
             // Once per turn, before its first step: which skill fits the new message, and which tools
             // the first steps need. The tools are pinned before the selector cuts the list.
             if (!routed)
             {
                 routed = true;
-                if (interactive && servers.Contains(AppMcpServer.Id)
+                if (interactive && !request.IsGuide && servers.Contains(AppMcpServer.Id)
                     && await RouteAsync(run, context, permitted, token) is { } route)
                 {
                     var runSkill = permitted.FirstOrDefault(tool =>
@@ -259,7 +262,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     ToolDiscoveryInstruction(selection.AvailableCount, selectedTools.Count),
                     990, ModelInstructionLifetime.Request));
             else instructions.Remove(run, "run.tool-discovery");
-            if (servers.Contains(AppMcpServer.Id))
+            if (!request.IsGuide && servers.Contains(AppMcpServer.Id))
                 await UpsertActiveSkillAsync(run, context, token);
             var calls = new List<ChatToolCall>();
             var content = new StringBuilder();
@@ -742,6 +745,22 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// The run-wide rule for ending a turn. A response without tool calls is the final answer, so a
     /// model that stops to announce its next step has ended the turn there; this says not to.
     /// </summary>
+    private const string GuideFinishingInstruction =
+        "This is a visual application guide. Teach with app_navigate comments beside the relevant controls; "
+        + "all substantive explanations, examples and takeaways belong there. Ask learning choices through ask_user, "
+        + "with concrete options, allowOther=true and an invitation to write a custom interest. Follow the answers. "
+        + "Opening interests and questions within an unfinished topic explicitly use timeoutSeconds=0 and timeoutBehavior='cancel'. "
+        + "Recommend continuing that topic, not Stop. Only an important fork after the current branch and takeaway are complete "
+        + "may use timeoutSeconds=30 and timeoutBehavior='cancel', with Finish recommended; silence then ends the completed tour. "
+        + "Do not infer topic completion from a fixed number of steps. Do not advance or choose while a question is pending. "
+        + "Assistant chat content may only record brief progress markers, never essays or instructional lists. "
+        + "Include the next tool call with progress text: a reply without a tool call ends the tour. "
+        + "Do not create or change content as a demonstration. Stop when a navigation result is stopped/expired. "
+        + "On unavailable, discover targets and offer a visible route through ask_user instead of ending the guide. "
+        + "Use app_navigate action='show' on widgets.* even when not currently visible: the window temporarily shows, opens and scrolls to it. "
+        + "Stop when an outside-chat question is cancelled or unanswered. Use the tour's resolved language. Finish with one short "
+        + "completion or stop phrase; do not recap the lesson at length in chat.";
+
     private const string FinishingInstruction =
         "Keep working with tools until the request is done. Before your first tool calls, write a brief "
         + "user-facing progress note in the assistant message's content explaining what you will do. During longer "
@@ -787,7 +806,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     private const string AskUserTool = "ask_user";
 
     private static bool AsksTheUser(AgentTool tool) =>
-        tool.ServerId == AppMcpServer.Id && tool.OriginalName == AskUserTool;
+        tool.ServerId == AppMcpServer.Id && tool.OriginalName is AskUserTool or "app_navigate";
 
     /// <summary>
     /// The turn's own hour, which time spent waiting on a person does not count against.

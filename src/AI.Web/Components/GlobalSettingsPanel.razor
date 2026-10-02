@@ -15,7 +15,7 @@
 @implements IAsyncDisposable
 
 <div class="permissions-drawer-backdrop"></div>
-<aside class="permissions-drawer settings-drawer @(Section == "Settings" ? "is-narrow" : null)" aria-label="@Title" @ref="_drawer" @onclick:stopPropagation="true">
+<aside class="permissions-drawer settings-drawer @(Section == "Settings" ? "is-narrow" : null)" data-app-target="@GuideSectionTarget" aria-label="@Title" @ref="_drawer" @onclick:stopPropagation="true">
     <header>
         <div><h2>@Title</h2><p>@Description</p></div>
         <div class="settings-drawer-header-actions">
@@ -24,7 +24,7 @@
                 <button class="icon-action" type="button" title="Import from clipboard or file (or press Ctrl+V here)" aria-label="Import settings" disabled="@(_saving || !_loaded)" @onclick="OpenImport"><AppIcon Name="import" /></button>
                 <button class="icon-action" type="button" title="Export to clipboard or file" aria-label="Export settings" disabled="@(_saving || !_loaded)" @onclick="OpenExport"><AppIcon Name="export" /></button>
             }
-            <button class="icon-action" type="button" title="Close" aria-label="Close @Title" disabled="@_saving" @onclick="RequestCloseAsync"><AppIcon Name="drawer-close" /></button>
+            <button class="icon-action" data-app-target="@(Section == "Connections" ? "settings.connections.close" : null)" type="button" title="Close" aria-label="Close @Title" disabled="@_saving" @onclick="RequestCloseAsync"><AppIcon Name="drawer-close" /></button>
         </div>
     </header>
     <div class="settings-drawer-content">
@@ -66,16 +66,16 @@
                         <section class="settings-group" aria-labelledby="settings-appearance">
                             <h3 id="settings-appearance">Appearance</h3>
                             <div class="settings-card">
-                                <div class="settings-row is-stacked" role="radiogroup" aria-labelledby="settings-theme">
+                                <div class="settings-row is-stacked" data-app-target="settings.appearance.theme" role="radiogroup" aria-labelledby="settings-theme">
                                     <span class="settings-row-label" id="settings-theme">Theme</span>
                                     <span class="theme-options">
                                         @foreach (var option in ThemeOptions)
                                         {
-                                            <label class="theme-option @(_theme == option.Value ? "selected" : string.Empty)"><input type="radio" name="theme" checked="@(_theme == option.Value)" @onchange="() => SetThemeAsync(option.Value)" /><span>@option.Label</span></label>
+                                            <label class="theme-option @(_theme == option.Value ? "selected" : string.Empty)"><input type="radio" name="theme" value="@option.Value.ToString().ToLowerInvariant()" checked="@(_theme == option.Value)" @onchange="() => SetThemeAsync(option.Value)" /><span>@option.Label</span></label>
                                         }
                                     </span>
                                 </div>
-                                <div class="settings-row" role="radiogroup" aria-labelledby="settings-accent">
+                                <div class="settings-row" data-app-target="settings.appearance.accent" role="radiogroup" aria-labelledby="settings-accent">
                                     <span class="settings-row-label" id="settings-accent">Accent</span>
                                     <span class="accent-options">
                                         @foreach (var accent in Enum.GetValues<AccentColor>())
@@ -85,7 +85,7 @@
                                         }
                                     </span>
                                 </div>
-                                <div class="settings-row">
+                                <div class="settings-row" data-app-target="settings.appearance.corners">
                                     <span class="settings-row-label">Corners</span>
                                     <span class="corner-roundness-control">
                                         <input type="range" min="0" max="200" step="25" value="@_cornerRoundnessPercent"
@@ -99,38 +99,52 @@
                         <section class="settings-group" aria-labelledby="settings-chat">
                             <h3 id="settings-chat">Chat</h3>
                             <div class="settings-card">
-                                <label class="settings-row">
+                                <label class="settings-row" data-app-target="settings.chat.context_usage">
                                     <span class="settings-row-label">Context window usage</span>
                                     <input class="settings-switch" type="checkbox" role="switch" checked="@_showContextWindowUsage" @onchange="SetShowContextWindowUsageAsync" />
                                 </label>
-                                <label class="settings-row">
+                                <label class="settings-row" data-app-target="settings.chat.turn_tokens">
                                     <span class="settings-row-text"><span class="settings-row-label">Tokens per turn</span><span class="settings-row-hint">Next to each turn's time</span></span>
                                     <input class="settings-switch" type="checkbox" role="switch" checked="@_showTurnTokens" @onchange="SetShowTurnTokensAsync" />
                                 </label>
                                 @* These are the Host's: it makes the model calls, whichever window is open. *@
                                 <details class="settings-disclosure">
-                                    <summary class="settings-row">
+                                    <summary class="settings-row" data-app-target="settings.chat.helpers">
                                         <span class="settings-row-text"><span class="settings-row-label">Model helpers</span><span class="settings-row-hint">Each makes one more request to the chat's connection</span></span>
                                         <span class="settings-row-value">@ChatHelpersOn of 4</span>
                                         <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                                     </summary>
-                                    <label class="settings-row">
+                                    <label class="settings-row" data-app-target="settings.chat.auto_title">
                                         <span class="settings-row-label">Name new chats after the first answer</span>
                                         <input class="settings-switch" type="checkbox" role="switch" checked="@_chatAutomation.AutoTitle" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { AutoTitle = args.Value is true })" />
                                     </label>
-                                    <label class="settings-row">
+                                    <label class="settings-row" data-app-target="settings.chat.reply_suggestions">
                                         <span class="settings-row-label">Suggest a reply after each answer</span>
                                         <input class="settings-switch" type="checkbox" role="switch" checked="@_chatAutomation.SuggestReplies" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { SuggestReplies = args.Value is true })" />
                                     </label>
-                                    <label class="settings-row">
+                                    <label class="settings-row" data-app-target="settings.chat.review_suggestions">
                                         <span class="settings-row-label">Suggest review comments</span>
                                         <input class="settings-switch" type="checkbox" role="switch" checked="@_chatAutomation.SuggestComments" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { SuggestComments = args.Value is true })" />
                                     </label>
-                                    <label class="settings-row">
+                                    <label class="settings-row" data-app-target="settings.chat.skill_routing">
                                         <span class="settings-row-label">Pick a skill for each new message</span>
                                         <input class="settings-switch" type="checkbox" role="switch" checked="@_chatAutomation.RouteSkills" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { RouteSkills = args.Value is true })" />
                                     </label>
                                 </details>
+                            </div>
+                        </section>
+                        <section class="settings-group" aria-labelledby="settings-guide">
+                            <h3 id="settings-guide">Application guide</h3>
+                            <div class="settings-card">
+                                <label class="settings-row">
+                                    <span class="settings-row-text"><span class="settings-row-label">Suggest help when idle</span><span class="settings-row-hint">At most once a day. Unanswered invitations close automatically.</span></span>
+                                    <input class="settings-switch" data-app-target="settings.guide.enabled" type="checkbox" role="switch" checked="@_guideSuggestionsEnabled" @onchange="SetGuideSuggestionsAsync" />
+                                </label>
+                                <label class="settings-row">
+                                    <span class="settings-row-label">Idle time before a suggestion</span>
+                                    <select data-app-target="settings.guide.idle" value="@_guideIdleMinutes" @onchange="SetGuideIdleAsync"><option value="1">1 minute</option><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="120">2 hours</option></select>
+                                </label>
+                                <div class="settings-row" data-app-target="settings.guide.progress"><span class="settings-row-text"><span class="settings-row-label">Learning progress</span><span class="settings-row-hint">@_guideCompletedCount topics completed</span></span><button class="compact-action" type="button" @onclick="ResetGuideProgressAsync">Reset progress</button></div>
                             </div>
                         </section>
                         <section class="settings-group" aria-labelledby="settings-sounds">
@@ -138,9 +152,9 @@
                             <div class="settings-card">
                                 <label class="settings-row">
                                     <span class="settings-row-label">New chat notifications</span>
-                                    <input class="settings-switch" type="checkbox" role="switch" checked="@_notificationSoundEnabled" @onchange="SetNotificationSoundAsync" />
+                                    <input class="settings-switch" data-app-target="settings.sounds.notifications" type="checkbox" role="switch" checked="@_notificationSoundEnabled" @onchange="SetNotificationSoundAsync" />
                                 </label>
-                                <label class="settings-row">
+                                <label class="settings-row" data-app-target="settings.sounds.other">
                                     <span class="settings-row-label">Other sounds</span>
                                     <input class="settings-switch" type="checkbox" role="switch" checked="@_otherSoundsEnabled" @onchange="SetOtherSoundsAsync" />
                                 </label>
@@ -166,22 +180,22 @@
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
                             <nav class="settings-list">@foreach (var connectionItem in _connections) { <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span>@connectionItem.Name</span><small>@ConnectionStatus(connectionItem)</small></button>@if (connectionItem.Id == _selectedConnectionId) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without the key)" aria-label="Copy connection as JSON" @onclick="() => CopyConnectionAsync(connectionItem)"><AppIcon Name="copy" /></button><button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button></span> }</div> }</nav>
-                            <button class="icon-action settings-list-add" type="button" title="Add connection" aria-label="Add connection" @onclick="AddConnection"><AppIcon Name="plus" /></button>
+                            <button class="icon-action settings-list-add" data-app-target="settings.connections.add" type="button" title="Add connection" aria-label="Add connection" @onclick="AddConnection"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedConnection() is { } connection)
                         {
                             var limits = EffectiveLimits(connection);
                             <form class="global-form settings-form" autocomplete="off" @onsubmit:preventDefault="true">
                                 <div class="settings-card">
-                                    <label class="settings-row">
+                                    <label class="settings-row" data-app-target="settings.connection.enabled">
                                         <span class="settings-row-label">Enabled</span>
                                         <input class="settings-switch" type="checkbox" role="switch" @bind="connection.Enabled" />
                                     </label>
-                                    <label class="settings-row">
+                                    <label class="settings-row" data-app-target="settings.connection.default">
                                         <span class="settings-row-text"><span class="settings-row-label">Default</span><span class="settings-row-hint">Used when a chat names no other</span></span>
                                         <input class="settings-switch" type="checkbox" role="switch" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" />
                                     </label>
-                                    <label class="settings-row">
+                                    <label class="settings-row" data-app-target="settings.connection.subtasks">
                                         <span class="settings-row-text"><span class="settings-row-label">For subtasks</span><span class="settings-row-hint">Delegated work may go here</span></span>
                                         <input class="settings-switch" type="checkbox" role="switch" disabled="@(!connection.Enabled)" checked="@connection.ForSubtasks" @onchange="args => SetSubtaskConnection(connection.Id, args)" />
                                     </label>
@@ -190,10 +204,10 @@
                                     <h3 id="connection-endpoint">Endpoint</h3>
                                     <div class="settings-card">
                                         <label class="settings-row settings-field"><span class="settings-row-label">Name</span><InputText autocomplete="off" @bind-Value="connection.Name" /></label>
-                                        <label class="settings-row settings-field"><span class="settings-row-label">Base URL</span><input type="url" autocomplete="url" class="text-input" placeholder="https://api.openai.com/v1" @bind="connection.BaseUrl" @bind:event="oninput" @bind:after="() => OnEndpointChanged(connection.Id)" /></label>
-                                        <label class="settings-row settings-field"><span class="settings-row-label">API key</span><InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" @bind-Value:after="() => OnEndpointChanged(connection.Id)" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : connection.KeyMissing ? "Needed: imported without its key" : "Optional")" class="@(connection.NeedsKey ? "needs-key" : null)" /></label>
+                                        <label class="settings-row settings-field" data-app-target="settings.connection.url"><span class="settings-row-label">Base URL</span><input type="url" autocomplete="url" class="text-input" placeholder="https://api.openai.com/v1" @bind="connection.BaseUrl" @bind:event="oninput" @bind:after="() => OnEndpointChanged(connection.Id)" /></label>
+                                        <label class="settings-row settings-field" data-app-target="settings.connection.credential"><span class="settings-row-label">API key</span><InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" @bind-Value:after="() => OnEndpointChanged(connection.Id)" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : connection.KeyMissing ? "Needed: imported without its key" : "Optional")" class="@(connection.NeedsKey ? "needs-key" : null)" /></label>
                                         @* A div, not a label: a label refocuses the picker on any click inside it. *@
-                                        <div class="settings-row settings-field">
+                                        <div class="settings-row settings-field" data-app-target="settings.connection.model">
                                             <span class="settings-row-label">Model</span>
                                             <span class="settings-field-control"><ModelPicker @bind-Value="connection.Model" AriaLabel="Model" Models="@(_resolvedModels.TryGetValue(connection.Id, out var list) ? list : null)" Loading="@(_resolvingModelsForId == connection.Id)" Error="@(_resolvedErrors.TryGetValue(connection.Id, out var err) ? err : null)" OnRetry="@(() => LoadModelsIfStaleAsync(connection.Id, force: true))" Placeholder="@ModelPickerPlaceholder(connection)" EmptyHint="@ModelPickerEmptyHint(connection)" /></span>
                                             @if (_resolvingModelsForId == connection.Id) { <span class="model-loading" aria-label="Loading models" role="status"><AppIcon Name="spinner" Class="tool-row-spinner" /></span> }
@@ -209,8 +223,8 @@
                                                 <span class="settings-row-value">@RatingLabel(connection.Capability, Capabilities)</span>
                                                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                                             </summary>
-                                            <label class="settings-row settings-field"><span class="settings-row-label">Capability</span><span class="settings-field-control settings-range"><input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><output title="Capability rating used when selecting a connection for delegated work">@RatingLabel(connection.Capability, Capabilities)</output></span></label>
-                                            <label class="settings-row settings-field"><span class="settings-row-label">Good for</span><InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="Vision, long context, local" /></label>
+                                            <label class="settings-row settings-field" data-app-target="settings.connection.capability"><span class="settings-row-label">Capability</span><span class="settings-field-control settings-range"><input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><output title="Capability rating used when selecting a connection for delegated work">@RatingLabel(connection.Capability, Capabilities)</output></span></label>
+                                            <label class="settings-row settings-field" data-app-target="settings.connection.good_for"><span class="settings-row-label">Good for</span><InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="Vision, long context, local" /></label>
                                         </details>
                                         <details class="settings-disclosure">
                                             <summary class="settings-row">
@@ -218,8 +232,8 @@
                                                 <span class="settings-row-value" title="@($"Context window: {limits.ContextWindowTokens} tokens ({SourceLabel(limits.ContextWindowSource)}). Reserved output: {limits.ReservedOutputTokens} tokens ({SourceLabel(limits.ReservedOutputSource)})")">@FormatTokens(limits.ContextWindowTokens) / @FormatTokens(limits.ReservedOutputTokens)</span>
                                                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                                             </summary>
-                                            <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Context window</span><span class="settings-row-hint">@limits.ContextWindowTokens tokens, @SourceLabel(limits.ContextWindowSource)</span></span><input type="number" min="1024" max="4000000" step="1" title="Total token budget for input and the reserved response; empty uses the resolved model default" placeholder="@limits.ContextWindowTokens" @bind="connection.ContextWindowTokens" /></label>
-                                            <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Reserved output</span><span class="settings-row-hint">@limits.ReservedOutputTokens tokens, @SourceLabel(limits.ReservedOutputSource)</span></span><input type="number" min="256" max="1000000" step="1" title="Space kept free for the model response when planning context; empty uses the resolved model default" placeholder="@limits.ReservedOutputTokens" @bind="connection.ReservedOutputTokens" /></label>
+                                            <label class="settings-row settings-field" data-app-target="settings.connection.context_window"><span class="settings-row-text"><span class="settings-row-label">Context window</span><span class="settings-row-hint">@limits.ContextWindowTokens tokens, @SourceLabel(limits.ContextWindowSource)</span></span><input type="number" min="1024" max="4000000" step="1" title="Total token budget for input and the reserved response; empty uses the resolved model default" placeholder="@limits.ContextWindowTokens" @bind="connection.ContextWindowTokens" /></label>
+                                            <label class="settings-row settings-field" data-app-target="settings.connection.reserved_output"><span class="settings-row-text"><span class="settings-row-label">Reserved output</span><span class="settings-row-hint">@limits.ReservedOutputTokens tokens, @SourceLabel(limits.ReservedOutputSource)</span></span><input type="number" min="256" max="1000000" step="1" title="Space kept free for the model response when planning context; empty uses the resolved model default" placeholder="@limits.ReservedOutputTokens" @bind="connection.ReservedOutputTokens" /></label>
                                         </details>
                                         <details class="settings-disclosure">
                                             <summary class="settings-row">
@@ -227,9 +241,9 @@
                                                 <span class="settings-row-value">@PriceSummary(connection)</span>
                                                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                                             </summary>
-                                            <label class="settings-row settings-field"><span class="settings-row-label">Input</span><input type="number" min="0" max="10000" step="0.01" title="US dollars per million uncached input tokens; used when the endpoint does not quote a request cost" @bind="connection.InputPrice" /></label>
-                                            <label class="settings-row settings-field"><span class="settings-row-label">Output</span><input type="number" min="0" max="10000" step="0.01" title="US dollars per million output tokens; used when the endpoint does not quote a request cost" @bind="connection.OutputPrice" /></label>
-                                            <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Cached input</span><span class="settings-row-hint">Empty: same as input</span></span><input type="number" min="0" max="10000" step="0.01" title="US dollars per million cached input tokens; empty uses the input price" @bind="connection.CachedInputPrice" /></label>
+                                            <label class="settings-row settings-field" data-app-target="settings.connection.input_price"><span class="settings-row-label">Input</span><input type="number" min="0" max="10000" step="0.01" title="US dollars per million uncached input tokens; used when the endpoint does not quote a request cost" @bind="connection.InputPrice" /></label>
+                                            <label class="settings-row settings-field" data-app-target="settings.connection.output_price"><span class="settings-row-label">Output</span><input type="number" min="0" max="10000" step="0.01" title="US dollars per million output tokens; used when the endpoint does not quote a request cost" @bind="connection.OutputPrice" /></label>
+                                            <label class="settings-row settings-field" data-app-target="settings.connection.cached_price"><span class="settings-row-text"><span class="settings-row-label">Cached input</span><span class="settings-row-hint">Empty: same as input</span></span><input type="number" min="0" max="10000" step="0.01" title="US dollars per million cached input tokens; empty uses the input price" @bind="connection.CachedInputPrice" /></label>
                                         </details>
                                     </div>
                                 </section>
@@ -323,7 +337,7 @@
                                                         <span class="settings-row-label mcp-tool-title" title="@policy.SchemaHash">@policy.Name</span>
                                                         @if (ToolLimitsSummary(policy) is { } limitsSummary) { <span class="settings-row-hint">@limitsSummary</span> }
                                                     </span>
-                                                    <select class="mcp-tool-decision is-@policy.Decision.ToLowerInvariant()" title="Global default: Allow runs without asking, Ask requires approval, Deny refuses calls; chat and project rules can override it" @bind="policy.Decision" aria-label="Policy for @policy.Name"><option>Ask</option><option>Allow</option><option>Deny</option></select>
+                                                    <select data-app-target="settings.tools.decision" class="mcp-tool-decision is-@policy.Decision.ToLowerInvariant()" title="Global default: Allow runs without asking, Ask requires approval, Deny refuses calls; chat and project rules can override it" @bind="policy.Decision" aria-label="Policy for @policy.Name"><option>Ask</option><option>Allow</option><option>Deny</option></select>
                                                     <button class="icon-action mcp-tool-limits-toggle @(expanded ? "selected" : null)" type="button" title="Limits" aria-label="Limits for @policy.Name" aria-expanded="@expanded" @onclick="() => _expandedTool = expanded ? null : policy.Name"><AppIcon Name="@(expanded ? "chevron-up" : "chevron-down")" /></button>
                                                 </div>
                                                 @if (expanded)
@@ -445,6 +459,33 @@
     private bool _otherSoundsEnabled = true;
     private bool _showContextWindowUsage = true;
     private bool _showTurnTokens;
+    private bool _guideSuggestionsEnabled = true;
+    private int _guideIdleMinutes = 5;
+    private int _guideCompletedCount;
+    private string? GuideSectionTarget => Section switch
+    {
+        "Settings" => "settings", "Connections" => "settings.connections", "MCP" => "settings.tools",
+        "Skills" => "settings.skills", "Memory" => "settings.memory", _ => null
+    };
+
+    private async Task SetGuideSuggestionsAsync(ChangeEventArgs args)
+    {
+        _guideSuggestionsEnabled = args.Value is true;
+        await ClientSettings.UpdateAsync(current => current with { GuideSuggestionsEnabled = _guideSuggestionsEnabled });
+    }
+
+    private async Task SetGuideIdleAsync(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var minutes)) return;
+        _guideIdleMinutes = Math.Clamp(minutes, 1, 120);
+        await ClientSettings.UpdateAsync(current => current with { GuideIdleMinutes = _guideIdleMinutes });
+    }
+
+    private async Task ResetGuideProgressAsync()
+    {
+        _guideCompletedCount = 0;
+        await ClientSettings.UpdateAsync(current => current with { CompletedGuideTopics = [], GuideLastOfferedAt = DateTimeOffset.UtcNow });
+    }
     private ChatAutomationSettings _chatAutomation = new();
     private ElementReference _drawer;
     private IJSObjectReference? _transferModule;
@@ -468,6 +509,9 @@
         _otherSoundsEnabled = clientSettings.OtherSoundsEnabled;
         _showContextWindowUsage = clientSettings.ShowContextWindowUsage;
         _showTurnTokens = clientSettings.ShowTurnTokens;
+        _guideSuggestionsEnabled = clientSettings.GuideSuggestionsEnabled;
+        _guideIdleMinutes = clientSettings.GuideIdleMinutes;
+        _guideCompletedCount = clientSettings.CompletedGuideTopics.Count;
         await LoadGlobalSettingsAsync();
     }
     private async Task LoadGlobalSettingsAsync()

@@ -24,7 +24,7 @@ public sealed record ChatRunSnapshot(Guid ProjectId, Guid ChatId, Guid BranchId,
     // What the current turn of this branch has used so far, or the last turn once it ended —
     // subtasks, routing and compaction included. In memory like Context; the ledger keeps the
     // durable copy.
-    Usage.TurnTokenUsage? TurnUsage = null);
+    Usage.TurnTokenUsage? TurnUsage = null, bool IsGuide = false);
 
 /// <summary>
 /// A bounded, self-contained tail of messages persisted while a run is active. Every append names

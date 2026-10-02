@@ -11,6 +11,12 @@ public sealed class RunEndpoints : IEndpointModule
 {
     public void Map(IEndpointRouteBuilder routes)
     {
+        routes.MapPost("/api/navigation/{requestId:guid}/claim", (Guid requestId,
+            AI.Contracts.Navigation.AppNavigationDecision decision, AI.Application.Notifications.IAppNavigationSignal navigation) =>
+            navigation.Claim(requestId, decision.ClientId) ? Results.Ok() : Results.Conflict());
+        routes.MapPost("/api/navigation/{requestId:guid}/complete", (Guid requestId,
+            AI.Contracts.Navigation.AppNavigationDecision decision, AI.Application.Notifications.IAppNavigationSignal navigation) =>
+            navigation.Complete(requestId, decision) ? Results.Ok() : Results.Conflict());
         routes.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/submit",
             (Guid projectId, Guid chatId, SubmitChatMessageRequest request, IChatRunDispatcher dispatcher, CancellationToken cancellationToken) =>
                 dispatcher.SubmitAsync(projectId, chatId, request, cancellationToken));

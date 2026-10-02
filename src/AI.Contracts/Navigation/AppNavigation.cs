@@ -10,4 +10,13 @@ namespace AI.Contracts.Navigation;
 /// </param>
 /// <param name="ProjectName">The target's names, for the words that tell the user what happened.</param>
 public sealed record AppNavigation(Guid ProjectId, Guid? ChatId = null, Guid? BranchId = null,
-    Guid? SourceChatId = null, string? ProjectName = null, string? ChatTitle = null);
+    Guid? SourceChatId = null, string? ProjectName = null, string? ChatTitle = null,
+    string? Target = null, string Action = "click", string? Comment = null,
+    bool WaitForContinue = false, bool WaitForUser = false, string? Value = null,
+    Guid RequestId = default, DateTimeOffset? ExpiresAt = null)
+{
+    public const int DefaultTimeoutSeconds = 15;
+}
+
+public sealed record AppNavigationResponse(string Outcome, string? Error = null, IReadOnlyList<AppNavigationTarget>? Targets = null);
+public sealed record AppNavigationDecision(Guid ClientId, string Outcome, string? Error = null, IReadOnlyList<AppNavigationTarget>? Targets = null);

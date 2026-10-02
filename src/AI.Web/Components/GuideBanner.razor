@@ -1,0 +1,33 @@
+@* The wide row above the start screen's cards. Without a model nothing there can work yet, so
+   the row offers setting one up instead of the guide; the button is the same, because the guide
+   without a model is the tour through a connection's fields. *@
+
+@if (!HasModel)
+{
+    <article class="chat-tips-guide is-setup" role="note">
+        <span class="chat-tips-guide-badge"><AppIcon Name="connection" /></span>
+        <span class="chat-tips-guide-text">
+            <strong>Connect a model</strong>
+            <span>Chats and the guide are answered by a model, and none is enabled yet. Set one up step by step: address, key and model.</span>
+        </span>
+        <button type="button" class="chat-tip-action is-primary" @onclick="OnStartGuide">Set up a model<AppIcon Name="chevron-right" /></button>
+    </article>
+}
+else if (!SetupOnly)
+{
+    <article class="chat-tips-guide">
+        <span class="chat-tips-guide-badge"><AppIcon Name="book" /></span>
+        <span class="chat-tips-guide-text">
+            <strong>Application guide</strong>
+            <span>Explore projects, chats, branches and settings step by step.</span>
+        </span>
+        <button type="button" class="chat-tip-action is-primary" @onclick="OnStartGuide">Start guide<AppIcon Name="chevron-right" /></button>
+    </article>
+}
+
+@code {
+    [Parameter] public bool HasModel { get; set; } = true;
+    /// <summary>Shown only while no model is enabled, as in an open chat where the guide is not on offer.</summary>
+    [Parameter] public bool SetupOnly { get; set; }
+    [Parameter] public EventCallback OnStartGuide { get; set; }
+}

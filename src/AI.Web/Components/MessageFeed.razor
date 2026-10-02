@@ -58,7 +58,32 @@
 <div class="workspace-messages" @ref="_messagesContainer">
     @if (!HasSelectedProject)
     {
-        <div class="workspace-empty"><h2>Select a project</h2><p>Choose a project on the left or create a new one.</p></div>
+        @* Laid out like a new chat's screen: the same banner and the same cards, here for what
+           comes before the first chat. *@
+        <div class="workspace-empty workspace-empty-start">
+            <h2>Select a project</h2>
+            <p>Choose a project on the left or create a new one.</p>
+            <GuideBanner HasModel="@HasModel" OnStartGuide="@OnStartGuide" />
+            <section class="chat-tips" aria-label="Before the first chat">
+                <div class="chat-tips-grid">
+                    <article class="chat-tip">
+                        <div class="chat-tip-head"><AppIcon Name="project" /><span class="chat-tip-title">Projects</span></div>
+                        <p class="chat-tip-text">A project holds chats together with folder access, memory, skills and tool permissions.</p>
+                        <p class="chat-tip-actions"><button type="button" class="chat-tip-action is-primary" @onclick="OnCreateProject"><AppIcon Name="plus" />New project</button></p>
+                    </article>
+                    <article class="chat-tip">
+                        <div class="chat-tip-head"><AppIcon Name="connection" /><span class="chat-tip-title">Model connections</span></div>
+                        <p class="chat-tip-text">Each connection is an OpenAI-compatible endpoint with its key and model. The default one answers new chats.</p>
+                        <p class="chat-tip-actions"><button type="button" class="chat-tip-action" @onclick='() => OnOpenSettings.InvokeAsync("Connections")'>Connections</button></p>
+                    </article>
+                    <article class="chat-tip">
+                        <div class="chat-tip-head"><AppIcon Name="settings" /><span class="chat-tip-title">Settings</span></div>
+                        <p class="chat-tip-text">Theme and corners, sounds, chat helpers such as reply suggestions, and how often the guide is offered.</p>
+                        <p class="chat-tip-actions"><button type="button" class="chat-tip-action" @onclick='() => OnOpenSettings.InvokeAsync("Settings")'>Settings</button></p>
+                    </article>
+                </div>
+            </section>
+        </div>
     }
     else if (SelectedChat is null)
     {
@@ -66,6 +91,7 @@
             <h2>Start a conversation</h2>
             <p>Write a message below. A new chat will be created in <button class="workspace-empty-project" type="button" title="Project menu" aria-haspopup="menu" @onclick="args => OnOpenProjectMenu.InvokeAsync(args)">@SelectedProjectName</button>.</p>
             <ChatTips ProjectId="@SelectedProjectId" HasDirectories="@HasProjectDirectories" IsComposerEmpty="@IsComposerEmpty"
+                      OnStartGuide="@OnStartGuide" HasModel="@HasModel" OnStartTopic="@OnStartGuideTopic"
                       OnInsertText="OnInsertComposerText" OnOpenProjectMenu="OnOpenProjectMenu"
                       OnAddDirectory="OnAddDirectory" OnCreateSkill="OnCreateSkill" />
         </div>
@@ -85,7 +111,7 @@
                         else
                         {
                             var options = GetBranchOptions(pickerMessage);
-                            <button class="branch-picker-trigger" type="button" title="Choose branch" aria-label="Choose branch" aria-expanded="@(MessageBranchMenuId == pickerMessage.Id ? "true" : "false")" @onclick="() => OnToggleBranchMenu.InvokeAsync(pickerMessage.Id)"><AppIcon Name="git-branch" /><span>Branch @GetActiveBranchPosition(options) of @options.Count</span></button>
+                            <button class="branch-picker-trigger" data-app-target="chat.branches" type="button" title="Choose branch" aria-label="Choose branch" aria-expanded="@(MessageBranchMenuId == pickerMessage.Id ? "true" : "false")" @onclick="() => OnToggleBranchMenu.InvokeAsync(pickerMessage.Id)"><AppIcon Name="git-branch" /><span>Branch @GetActiveBranchPosition(options) of @options.Count</span></button>
                             @if (MessageBranchMenuId == pickerMessage.Id)
                             {
                                 <span class="branch-picker-menu" role="menu">
@@ -438,7 +464,13 @@
         }
         @* A question the model asked, in the same place and for the same reason as an approval:
            it is what the person has to do next, so it is what they should end up looking at. *@
-        @if (SelectedRun is { PendingPrompt: { } prompt } promptRun)
+        @* A chat that already exists still cannot be answered without a model: the setup row sits
+           at the end of it, where the reply would appear. *@
+        @if (!HasModel)
+        {
+            <div class="chat-model-setup"><GuideBanner HasModel="false" SetupOnly="true" OnStartGuide="@OnStartGuide" /></div>
+        }
+        @if (SelectedRun is { PendingPrompt: { Presentation: "chat" } prompt } promptRun)
         {
             <UserPromptCard Prompt="prompt"
                             OnAnswer="response => RunsApi.AnswerPromptAsync(promptRun.ProjectId, promptRun.ChatId, promptRun.BranchId, response, CancellationToken.None)" />
@@ -481,6 +513,13 @@
     [Parameter] public Guid? SelectedProjectId { get; set; }
     [Parameter] public bool HasProjectDirectories { get; set; }
     [Parameter] public bool IsComposerEmpty { get; set; }
+    [Parameter] public EventCallback OnStartGuide { get; set; }
+    /// <summary>Whether any model connection is enabled; without one the first message cannot be answered.</summary>
+    [Parameter] public bool HasModel { get; set; } = true;
+    [Parameter] public EventCallback OnCreateProject { get; set; }
+    [Parameter] public EventCallback<string> OnStartGuideTopic { get; set; }
+    /// <summary>Opens a settings section by name, as the sidebar's settings entries do.</summary>
+    [Parameter] public EventCallback<string> OnOpenSettings { get; set; }
     [Parameter] public EventCallback<string> OnInsertComposerText { get; set; }
     [Parameter] public EventCallback OnAddDirectory { get; set; }
     [Parameter] public EventCallback OnCreateSkill { get; set; }

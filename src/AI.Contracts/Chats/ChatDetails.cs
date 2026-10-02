@@ -14,4 +14,4 @@ public sealed record ChatDetails(
     bool AutoTitlePending = false,
     DateTimeOffset? ArchivedAt = null,
     Guid? ArchiveOperationId = null,
-    ToolApprovalMode ApprovalMode = ToolApprovalMode.Ask);
+    ToolApprovalMode ApprovalMode = ToolApprovalMode.Ask, bool IsGuide = false, string GuideMode = "show");

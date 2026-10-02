@@ -6,11 +6,11 @@
    the conversation narrows to make room, and the drawers — settings, review and the rest — open
    over it as they open over everything else. What each widget shows is the caller's; the column
    owns their order, which of them are shown, and the shell they share. *@
-<aside class="chat-widgets" aria-label="Chat widgets">
+<aside class="chat-widgets" data-app-target="widgets" aria-label="Chat widgets">
     <header class="chat-widgets-header">
         <span class="chat-widgets-heading">Widgets</span>
         <span class="chat-widgets-menu-anchor">
-            <button class="icon-action" type="button" title="Show or hide widgets" aria-label="Show or hide widgets"
+            <button class="icon-action" type="button" title="Show or hide widgets" aria-label="Show or hide widgets" data-app-target="widgets.menu"
                     aria-haspopup="true" aria-expanded="@(_menuOpen ? "true" : "false")" @onclick="ToggleMenu">
                 <AppIcon Name="sliders" />
             </button>
@@ -32,34 +32,34 @@
         </span>
         @{
             var visible = GetVisible();
-            var anyExpanded = visible.Any(item => !item.Collapsed);
+            var anyExpanded = visible.Any(item => !item.Collapsed || item.Id == GuideExpandedWidgetId);
             var collapseAll = visible.Count > 0 && anyExpanded;
         }
         <button class="icon-action" type="button"
                 title="@(collapseAll ? "Collapse all widgets" : "Expand all widgets")"
                 aria-label="@(collapseAll ? "Collapse all widgets" : "Expand all widgets")"
-                aria-pressed="@(collapseAll ? "true" : "false")"
+                data-app-target="widgets.collapse" aria-pressed="@(collapseAll ? "true" : "false")"
                 disabled="@(visible.Count == 0)"
                 @onclick="ToggleAllCollapsedAsync">
             <AppIcon Name="@(collapseAll ? "chevrons-up" : "chevrons-down")" />
         </button>
-        <button class="icon-action" type="button" title="Close widgets" aria-label="Close widgets" @onclick="OnClose">
+        <button class="icon-action" type="button" title="Close widgets" aria-label="Close widgets" data-app-target="widgets.close" @onclick="OnClose">
             <AppIcon Name="drawer-close" />
         </button>
     </header>
     <div class="chat-widgets-list" @ref="_list">
-        @foreach (var widget in Widgets.Where(item => !item.Hidden))
+        @foreach (var widget in GetVisible())
         {
             if (Catalog.Find(widget.Id) is not { } definition) continue;
             var id = widget.Id;
             <div @key="id" class="chat-widget-slot">
                 @WidgetTemplate(new ChatWidgetContext(definition, widget,
-                    () => ChangeAsync(Layout.Update(Widgets, id, item => item with { Collapsed = !item.Collapsed })),
-                    () => ChangeAsync(Layout.Update(Widgets, id, item => item with { Hidden = true })),
-                    offset => ChangeAsync(Layout.MoveBy(Widgets, id, offset))))
+                    () => ToggleCollapsedAsync(id),
+                    () => HideAsync(id),
+                    offset => ChangeAsync(Layout.MoveBy(Widgets, id, offset)), id == GuideExpandedWidgetId))
             </div>
         }
-        @if (Widgets.All(item => item.Hidden))
+        @if (GetVisible().Count == 0)
         {
             <div class="chat-widgets-empty">
                 <p>Every widget is hidden.</p>
@@ -82,6 +82,10 @@
 
     [Parameter]
     public EventCallback OnClose { get; set; }
+
+    /// <summary>Temporarily shows and opens a widget without changing its saved preference.</summary>
+    [Parameter] public string? GuideExpandedWidgetId { get; set; }
+    [Parameter] public EventCallback GuideExpansionDismissed { get; set; }
 
     private ElementReference _list;
     private IJSObjectReference? _module;
@@ -108,6 +112,20 @@
 
     private Task ChangeAsync(IReadOnlyList<ChatWidgetPreference> widgets) => WidgetsChanged.InvokeAsync(widgets);
 
+    private async Task ToggleCollapsedAsync(string id)
+    {
+        var guideExpanded = id == GuideExpandedWidgetId;
+        if (guideExpanded) await GuideExpansionDismissed.InvokeAsync();
+        await ChangeAsync(Layout.Update(Widgets, id,
+            item => item with { Collapsed = guideExpanded || !item.Collapsed }));
+    }
+
+    private async Task HideAsync(string id)
+    {
+        if (id == GuideExpandedWidgetId) await GuideExpansionDismissed.InvokeAsync();
+        await ChangeAsync(Layout.Update(Widgets, id, item => item with { Hidden = true }));
+    }
+
     private Task SetShownAsync(string id, ChangeEventArgs args) =>
         ChangeAsync(Layout.Update(Widgets, id, item => item with { Hidden = args.Value is not true, Collapsed = false }));
 
@@ -116,16 +134,17 @@
     /// Hidden widgets keep their saved folded state — the person is not looking at them, so the
     /// button only acts on what is actually on screen.
     /// </summary>
-    private Task ToggleAllCollapsedAsync()
+    private async Task ToggleAllCollapsedAsync()
     {
         var visible = GetVisible();
-        if (visible.Count == 0) return Task.CompletedTask;
-        var collapse = visible.Any(item => !item.Collapsed);
-        return ChangeAsync(Layout.SetCollapsed(Widgets, collapse));
+        if (visible.Count == 0) return;
+        var collapse = visible.Any(item => !item.Collapsed || item.Id == GuideExpandedWidgetId);
+        if (GuideExpandedWidgetId is not null) await GuideExpansionDismissed.InvokeAsync();
+        await ChangeAsync(Layout.SetCollapsed(Widgets, collapse));
     }
 
     /// <summary>The widgets the person is looking at, in their saved order.</summary>
-    private List<ChatWidgetPreference> GetVisible() => Widgets.Where(item => !item.Hidden).ToList();
+    private List<ChatWidgetPreference> GetVisible() => Widgets.Where(item => !item.Hidden || item.Id == GuideExpandedWidgetId).ToList();
 
     private void ToggleMenu() => _menuOpen = !_menuOpen;
 

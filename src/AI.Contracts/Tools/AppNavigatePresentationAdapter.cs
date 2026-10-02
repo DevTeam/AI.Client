@@ -12,10 +12,18 @@ public sealed class AppNavigatePresentationAdapter : BuiltInToolPresentationAdap
     public override ToolCallPresentation DescribeCall(ToolRef tool, JsonElement? arguments)
     {
         ArgumentNullException.ThrowIfNull(tool);
-        var label = Argument(arguments, "branchId") is { Length: > 0 } ? "Open branch"
+        var action = Argument(arguments, "action");
+        var target = Argument(arguments, "target");
+        var label = action == "targets" ? "Discover application controls"
+            : target is { Length: > 0 } ? action switch
+            {
+                "show" => "Show application control", "hover" => "Point to application control",
+                "focus" => "Focus editor", "set_value" => "Edit application control", _ => "Open application control"
+            }
+            : Argument(arguments, "branchId") is { Length: > 0 } ? "Open branch"
             : Argument(arguments, "chatId") is { Length: > 0 } ? "Open chat"
             : "Open project";
-        return new ToolCallPresentation(label, null, ToolSafety.ReadOnly);
+        return new ToolCallPresentation(label, target, action == "set_value" ? ToolSafety.Mutating : ToolSafety.ReadOnly);
     }
 
     protected override ToolResultPresentation Describe(
@@ -23,9 +31,10 @@ public sealed class AppNavigatePresentationAdapter : BuiltInToolPresentationAdap
     {
         var opened = Flag(structured, "opened");
         var error = Text(structured, "error");
+        var success = opened || Text(structured, "outcome") == "targets";
         return new ToolResultPresentation(
-            opened ? Text(structured, "effect") ?? "Opened" : error ?? FirstText(result) ?? "Nothing was opened",
-            SeverityFor(!opened),
+            success ? Text(structured, "effect") ?? "Shown" : error ?? Text(structured, "effect") ?? FirstText(result) ?? "Nothing was opened",
+            SeverityFor(!success),
             [],
             null);
     }

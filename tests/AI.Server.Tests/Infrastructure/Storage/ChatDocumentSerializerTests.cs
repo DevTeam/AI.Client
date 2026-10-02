@@ -13,6 +13,22 @@ public class ChatDocumentSerializerTests
     private readonly ChatDocumentSerializer _serializer = new();
 
     [Fact]
+    public void ShouldPreserveHiddenGuideModeAndReadOldChatsAsVisible()
+    {
+        var chat = new ChatThread(new ChatId(Guid.NewGuid()), new ProjectId(Guid.NewGuid()),
+            "Guide", DateTimeOffset.UnixEpoch, isGuide: true, guideMode: "click");
+        var json = _serializer.Serialize(chat, 1);
+        var restored = _serializer.Deserialize(json).Chat;
+        restored.IsGuide.ShouldBeTrue();
+        restored.GuideMode.ShouldBe("click");
+        _serializer.DeserializeSummary(_serializer.SerializeSummary(chat, 1)).IsGuide.ShouldBeTrue();
+        var old = JsonNode.Parse(json)!.AsObject();
+        old.Remove("IsGuide");
+        old.Remove("GuideMode");
+        _serializer.Deserialize(old.ToJsonString()).Chat.IsGuide.ShouldBeFalse();
+    }
+
+    [Fact]
     public void ShouldPreserveAutomaticTitleEligibilityAndStopAfterManualRename()
     {
         var now = DateTimeOffset.UnixEpoch;

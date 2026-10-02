@@ -8,7 +8,8 @@ using Tools;
 /// here because MCP has none to give: the id the model used to name its call never crosses the
 /// protocol, so a prompt is identified by its own and shown for as long as the call runs.
 /// </summary>
-public sealed record UserPromptRequest(IReadOnlyList<UserPromptQuestion> Questions);
+public sealed record UserPromptRequest(IReadOnlyList<UserPromptQuestion> Questions,
+    string Presentation = "chat", bool SubmitDefaults = false);
 
 /// <summary>
 /// Puts a question to the person watching a run and waits for their answer.

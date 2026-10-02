@@ -14,7 +14,7 @@
 // own id-counter and ours from colliding across long transcripts.
 //
 // Each fence ends up as one of:
-//   <div class="mermaid-block" data-mermaid-state="ok">…SVG…</div>
+//   <div class="mermaid-block" data-mermaid-state="ok">…zoom toolbar…<div class="mermaid-svg">…SVG…</div></div>
 //   <div class="mermaid-block" data-mermaid-state="error">…error message…<pre>code</pre></div>
 // The original `<pre><code>` is hidden via CSS when `data-mermaid-state` is set, so a re-render
 // that replaces the node keeps its identity (the same element, same data-attribute, just the
@@ -119,6 +119,116 @@ const wrap = (original, state, content) => {
     return wrapper;
 };
 
+// Zoom controls for a rendered diagram. The fence itself is replaced by this module, so the buttons
+// are built here rather than in Razor; they land inside the same block as the SVG and take the
+// chat's --color-* tokens through CSS (see app.css). Only the ok state gets them: an error block is
+// a diagnostic to read, not a diagram to look at closely.
+//
+// The buttons are inert markup until the delegated click handler in attach() sees them, which keeps
+// them working after Blazor re-creates the markup around them.
+const ZOOM_ATTR = "data-mermaid-zoom";
+const ZOOM_ACTION_ATTR = "data-mermaid-zoom-action";
+const ZOOM_BASE_STYLE_ATTR = "data-mermaid-base-style";
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.25;
+
+// The icon paths follow the 24×24 stroked grid of AppIcon.razor; "reset" is the same circular
+// arrow the app already uses for "back to the default".
+const ZOOM_ACTIONS = [
+    { action: "out", title: "Zoom out", icon: '<path d="M5 12h14" />' },
+    { action: "in", title: "Zoom in", icon: '<path d="M12 5v14M5 12h14" />' },
+    {
+        action: "reset",
+        title: "Reset zoom",
+        icon: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" />'
+    }
+];
+
+const zoomButton = ({ action, title, icon }) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "mermaid-zoom-button";
+    button.setAttribute(ZOOM_ACTION_ATTR, action);
+    // title drives the app's own tooltip (js/tooltips.js); aria-label is the accessible name.
+    button.setAttribute("title", title);
+    button.setAttribute("aria-label", title);
+    button.innerHTML =
+        '<svg class="mermaid-zoom-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        `stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg>`;
+    return button;
+};
+
+const zoomToolbar = () => {
+    const toolbar = document.createElement("div");
+    toolbar.className = "mermaid-toolbar";
+    toolbar.setAttribute("role", "group");
+    toolbar.setAttribute("aria-label", "Diagram zoom");
+
+    // The percentage is a plain label, not a control: it reports the state the two buttons set.
+    const level = document.createElement("span");
+    level.className = "mermaid-zoom-level";
+    level.textContent = "100%";
+
+    toolbar.append(zoomButton(ZOOM_ACTIONS[0]), level, zoomButton(ZOOM_ACTIONS[1]), zoomButton(ZOOM_ACTIONS[2]));
+    return toolbar;
+};
+
+// Mermaid hands back an SVG whose own inline `style` carries a `max-width` derived from the
+// diagram's natural size — that is what keeps a two-node flowchart from being stretched across the
+// whole column. The pristine value is kept on the block and written back for every zoom, so 100%
+// restores the diagram exactly as mermaid drew it, however the block was zoomed before.
+const zoomBaseStyle = (block, svg) => {
+    const stored = block.getAttribute(ZOOM_BASE_STYLE_ATTR);
+    if (stored !== null) return stored;
+    const style = svg.getAttribute("style") ?? "";
+    block.setAttribute(ZOOM_BASE_STYLE_ATTR, style);
+    return style;
+};
+
+// Zoom is a multiple of the diagram's fitted size — the size 100% shows — so the same percentage
+// means the same picture whatever the width of the chat column or the natural size of the diagram.
+// The size is applied as width/height in px on the SVG, not as a transform: scale() leaves the
+// layout box untouched, so a zoomed-in diagram would overlap the messages below it and the block
+// would not scroll to its edges.
+//
+// The fitted size is measured with mermaid's own style put back first, every time. Measuring the
+// already-zoomed box would compound each step on the previous one, and a stored measurement would
+// go stale as soon as the chat column changes width.
+const applyZoom = (block, requested) => {
+    const value = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(requested / ZOOM_STEP) * ZOOM_STEP));
+    block.setAttribute(ZOOM_ATTR, String(value));
+
+    const svg = block.querySelector(".mermaid-svg svg");
+    if (svg) {
+        const base = zoomBaseStyle(block, svg);
+        // Put the diagram back to its fitted style before measuring, whatever it showed a moment ago.
+        svg.setAttribute("style", base);
+        const fitted = svg.getBoundingClientRect();
+        if (value !== 1 && fitted.width > 0 && fitted.height > 0) {
+            const size = `max-width: none; width: ${fitted.width * value}px; height: ${fitted.height * value}px;`;
+            svg.setAttribute("style", base.length === 0 || base.trimEnd().endsWith(";") ? `${base} ${size}` : `${base}; ${size}`);
+        }
+    }
+
+    const level = block.querySelector(".mermaid-zoom-level");
+    if (level) level.textContent = `${Math.round(value * 100)}%`;
+
+    // Both ends of the range are reachable and then hold: a button that cannot do anything says so
+    // instead of quietly ignoring the click.
+    for (const button of block.querySelectorAll(`[${ZOOM_ACTION_ATTR}]`)) {
+        const action = button.getAttribute(ZOOM_ACTION_ATTR);
+        button.disabled = (action === "out" && value <= ZOOM_MIN) || (action === "in" && value >= ZOOM_MAX);
+    }
+};
+
+const zoomBy = (block, action) => {
+    const current = Number(block.getAttribute(ZOOM_ATTR)) || 1;
+    if (action === "in") applyZoom(block, current + ZOOM_STEP);
+    else if (action === "out") applyZoom(block, current - ZOOM_STEP);
+    else if (action === "reset") applyZoom(block, 1);
+};
+
 // Render a single fence. Returns the wrapper element on success, or an error wrapper on failure.
 // Idempotent: re-running on a wrapper that already has data-mermaid-state returns it as-is.
 const renderOne = async matchedNode => {
@@ -151,7 +261,14 @@ const renderOne = async matchedNode => {
     const holder = document.createElement("div");
     holder.className = "mermaid-svg";
     holder.innerHTML = svg;
-    return wrap(matchedNode, "ok", holder);
+
+    const content = document.createDocumentFragment();
+    content.append(zoomToolbar(), holder);
+    const block = wrap(matchedNode, "ok", content);
+    // Puts the block at 100%: it records mermaid's own style for later zooms and settles the
+    // buttons' enabled state.
+    applyZoom(block, 1);
+    return block;
 };
 
 const errorBlock = (message, source) => {
@@ -213,6 +330,16 @@ const renderAll = async root => {
     }
 };
 
+// One delegated listener for every toolbar in the feed. Buttons appear and disappear as Blazor
+// diffs the transcript, so nothing is bound per button; the handler walks up to the block instead.
+const onClick = event => {
+    const button = event.target instanceof Element ? event.target.closest(`[${ZOOM_ACTION_ATTR}]`) : null;
+    if (!button) return;
+    const block = button.closest(`.${RENDERED_CLASS}`);
+    if (!block) return;
+    zoomBy(block, button.getAttribute(ZOOM_ACTION_ATTR));
+};
+
 export function attach(container) {
     let scheduled = false;
     let observer = null;
@@ -248,6 +375,8 @@ export function attach(container) {
         attributeFilter: ["class"]
     });
 
+    container.addEventListener("click", onClick);
+
     // Render whatever was already in the feed when we attached — turning on mermaid in the
     // middle of a session must not require the user to scroll back to the top.
     schedule();
@@ -258,6 +387,7 @@ export function attach(container) {
                 observer.disconnect();
                 observer = null;
             }
+            container.removeEventListener("click", onClick);
             scheduled = false;
         }
     };

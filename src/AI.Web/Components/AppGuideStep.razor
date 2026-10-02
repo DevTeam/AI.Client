@@ -1,0 +1,47 @@
+@using AI.Contracts.Navigation
+
+<aside class="@CssClass" aria-label="Application guide step" role="region" aria-live="polite">
+    <div class="app-guide-step-heading">
+        <span class="app-guide-step-badge"><AppIcon Name="book" /></span>
+        <strong>@Title</strong>
+        @if (StepNumber > 0) { <span class="app-guide-step-count">Step @StepNumber</span> }
+    </div>
+    <p class="app-guide-step-comment">@(Step.Comment ?? $"Explore {TargetLabel}.")</p>
+    @if (Step.Action is "click" or "set_value" or "focus")
+    {
+        <p class="app-guide-step-detail">@(Step.Action == "set_value" ? $"Set value to “{Step.Value}”" : Step.Action == "focus" ? "Continue to focus this editor." : "Continue to open or activate this control.")</p>
+    }
+    @if (Step.WaitForUser && !TargetUsed) { <p class="app-guide-step-detail app-guide-step-try"><AppIcon Name="hand" />Try this control yourself, then continue.</p> }
+    @if (Paused) { <p class="app-guide-step-detail">Guide paused.</p> }
+    <div class="app-guide-step-footer">
+        <div class="app-guide-step-timeout" role="timer" aria-live="off"><AppIcon Name="timer" />@(AutoContinue ? "Continues" : "Stops") automatically in @(SecondsLeft / 60):@((SecondsLeft % 60).ToString("00"))</div>
+        <div class="app-guide-actions">
+            <button class="compact-action" type="button" @onclick="OnStop">Stop</button>
+            <button class="compact-action primary" type="button" title="@(AutoContinue ? "Pressed automatically when the time runs out" : null)" disabled="@(SecondsLeft <= 0 || Busy || Paused || Step.WaitForUser && !TargetUsed)" @onclick="OnContinue">Continue</button>
+        </div>
+    </div>
+    <div class="app-guide-step-progress" aria-hidden="true"><span style="transform: scaleX(@Remaining.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture))"></span></div>
+</aside>
+
+@code {
+    [Parameter, EditorRequired] public AppNavigation Step { get; set; } = default!;
+    [Parameter] public string Title { get; set; } = "Application guide";
+    [Parameter] public int StepNumber { get; set; }
+    [Parameter] public string TargetLabel { get; set; } = "this control";
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public bool Paused { get; set; }
+    [Parameter] public bool TargetUsed { get; set; }
+    [Parameter] public int SecondsLeft { get; set; } = AppNavigation.DefaultTimeoutSeconds;
+    [Parameter] public int TotalSeconds { get; set; } = AppNavigation.DefaultTimeoutSeconds;
+    /// <summary>When the time runs out the step continues, as if Continue was pressed, instead of stopping.</summary>
+    [Parameter] public bool AutoContinue { get; set; }
+    [Parameter] public EventCallback OnContinue { get; set; }
+    [Parameter] public EventCallback OnStop { get; set; }
+
+    /// <summary>The last seconds before the step stops on its own, so the user can still react.</summary>
+    public const int ExpiringSeconds = 5;
+
+    private bool Expiring => SecondsLeft <= ExpiringSeconds;
+    private string CssClass => $"app-guide-step{(AutoContinue ? " is-auto" : null)}{(Expiring ? " is-expiring" : null)}{(Paused ? " is-paused" : null)}";
+    private double Remaining => Math.Clamp((double)SecondsLeft / Math.Max(1, Math.Max(TotalSeconds, SecondsLeft)), 0, 1);
+}

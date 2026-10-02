@@ -17,4 +17,4 @@ public sealed record StoredChatSummary(
     string? PinOrder = null,
     bool IsEmpty = false,
     DateTimeOffset? ArchivedAt = null,
-    Guid? ArchiveOperationId = null);
+    Guid? ArchiveOperationId = null, bool IsGuide = false);

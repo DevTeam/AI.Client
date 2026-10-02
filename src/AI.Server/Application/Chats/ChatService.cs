@@ -14,7 +14,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
 {
     public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken)
     {
-        var summaries = await repository.ListSummariesAsync(new ProjectId(projectId), cancellationToken);
+        var summaries = (await repository.ListSummariesAsync(new ProjectId(projectId), cancellationToken))
+            .Where(item => !item.IsGuide).ToArray();
         return OrderPinned(summaries.Where(item => item.IsPinned))
             .Concat(summaries.Where(item => !item.IsPinned).OrderByDescending(item => item.LastActivityAt))
             .Select(ToSummary)
@@ -148,7 +149,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             request.Title,
             now,
             request.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null,
-            request.AutoTitlePending);
+            request.AutoTitlePending, request.IsGuide, request.GuideMode);
         if (request.ApprovalMode != ToolApprovalMode.Ask) chat.SetApprovalMode(ToDomain(request.ApprovalMode), now);
         var result = await repository.SaveAsync(chat, 0, cancellationToken);
         return ToDetails(chat, result.Revision);
@@ -470,7 +471,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
             policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
             policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
-        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode));
+        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode), chat.IsGuide, chat.GuideMode);
 
     // Also the answer to a change of the chat's settings (connection, approval mode, titles, tool
     // policies): the page may keep it as the open chat, and the full chat carries every tool
@@ -511,7 +512,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
                 policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
                 policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
-            chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode));
+            chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode), chat.IsGuide, chat.GuideMode);
     }
 
     private static bool IsPlainAssistant(ChatMessage message) =>

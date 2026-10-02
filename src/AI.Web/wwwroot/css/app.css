@@ -2295,15 +2295,56 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     text-align: left;
 }
 
+/* Six tips in even rows: three across in the composer's column, two on a narrow feed. Cards in
+   a row share its height and keep their buttons on the bottom edge, so the rows line up. */
 .chat-tips-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.65rem;
-    align-items: start;
+    align-items: stretch;
 }
 
+@container (max-width: 44rem) { .chat-tips-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 30rem) { .chat-tips-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.chat-tips { container-type: inline-size; }
+
+.chat-tips-guide {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.8rem;
+    margin-bottom: 0.65rem;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 35%, var(--color-border-subtle));
+    border-radius: calc(0.75rem * var(--corner-scale));
+    background: color-mix(in srgb, var(--color-accent-bg) 55%, var(--color-surface));
+    animation: chat-tip-in 260ms ease both;
+}
+
+.chat-tips-guide-badge {
+    display: inline-grid; place-items: center; flex: none; width: 2rem; height: 2rem;
+    border-radius: calc(0.55rem * var(--corner-scale)); background: var(--color-accent-bg); color: var(--color-accent-text);
+}
+
+.chat-tips-guide-badge .app-icon { width: 1.05rem; height: 1.05rem; }
+.chat-tips-guide-text { display: grid; flex: 1 1 12rem; gap: 0.1rem; min-width: 0; }
+.chat-tips-guide-text > strong { color: var(--color-text-strong); font-size: 0.9rem; font-weight: 600; }
+.chat-tips-guide-text > span { color: var(--color-text-muted); font-size: 0.82rem; line-height: 1.45; }
+.chat-tips-guide > .chat-tip-action { flex: none; }
+/* Without a model the banner stands on its own, above the tips or the strip that replaces them. */
+.workspace-empty-start > .chat-tips-guide { margin: 1.75rem 0 0; text-align: left; }
+.workspace-empty-start > .chat-tips-guide + .chat-tips,
+.workspace-empty-start > .chat-tips-guide + .chat-tips-strip { margin-top: .65rem; }
+/* In an open chat the row sits under the last message, in the transcript's column. */
+.chat-model-setup { width: min(100%, 52rem); margin: 1rem auto; }
+.chat-model-setup > .chat-tips-guide { margin: 0; }
+/* The start screen's cards carry no disclosure, so their heading is a plain row, not a button. */
+div.chat-tip-head { cursor: default; }
+
 .chat-tip {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 0.5rem;
     padding: 0.8rem 0.9rem 0.85rem;
     border: 1px solid var(--color-border-subtle);
@@ -2383,7 +2424,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     text-align: center;
 }
 
-.chat-tip-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.1rem 0 0; }
+.chat-tip-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: auto 0 0; padding-top: 0.1rem; }
 
 .chat-tip-action {
     display: inline-flex;
@@ -2400,6 +2441,21 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .chat-tip-action .app-icon { width: 0.9rem; height: 0.9rem; }
 .chat-tip-action.is-primary { border-color: transparent; background: var(--color-accent-bg); color: var(--color-accent-text); }
 .chat-tip-action.is-primary:hover:not(:disabled) { background: var(--color-accent-bg-hover); color: var(--color-accent-text); }
+
+/* The tour sits at the right end of the row, quieter than the card's own action. */
+.chat-tip-tour {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-left: auto;
+    padding: 0.28rem 0.45rem;
+    border-radius: calc(0.5rem * var(--corner-scale));
+    color: var(--color-text-subtle);
+    font-size: 0.78rem;
+}
+
+.chat-tip-tour .app-icon { width: 0.85rem; height: 0.85rem; }
+.chat-tip-tour:hover:not(:disabled) { background: var(--color-accent-bg); color: var(--color-accent-text); }
 
 .chat-tips-footer {
     display: flex;
@@ -2437,7 +2493,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .chat-tips-strip > span { display: inline-flex; gap: 0.25rem; align-items: center; }
 
 @media (prefers-reduced-motion: reduce) {
-    .chat-tip { animation: none; }
+    .chat-tip, .chat-tips-guide { animation: none; }
     .chat-tip-chevron { transition: none; }
 }
 
@@ -3038,6 +3094,8 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
    like the textarea's, invisible but for the marks. The textarea above it keeps the text. */
 .composer-input { position: relative; }
 .composer-input > textarea { position: relative; z-index: 1; }
+/* The send button's ring reaches up over the editor's bottom edge; a guide highlight goes above it. */
+.composer-input.app-guide-target { z-index: 2; }
 .composer-mention-highlight {
     position: absolute;
     top: 0;
@@ -3425,6 +3483,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 }
 
 .composer-send-wrapper:hover .composer-send-tooltip,
+.composer-send-wrapper:has(.app-guide-hover) .composer-send-tooltip,
 .composer-send-wrapper:focus-within .composer-send-tooltip {
     opacity: 1;
     transform: translateY(0);
@@ -4213,6 +4272,37 @@ textarea {
 .user-prompt-actions > button > span { display: inline-flex; align-items: baseline; line-height: 1.25; }
 .user-prompt-actions > button:not(.secondary-action) kbd { display: inline-block; margin-left: .35rem; padding: .2rem .3rem; border-color: var(--color-border-translucent); box-shadow: 0 1px 0 var(--color-border-translucent); background: var(--color-overlay-sunken); line-height: 1; }
 .user-prompt-error { margin: 0; color: var(--color-danger-text-strong); font-size: .8rem; }
+/* A question on a timer counts down like a guide step: timer line, a bar draining along the bottom
+   edge, and the last seconds warn — amber before it closes, accent and a glowing Continue before
+   the recommended answers are sent. */
+.user-prompt.is-timed { position: relative; padding-bottom: 1.15rem; transition: border-color 300ms ease-out; }
+.user-prompt-timeout {
+    display: inline-flex; align-items: center; gap: .3rem; min-width: 0; color: var(--color-text-subtle);
+    font-size: .72rem; font-variant-numeric: tabular-nums; transition: color 300ms ease-out;
+}
+.user-prompt-timeout .app-icon { width: .8rem; height: .8rem; flex: none; }
+.user-prompt-progress {
+    position: absolute; left: 1rem; right: 1rem; bottom: .45rem; height: 2px; overflow: hidden;
+    border-radius: 999px; background: var(--color-fill);
+}
+.user-prompt-progress > span {
+    display: block; height: 100%; transform-origin: left center; border-radius: inherit;
+    background: var(--color-accent); transition: transform 1s linear, background-color 300ms ease-out;
+}
+.user-prompt.is-expiring { border-color: var(--color-warning); animation: user-prompt-expiring 1s ease-in-out infinite alternate; }
+.user-prompt.is-expiring .user-prompt-timeout { color: var(--color-warning-text); font-weight: 600; }
+.user-prompt.is-expiring .user-prompt-progress > span { background: var(--color-warning); }
+@keyframes user-prompt-expiring {
+    from { box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-warning) 25%, transparent); }
+    to { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-warning) 30%, transparent); }
+}
+.user-prompt.is-auto.is-expiring { border-color: var(--color-accent); animation: none; }
+.user-prompt.is-auto.is-expiring .user-prompt-timeout { color: var(--color-accent-text); }
+.user-prompt.is-auto.is-expiring .user-prompt-progress > span { background: var(--color-accent); }
+.user-prompt.is-auto.is-expiring .user-prompt-submit:not(:disabled) {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 45%, transparent);
+    animation: app-guide-default 1s ease-in-out infinite alternate;
+}
 
 /* Only a tint: presses go through to the page, and runEvents.watchDrawerDismiss closes the drawer. */
 .permissions-drawer-backdrop { position: fixed; z-index: 44; inset: 0; background: rgb(0 0 0 / calc(12% * var(--scrim-scale))); pointer-events: none; }
@@ -5408,11 +5498,83 @@ textarea {
 .mermaid-block .mermaid-svg {
     display: flex;
     justify-content: center;
+    /* `safe` keeps the left edge reachable once the diagram is wider than the column: plain
+       `center` in a scroll container puts the overflow on both sides and the left part cannot be
+       scrolled to. The line above is the fallback for engines that reject the keyword — the
+       declaration is dropped whole there, so it cannot simply replace it. */
+    justify-content: safe center;
+    /* The diagram scrolls inside its own holder, so a zoomed block does not carry the toolbar off
+       to the right with it — the buttons stay where the eye last found them. */
+    overflow-x: auto;
+}
+
+/* The block itself only scrolls in the error state, where the source <pre> is the wide element. */
+.mermaid-block[data-mermaid-state="ok"] {
+    overflow-x: visible;
 }
 
 .mermaid-block .mermaid-svg svg {
     max-width: 100%;
     height: auto;
+}
+
+/* Zoom toolbar for a rendered diagram. Built by js/mermaidBlocks.js, which replaces the fence
+   itself, so these are the only rules that give the buttons their look. Colours come from the
+   semantic --color-* tokens, so the toolbar follows every theme. */
+.mermaid-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    /* Right-aligned above the diagram: the block's own padding keeps it off the edge, and it does
+       not sit on the SVG, so it never covers a node. */
+    justify-content: flex-end;
+    margin: 0 0 0.5rem;
+}
+
+.mermaid-zoom-level {
+    min-width: 2.6rem;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+.mermaid-zoom-button {
+    display: inline-grid;
+    flex: none;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    place-items: center;
+    border: 1px solid var(--color-border-translucent);
+    border-radius: calc(0.35rem * var(--corner-scale));
+    background: var(--color-fill);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+}
+
+.mermaid-zoom-button:hover:not(:disabled) {
+    background: var(--color-fill-hover);
+    color: var(--color-text-strong);
+}
+
+.mermaid-zoom-button:active:not(:disabled) {
+    background: var(--color-fill-active);
+}
+
+.mermaid-zoom-button:focus-visible {
+    outline: 2px solid var(--color-accent-strong);
+    outline-offset: 2px;
+}
+
+.mermaid-zoom-button:disabled {
+    color: var(--color-text-disabled);
+    cursor: default;
+}
+
+.mermaid-zoom-icon {
+    width: 0.95rem;
+    height: 0.95rem;
 }
 
 /* The render() call replaces the original fence, but if Blazor's diff momentarily brings the
@@ -6554,6 +6716,146 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 }
 
 .ghost-cursor-target { background: var(--color-accent-bg-hover); }
+/* A button the virtual pointer presses when a timer runs out answers like a real press. */
+button.is-auto-pressed { transform: scale(0.97); filter: brightness(1.15); }
+
+/* Guides share the app's surfaces, accent and corner preference in every theme. */
+.app-guide-target { outline: 2px solid var(--color-accent); outline-offset: 3px; border-radius: calc(.4rem * var(--corner-scale)); }
+.app-guide-hover { background: var(--color-fill-hover); }
+.app-guide-step, .app-guide-question, .app-guide-tooltip {
+    position: fixed; z-index: 1001; border: 1px solid var(--color-border-strong);
+    border-radius: calc(.6rem * var(--corner-scale)); background: var(--color-surface-raised);
+    color: var(--color-text); font-size: .82rem;
+}
+.app-guide-question { box-shadow: 0 .7rem 1.8rem rgb(0 0 0 / calc(40% * var(--shadow-scale))); }
+
+/* The step card stays hidden until it is placed beside its control, then fades in there. */
+.app-guide-step {
+    --app-guide-edge: color-mix(in srgb, var(--color-accent) 55%, var(--color-border-strong));
+    left: 1rem; top: 5rem; width: min(22rem, calc(100vw - 2rem)); box-sizing: border-box; padding: .8rem .85rem .95rem;
+    border-color: var(--app-guide-edge);
+    box-shadow: 0 .8rem 2rem rgb(0 0 0 / calc(42% * var(--shadow-scale))), 0 0 0 1px color-mix(in srgb, var(--color-accent) 12%, transparent);
+    transition: border-color 300ms ease-out;
+}
+.app-guide-step:not([data-placed]):not(.is-leaving) { visibility: hidden; }
+.app-guide-step.is-leaving { pointer-events: none; }
+/* A small arrow points at the control the card sits beside. */
+.app-guide-step[data-side="right"]::before, .app-guide-step[data-side="left"]::before {
+    content: ""; position: absolute; top: var(--app-guide-arrow-y, 1.4rem); width: .6rem; height: .6rem;
+    margin-top: -.3rem; box-sizing: border-box; background: var(--color-surface-raised);
+    border: 1px solid var(--app-guide-edge); transform: rotate(45deg); transition: border-color 300ms ease-out;
+}
+.app-guide-step[data-side="right"]::before { left: -.33rem; border-top-color: transparent; border-right-color: transparent; }
+.app-guide-step[data-side="left"]::before { right: -.33rem; border-bottom-color: transparent; border-left-color: transparent; }
+.app-guide-step-heading { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.app-guide-step-heading strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; font-weight: 600; color: var(--color-text-strong); }
+.app-guide-step-badge {
+    display: inline-grid; place-items: center; flex: none; width: 1.6rem; height: 1.6rem;
+    border-radius: calc(.45rem * var(--corner-scale)); background: var(--color-accent-bg); color: var(--color-accent-text);
+}
+.app-guide-step-badge .app-icon { width: .9rem; height: .9rem; }
+.app-guide-step-count {
+    flex: none; padding: .1rem .45rem; border-radius: 999px; background: var(--color-fill);
+    color: var(--color-text-secondary); font-size: .7rem; font-variant-numeric: tabular-nums;
+}
+.app-guide-step p { margin: .55rem 0 0; line-height: 1.5; overflow-wrap: anywhere; }
+.app-guide-step .app-guide-step-comment { margin-top: .7rem; font-size: .84rem; }
+.app-guide-step-detail { color: var(--color-text-secondary); font-size: .77rem; }
+.app-guide-step-try { display: flex; align-items: center; gap: .4rem; color: var(--color-accent-text); }
+.app-guide-step-try .app-icon { width: .85rem; height: .85rem; flex: none; }
+.app-guide-step-footer { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: .85rem; }
+.app-guide-step-timeout {
+    display: inline-flex; align-items: center; gap: .3rem; min-width: 0; color: var(--color-text-subtle);
+    font-size: .72rem; font-variant-numeric: tabular-nums; transition: color 300ms ease-out;
+}
+.app-guide-step-timeout .app-icon { width: .8rem; height: .8rem; flex: none; }
+.app-guide-step-progress {
+    position: absolute; left: .85rem; right: .85rem; bottom: .4rem; height: 2px; overflow: hidden;
+    border-radius: 999px; background: var(--color-fill);
+}
+.app-guide-step-progress > span {
+    display: block; height: 100%; transform-origin: left center; border-radius: inherit;
+    background: var(--color-accent); transition: transform 1s linear, background-color 300ms ease-out;
+}
+/* The last seconds warn before the step closes on its own: amber edge, timer and bar, and a soft glow. */
+.app-guide-step.is-expiring { --app-guide-edge: var(--color-warning); animation: app-guide-expiring 1s ease-in-out infinite alternate; }
+.app-guide-step.is-expiring .app-guide-step-timeout { color: var(--color-warning-text); font-weight: 600; }
+.app-guide-step.is-expiring .app-guide-step-progress > span { background: var(--color-warning); }
+@keyframes app-guide-expiring {
+    from { box-shadow: 0 .8rem 2rem rgb(0 0 0 / calc(42% * var(--shadow-scale))), 0 0 0 1px color-mix(in srgb, var(--color-warning) 25%, transparent); }
+    to { box-shadow: 0 .8rem 2rem rgb(0 0 0 / calc(42% * var(--shadow-scale))), 0 0 0 5px color-mix(in srgb, var(--color-warning) 30%, transparent); }
+}
+.app-guide-cursor { z-index: 1003; }
+.app-guide-actions { display: flex; flex: none; gap: .4rem; }
+/* Continue is the default button: filled with the accent, as in the navigation cue. */
+.app-guide-actions .primary { border-color: var(--color-accent-strong); background: var(--color-accent-fill); color: var(--color-text-strong); font-weight: 600; }
+.app-guide-actions .primary:not(:disabled):hover { border-color: var(--color-accent); background: var(--color-accent-strong); }
+.app-guide-actions .primary:disabled { border-color: var(--color-border); background: var(--color-fill); color: var(--color-text-subtle); font-weight: 500; }
+/* A step that goes on by itself warns in the accent and makes Continue glow before it is pressed. */
+.app-guide-step.is-auto.is-expiring { --app-guide-edge: var(--color-accent); animation: none; }
+.app-guide-step.is-auto.is-expiring .app-guide-step-timeout { color: var(--color-accent-text); }
+.app-guide-step.is-auto.is-expiring .app-guide-step-progress > span { background: var(--color-accent); }
+.app-guide-step.is-auto.is-expiring .app-guide-actions .primary:not(:disabled) {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 45%, transparent);
+    animation: app-guide-default 1s ease-in-out infinite alternate;
+}
+@keyframes app-guide-default {
+    from { box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 35%, transparent); }
+    to { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-accent) 30%, transparent); }
+}
+.app-guide-question { right: 1rem; bottom: 8rem; width: min(29rem, calc(100vw - 2rem)); max-height: calc(100dvh - 10rem); overflow: auto; padding: .65rem; }
+.app-guide-question .user-prompt { margin: 0; }
+.app-guide-question-source { display: block; margin: 0 0 .45rem; color: var(--color-text-secondary); font-size: .75rem; }
+
+/* Application guide widget. */
+.app-guide-run {
+    display: flex; align-items: center; gap: .55rem; margin: .1rem 0 .35rem; padding: .5rem .55rem;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent); border-radius: calc(.5rem * var(--corner-scale));
+    background: var(--color-accent-bg);
+}
+.app-guide-run-dot { flex: none; width: .5rem; height: .5rem; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 25%, transparent); animation: app-guide-live 1.6s ease-in-out infinite; }
+.app-guide-run.is-paused { border-color: var(--color-border); background: var(--color-fill); }
+.app-guide-run.is-paused .app-guide-run-dot { background: var(--color-text-subtle); box-shadow: none; animation: none; }
+.app-guide-run-text { display: grid; flex: 1; min-width: 0; }
+.app-guide-run-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; font-weight: 600; color: var(--color-text-strong); }
+.app-guide-run-text small { color: var(--color-text-secondary); font-size: .72rem; font-variant-numeric: tabular-nums; }
+@keyframes app-guide-live { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-accent) 8%, transparent); } }
+.app-guide-note { margin: .1rem 0 .35rem; padding: .4rem .55rem; border-radius: calc(.45rem * var(--corner-scale)); background: var(--color-fill); color: var(--color-text-secondary); font-size: .74rem; line-height: 1.45; }
+.app-guide-topics { display: grid; gap: .15rem; min-width: 0; }
+.app-guide-progress { display: grid; gap: .3rem; padding: .25rem .5rem .45rem; color: var(--color-text-secondary); font-size: .72rem; font-variant-numeric: tabular-nums; }
+.app-guide-progress-bar { display: block; height: 3px; overflow: hidden; border-radius: 999px; background: var(--color-fill); }
+.app-guide-progress-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); transition: width 400ms ease-out; }
+.app-guide-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 0 .25rem .35rem; padding: 2px; border-radius: calc(.45rem * var(--corner-scale)); background: var(--color-fill); }
+.app-guide-mode button {
+    display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-width: 0; padding: .3rem .4rem;
+    border: 0; border-radius: calc(.35rem * var(--corner-scale)); background: transparent; color: var(--color-text-secondary);
+    font: inherit; font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+}
+.app-guide-mode button .app-icon { width: .8rem; height: .8rem; flex: none; }
+.app-guide-mode button:not(:disabled):hover { color: var(--color-text); }
+.app-guide-mode button.is-selected { background: var(--color-surface-raised); color: var(--color-text-strong); box-shadow: 0 1px 2px rgb(0 0 0 / calc(30% * var(--shadow-scale))); }
+.app-guide-mode button:disabled { cursor: default; opacity: .6; }
+.app-guide-topic { display: flex; align-items: center; gap: .55rem; text-align: left; border: 0; background: transparent; color: var(--color-text); padding: .45rem .5rem; border-radius: calc(.4rem * var(--corner-scale)); cursor: pointer; }
+.app-guide-topic:not(:disabled):hover { background: var(--color-fill-hover); }
+.app-guide-topic:disabled { cursor: default; opacity: .55; }
+.app-guide-topic > span:not(.app-guide-topic-icon) { flex: 1; min-width: 0; }
+.app-guide-topic strong { display: block; font-size: .8rem; font-weight: 500; }
+.app-guide-topic small { display: block; color: var(--color-text-secondary); font-size: .72rem; line-height: 1.35; }
+.app-guide-topic .app-icon { width: .9rem; height: .9rem; flex: none; }
+.app-guide-topic > .app-icon { color: var(--color-text-subtle); opacity: 0; transition: opacity 150ms ease-out; }
+.app-guide-topic:not(:disabled):hover > .app-icon, .app-guide-topic:focus-visible > .app-icon { opacity: 1; }
+.app-guide-topic-icon {
+    display: inline-grid; place-items: center; flex: none; width: 1.6rem; height: 1.6rem;
+    border-radius: calc(.45rem * var(--corner-scale)); background: var(--color-fill); color: var(--color-text-secondary);
+}
+.app-guide-topic-icon .app-icon { width: .8rem; height: .8rem; }
+.app-guide-topic.is-completed .app-guide-topic-icon { background: var(--color-accent-bg); color: var(--color-accent-text); }
+.app-guide-topic.is-completed strong { color: var(--color-text-secondary); }
+.app-guide-tooltip { z-index: 1002; pointer-events: none; padding: .4rem .6rem; max-width: 17rem; box-shadow: 0 .4rem 1rem rgb(0 0 0 / calc(35% * var(--shadow-scale))); }
+@media (prefers-reduced-motion: reduce) {
+    .app-guide-cursor, .app-guide-cursor svg { transition: none !important; }
+    .app-guide-run-dot { animation: none; }
+}
 
 .navigation-arrived {
     border-radius: 0.4rem;
@@ -6688,7 +6990,8 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
    widgets look like they belong to the set without styling a frame of their own. */
 .workspace-shell.widgets-open { --widgets-track: var(--widgets-width); }
 .workspace-widgets-toggle { flex: none; margin-left: auto; pointer-events: auto; }
-.workspace-widgets-toggle.is-active { color: var(--color-accent-text); background: var(--color-accent-bg); }
+/* Pressed reads like the open notifications button next to it: a neutral fill, not the accent. */
+.workspace-widgets-toggle.is-active { color: var(--color-text); background: var(--color-fill-hover); }
 
 .chat-widgets {
     grid-column: 4;

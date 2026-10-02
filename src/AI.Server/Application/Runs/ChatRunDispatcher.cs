@@ -31,7 +31,7 @@ public sealed class ChatRunDispatcher(
     IResourceModelProjection resourceProjection, IMemoryService memory, IProjectInstructionsService projectInstructions,
     ISkillRunner skillRunner, ISkillCatalog skillCatalog, IChatReplySuggestions replySuggestions,
     IToolAutoApprover autoApprover, ITokenUsageMeter usageMeter, ITokenUsageAggregator usageAggregator,
-    IHistoryCheckpointService historyCheckpoints)
+    IHistoryCheckpointService historyCheckpoints, IConnectionChoice connectionChoice)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -429,15 +429,9 @@ public sealed class ChatRunDispatcher(
                     // The chain honours a chat-level override first, then the project's
                     // connection, then the global default. A project left on 'Default' (no
                     // explicit connection) follows whatever the global default currently is, which
-                    // is the point of the feature. Falling back to the first enabled connection
-                    // keeps a chat runnable when the global default is stale or missing.
-                    var resolvedConnectionId = chat.ConnectionId
-                        ?? project.ConnectionId
-                        ?? global.Connections.FirstOrDefault(item => item is { IsDefault: true, Enabled: true })?.Id
-                        ?? global.Connections.FirstOrDefault(item => item.Enabled)?.Id;
-                    var connection = resolvedConnectionId is { } id
-                        ? global.Connections.SingleOrDefault(item => item.Id == id && item.Enabled)
-                        : null;
+                    // is the point of the feature. A disabled link in the chain is passed over, as
+                    // the composer passes over it: the chat runs on the model it shows.
+                    var connection = connectionChoice.Choose(global.Connections, chat.ConnectionId, project.ConnectionId);
                     if (connection is null)
                     {
                         throw new InvalidOperationException("Choose an enabled connection for this chat.");
@@ -463,8 +457,11 @@ public sealed class ChatRunDispatcher(
                             ResourceReferences.ToContract(queued.Resources), token), connection.Id,
                         // The branch's history as the model is to see it: in full, or from the
                         // summary of its deepest checkpoint on.
-                        await historyCheckpoints.ApplyAsync(chat.ProjectId, chat.Id,
-                            await contextBuilder.BuildAsync(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id), token), token));
+                        chat.IsGuide ? chat.Messages.Select(message => new ChatCompletionMessage(message.Role.ToLowerInvariant(),
+                            message.Content, message.ToolCalls, message.ToolCallId)).ToArray()
+                            : await historyCheckpoints.ApplyAsync(chat.ProjectId, chat.Id,
+                                await contextBuilder.BuildAsync(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id), token), token),
+                        IsGuide: chat.IsGuide, GuideMode: chat.GuideMode);
                     runtime.ToolHead = ResumeHead(chat, runtime.State.BranchId, queued.Id);
                     await SaveAsync(runtime, chat, token);
                 }
@@ -533,7 +530,7 @@ public sealed class ChatRunDispatcher(
                         && chat.Messages.Count(message => message.Role == "User") == 1;
                     // A reply is drafted only for the answer the user is left with: with more
                     // messages queued behind it, the next one is already the reply.
-                    if (runtime.State.Queue.Count == 0)
+                    if (runtime.State.Queue.Count == 0 && !chat.IsGuide)
                         answeredHead = chat.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId)?.HeadMessageId;
                 }
                 if (suggestTitle || answeredHead is not null)
@@ -576,7 +573,8 @@ public sealed class ChatRunDispatcher(
                 runtime.Snapshot = Snapshot(runtime.State, null, runtime.ActiveMessageId) with
                 {
                     Context = runtime.Context,
-                    TurnUsage = runtime.TurnUsage
+                    TurnUsage = runtime.TurnUsage,
+                    IsGuide = runtime.Snapshot.IsGuide
                 };
                 Publish();
             }
@@ -747,11 +745,17 @@ public sealed class ChatRunDispatcher(
     {
         ArgumentNullException.ThrowIfNull(run);
         ArgumentNullException.ThrowIfNull(request);
-        var prompt = new UserPrompt(ids.Create(), request.Questions, (long)timeout.TotalSeconds);
+        var defaultSubmitAt = request.SubmitDefaults ? clock.UtcNow.Add(timeout) : (DateTimeOffset?)null;
+        // Editing stops default submission but leaves a bounded period to finish answering.
+        if (request.SubmitDefaults) timeout += TimeSpan.FromMinutes(2);
+        var prompt = new UserPrompt(ids.Create(), request.Questions,
+            timeout == Timeout.InfiniteTimeSpan ? 0 : (long)timeout.TotalSeconds,
+            request.Presentation, request.SubmitDefaults,
+            timeout == Timeout.InfiniteTimeSpan ? null : clock.UtcNow.Add(timeout), defaultSubmitAt);
         var unanswerable = new UserPromptResponse(prompt.Id, UserPromptOutcome.Interrupted, []);
         // Nobody to ask: a background run, or one already on its way out. Answered at once rather
         // than waited out, so a subtask reports what it could not decide instead of stalling on it.
-        if (!run.Interactive) return unanswerable;
+        if (!run.Interactive && (request.Presentation != "overlay" || run.ChatId == Guid.Empty)) return unanswerable;
 
         var completion = new TaskCompletionSource<UserPromptResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
         Runtime runtime;
@@ -1129,7 +1133,8 @@ public sealed class ChatRunDispatcher(
             DraftContent = runtime.DraftContent,
             DraftToolCall = runtime.DraftToolCall,
             Context = runtime.Context,
-            TurnUsage = runtime.TurnUsage
+            TurnUsage = runtime.TurnUsage,
+            IsGuide = chat?.IsGuide ?? previous.IsGuide
         };
         if (chat is not null)
             foreach (var other in _runtimes.Values.Where(item => item.State.ChatId == chat.Id && item != runtime))
@@ -1342,7 +1347,7 @@ public sealed class ChatRunDispatcher(
         chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.HeadMessageId,
         FailureCode: FailureCode(state.FailureKind), CanRetry: state.CanRetry,
         BranchRevision: chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.Revision ?? 0,
-        RecoveryActions: RecoveryActions(state), ActiveMessageId: activeMessageId);
+        RecoveryActions: RecoveryActions(state), ActiveMessageId: activeMessageId, IsGuide: chat?.IsGuide ?? false);
 
     private static QueuedMessageStage Stage(QueuedRunStage stage) => stage switch
     {

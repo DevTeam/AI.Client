@@ -276,3 +276,30 @@ checkpoint result needed by the row. It now includes only small results for the 
 `context_compact` tool while other tool output remains lazy. The feed recognizes the persisted
 `mcp_app__context_compact` name. Checks: Server build with zero warnings, 420 Server tests passed
 with one platform skip, and all 102 Web tests passed.
+
+## 2026-10-02 — zoom controls on rendered diagrams
+
+A rendered ```mermaid block now carries its own zoom toolbar: zoom out, the current level, zoom in
+and reset. The toolbar is a sibling of the diagram inside the same block, so it scrolls with the
+diagram only in the direction that matters — the block stays put while the SVG pans under it — and
+it is right-aligned above the diagram rather than floating over it, so no node is ever covered.
+
+The controls are built by `js/mermaidBlocks.js`, not by Razor: the module replaces the fence element
+itself, so no component markup ever sees the block. Clicks are handled by one delegated listener on
+the feed container, because Blazor re-creates the surrounding markup as the transcript diffs; a
+listener per button would be lost on the next re-render. Zoom is applied as width and height in px
+on the SVG, not as a `transform: scale()` — a transform leaves the layout box untouched, so an
+enlarged diagram would overlap the message below it and the block would not scroll to its edges.
+The percentage is a multiple of the diagram's fitted size, measured each time with mermaid's own
+inline style restored first: measuring the already-zoomed box would compound the steps, and a
+stored measurement would go stale when the chat column changes width. Reset writes that original
+style back, so 100% reproduces exactly what mermaid drew. Steps are 25%, the range is 50–400%, and
+both end buttons disable themselves at their limit instead of silently ignoring a click. The error
+state deliberately gets no toolbar: it is a diagnostic to read, and the block keeps its existing
+scrolling for the preserved source.
+
+Check: `node --check` on the module passes, all `--color-*` tokens used by the new CSS resolve to
+real variables in the theme blocks. The solution build was not run to a green state: it currently
+fails on pre-existing errors in unrelated, uncommitted work (`AppGuide*` / `Home.Guide.cs` and a
+`CA1827` in `AppAskUserTool.cs`), none of which this increment touches. Both files changed here are
+static assets, so nothing in the compiled project depends on them.

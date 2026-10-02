@@ -38,7 +38,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         chat.PinnedAt,
         chat.LastActivityAt,
         chat.PinOrder,
-        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, chat.ApprovalMode), Options);
+        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, chat.ApprovalMode, chat.IsGuide, chat.GuideMode), Options);
 
     public string SerializeSummary(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatSummaryDocument(
         SchemaVersion,
@@ -52,7 +52,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         chat.LastActivityAt,
         chat.BranchCount,
         chat.PinOrder,
-        chat.Messages.Count == 0, chat.ArchivedAt, chat.ArchiveOperationId), Options);
+        chat.Messages.Count == 0, chat.ArchivedAt, chat.ArchiveOperationId, chat.IsGuide), Options);
 
     public StoredChat Deserialize(string json)
     {
@@ -68,7 +68,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             new ProjectId(document.ProjectId),
             document.Title,
             document.CreatedAt,
-            document.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null);
+            document.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null,
+            isGuide: document.IsGuide, guideMode: document.GuideMode);
         foreach (var message in document.Messages.OrderBy(item => item.CreatedAt))
         {
             chat.AddMessage(new ChatMessage(
@@ -118,7 +119,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             document.BranchCount ?? 0,
             document.BranchCount is not null,
             document.IsPinned ? document.PinOrder : null,
-            document.IsEmpty, document.ArchivedAt, document.ArchiveOperationId);
+            document.IsEmpty, document.ArchivedAt, document.ArchiveOperationId, document.IsGuide);
     }
 
     private sealed record ChatDocument(
@@ -142,7 +143,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         DateTimeOffset? ArchivedAt = null,
         Guid? ArchiveOperationId = null,
         // Absent from documents written before chats had a mode, which read as the old behaviour.
-        ChatApprovalMode ApprovalMode = ChatApprovalMode.Ask);
+        ChatApprovalMode ApprovalMode = ChatApprovalMode.Ask, bool IsGuide = false, string GuideMode = "show");
 
     // Deliberately contains only sidebar fields. System.Text.Json skips MessageIds without
     // materialising message nodes, so listing chats stays proportional to the small manifests
@@ -166,7 +167,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         // field existed read as non-empty, so no old chat disappears from the sidebar.
         bool IsEmpty = false,
         DateTimeOffset? ArchivedAt = null,
-        Guid? ArchiveOperationId = null);
+        Guid? ArchiveOperationId = null, bool IsGuide = false);
 
     private sealed record ToolPolicyDocument(Guid ServerId, string Name, string SchemaHash,
         ToolPolicyDecision Decision, int? MaxCallsPerRun, TimeSpan? Timeout);

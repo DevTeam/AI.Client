@@ -24,6 +24,7 @@ public sealed class ChatHistoryCompaction(
     IChatService chats,
     IProjectService projects,
     IGlobalSettingsRepository settings,
+    IConnectionChoice connectionChoice,
     IGlobalSecretStore secrets,
     IChatContextBuilder contextBuilder,
     IHistoryCheckpointService history,
@@ -60,10 +61,7 @@ public sealed class ChatHistoryCompaction(
                 Error: "The branch is answering. Compact it once the turn has finished.");
 
         var global = await settings.LoadAsync(cancellationToken);
-        var connectionId = chat.ConnectionId ?? project.ConnectionId
-            ?? global.Connections.FirstOrDefault(item => item is { IsDefault: true, Enabled: true })?.Id
-            ?? global.Connections.FirstOrDefault(item => item.Enabled)?.Id;
-        if (global.Connections.SingleOrDefault(item => item.Id == connectionId && item.Enabled) is not { } connection)
+        if (connectionChoice.Choose(global.Connections, chat.ConnectionId, project.ConnectionId) is not { } connection)
             return new HistoryCompactionResponse(HistoryCompactionStatus.Failed, Error: "Choose an enabled connection for this chat.");
 
         var context = await history.ApplyAsync(projectId, chatId,

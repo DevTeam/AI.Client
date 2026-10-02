@@ -7,4 +7,4 @@ public sealed record ChatCompletionRequest(
     string Message,
     Guid? CredentialProfileId = null,
     IReadOnlyList<ChatCompletionMessage>? ContextMessages = null,
-    IReadOnlyList<ChatToolDefinition>? Tools = null);
+    IReadOnlyList<ChatToolDefinition>? Tools = null, bool IsGuide = false, string GuideMode = "show");

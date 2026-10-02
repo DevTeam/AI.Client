@@ -1,0 +1,21 @@
+@using AI.Contracts.Updates
+@using AI.Web.Updates
+@implements IDisposable
+@inject IUpdateClient Updates
+
+@if (Updates.State is { Phase: UpdatePhase.Installing } state)
+{
+    <div class="update-restart" role="status" aria-live="polite">
+        <div class="update-restart-card">
+            <AppIcon Name="spinner" Class="tool-row-spinner" />
+            <strong>@state.Product is updating…</strong>
+            <p>Your draft and workspace are saved. @state.Product will restart automatically.</p>
+        </div>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized() => Updates.Changed += OnChanged;
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Updates.Changed -= OnChanged;
+}

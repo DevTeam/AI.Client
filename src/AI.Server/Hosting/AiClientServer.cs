@@ -84,6 +84,12 @@ public sealed class AiClientServer(
         // are rooted in the same directory by construction.
         builder.Logging.AddProvider(fileLogger);
         builder.Services.AddHostedService<ChatRunHostedService>();
+        builder.Services.AddHostedService<AI.Updates.IHostUpdateService>(provider =>
+        {
+            var updates = provider.GetRequiredService<AI.Updates.IHostUpdateService>();
+            updates.Shutdown = provider.GetRequiredService<IHostApplicationLifetime>().StopApplication;
+            return updates;
+        });
         builder.Host.UseServiceProviderFactory(services);
 
         // The frontend's dev server runs on its own origin (default http://localhost:52174), so

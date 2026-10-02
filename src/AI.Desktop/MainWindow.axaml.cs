@@ -11,12 +11,15 @@ internal sealed partial class MainWindow : Window
 {
     // Long enough for a cold WebView2 start on a slow disk; a missing engine never gets there.
     private static readonly TimeSpan EngineTimeout = TimeSpan.FromSeconds(20);
-    private readonly DesktopStart _start;
+    private static readonly JsonSerializerOptions UpdateJson = new(JsonSerializerDefaults.Web);
+    private DesktopStart _start;
+    private bool _closed;
     private readonly IWindowPlacementStore _placements;
     private readonly IWorkspaceLocationStore _workspaceLocation;
     private readonly IClientSettingsStore _clientSettings;
     private readonly ITaskbarBadge _taskbarBadge;
     private readonly IFileDropBridge _fileDrop;
+    private readonly IDesktopUpdates _updates;
     private readonly DispatcherTimer _engineWatchdog;
     private bool _engineCreated;
     private PixelPoint _normalPosition;
@@ -27,7 +30,7 @@ internal sealed partial class MainWindow : Window
 
     public MainWindow(DesktopStart start, IWindowPlacementStore placements,
         IWorkspaceLocationStore workspaceLocation, IClientSettingsStore clientSettings,
-        ITaskbarBadge taskbarBadge, IFileDropBridge fileDrop)
+        ITaskbarBadge taskbarBadge, IFileDropBridge fileDrop, IDesktopUpdates updates)
     {
         _start = start;
         _placements = placements;
@@ -35,6 +38,8 @@ internal sealed partial class MainWindow : Window
         _clientSettings = clientSettings;
         _taskbarBadge = taskbarBadge;
         _fileDrop = fileDrop;
+        _updates = updates;
+        _updates.ShutdownRequested += () => Dispatcher.UIThread.Post(Close);
         InitializeComponent();
         Restore(placements.Load());
         PositionChanged += (_, _) => RememberNormalLater();
@@ -51,6 +56,8 @@ internal sealed partial class MainWindow : Window
         WebView.NavigationCompleted += (_, args) => OnNavigationCompleted(args);
         WebView.WebMessageReceived += (_, args) => OnWebMessageReceived(args);
         Retry.Click += (_, _) => Load();
+        UpdateHost.IsVisible = start.HostUpdateAddress is not null;
+        UpdateHost.Click += async (_, _) => await UpdateIncompatibleHostAsync();
         PropertyChanged += (_, args) =>
         {
             if (args.Property == WindowStateProperty)
@@ -72,6 +79,7 @@ internal sealed partial class MainWindow : Window
         }
 
         Load();
+        _updates.Start();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -94,6 +102,7 @@ internal sealed partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _closed = true;
         _engineWatchdog.Stop();
         _fileDrop.Detach();
         base.OnClosed(e);
@@ -218,6 +227,13 @@ internal sealed partial class MainWindow : Window
             var root = message.RootElement;
             if (root.ValueKind != JsonValueKind.Object
                 || !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String) return;
+            if (type.GetString() == "update-request" && root.TryGetProperty("id", out var requestId)
+                && requestId.TryGetInt32(out var id) && root.TryGetProperty("operation", out var operation))
+            {
+                _ = HandleUpdateAsync(id, operation.GetString() ?? "", root.TryGetProperty("preferences", out var prefs)
+                    ? prefs.Deserialize<AI.Contracts.Updates.UpdatePreferences>(UpdateJson) : null);
+                return;
+            }
             if (type.GetString() == "workspace-location")
             {
                 Guid? ReadId(string name) => root.TryGetProperty(name, out var value)
@@ -256,6 +272,78 @@ internal sealed partial class MainWindow : Window
         {
             // Only the app's small typed bridge message is handled here.
         }
+    }
+
+    private async Task HandleUpdateAsync(int id, string operation, AI.Contracts.Updates.UpdatePreferences? preferences)
+    {
+        object response;
+        try
+        {
+            response = operation == "state" ? _updates.Manager.State
+                : await _updates.Manager.ExecuteAsync(operation, preferences, CancellationToken.None);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            response = new { error = error.Message };
+        }
+        var json = JsonSerializer.Serialize(response, UpdateJson);
+        await Dispatcher.UIThread.InvokeAsync(() => WebView.InvokeScript($"window.aiClientUpdates.receive({id}, {json});"));
+    }
+
+    private async Task UpdateIncompatibleHostAsync()
+    {
+        UpdateHost.IsEnabled = false;
+        try
+        {
+            using var http = new HttpClient { BaseAddress = _start.HostUpdateAddress, Timeout = TimeSpan.FromMinutes(30) };
+            using var check = await http.PostAsync("api/updates/check", null);
+            if (check.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                ShowProblem("Update AI Client Host", "This Host predates automatic updates. Install a newer Host once, then reopen Desktop.", false);
+                await Launcher.LaunchUriAsync(new Uri("https://github.com/DevTeam/AI.Client/releases"));
+                return;
+            }
+            check.EnsureSuccessStatusCode();
+            var state = await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<AI.Contracts.Updates.UpdateState>(check.Content);
+            if (state is null || state.Error is not null || state.Release is null)
+                throw new InvalidOperationException(state?.Error ?? "No newer Host is available. Check for a newer Desktop release.");
+            using var install = await http.PostAsync("api/updates/install", null);
+            install.EnsureSuccessStatusCode();
+            state = await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<AI.Contracts.Updates.UpdateState>(install.Content);
+            if (state?.Error is not null) throw new InvalidOperationException(state.Error);
+            ShowProblem("Host update scheduled", "Waiting for its tasks to finish. Your workspace will open automatically after the update.", false);
+            while (!_closed)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                try
+                {
+                    using var session = await http.GetAsync("api/bridge/session");
+                    if (!session.IsSuccessStatusCode) continue;
+                    var json = await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<JsonElement>(session.Content);
+                    if (json.TryGetProperty("productName", out var product) && product.GetString() == AI.Contracts.HostProtocol.ProductName
+                        && json.TryGetProperty("apiVersion", out var api) && api.GetInt32() == AI.Contracts.HostProtocol.ApiVersion)
+                    {
+                        _start = _start with { Address = _start.HostUpdateAddress, Error = null, HostUpdateAddress = null };
+                        UpdateHost.IsVisible = false;
+                        Load();
+                        _updates.Start();
+                        break;
+                    }
+                    using var status = await http.GetAsync("api/updates");
+                    if (status.IsSuccessStatusCode)
+                    {
+                        var update = await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<AI.Contracts.Updates.UpdateState>(status.Content);
+                        if (update?.Phase == AI.Contracts.Updates.UpdatePhase.Failed) throw new InvalidOperationException(update.Error);
+                    }
+                }
+                catch (HttpRequestException) { /* The Host is between shutdown and restart. */ }
+            }
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException or TaskCanceledException)
+        {
+            ShowProblem("The Host could not be updated", error.Message, false);
+        }
+        finally { UpdateHost.IsEnabled = true; }
     }
 
     /// <summary>An empty list still answers the page, which then explains why nothing was added.</summary>

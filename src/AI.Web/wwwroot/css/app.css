@@ -7170,3 +7170,14 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .chat-branches-meta { display: flex; flex-wrap: wrap; gap: .1rem 0; font-size: .72rem; }
 .chat-branches-meta > span { white-space: nowrap; }
 .chat-branches-meta > span + span::before { content: "·"; margin: 0 .35rem; }
+
+.updates-version { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.updates-preview { font-size: .75rem; padding: 2px 7px; border: 1px solid var(--color-border-strong); border-radius: 5px; color: var(--color-text-muted); }
+.updates-note { color: var(--color-text-muted); font-size: .85rem; margin: 4px 0; }
+.updates-status { margin: 8px 0; }
+.updates-error { color: var(--color-danger); }
+.updates-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+.update-restart { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; background: color-mix(in srgb, var(--color-bg) 85%, transparent); }
+.update-restart-card { max-width: 440px; padding: 24px; text-align: center; border: 1px solid var(--color-border-strong); border-radius: calc(12px * var(--corner-scale)); background: var(--color-surface); }
+.update-restart-card p { color: var(--color-text-muted); }

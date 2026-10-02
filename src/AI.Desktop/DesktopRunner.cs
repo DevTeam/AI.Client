@@ -22,7 +22,7 @@ internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator) : IDes
 
         if (sharedHost.Error is not null)
         {
-            var failedUi = new UiComposition(new DesktopStart(null, sharedHost.Error, options.DataDirectory, devTools));
+            var failedUi = new UiComposition(new DesktopStart(null, sharedHost.Error, options.DataDirectory, devTools, sharedHost.UpdateAddress));
             return AppBuilder.Configure(() => failedUi.App)
                 .UsePlatformDetect()
                 .WithInterFont()

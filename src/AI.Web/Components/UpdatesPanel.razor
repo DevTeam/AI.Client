@@ -1,0 +1,83 @@
+@using AI.Contracts.Updates
+@using AI.Web.Updates
+@implements IDisposable
+@inject IUpdateClient Updates
+
+<fieldset class="app-settings-group updates-settings" id="updates-settings">
+    <legend>Updates</legend>
+    @if (Updates.State is { } state)
+    {
+        <div class="updates-version"><strong>@state.Product · @state.CurrentVersion</strong>
+            @if (state.CurrentVersion.Contains('-')) { <span class="updates-preview">Pre-release</span> }
+        </div>
+        <label>Update channel
+            <select disabled="@Busy" value="@((int)state.Preferences.Channel)" @onchange="ChangeChannelAsync">
+                <option value="0">Stable</option><option value="1">Preview</option>
+            </select>
+        </label>
+        <p class="updates-note">@(state.Preferences.Channel == UpdateChannel.Preview ? "Includes stable and preliminary releases." : "Stable releases only.")</p>
+        <label class="checkbox"><input type="checkbox" disabled="@Busy" checked="@state.Preferences.CheckAutomatically" @onchange="args => SaveAsync(state.Preferences with { CheckAutomatically = args.Value is true })" /> Check for updates automatically</label>
+        <label class="checkbox"><input type="checkbox" disabled="@Busy" checked="@state.Preferences.DownloadAutomatically" @onchange="args => SaveAsync(state.Preferences with { DownloadAutomatically = args.Value is true })" /> Download updates automatically</label>
+        <label class="checkbox"><input type="checkbox" disabled="@Busy" checked="@state.Preferences.InstallAutomatically" @onchange="args => SaveAsync(state.Preferences with { InstallAutomatically = args.Value is true })" /> Install automatically when tasks finish</label>
+        <p class="updates-note">Checks at startup and every 6 hours. Installation restarts @state.Product and restores your workspace. The operating system may request authorization.</p>
+        @if (!state.Supported) { <p class="updates-note">Automatic installation is available in installed releases.</p> }
+        <div class="updates-status @(state.Error is null ? "" : "updates-error")" role="status" aria-live="polite">@Status(state)</div>
+        @if (state.Release is { } release)
+        {
+            <div class="updates-version">Version @release.Version
+                @if (release.Prerelease) { <span class="updates-preview">Pre-release</span> }
+                <a href="@release.NotesUrl" target="_blank" rel="noopener noreferrer">What’s new</a>
+            </div>
+        }
+        @if (state.LastChecked is { } checkedAt) { <small>Last checked: @checkedAt.ToLocalTime().ToString("g")</small> }
+        <div class="updates-actions">
+            <button class="secondary-action" type="button" disabled="@Busy" @onclick='() => ExecuteAsync("check")'>Check now</button>
+            @if (state.Release is not null)
+            {
+                @if (state.Phase is UpdatePhase.Available or UpdatePhase.Failed)
+                {
+                    <button class="secondary-action" type="button" disabled="@(Busy || !state.Supported)" @onclick='() => ExecuteAsync("download")'>Download</button>
+                }
+                <button class="secondary-action" type="button" disabled="@(Busy || !state.Supported || state.Phase == UpdatePhase.WaitingForTasks)" @onclick='() => ExecuteAsync("install")'>@(state.Product == "Desktop" ? "Restart and update" : "Update Host")</button>
+            }
+        </div>
+    }
+    else { <p role="status">Connecting to the update service…</p> }
+</fieldset>
+
+@code {
+    private bool _requesting;
+    private bool Busy => _requesting || Updates.State?.Phase is UpdatePhase.Checking or UpdatePhase.Downloading or UpdatePhase.Installing;
+    protected override async Task OnInitializedAsync()
+    {
+        Updates.Changed += OnChanged;
+        await Updates.InitializeAsync();
+    }
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    private async Task SaveAsync(UpdatePreferences preferences)
+    {
+        _requesting = true;
+        try { await Updates.ExecuteAsync("preferences", preferences); }
+        finally { _requesting = false; }
+    }
+    private Task ChangeChannelAsync(ChangeEventArgs args) => int.TryParse(args.Value?.ToString(), out var channel)
+        && Enum.IsDefined((UpdateChannel)channel) && Updates.State is { } state
+            ? SaveAsync(state.Preferences with { Channel = (UpdateChannel)channel }) : Task.CompletedTask;
+    private async Task ExecuteAsync(string operation)
+    {
+        _requesting = true;
+        try { await Updates.ExecuteAsync(operation); }
+        finally { _requesting = false; }
+    }
+    private string Status(UpdateState state) => Updates.Reconnecting ? "Host is updating. Reconnecting…"
+        : state.Error ?? (state.Phase switch {
+            UpdatePhase.Checking => "Checking for updates…",
+            UpdatePhase.Available => "A new version is available.",
+            UpdatePhase.Downloading => "Downloading and verifying the update…",
+            UpdatePhase.Ready => "The update is ready to install.",
+            UpdatePhase.WaitingForTasks => "Waiting for tasks to finish before updating…",
+            UpdatePhase.Installing => "Saving your workspace. Restarting to install the update…",
+            _ => !state.StableAvailable && state.Preferences.Channel == UpdateChannel.Stable ? "Stable releases have not been published yet."
+                : state.LastChecked is null ? "Not checked yet." : "You’re up to date." });
+    public void Dispose() => Updates.Changed -= OnChanged;
+}

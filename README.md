@@ -39,6 +39,10 @@ Build the installers on the matching operating system with `dotnet run --project
 
 ## Documentation
 
+Updates are managed in **Settings → Updates**. Desktop updates Desktop; the browser updates its local Host. The **Preview** channel includes preliminary releases and is the initial default. Both products check at startup and every six hours and download updates automatically. Host also installs automatically after tasks finish; Desktop requires enabling auto-installation or selecting **Restart and update**. Drafts and workspace navigation survive the restart. Installation retains the optional C# scripting tools and verifies the package SHA-256 supplied by GitHub.
+
+macOS and Linux may request administrator authorization. Linux uses `pkexec`, or `sudo` with `zenity` for the password prompt; background Host updates also require the user systemd session. Developer builds support manual checks but do not install updates. Older installations without update support need one manual upgrade first.
+
 The full guide, including project structure, MCP setup, and the security model, lives in [docs](docs).
 
 ## License

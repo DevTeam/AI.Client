@@ -31,6 +31,7 @@
 @inject INotificationService Notifications
 @inject IRunStatusPresentation StatusPresentation
 @inject IComposerHistoryNavigator _composerHistoryNavigator
+@inject AI.Web.Updates.IUpdateClient Updates
 @inject IReplySuggestionState ReplySuggestions
 @inject AI.Web.Navigation.INavigationCues NavigationCues
 @inject IChatTipsState ChatTips
@@ -932,7 +933,7 @@
         <div class="notification-history">
             @foreach (var item in Notifications.History.Where(item => !_showAttentionOnly || item.RequiresAction && !item.IsResolved))
             {
-                <button class="notification-history-item @(item.IsSeen ? string.Empty : "new") @(item.Kind == NotificationKind.Error ? "error" : item.RequiresAction && !item.IsResolved ? "attention" : string.Empty)" type="button" disabled="@(item.ChatId is null)" @onclick="() => OpenNotificationAsync(item)">
+                <button class="notification-history-item @(item.IsSeen ? string.Empty : "new") @(item.Kind == NotificationKind.Error ? "error" : item.RequiresAction && !item.IsResolved ? "attention" : string.Empty)" type="button" disabled="@(item.ChatId is null && !item.OpenUpdates)" @onclick="() => OpenNotificationAsync(item)">
                     <AppIcon Name="@(item.Kind == NotificationKind.Error ? "error" : item.RequiresAction && !item.IsResolved ? "info" : "check")" />
                     <span><strong>@item.Message</strong><small>@item.CreatedAt.LocalDateTime.ToString("g")@(item.IsResolved ? " · Resolved" : string.Empty)</small></span>
                 </button>
@@ -1331,6 +1332,12 @@
 
     private async Task OpenNotificationAsync(NotificationMessage item)
     {
+        if (item.OpenUpdates)
+        {
+            Notifications.MarkSeen(item.Id);
+            if (_globalSection != "Settings") await OpenGlobalSection("Settings");
+            return;
+        }
         if (item.ProjectId is null || item.ChatId is null) return;
         _hideNotificationPreview = true;
         var wasCenterOpen = _notificationsOpen;
@@ -1386,6 +1393,7 @@
         await LoadGlobalSettingsAsync();
         foreach (var run in await ChatRunsApi.GetAsync(CancellationToken.None)) StoreRun(run);
         await WorkspaceStateService.InitializeAsync();
+        await Updates.InitializeAsync();
         var target = ParseWorkspaceTarget(Navigation.Uri);
         var projectId = target.ProjectId ?? (target.ChatId is { } chatId
             ? RunState.Runs.Values.FirstOrDefault(run => run.ChatId == chatId)?.ProjectId

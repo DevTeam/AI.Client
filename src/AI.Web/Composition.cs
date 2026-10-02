@@ -26,6 +26,7 @@ using Pure.DI;
 using Navigation;
 using Usage;
 using Widgets;
+using Updates;
 using Pure.DI.MS;
 using System.Diagnostics;
 using Microsoft.JSInterop;
@@ -56,6 +57,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IWorkspaceStateService>()
             .Root<IGlobalSettingsApi>()
             .Root<IClientSettingsService>()
+            .Bind<IUpdateClient>().As(Lifetime.Singleton).To<UpdateClient>()
+            .Root<IUpdateClient>()
             .Root<IThemeService>()
             .Root<INotificationService>()
             .Root<IChatRunsApi>()

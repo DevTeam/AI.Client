@@ -8,6 +8,8 @@
 @inject IJSRuntime Js
 @inject NavigationManager Navigation
 
+<UpdateRestartNotice />
+
 @if (!ClientMode.PublicWeb || _stage == Stage.Ready || _workspaceOpened)
 {
     <div class="@(_stage == Stage.Ready ? "host-workspace" : "host-workspace host-workspace-hidden")" aria-hidden="@(_stage != Stage.Ready)">
@@ -73,6 +75,10 @@ else if (ClientMode.PublicWeb && _stage != Stage.Ready)
                 @if (_stage != Stage.OtherApp)
                 {
                     <div class="host-gate-actions">
+                        @if (_stage == Stage.Update)
+                        {
+                            <button class="host-gate-primary" type="button" disabled="@_updatingHost" @onclick="UpdateHostAsync">@(_updatingHost ? "Scheduling update…" : "Update Host")</button>
+                        }
                         <a class="@(_workspaceOpened && _stage == Stage.Install ? "host-gate-download" : "host-gate-primary")" href="@AssetUrl("AI.Host", _runtime)"><AppIcon Name="download" />@(_workspaceOpened && _stage == Stage.Install ? "Install Host" : $"Download for {OsName(_runtime)}")</a>
                         <span class="host-gate-meta">@ArchitectureName(_runtime) · @Extension(_runtime)</span>
                     </div>
@@ -111,6 +117,7 @@ else if (ClientMode.PublicWeb && _stage != Stage.Ready)
     private bool _workspaceOpened;
     private CancellationTokenSource? _offlineDelay;
     private bool _waitingForHost;
+    private bool _updatingHost;
     private string? _error;
     private string _runtime = "win-x64";
 
@@ -121,6 +128,29 @@ else if (ClientMode.PublicWeb && _stage != Stage.Ready)
     private string SecureAddress => new UriBuilder(Navigation.BaseUri) { Scheme = Uri.UriSchemeHttps, Port = -1 }.Uri.ToString();
 
     private string HostAuthority => ApiBaseUrl.Value.Authority;
+
+    private async Task UpdateHostAsync()
+    {
+        _updatingHost = true;
+        _error = null;
+        try
+        {
+            using var check = await Http.PostAsync("api/updates/check", null);
+            check.EnsureSuccessStatusCode();
+            var state = await check.Content.ReadFromJsonAsync<AI.Contracts.Updates.UpdateState>();
+            if (state?.Error is not null || state?.Release is null)
+                throw new InvalidOperationException(state?.Error ?? "No newer Host is available for this channel.");
+            using var install = await Http.PostAsync("api/updates/install", null);
+            install.EnsureSuccessStatusCode();
+            state = await install.Content.ReadFromJsonAsync<AI.Contracts.Updates.UpdateState>();
+            if (state?.Error is not null) throw new InvalidOperationException(state.Error);
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException or TaskCanceledException)
+        {
+            _error = "Automatic update is unavailable. Open the local Host settings or use the download link below.";
+        }
+        finally { _updatingHost = false; }
+    }
 
     protected override async Task OnInitializedAsync()
     {

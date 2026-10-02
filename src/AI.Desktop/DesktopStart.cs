@@ -5,4 +5,4 @@ namespace AI.Desktop;
 /// <param name="Error">Why it could not start.</param>
 /// <param name="DataDirectory">The data directory, which also keeps the web view's own profile.</param>
 /// <param name="DevTools">Whether the web view's developer tools are enabled.</param>
-internal sealed record DesktopStart(Uri? Address, string? Error, string DataDirectory, bool DevTools);
+internal sealed record DesktopStart(Uri? Address, string? Error, string DataDirectory, bool DevTools, Uri? HostUpdateAddress = null);

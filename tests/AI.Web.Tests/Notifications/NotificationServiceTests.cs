@@ -8,6 +8,25 @@ using Xunit;
 
 public class NotificationServiceTests
 {
+    [Fact]
+    public async Task UpdateNotificationSurvivesReloadAndOpensSettings()
+    {
+        var js = new StorageJsRuntime();
+        using (var service = CreateService(js))
+        {
+            await service.InitializeAsync();
+            service.ShowUpdate("Desktop update available", NotificationKind.Info);
+        }
+        using var restored = CreateService(js);
+        await restored.InitializeAsync();
+        var item = restored.History.ShouldHaveSingleItem();
+        item.OpenUpdates.ShouldBeTrue();
+        NotificationMessage? opened = null;
+        restored.OpenRequested += message => opened = message;
+        restored.Open(item);
+        opened.ShouldNotBeNull().OpenUpdates.ShouldBeTrue();
+        js.DingCount.ShouldBe(0);
+    }
     private static NotificationService CreateService(StorageJsRuntime js, IClientSettingsService? settings = null) =>
         new(js, settings ?? new ClientSettingsService(js));
 

@@ -18,10 +18,10 @@
         }
         <span class="settings-import-name" title="@Name">@Name</span>
         <span class="settings-import-kind">@Kind</span>
-        <span class="settings-import-badge @badgeClass">@badge</span>
+        <span class="settings-import-badge @badgeClass" title="@(candidate.Match == SettingsImportMatch.New ? "No matching item exists in the current settings" : candidate.Match == SettingsImportMatch.Same ? "An identical item is already configured" : "A matching item exists with different settings")">@badge</span>
         @if (candidate.Match == SettingsImportMatch.Conflict)
         {
-            <select class="settings-import-action" aria-label="What to do with @Name" value="@Row.Action" @onchange="OnActionAsync">
+            <select class="settings-import-action" title="Replace updates the matching item; Keep both adds a numbered copy; Skip leaves the current settings unchanged" aria-label="What to do with @Name" value="@Row.Action" @onchange="OnActionAsync">
                 @if (candidate.CanReplace) { <option value="@SettingsImportAction.Replace">Replace</option> }
                 <option value="@SettingsImportAction.KeepBoth">Keep both</option>
                 <option value="@SettingsImportAction.Skip">Skip</option>

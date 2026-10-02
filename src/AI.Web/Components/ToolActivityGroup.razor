@@ -48,8 +48,8 @@
                group ended up stacked over three lines. The count, not just a colour: a collapsed
                group has to say how much went wrong before anyone decides whether to open it. *@
             <span class="tool-row-meta">
-                @if (failed > 0) { <span class="tool-row-failure-count">@failed failed</span> }
-                @FormatDuration(TotalDuration(invocations))
+                @if (failed > 0) { <span class="tool-row-failure-count" title="Calls in this group whose stored results report an error">@failed failed</span> }
+                <span title="Sum of observed tool execution durations; unfinished and untimed calls contribute no duration">@FormatDuration(TotalDuration(invocations))</span>
             </span>
         </summary>
         @if (_batchExpanded)

@@ -9,13 +9,13 @@
             <AppIcon Name="archive" />
             <div><h2>Chat archive</h2><p>@ProjectName</p></div>
         </div>
-        <button class="icon-action" type="button" aria-label="Close archive" @ref="_closeButton" disabled="@_busy" @onclick="CloseAsync"><AppIcon Name="drawer-close" /></button>
+        <button class="icon-action" type="button" title="Close archive" aria-label="Close archive" @ref="_closeButton" disabled="@_busy" @onclick="CloseAsync"><AppIcon Name="drawer-close" /></button>
     </header>
     <nav class="archive-tabs" aria-label="Archive view">
-        <button type="button" class="@(!_cleanup ? "selected" : "")" aria-pressed="@(!_cleanup)" disabled="@_busy" @onclick="() => SwitchView(false)">
+        <button type="button" title="Browse archived chats and restore them to the project" class="@(!_cleanup ? "selected" : "")" aria-pressed="@(!_cleanup)" disabled="@_busy" @onclick="() => SwitchView(false)">
             <AppIcon Name="archive" /><span>Archived</span><span class="menu-count">@ArchivedCount</span>
         </button>
-        <button type="button" class="@(_cleanup ? "selected" : "")" aria-pressed="@_cleanup" disabled="@_busy" @onclick="() => SwitchView(true)">
+        <button type="button" title="Find inactive chats to archive; running chats and chats needing attention are skipped" class="@(_cleanup ? "selected" : "")" aria-pressed="@_cleanup" disabled="@_busy" @onclick="() => SwitchView(true)">
             <AppIcon Name="eraser" /><span>Clean up</span>@if (_preview is { } preview) { <span class="menu-count">@preview.Chats.Count</span> }
         </button>
     </nav>
@@ -29,7 +29,7 @@
                 {
                     <button class="compact-action" type="button" disabled="@_busy" @onclick="() => UndoAsync(undo)">Undo</button>
                 }
-                <button class="icon-action" type="button" aria-label="Dismiss" disabled="@_busy" @onclick="() => _notice = null"><AppIcon Name="x" /></button>
+                <button class="icon-action" type="button" title="Dismiss notice" aria-label="Dismiss" disabled="@_busy" @onclick="() => _notice = null"><AppIcon Name="x" /></button>
                 @if (_skipped.Count > 0)
                 {
                     <details class="archive-skipped">
@@ -63,7 +63,7 @@
                 @if (_age == "custom")
                 {
                     <label class="archive-field">Date and time · @_timeZone
-                        <input type="datetime-local" value="@_before" disabled="@_busy" @onchange="ChangeDateAsync" />
+                        <input type="datetime-local" title="Only chats whose last conversation activity, including branches, is before this date are eligible" value="@_before" disabled="@_busy" @onchange="ChangeDateAsync" />
                     </label>
                 }
                 else if (!string.IsNullOrEmpty(_before))

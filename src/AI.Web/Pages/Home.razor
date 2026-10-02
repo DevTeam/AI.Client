@@ -156,7 +156,7 @@
                                                     {
                                                         <span class="review-menu-confirm-label">Delete review?</span>
                                                         <button type="button" class="review-menu-confirm-delete" aria-label="Delete @review.Name" @onclick="() => DeleteReviewAsync(chat.Id, review.Id)">Delete</button>
-                                                        <button type="button" class="review-menu-cancel" aria-label="Cancel deletion" @onclick="() => _confirmingReviewDeleteId = null"><AppIcon Name="x" /></button>
+                                                        <button type="button" class="review-menu-cancel" title="Cancel deletion" aria-label="Cancel deletion" @onclick="() => _confirmingReviewDeleteId = null"><AppIcon Name="x" /></button>
                                                     }
                                                     else
                                                     {
@@ -214,7 +214,7 @@
                                                             {
                                                                 <span class="review-menu-confirm-label">Delete review?</span>
                                                                 <button type="button" class="review-menu-confirm-delete" aria-label="Delete @review.Name" @onclick="() => DeleteReviewAsync(chat.Id, review.Id)">Delete</button>
-                                                                <button type="button" class="review-menu-cancel" aria-label="Cancel deletion" @onclick="() => _confirmingReviewDeleteId = null"><AppIcon Name="x" /></button>
+                                                                <button type="button" class="review-menu-cancel" title="Cancel deletion" aria-label="Cancel deletion" @onclick="() => _confirmingReviewDeleteId = null"><AppIcon Name="x" /></button>
                                                             }
                                                             else
                                                             {
@@ -270,7 +270,7 @@
                     else if (orderedChats.Count == 0) { <span class="empty-hint">No active chats</span> }
                     @if (_archiveSuggestionProject == project.Id && _archiveSuggestionCount >= 10)
                     {
-                        <div class="archive-suggestion" role="status"><span>@_archiveSuggestionCount chats inactive for 30 days</span><button type="button" @onclick="() => OpenArchive(true)">Review</button><button class="icon-action" type="button" aria-label="Dismiss cleanup suggestion" @onclick="DismissArchiveSuggestionAsync"><AppIcon Name="x" /></button></div>
+                        <div class="archive-suggestion" role="status"><span>@_archiveSuggestionCount chats inactive for 30 days</span><button type="button" @onclick="() => OpenArchive(true)">Review</button><button class="icon-action" type="button" title="Dismiss cleanup suggestion" aria-label="Dismiss cleanup suggestion" @onclick="DismissArchiveSuggestionAsync"><AppIcon Name="x" /></button></div>
                     }
                     <button class="workspace-nav-item archive-nav-item" type="button" @onclick="() => OpenArchive(false)"><AppIcon Name="archive" /><span class="nav-item-label">Archive · @_chats.Count(chat => chat.ArchivedAt is not null)</span></button>
                 </nav>
@@ -286,10 +286,10 @@
                     {
                         <div class="directory-nav-row directory-nav-row-header">
                             <span class="directory-row-main">
-                                <button class="icon-action directory-toggle" type="button" aria-expanded="@_directoriesExpanded" aria-label="Toggle directories" @onclick="ToggleDirectoriesExpanded"><AppIcon Name="@(_directoriesExpanded ? "chevron-down" : "chevron-right")" /></button>
+                                <button class="icon-action directory-toggle" type="button" aria-expanded="@_directoriesExpanded" title="@(_directoriesExpanded ? "Collapse project directory grants" : "Show project directory grants")" aria-label="Toggle directories" @onclick="ToggleDirectoriesExpanded"><AppIcon Name="@(_directoriesExpanded ? "chevron-down" : "chevron-right")" /></button>
                                 <AppIcon Name="folder" />
                                 <span class="nav-item-label directory-label">Directories</span>
-                                <span class="directory-count">@_security.DirectoryGrants.Count</span>
+                                <span class="directory-count" title="Directories the assistant's file tools are allowed to access for this project">@_security.DirectoryGrants.Count</span>
                             </span>
                             <button class="icon-action directory-row-action directory-add-button" type="button" title="Add directory" aria-label="Add directory" @onclick="OpenDirectoryPickerForNewGrant"><AppIcon Name="plus" /></button>
                         </div>
@@ -309,7 +309,7 @@
                                         <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
                                             @if (_isConfirmingDirectoryDelete)
                                             {
-                                                <div class="review-menu-row"><span class="review-menu-confirm-label">Remove access?</span><button type="button" class="review-menu-confirm-action" title="Files stay on disk" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Remove</button><button type="button" class="review-menu-cancel" aria-label="Cancel" @onclick="CancelDirectoryDelete"><AppIcon Name="x" /></button></div>
+                                                <div class="review-menu-row"><span class="review-menu-confirm-label">Remove access?</span><button type="button" class="review-menu-confirm-action" title="Files stay on disk" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Remove</button><button type="button" class="review-menu-cancel" title="Cancel removing directory access" aria-label="Cancel" @onclick="CancelDirectoryDelete"><AppIcon Name="x" /></button></div>
                                             }
                                             else
                                             {
@@ -328,10 +328,10 @@
         <span class="visually-hidden" role="status" aria-live="polite">@_sidebarAnnouncement</span>
         </div>
         <nav class="global-nav root-nav sidebar-global-nav" aria-label="Application settings">
-            <button class="workspace-nav-item @(_globalSection == "Connections" ? "selected" : string.Empty)" type="button" title="Connections (Alt+1)" data-hotkey="Alt+Digit1" aria-keyshortcuts="Alt+1" @onclick='() => OpenGlobalSection("Connections")'><AppIcon Name="connection" /><span>Connections</span><span class="directory-count">@_connections.Count(item => item.Enabled)</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+1</kbd></button>
-            <button class="workspace-nav-item @(_globalSection == "MCP" ? "selected" : string.Empty)" type="button" title="MCP (Alt+2)" data-hotkey="Alt+Digit2" aria-keyshortcuts="Alt+2" @onclick='() => OpenGlobalSection("MCP")'><AppIcon Name="mcp" /><span>MCP</span><span class="directory-count">@_enabledMcpServerCount</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+2</kbd></button>
-            <button class="workspace-nav-item @(_globalSection == "Memory" ? "selected" : string.Empty)" type="button" title="Memory (Alt+3)" data-hotkey="Alt+Digit3" aria-keyshortcuts="Alt+3" @onclick='() => OpenGlobalSection("Memory")'><AppIcon Name="memory" /><span>Memory</span><span class="directory-count">@_userMemoryCount</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+3</kbd></button>
-            <button class="workspace-nav-item @(_globalSection == "Skills" ? "selected" : string.Empty)" type="button" title="Skills (Alt+4)" data-hotkey="Alt+Digit4" aria-keyshortcuts="Alt+4" @onclick='() => OpenGlobalSection("Skills")'><AppIcon Name="skill" /><span>Skills</span><span class="directory-count">@_skillCount</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+4</kbd></button>
+            <button class="workspace-nav-item @(_globalSection == "Connections" ? "selected" : string.Empty)" type="button" title="Connections (Alt+1)" data-hotkey="Alt+Digit1" aria-keyshortcuts="Alt+1" @onclick='() => OpenGlobalSection("Connections")'><AppIcon Name="connection" /><span>Connections</span><span class="directory-count" title="Enabled model connections">@_connections.Count(item => item.Enabled)</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+1</kbd></button>
+            <button class="workspace-nav-item @(_globalSection == "MCP" ? "selected" : string.Empty)" type="button" title="MCP (Alt+2)" data-hotkey="Alt+Digit2" aria-keyshortcuts="Alt+2" @onclick='() => OpenGlobalSection("MCP")'><AppIcon Name="mcp" /><span>MCP</span><span class="directory-count" title="Enabled MCP servers">@_enabledMcpServerCount</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+2</kbd></button>
+            <button class="workspace-nav-item @(_globalSection == "Memory" ? "selected" : string.Empty)" type="button" title="Memory (Alt+3)" data-hotkey="Alt+Digit3" aria-keyshortcuts="Alt+3" @onclick='() => OpenGlobalSection("Memory")'><AppIcon Name="memory" /><span>Memory</span><span class="directory-count" title="Enabled personal memory entries">@_userMemoryCount</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+3</kbd></button>
+            <button class="workspace-nav-item @(_globalSection == "Skills" ? "selected" : string.Empty)" type="button" title="Skills (Alt+4)" data-hotkey="Alt+Digit4" aria-keyshortcuts="Alt+4" @onclick='() => OpenGlobalSection("Skills")'><AppIcon Name="skill" /><span>Skills</span><span class="directory-count" title="Enabled personal skills">@_skillCount</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+4</kbd></button>
             <button class="workspace-nav-item @(_globalSection == "Settings" ? "selected" : string.Empty)" type="button" title="Settings (Alt+0)" data-hotkey="Alt+Digit0" aria-keyshortcuts="Alt+0" @onclick='() => OpenGlobalSection("Settings")'><AppIcon Name="settings" /><span>Settings</span>@if (ClientMode.PublicWeb)
                 {
                     @* The only place the published app shows its link to the Host; details and
@@ -493,7 +493,7 @@
                hint is dropped — the hint describes what Enter does with text the user wrote,
                and that is no longer the interesting thing on screen. A fork/replace/generating
                chip still wins the line; the counter just prefixes it. *@
-            @if (_composerHistoryNavigator.Index is { } historyIndex) { <span class="composer-history-counter">History @(historyIndex + 1)/@GetComposerHistory().Count</span> }
+            @if (_composerHistoryNavigator.Index is { } historyIndex) { <span class="composer-history-counter" title="Position in your sent-message history; ↑ on the first line goes back, ↓ on the last line goes forward, Esc restores your draft">History @(historyIndex + 1)/@GetComposerHistory().Count</span> }
             @* Held states carry no status word: the turn chip above already names the state and,
                for a failure, its reason. This line says only what the Enter key will do. *@
             @if (_isSendingNowFromComposer || _sendingQueuedNowId is not null) { <span class="queue-transition-status"><AppIcon Name="spinner" Class="tool-row-spinner" />Interrupting and sending…</span> }

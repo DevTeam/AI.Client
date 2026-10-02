@@ -743,8 +743,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// model that stops to announce its next step has ended the turn there; this says not to.
     /// </summary>
     private const string FinishingInstruction =
-        "Keep working with tools until the request is done. A reply without a tool call ends your turn and is "
-        + "shown to the user as your answer, so do not stop to announce a next step: take it. Do not end by asking "
+        "Keep working with tools until the request is done. Before your first tool calls, write a brief "
+        + "user-facing progress note in the assistant message's content explaining what you will do. During longer "
+        + "work, include another short note with your next tool calls when you have a meaningful finding, change "
+        + "of approach or have worked for about a minute since the last update. Use the user's language and describe "
+        + "concrete progress; do not repeat tool output or narrate every call. These notes must be in content, "
+        + "not just reasoning, and must accompany the tool calls in the same response. "
+        + "A reply without a tool call ends your turn and is shown to the user as your final answer, so a progress "
+        + "note must not be sent as a standalone reply: include the tool calls and take the next step. Do not end by asking "
         + "permission to continue (\"Shall I…?\", \"Want me to…?\"): if the request already covers that step, do it. When a "
         + "decision is genuinely the user's, call ask_user; a question written in the reply ends your turn unanswered. "
         + "End with the complete answer. If information or tools are missing, say what you did, what is left and what "

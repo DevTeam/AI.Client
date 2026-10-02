@@ -87,12 +87,12 @@
                     <details class="settings-disclosure">
                         <summary class="settings-row">
                             <span class="settings-row-label">Recent runs</span>
-                            <span class="settings-row-value">@(recent.Length == 0 ? "None" : recent.Length.ToString())</span>
+                            <span class="settings-row-value" title="Number of recorded runs shown here, up to the ten most recent">@(recent.Length == 0 ? "None" : recent.Length.ToString())</span>
                             <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                         </summary>
                         <div class="settings-row">
                             <span class="settings-row-hint">The last ten runs of this skill</span>
-                            <button class="compact-action" type="button" @onclick="RefreshRunsAsync">Refresh</button>
+                            <button class="compact-action" type="button" title="Reload the ten most recent runs of this skill" @onclick="RefreshRunsAsync">Refresh</button>
                         </div>
                         @if (recent.Length > 0)
                         {

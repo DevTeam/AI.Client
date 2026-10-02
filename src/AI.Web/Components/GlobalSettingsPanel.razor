@@ -209,17 +209,17 @@
                                                 <span class="settings-row-value">@RatingLabel(connection.Capability, Capabilities)</span>
                                                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                                             </summary>
-                                            <label class="settings-row settings-field"><span class="settings-row-label">Capability</span><span class="settings-field-control settings-range"><input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><output>@RatingLabel(connection.Capability, Capabilities)</output></span></label>
+                                            <label class="settings-row settings-field"><span class="settings-row-label">Capability</span><span class="settings-field-control settings-range"><input type="range" min="0" max="5" step="1" @bind="connection.Capability" @bind:event="oninput" /><output title="Capability rating used when selecting a connection for delegated work">@RatingLabel(connection.Capability, Capabilities)</output></span></label>
                                             <label class="settings-row settings-field"><span class="settings-row-label">Good for</span><InputText autocomplete="off" @bind-Value="connection.GoodFor" placeholder="Vision, long context, local" /></label>
                                         </details>
                                         <details class="settings-disclosure">
                                             <summary class="settings-row">
                                                 <span class="settings-row-text"><span class="settings-row-label">Context limits</span><span class="settings-row-hint">Empty fields use the model's defaults</span></span>
-                                                <span class="settings-row-value">@FormatTokens(limits.ContextWindowTokens) / @FormatTokens(limits.ReservedOutputTokens)</span>
+                                                <span class="settings-row-value" title="@($"Context window: {limits.ContextWindowTokens} tokens ({SourceLabel(limits.ContextWindowSource)}). Reserved output: {limits.ReservedOutputTokens} tokens ({SourceLabel(limits.ReservedOutputSource)})")">@FormatTokens(limits.ContextWindowTokens) / @FormatTokens(limits.ReservedOutputTokens)</span>
                                                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                                             </summary>
-                                            <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Context window</span><span class="settings-row-hint">@limits.ContextWindowTokens tokens, @SourceLabel(limits.ContextWindowSource)</span></span><input type="number" min="1024" max="4000000" step="1" placeholder="@limits.ContextWindowTokens" @bind="connection.ContextWindowTokens" /></label>
-                                            <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Reserved output</span><span class="settings-row-hint">@limits.ReservedOutputTokens tokens, @SourceLabel(limits.ReservedOutputSource)</span></span><input type="number" min="256" max="1000000" step="1" placeholder="@limits.ReservedOutputTokens" @bind="connection.ReservedOutputTokens" /></label>
+                                            <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Context window</span><span class="settings-row-hint">@limits.ContextWindowTokens tokens, @SourceLabel(limits.ContextWindowSource)</span></span><input type="number" min="1024" max="4000000" step="1" title="Total token budget for input and the reserved response; empty uses the resolved model default" placeholder="@limits.ContextWindowTokens" @bind="connection.ContextWindowTokens" /></label>
+                                            <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Reserved output</span><span class="settings-row-hint">@limits.ReservedOutputTokens tokens, @SourceLabel(limits.ReservedOutputSource)</span></span><input type="number" min="256" max="1000000" step="1" title="Space kept free for the model response when planning context; empty uses the resolved model default" placeholder="@limits.ReservedOutputTokens" @bind="connection.ReservedOutputTokens" /></label>
                                         </details>
                                         <details class="settings-disclosure">
                                             <summary class="settings-row">
@@ -227,9 +227,9 @@
                                                 <span class="settings-row-value">@PriceSummary(connection)</span>
                                                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                                             </summary>
-                                            <label class="settings-row settings-field"><span class="settings-row-label">Input</span><input type="number" min="0" max="10000" step="0.01" @bind="connection.InputPrice" /></label>
-                                            <label class="settings-row settings-field"><span class="settings-row-label">Output</span><input type="number" min="0" max="10000" step="0.01" @bind="connection.OutputPrice" /></label>
-                                            <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Cached input</span><span class="settings-row-hint">Empty: same as input</span></span><input type="number" min="0" max="10000" step="0.01" @bind="connection.CachedInputPrice" /></label>
+                                            <label class="settings-row settings-field"><span class="settings-row-label">Input</span><input type="number" min="0" max="10000" step="0.01" title="US dollars per million uncached input tokens; used when the endpoint does not quote a request cost" @bind="connection.InputPrice" /></label>
+                                            <label class="settings-row settings-field"><span class="settings-row-label">Output</span><input type="number" min="0" max="10000" step="0.01" title="US dollars per million output tokens; used when the endpoint does not quote a request cost" @bind="connection.OutputPrice" /></label>
+                                            <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Cached input</span><span class="settings-row-hint">Empty: same as input</span></span><input type="number" min="0" max="10000" step="0.01" title="US dollars per million cached input tokens; empty uses the input price" @bind="connection.CachedInputPrice" /></label>
                                         </details>
                                     </div>
                                 </section>
@@ -298,10 +298,10 @@
                                         : tools.Where(item => item.Name.Contains(_toolFilter.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
                                     <div class="settings-toolbar">
                                         <input class="settings-search" type="search" placeholder="Filter tools" aria-label="Filter tools" value="@_toolFilter" @oninput="args => _toolFilter = args.Value?.ToString() ?? string.Empty" />
-                                        <select class="settings-bulk" aria-label="Set every shown tool" value="" disabled="@(shown.Count == 0)" @key="_bulkKey" @onchange="args => SetToolDecisions(shown, args.Value?.ToString())">
+                                        <select class="settings-bulk" title="Change the global default for every tool currently shown by the filter" aria-label="Set every shown tool" value="" disabled="@(shown.Count == 0)" @key="_bulkKey" @onchange="args => SetToolDecisions(shown, args.Value?.ToString())">
                                             <option value="">Set all…</option><option>Ask</option><option>Allow</option><option>Deny</option>
                                         </select>
-                                        <button class="compact-action" type="button" disabled="@(_discoveringTools || _saving || !server.Enabled || server.Policy == "Deny")" @onclick="DiscoverToolsAsync">@(_discoveringTools ? "Discovering…" : "Discover")</button>
+                                        <button class="compact-action" type="button" disabled="@(_discoveringTools || _saving || !server.Enabled || server.Policy == "Deny")" title="Fetch the server's current tool list and schemas" @onclick="DiscoverToolsAsync">@(_discoveringTools ? "Discovering…" : "Discover")</button>
                                     </div>
                                     <p class="settings-note">Defaults for every project unless it overrides them. @ToolDecisionSummary(tools)</p>
                                     @if (tools.Count == 0)
@@ -323,14 +323,14 @@
                                                         <span class="settings-row-label mcp-tool-title" title="@policy.SchemaHash">@policy.Name</span>
                                                         @if (ToolLimitsSummary(policy) is { } limitsSummary) { <span class="settings-row-hint">@limitsSummary</span> }
                                                     </span>
-                                                    <select class="mcp-tool-decision is-@policy.Decision.ToLowerInvariant()" @bind="policy.Decision" aria-label="Policy for @policy.Name"><option>Ask</option><option>Allow</option><option>Deny</option></select>
+                                                    <select class="mcp-tool-decision is-@policy.Decision.ToLowerInvariant()" title="Global default: Allow runs without asking, Ask requires approval, Deny refuses calls; chat and project rules can override it" @bind="policy.Decision" aria-label="Policy for @policy.Name"><option>Ask</option><option>Allow</option><option>Deny</option></select>
                                                     <button class="icon-action mcp-tool-limits-toggle @(expanded ? "selected" : null)" type="button" title="Limits" aria-label="Limits for @policy.Name" aria-expanded="@expanded" @onclick="() => _expandedTool = expanded ? null : policy.Name"><AppIcon Name="@(expanded ? "chevron-up" : "chevron-down")" /></button>
                                                 </div>
                                                 @if (expanded)
                                                 {
                                                     <div class="settings-row mcp-tool-limits">
-                                                        <label>Calls per run<input type="number" min="1" max="2147483647" @bind="policy.MaxCallsPerRun" /></label>
-                                                        <label>Timeout, sec<input type="number" min="1" max="600" @bind="policy.TimeoutSeconds" /></label>
+                                                        <label>Calls per run<input type="number" min="1" max="2147483647" title="Maximum invocations of this tool in one run; empty leaves this limit unset" @bind="policy.MaxCallsPerRun" /></label>
+                                                        <label>Timeout, sec<input type="number" min="1" max="600" title="Maximum execution time for one call, in seconds; empty uses the default timeout" @bind="policy.TimeoutSeconds" /></label>
                                                     </div>
                                                 }
                                             }

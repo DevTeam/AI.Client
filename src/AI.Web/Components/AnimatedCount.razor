@@ -6,13 +6,14 @@
    appears as is. *@
 @if (Value is { } value)
 {
-    <span class="@Class animated-count @(_countIn ? "count-in" : null)" style="--count: @value" data-sign="@Sign"></span>
+    <span class="@Class animated-count @(_countIn ? "count-in" : null)" title="@Title" style="--count: @value" data-sign="@Sign"></span>
 }
 
 @code {
     [Parameter] public int? Value { get; set; }
     [Parameter] public string Sign { get; set; } = string.Empty;
     [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Title { get; set; }
 
     /// <summary>Roll the first value up from zero too, for a count that is new to the user.</summary>
     [Parameter] public bool CountIn { get; set; }

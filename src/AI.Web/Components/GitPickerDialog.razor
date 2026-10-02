@@ -23,12 +23,12 @@
                understands — a tag, a hash, HEAD~3 — can be typed. Empty is the whole history. *@
             <div class="directory-picker-toolbar git-picker-toolbar">
                 <AppIcon Name="git-branch" />
-                <input class="directory-picker-path git-picker-revision" list="git-picker-revisions" aria-label="History branch or revision"
+                <input class="directory-picker-path git-picker-revision" list="git-picker-revisions" title="Limit history to a branch, tag or revision such as HEAD~3; empty includes all branches" aria-label="History branch or revision"
                        placeholder="All branches, or a branch, tag or revision" value="@_revision" @oninput="OnRevisionInput" @onchange="OnRevisionChangedAsync" />
                 <datalist id="git-picker-revisions">
                     @foreach (var branch in _branches) { <option value="@branch.Label">@(IsRemote(branch) ? "Remote" : "Local")</option> }
                 </datalist>
-                <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" @onclick="ChangeRevisionAsync">Go</button>
+                <button class="secondary-action compact-action" type="button" disabled="@Picker.IsLoading" title="Load commit history for the entered revision" @onclick="ChangeRevisionAsync">Go</button>
             </div>
         }
         <div class="directory-picker-body">

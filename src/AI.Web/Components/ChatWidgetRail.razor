@@ -31,7 +31,7 @@
             }
         </span>
         @{
-            var visible = Widgets.Where(item => !item.Hidden).ToList();
+            var visible = GetVisible();
             var anyExpanded = visible.Any(item => !item.Collapsed);
             var collapseAll = visible.Count > 0 && anyExpanded;
         }
@@ -118,11 +118,14 @@
     /// </summary>
     private Task ToggleAllCollapsedAsync()
     {
-        var visible = Widgets.Where(item => !item.Hidden).ToList();
+        var visible = GetVisible();
         if (visible.Count == 0) return Task.CompletedTask;
         var collapse = visible.Any(item => !item.Collapsed);
         return ChangeAsync(Layout.SetCollapsed(Widgets, collapse));
     }
+
+    /// <summary>The widgets the person is looking at, in their saved order.</summary>
+    private List<ChatWidgetPreference> GetVisible() => Widgets.Where(item => !item.Hidden).ToList();
 
     private void ToggleMenu() => _menuOpen = !_menuOpen;
 

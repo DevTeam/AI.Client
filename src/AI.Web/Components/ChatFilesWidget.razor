@@ -16,12 +16,12 @@
     {
         <div class="chat-usage-section">
             <div class="chat-widget-headline">
-                <span class="chat-widget-count">@stats.Files.Count</span>
+                <span class="chat-widget-count" title="Distinct file paths changed in the selected scope; repeated changes to the same path count once">@stats.Files.Count</span>
                 <span class="chat-usage-muted">@(stats.Files.Count == 1 ? "file" : "files")@(stats.IncludesLive ? " so far" : null)</span>
                 <span class="chat-widget-headline-aside chat-files-total-lines" aria-label="@stats.Additions lines added, @stats.Deletions lines removed"
                       title="Summed over the turns: a line changed in two turns counts twice">
-                    <span class="workspace-added">+@stats.Additions</span>
-                    <span class="workspace-removed">−@stats.Deletions</span>
+                    <span class="workspace-added" title="Lines added, summed over the turns in the selected scope; repeated additions count again">+@stats.Additions</span>
+                    <span class="workspace-removed" title="Lines removed, summed over the turns in the selected scope; repeated removals count again">−@stats.Deletions</span>
                 </span>
             </div>
             @if (stats.Additions + stats.Deletions > 0)
@@ -36,7 +36,7 @@
                 {
                     if (stats.Count(kind) is > 0 and var count)
                     {
-                        <span @key="kind"><span class="chat-files-kind chat-files-kind-@kind.ToString().ToLowerInvariant()" aria-hidden="true">@Glyph(kind)</span>@count @label</span>
+                        <span @key="kind" title="@KindTitle(kind)"><span class="chat-files-kind chat-files-kind-@kind.ToString().ToLowerInvariant()" aria-hidden="true">@Glyph(kind)</span>@count @label</span>
                     }
                 }
             </div>
@@ -61,12 +61,12 @@
                             <span class="chat-files-name">@FileName(file.Path) <span class="chat-usage-muted">@Folder(file.Path)</span></span>
                             @if (file.IsBinary && file.Additions + file.Deletions == 0)
                             {
-                                <span class="chat-files-binary chat-usage-muted">binary</span>
+                                <span class="chat-files-binary chat-usage-muted" title="Binary file change; text line counts are unavailable">binary</span>
                             }
                             else
                             {
-                                <span class="chat-files-figure @(file.Additions > 0 ? "workspace-added" : "chat-usage-muted")">@(file.Additions > 0 ? $"+{file.Additions}" : "—")</span>
-                                <span class="chat-files-figure @(file.Deletions > 0 ? "workspace-removed" : "chat-usage-muted")">@(file.Deletions > 0 ? $"−{file.Deletions}" : "—")</span>
+                                <span title="Lines added to this path across the selected scope" class="chat-files-figure @(file.Additions > 0 ? "workspace-added" : "chat-usage-muted")">@(file.Additions > 0 ? $"+{file.Additions}" : "—")</span>
+                                <span title="Lines removed from this path across the selected scope" class="chat-files-figure @(file.Deletions > 0 ? "workspace-removed" : "chat-usage-muted")">@(file.Deletions > 0 ? $"−{file.Deletions}" : "—")</span>
                                 <span class="chat-files-track" aria-hidden="true">
                                     <span class="chat-files-bar-added" style="flex-grow: @file.Additions"></span>
                                     <span class="chat-files-bar-removed" style="flex-grow: @file.Deletions"></span>
@@ -86,7 +86,7 @@
         </div>
 
         <div class="chat-usage-section chat-usage-footnote chat-files-footer">
-            <span>
+            <span title="Turns with file changes, out of all turns on the visible branch">
                 @if (_scope == ChatWidgetScope.Chat)
                 {
                     @($"In {stats.TurnsWithChanges} of {stats.Turns} {(stats.Turns == 1 ? "turn" : "turns")}")

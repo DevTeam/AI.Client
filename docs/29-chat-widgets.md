@@ -173,7 +173,13 @@ competing with the numbers. Column headers ("added", "removed") sit over their c
 
 English, sentence case, no terminal punctuation on labels. Units follow the number ("110 tok/s",
 "3 files"). Plurals are spelled out ("1 turn", "4 turns"). Tooltips explain how a figure was
-made; they do not repeat it.
+made; they do not repeat it. Attach explanations to values themselves, including headline counts,
+grid values, list counts and legend figures. Use `title`, which the shared `tooltips.js` turns into
+an `app-tooltip`; widgets do not create their own tooltip component. For abbreviated token counts,
+include the unabridged count via `IUsagePresentation.FormatExact`. Explain the selected scope,
+estimates and aggregation rules where they affect the meaning (for example, repeated file changes
+count again in line totals, while a file path counts once). Folded summaries also expose the
+widget description and full summary through a tooltip.
 
 ## Architecture
 

@@ -160,6 +160,6 @@ internal sealed class Composition
                     usageMeter, usageEstimator, prefixes))
             .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool,
                 AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool>(Tag.Unique)
-            .Singleton<DefaultToolSessionFactory, AppToolSessionFactory>(Tag.Unique)
+            .Singleton<DefaultToolSessionFactory, AppToolSessionFactory, CSharpToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
 }

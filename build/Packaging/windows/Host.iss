@@ -11,12 +11,28 @@ OutputDir={#OutputDir}
 OutputBaseFilename={#BaseName}
 Compression=lzma2
 SolidCompression=yes
-WizardStyle=modern
+WizardStyle=modern dynamic
+SetupIconFile=..\..\..\src\AI.Desktop\Assets\app-icon.ico
+WizardImageFile=..\..\..\src\AI.Desktop\Assets\app-icon.png
+WizardSmallImageFile=..\..\..\src\AI.Desktop\Assets\app-icon.png
 CloseApplications=yes
 
 [Files]
 Source: "{#SourceDir}\stop-installed-app.ps1"; Flags: dontcopy noencryption
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "mcp-csharp\*"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: main
+Source: "{#CSharpSourceDir}\*"; DestDir: "{app}\mcp-csharp"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: csharp
+
+[Types]
+Name: "standard"; Description: "Standard installation"
+Name: "full"; Description: "Full installation"
+Name: "custom"; Description: "Custom installation"; Flags: iscustom
+
+[Components]
+Name: "main"; Description: "AI Client Host"; Types: full standard custom; Flags: fixed
+Name: "csharp"; Description: "C# scripting tools (optional, compiles and runs scripts with Roslyn)"; Types: full
+
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\mcp-csharp"; Components: main
 
 [Icons]
 Name: "{autoprograms}\AI Client in browser"; Filename: "{app}\AI.Host.exe"; Parameters: "open"
@@ -26,6 +42,8 @@ Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile
 Filename: "{app}\AI.Host.exe"; Parameters: "open"; Description: "Open AI Client in the browser"; Flags: nowait postinstall skipifsilent
 
 [Code]
+#include "ApplicationBranding.iss"
+
 function StopHost(ScriptPath: String; RemoveTask: Boolean): Boolean;
 var
   ExitCode: Integer;

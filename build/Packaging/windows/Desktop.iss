@@ -10,12 +10,28 @@ OutputDir={#OutputDir}
 OutputBaseFilename={#BaseName}
 Compression=lzma2
 SolidCompression=yes
-WizardStyle=modern
+WizardStyle=modern dynamic
+SetupIconFile=..\..\..\src\AI.Desktop\Assets\app-icon.ico
+WizardImageFile=..\..\..\src\AI.Desktop\Assets\app-icon.png
+WizardSmallImageFile=..\..\..\src\AI.Desktop\Assets\app-icon.png
 CloseApplications=yes
 
 [Files]
 Source: "{#SourceDir}\stop-installed-app.ps1"; Flags: dontcopy noencryption
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "mcp-csharp\*"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: main
+Source: "{#CSharpSourceDir}\*"; DestDir: "{app}\mcp-csharp"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: csharp
+
+[Types]
+Name: "standard"; Description: "Standard installation"
+Name: "full"; Description: "Full installation"
+Name: "custom"; Description: "Custom installation"; Flags: iscustom
+
+[Components]
+Name: "main"; Description: "AI Client Desktop"; Types: full standard custom; Flags: fixed
+Name: "csharp"; Description: "C# scripting tools (optional, compiles and runs scripts with Roslyn)"; Types: full
+
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\mcp-csharp"; Components: main
 
 [Icons]
 Name: "{autoprograms}\AI Client"; Filename: "{app}\AI.Desktop.exe"
@@ -24,6 +40,8 @@ Name: "{autoprograms}\AI Client"; Filename: "{app}\AI.Desktop.exe"
 Filename: "{app}\AI.Desktop.exe"; Description: "Start AI Client"; Flags: nowait postinstall skipifsilent
 
 [Code]
+#include "ApplicationBranding.iss"
+
 function StopDesktop(ScriptPath: String): Boolean;
 var
   ExitCode: Integer;

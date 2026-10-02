@@ -2,14 +2,37 @@
 // to the next while hovering the strip. Synthesized (no asset to ship) the same way the
 // notification ding is: a shared AudioContext + a small graph that disconnects itself.
 //
-// Two layers give the click its mechanical-tooth flavour:
-//   1. A short, low-passed noise burst for a soft "tk" without a sharp high end.
-//   2. A short, low-passed noise burst around 220 Hz for the body — the wooden "thud".
-// A pure noise burst alone reads as a "tick"; layering in low-end body is what makes it read
-// as something physical hitting something else.
+// Reuse one brief, enveloped click so every tooth has the same timbre. A band-limited
+// transient and a faint, damped resonance give it body without a long noise tail.
 // Keep the context local: notificationSound.js is also loaded as a classic script.
 (() => {
     let audioContext;
+    let tickBuffer;
+    let lastTickAt = -Infinity;
+    let resuming = false;
+
+    const createTickBuffer = context => {
+        const sampleRate = context.sampleRate;
+        const length = Math.ceil(sampleRate * 0.024);
+        const buffer = context.createBuffer(1, length, sampleRate);
+        const data = buffer.getChannelData(0);
+        const upperCutoff = 1 - Math.exp(-2 * Math.PI * 1800 / sampleRate);
+        const lowerCutoff = 1 - Math.exp(-2 * Math.PI * 350 / sampleRate);
+        let upper = 0;
+        let lower = 0;
+        for (let index = 0; index < length; index++) {
+            const time = index / sampleRate;
+            const noise = Math.random() * 2 - 1;
+            upper += upperCutoff * (noise - upper);
+            lower += lowerCutoff * (noise - lower);
+            const attack = Math.min(1, time / 0.001);
+            const fade = Math.min(1, (length - 1 - index) / (sampleRate * 0.004));
+            const envelope = attack * Math.exp(-time / 0.004) * fade;
+            const body = Math.sin(2 * Math.PI * 780 * time) * 0.15;
+            data[index] = (upper - lower + body) * envelope * 0.09;
+        }
+        return buffer;
+    };
 
     window.aiClientPlayRatchetTick = async () => {
         if (document.documentElement.dataset.otherSounds !== 'true') return;
@@ -18,62 +41,27 @@
 
         try {
             audioContext ??= new AudioContextType();
-            if (audioContext.state === 'suspended') await audioContext.resume();
+            if (audioContext.state === 'suspended') {
+                // Do not queue a burst of stale hover ticks while audio is being unlocked.
+                if (resuming) return;
+                resuming = true;
+                try {
+                    await audioContext.resume();
+                } finally {
+                    resuming = false;
+                }
+            }
             if (audioContext.state !== 'running') return;
 
             const start = audioContext.currentTime;
-            const sampleRate = audioContext.sampleRate;
-
-            // A slower attack and short fade soften the leading edge while keeping fast hovers distinct.
-            const tickLength = 0.065;
-            const volume = audioContext.createGain();
-            volume.gain.setValueAtTime(0.0001, start);
-            volume.gain.exponentialRampToValueAtTime(0.12, start + 0.012);
-            volume.gain.exponentialRampToValueAtTime(0.0001, start + tickLength);
-            volume.connect(audioContext.destination);
-
-            // 1. A longer, low-passed transient avoids the brittle noise spike.
-            const transientLength = 0.025;
-            const transientBufferLength = Math.max(1, Math.floor(sampleRate * transientLength));
-            const transientBuffer = audioContext.createBuffer(1, transientBufferLength, sampleRate);
-            const transientData = transientBuffer.getChannelData(0);
-            for (let index = 0; index < transientBufferLength; index++) transientData[index] = Math.random() * 2 - 1;
-            const transient = audioContext.createBufferSource();
-            transient.buffer = transientBuffer;
-            const transientFilter = audioContext.createBiquadFilter();
-            transientFilter.type = 'lowpass';
-            transientFilter.frequency.value = 1100;
-            transientFilter.Q.value = 0.7;
-            transient.connect(transientFilter);
-            transientFilter.connect(volume);
-            transient.start(start);
-            transient.stop(start + transientLength);
-
-            // 2. Body: full-length low-passed noise. Lowpass at 220 Hz with Q=0.7 keeps it from
-            // sounding like a sine sweep; the click character comes from the noise source itself,
-            // not from a sine.
-            const bodyBufferLength = Math.max(1, Math.floor(sampleRate * tickLength));
-            const bodyBuffer = audioContext.createBuffer(1, bodyBufferLength, sampleRate);
-            const bodyData = bodyBuffer.getChannelData(0);
-            for (let index = 0; index < bodyBufferLength; index++) bodyData[index] = Math.random() * 2 - 1;
-            const body = audioContext.createBufferSource();
-            body.buffer = bodyBuffer;
-            const bodyFilter = audioContext.createBiquadFilter();
-            bodyFilter.type = 'lowpass';
-            bodyFilter.frequency.value = 220;
-            bodyFilter.Q.value = 0.7;
-            body.connect(bodyFilter);
-            bodyFilter.connect(volume);
-            body.start(start);
-            body.stop(start + tickLength);
-
-            // Disconnect AFTER both source stops — disconnecting earlier can leave the body node
-            // silent mid-tick in some Chromium builds. 40 ms of slack after the envelope closes.
-            setTimeout(() => {
-                volume.disconnect();
-                transientFilter.disconnect();
-                bodyFilter.disconnect();
-            }, tickLength * 1000 + 40);
+            if (start - lastTickAt < 0.028) return;
+            tickBuffer ??= createTickBuffer(audioContext);
+            const tick = audioContext.createBufferSource();
+            tick.buffer = tickBuffer;
+            tick.connect(audioContext.destination);
+            tick.onended = () => tick.disconnect();
+            tick.start(start);
+            lastTickAt = start;
         } catch {
             // Browsers can reject audio until the user interacts with the page; the ratchet tick
             // is decoration, not feedback, so a silent miss is acceptable.

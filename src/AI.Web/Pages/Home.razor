@@ -58,7 +58,7 @@
             <AppIcon Name="search" /><span class="nav-item-label">Search</span><kbd class="nav-item-shortcut" aria-hidden="true">Ctrl+K</kbd>
         </button>
         <div id="projects-nav">
-        <button class="workspace-nav-item new-project-action" type="button" title="New project (Alt+Shift+N)" data-hotkey="Alt+Shift+KeyN" aria-keyshortcuts="Alt+Shift+N" @onclick="BeginProjectCreation"><AppIcon Name="plus" /><span class="nav-item-label">New project</span></button>
+        <button class="workspace-nav-item new-project-action" type="button" title="New project (Alt+Shift+N)" data-hotkey="Alt+Shift+KeyN" aria-keyshortcuts="Alt+Shift+N" @onclick="BeginProjectCreation"><AppIcon Name="plus" /><span class="nav-item-label">New project</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+Shift+N</kbd></button>
         @if (ProjectsBusy.IsVisible)
         {
             <div class="sidebar-skeleton" role="status" aria-label="Loading projects">

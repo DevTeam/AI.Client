@@ -22,6 +22,7 @@ public sealed class JsonGlobalSettingsRepository(ITextFileSystem fileSystem, IGl
         var servers = settings.McpServers;
         if (servers.All(server => server.Id != DefaultMcpServer.Id)) servers = [DefaultMcpServer.Settings, .. servers];
         if (servers.All(server => server.Id != AppMcpServer.Id)) servers = [.. servers, AppMcpServer.Settings];
+        if (servers.All(server => server.Id != CSharpMcpServer.Id)) servers = [.. servers, CSharpMcpServer.Settings];
         return ReferenceEquals(servers, settings.McpServers) ? settings : settings with { McpServers = servers };
     }
 

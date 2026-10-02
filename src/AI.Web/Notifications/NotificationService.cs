@@ -34,7 +34,7 @@ public sealed class NotificationService(IJSRuntime jsRuntime, IClientSettingsSer
 
     public void Open(NotificationMessage message)
     {
-        if (message.ChatId is null) return;
+        if (message.ChatId is null && !message.OpenUpdates) return;
         OpenRequested?.Invoke(message);
     }
 
@@ -60,6 +60,7 @@ public sealed class NotificationService(IJSRuntime jsRuntime, IClientSettingsSer
     public void ShowError(string message) => Show(new NotificationMessage(message, NotificationKind.Error));
 
     public void ShowInfo(string message) => Show(new NotificationMessage(message, NotificationKind.Info));
+    public void ShowUpdate(string message, NotificationKind kind) => Show(new NotificationMessage(message, kind, OpenUpdates: true));
 
     public void ShowChatEvent(string message, NotificationKind kind, Guid projectId, Guid chatId, Guid branchId, bool requiresAction = false, Guid? messageId = null)
     {

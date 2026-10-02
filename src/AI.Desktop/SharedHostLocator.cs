@@ -44,7 +44,7 @@ internal sealed class SharedHostLocator : ISharedHostLocator
     }
 
     private static SharedHostState Incompatible() => new(null,
-        "The installed Host uses a different API version. Update Host and Desktop to compatible releases.");
+        "The installed Host uses a different API version. Update Host and Desktop to compatible releases.", new Uri("http://127.0.0.1:52173/"));
 
     private sealed record SharedHost(string ProductName, int ApiVersion);
 }

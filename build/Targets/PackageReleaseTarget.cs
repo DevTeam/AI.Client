@@ -57,6 +57,8 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
 
         foreach (var (product, directory) in new[] { ("Host", host), ("Desktop", desktop) })
         {
+            await File.WriteAllTextAsync(Path.Combine(directory, "update-installation.json"),
+                System.Text.Json.JsonSerializer.Serialize(new { product, runtime, version }), cancellationToken);
             if (!File.Exists(Path.Combine(directory, "wwwroot", "index.html"))
                 || !File.Exists(Path.Combine(directory, "wwwroot", "_framework", "blazor.webassembly.js")))
                 throw new InvalidDataException($"{product} {runtime} publish does not contain the Web interface.");

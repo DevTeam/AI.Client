@@ -37,7 +37,9 @@ internal sealed partial class UiComposition
         DI.Setup()
             .Hint(Hint.Resolve, "Off")
             .Arg<DesktopStart>("start")
-            .Singleton<App, MainWindow, ProcessSignals, JsonWindowPlacementStore, JsonWorkspaceLocationStore, JsonThemePreferenceStore, JsonClientSettingsStore, WindowsTaskbarBadge,
+            .Singleton<AI.Updates.UpdateManagerFactory, AI.Updates.GitHubUpdateFeed, AI.Updates.UpdateInstaller, AI.Updates.UpdateInstallationProvider>()
+            .Singleton(_ => new HttpClient { Timeout = TimeSpan.FromMinutes(30) })
+            .Singleton<App, MainWindow, ProcessSignals, DesktopUpdates, JsonWindowPlacementStore, JsonWorkspaceLocationStore, JsonThemePreferenceStore, JsonClientSettingsStore, WindowsTaskbarBadge,
                 WebView2FileDropBridge>()
             .Root<App>(nameof(App));
 }

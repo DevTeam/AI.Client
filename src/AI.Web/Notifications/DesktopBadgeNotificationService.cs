@@ -65,6 +65,7 @@ internal sealed class DesktopBadgeNotificationService(
     public void ShowSuccess(string message) => baseNotificationService.ShowSuccess(message);
     public void ShowError(string message) => baseNotificationService.ShowError(message);
     public void ShowInfo(string message) => baseNotificationService.ShowInfo(message);
+    public void ShowUpdate(string message, NotificationKind kind) => baseNotificationService.ShowUpdate(message, kind);
     public void Dismiss() => baseNotificationService.Dismiss();
     public void PauseAutoDismiss() => baseNotificationService.PauseAutoDismiss();
     public void ResumeAutoDismiss() => baseNotificationService.ResumeAutoDismiss();

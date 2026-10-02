@@ -38,11 +38,17 @@ Type: filesandordirs; Name: "{app}\mcp-csharp"; Components: main
 Name: "{autoprograms}\AI Client in browser"; Filename: "{app}\AI.Host.exe"; Parameters: "open"
 
 [Run]
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-host-task.ps1"" ""{app}"""; Flags: runhidden waituntilterminated
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-host-task.ps1"" ""{app}"""; Flags: runhidden waituntilterminated; Check: not IsUpdate
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-host-task.ps1"" ""{app}"" -NoStart"; Flags: runhidden waituntilterminated; Check: IsUpdate
 Filename: "{app}\AI.Host.exe"; Parameters: "open"; Description: "Open AI Client in the browser"; Flags: nowait postinstall skipifsilent
 
 [Code]
 #include "ApplicationBranding.iss"
+
+function IsUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:UPDATE|0}') = '1';
+end;
 
 function StopHost(ScriptPath: String; RemoveTask: Boolean): Boolean;
 var

@@ -28,6 +28,7 @@
                         <TextBlock x:Name="StatusDetail" Foreground="{DynamicResource StatusDetailBrush}" TextWrapping="Wrap" TextAlignment="Center"
                                    IsVisible="False" />
                         <Button x:Name="Retry" Content="Retry" HorizontalAlignment="Center" IsVisible="False" />
+                        <Button x:Name="UpdateHost" Content="Update Host" HorizontalAlignment="Center" IsVisible="False" />
                     </StackPanel>
                 </Border>
             </Grid>

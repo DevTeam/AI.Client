@@ -6,6 +6,8 @@ using AI.Contracts.Projects;
 
 public interface IChatRunDispatcher
 {
+    bool TryEnterUpdateMaintenance();
+    void LeaveUpdateMaintenance();
     Task<bool> DecideToolAsync(Guid projectId, Guid chatId, Guid branchId, ToolApprovalDecision decision, CancellationToken token);
     Task<bool> AnswerPromptAsync(Guid projectId, Guid chatId, Guid branchId, UserPromptResponse response, CancellationToken token);
     Task ShutdownAsync(CancellationToken cancellationToken);

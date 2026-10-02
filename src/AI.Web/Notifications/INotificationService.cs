@@ -42,6 +42,7 @@ public interface INotificationService
 
     /// <summary>Shows an informational notification (blue border).</summary>
     void ShowInfo(string message);
+    void ShowUpdate(string message, NotificationKind kind);
 
     /// <summary>
     /// Removes the current notification immediately. Callers rarely need this — the auto-dismiss
@@ -71,7 +72,8 @@ public sealed record NotificationMessage(
     Guid? MessageId = null,
     bool IsSeen = false,
     bool RequiresAction = false,
-    bool IsResolved = false);
+    bool IsResolved = false,
+    bool OpenUpdates = false);
 
 public enum NotificationKind
 {

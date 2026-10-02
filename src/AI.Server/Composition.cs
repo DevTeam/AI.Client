@@ -30,6 +30,7 @@ using Infrastructure.Usage;
 using Microsoft.Extensions.Logging;
 using Mcp.App;
 using Pure.DI;
+using AI.Updates;
 
 /// <summary>
 /// Everything the server side of AI is made of, including the HTTP API and its roots.
@@ -92,8 +93,11 @@ internal sealed class Composition
             .Root<IRunEventsPublisher>()
             .Root<IBrowserAccessService>()
             .Root<IInstalledDesktop>()
+            .Root<IHostUpdateService>()
+            .Root<IUpdateManagerFactory>()
+            .Singleton<HostUpdateService, UpdateManagerFactory, GitHubUpdateFeed, UpdateInstaller, UpdateInstallationProvider>()
             .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, BrowserAccessService, InstalledDesktop>()
-            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, GitEndpoints, MemoryEndpoints, SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints>(Tag.Unique)
+            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, GitEndpoints, MemoryEndpoints, SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints>(Tag.Unique)
             .Singleton<ProjectStorageLocation, DataDirectoryLock, JsonLineFileLoggerProvider, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.

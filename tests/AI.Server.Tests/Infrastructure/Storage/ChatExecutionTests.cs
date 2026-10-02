@@ -29,6 +29,25 @@ using System.Text.Json;
 
 public sealed class ChatExecutionTests
 {
+    [Fact]
+    public async Task UpdateMaintenanceWaitsForActiveRunAndBlocksNewSubmissionsUntilReleased()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "First"));
+        var first = await fixture.NextCallAsync();
+        fixture.Dispatcher.TryEnterUpdateMaintenance().ShouldBeFalse();
+        first.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (!fixture.Dispatcher.TryEnterUpdateMaintenance()) await Task.Delay(10, timeout.Token);
+        await Should.ThrowAsync<InvalidOperationException>(() => fixture.SubmitAsync(
+            new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Blocked")));
+        fixture.Dispatcher.LeaveUpdateMaintenance();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Second"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Done again");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
 
     [Fact]
     public async Task ChatConnectsExternalServersWhileRespectingGlobalAndProjectRestrictions()

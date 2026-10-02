@@ -50,6 +50,28 @@ public sealed class ChatRunDispatcher(
     private readonly Lock _publicationLock = new();
     private readonly ConcurrentDictionary<Guid, byte> _maintenance = new();
     private readonly ConcurrentDictionary<Guid, byte> _deletingProjects = new();
+    private readonly Lock _updateGate = new();
+    private volatile bool _updating;
+
+    public bool TryEnterUpdateMaintenance()
+    {
+        lock (_updateGate)
+        lock (_titleTasksGate)
+        {
+            if (_runtimes.Values.Any(runtime => runtime.Worker is { IsCompleted: false }
+                    || runtime.Snapshot.Status == ChatRunStatus.Generating
+                    || runtime.Snapshot.PendingApproval is not null || runtime.Snapshot.PendingPrompt is not null)
+                || _titleTasks.Values.Any(task => !task.IsCompleted)) return false;
+            _updating = true;
+            return true;
+        }
+    }
+
+    public void LeaveUpdateMaintenance()
+    {
+        lock (_updateGate) _updating = false;
+        foreach (var runtime in _runtimes.Values) StartWorker(runtime);
+    }
 
     public async Task WarmUpAsync(CancellationToken cancellationToken)
     {
@@ -127,6 +149,7 @@ public sealed class ChatRunDispatcher(
 
     public async Task<ChatRunSnapshot> SubmitAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request, CancellationToken cancellationToken)
     {
+        if (_updating) throw new InvalidOperationException("The application is restarting to install an update. Try again after it reconnects.");
         _shutdown.Token.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(request.Content) && request.Resources is not { Count: > 0 })
             throw new ArgumentException("A message needs text or a resource reference.");
@@ -350,9 +373,13 @@ public sealed class ChatRunDispatcher(
 
     private void StartWorker(Runtime runtime)
     {
-        if (_shutdown.IsCancellationRequested || runtime.Worker is { IsCompleted: false }
-            || runtime.State.Queue.Count == 0 || runtime.State.Status is RunStatus.Paused or RunStatus.Interrupted or RunStatus.Failed) return;
-        runtime.Worker = Task.Run(() => ProcessAsync(runtime));
+        lock (_updateGate)
+        {
+            if (_updating) return;
+            if (_shutdown.IsCancellationRequested || runtime.Worker is { IsCompleted: false }
+                || runtime.State.Queue.Count == 0 || runtime.State.Status is RunStatus.Paused or RunStatus.Interrupted or RunStatus.Failed) return;
+            runtime.Worker = Task.Run(() => ProcessAsync(runtime));
+        }
     }
 
     private async Task ProcessAsync(Runtime runtime)
@@ -599,7 +626,7 @@ public sealed class ChatRunDispatcher(
     {
         lock (_titleTasksGate)
         {
-            if (_shutdown.IsCancellationRequested || _titleTasks.ContainsKey(chatId)) return;
+            if (_updating || _shutdown.IsCancellationRequested || _titleTasks.ContainsKey(chatId)) return;
             var invocation = new SkillInvocation("chat-rename", projectId,
                 System.Text.Json.JsonSerializer.SerializeToElement(new { chat_id = chatId, mode = "automatic" }), chatId);
             var task = Task.Run(() => skillRunner.RunAsync(invocation, _shutdown.Token));

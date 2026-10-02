@@ -62,6 +62,7 @@
 .host-status-dot.is-connecting { background: var(--color-text-faint); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--color-text-faint) 18%, transparent); }
 .host-status-card { display: flex; align-items: center; gap: .75rem; padding: .75rem .85rem; border: 1px solid var(--color-border-subtle); border-radius: calc(.6rem * var(--corner-scale)); background: var(--color-surface); }
 .host-status-card .host-status-dot { margin-left: .2rem; }
+.settings-row > .host-status-dot { margin-left: .1rem; }
 .host-status-copy { display: grid; flex: 1; gap: .1rem; min-width: 0; }
 .host-status-copy strong { color: var(--color-text-strong); font-size: .88rem; font-weight: 600; }
 .host-status-copy span { overflow: hidden; color: var(--color-text-subtle); font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
@@ -1136,25 +1137,117 @@ body {
 .permissions-drawer.settings-drawer > footer { min-height: 2.1rem; }
 .settings-drawer-error { color: var(--color-danger-text-strong); }
 
-/* Settings: preferences of this device, one group per topic, each a row of choices. */
-.app-settings { display: grid; align-content: start; gap: 1.25rem; height: 100%; padding: 1rem 1.2rem; box-sizing: border-box; overflow-y: auto; }
-.app-settings-group { display: grid; gap: 0.6rem; margin: 0; padding: 0; border: 0; }
-.app-settings-group > legend { margin-bottom: 0.6rem; padding: 0; color: var(--color-text-secondary); font-size: 0.9rem; font-weight: 500; }
-.corner-roundness-control { display: flex; align-items: center; gap: .75rem; width: min(20rem, 100%); }
+/* Settings has no list beside a form, so it keeps the width of the other side drawers. */
+.permissions-drawer.settings-drawer.is-narrow { width: min(30rem, 100vw); }
+
+/* Settings: preferences of this device, one card per topic, one row per preference: what it is on
+   the left, its control on the right. Rarely changed rows wait under a disclosure row. */
+.app-settings { display: grid; align-content: start; gap: 1rem; height: 100%; padding: .9rem 1rem 1.2rem; box-sizing: border-box; overflow-y: auto; }
+.settings-group { display: grid; gap: .4rem; min-width: 0; }
+.settings-group > h3 { margin: 0 .15rem; color: var(--color-text-secondary); font-size: .78rem; font-weight: 500; }
+.settings-card { border: 1px solid var(--color-border-subtle); border-radius: calc(.6rem * var(--corner-scale)); background: var(--color-surface-raised); }
+.settings-row { display: flex; align-items: center; gap: .75rem; min-height: 2.6rem; padding: .45rem .8rem; box-sizing: border-box; color: var(--color-text); font-size: .85rem; }
+.settings-card > .settings-row + .settings-row, .settings-card > .settings-row + .settings-disclosure, .settings-card > .settings-disclosure + .settings-row,
+.settings-disclosure > .settings-row + .settings-row { border-top: 1px solid var(--color-border-subtle); }
+.settings-row-text { display: grid; flex: 1; gap: .1rem; min-width: 0; }
+.settings-row > .settings-row-label { flex: 1; min-width: 0; }
+.settings-row-label { color: var(--color-text); }
+.settings-row-hint { overflow: hidden; color: var(--color-text-subtle); font-size: .75rem; text-overflow: ellipsis; white-space: nowrap; }
+.settings-row-value { flex: none; color: var(--color-text-muted); font-size: .8rem; }
+.settings-row > select { width: auto; flex: none; min-height: 0; padding: .3rem .5rem; font-size: .8rem; }
+.settings-row > a { flex: none; color: var(--color-accent-text); font-size: .8rem; }
+label.settings-row { cursor: pointer; }
+label.settings-row:hover, .settings-disclosure > summary:hover { background: var(--color-fill-hover); }
+.settings-disclosure { border-top: 1px solid var(--color-border-subtle); }
+.settings-card > .settings-disclosure:first-child { border-top: 0; }
+.settings-disclosure > summary { list-style: none; cursor: pointer; }
+.settings-disclosure > summary::-webkit-details-marker { display: none; }
+.settings-disclosure > summary:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.settings-disclosure-chevron { color: var(--color-text-muted); transition: transform .15s ease; }
+.settings-disclosure[open] > summary .settings-disclosure-chevron { transform: rotate(90deg); }
+.settings-disclosure[open] > summary { border-bottom: 1px solid var(--color-border-subtle); }
+.settings-disclosure > .settings-row:not(summary) { padding-left: 1.4rem; background: var(--color-bg-inset); }
+
+/* A switch is the checkbox itself, restyled, so labels, keyboard and form state keep working. */
+.settings-switch { flex: none; position: relative; width: 2rem; height: 1.15rem; margin: 0; padding: 0; border: 0; border-radius: calc(1rem * var(--corner-scale)); background: var(--color-border-strong); appearance: none; cursor: pointer; transition: background-color .15s ease; }
+.settings-switch::after { content: ""; position: absolute; top: .15rem; left: .15rem; width: .85rem; height: .85rem; border-radius: calc(1rem * var(--corner-scale)); background: #ffffff; box-shadow: 0 1px 2px rgb(0 0 0 / 25%); transition: transform .15s ease; }
+.settings-switch:checked { background: var(--color-accent); }
+.settings-switch:checked::after { transform: translateX(.85rem); }
+.settings-switch:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.settings-switch:disabled { opacity: .5; cursor: default; }
+
+/* Connections, MCP, Memory and Skills forms: the same cards and rows as Settings. A field row puts
+   its label in a fixed column so the inputs of one card line up. */
+.global-form.settings-form { gap: .9rem; padding: 0 .4rem 1rem 0; }
+.settings-card > :first-child, .settings-card > .settings-disclosure:first-child > summary { border-top-left-radius: inherit; border-top-right-radius: inherit; }
+.settings-card > :last-child, .settings-card > .settings-disclosure:last-child:not([open]) > summary { border-bottom-left-radius: inherit; border-bottom-right-radius: inherit; }
+.settings-field > .settings-row-label, .settings-field > .settings-row-text { flex: 0 0 9.5rem; }
+.settings-field > input, .settings-field > select, .settings-field > .settings-field-control { flex: 1 1 auto; width: auto; min-width: 0; }
+.settings-field-control { display: flex; align-items: center; gap: .5rem; }
+.settings-field-control > * { flex: 1; min-width: 0; }
+.settings-field-control > button, .settings-field-control > output { flex: none; }
+.settings-form .settings-row input:not([type="checkbox"], [type="radio"], [type="range"]),
+.settings-form .settings-row select,
+.settings-form .settings-row textarea,
+.settings-form .skill-icon-select-trigger { min-height: 2.15rem; padding: .35rem .55rem; font-size: .85rem; }
+.settings-form .model-picker-input { padding-right: 2.25rem; }
+label.settings-row.settings-field, label.settings-row.is-stacked { cursor: default; }
+label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { background: transparent; }
+.settings-row.is-stacked > textarea, .settings-row.is-stacked > input, .settings-row.is-stacked > .settings-row-text, .settings-row.is-stacked > pre { align-self: stretch; }
+.settings-row.is-stacked > textarea { resize: vertical; }
+.settings-range input { flex: 1; min-width: 0; accent-color: var(--color-accent); cursor: pointer; }
+.settings-range output { min-width: 4.5rem; color: var(--color-text-secondary); font-size: .8rem; }
+.settings-note { margin: -.3rem .15rem 0; color: var(--color-text-subtle); font-size: .75rem; }
+.settings-form .settings-group > h3 { margin-top: .1rem; }
+
+/* MCP: Server and Tools are two pages of one server, switched like the theme pills. */
+.settings-page-tabs { display: inline-flex; justify-self: start; gap: .2rem; padding: .2rem; border: 1px solid var(--color-border); border-radius: calc(.6rem * var(--corner-scale)); background: var(--color-surface); }
+.settings-page-tabs > .theme-option { border: 0; font: inherit; font-size: .85rem; }
+.settings-tab-count { margin-left: .3rem; color: var(--color-text-subtle); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.settings-toolbar { display: flex; align-items: center; gap: .5rem; }
+.settings-toolbar > .settings-search { flex: 1; min-width: 0; min-height: 2.15rem; padding: .35rem .6rem; font-size: .85rem; }
+.settings-toolbar > select { width: auto; flex: none; min-height: 2.15rem; padding: .3rem .5rem; font-size: .8rem; }
+.settings-toolbar > button { flex: none; }
+.mcp-tool-row { min-height: 2.4rem; padding-block: .3rem; }
+.mcp-tool-title { overflow: hidden; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
+.settings-form .mcp-tool-row > select.mcp-tool-decision { flex: none; width: 5.5rem; min-height: 1.9rem; padding: .2rem .4rem; font-size: .8rem; }
+.mcp-tool-decision.is-allow { color: var(--color-success-text); }
+.mcp-tool-decision.is-deny { color: var(--color-danger-text); }
+.mcp-tool-limits-toggle { flex: none; width: 1.9rem; height: 1.9rem; padding: 0; border-color: transparent; background: transparent; color: var(--color-text-muted); }
+.mcp-tool-limits { gap: .75rem; padding-left: 1.4rem; background: var(--color-bg-inset); border-top: 1px solid var(--color-border-subtle); }
+.mcp-tool-limits > label { display: flex; flex: 1; align-items: center; gap: .5rem; color: var(--color-text-secondary); font-size: .8rem; white-space: nowrap; }
+.mcp-tool-limits > label > input { flex: 1; min-width: 0; }
+.settings-card > .mcp-tool-row + .mcp-tool-row, .settings-card > .mcp-tool-limits + .mcp-tool-row { border-top: 1px solid var(--color-border-subtle); }
+
+/* Skills: the SKILL.md text is the page; what is derived from it waits under disclosures. */
+.skill-description { color: var(--color-text-secondary); font-size: .82rem; line-height: 1.45; }
+.skill-state { font-variant-numeric: tabular-nums; }
+.skill-form .skill-content { min-height: 18rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .78rem; line-height: 1.45; }
+.skill-form .skill-parameters { min-height: 7rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .78rem; line-height: 1.45; resize: none; }
+.skill-runs > .skill-run { gap: .2rem; padding-left: 1.4rem; background: var(--color-bg-inset); border-top: 1px solid var(--color-border-subtle); font-size: .82rem; }
+.skill-run-heading { display: flex; align-items: baseline; gap: .5rem; }
+.skill-run-status { font-weight: 600; }
+.skill-run pre { margin: .2rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; }
+.memory-form .settings-row.is-stacked > textarea { min-height: 9rem; }
+
+.corner-roundness-control { display: flex; flex: none; align-items: center; gap: .5rem; width: 11rem; }
 .corner-roundness-control input { flex: 1; min-width: 0; cursor: pointer; }
-.corner-roundness-control output { min-width: 3.5rem; color: var(--color-text-secondary); font-size: .85rem; font-variant-numeric: tabular-nums; text-align: right; }
-.theme-options { display: inline-flex; justify-self: start; gap: 0.25rem; padding: 0.25rem; border: 1px solid var(--color-border); border-radius: calc(0.6rem * var(--corner-scale)); background: var(--color-surface); }
+.corner-roundness-control output { min-width: 2.6rem; color: var(--color-text-secondary); font-size: .8rem; font-variant-numeric: tabular-nums; text-align: right; }
+.settings-row.is-stacked { flex-direction: column; align-items: flex-start; gap: .45rem; padding-block: .6rem; }
+.settings-row.is-stacked > .theme-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-self: stretch; }
+.settings-row.is-stacked .theme-option { text-align: center; white-space: nowrap; }
+.theme-options { display: inline-flex; flex: none; flex-wrap: wrap; gap: 0.2rem; padding: 0.2rem; border: 1px solid var(--color-border); border-radius: calc(0.6rem * var(--corner-scale)); background: var(--color-surface); }
 /* The radio stays in the tab order for keyboard users, but the pill is what shows the choice. */
-.theme-option { position: relative; display: block; padding: 0.4rem 0.95rem; border-radius: calc(0.4rem * var(--corner-scale)); color: var(--color-text-muted); font-size: 0.85rem; cursor: pointer; }
+.theme-option { position: relative; display: block; padding: 0.25rem 0.7rem; border-radius: calc(0.4rem * var(--corner-scale)); color: var(--color-text-muted); font-size: 0.85rem; cursor: pointer; }
 .theme-option:hover { background: var(--color-fill-hover); color: var(--color-text); }
 .theme-option.selected { background: var(--color-fill-strong); color: var(--color-text-strong); }
 .theme-option > input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
 .theme-option:has(> input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 /* Accent picker: a row of swatches; the chosen one carries a white square, as a checkmark would. */
-.accent-options { display: flex; flex-wrap: wrap; gap: 0.6rem; }
-.accent-option { position: relative; display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: calc(0.45rem * var(--corner-scale)); background: var(--swatch); cursor: pointer; }
+.accent-options { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.4rem; }
+.accent-option { position: relative; display: grid; place-items: center; width: 1.3rem; height: 1.3rem; border-radius: calc(0.45rem * var(--corner-scale)); background: var(--swatch); cursor: pointer; }
 .accent-option:hover { box-shadow: 0 0 0 2px var(--color-border-stronger); }
-.accent-option.selected::after { content: ""; width: 0.8rem; height: 0.8rem; border-radius: calc(0.2rem * var(--corner-scale)); background: #ffffff; }
+.accent-option.selected::after { content: ""; width: 0.5rem; height: 0.5rem; border-radius: calc(0.2rem * var(--corner-scale)); background: #ffffff; }
 .accent-option > input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
 .accent-option:has(> input:focus-visible) { outline: 2px solid var(--color-text); outline-offset: 2px; }
 
@@ -1276,13 +1369,6 @@ body {
     padding-right: 0.5rem;
 }
 
-.connection-flags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1.25rem;
-    align-items: center;
-}
-
 .directory-settings {
     display: grid;
     gap: 0.65rem;
@@ -1323,84 +1409,6 @@ body {
     align-items: center;
     column-gap: 0.12rem;
     border-radius: calc(0.45rem * var(--corner-scale));
-}
-
-.mcp-tool-policies {
-    display: grid;
-    gap: 0.65rem;
-    margin-top: 0.6rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--color-border);
-}
-
-.mcp-tool-policies .section-heading > div {
-    display: grid;
-    gap: 0.2rem;
-}
-
-.mcp-tool-policies .section-heading button {
-    white-space: nowrap;
-}
-
-.mcp-tool-policy-row {
-    display: grid;
-    grid-template-columns: minmax(8rem, 1fr) 7rem 6rem 7rem;
-    gap: 0.5rem;
-    align-items: end;
-    padding: 0.65rem;
-    border: 1px solid var(--color-border);
-    border-radius: calc(0.6rem * var(--corner-scale));
-    background: var(--color-surface-raised);
-}
-
-.mcp-tool-name {
-    display: grid;
-    min-width: 0;
-    gap: 0.2rem;
-}
-
-.mcp-tool-name > span,
-.mcp-tool-policy-row label {
-    color: var(--color-text-muted);
-    font-size: 0.72rem;
-}
-
-.mcp-tool-name strong {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    height: 2.7rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.mcp-tool-policy-row label {
-    gap: 0.2rem;
-}
-
-.mcp-tool-policy-row input,
-.mcp-tool-policy-row select {
-    min-width: 0;
-    height: 2.7rem;
-    box-sizing: border-box;
-}
-
-.mcp-policy-note {
-    margin: 0;
-    color: var(--color-text-faint);
-    font-size: 0.78rem;
-}
-
-@container (width <= 46rem) {
-    .mcp-tool-policies .section-heading {
-        display: grid;
-        justify-items: start;
-    }
-
-    .mcp-tool-policy-row {
-        grid-template-columns: minmax(8rem, 1fr) minmax(7rem, 1fr);
-    }
 }
 
 .chat-nav-row:hover,
@@ -5229,51 +5237,6 @@ textarea {
 .search-result-snippet mark { background: var(--color-highlight-bg); color: var(--color-highlight-fg); border-radius: calc(.2rem * var(--corner-scale)); padding: 0 .1em; font-weight: 600; }
 .search-result-meta { opacity: .6; font-size: .8125em; }
 
-/* Two coarse judgements sit side by side so they read as one comparison rather than two
-   unrelated fields, and each keeps its word under the track: the number alone says nothing. */
-.connection-ratings {
-    display: flex;
-    gap: 1.25rem;
-}
-
-.connection-ratings > label {
-    flex: 1;
-    min-width: 0;
-}
-
-.connection-ratings input[type="range"] {
-    width: 100%;
-    accent-color: var(--color-accent);
-}
-
-.connection-ratings small {
-    color: var(--color-text-subtle);
-    font-size: 0.85rem;
-}
-
-/* The Model input pairs with a <datalist> for autocomplete. The loading spinner sits inline to
-   the right so the user knows a network call is in flight, without taking up an extra row. */
-.model-field-row {
-    display: flex;
-    align-items: flex-end;
-    gap: 0.5rem;
-}
-
-/* A div, not a label: a label refocuses the input on any click inside it, which reopened the list
-   right after an outside press had closed it. The colour is the one labels get. */
-.model-field-row > .model-field {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    color: var(--color-text-secondary);
-}
-
-.model-field-row > .model-field > input {
-    width: 100%;
-}
-
 /* A compact square that the spinner can rotate inside; sits at the bottom of the row so its
    vertical centre matches the input's vertical centre. */
 .model-loading {
@@ -6072,17 +6035,13 @@ textarea {
 .memory-group-label { margin: 0.4rem 0 0.1rem; padding: 0 0.4rem; color: var(--color-text-secondary); font-size: 0.8rem; font-weight: 500; }
 .memory-group-label:first-child { margin-top: 0; }
 .memory-editor .settings-list .empty-hint { margin: 0; padding: 0 0.4rem; font-size: 0.8rem; }
-.memory-kind { display: inline-flex; justify-self: start; gap: 0.25rem; padding: 0.25rem; border: 1px solid var(--color-border); border-radius: calc(0.6rem * var(--corner-scale)); background: var(--color-surface); }
 .memory-editor .settings-list-select > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .memory-disabled .settings-list-select > span { color: var(--color-text-faint); }
 .memory-editor .settings-list-select > span { display: flex; gap: 0.35rem; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.memory-form textarea { min-height: 9rem; resize: vertical; }
-.memory-meta { margin: 0; color: var(--color-text-faint); font-size: 0.8rem; }
 .skill-editor .settings-list-select > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skill-editor .settings-list-select > span { display: flex; gap: 0.4rem; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skill-editor .settings-list-select > span .app-icon { flex: none; width: 0.95rem; height: 0.95rem; color: var(--color-text-secondary); }
 /* The icon combobox: a select-like trigger with the pick and a chevron, and a list that floats under it. */
-.skill-icon-field { display: grid; gap: 0.4rem; color: var(--color-text-secondary); }
 .skill-icon-select { position: relative; }
 .skill-icon-select-trigger { display: flex; align-items: center; gap: 0.55rem; width: 100%; min-height: 2.7rem; padding: 0.55rem 0.65rem; border: 1px solid var(--color-border-strong); border-radius: calc(0.5rem * var(--corner-scale)); background: var(--color-input-bg); color: var(--color-text); font: inherit; text-align: left; cursor: pointer; }
 .skill-icon-select-trigger:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -1px; }
@@ -6094,18 +6053,8 @@ textarea {
 .skill-icon-option .app-icon { flex: none; width: 1rem; height: 1rem; color: var(--color-text-secondary); }
 .skill-icon-option.active { background: var(--color-overlay-hover); }
 .skill-icon-option.selected, .skill-icon-option.selected .app-icon { color: var(--color-accent); }
-.skill-source, .skill-state { color: var(--color-text-secondary); font-size: .8rem; }
-.skill-form textarea { resize: none; }
 .skill-form .skill-content { min-height: 18rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .78rem; line-height: 1.45; }
 .skill-form .skill-parameters { min-height: 7rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .78rem; line-height: 1.45; }
-.skill-runs-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
-.skill-runs { display: grid; gap: .5rem; }
-.skill-run { display: grid; gap: .2rem; padding: .6rem .75rem; border: 1px solid var(--color-border); border-radius: .5rem; font-size: .82rem; }
-.skill-run-status { font-weight: 600; }
-.skill-run small { color: var(--color-text-faint); overflow-wrap: anywhere; }
-.skill-run pre { margin: .25rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.skill-editor-actions { display: flex; gap: .5rem; }
-
 /* Project instructions sit under the project's details in its settings drawer. */
 .project-instructions { display: grid; min-width: 0; gap: .55rem; margin-top: 1.15rem; padding-top: 1.1rem; border-top: 1px solid var(--color-border); }
 .project-instructions .section-heading { min-width: 0; }
@@ -7015,8 +6964,6 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 }
 .composer-send-wrapper .composer-send { position: relative; z-index: 1; }
 
-.connection-prices-note { margin: -.4rem 0 0; color: var(--color-text-subtle); font-size: .78rem; }
-
 .chat-usage-note-actions { display: inline-flex; flex-wrap: wrap; gap: .3rem; }
 .chat-usage-checkpoint { align-items: center; }
 .chat-usage-link:disabled { color: var(--color-text-subtle); cursor: default; text-decoration: none; }
@@ -7171,12 +7118,13 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .chat-branches-meta > span { white-space: nowrap; }
 .chat-branches-meta > span + span::before { content: "·"; margin: 0 .35rem; }
 
-.updates-version { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.updates-preview { font-size: .75rem; padding: 2px 7px; border: 1px solid var(--color-border-strong); border-radius: 5px; color: var(--color-text-muted); }
-.updates-note { color: var(--color-text-muted); font-size: .85rem; margin: 4px 0; }
-.updates-status { margin: 8px 0; }
-.updates-error { color: var(--color-danger); }
-.updates-actions { display: flex; gap: 8px; margin-top: 10px; }
+.updates-dot { flex: none; width: .5rem; height: .5rem; border-radius: 50%; background: var(--color-text-faint); }
+.updates-dot.is-ok { background: var(--color-success); }
+.updates-dot.is-pending { background: var(--color-accent); }
+.updates-dot.is-error { background: var(--color-danger); }
+.updates-error { color: var(--color-danger-text); }
+.updates-actions { display: flex; flex: none; align-items: center; gap: .5rem; }
+.updates-actions > a { color: var(--color-accent-text); font-size: .8rem; }
 
 .update-restart { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; background: color-mix(in srgb, var(--color-bg) 85%, transparent); }
 .update-restart-card { max-width: 440px; padding: 24px; text-align: center; border: 1px solid var(--color-border-strong); border-radius: calc(12px * var(--corner-scale)); background: var(--color-surface); }

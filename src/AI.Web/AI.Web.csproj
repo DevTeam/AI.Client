@@ -4,7 +4,9 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AI.Contracts\AI.Contracts.csproj" />
+    <ProjectReference Include="..\AI.TextCorrection\AI.TextCorrection.csproj" />
     <Compile Include="..\AI.Contracts\Composition.cs" Link="Contracts\Composition.cs" />
+    <Compile Include="..\AI.TextCorrection\Composition.cs" Link="TextCorrection\Composition.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />

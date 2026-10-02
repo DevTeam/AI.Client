@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/AI.TextCorrection.Benchmarks/AI.TextCorrection.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/build/">
     <Project Path="build/build.csproj" />
   </Folder>
@@ -10,10 +13,12 @@
     <Project Path="src/AI.Mcp.CSharp/AI.Mcp.CSharp.csproj" />
     <Project Path="src/AI.Server/AI.Server.csproj" />
     <Project Path="src/AI.Web/AI.Web.csproj" />
+    <Project Path="src/AI.TextCorrection/AI.TextCorrection.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AI.Mcp.CSharp.Tests/AI.Mcp.CSharp.Tests.csproj" />
     <Project Path="tests/AI.Server.Tests/AI.Server.Tests.csproj" />
     <Project Path="tests/AI.Web.Tests/AI.Web.Tests.csproj" />
+    <Project Path="tests/AI.TextCorrection.Tests/AI.TextCorrection.Tests.csproj" />
   </Folder>
 </Solution>

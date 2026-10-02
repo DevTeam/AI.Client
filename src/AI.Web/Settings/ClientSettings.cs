@@ -17,6 +17,9 @@ public sealed record ClientSettings
 
     public bool OtherSoundsEnabled { get; init; } = true;
 
+    /// <summary>Explicitly selected language IDs for preview layout correction.</summary>
+    public IReadOnlyList<string> TextCorrectionLanguages { get; init; } = [];
+
     public bool ShowContextWindowUsage { get; init; } = true;
 
     /// <summary>Whether the turn line shows what the turn used ("42k → 1.8k") next to its time.</summary>

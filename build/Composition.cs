@@ -8,12 +8,15 @@ using System.Diagnostics;
 internal sealed partial class Composition
 {
     [Conditional("DI")]
-    private static void Setup() =>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822", Justification = "Pure.DI composition uses instance methods.")]
+    private void Setup() =>
         DI.Setup()
+            .DependsOn("AI.TextCorrection.Configuration.TextCorrectionComposition")
             .Hint(Hint.Resolve, "Off")
             .Hint(Hint.ThreadSafe, "Off")
             .Root<BuildApplication>(nameof(Root))
             .Arg<string[]>("args")
             .Arg<CancellationToken>("cancellationToken")
+            .Singleton<PrepareTextCorrectionTarget>()
             .Singleton<BuildPaths, ProcessRunner, BuildSolutionTarget, TestSolutionTarget, VerifyTarget, PublishTarget, PublishDesktopTarget, PublishWebTarget, PackageReleaseTarget, RunTarget, RunBothTarget, RazorTemplateEngine, ReadmeTarget>();
 }

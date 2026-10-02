@@ -40,6 +40,10 @@
 @inject IChatTipsState ChatTips
 @inject IComposerContextPresentation ContextPresentation
 @inject IClientSettingsService ClientSettings
+@inject AI.TextCorrection.ITextCorrectionAnalyzer TextCorrection
+@inject AI.TextCorrection.ITextCorrectionPreparation TextCorrectionPreparation
+@inject AI.TextCorrection.IWordBoundaries TextWordBoundaries
+@inject ITextCorrectionLanguages CorrectionLanguages
 @inject IChatUsageStore ChatUsage
 @inject IHistoryCheckpointApi HistoryCheckpoints
 @inject IChatWidgetLayout WidgetLayout
@@ -1428,6 +1432,7 @@ else if (_guideInvitation is { } guideInvitation)
     protected override async Task OnInitializedAsync()
     {
         var clientSettings = await ClientSettings.GetAsync();
+        _ = PrepareTextCorrectionAsync();
         _showContextWindowUsage = clientSettings.ShowContextWindowUsage;
         _showTurnTokens = clientSettings.ShowTurnTokens;
         _chatWidgetsOpen = clientSettings.ChatWidgetsOpen;
@@ -2652,7 +2657,6 @@ else if (_guideInvitation is { } guideInvitation)
     private async Task SubmitComposerAsync(ComposerSubmitMode mode)
     {
         if (_isSubmittingMessage || !CanSendMessage()) return;
-        if (await TryAnswerPendingPromptAsync(_chat.Message)) return;
         // A message that starts a new chat has nothing to replace or fork from, whatever mode
         // the composer was left in.
         if (_selectedChat is null) ResetBranchOperationState();
@@ -2674,6 +2678,11 @@ else if (_guideInvitation is { } guideInvitation)
         var submittedProjectId = _selectedProject?.Id;
         try
         {
+            var corrected = await PrepareComposerSubmissionAsync();
+            if (corrected is null || GetComposerDraftKey() != submittedDraftKey) return;
+            _chat.Message = corrected;
+            submittedText = corrected;
+            if (await TryAnswerPendingPromptAsync(_chat.Message)) return;
             // The selected branch id remains stable while edit/fork modes temporarily move the
             // visible leaf to their parent. The server revalidates that branch atomically.
             var request = new ComposerSubmitRequest(
@@ -2721,6 +2730,11 @@ else if (_guideInvitation is { } guideInvitation)
                     _ = MarkTipsUsedAsync(effectiveMode, request.Resources);
                     break;
             }
+        }
+        catch (JSException error)
+        {
+            _chatError = $"Could not prepare the message: {error.Message}";
+            return;
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {

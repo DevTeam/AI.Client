@@ -1,0 +1,47 @@
+@inject AI.Web.Settings.ITextCorrectionLanguages Languages
+@inject AI.TextCorrection.ITextCorrectionPreparation Preparation
+@inject INotificationService Notifications
+
+<section class="settings-group" aria-label="Keyboard layout correction">
+    <div class="settings-card">
+        <details class="settings-disclosure">
+            <summary class="settings-row">
+                <span class="settings-row-label">Keyboard layout correction</span>
+                <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
+            </summary>
+            <div class="settings-row">
+                <span class="settings-row-text"><span class="settings-row-label">Languages</span><span class="settings-row-hint">Select at least two languages to correct text typed in the wrong layout.</span></span>
+            </div>
+            @foreach (var language in Languages.Available)
+            {
+                <label class="settings-row">
+                    <span class="settings-row-label">@language.Name</span>
+                    <input class="settings-switch" type="checkbox" role="switch" checked="@_selected.Contains(language.Id)" disabled="@_saving" @onchange="args => SetLanguageAsync(language.LanguageId, args.Value is true)" />
+                </label>
+            }
+        </details>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyCollection<string> _selected = [];
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync() => _selected = await Languages.GetLayoutIdsAsync();
+
+    private async Task SetLanguageAsync(string languageId, bool enabled)
+    {
+        _saving = true;
+        try
+        {
+            await Languages.SetLanguageAsync(languageId, enabled);
+            _selected = await Languages.GetLayoutIdsAsync();
+            if (_selected.Count >= 2) await Preparation.PrepareAsync(_selected);
+        }
+        catch (Exception error)
+        {
+            Notifications.ShowError($"Could not update correction languages: {error.Message}");
+        }
+        finally { _saving = false; }
+    }
+}

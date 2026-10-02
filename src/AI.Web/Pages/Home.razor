@@ -397,7 +397,7 @@
             <span class="workspace-location" title="@GetWorkspaceLocation()">@GetWorkspaceLocation()</span>
             @if (_selectedProject is not null)
             {
-                <button class="icon-action workspace-widgets-toggle @(_chatWidgetsOpen ? "is-active" : null)" data-app-target="chat.widgets" type="button"
+                <button class="icon-action workspace-widgets-toggle" data-app-target="chat.widgets" type="button"
                         aria-label="Chat widgets" aria-pressed="@(_chatWidgetsOpen ? "true" : "false")"
                         title="@(_chatWidgetsOpen ? "Hide chat widgets" : "Show chat widgets")" @onclick="ToggleChatWidgetsAsync">
                     <AppIcon Name="panel-right" />

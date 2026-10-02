@@ -10,7 +10,17 @@
                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
             </summary>
             <div class="settings-row">
-                <span class="settings-row-text"><span class="settings-row-label">Languages</span><span class="settings-row-hint">Select at least two languages to correct text typed in the wrong layout.</span></span>
+                <span class="settings-row-text">
+                    <span class="settings-row-label">Languages</span>
+                    @if (_selected.Count < 2)
+                    {
+                        <span class="settings-row-hint">Select at least two languages to correct text typed in the wrong layout.</span>
+                    }
+                    else if (_selected.Count > 2)
+                    {
+                        <span class="settings-row-hint">For optimal performance, we recommend selecting only two languages.</span>
+                    }
+                </span>
             </div>
             @foreach (var language in Languages.Available)
             {

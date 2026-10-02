@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Pure.DI" PrivateAssets="all" />
+    <PackageReference Include="WeCantSpell.Hunspell" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Dictionaries/*/index.aff" />
+    <EmbeddedResource Include="Dictionaries/*/index.dic" />
+    <EmbeddedResource Include="Dictionaries/*/index.trigrams" />
+    <Content Include="Dictionaries/*/license" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Dictionaries/WeCantSpell.Hunspell.license.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Dictionaries/MPL-2.0.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Dictionaries/README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

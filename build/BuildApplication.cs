@@ -15,6 +15,7 @@ internal sealed class BuildApplication(
     IRunTarget runTarget,
     IRunBothTarget runBothTarget,
     IReadmeTarget readmeTarget,
+    IPrepareTextCorrectionTarget prepareTextCorrectionTarget,
     CancellationToken cancellationToken)
 {
     public Task<int> RunAsync()
@@ -29,6 +30,7 @@ internal sealed class BuildApplication(
         RegisterPackageRelease(root);
         RegisterHost(root);
         RegisterReadme(root);
+        RegisterTextCorrection(root);
         return root.Parse(args).InvokeAsync();
     }
 
@@ -43,6 +45,13 @@ internal sealed class BuildApplication(
     {
         var command = new Command("readme", "Generate README.md from its Razor template.");
         command.SetAction(_ => readmeTarget.RunAsync(cancellationToken));
+        root.Subcommands.Add(command);
+    }
+
+    private void RegisterTextCorrection(RootCommand root)
+    {
+        var command = new Command("prepare-text-correction", "Compile dictionary resources for layout correction.");
+        command.SetAction(_ => prepareTextCorrectionTarget.RunAsync(cancellationToken));
         root.Subcommands.Add(command);
     }
 

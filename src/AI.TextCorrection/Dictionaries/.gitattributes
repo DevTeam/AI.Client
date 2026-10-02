@@ -1,0 +1,4 @@
+# Keep upstream bytes stable so committed source fingerprints work on every OS.
+*/index.dic -text
+*/index.aff -text
+*/index.trigrams binary

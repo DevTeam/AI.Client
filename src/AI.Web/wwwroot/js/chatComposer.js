@@ -1,9 +1,12 @@
+import { attachLayoutCorrection } from "./textCorrection.js";
+
 export function attach(textarea, dotNetReference) {
     // A previous attach on the same textarea can still be live: the page re-attaches on render
     // and tears the old handle down asynchronously, so the two overlap. Two live handlers means
     // every shortcut fires twice — one Up press walking two entries back, one Enter submitting
     // twice — so the incoming attach evicts whatever is already on the element.
     if (textarea.__composerDetach) textarea.__composerDetach();
+    const detachCorrection = attachLayoutCorrection(textarea, dotNetReference);
 
     let sending = false;
     let lastCtrl = false;
@@ -346,6 +349,7 @@ export function attach(textarea, dotNetReference) {
     resize();
 
     const detach = () => {
+        detachCorrection();
         textarea.removeEventListener("keydown", handler);
         textarea.removeEventListener("keyup", releaseHandler);
         textarea.removeEventListener("blur", blurHandler);
@@ -362,6 +366,7 @@ export function attach(textarea, dotNetReference) {
     textarea.__composerDetach = detach;
 
     return {
+        prepareForSend: () => detachCorrection.prepareForSend(),
         focus: () => {
             resize();
             textarea.focus();

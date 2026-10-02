@@ -11,5 +11,7 @@
   </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../src/AI.TextCorrection/AI.TextCorrection.csproj" />
+    <Compile Include="../src/AI.TextCorrection/Composition.cs" Link="TextCorrection/Composition.cs" />
   </ItemGroup>
 </Project>

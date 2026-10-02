@@ -37,6 +37,12 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
     private static void Setup() =>
         DI.Setup()
             .DependsOn("AI.Contracts.Composition")
+            .DependsOn("AI.TextCorrection.Configuration.TextCorrectionComposition")
+            .RootBind<ITextCorrectionLanguages>().As(Lifetime.Singleton).To<TextCorrectionLanguages>()
+            .Root<AI.TextCorrection.ITextCorrectionAnalyzer>()
+            .Root<AI.TextCorrection.ISupportedCorrectionLayouts>()
+            .Root<AI.TextCorrection.IWordBoundaries>()
+            .Root<AI.TextCorrection.ITextCorrectionPreparation>()
             .Hint(Hint.ThreadSafe, "Off")
             .Hint(Hint.OnCannotResolveContractTypeNameWildcard, "Microsoft.JSInterop.*")
             .Arg<string>("apiBaseUrl")

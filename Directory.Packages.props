@@ -3,6 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="ModelContextProtocol.Core" Version="2.2.0" />
     <PackageVersion Include="JsonSchema.Net" Version="9.4.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
@@ -19,6 +20,7 @@
     <PackageVersion Include="Pure.DI" Version="2.5.4" />
     <PackageVersion Include="Pure.DI.MS" Version="2.5.4" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
+    <PackageVersion Include="WeCantSpell.Hunspell" Version="7.0.1" />
     <PackageVersion Include="System.CommandLine" Version="2.0.12" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />

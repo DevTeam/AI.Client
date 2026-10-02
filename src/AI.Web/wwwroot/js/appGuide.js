@@ -1,4 +1,4 @@
-import { cancelCursor } from "./navigationCue.js";
+import { cancelCursor, createCursor, pressCursor, startTrail } from "./navigationCue.js";
 
 let active = null;
 let positionedRequest = null;
@@ -208,10 +208,7 @@ export async function perform(request, activate = true) {
     const previous = document.querySelectorAll(".app-guide-cursor:not(.is-leaving)");
     previous.forEach(item => item.remove());
     const rect = guideRect(element);
-    const cursor = document.createElement("div");
-    cursor.className = "ghost-cursor app-guide-cursor";
-    cursor.setAttribute("aria-hidden", "true");
-    cursor.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 3l7 17 2.5-7L21 10.5z"/></svg>';
+    const cursor = createCursor("app-guide-cursor");
     const x = rect.left + Math.min(28, rect.width / 2), y = rect.top + rect.height / 2;
     const origin = cursorPosition || pointerPosition || { x: innerWidth / 2, y: innerHeight / 2 };
     const from = { x: Math.max(0, Math.min(origin.x, innerWidth - 26)), y: Math.max(0, Math.min(origin.y, innerHeight - 26)) };
@@ -235,10 +232,11 @@ export async function perform(request, activate = true) {
             const onAbort = () => animation.cancel();
             signal.addEventListener("abort", onAbort, { once: true });
             const fallback = setTimeout(() => { try { animation.finish(); } catch { } }, duration + 150);
+            const stopTrail = startTrail(cursor);
             try {
                 if (signal.aborted) animation.cancel();
                 await animation.finished;
-            } finally { clearTimeout(fallback); signal.removeEventListener("abort", onAbort); }
+            } finally { stopTrail(); clearTimeout(fallback); signal.removeEventListener("abort", onAbort); }
         }
         await delay(200, signal);
         cursorPosition = { x, y };
@@ -258,9 +256,7 @@ export async function perform(request, activate = true) {
                 void play(tip, [{ opacity: 0, transform: "translateY(-4px)" }, { opacity: 1, transform: "none" }], 180);
             }
         } else if (request.action === "click") {
-            cursor.classList.add("is-pressing");
-            const ripple = document.createElement("span"); ripple.className = "ghost-cursor-ripple";
-            cursor.appendChild(ripple);
+            pressCursor(cursor, element);
             await delay(200, signal);
             if (activate) input.click();
             await delay(450, signal);
@@ -308,24 +304,19 @@ export async function press(button) {
     const from = { x: Math.max(0, Math.min(origin.x, innerWidth - 26)), y: Math.max(0, Math.min(origin.y, innerHeight - 26)) };
     const at = point => `translate(${point.x}px, ${point.y}px)`;
     if (!cursor) {
-        cursor = document.createElement("div");
-        cursor.className = "ghost-cursor app-guide-cursor";
-        cursor.setAttribute("aria-hidden", "true");
-        cursor.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 3l7 17 2.5-7L21 10.5z"/></svg>';
+        cursor = createCursor("app-guide-cursor");
         document.body.appendChild(cursor);
         void play(cursor, [{ opacity: 0 }, { opacity: 1 }], 160);
     }
-    cursor.classList.remove("is-pressing");
-    cursor.querySelectorAll(".ghost-cursor-ripple").forEach(item => item.remove());
+    cursor.classList.remove("is-pressing", "is-released");
     cursor.style.transform = at({ x, y });
     const distance = Math.hypot(x - from.x, y - from.y);
+    const stopTrail = startTrail(cursor);
     await play(cursor, [{ transform: at(from) }, { transform: at({ x, y }) }],
         Math.round(Math.max(350, Math.min(750, 250 + distance * .5))), "cubic-bezier(0.45, 0, 0.2, 1)");
+    stopTrail();
     cursorPosition = { x, y };
-    cursor.classList.add("is-pressing");
-    const ripple = document.createElement("span");
-    ripple.className = "ghost-cursor-ripple";
-    cursor.appendChild(ripple);
+    pressCursor(cursor, element);
     element.classList.add("is-auto-pressed");
     await new Promise(resolve => setTimeout(resolve, 250));
     // The pointer leaves on its own a moment after the press; the guide's next step brings its own.

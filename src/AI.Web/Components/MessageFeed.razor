@@ -1523,6 +1523,25 @@
             && message.Content?.Trim().StartsWith(shown, StringComparison.Ordinal) == true);
     }
 
+    private readonly string[] _thinkingPhrases =
+    [
+        "Thinking…",
+        "Working on it…",
+        "Reasoning…",
+        "Analyzing…",
+        "Exploring…",
+        "Investigating…",
+        "Looking into it…",
+        "Examining the details…",
+        "Working through it…",
+        "Connecting the dots…",
+        "Evaluating possibilities…",
+        "Checking the details…",
+        "Exploring approaches…",
+        "Making sense of it…",
+        "Putting it together…"
+    ];
+
     /// <summary>
     /// The one line under the live text saying what the turn is doing now. Nothing while the
     /// model is writing prose — the text itself is the activity — and nothing for a question or a
@@ -1540,7 +1559,7 @@
         if (run.DraftToolCall is { } preparing)
             return new TurnActivity($"Preparing {Presentations.DescribeCall(preparing, null).Title}…", null);
         if (!string.IsNullOrWhiteSpace(run.DraftContent)) return null;
-        return new TurnActivity("Thinking…", null);
+        return new TurnActivity(_thinkingPhrases[Random.Shared.Next(_thinkingPhrases.Length)], null);
     }
 
     // Everything the live text is computed from that the transcript boundary does not already

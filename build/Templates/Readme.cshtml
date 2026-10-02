@@ -34,6 +34,10 @@ Everything runs locally. A small Host process stores your projects, chat history
 
 The Host is a small background process that holds your data. Close it when you are done; your projects and history stay in the local data directory.
 
+C# scripting tools (`AI.Mcp.CSharp`) are optional. Select **C# scripting tools** in the Windows or macOS Host/Desktop installer. On Linux, install the companion `AI.Mcp.CSharp-<runtime>.deb` package alongside Host or Desktop, in either order. The scripting server includes its own .NET runtime.
+
+Build the installers on the matching operating system with `dotnet run --project build -- package-release --runtime win-x64 --version 1.0.0` (also supports `win-arm64`, `osx-x64`, `osx-arm64`, `linux-x64`, and `linux-arm64`). Output is in `artifacts/release/packages`; Windows packaging requires Inno Setup 6, macOS uses `pkgbuild`/`productbuild`, and Linux uses `dpkg-deb`.
+
 ## Documentation
 
 The full guide, including project structure, MCP setup, and the security model, lives in [docs](docs).

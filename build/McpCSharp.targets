@@ -1,0 +1,23 @@
+<Project>
+  <!--
+    The optional C# scripting MCP server is a separate executable that the server starts as a child
+    process from <app directory>/mcp-csharp (see CSharpToolSessionFactory). Every project that
+    runs the server — the executables and the integration tests — imports this file to put it
+    there. The importing project must also reference AI.Mcp.CSharp.csproj so it is built first.
+  -->
+  <PropertyGroup>
+    <McpCSharpProjectDirectory>$(MSBuildThisFileDirectory)..\src\AI.Mcp.CSharp\</McpCSharpProjectDirectory>
+    <McpCSharpBuildDirectory>$(McpCSharpProjectDirectory)bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\</McpCSharpBuildDirectory>
+  </PropertyGroup>
+  <Target Name="CopyCSharpMcpServer" AfterTargets="Build" Condition="'$(IncludeCSharpMcp)' != 'false'">
+    <ItemGroup>
+      <CSharpMcpFiles Include="$(McpCSharpBuildDirectory)**\*"
+                      Exclude="$(McpCSharpBuildDirectory)win-*\**;$(McpCSharpBuildDirectory)linux-*\**;$(McpCSharpBuildDirectory)osx-*\**;$(McpCSharpBuildDirectory)publish\**" />
+    </ItemGroup>
+    <Copy SourceFiles="@(CSharpMcpFiles)" DestinationFiles="@(CSharpMcpFiles->'$(OutDir)mcp-csharp\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishCSharpMcpServer" AfterTargets="Publish" Condition="'$(IncludeCSharpMcp)' != 'false'">
+    <MSBuild Projects="$(McpCSharpProjectDirectory)AI.Mcp.CSharp.csproj" Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$(PublishDir)mcp-csharp\" />
+  </Target>
+</Project>

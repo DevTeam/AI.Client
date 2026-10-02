@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AI.Mcp.BuiltIn\AI.Mcp.BuiltIn.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\AI.Mcp.CSharp\AI.Mcp.CSharp.csproj" ReferenceOutputAssembly="false" Private="false" Condition="'$(IncludeCSharpMcp)' != 'false'" />
     <ProjectReference Include="..\AI.Contracts\AI.Contracts.csproj" />
     <ProjectReference Include="..\AI.Server\AI.Server.csproj" />
     <ProjectReference Include="..\AI.Web\AI.Web.csproj"
@@ -29,4 +30,5 @@
     </ItemGroup>
   </Target>
   <Import Project="..\..\build\McpBuiltIn.targets" />
+  <Import Project="..\..\build\McpCSharp.targets" />
 </Project>

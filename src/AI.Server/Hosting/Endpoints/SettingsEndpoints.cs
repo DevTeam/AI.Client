@@ -57,7 +57,7 @@ public sealed class SettingsEndpoints : IEndpointModule
             // has it switched on: the settings UI is where it gets switched on, and it needs the tools to
             // show first. Grants stay empty, so file system tools remain fail-closed here.
             await using var session = await factory.OpenAsync([],
-                new HashSet<Guid> { DefaultMcpServer.Id, AppMcpServer.Id },
+                new HashSet<Guid> { DefaultMcpServer.Id, AppMcpServer.Id, CSharpMcpServer.Id },
                 ToolRunContext.None, timeout.Token);
             return session.Tools.Select(tool => new McpToolInfo(tool.ServerId, tool.OriginalName, tool.ModelDefinition.Description, tool.SchemaHash)).ToArray();
         });
@@ -72,7 +72,7 @@ public sealed class SettingsEndpoints : IEndpointModule
             try
             {
                 var id = request.Server.Id;
-                await using var session = id == DefaultMcpServer.Id || id == AppMcpServer.Id
+                await using var session = id == DefaultMcpServer.Id || id == AppMcpServer.Id || id == CSharpMcpServer.Id
                     ? await factory.OpenAsync([], new HashSet<Guid> { id }, ToolRunContext.None, timeout.Token)
                     : await external.OpenAsync(request.Server, timeout.Token, request.Credential);
                 return Results.Ok(session.Tools.Select(tool => new McpToolInfo(

@@ -127,6 +127,10 @@ export function attach(container, dotnet) {
         // chatComposer.js drags every [data-file-path] as that path, like any other in the app.
         element.draggable = true;
         element.dataset.filePath = resolved.path;
+        if (element.tagName !== 'A') {
+            element.setAttribute('role', 'link');
+            element.tabIndex = 0;
+        }
         if (resolved.kind) element.dataset.fileKind = resolved.kind;
         else delete element.dataset.fileKind;
         // The access shows as an icon after the link, drawn by CSS from this attribute; an "@" link
@@ -157,6 +161,10 @@ export function attach(container, dotnet) {
         }
         element.classList.remove('file-link');
         element.removeAttribute('draggable');
+        if (element.tagName !== 'A') {
+            element.removeAttribute('role');
+            element.removeAttribute('tabindex');
+        }
         delete element.dataset.filePath;
         delete element.dataset.fileKind;
         delete element.dataset.fileAccess;
@@ -356,7 +364,7 @@ export function attach(container, dotnet) {
 
     const onClick = event => {
         if (event.defaultPrevented || (event.type === 'auxclick' && event.button !== 1)) return;
-        const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+        const anchor = event.target instanceof Element ? event.target.closest('a[href], [data-file-path]') : null;
         if (!anchor || !container.contains(anchor)) return;
         // Cancel before Blazor or the WebView starts navigating, including Ctrl/Cmd and middle
         // clicks. Unknown schemes and unresolved local paths stay inert.
@@ -372,7 +380,11 @@ export function attach(container, dotnet) {
             return;
         }
         // A local path, or any relative link, would navigate the app itself; neither may.
-        if (anchor.dataset.filePath || directPathOf(href)) return;
+        const localPath = anchor.dataset.filePath || directPathOf(href) || relativeTargetOf(href);
+        if (localPath) {
+            dotnet.invokeMethodAsync('OnFileLinkClicked', localPath);
+            return;
+        }
         const url = externalUrlOf(href);
         if (url) {
             if (typeof globalThis.invokeCSharpAction === 'function')
@@ -395,6 +407,12 @@ export function attach(container, dotnet) {
         event.preventDefault();
         dotnet.invokeMethodAsync('OnFileLinkContextMenu', target.dataset.filePath, event.clientX, event.clientY,
             target.dataset.fileKind ?? null, target.dataset.fileAccess === 'none' ? false : null);
+    };
+
+    const onKeyDown = event => {
+        if (!['Enter', ' '].includes(event.key) || !(event.target instanceof Element)
+            || event.target.tagName === 'A' || !event.target.dataset.filePath) return;
+        onClick(event);
     };
 
     // Runs before the browser paints the re-rendered markup, within one slice; the blocks stay
@@ -421,6 +439,7 @@ export function attach(container, dotnet) {
 
     container.addEventListener('click', onClick, true);
     container.addEventListener('auxclick', onClick, true);
+    container.addEventListener('keydown', onKeyDown);
     container.addEventListener('contextmenu', onContextMenu);
     observer.observe(container, { childList: true, subtree: true, characterData: true });
     for (const block of container.querySelectorAll(BLOCK)) dirty.add(block);
@@ -452,6 +471,7 @@ export function attach(container, dotnet) {
             clearTimeout(flushTimer);
             container.removeEventListener('click', onClick, true);
             container.removeEventListener('auxclick', onClick, true);
+            container.removeEventListener('keydown', onKeyDown);
             container.removeEventListener('contextmenu', onContextMenu);
         }
     };

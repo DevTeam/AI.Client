@@ -578,7 +578,6 @@ body {
 .workspace-shell.sidebar-collapsed .workspace-resizer { width: 6px; margin-left: 0; }
 .workspace-shell.sidebar-collapsed .workspace-resizer::after { inset: 0 auto 0 0; }
 .workspace-shell.sidebar-collapsed .workspace-resizer:hover::after { transition-delay: 250ms; }
-.workspace-shell.sidebar-collapsed .sidebar-toggle-button { color: var(--color-text-subtle); }
 
 .workspace-shell.sidebar-animating { transition: grid-template-columns 150ms ease; }
 .workspace-shell.sidebar-animating .workspace-sidebar { transition: visibility 0s linear 150ms; }
@@ -3740,6 +3739,7 @@ div.chat-tip-head { cursor: default; }
 
 .workspace-history-actions { display: flex; gap: .1rem; pointer-events: auto; }
 .sidebar-toggle-button { flex: none; pointer-events: auto; }
+.workspace-header :is(.sidebar-toggle-button, .workspace-widgets-toggle)[aria-pressed="false"] { color: var(--color-text-subtle); }
 .workspace-header .icon-action { width: 1.65rem; height: 1.65rem; }
 .workspace-header .icon-action:disabled { opacity: .35; cursor: default; }
 .workspace-location { min-width: 0; margin-left: .2rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-text-muted); font-size: .74rem; }
@@ -4034,30 +4034,30 @@ button:active:not(:disabled) {
     font-size: 0.88em;
 }
 
-.markdown-content pre .hljs { color: var(--color-text); }
-.markdown-content pre .hljs-comment,
-.markdown-content pre .hljs-quote { color: var(--color-text-muted); font-style: italic; }
-.markdown-content pre .hljs-keyword,
-.markdown-content pre .hljs-selector-tag,
-.markdown-content pre .hljs-literal,
-.markdown-content pre .hljs-built_in { color: var(--color-accent-text); font-weight: 600; }
-.markdown-content pre .hljs-string,
-.markdown-content pre .hljs-regexp,
-.markdown-content pre .hljs-attr { color: var(--color-text-secondary); }
-.markdown-content pre .hljs-addition { color: var(--color-success-text); }
-.markdown-content pre .hljs-number,
-.markdown-content pre .hljs-symbol,
-.markdown-content pre .hljs-variable,
-.markdown-content pre .hljs-template-variable { color: var(--color-text-muted); }
-.markdown-content pre .hljs-title,
-.markdown-content pre .hljs-type,
-.markdown-content pre .hljs-class,
-.markdown-content pre .hljs-function,
-.markdown-content pre .hljs-attribute { color: var(--color-accent-text); }
-.markdown-content pre .hljs-meta,
-.markdown-content pre .hljs-selector-id,
-.markdown-content pre .hljs-selector-class { color: var(--color-text-subtle); }
-.markdown-content pre .hljs-deletion { color: var(--color-danger-text); }
+:is(.markdown-content, .file-preview-code) pre .hljs { color: var(--color-text); }
+:is(.markdown-content, .file-preview-code) pre .hljs-comment,
+:is(.markdown-content, .file-preview-code) pre .hljs-quote { color: var(--color-text-muted); font-style: italic; }
+:is(.markdown-content, .file-preview-code) pre .hljs-keyword,
+:is(.markdown-content, .file-preview-code) pre .hljs-selector-tag,
+:is(.markdown-content, .file-preview-code) pre .hljs-literal,
+:is(.markdown-content, .file-preview-code) pre .hljs-built_in { color: var(--color-accent-text); font-weight: 600; }
+:is(.markdown-content, .file-preview-code) pre .hljs-string,
+:is(.markdown-content, .file-preview-code) pre .hljs-regexp,
+:is(.markdown-content, .file-preview-code) pre .hljs-attr { color: var(--color-text-secondary); }
+:is(.markdown-content, .file-preview-code) pre .hljs-addition { color: var(--color-success-text); }
+:is(.markdown-content, .file-preview-code) pre .hljs-number,
+:is(.markdown-content, .file-preview-code) pre .hljs-symbol,
+:is(.markdown-content, .file-preview-code) pre .hljs-variable,
+:is(.markdown-content, .file-preview-code) pre .hljs-template-variable { color: var(--color-text-muted); }
+:is(.markdown-content, .file-preview-code) pre .hljs-title,
+:is(.markdown-content, .file-preview-code) pre .hljs-type,
+:is(.markdown-content, .file-preview-code) pre .hljs-class,
+:is(.markdown-content, .file-preview-code) pre .hljs-function,
+:is(.markdown-content, .file-preview-code) pre .hljs-attribute { color: var(--color-accent-text); }
+:is(.markdown-content, .file-preview-code) pre .hljs-meta,
+:is(.markdown-content, .file-preview-code) pre .hljs-selector-id,
+:is(.markdown-content, .file-preview-code) pre .hljs-selector-class { color: var(--color-text-subtle); }
+:is(.markdown-content, .file-preview-code) pre .hljs-deletion { color: var(--color-danger-text); }
 
 .security-editor h3 {
     margin: 1rem 0 0;
@@ -7569,3 +7569,26 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .update-restart { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; background: color-mix(in srgb, var(--color-bg) 85%, transparent); }
 .update-restart-card { max-width: 440px; padding: 24px; text-align: center; border: 1px solid var(--color-border-strong); border-radius: calc(12px * var(--corner-scale)); background: var(--color-surface); }
 .update-restart-card p { color: var(--color-text-muted); }
+
+.file-preview-panel { width: min(48rem, 94vw); }
+.file-preview-panel:fullscreen { width: 100vw !important; height: 100vh; }
+.file-preview-resizer { position: absolute; inset: 0 auto 0 -4px; width: 8px; cursor: ew-resize; touch-action: none; }
+.file-preview-resizer:focus-visible { outline: 2px solid var(--color-border-strong); }
+.file-preview-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .5rem .8rem; border-bottom: 1px solid var(--color-border); font-size: .75rem; }
+.file-preview-toolbar > span { flex: 1; color: var(--color-text-muted); }
+.file-preview-toolbar button, .file-preview-load { padding: .25rem .6rem; color: var(--color-text); background: var(--color-fill); border: 1px solid var(--color-border); border-radius: .3rem; cursor: pointer; }
+.file-preview-body { flex: 1; min-height: 0; overflow: auto; }
+.file-preview-status { padding: .8rem; color: var(--color-text-muted); }
+.file-preview-image { height: 100%; min-height: 12rem; overflow: auto; display: grid; place-items: center; }
+.file-preview-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.file-preview-media { display: block; width: 100%; max-height: 100%; margin: auto; }
+.file-preview-pdf { width: 100%; height: calc(100% - 3rem); min-height: 20rem; border: 0; }
+.file-preview-code { display: flex; min-width: max-content; font: .8rem/1.5 var(--font-mono, monospace); }
+.file-preview-code pre { margin: 0; padding: .8rem; font: inherit; tab-size: 4; }
+.file-preview-code code { font: inherit; background: none; padding: 0; white-space: pre; }
+.file-preview-line-numbers { flex: none; text-align: right; color: var(--color-text-muted); border-right: 1px solid var(--color-border); user-select: none; }
+.file-preview-load { margin: .8rem; }
+.file-preview-directory { display: flex; flex-direction: column; padding: .5rem; }
+.file-preview-directory button { display: flex; align-items: center; gap: .5rem; padding: .6rem; border: 0; text-align: left; color: var(--color-text); background: none; cursor: pointer; }
+.file-preview-directory button:hover { background: var(--color-fill); }
+.file-preview-directory button span { overflow-wrap: anywhere; }

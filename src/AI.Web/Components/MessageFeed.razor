@@ -592,6 +592,7 @@
     [Parameter] public EventCallback<Guid> OnOpenChat { get; set; }
     [Parameter] public EventCallback<string> OnNavigateApp { get; set; }
     [Parameter] public EventCallback<FileLinkMenuRequest> OnFileLinkMenu { get; set; }
+    [Parameter] public EventCallback<string> OnOpenFile { get; set; }
     [Parameter] public IReadOnlyDictionary<Guid, string>? ReviewNames { get; set; }
     [Parameter] public IReadOnlySet<Guid>? MessageReviewIds { get; set; }
     [Parameter] public IReadOnlyDictionary<Guid, ChatReview>? MessageReviews { get; set; }
@@ -877,6 +878,9 @@
     public Task OnFileLinkContextMenu(string path, double clientX, double clientY, string? kind, bool? readable) =>
         OnFileLinkMenu.InvokeAsync(new FileLinkMenuRequest(path, clientX, clientY,
             Enum.TryParse<ChatResourceKind>(kind, out var parsed) ? parsed : null, readable));
+
+    [JSInvokable]
+    public Task OnFileLinkClicked(string path) => OnOpenFile.InvokeAsync(path);
 
     /// <summary>What the project may read changed, so every path in the transcript is checked again.</summary>
     public async Task RefreshFileLinksAsync()

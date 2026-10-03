@@ -442,6 +442,7 @@
             OnOpenChat="SelectChatAsync"
             OnNavigateApp="OpenAppNavigationLinkAsync"
             OnFileLinkMenu="OpenFileLinkMenu"
+            OnOpenFile="OpenFilePreviewAsync"
             ReviewNames="@_reviews.ToDictionary(item => item.Id, item => item.Name)"
             MessageReviewIds="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).Select(item => item.Id).ToHashSet()"
             MessageReviews="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).GroupBy(item => item.SourceMessageId).ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.UpdatedAt).First())"
@@ -940,6 +941,11 @@
                          Reviews="@_reviews" StartReviewId="@_reviewStartId" StartPath="@_reviewStartPath"
                          OnChanged="OnReviewChangedAsync" OnDelete="@(id => DeleteReviewAsync(_selectedChat.Id, id))" OnClose="CloseReviewAsync" />
     }
+    @if (_previewPath is not null && _selectedProject?.Id == _previewProjectId)
+    {
+        <FilePreviewPanel @key="(_previewProjectId, _previewPath)" ProjectId="@_previewProjectId" Path="@_previewPath"
+                          OnClose="CloseFilePreview" OnOpenPath="OpenFilePreviewAsync" OnAttach="AttachPreviewAsync" />
+    }
 </main>
 
 @if (_guideStep is { } guideStep)
@@ -1356,7 +1362,7 @@ else if (_guideInvitation is { } guideInvitation)
         await SyncWorkspaceUrlAsync();
     }
 
-    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings, Review, Search, Widgets }
+    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings, Review, Search, Widgets, FilePreview }
 
     /// <summary>
     /// All right-hand drawers share one slot, so opening one closes the rest instead of stacking
@@ -1384,6 +1390,7 @@ else if (_guideInvitation is { } guideInvitation)
             if (_isProjectSettingsOpen) return false;
         }
         if (keep != Drawer.Review && _reviewWorkspaceOpen) await CloseReviewAsync();
+        if (keep != Drawer.FilePreview) CloseFilePreview();
         if (keep != Drawer.Search && _isSearchOpen) await CloseSearchPanelAsync();
         return true;
     }
@@ -2405,6 +2412,7 @@ else if (_guideInvitation is { } guideInvitation)
         ResetBranchOperationState();
         CancelChatSelection();
         _selectedProject = project;
+        CloseFilePreview();
         _isProjectMenuOpen = false;
         _isProjectSettingsOpen = false;
         _isConfirmingProjectDelete = false;
@@ -4766,6 +4774,7 @@ else if (_guideInvitation is { } guideInvitation)
         else if (_globalSection is not null) await RequestCloseGlobalSettingsAsync();
         else if (_isProjectSettingsOpen) await RequestCloseProjectSettingsAsync();
         else if (_reviewWorkspaceOpen) await CloseReviewAsync();
+        else if (_previewPath is not null) CloseFilePreview();
         else return;
         await InvokeAsync(StateHasChanged);
     }
@@ -4801,6 +4810,10 @@ else if (_guideInvitation is { } guideInvitation)
         else if (_reviewWorkspaceOpen)
         {
             await CloseReviewAsync();
+        }
+        else if (_previewPath is not null)
+        {
+            CloseFilePreview();
         }
         else if (_isSearchOpen)
         {

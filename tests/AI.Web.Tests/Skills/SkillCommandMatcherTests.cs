@@ -11,6 +11,17 @@ public sealed class SkillCommandMatcherTests
     private readonly SkillCommandMatcher _matcher = new();
 
     [Theory]
+    [InlineData("c#")]
+    [InlineData("cs")]
+    [InlineData("CSharp")]
+    public void ShouldMatchCSharpExecutionAliases(string query)
+    {
+        var skill = Skill("code-run-csharp", "Code run csharp", aliases: ["c#", "cs", "csharp"]);
+        _matcher.GetQuery("/" + query).ShouldBe(query);
+        _matcher.Match([skill], query, []).Single().Skill.Id.ShouldBe(skill.Id);
+    }
+
+    [Theory]
     [InlineData("/", "")]
     [InlineData("/ch", "ch")]
     [InlineData("/chat-rename", "chat-rename")]

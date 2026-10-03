@@ -39,6 +39,7 @@ public static class SkillIcons
         "git-rebase", "git-rebase-auto", "git-merge-auto",
         "code-plan", "code-explain", "code-refactor", "code-tests-add", "code-build-fix",
         "code-review", "code-performance-optimize", "code-dependencies-update", "code-security-review", "code-docs-update",
+        "code-run-csharp", "code-run-shell",
         "devops-ci-create", "devops-ci-fix", "devops-container-create", "devops-compose-configure",
         "devops-config-review", "devops-release-prepare", "devops-deploy", "devops-rollback",
         "devops-incident-diagnose", "devops-observability-configure", "devops-infrastructure-change", "devops-backup-verify",

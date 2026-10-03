@@ -3406,9 +3406,23 @@ div.chat-tip-head { cursor: default; }
 }
 
 .composer-endpoint-row {
+    position: relative;
     display: flex;
     align-items: center;
     border-radius: calc(0.4rem * var(--corner-scale));
+}
+
+.composer-endpoint-row::after {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    inset: 0 0 0 auto;
+    width: 3rem;
+    border-radius: inherit;
+    background: linear-gradient(to right, transparent, var(--color-fill-active) 1.4rem);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 140ms ease;
 }
 
 .composer-endpoint-menu .composer-endpoint-select {
@@ -3427,11 +3441,40 @@ div.chat-tip-head { cursor: default; }
 }
 
 .composer-endpoint-menu .composer-endpoint-edit {
+    position: absolute;
+    z-index: 2;
+    right: 0.25rem;
+    top: 50%;
+    transform: translateY(-50%);
     display: inline-flex;
-    flex: none;
-    padding: 0.35rem;
-    margin-right: 0.25rem;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
     color: var(--color-text-muted);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.composer-endpoint-menu .composer-endpoint-edit .app-icon {
+    width: 0.875rem;
+    height: 0.875rem;
+}
+
+.composer-endpoint-row:hover::after,
+.composer-endpoint-row:focus-within::after,
+.composer-endpoint-row:hover .composer-endpoint-edit,
+.composer-endpoint-row:focus-within .composer-endpoint-edit {
+    opacity: 1;
+}
+
+.composer-endpoint-row:hover .composer-endpoint-edit,
+.composer-endpoint-row:focus-within .composer-endpoint-edit {
+    pointer-events: auto;
 }
 
 .composer-endpoint-menu .composer-endpoint-edit:hover,

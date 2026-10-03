@@ -48,6 +48,15 @@ public class SkillMarkdownTests
     }
 
     [Fact]
+    public void ShouldAllowSharpAliasesWithoutChangingIdSyntax()
+    {
+        SkillMarkdown.Parse(Playbook.Replace("kind: playbook\n", "kind: playbook\naliases: [\"c#\", \"cs\", \"csharp\"]\n"), "User")
+            .Aliases.ShouldBe(["c#", "cs", "csharp"]);
+        Should.Throw<ArgumentException>(() =>
+            SkillMarkdown.Parse(Playbook.Replace("id: project-describe-short", "id: c#"), "User"));
+    }
+
+    [Fact]
     public void ShouldReadIcon()
     {
         SkillMarkdown.Parse(Playbook, "User").Icon.ShouldBeNull();
@@ -74,6 +83,9 @@ public class SkillMarkdownTests
     [InlineData("[\"compact\", \"compact\"]")]
     [InlineData("[\"-compact\"]")]
     [InlineData("[\"compact now\"]")]
+    [InlineData("[\"#\"]")]
+    [InlineData("[\"c##\"]")]
+    [InlineData("[\"c#script\"]")]
     public void ShouldRejectInvalidAliases(string aliases) =>
         Should.Throw<ArgumentException>(() =>
             SkillMarkdown.Parse(Playbook.Replace("kind: playbook\n", $"kind: playbook\naliases: {aliases}\n"), "User"));

@@ -23,9 +23,9 @@ public static class SkillMarkdown
             throw new ArgumentException("Skill id must be lowercase letters, digits and hyphens, starting with a letter.");
         var aliases = Field("aliases") is { } aliasesText
             ? JsonSerializer.Deserialize<string[]>(aliasesText) ?? [] : [];
-        if (aliases.Length > 8 || aliases.Any(alias => !IsCommand(alias) || alias == id)
+        if (aliases.Length > 8 || aliases.Any(alias => !IsAlias(alias) || alias == id)
             || aliases.Distinct(StringComparer.Ordinal).Count() != aliases.Length)
-            throw new ArgumentException("Skill aliases are up to 8 distinct commands spelled like an id and different from it.");
+            throw new ArgumentException("Skill aliases are up to 8 distinct commands spelled like an id, optionally ending in #, and different from it.");
         var icon = Field("icon");
         if (icon is not null && !SkillIcons.IsValid(icon))
             throw new ArgumentException($"Skill icon must be one of: {string.Join(", ", SkillIcons.Names)}; "
@@ -76,6 +76,9 @@ public static class SkillMarkdown
         var end = Array.IndexOf(lines, "---", 1);
         return string.Join('\n', lines.Skip(end + 1)).Trim();
     }
+
+    private static bool IsAlias(string text) =>
+        IsCommand(text) || text.Length is >= 2 and <= 64 && text[^1] == '#' && IsCommand(text[..^1]);
 
     private static bool IsCommand(string text) =>
         text.Length is >= 1 and <= 64 && text[0] is >= 'a' and <= 'z' && text[^1] != '-'

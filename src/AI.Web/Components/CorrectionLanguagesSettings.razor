@@ -13,11 +13,11 @@
             <label class="settings-row" data-app-target="settings.chat.text_correction.enabled">
                 <span class="settings-row-text">
                     <span class="settings-row-label">Correct while typing</span>
-                    <span class="settings-row-hint">The same switch sits in the message editor while a language is selected.</span>
+                    <span class="settings-row-hint">The button in the message editor pauses or resumes correction. If no languages are selected, it opens these language settings.</span>
                 </span>
                 <input class="settings-switch" type="checkbox" role="switch" checked="@_state.Enabled" disabled="@_saving" @onchange="args => SetEnabledAsync(args.Value is true)" />
             </label>
-            <div class="settings-row" data-app-target="settings.chat.text_correction.languages">
+            <div class="settings-row" data-app-target="settings.chat.text_correction.languages" tabindex="-1" aria-label="Text correction languages">
                 <span class="settings-row-text">
                     <span class="settings-row-label">Languages</span>
                     @if (_state.Languages.Count == 0)

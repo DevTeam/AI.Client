@@ -127,6 +127,24 @@ public class TokenUsageTests
     }
 
     [Fact]
+    public async Task ShouldCalibrateOnlyFromProviderReportedInputIncludingTheCachedShare()
+    {
+        var (meter, _) = CreateMeter();
+        var estimator = new ContextTokenEstimator();
+        var samples = new ContextEstimateSamples();
+        var policy = new AdaptiveContextPolicy(estimator, new ConnectionContextLimitsResolver(), samples);
+        var request = new ChatCompletionRequest("https://llm.example/v1", "m", null, "Hello", ConnectionId);
+        await DrainAsync(new MeteringChatCompletionClient(new FakeClient(new ChatCompletionChunk("ok", "provider-alias",
+            Usage: new ChatCompletionUsage(new TokenCounts(2_000, 10, 1_900)))), meter, estimator, _prefixes, policy), request);
+        await DrainAsync(new MeteringChatCompletionClient(new FakeClient(new ChatCompletionChunk("Estimated")),
+            meter, estimator, _prefixes, policy), request);
+        var observations = samples.Read(ConnectionId, request.BaseUrl, "m");
+        observations.ShouldHaveSingleItem().ReportedTokens.ShouldBe(2_000);
+        observations[0].EstimatedTokens.ShouldBe(estimator.EstimateMessages([new ChatCompletionMessage("user", "Hello")]));
+        samples.Read(ConnectionId, request.BaseUrl, "provider-alias").ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ShouldReadRecordsBackByMonthAndSkipALineCutShort()
     {
         var (meter, _) = CreateMeter();

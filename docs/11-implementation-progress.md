@@ -334,3 +334,34 @@ Verification note: one parallel Server run failed the existing subtask transcrip
 its generated MCP schema unexpectedly required `progress`. That test passed in isolation and
 the complete final serial suite passed. The intermittent parallel schema issue was not changed
 by this increment.
+
+## 2026-10-03 — measured adaptive compaction and structured result retention
+
+Implemented [ADR-010](decisions/ADR-010-adaptive-compaction-and-estimation.md). All adaptive
+compaction decisions now come from `IAdaptiveContextPolicy`: trigger, retry growth, required
+actual savings, target size, recent keep allowance, summary targets and estimation safety.
+Agent orchestration and final planning share the message allowance after tools, guidance and
+reserves. Both successful and unsuccessful automatic attempts wait for input growth before retrying.
+
+Automatic checkpoints compare complete projections before and after, including summary framing.
+An inflated or insufficiently useful summary leaves the previous checkpoint intact. Completed
+current-turn work is shortened deterministically without a summarizer, while the current question
+and latest parallel call/result exchange are retained. Synthetic summaries have an explicit
+application-only origin marker so their user role cannot displace the current question. Kept LLM
+fallback summaries contain exactly the version sent, including any final shortening.
+
+The transient `IToolResultContextProjector` retains bounded structured outcomes, errors, paths,
+identifiers and middle-of-output diagnostics before excerpts. Unknown and malformed results use
+diagnostic lines and excerpts. The shared UTF-8 estimator bounds multilingual summaries and counts
+preview source tokens. A bounded singleton stores numeric provider estimate/report observations;
+the policy increases the baseline safety reserve for observed underestimation, isolated by
+connection, endpoint and requested model. Estimated usage never calibrates the reserve.
+
+Checks: solution build with `--no-restore -m:1 /nodeReuse:false`, zero warnings/errors; all 92
+targeted context/checkpoint/usage tests passed; the final complete serial Server run had 841 tests
+(840 passed, one Unix-permissions skip); all 427 Web tests passed; `git diff --check` passed.
+The added tests exercise 64-step runs across 8K–128K windows with discovery, checkpoints, a large
+result and a smaller-model transition, and 80-step automatic-summary sequences. They bound
+compaction/prefix-change counts and verify mandatory text, complete parallel protocols, checkpoint
+rejection, multilingual sizing, calibration isolation and provider-only observations. No external
+LLM is used.

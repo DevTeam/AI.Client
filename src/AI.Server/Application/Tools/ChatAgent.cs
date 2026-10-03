@@ -37,7 +37,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
     IStandingInstructions standingInstructions, IContextTokenEstimator estimator, ISkillGuide skillGuide,
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
-    IClock clock, IIdGenerator ids, IConnectionContextLimitsResolver contextLimits) : IChatAgent
+    IClock clock, IIdGenerator ids) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -98,7 +98,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         // Set while the application compacts the history itself, so its summary is accounted as a
         // compaction rather than as a checkpoint the model asked for.
         var compactingAhead = false;
-        using var checkpointScope = checkpoints.Begin(run, request.Model, HistoryKeepTokens(configuredConnection), async (prompt, ct) =>
+        using var checkpointScope = checkpoints.Begin(run, request.Model,
+            contextPolicy.ResolveCompaction(configuredConnection).HistoryKeepTokens, async (prompt, ct) =>
         {
             using var usageScope = usageMeter.Begin(new TokenUsageScope(
                 compactingAhead ? TokenUsagePurpose.Compaction : TokenUsagePurpose.Checkpoint));
@@ -270,24 +271,29 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var chunkCount = 0;
             composition = instructionComposer.Compose(run, modelContext, configuredConnection);
             // Measured with the instructions and tools the request carries: they share the window.
-            if (CompactionAheadSize(configuredConnection, composition, available) is { } size && size >= compactAheadFrom)
+            var stepBudget = contextPolicy.ResolveCompaction(configuredConnection, estimator.EstimateTools(available),
+                composition.Trailing is null ? 0 : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]));
+            checkpoints.UpdateBudget(run, stepBudget);
+            var size = estimator.EstimateMessages(composition.Messages);
+            if (contextPolicy.ShouldCompactAhead(stepBudget, size, compactAheadFrom))
             {
                 bool compacted;
                 compactingAhead = true;
                 try
                 {
-                    compacted = await CompactAheadAsync(run, configuredConnection, token);
+                    compacted = await CompactAheadAsync(run, stepBudget, token);
                 }
                 finally
                 {
                     compactingAhead = false;
                 }
-                compactAheadFrom = compacted ? 0 : size + CompactAheadRetryTokens(configuredConnection);
                 if (compacted)
                 {
                     modelContext = checkpoints.Apply(run, context);
                     composition = instructionComposer.Compose(run, modelContext, configuredConnection);
                 }
+                // Even an accepted checkpoint waits for more input before another automatic attempt.
+                compactAheadFrom = estimator.EstimateMessages(composition.Messages) + stepBudget.RetryGrowthTokens;
             }
             // The guidance and any new checkpoint are now known. Select against what will really
             // be sent, releasing definitions whose protected protocol groups were summarized away.
@@ -297,11 +303,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             selectedTools = selection.Tools;
             sentTools = selectedTools;
             available = selectedTools.Select(item => item.ModelDefinition).ToArray();
+            stepBudget = contextPolicy.ResolveCompaction(configuredConnection, estimator.EstimateTools(available),
+                composition.Trailing is null ? 0 : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]));
+            checkpoints.UpdateBudget(run, stepBudget);
             contextDiagnostics.RecordToolSelection(request.Model, selection.AvailableCount, selectedTools.Count,
                 selection.AvailableTokens, selection.SelectedTokens, selection.BudgetTokens);
             instructionDiagnostics.RecordInstructions(request.Model, composition.Keys, composition.EstimatedTokens);
             var plan = await contextPlanner.PlanAsync(configuredConnection, request.Model, composition.Messages, available,
-                new CompletionClientSummarizer(completion, request, usageMeter), SummaryTargetTokens, token,
+                new CompletionClientSummarizer(completion, request, usageMeter), stepBudget.SummaryTargetTokens, token,
                 composition.Trailing, compactionMemory);
             contextDiagnostics.Record(request.Model, plan, composition.Messages.Count, available.Length);
             lastPlan = plan;
@@ -517,16 +526,6 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         }
     }
     /// <summary>
-    /// How much recent history a compaction leaves in full: a fifth of the input the connection
-    /// allows, so the kept turns cannot crowd out the room the compaction was meant to make.
-    /// </summary>
-    private long HistoryKeepTokens(ConnectionSettings? connection)
-    {
-        var limits = contextLimits.Resolve(connection);
-        return Math.Max(1_024, (limits.ContextWindowTokens - limits.ReservedOutputTokens) / 5);
-    }
-
-    /// <summary>
     /// How many times a turn that produced nothing at all is asked again before the run gives up.
     /// Small on purpose: an endpoint that is genuinely answering nothing should be reported, not
     /// hammered, and the user is the one waiting through every attempt.
@@ -534,65 +533,22 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     private const int MaxEmptyTurns = 2;
 
     /// <summary>
-    /// Token budget for the LLM-generated summary used as a last-resort compaction step. Small
-    /// enough to leave room for instructions, tools and the recent turn in the same window, large
-    /// enough to keep enough decisions to continue the work.
-    /// </summary>
-    private const int SummaryTargetTokens = 1500;
-
-    /// <summary>
-    /// The share of the input the connection allows at which the earlier turns are summarized by
-    /// the model and kept as a history checkpoint, before the request has to be cut to fit. Early,
-    /// so the summary is written once and the requests after it keep one stable prefix; at the
-    /// limit itself only the deterministic cut is left, and that moves with every step.
-    /// </summary>
-    private const int CompactAheadPercent = 70;
-
-    /// <summary>The smallest share of that input a summary has to free to be worth its request and its cache miss.</summary>
-    private const int CompactAheadMinimumGainPercent = 10;
-
-    /// <summary>A whole conversation deserves a longer summary than the last-resort one.</summary>
-    private const int HistorySummaryTargetTokens = 3_000;
-
-    /// <summary>The request's estimated size when it has passed the threshold, otherwise null.</summary>
-    private long? CompactionAheadSize(ConnectionSettings? connection, ModelInstructionComposition composition,
-        IReadOnlyList<ChatToolDefinition> tools)
-    {
-        var input = InputTokens(connection);
-        var request = estimator.EstimateMessages(composition.Trailing is { } trailing
-                          ? [.. composition.Messages, new ChatCompletionMessage("user", trailing)]
-                          : composition.Messages)
-                      + estimator.EstimateTools(tools);
-        return input > 0 && request >= input / 100 * CompactAheadPercent ? request : null;
-    }
-
-    private long CompactAheadRetryTokens(ConnectionSettings? connection) =>
-        Math.Max(1, InputTokens(connection) / 100 * CompactAheadMinimumGainPercent);
-
-    private long InputTokens(ConnectionSettings? connection)
-    {
-        var limits = contextLimits.Resolve(connection);
-        return Math.Max(0, limits.ContextWindowTokens - limits.ReservedOutputTokens);
-    }
-
-    /// <summary>
     /// Summarizes what fills a context that is filling up: the earlier turns, kept as a history
     /// checkpoint, or — when they are already summarized or too small — the completed steps of a
     /// long turn in progress. False when neither was worth a summary or the model gave none.
     /// </summary>
-    private async Task<bool> CompactAheadAsync(ToolRunContext run, ConnectionSettings? connection, CancellationToken token)
+    private async Task<bool> CompactAheadAsync(ToolRunContext run, AdaptiveCompactionBudget budget, CancellationToken token)
     {
-        var minimum = InputTokens(connection) / 100 * CompactAheadMinimumGainPercent;
+        var minimum = budget.MinimumGainTokens;
         try
         {
             var preview = checkpoints.Preview(run, ContextCompactionScope.History);
-            // About two characters a token, the estimator's own rate.
-            if (preview.CanCompact && preview.SourceCharacters / 2 >= minimum
-                && (await checkpoints.CompactAsync(run, HistorySummaryTargetTokens, ContextCompactionScope.History, token,
-                    HistoryCheckpointOrigin.Automatic)).Applied)
+            if (preview.CanCompact && preview.SourceTokens >= minimum
+                && (await checkpoints.CompactAsync(run, budget.HistorySummaryTargetTokens, ContextCompactionScope.History, token,
+                    HistoryCheckpointOrigin.Automatic, minimum)).Applied)
                 return true;
-            return (await checkpoints.CompactTurnAheadAsync(run, HistoryKeepTokens(connection), minimum,
-                SummaryTargetTokens, token)).Applied;
+            return (await checkpoints.CompactTurnAheadAsync(run, budget.HistoryKeepTokens, minimum,
+                budget.SummaryTargetTokens, token)).Applied;
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {

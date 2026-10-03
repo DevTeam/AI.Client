@@ -21,7 +21,7 @@ public sealed class MeteringChatCompletionClient(
     IChatCompletionClient inner,
     ITokenUsageMeter meter,
     IContextTokenEstimator estimator,
-    IPromptPrefixTracker prefixes) : IChatCompletionClient
+    IPromptPrefixTracker prefixes, IAdaptiveContextPolicy? contextPolicy = null) : IChatCompletionClient
 {
     public async Task<ChatCompletionResponse> CompleteAsync(ChatCompletionRequest request, CancellationToken cancellationToken)
     {
@@ -70,8 +70,11 @@ public sealed class MeteringChatCompletionClient(
         var name = string.IsNullOrWhiteSpace(model) ? request.Model.Trim() : model;
         var shape = prefixes.Shape(request);
         if (usage is not null)
+        {
+            contextPolicy?.ObserveInputUsage(request, usage.Tokens.InputTokens);
             return new TokenUsageMeasurement(name, request.CredentialProfileId, usage.Tokens, false, duration, firstToken,
                 usage.Cost, shape);
+        }
         IReadOnlyList<ChatCompletionMessage> sent = request.ContextMessages is { Count: > 0 } messages
             ? messages
             : [new ChatCompletionMessage("user", request.Message)];

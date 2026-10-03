@@ -218,9 +218,11 @@ export function watchTarget(request, reference) {
 }
 
 // A user-clicked shortcut only reveals its destination; it does not start or alter a guide.
-export async function revealNavigationTarget(request) {
+export async function revealNavigationTarget(request, focus = false) {
     if (!await waitForTarget(request)) return false;
-    target(request)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const element = target(request);
+    element?.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (focus) element?.focus({ preventScroll: true });
     return true;
 }
 

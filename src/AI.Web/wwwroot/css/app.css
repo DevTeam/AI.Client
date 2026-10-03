@@ -3314,25 +3314,17 @@ div.chat-tip-head { cursor: default; }
 .composer-review-submenu button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-review-submenu button { min-height: 2.5rem; }
 
-/* The text correction switch between "+" and the approval mode, present only while a correction
-   language is selected. On, it wears the accent; paused, it fades and a stroke crosses the letter
-   out while the check underneath gives way, so the state reads without the tooltip. */
-.composer-correction-toggle { position: relative; display: inline-grid; width: 2rem; height: 2rem; padding: 0; place-items: center; border-color: transparent; border-radius: 50%; background: transparent; color: var(--color-text-subtle); transition: color .18s ease, background-color .18s ease; }
+/* Active correction uses the accent and a check. Paused and unconfigured correction share an
+   inverted letter; the unconfigured shortcut uses the muted palette colour. */
+.composer-correction-toggle { position: relative; display: inline-grid; width: 2rem; height: 2rem; padding: 0; place-items: center; border-color: transparent; border-radius: 50%; background: transparent; color: var(--color-text-secondary); transition: color .18s ease, background-color .18s ease; }
 .composer-correction-toggle .app-icon { width: 1.05rem; height: 1.05rem; overflow: visible; }
-.composer-correction-toggle .composer-correction-check,
-.composer-correction-toggle .composer-correction-slash { transition: stroke-dashoffset .22s ease, opacity .18s ease; }
-.composer-correction-check { stroke-dasharray: 11; stroke-dashoffset: 0; }
-.composer-correction-slash { stroke-dasharray: 26; stroke-dashoffset: 26; }
 .composer-correction-toggle.is-on { background: var(--color-accent-bg); color: var(--color-accent); }
 .composer-correction-toggle.is-on:hover { background: var(--color-accent-bg-hover); color: var(--color-accent-text); }
-.composer-correction-toggle.is-off { color: var(--color-text-faint); }
 .composer-correction-toggle.is-off:hover { background: var(--color-fill-hover); color: var(--color-text-secondary); }
-.composer-correction-toggle.is-off .composer-correction-check { stroke-dashoffset: 11; opacity: 0; }
-.composer-correction-toggle.is-off .composer-correction-slash { stroke-dashoffset: 0; }
-/* A ring of the composer's own background keeps the slash readable where it crosses the letter. */
-.composer-correction-toggle.is-off .composer-correction-slash { filter: drop-shadow(0 0 1.2px var(--color-bg)); }
+.composer-correction-toggle.is-unconfigured { color: var(--color-text-subtle); }
+.composer-correction-toggle.is-unconfigured:hover { background: var(--color-fill-hover); }
 .composer-correction-toggle:active { transform: scale(.92); }
-@media (prefers-reduced-motion: reduce) { .composer-correction-toggle, .composer-correction-toggle .composer-correction-check, .composer-correction-toggle .composer-correction-slash { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .composer-correction-toggle { transition: none; } }
 
 /* The chat's tool approval mode, next to "+" on the composer's left; the rest of the footer sits right.
    Full access is the one mode that is never quiet about itself, so it keeps the warning colour. */

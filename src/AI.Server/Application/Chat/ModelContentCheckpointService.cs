@@ -15,7 +15,7 @@ public sealed class ModelContentCheckpointService(
     IHistoryCheckpointService history,
     IClock clock,
     IIdGenerator ids,
-    IContextTokenEstimator estimator) : IModelContentCheckpointService
+    IContextTokenEstimator estimator, IAdaptiveContextPolicy policy) : IModelContentCheckpointService
 {
     /// <summary>
     /// A history compaction always leaves the turn in progress, and the one before it when both fit
@@ -38,6 +38,11 @@ public sealed class ModelContentCheckpointService(
         if (_entries.TryGetValue(Key.Of(run), out var entry)) entry.Context = context.ToArray();
     }
 
+    public void UpdateBudget(ToolRunContext run, AdaptiveCompactionBudget budget)
+    {
+        if (_entries.TryGetValue(Key.Of(run), out var entry)) entry.Keep = entry.Keep with { Tokens = budget.HistoryKeepTokens };
+    }
+
     public IReadOnlyList<ChatCompletionMessage> Apply(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context)
     {
         if (!_entries.TryGetValue(Key.Of(run), out var entry)) return context;
@@ -47,7 +52,7 @@ public sealed class ModelContentCheckpointService(
         var user = FindCurrentUser(context, boundary);
         if (boundary <= user + 1) return context;
         return context.Take(user + 1)
-            .Append(new ChatCompletionMessage("user", TurnSummaryPrefix + checkpoint.Summary))
+            .Append(new ChatCompletionMessage("user", TurnSummaryPrefix + checkpoint.Summary, IsContextSummary: true))
             .Concat(context.Skip(boundary)).ToArray();
     }
 
@@ -62,21 +67,24 @@ public sealed class ModelContentCheckpointService(
         if (!_entries.TryGetValue(Key.Of(run), out var entry)) return new(0, 0, false);
         if (scope == ContextCompactionScope.History)
         {
-            var coverable = history.Coverable(entry.Context, entry.Keep);
-            return new(coverable.Count, coverable.Sum(message => (long)message.ForModel.Length), coverable.Count > 0);
+            var context = entry.History is { } pinned ? history.Apply(entry.Context, pinned) : entry.Context;
+            var coverable = history.Coverable(context, entry.Keep);
+            return new(coverable.Count, coverable.Sum(message => (long)message.ForModel.Length), coverable.Count > 0,
+                estimator.EstimateMessages(coverable));
         }
         var range = Range(entry.Context);
-        return new(range.Count, range.Characters, range.Count > 0);
+        return new(range.Count, range.Characters, range.Count > 0,
+            estimator.EstimateMessages(entry.Context.Skip(range.Start).Take(range.Count).ToArray()));
     }
 
     public Task<ModelContentCompactionResult> CompactAsync(ToolRunContext run, int targetTokens,
         ContextCompactionScope scope, CancellationToken cancellationToken,
-        HistoryCheckpointOrigin origin = HistoryCheckpointOrigin.Model)
+        HistoryCheckpointOrigin origin = HistoryCheckpointOrigin.Model, long minimumGainTokens = 0)
     {
         if (!_entries.TryGetValue(Key.Of(run), out var entry))
             return Task.FromResult(new ModelContentCompactionResult(0, 0, 0, false, "No active run context is available."));
         return scope == ContextCompactionScope.History
-            ? CompactHistoryAsync(run, entry, targetTokens, origin, cancellationToken)
+            ? CompactHistoryAsync(run, entry, targetTokens, origin, minimumGainTokens, cancellationToken)
             : CompactTurnAsync(entry, targetTokens, cancellationToken);
     }
 
@@ -101,7 +109,7 @@ public sealed class ModelContentCheckpointService(
         var context = entry.Context;
         var user = -1;
         for (var index = context.Count - 1; index >= 0 && user < 0; index--)
-            if (context[index].Role == "user") user = index;
+            if (context[index].Role == "user" && !context[index].IsContextSummary) user = index;
         if (user < 0) return new(0, 0, 0, false, "There is no turn in progress.");
         var previous = entry.Checkpoint;
         var start = previous is null ? user + 1 : FindBoundary(context, previous.BoundaryCallId);
@@ -133,7 +141,14 @@ public sealed class ModelContentCheckpointService(
             : [new ChatCompletionMessage("user", TurnSummaryPrefix + previous.Summary), .. covered];
         var summary = await summaryWriter.WriteAsync(source, targetTokens, new Summarizer(entry.Summarize), cancellationToken);
         if (summary is null) return new(covered.Length, characters, 0, false, "The compaction task returned no summary.");
-        entry.Checkpoint = new Checkpoint(context[boundary].ToolCalls![0].Id, summary.Text);
+        var candidate = new Checkpoint(context[boundary].ToolCalls![0].Id, summary.Text);
+        var before = Apply(run, context);
+        IReadOnlyList<ChatCompletionMessage> after = context.Take(user + 1)
+            .Append(new ChatCompletionMessage("user", TurnSummaryPrefix + summary.Text, IsContextSummary: true)).Concat(context.Skip(boundary)).ToArray();
+        if (entry.History is { } historyCheckpoint) after = history.Apply(after, historyCheckpoint);
+        if (!policy.ShouldAcceptCompaction(before, after, minimumTokens))
+            return new(covered.Length, characters, summary.Text.Length, false, "The summary did not free enough context tokens.");
+        entry.Checkpoint = candidate;
         return new(covered.Length, characters, summary.Text.Length, true,
             "Completed steps of this turn were replaced by a summary for the rest of this run.");
     }
@@ -154,7 +169,7 @@ public sealed class ModelContentCheckpointService(
     }
 
     private async Task<ModelContentCompactionResult> CompactHistoryAsync(ToolRunContext run, Entry entry, int targetTokens,
-        HistoryCheckpointOrigin origin, CancellationToken cancellationToken)
+        HistoryCheckpointOrigin origin, long minimumGainTokens, CancellationToken cancellationToken)
     {
         // The context the run was given may already open with a summary; covering it again folds
         // the older summary into the new one.
@@ -167,6 +182,9 @@ public sealed class ModelContentCheckpointService(
         if (summary is null) return new(coverable.Count, sourceCharacters, 0, false, "The compaction task returned no summary.");
         var checkpoint = new HistoryCheckpoint(ids.Create(), coverable.Last(message => message.MessageId is not null).MessageId!.Value,
             summary.Text, coverable.Count, summary.SourceCharacters, entry.Model, clock.UtcNow, origin);
+        if (origin == HistoryCheckpointOrigin.Automatic
+            && !policy.ShouldAcceptCompaction(context, history.Apply(context, checkpoint), minimumGainTokens))
+            return new(coverable.Count, sourceCharacters, summary.Text.Length, false, "The summary did not free enough context tokens.");
         await history.AddAsync(run.ProjectId, run.ChatId, checkpoint, cancellationToken);
         entry.History = checkpoint;
         return new(coverable.Count, sourceCharacters, summary.Text.Length, true,
@@ -187,7 +205,8 @@ public sealed class ModelContentCheckpointService(
     }
 
     private static int FindCurrentUser(IReadOnlyList<ChatCompletionMessage> context, int before) =>
-        context.Take(before).Select((message, index) => (message, index)).LastOrDefault(item => item.message.Role == "user").index;
+        context.Take(before).Select((message, index) => (message, index))
+            .LastOrDefault(item => item.message.Role == "user" && !item.message.IsContextSummary).index;
 
     private static int FindBoundary(IReadOnlyList<ChatCompletionMessage> context, string callId) =>
         context.Select((message, index) => (message, index))
@@ -201,7 +220,7 @@ public sealed class ModelContentCheckpointService(
     private sealed class Entry(string model, HistoryKeepPolicy keep, Func<string, CancellationToken, Task<string>> summarize)
     {
         public string Model { get; } = model;
-        public HistoryKeepPolicy Keep { get; } = keep;
+        public HistoryKeepPolicy Keep { get; set; } = keep;
         public Func<string, CancellationToken, Task<string>> Summarize { get; } = summarize;
         public IReadOnlyList<ChatCompletionMessage> Context { get; set; } = [];
         public Checkpoint? Checkpoint;

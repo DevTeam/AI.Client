@@ -1,13 +1,13 @@
-@* The quick switch for text correction beside the message editor. It is shown only while a
-   language is selected, so its presence says correction is set up and its colour says whether it
-   runs. Off keeps the languages: turning it back on resumes exactly where it was. *@
-<button type="button" class="composer-correction-toggle @(State.Enabled ? "is-on" : "is-off")" data-app-target="chat.text_correction"
-        role="switch" aria-checked="@(State.Enabled ? "true" : "false")" aria-label="Text correction"
+@* Without selected languages, the shortcut opens their settings. Otherwise it pauses or resumes correction. *@
+<button type="button" class="composer-correction-toggle @(State.Languages.Count == 0 ? "is-unconfigured" : State.IsActive ? "is-on" : "is-off")" data-app-target="chat.text_correction"
+        role="@(State.Languages.Count == 0 ? null : "switch")" aria-checked="@(State.Languages.Count == 0 ? null : State.IsActive ? "true" : "false")" aria-label="@Title()"
         title="@Title()" @onclick="OnToggle">
     <svg class="app-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="m2.5 18 5-13 5 13M4.5 13.5h6" />
-        <path class="composer-correction-check" d="m15 16.5 2.5 2.5 4-4.5" />
-        <path class="composer-correction-slash" d="M3 3l18 18" />
+        <path d="m7 18 5-13 5 13M9 13.5h6" transform="@(State.IsActive ? "translate(-5 0)" : "rotate(180 12 11.5)")" />
+        @if (State.IsActive)
+        {
+            <path class="composer-correction-check" d="m16 16.5 2.5 2.5 4-4.5" />
+        }
     </svg>
 </button>
 
@@ -20,9 +20,11 @@
 
     private string Title()
     {
+        if (State.Languages.Count == 0)
+            return "Text correction is not configured. Click to select correction languages in Settings.";
         var languages = string.Join(", ", State.Languages.Select(language => language.Name));
         return State.Enabled
-            ? $"Text correction is on: {languages}. Click to pause it"
-            : $"Text correction is paused ({languages}). Click to turn it on";
+            ? $"Text correction is on: {languages}. Click to pause correction while keeping your selected languages."
+            : $"Text correction is paused: {languages}. Click to resume correction with your selected languages.";
     }
 }

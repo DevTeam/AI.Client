@@ -60,7 +60,7 @@ internal sealed class Composition
                 JsonProjectRepository, JsonChatRepository, ChatSynchronization, ChatTransportActivity,
                 JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
                 JsonProjectInstructionsRepository, JsonChatRunRepository, ChatRunDispatcher,
-                ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, WorkspaceChangeTracker,
+                ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, WorkspaceChangeTracker, ContextEstimateSamples,
                 AppDataChangeSignal, AppNavigationSignal, AppOperationLog, WorkspaceFileSearch, TokenUsageMeter,
                 JsonLinesTokenUsageLedger, PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits,
                 JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, CompositeToolSessionFactory>()
@@ -99,7 +99,7 @@ internal sealed class Composition
             .Transient<WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService,
                 OpenAiCompatibleConnectionModelsResolver, ChatContext, ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, KeyringOrFileMasterKeyStore, ModelInstructionComposer,
-                AdaptiveContextPolicy,
+                AdaptiveContextPolicy, ToolResultContextProjector,
                 ToolPolicyResolver, LineDiff, MasterKeyFormat, ProcessCommandRunner, AppWrites, AppMcpServerHost,
                 ExternalToolSessionFactory, ChatBranchIds, ToolUserInterface, GitWorkspaceDiffReader, GitBrowser,
                 FileExcerptReader, ChatCompletionUsageReader, TokenUsageAggregator, TokenUsageService,
@@ -143,10 +143,10 @@ internal sealed class Composition
                 IChatTransportActivity transportActivity,
                 ITokenUsageMeter usageMeter,
                 IContextTokenEstimator usageEstimator,
-                IPromptPrefixTracker prefixes) =>
+                IPromptPrefixTracker prefixes, IAdaptiveContextPolicy contextPolicy) =>
                 new MeteringChatCompletionClient(
                     new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity),
-                    usageMeter, usageEstimator, prefixes));
+                    usageMeter, usageEstimator, prefixes, contextPolicy));
 }
 
 /// <summary>Only the roots resolved by ASP.NET handlers and hosted services.</summary>

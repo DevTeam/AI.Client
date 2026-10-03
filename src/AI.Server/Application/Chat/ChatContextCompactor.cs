@@ -6,7 +6,8 @@ using System.Text;
 /// Deterministically reduces model input. Tool results are projected to bounded excerpts first;
 /// older user turns are then replaced as whole protocol groups by one synthetic summary.
 /// </summary>
-public sealed class ChatContextCompactor(IContextTokenEstimator estimator, IContextSummaryWriter summaryWriter) : IChatContextCompactor
+public sealed class ChatContextCompactor(IContextTokenEstimator estimator, IContextSummaryWriter summaryWriter,
+    IToolResultContextProjector toolProjector) : IChatContextCompactor
 {
     private const int RecentTurnsToKeep = 2;
     private static readonly (int Head, int Tail)[] ToolProjectionLimits =
@@ -60,14 +61,24 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
             if (summary is not null)
             {
                 summaryMessage = new ChatCompletionMessage("user", HistoryCheckpointService.SummaryPrefix + summary.Text,
-                    MessageId: upTo);
+                    MessageId: upTo, IsContextSummary: true);
                 if (upTo is { } id)
                     kept = new ContextHistorySummary(summary.Text, id, summarySource.Length, summary.SourceCharacters);
             }
         }
 
         if (summaryMessage is null) coveredTurnCount = 0;
-        return Assemble(preamble, summaryMessage, coveredTurnCount, turns, keptTurns, inputLimit) with { Summary = kept };
+        var result = Assemble(preamble, summaryMessage, coveredTurnCount, turns, keptTurns, inputLimit);
+        if (kept is not null)
+        {
+            var sentSummary = result.Messages.FirstOrDefault(message => message.ForModel.StartsWith(
+                HistoryCheckpointService.SummaryPrefix, StringComparison.Ordinal));
+            kept = sentSummary is null ? null : kept with
+            {
+                Text = sentSummary.ForModel[HistoryCheckpointService.SummaryPrefix.Length..]
+            };
+        }
+        return result with { Summary = kept };
     }
 
     /// <summary>
@@ -129,8 +140,10 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
     {
         var cuts = Enumerable.Range(1, Math.Max(0, turn.Count - 1))
             .Where(index => turn[index].Role != "tool")
-            .Append(turn.Count)
             .ToArray();
+        // Keep the latest exchange, including every result of its parallel tool calls.
+        if (cuts.Length == 0)
+            return new ContextCompactionResult(prefix.Concat(turn).ToArray(), omittedBefore, true);
         var low = 0;
         var high = cuts.Length - 1;
         var best = cuts.Length - 1;
@@ -165,7 +178,7 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
     private static ChatCompletionMessage Truncate(ChatCompletionMessage message, int characters) =>
         message.Content.Length <= characters
             ? message
-            : new ChatCompletionMessage(message.Role, message.Content[..characters] + "…");
+            : message with { Content = message.Content[..characters] + "…", ModelContent = null };
 
     private static ChatCompletionMessage BuildTurnDigest(IReadOnlyList<ChatCompletionMessage> turn, int cut)
     {
@@ -176,10 +189,13 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
             && !string.IsNullOrWhiteSpace(message.ForModel));
         if (assistant is not null)
             Append(digest, "\n  Last assistant note: ", assistant.ForModel, SummaryAssistantCharacters);
+        var checkpoint = turn.Take(cut).LastOrDefault(message => message.IsContextSummary);
+        if (checkpoint is not null)
+            Append(digest, "\n  Earlier checkpoint: ", checkpoint.ForModel, SummaryAssistantCharacters);
         var tools = turn.Take(cut).SelectMany(message => message.ToolCalls ?? []).Select(call => call.Name)
             .Distinct(StringComparer.Ordinal).Take(20).ToArray();
         if (tools.Length > 0) digest.Append("\n  Tools used: ").Append(string.Join(", ", tools));
-        return new ChatCompletionMessage("user", digest.ToString());
+        return new ChatCompletionMessage("user", digest.ToString(), IsContextSummary: true);
     }
 
     private CompactionAttempt CompactBest(IReadOnlyList<ChatCompletionMessage> messages, long inputLimit)
@@ -207,7 +223,8 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
         var (preamble, turns) = GroupTurns(projected);
         if (turns.Count <= 1)
             return new CompactionAttempt(projected,
-                new ContextCompactionResult(projected, 0, changedProjection), turns.Count);
+                turns.Count == 0 ? new ContextCompactionResult(projected, 0, changedProjection)
+                    : Assemble(preamble, null, 0, turns, 1, inputLimit), turns.Count);
 
         var omittedTurnCount = Math.Max(0, turns.Count - RecentTurnsToKeep);
         while (omittedTurnCount < turns.Count)
@@ -219,9 +236,11 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
             if (omitted.Length > 0) compacted.Add(BuildSummary(turns.Take(omittedTurnCount).ToArray()));
             foreach (var turn in turns.Skip(omittedTurnCount)) compacted.AddRange(turn);
 
-            if (estimator.EstimateMessages(compacted) <= inputLimit || omittedTurnCount == turns.Count - 1)
+            if (estimator.EstimateMessages(compacted) <= inputLimit)
                 return new CompactionAttempt(projected,
                     new ContextCompactionResult(compacted, omitted.Length, true), turns.Count - omittedTurnCount);
+            if (omittedTurnCount == turns.Count - 1)
+                return new CompactionAttempt(projected, Assemble(preamble, null, 0, turns, 1, inputLimit), 1);
             omittedTurnCount++;
         }
 
@@ -229,7 +248,7 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
             new ContextCompactionResult(projected, 0, changedProjection), turns.Count);
     }
 
-    private static IReadOnlyList<ChatCompletionMessage> ProjectLargeToolResults(
+    private IReadOnlyList<ChatCompletionMessage> ProjectLargeToolResults(
         IReadOnlyList<ChatCompletionMessage> messages,
         int toolHeadCharacters,
         int toolTailCharacters)
@@ -254,11 +273,7 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
             var toolName = message.ToolCallId is { } callId && toolNames.TryGetValue(callId, out var name)
                 ? name
                 : "unknown";
-            var compacted = $"{ToolCompactionMarker} Tool: {toolName}. Original characters: {modelContent.Length}. "
-                + "The beginning and end are retained. Re-run the tool or read the resource again if details are needed.]\n"
-                + modelContent[..toolHeadCharacters]
-                + "\n[...omitted...]\n"
-                + modelContent[^toolTailCharacters..];
+            var compacted = toolProjector.Project(modelContent, toolName, toolHeadCharacters, toolTailCharacters);
             projected.Add(message with { ModelContent = compacted });
         }
 
@@ -273,7 +288,7 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
         List<ChatCompletionMessage>? current = null;
         foreach (var message in messages)
         {
-            if (message.Role == "user")
+            if (message.Role == "user" && (!message.IsContextSummary || current is null))
             {
                 if (current is { Count: > 0 }) turns.Add(current);
                 current = [message];
@@ -312,7 +327,7 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
             summary.Length = SummaryLimitCharacters;
         // The summary contains excerpts of user-authored text. Keeping the user role avoids
         // promoting untrusted instructions to system authority during compaction.
-        return new ChatCompletionMessage("user", summary.ToString());
+        return new ChatCompletionMessage("user", summary.ToString(), IsContextSummary: true);
     }
 
     private static void Append(StringBuilder target, string label, string value, int limit)

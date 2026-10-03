@@ -5,6 +5,7 @@ using AI.Application.Projects;
 using AI.Application.Tools;
 using AI.Contracts.Chat;
 using AI.Contracts.Chats;
+using AI.Contracts.Settings;
 using Moq;
 using Shouldly;
 using Xunit;
@@ -23,7 +24,7 @@ public sealed class ModelContentCheckpointServiceTests
         clock.SetupGet(item => item.UtcNow).Returns(new DateTimeOffset(2026, 9, 30, 12, 0, 0, TimeSpan.Zero));
         var ids = new Mock<IIdGenerator>();
         ids.Setup(item => item.Create()).Returns(Guid.CreateVersion7);
-        _service = new ModelContentCheckpointService(new ContextSummaryWriter(), _history, clock.Object, ids.Object, new ContextTokenEstimator());
+        _service = new ModelContentCheckpointService(new ContextSummaryWriter(new ContextTokenEstimator(), new ToolResultContextProjector()), _history, clock.Object, ids.Object, new ContextTokenEstimator(), new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver()));
     }
 
     [Fact]
@@ -195,6 +196,120 @@ public sealed class ModelContentCheckpointServiceTests
 
         result.Applied.ShouldBeFalse();
         (await _history.ListAsync(_run.ProjectId, _run.ChatId, CancellationToken.None)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ShouldRejectInflatedAutomaticHistorySummaryAndKeepThePreviousCheckpoint()
+    {
+        var context = new List<ChatCompletionMessage>
+        {
+            new("user", new string('x', 4_000), MessageId: Guid.NewGuid()),
+            new("assistant", new string('y', 4_000), MessageId: Guid.NewGuid()),
+            new("user", new string('a', 100), MessageId: Guid.NewGuid()),
+            new("assistant", new string('b', 500), MessageId: Guid.NewGuid()),
+            new("user", "Current question", MessageId: Guid.NewGuid())
+        };
+        var calls = 0;
+        using var scope = _service.Begin(_run, "m", 100_000, (_, _) =>
+            Task.FromResult(++calls == 1 ? "First checkpoint." : new string('я', 1_000)));
+        _service.Update(_run, context);
+        var first = await _service.CompactAsync(_run, 500, ContextCompactionScope.History, CancellationToken.None,
+            HistoryCheckpointOrigin.Automatic, 200);
+        first.Applied.ShouldBeTrue();
+        var checkpoint = (await _history.ListAsync(_run.ProjectId, _run.ChatId, CancellationToken.None)).Single();
+        context.Add(new("assistant", "Short answer", MessageId: Guid.NewGuid()));
+        context.Add(new("user", "Next question", MessageId: Guid.NewGuid()));
+        _service.Update(_run, context);
+        var before = _service.Apply(_run, context);
+        var second = await _service.CompactAsync(_run, 500, ContextCompactionScope.History, CancellationToken.None,
+            HistoryCheckpointOrigin.Automatic, 200);
+        second.Applied.ShouldBeFalse();
+        calls.ShouldBe(2);
+        _service.Apply(_run, context).ShouldBe(before);
+        (await _history.ListAsync(_run.ProjectId, _run.ChatId, CancellationToken.None)).ShouldBe([checkpoint]);
+    }
+
+    [Fact]
+    public async Task ShouldRejectAnInflatedTurnSummaryWithoutReplacingTheAcceptedOne()
+    {
+        var context = new List<ChatCompletionMessage> { new("user", "Question") };
+        void Step(int index) => context.AddRange([
+            new ChatCompletionMessage("assistant", "", [new($"step-{index}", "read", "{}")]),
+            new ChatCompletionMessage("tool", new string('x', 300), ToolCallId: $"step-{index}")]);
+        for (var index = 0; index < 8; index++) Step(index);
+        var calls = 0;
+        using var scope = _service.Begin(_run, "m", 100_000, (_, _) =>
+            Task.FromResult(++calls == 1 ? "Accepted summary" : new string('я', 1_000)));
+        _service.Update(_run, context);
+        (await _service.CompactTurnAheadAsync(_run, 1, 100, 500, CancellationToken.None)).Applied.ShouldBeTrue();
+        Step(8);
+        _service.Update(_run, context);
+        var before = _service.Apply(_run, context);
+        (await _service.CompactTurnAheadAsync(_run, 1, 100, 500, CancellationToken.None)).Applied.ShouldBeFalse();
+        calls.ShouldBe(2);
+        _service.Apply(_run, context).ShouldBe(before);
+    }
+
+    [Fact]
+    public void ShouldEstimatePreviewTokensForMultilingualHistoryInsteadOfHalvingCharacterCount()
+    {
+        ChatCompletionMessage[] context = [
+            new("user", new string('я', 1_000), MessageId: Guid.NewGuid()),
+            new("assistant", "中文", MessageId: Guid.NewGuid()),
+            new("user", "Recent", MessageId: Guid.NewGuid()),
+            new("assistant", "Answer", MessageId: Guid.NewGuid()),
+            new("user", "Current", MessageId: Guid.NewGuid())];
+        using var scope = _service.Begin(_run, "m", 100_000, (_, _) => Task.FromResult("Unused"));
+        _service.Update(_run, context);
+        var preview = _service.Preview(_run, ContextCompactionScope.History);
+        preview.SourceTokens.ShouldBe(new ContextTokenEstimator().EstimateMessages(context.Take(2).ToArray()));
+        preview.SourceTokens.ShouldBeGreaterThan(preview.SourceCharacters / 2);
+    }
+
+    [Theory]
+    [InlineData(8_192)]
+    [InlineData(32_768)]
+    public async Task ShouldThrottleAutomaticSummariesAcrossALongTurnAndPreserveAppendOnlyPrefixes(long window)
+    {
+        var estimator = new ContextTokenEstimator();
+        var policy = new AdaptiveContextPolicy(estimator, new ConnectionContextLimitsResolver());
+        var connection = new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.test/v1", "m", true, true, false,
+            ContextWindowTokens: window, ReservedOutputTokens: 1_000);
+        var budget = policy.ResolveCompaction(connection, 300, 100);
+        var context = new List<ChatCompletionMessage> { new("user", "Keep the current request") };
+        var calls = 0;
+        var accepted = 0;
+        long nextAttempt = 0;
+        using var scope = _service.Begin(_run, "m", budget.HistoryKeepTokens, (_, _) =>
+        {
+            calls++;
+            return Task.FromResult("Completed the earlier inspections. Continue the current task.");
+        });
+        for (var step = 0; step < 80; step++)
+        {
+            context.Add(new("assistant", "", [new($"call-{step}", "read", "{}") ]));
+            context.Add(new("tool", new string('x', 500), ToolCallId: $"call-{step}"));
+            _service.Update(_run, context);
+            _service.UpdateBudget(_run, budget);
+            var projected = _service.Apply(_run, context);
+            var size = estimator.EstimateMessages(projected);
+            if (!policy.ShouldCompactAhead(budget, size, nextAttempt)) continue;
+            var result = await _service.CompactTurnAheadAsync(_run, budget.HistoryKeepTokens, budget.MinimumGainTokens,
+                budget.SummaryTargetTokens, CancellationToken.None);
+            var after = _service.Apply(_run, context);
+            if (result.Applied)
+            {
+                accepted++;
+                policy.ShouldAcceptCompaction(projected, after, budget.MinimumGainTokens).ShouldBeTrue();
+            }
+            nextAttempt = estimator.EstimateMessages(after) + budget.RetryGrowthTokens;
+            policy.ShouldCompactAhead(budget, estimator.EstimateMessages(after), nextAttempt).ShouldBeFalse();
+            after[0].ShouldBe(context[0]);
+            after.TakeLast(2).ShouldBe(context.TakeLast(2));
+        }
+        accepted.ShouldBeGreaterThan(0);
+        calls.ShouldBe(accepted);
+        calls.ShouldBeLessThan(12);
     }
 }
 

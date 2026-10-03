@@ -40,7 +40,7 @@ public sealed class AdaptiveContextPolicyTests
         var tools = Enumerable.Range(0, 100).Select(index => Tool($"tool_{index}", new string('x', 600))).Prepend(search).ToArray();
 
         var selection = policy.Choose(connection, "Read a file", messages, tools);
-        var plan = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
+        var plan = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter(new ContextTokenEstimator(), new ToolResultContextProjector()), new ToolResultContextProjector()),
             new ConnectionContextLimitsResolver(), policy).Plan(connection, "model", messages,
                 selection.Tools.Select(tool => tool.ModelDefinition).ToArray());
 
@@ -120,7 +120,7 @@ public sealed class AdaptiveContextPolicyTests
         prepared.Layers.Single(layer => layer.Key == StandingInstructions.ProjectKey).Content.ShouldBe(source.Layers[1].Content);
         var messages = prepared.Layers.Where(layer => layer.Content.Length > 0).Select(layer => new ChatCompletionMessage("system", layer.Content))
             .Append(new ChatCompletionMessage("user", "Hello")).ToArray();
-        var plan = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
+        var plan = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter(new ContextTokenEstimator(), new ToolResultContextProjector()), new ToolResultContextProjector()),
             new ConnectionContextLimitsResolver(), policy).Plan(connection, "model", messages, []);
         plan.Fits.ShouldBeFalse();
         var error = new ContextWindowExceededException(plan);
@@ -135,7 +135,7 @@ public sealed class AdaptiveContextPolicyTests
         var summarizer = new Mock<IContextSummarizer>(MockBehavior.Strict);
         var messages = new ChatCompletionMessage[] { new("system", new string('s', 20_000)),
             new("user", "Earlier question"), new("assistant", "Earlier answer"), new("user", "Current question") };
-        var plan = await new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
+        var plan = await new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter(new ContextTokenEstimator(), new ToolResultContextProjector()), new ToolResultContextProjector()),
             new ConnectionContextLimitsResolver(), policy).PlanAsync(Connection(4_096), "model", messages, [], summarizer.Object,
                 800, TestContext.Current.CancellationToken);
         plan.Fits.ShouldBeFalse();

@@ -1,9 +1,16 @@
+// DI guide: [Pure.DI conventions](../../../../docs/30-dependency-injection.md).
 // ReSharper disable UnusedMember.Local
 namespace AI.Infrastructure.Tests.Tools;
 
 using System.Diagnostics;
 using AI.Application.Runs;
 using AI.Application.Settings;
+using AI.Application.Chats;
+using AI.Application.Projects;
+using AI.Application.Instructions;
+using AI.Application.Notifications;
+using AI.Application.Skills;
+using AI.Application.Tools;
 using Pure.DI;
 
 /// <summary>
@@ -16,12 +23,20 @@ internal sealed partial class AppToolsComposition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .Hint(Hint.Comments, "Off")
+            .Hint(Hint.Resolve, "Off")
             .DependsOn("AI.Contracts.Composition")
             .DependsOn("AI.Server.Composition")
             .DependsOn("AI.Server.Tests.TestServer")
             .Arg<IUserPromptBroker>("broker")
             .Arg<IConnectionModelsResolver>("modelsResolver")
-            // The server already roots its services; this is the extra one the tests reach into.
-            .Root<IGlobalSettingsRepository>()
-            .Root<IGlobalSecretStore>();
+            .Root<IGlobalSettingsRepository>(nameof(Settings))
+            .Root<IGlobalSecretStore>(nameof(Secrets))
+            .Root<IProjectService>(nameof(Projects))
+            .Root<IChatService>(nameof(Chats))
+            .Root<IStandingInstructions>(nameof(Standing))
+            .Root<IGlobalSettingsService>(nameof(GlobalSettings))
+            .Root<IToolSessionFactory>(nameof(Sessions))
+            .Root<IAppDataChangeSignal>(nameof(Changes))
+            .Root<IAppNavigationSignal>(nameof(Navigation));
 }

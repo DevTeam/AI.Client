@@ -12,7 +12,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
-public sealed class AppGuideEndpoints(AppGuideTopics topics, AppGuideLanguageContext languageContext, IGuideChats guideChats) : IEndpointModule
+public sealed class AppGuideEndpoints(IAppGuideTopics topics, IAppGuideLanguageContext languageContext, IGuideChats guideChats) : IEndpointModule
 {
     public void Map(IEndpointRouteBuilder routes)
     {

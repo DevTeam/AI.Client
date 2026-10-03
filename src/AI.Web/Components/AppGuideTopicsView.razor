@@ -1,5 +1,5 @@
 @using AI.Contracts.Navigation
-@inject AppGuideTopics Topics
+@inject IAppGuideTopics Topics
 
 <div class="app-guide-topics">
     <div class="app-guide-progress" title="@($"{CompletedCount} of {Topics.All.Count} guide topics completed")">

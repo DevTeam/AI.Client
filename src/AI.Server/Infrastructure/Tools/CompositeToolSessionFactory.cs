@@ -12,7 +12,7 @@ using Contracts.Tools;
 public sealed class CompositeToolSessionFactory(
     IEnumerable<IMcpServerConnection> connections,
     IGlobalSettingsRepository settings,
-    ExternalToolSessionFactory external) : IToolSessionFactory
+    IExternalToolSessionFactory external) : IToolSessionFactory
 {
     public async Task<IToolSession> OpenAsync(
         IReadOnlyList<ToolDirectoryGrant> directoryGrants,

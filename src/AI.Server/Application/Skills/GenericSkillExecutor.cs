@@ -11,7 +11,7 @@ using Json.Schema;
 
 /// <summary>Runs a declarative skill on caller-supplied data; it has no application tools.</summary>
 public sealed class GenericSkillExecutor(IProjectService projects, IGlobalSettingsRepository settings,
-    IGlobalSecretStore secrets, IChatCompletionClient completion)
+    IGlobalSecretStore secrets, IChatCompletionClient completion) : IGenericSkillExecutor
 {
     public async Task<SkillExecutionResult> RunAsync(SkillDefinition skill, SkillInvocation invocation,
         CancellationToken cancellationToken)

@@ -6,7 +6,7 @@ using AI.Contracts.Chats;
 using AI.Contracts.Navigation;
 
 /// <summary>Gives a hidden guide the person's language context without importing the conversation.</summary>
-public sealed class AppGuideLanguageContext
+public sealed class AppGuideLanguageContext : IAppGuideLanguageContext
 {
     private readonly JsonSerializerOptions _json = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 

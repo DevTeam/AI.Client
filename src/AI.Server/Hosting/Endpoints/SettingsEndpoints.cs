@@ -63,7 +63,7 @@ public sealed class SettingsEndpoints : IEndpointModule
         });
 
         routes.MapPost("/api/mcp/tools/discover", async (DiscoverMcpToolsRequest request,
-            IToolSessionFactory factory, ExternalToolSessionFactory external, CancellationToken token) =>
+            IToolSessionFactory factory, IExternalToolSessionFactory external, CancellationToken token) =>
         {
             if (!request.Server.Enabled || request.Server.Policy == "Deny")
                 return Results.Problem("Enable the server and choose Ask or Allow before discovery.", statusCode: 400);

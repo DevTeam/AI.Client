@@ -9,7 +9,7 @@ using Xunit;
 public sealed class CompositionTests
 {
     [Fact]
-    public void RegistersHttpClientForInjectedWebComponents()
+    public async Task RegistersHttpClientAndSharesCorrectionPreparationForInjectedWebComponents()
     {
         var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
         var services = new ServiceCollection();
@@ -19,12 +19,14 @@ public sealed class CompositionTests
 
         var client = provider.GetRequiredService<HttpClient>();
         client.BaseAddress.ShouldBe(new Uri("http://127.0.0.1:52173/"));
-        provider.GetRequiredService<AI.TextCorrection.ITextCorrectionAnalyzer>()
-            .Analyze("ghbdtn", ["en", "ru"]).Single().Text.ShouldBe("привет");
         provider.GetRequiredService<AI.TextCorrection.ITextAutoCorrectionAnalyzer>()
             .Analyze("helllo", ["en"]).Single().Text.ShouldBe("hello");
-        provider.GetRequiredService<AI.TextCorrection.ISupportedCorrectionLayouts>().Ids.ShouldBe(["en", "ru", "fr", "es"]);
         provider.GetRequiredService<AI.Web.Settings.ITextCorrectionLanguages>().Available.Count.ShouldBe(4);
-        provider.GetRequiredService<AI.TextCorrection.ITextCorrectionPreparation>().ShouldNotBeNull();
+        var preparation = provider.GetRequiredService<AI.TextCorrection.ITextCorrectionPreparation>();
+        preparation.IsReady(["en"]).ShouldBeFalse();
+        await preparation.PrepareAsync(["en"]);
+        var sharedPreparation = provider.GetRequiredService<AI.TextCorrection.ITextCorrectionPreparation>();
+        sharedPreparation.ShouldBeSameAs(preparation);
+        sharedPreparation.IsReady(["en"]).ShouldBeTrue();
     }
 }

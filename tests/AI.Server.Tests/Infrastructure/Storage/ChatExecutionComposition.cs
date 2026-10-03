@@ -1,3 +1,4 @@
+// DI guide: [Pure.DI conventions](../../../../docs/30-dependency-injection.md).
 // ReSharper disable UnusedMember.Local
 namespace AI.Infrastructure.Tests.Storage;
 
@@ -9,6 +10,9 @@ using AI.Application.Settings;
 using AI.Application.Tools;
 using AI.Application.Workspace;
 using AI.Contracts.Tools;
+using AI.Application.Instructions;
+using AI.Application.Notifications;
+using AI.Application.Skills;
 using Pure.DI;
 
 /// <summary>
@@ -20,16 +24,22 @@ internal sealed partial class ChatExecutionComposition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .Hint(Hint.Comments, "Off")
+            .Hint(Hint.Resolve, "Off")
             .DependsOn("AI.Contracts.Composition")
             .DependsOn("AI.Server.Composition")
             .DependsOn("AI.Server.Tests.TestServer")
             .Arg<IToolSessionFactory>("tools")
             .Arg<IWorkspaceChangeTracker>("workspace")
-            // The server already roots its services; these are the extra ones the tests reach into.
-            .Root<IChatRepository>()
-            .Root<IUserPromptBroker>()
-            .Root<IChatContextBuilder>()
-            .Root<IToolResultCodec>()
-            .Root<IClock>()
-            .Root<IGlobalSettingsRepository>();
+            .Root<IChatRepository>(nameof(ChatRepository))
+            .Root<IUserPromptBroker>(nameof(Broker))
+            .Root<IChatContextBuilder>(nameof(Context))
+            .Root<IToolResultCodec>(nameof(Codec))
+            .Root<IClock>(nameof(Clock))
+            .Root<IGlobalSettingsRepository>(nameof(Settings))
+            .Root<IChatService>(nameof(Chats))
+            .Root<IChatRunDispatcher>(nameof(Dispatcher))
+            .Root<IStandingInstructions>(nameof(Standing))
+            .Root<IProjectService>(nameof(Projects))
+            .Root<IChatReplySuggestions>(nameof(ReplySuggestions));
 }

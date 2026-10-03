@@ -1746,17 +1746,17 @@ public sealed class ChatExecutionTests
         public Completion Completion { get; } = new();
         public TestTools Tools { get; } = new();
         public IWorkspaceChangeTracker Workspace { get; }
-        public IChatService Chats => _composition.Resolve<IChatService>();
-        public IChatRunDispatcher Dispatcher => _composition.Resolve<IChatRunDispatcher>();
-        public IChatContextBuilder Context => _composition.Resolve<IChatContextBuilder>();
+        public IChatService Chats => _composition.Chats;
+        public IChatRunDispatcher Dispatcher => _composition.Dispatcher;
+        public IChatContextBuilder Context => _composition.Context;
         public AI.Application.Instructions.IStandingInstructions StandingInstructions =>
-            _composition.Resolve<AI.Application.Instructions.IStandingInstructions>();
-        public IUserPromptBroker Broker => _composition.Resolve<IUserPromptBroker>();
-        public IToolResultCodec Codec => _composition.Resolve<IToolResultCodec>();
-        private IProjectService Projects => _composition.Resolve<IProjectService>();
-        private IGlobalSettingsRepository Settings => _composition.Resolve<IGlobalSettingsRepository>();
-        private IChatRepository ChatRepository => _composition.Resolve<IChatRepository>();
-        private IClock Clock => _composition.Resolve<IClock>();
+            _composition.Standing;
+        public IUserPromptBroker Broker => _composition.Broker;
+        public IToolResultCodec Codec => _composition.Codec;
+        private IProjectService Projects => _composition.Projects;
+        private IGlobalSettingsRepository Settings => _composition.Settings;
+        private IChatRepository ChatRepository => _composition.ChatRepository;
+        private IClock Clock => _composition.Clock;
         public Guid ProjectId { get; private set; }
         public Guid ChatId { get; private set; }
         private Fixture(IWorkspaceChangeTracker? workspace = null)
@@ -1850,7 +1850,7 @@ public sealed class ChatExecutionTests
             await Projects.UpdateSecurityAsync(ProjectId, new UpdateProjectSecurityRequest(project!.Revision, [],
                 [new Contracts.Projects.McpServerSettings(projectDisabled, "CSharp", "Stdio", false)], []), CancellationToken.None);
         }
-        public IChatReplySuggestions ReplySuggestions => _composition.Resolve<IChatReplySuggestions>();
+        public IChatReplySuggestions ReplySuggestions => _composition.ReplySuggestions;
         public async Task SetChatAutomationAsync(ChatAutomationSettings automation)
         {
             var global = await Settings.LoadAsync(CancellationToken.None);

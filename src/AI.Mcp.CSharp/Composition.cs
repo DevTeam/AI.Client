@@ -1,3 +1,4 @@
+// DI guide: [Pure.DI conventions](../../docs/30-dependency-injection.md).
 // ReSharper disable UnusedMember.Local
 namespace AI.Mcp.CSharp;
 
@@ -12,13 +13,14 @@ internal sealed partial class Composition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .Hint(Hint.Comments, "Off")
             .Hint(Hint.Resolve, "Off")
             .Hint(Hint.ThreadSafe, "Off")
             .Root<Program>(nameof(Root))
             // Tools
             .Transient<ScriptRunTool>(Tag.Unique)
-            .Singleton<ScriptRunner, ToolReply>()
-            .Singleton((IEnumerable<IToolFactory> toolFactories) =>
+            .Transient<ScriptRunner, ToolReply>()
+            .Transient((IEnumerable<IToolFactory> toolFactories) =>
             {
                 var tools = new McpServerPrimitiveCollection<McpServerTool>();
                 foreach (var toolFactory in toolFactories)

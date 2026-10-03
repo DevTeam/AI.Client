@@ -1,3 +1,4 @@
+// DI guide: [Pure.DI conventions](../../../docs/30-dependency-injection.md).
 // ReSharper disable UnusedMember.Local
 namespace AI.Server.CommandLine;
 
@@ -15,9 +16,9 @@ internal sealed class Composition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup(kind: CompositionKind.Internal)
+            .Hint(Hint.Comments, "Off")
             .Arg<string[]>("args")
-            .Bind<RootCommand>().As(Lifetime.PerResolve).To(_ => new RootCommand())
-            .Bind<IServerCommandLine>().As(Lifetime.Singleton).To<ServerCommandLine>()
-            .Bind<ICommandLineApplication>().To<CommandLineApplication>()
-            .Root<ICommandLineApplication>("Root");
+            .PerResolve(() => new RootCommand())
+            .Transient<ServerCommandLine>()
+            .Transient<CommandLineApplication>();
 }

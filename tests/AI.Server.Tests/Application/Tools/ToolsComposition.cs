@@ -1,3 +1,4 @@
+// DI guide: [Pure.DI conventions](../../../../docs/30-dependency-injection.md).
 // ReSharper disable UnusedMember.Local
 namespace AI.Application.Tests.Tools;
 
@@ -14,9 +15,10 @@ internal sealed partial class ToolsComposition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .Hint(Hint.Comments, "Off")
             .Hint(Hint.Resolve, "Off")
             .DependsOn("AI.Contracts.Composition")
-            .Root<IToolPresentations>("Presentations")
-            .Root<IToolResultModelProjector>("ModelProjector")
-            .Root<IToolResultCodec>("Codec");
+            .Root<IToolPresentations>(nameof(Presentations))
+            .Root<IToolResultModelProjector>(nameof(ModelProjector))
+            .Root<IToolResultCodec>(nameof(Codec));
 }

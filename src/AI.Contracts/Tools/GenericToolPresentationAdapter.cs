@@ -8,7 +8,7 @@ using System.Text.Json;
 /// single scalar argument when there is an obvious one, and the summary from the result's own
 /// content.
 /// </summary>
-public sealed class GenericToolPresentationAdapter : IToolPresentationAdapter
+public sealed class GenericToolPresentationAdapter : IGenericToolPresentationAdapter
 {
     /// <summary>Argument names worth putting on a collapsed row, in order of preference.</summary>
     private static readonly string[] DetailProperties =

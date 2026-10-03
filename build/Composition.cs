@@ -1,3 +1,4 @@
+// DI guide: [Pure.DI conventions](../docs/30-dependency-injection.md).
 // ReSharper disable UnusedMember.Local
 namespace Build;
 
@@ -11,12 +12,15 @@ internal sealed partial class Composition
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822", Justification = "Pure.DI composition uses instance methods.")]
     private void Setup() =>
         DI.Setup()
+            .Hint(Hint.Comments, "Off")
             .DependsOn("AI.TextCorrection.Configuration.TextCorrectionComposition")
             .Hint(Hint.Resolve, "Off")
             .Hint(Hint.ThreadSafe, "Off")
             .Root<BuildApplication>(nameof(Root))
             .Arg<string[]>("args")
             .Arg<CancellationToken>("cancellationToken")
-            .Singleton<PrepareTextCorrectionTarget>()
-            .Singleton<BuildPaths, ProcessRunner, BuildSolutionTarget, TestSolutionTarget, VerifyTarget, PublishTarget, PublishDesktopTarget, PublishWebTarget, PackageReleaseTarget, RunTarget, RunBothTarget, RazorTemplateEngine, ReadmeTarget>();
+            .Transient<PrepareTextCorrectionTarget>()
+            .Transient<BuildPaths, ProcessRunner, BuildSolutionTarget, TestSolutionTarget, VerifyTarget, PublishTarget,
+                PublishDesktopTarget, PublishWebTarget, PackageReleaseTarget, RunTarget, RunBothTarget,
+                RazorTemplateEngine, ReadmeTarget>();
 }

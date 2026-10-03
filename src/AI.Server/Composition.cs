@@ -51,21 +51,20 @@ internal sealed class Composition
             .Hint(Hint.LightweightAnonymousRoot, "Off")
             // What the entry point decided before starting the server: its command line, parsed.
             .Arg<ServerOptions>("options")
-            .Transient<ChatArchiveService>()
-            // Preview tickets must survive across the describe and content HTTP requests.
-            .Singleton<FilePreviewService>()
-            .Singleton<HostUpdateService>()
-            .Transient<UpdateManagerFactory, GitHubUpdateFeed, UpdateInstaller, UpdateInstallationProvider>()
-            .Singleton<BrowserAccessService>()
-            .Transient<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint,
-                RunEventsPublisher, RunSnapshotComparer, InstalledDesktop>()
-            .Transient<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints,
-                ChatCompletionEndpoints, FileSystemEndpoints, FilePreviewEndpoints, GitEndpoints, MemoryEndpoints,
-                SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints,
-                AppGuideEndpoints>(Tag.Unique)
+            // Shared state that must keep its identity across requests: storage repositories with their
+            // write gates, chat synchronization, change and navigation signals, the run dispatcher,
+            // usage accounting, preview tickets, parsed caches and the running update service.
+            // CompositeToolSessionFactory is cached here only because Pure.DI 2.5.4 emits out-of-scope
+            // factory locals for it when transient — see docs/pure-di-issues.md.
+            .Singleton<FilePreviewService, HostUpdateService, BrowserAccessService,
+                JsonProjectRepository, JsonChatRepository, ChatSynchronization, ChatTransportActivity,
+                JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
+                JsonProjectInstructionsRepository, JsonChatRunRepository, ChatRunDispatcher,
+                ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, WorkspaceChangeTracker,
+                AppDataChangeSignal, AppNavigationSignal, AppOperationLog, WorkspaceFileSearch, TokenUsageMeter,
+                JsonLinesTokenUsageLedger, PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits,
+                JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, CompositeToolSessionFactory>()
             .Singleton((IProjectStorageLocation location) => new JsonLineFileLoggerProvider(location))
-            .Transient<ProjectStorageLocation, DataDirectoryLock, ProjectStoragePaths, ChatStoragePaths,
-                ChatRunStoragePaths, GlobalSettingsPaths>()
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.
             .Singleton<IUserDataProtector>(ctx =>
@@ -79,6 +78,35 @@ internal sealed class Composition
                 ctx.Inject<MasterKeyUserDataProtector>(out var portable);
                 return portable;
             })
+            // Reading embedded skill definitions once avoids repeated parsing.
+            .Singleton<BuiltInSkillCatalog>("built-in")
+            .Singleton<OpenAiCompatibleChatCompletionClient>("base")
+            .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
+            .Bind<IChatReplySuggestions>().As(Lifetime.Singleton).To<ChatReplySuggestions>()
+            // Bindings: one call per lifetime and tag. Order inside a call carries no meaning; a call
+            // carries at most the number of type parameters Pure.DI declares for one binding method.
+            // Request handling, storage layout and workspace access.
+            .Transient<ChatArchiveService, UpdateManagerFactory, GitHubUpdateFeed, UpdateInstaller,
+                UpdateInstallationProvider, AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor,
+                ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, InstalledDesktop, ProjectStorageLocation,
+                DataDirectoryLock, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths,
+                PhysicalTextFileSystem, PhysicalDirectoryBrowser, ProjectDocumentSerializer, Uuid7IdGenerator,
+                SystemClock, ProjectService, ChatDocumentSerializer, ChatService, ChatSearchService, PinOrderKeys,
+                ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ProtectedGlobalSecretStore,
+                ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,
+                MemoryService, ProjectInstructionsService>()
+            // Instruction composition, context planning, credentials and usage accounting.
+            .Transient<WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService,
+                OpenAiCompatibleConnectionModelsResolver, ChatContext, ChatAgent, ContextTokenEstimator,
+                ChatContextCompactor, ChatContextPlanner, KeyringOrFileMasterKeyStore, ModelInstructionComposer,
+                ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher,
+                ToolPolicyResolver, LineDiff, MasterKeyFormat, ProcessCommandRunner, AppWrites, AppMcpServerHost,
+                ExternalToolSessionFactory, ChatBranchIds, ToolUserInterface, GitWorkspaceDiffReader, GitBrowser,
+                FileExcerptReader, ChatCompletionUsageReader, TokenUsageAggregator, TokenUsageService,
+                RateLimitHeaderReader, ContextSummaryWriter, HistoryCheckpointService, ChatHistoryCompaction,
+                ToolAutoApprover, GuideChats, ConnectionChoice, ReviewCommentSuggestions, AppToolReply,
+                GenericSkillExecutor, SkillGuide>()
+            .Transient<SkillRouting, AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>()
             .Transient<IKeyringMasterKeyStore>(ctx =>
             {
                 if (OperatingSystem.IsMacOS())
@@ -91,46 +119,23 @@ internal sealed class Composition
                 return secretService;
             })
             .Bind<IFileMasterKeyStore>().To<FileMasterKeyStore>()
-            .Singleton<JsonProjectRepository, JsonChatRepository, ChatSynchronization, ChatTransportActivity,
-                JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
-                JsonProjectInstructionsRepository, JsonChatRunRepository, ChatRunDispatcher,
-                ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, WorkspaceChangeTracker,
-                AppDataChangeSignal, AppNavigationSignal, AppOperationLog>()
-            .Transient<PhysicalTextFileSystem, PhysicalDirectoryBrowser, ProjectDocumentSerializer, Uuid7IdGenerator,
-                SystemClock, ProjectService, ChatDocumentSerializer, ChatService, ChatSearchService, PinOrderKeys,
-                ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ProtectedGlobalSecretStore,
-                ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,
-                MemoryService, ProjectInstructionsService, WorkspaceInstructionFileReader, StandingInstructions,
-                GlobalSettingsService, OpenAiCompatibleConnectionModelsResolver, ChatContext, ChatAgent,
-                ContextTokenEstimator, ChatContextCompactor, ChatContextPlanner, KeyringOrFileMasterKeyStore,
-                ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy,
-                ToolSearchDefinitionEnricher, ToolPolicyResolver, LineDiff, MasterKeyFormat, ProcessCommandRunner,
-                AppWrites, AppMcpServerHost, ExternalToolSessionFactory, ChatBranchIds, ToolUserInterface>()
-            .Singleton<WorkspaceFileSearch>()
-            .Transient<GitWorkspaceDiffReader, GitBrowser, FileExcerptReader>()
-            .Singleton<TokenUsageMeter, JsonLinesTokenUsageLedger>()
-            .Transient<ChatCompletionUsageReader, TokenUsageAggregator, TokenUsageService>()
-            .Singleton<PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits>()
-            .Transient<RateLimitHeaderReader>()
-            .Singleton<JsonHistoryCheckpointRepository>()
-            .Transient<ContextSummaryWriter, HistoryCheckpointService, ChatHistoryCompaction>()
             // Executors share a contract; tags identify the role without concrete dependencies.
             .Transient<ChatRenameSkill>("chat-rename")
             .Transient<ChatReplySuggestSkill>("chat-reply-suggest")
             .Transient<ChatCommentSuggestSkill>("chat-comment-suggest")
             .Transient<SkillRouteSkill>("skill-route")
             .Transient<ChatToolRiskAssessSkill>("chat-tool-risk-assess")
-            .Bind<IChatReplySuggestions>().As(Lifetime.Singleton).To<ChatReplySuggestions>()
-            .Singleton<SkillCatalog>()
-            .Transient<ToolAutoApprover, GuideChats, ConnectionChoice, ReviewCommentSuggestions, AppToolReply>()
-            // Reading embedded skill definitions once avoids repeated parsing.
-            .Singleton<BuiltInSkillCatalog>("built-in")
-            .Singleton<SkillRunner>()
-            // Pure.DI 2.5.4 emits out-of-scope factory locals for a transient composite here.
-            // Keep this one cache until the generator issue recorded in docs/pure-di-issues.md is fixed.
-            .Singleton<CompositeToolSessionFactory>()
-            .Transient<GenericSkillExecutor, SkillGuide, SkillRouting>()
-            .Singleton<OpenAiCompatibleChatCompletionClient>("base")
+            // Endpoints, app tools and session factories are injected as collections; the tag belongs to
+            // the call, so each tagged group stays on its own.
+            .Transient<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints,
+                ChatCompletionEndpoints, FileSystemEndpoints, FilePreviewEndpoints, GitEndpoints, MemoryEndpoints,
+                SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints,
+                AppGuideEndpoints>(Tag.Unique)
+            .Transient<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool,
+                AppAskUserTool, AppToolSearchTool, AppContextCompactTool, AppResourcesTool, AppMemoryTool,
+                AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool,
+                DefaultToolSessionFactory, CSharpToolSessionFactory>(Tag.Unique)
+            .Transient<AppToolSessionFactory>(Tag.Type)
             .Transient((
                 [Tag("base")] IChatCompletionClient baseClient,
                 ILogger<RetryingChatCompletionClient> retryLogger,
@@ -141,14 +146,7 @@ internal sealed class Composition
                 IPromptPrefixTracker prefixes) =>
                 new MeteringChatCompletionClient(
                     new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity),
-                    usageMeter, usageEstimator, prefixes))
-            .Transient<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool,
-                AppAskUserTool, AppToolSearchTool, AppContextCompactTool, AppResourcesTool, AppMemoryTool,
-                AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool>(Tag.Unique)
-            .Transient<AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>()
-            .Transient<AppToolSessionFactory>(Tag.Type)
-            .Transient<DefaultToolSessionFactory, CSharpToolSessionFactory>(Tag.Unique)
-            .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
+                    usageMeter, usageEstimator, prefixes));
 }
 
 /// <summary>Only the roots resolved by ASP.NET handlers and hosted services.</summary>
@@ -157,8 +155,8 @@ internal sealed class AspNetComposition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup(kind: CompositionKind.Internal)
-            .Hint(Hint.Comments, "Off")
             .DependsOn("AI.Server.Composition")
+            .Hint(Hint.Comments, "Off")
             .Root<IHostDescriptor>()
             .Root<IDirectoryBrowser>()
             .Root<IGitBrowser>()

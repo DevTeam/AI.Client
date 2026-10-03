@@ -37,17 +37,15 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
-            .Hint(Hint.Comments, "Off")
-            .Hint(Hint.ThreadSafe, "Off")
             .DependsOn("AI.Contracts.Composition")
             .DependsOn("AI.TextCorrection.Configuration.TextCorrectionComposition")
+            .Hint(Hint.Comments, "Off")
+            .Hint(Hint.ThreadSafe, "Off")
+            .Hint(Hint.OnCannotResolveContractTypeNameWildcard, "Microsoft.JSInterop.*")
             .Root<ITextCorrectionLanguages>()
             .Root<AI.TextCorrection.ITextAutoCorrectionAnalyzer>()
             .Root<AI.TextCorrection.IWordBoundaries>()
             .Root<AI.TextCorrection.ITextCorrectionPreparation>()
-            .Hint(Hint.OnCannotResolveContractTypeNameWildcard, "Microsoft.JSInterop.*")
-            .Arg<string>("apiBaseUrl")
-            .Arg<bool>("publicWeb")
             .Root<HttpClient>()
             .Root<IApiBaseUrl>()
             .Root<IClientMode>()
@@ -111,6 +109,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatUsageStore>()
             .Root<IHistoryCheckpointApi>()
             .Root<IDelayedBusyIndicatorFactory>()
+            .Arg<string>("apiBaseUrl")
+            .Arg<bool>("publicWeb")
             .Singleton<TextCorrectionLanguages, UpdateClient, ChatTipsState, ChatUsageStore,
                 DesktopBadgeNotificationService, HostConnection, SafeMarkdownRenderer, WorkspaceLayoutService,
                 WorkspaceStateService, RunStateService, ClientSettingsService, ThemeService>()

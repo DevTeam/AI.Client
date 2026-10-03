@@ -19,6 +19,5 @@ internal sealed class Composition
             .Hint(Hint.Comments, "Off")
             .Arg<string[]>("args")
             .PerResolve(() => new RootCommand())
-            .Transient<ServerCommandLine>()
-            .Transient<CommandLineApplication>();
+            .Transient<ServerCommandLine, CommandLineApplication>();
 }

@@ -24,15 +24,15 @@ internal sealed partial class SubtaskComposition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
-            .Hint(Hint.Comments, "Off")
-            .Hint(Hint.Resolve, "Off")
             .DependsOn("AI.Contracts.Composition")
             .DependsOn("AI.Server.Composition")
             .DependsOn("AI.Server.Tests.TestServer")
-            .Arg<IToolSessionFactory>("tools")
+            .Hint(Hint.Comments, "Off")
+            .Hint(Hint.Resolve, "Off")
             .Root<IGlobalSettingsRepository>(nameof(Settings))
             .Root<IProjectService>(nameof(Projects))
             .Root<IChatService>(nameof(Chats))
             .Root<ISkillCatalog>(nameof(Skills))
-            .Root<IMcpServerConnection>(nameof(Sessions), typeof(AppToolSessionFactory));
+            .Root<IMcpServerConnection>(nameof(Sessions), typeof(AppToolSessionFactory))
+            .Arg<IToolSessionFactory>("tools");
 }

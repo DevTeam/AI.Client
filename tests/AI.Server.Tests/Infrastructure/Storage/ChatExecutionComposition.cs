@@ -24,13 +24,11 @@ internal sealed partial class ChatExecutionComposition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
-            .Hint(Hint.Comments, "Off")
-            .Hint(Hint.Resolve, "Off")
             .DependsOn("AI.Contracts.Composition")
             .DependsOn("AI.Server.Composition")
             .DependsOn("AI.Server.Tests.TestServer")
-            .Arg<IToolSessionFactory>("tools")
-            .Arg<IWorkspaceChangeTracker>("workspace")
+            .Hint(Hint.Comments, "Off")
+            .Hint(Hint.Resolve, "Off")
             .Root<IChatRepository>(nameof(ChatRepository))
             .Root<IUserPromptBroker>(nameof(Broker))
             .Root<IChatContextBuilder>(nameof(Context))
@@ -41,5 +39,7 @@ internal sealed partial class ChatExecutionComposition
             .Root<IChatRunDispatcher>(nameof(Dispatcher))
             .Root<IStandingInstructions>(nameof(Standing))
             .Root<IProjectService>(nameof(Projects))
-            .Root<IChatReplySuggestions>(nameof(ReplySuggestions));
+            .Root<IChatReplySuggestions>(nameof(ReplySuggestions))
+            .Arg<IToolSessionFactory>("tools")
+            .Arg<IWorkspaceChangeTracker>("workspace");
 }

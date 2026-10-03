@@ -14,8 +14,8 @@ public class UsagePresentationTests
     [Fact]
     public void ShouldMarkAFlowThatIncludesEstimates()
     {
-        _presentation.FormatFlow(Totals(42_180, 1_820)).ShouldBe("42k → 1.8k");
-        _presentation.FormatFlow(Totals(42_180, 1_820) with { EstimatedRequests = 1 }).ShouldBe("≈42k → 1.8k");
+        _presentation.FormatFlow(Totals(42_180, 1_820)).ShouldBe("42k in → 1.8k out");
+        _presentation.FormatFlow(Totals(42_180, 1_820) with { EstimatedRequests = 1 }).ShouldBe("≈42k in → 1.8k out");
     }
 
     [Theory]
@@ -59,14 +59,30 @@ public class UsagePresentationTests
         _presentation.FormatCost(Totals(1, 1) with { Cost = 0.36m, PricedRequests = 3, EstimatedCostRequests = 2 }).ShouldBe("≈$0.36");
 
     [Fact]
-    public void ShouldSayWhatTheCacheCouldHaveServedAndWhatResetIt()
+    public void ShouldDescribeEstimatedOverlapAndApplicationPrefixChanges()
     {
-        var totals = Totals(1_000, 10) with { ReusableInputTokens = 870, ToolChanges = 2, HistoryChanges = 1 };
+        var totals = Totals(1_000, 10) with { ReusableInputTokens = 870, PrefixInputTokens = 1_000, ToolChanges = 2, HistoryChanges = 1 };
 
         _presentation.ReusablePercent(totals).ShouldBe(87);
         _presentation.FormatPrefixChanges(totals).ShouldBe("tools 2 · history 1");
         _presentation.ReusablePercent(Totals(1_000, 10)).ShouldBeNull();
         _presentation.FormatPrefixChanges(Totals(1_000, 10)).ShouldBeNull();
+    }
+
+    [Fact]
+    public void ShouldNeverDivideEstimatedOverlapByProviderInput()
+    {
+        // Regression: the unknown-model estimate exceeded the 627k provider input and read /100%.
+        var totals = Totals(627_477, 24_053) with
+        {
+            Tokens = new TokenCounts(627_477, 24_053, 402_432),
+            ReusableInputTokens = 702_260, PrefixInputTokens = 1_000_000
+        };
+        _presentation.CachePercent(totals.Tokens).ShouldBe(64);
+        _presentation.ReusablePercent(totals).ShouldBe(70);
+        _presentation.ReusablePercent(totals with { Tokens = new TokenCounts(1, 0) }).ShouldBe(70);
+        _presentation.ReusablePercent(totals with { PrefixInputTokens = 0 }).ShouldBeNull();
+        _presentation.ReusablePercent(totals with { ReusableInputTokens = 0 }).ShouldBe(0);
     }
 
     [Fact]

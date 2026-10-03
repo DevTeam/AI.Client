@@ -9,15 +9,15 @@ using Chat;
 /// next request of the branch first differs, and how much came before that.
 /// </summary>
 public sealed record PromptShape(int ToolsHash, long ToolTokens, IReadOnlyList<int> MessageHashes,
-    IReadOnlyList<bool> SystemMessages, IReadOnlyList<long> MessageTokens);
+    IReadOnlyList<bool> SystemMessages, IReadOnlyList<long> MessageTokens, string? Model = null, string? BaseUrl = null);
 
 /// <summary>Requests compared with each other: those of one branch, made for one purpose.</summary>
-public readonly record struct PromptPrefixKey(Guid ChatId, Guid? BranchId, TokenUsagePurpose Purpose);
+public readonly record struct PromptPrefixKey(Guid ChatId, Guid? BranchId, TokenUsagePurpose Purpose,
+    Guid? ConnectionId = null, string? Model = null, string? BaseUrl = null);
 
 /// <summary>
-/// Compares each request with the previous one of its branch, so the ledger can say why a request
-/// was not served from the provider's cache: what the application changed at its start, or — when
-/// nothing changed — that the provider let the cache go.
+/// Compares application request fingerprints. Provider serialization, cache support and cache
+/// lifetime are unknown, so an overlap estimate is not a promise of provider cache hits.
 /// </summary>
 public interface IPromptPrefixTracker
 {
@@ -70,7 +70,8 @@ public sealed class PromptPrefixTracker(IContextTokenEstimator estimator) : IPro
             system[index] = message.Role == "system";
             tokens[index] = modelEstimator.EstimateMessages([message]);
         }
-        return new PromptShape(toolsHash.ToHashCode(), tools.Count == 0 ? 0 : modelEstimator.EstimateTools(tools), hashes, system, tokens);
+        return new PromptShape(toolsHash.ToHashCode(), tools.Count == 0 ? 0 : modelEstimator.EstimateTools(tools), hashes, system, tokens,
+            request.Model, request.BaseUrl);
     }
 
     public PromptPrefix? Compare(PromptPrefixKey key, PromptShape shape)
@@ -83,7 +84,8 @@ public sealed class PromptPrefixTracker(IContextTokenEstimator estimator) : IPro
             foreach (var stale in _previous.OrderBy(item => item.Value.Order).Take(_previous.Count - MaximumKeys).ToArray())
                 _previous.TryRemove(stale.Key, out _);
         if (previous is null) return null;
-        if (previous.ToolsHash != shape.ToolsHash) return new PromptPrefix(0, PromptPrefixChange.Tools);
+        var input = shape.ToolTokens + shape.MessageTokens.Sum();
+        if (previous.ToolsHash != shape.ToolsHash) return new PromptPrefix(0, PromptPrefixChange.Tools, input);
 
         var shared = 0;
         while (shared < previous.MessageHashes.Count && shared < shape.MessageHashes.Count
@@ -92,9 +94,9 @@ public sealed class PromptPrefixTracker(IContextTokenEstimator estimator) : IPro
         var reusable = shape.ToolTokens + shape.MessageTokens.Take(shared).Sum();
         // The previous request's last message is often not in the next one — a step's guidance, or
         // an answer carried on — and losing it costs only itself, not what came before it.
-        if (shared >= previous.MessageHashes.Count - 1) return new PromptPrefix(reusable, null);
+        if (shared >= previous.MessageHashes.Count - 1) return new PromptPrefix(reusable, null, input);
         return new PromptPrefix(reusable, previous.SystemMessages[shared]
             ? PromptPrefixChange.Instructions
-            : PromptPrefixChange.History);
+            : PromptPrefixChange.History, input);
     }
 }

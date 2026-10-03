@@ -392,3 +392,24 @@ the complete final serial Server suite passed, with the Unix-permissions check s
 all 427 Web tests passed; `git diff --check` passed. The opt-in evaluation
 project was verified to skip without its enable switch. No external model quality result is
 claimed: endpoint/model configuration is required to run the shared real-model comparisons.
+
+## 2026-10-03 — comparable prefix overlap and adaptive tool headroom
+
+Implemented [ADR-012](decisions/ADR-012-prefix-overlap-and-tool-headroom.md). The schema ceiling
+now scales to 24,576 tokens, bounded by 20% of usable input and complete projected-history
+headroom. Opportunistic initial selection leaves 20% growth room. Required/discovered/core
+additions retain existing order while fitting; opportunistic count limits do not force fitting
+tools out. Adaptive decisions remain in `IAdaptiveContextPolicy`. Numeric diagnostics include
+the transition reason and added/removed/definition-change/order-change counts.
+
+Usage records store the same-scale estimated full input beside prefix overlap. Aggregation
+excludes legacy overlap counts without denominators while preserving usage and change counts.
+Comparisons are isolated by requested model, connection and endpoint as well as branch/purpose.
+The existing widget separates measured cache hits, approximate overlap and prefix changes;
+input/output traffic and estimated context fill are explicitly labeled. Existing styles are reused.
+
+Checks: solution build with `--no-restore -m:1 /nodeReuse:false`, zero warnings/errors; complete
+serial Server suite: 875 tests, 874 passed and one Unix-permissions skip on Windows; all 430 Web
+tests passed, including rendering for new and legacy usage. Regression tests cover unknown-model
+tokenization, denominator persistence/legacy exclusion, model-connection isolation, progressive
+discovery at 32K/128K/250K, history pressure and permission/schema changes. No external LLM was used.

@@ -43,10 +43,10 @@ public sealed record TokenCounts(long InputTokens, long OutputTokens, long Cache
 /// <param name="CachedInput">The price of cached input; null charges it as ordinary input.</param>
 public sealed record TokenPrices(decimal Input, decimal Output, decimal? CachedInput = null);
 
-/// <summary>What changed at the start of a request since the previous one, and so cost its cached prefix.</summary>
+/// <summary>What changed in the application's request prefix; not a measured provider cache reset.</summary>
 public enum PromptPrefixChange
 {
-    /// <summary>The tool list: it precedes every message, so all of the request was new.</summary>
+    /// <summary>The ordered tool definitions changed. Provider serialization and partial cache hits can differ.</summary>
     Tools,
     /// <summary>An instruction leading the request.</summary>
     Instructions,
@@ -55,13 +55,13 @@ public enum PromptPrefixChange
 }
 
 /// <summary>
-/// How a request started compared with the previous request of the same branch and purpose. A
-/// provider can serve from its cache only the part both share, so this says what the cache could
-/// have given, whatever it did give.
+/// Estimated prefix overlap with the previous request of the same branch, purpose and model
+/// connection. This describes application stability, not provider cache eligibility or retention.
 /// </summary>
 /// <param name="ReusableTokens">Estimated tokens of the shared start: the tools and the messages both begin with.</param>
 /// <param name="Change">What broke the shared start; null when the request carried on the previous one.</param>
-public sealed record PromptPrefix(long ReusableTokens, PromptPrefixChange? Change);
+/// <param name="EstimatedInputTokens">The whole current request on the same estimation scale; zero for legacy records.</param>
+public sealed record PromptPrefix(long ReusableTokens, PromptPrefixChange? Change, long EstimatedInputTokens = 0);
 
 /// <summary>
 /// One request to a model, as it was measured.
@@ -104,10 +104,11 @@ public sealed record TokenUsageRecord(
 /// <param name="Cost">The sum over priced requests; null when none was priced.</param>
 /// <param name="PricedRequests">How many requests <paramref name="Cost"/> covers, so a partial sum is visible as one.</param>
 /// <param name="EstimatedCostRequests">How many of the priced requests carry a cost worked out from earlier quotes.</param>
-/// <param name="ReusableInputTokens">What the cache could have served: the shared start of each request compared.</param>
+/// <param name="ReusableInputTokens">Estimated shared prefixes of requests with a recorded estimation denominator.</param>
 /// <param name="ToolChanges">Requests whose tool list differed from the previous request's.</param>
 /// <param name="InstructionChanges">Requests whose leading instructions differed.</param>
 /// <param name="HistoryChanges">Requests whose earlier conversation differed: compacted, summarized or trimmed.</param>
+/// <param name="PrefixInputTokens">Estimated full inputs of those compared requests, on the same scale as ReusableInputTokens.</param>
 public sealed record TokenUsageTotals(
     TokenCounts Tokens,
     int Requests,
@@ -119,7 +120,8 @@ public sealed record TokenUsageTotals(
     long ReusableInputTokens = 0,
     int ToolChanges = 0,
     int InstructionChanges = 0,
-    int HistoryChanges = 0);
+    int HistoryChanges = 0,
+    long PrefixInputTokens = 0);
 
 /// <summary>Totals of one group: a purpose, a model or a day, as <paramref name="Key"/> names it.</summary>
 public sealed record TokenUsageSlice(string Key, TokenUsageTotals Totals);

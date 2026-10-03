@@ -80,7 +80,7 @@ public sealed partial class AdaptiveContextPolicy(
         var usable = Math.Max(0, limits.ContextWindowTokens - limits.ReservedOutputTokens - ProtocolOverhead - safety);
         return new(limits.ContextWindowTokens, limits.ReservedOutputTokens, ProtocolOverhead + safety,
             usable, Math.Min(24_576, usable * 3 / 5), Math.Min(2_048, usable / 10),
-            Math.Min(6_000, usable / 5), usable < 8_192 ? 8 : 16, usable < 16_384);
+            Math.Min(24_576, usable / 5), usable < 8_192 ? 8 : usable < 65_536 ? 16 : 64, usable < 16_384);
     }
 
     public ModelContextPreview PrepareStanding(ModelContextPreview preview, ConnectionSettings? connection, bool appToolsAvailable)
@@ -146,11 +146,10 @@ public sealed partial class AdaptiveContextPolicy(
         var lastUser = context.ToList().FindLastIndex(message => message.Role == "user" && !message.IsContextSummary);
         var current = context.Skip(Math.Max(0, lastUser)).ToArray();
         var requiredNames = current.SelectMany(message => message.ToolCalls ?? []).Select(call => call.Name).ToHashSet(StringComparer.Ordinal);
-        var fixedMessages = context.Where(message => message.Role == "system").Concat(current.Where(message => message.Role == "user")).ToArray();
-        // Leave a message allowance of at least a quarter of the usable window, and never spend
-        // the space already needed by system instructions, current user text or trailing guidance.
+        // Reserve the complete projected history and guidance, with at least a quarter of the
+        // usable window for messages. History pressure can shrink the schema allowance.
         var budget = Math.Min(profile.ToolTokens, Math.Max(0, profile.UsableTokens
-            - Math.Max(profile.UsableTokens / 4, estimator.EstimateMessages(fixedMessages) + trailingInstructionTokens)));
+            - Math.Max(profile.UsableTokens / 4, estimator.EstimateMessages(context) + Math.Max(0, trailingInstructionTokens))));
         var query = Words(request).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var candidates = availableTools.GroupBy(tool => tool.ModelDefinition.Name, StringComparer.Ordinal).Select(group => group.First())
             .Select(tool => new Candidate(tool, estimator.EstimateTools([tool.ModelDefinition]),
@@ -161,11 +160,31 @@ public sealed partial class AdaptiveContextPolicy(
             .ThenByDescending(item => item.Tool.ModelDefinition.Name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal))
             .ThenBy(item => item.Tokens).ThenBy(item => item.Tool.ModelDefinition.Name, StringComparer.Ordinal).ToArray();
         var availableTokens = estimator.EstimateTools(availableTools.Select(tool => tool.ModelDefinition).ToArray());
+        ToolSelection Selection(IReadOnlyList<AgentTool> tools, long selectedTokens, string reason)
+        {
+            var previous = (previousTools ?? []).GroupBy(tool => tool.ModelDefinition.Name, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First().ModelDefinition, StringComparer.Ordinal);
+            var names = tools.Select(tool => tool.ModelDefinition.Name).ToHashSet(StringComparer.Ordinal);
+            var added = tools.Count(tool => !previous.ContainsKey(tool.ModelDefinition.Name));
+            var removed = previous.Keys.Count(name => !names.Contains(name));
+            var changed = tools.Count(tool => previous.TryGetValue(tool.ModelDefinition.Name, out var old)
+                && (old.Description != tool.ModelDefinition.Description
+                    || old.InputSchema.GetRawText() != tool.ModelDefinition.InputSchema.GetRawText()));
+            var reordered = !previous.Keys.Where(names.Contains)
+                .SequenceEqual(tools.Select(tool => tool.ModelDefinition.Name).Where(previous.ContainsKey));
+            if (changed > 0 || previous.Keys.Any(name => !candidates.Any(item => item.Tool.ModelDefinition.Name == name)))
+                reason = "catalog_changed";
+            return new(tools, availableTools.Count, availableTokens, selectedTokens, budget,
+                reason, added, removed, changed, reordered);
+        }
         var selected = new List<AgentTool>();
+        var selectionReason = "initial";
         long tokens = 0;
         foreach (var item in candidates)
         {
-            if (!item.Required && (selected.Count >= profile.MaximumTools || item.Tokens > budget - tokens)) continue;
+            var ceiling = item.Required || item.Discovered || item.Core ? budget : budget * 4 / 5;
+            if (!item.Required && ((!item.Discovered && !item.Core && selected.Count >= profile.MaximumTools)
+                || item.Tokens > ceiling - tokens)) continue;
             selected.Add(item.Tool);
             tokens += item.Tokens;
         }
@@ -177,31 +196,30 @@ public sealed partial class AdaptiveContextPolicy(
             var names = carried.Select(tool => tool.ModelDefinition.Name).ToHashSet(StringComparer.Ordinal);
             // Keep a fitting set exactly, rather than reranking it as history grows. Add only newly
             // needed/discovered capabilities; reserve the last 20% of the budget as growth hysteresis.
-            var additions = candidates.Where(item => item.Required || item.Discovered || item.Core || item.Relevance > 0)
+            var additions = candidates.Where(item => item.Required || item.Discovered || item.Core)
                 .Where(item => !names.Contains(item.Tool.ModelDefinition.Name)).ToArray();
             var carriedTokens = estimator.EstimateTools(carried.Select(tool => tool.ModelDefinition).ToArray());
-            if (carriedTokens <= budget && carried.Count <= profile.MaximumTools
-                && additions.Where(item => item.Required || item.Discovered).All(item => selected.Contains(item.Tool)))
+            if (carriedTokens <= budget)
             {
                 foreach (var item in additions)
                 {
-                    var ceiling = item.Required || item.Discovered ? budget : budget * 4 / 5;
-                    if (carried.Count >= profile.MaximumTools || item.Tokens > ceiling - carriedTokens) continue;
+                    if (item.Tokens > budget - carriedTokens) continue;
                     carried.Add(item.Tool);
                     carriedTokens += item.Tokens;
                 }
                 // A newly required call must not disappear because the carried set used the space.
                 if (requiredNames.All(name => !byName.ContainsKey(name) || carried.Any(tool => tool.ModelDefinition.Name == name))
-                    && additions.Where(item => item.Discovered && selected.Contains(item.Tool)).All(item => carried.Contains(item.Tool)))
-                    return new(carried, availableTools.Count, availableTokens, carriedTokens, budget);
+                    && additions.Where(item => (item.Discovered || item.Core) && selected.Contains(item.Tool)).All(item => carried.Contains(item.Tool)))
+                    return Selection(carried, carriedTokens, carried.Count > names.Count ? "expanded" : "retained");
             }
+            selectionReason = carriedTokens > budget ? "pressure" : "discovery";
             // One deliberate prefix change under pressure. Surviving tools keep their previous order.
             var chosen = selected.Select(tool => tool.ModelDefinition.Name).ToHashSet(StringComparer.Ordinal);
             var ordered = carried.Where(tool => chosen.Remove(tool.ModelDefinition.Name)).ToList();
             ordered.AddRange(selected.Where(tool => chosen.Remove(tool.ModelDefinition.Name)));
             selected = ordered;
         }
-        return new(selected, availableTools.Count, availableTokens, tokens, budget);
+        return Selection(selected, tokens, selectionReason);
     }
 
     private ModelContextLayer FitIndex(ModelContextLayer layer, long allowance, bool compact, string? model)

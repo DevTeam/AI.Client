@@ -23,9 +23,10 @@ public sealed partial class ContextPlanDiagnostics(ILogger<ContextPlanDiagnostic
             plan.ToolDefinitionTokens, messageCount, toolCount, plan.WasCompacted, plan.OmittedMessages,
             plan.FreedInputTokens, plan.CompactionReason);
 
-    public void RecordToolSelection(string model, int availableCount, int selectedCount,
-        long availableTokens, long selectedTokens, long budgetTokens) =>
-        ToolsSelected(logger, model, availableCount, selectedCount, availableTokens, selectedTokens, budgetTokens);
+    public void RecordToolSelection(string model, ToolSelection selection) =>
+        ToolsSelected(logger, model, selection.AvailableCount, selection.Tools.Count,
+            selection.AvailableTokens, selection.SelectedTokens, selection.BudgetTokens,
+            selection.Reason, selection.AddedCount, selection.RemovedCount, selection.DefinitionChangedCount, selection.Reordered);
 
     public void RecordInstructions(string model, IReadOnlyList<string> keys, long estimatedTokens) =>
         InstructionsComposed(logger, model, keys.Count, estimatedTokens, string.Join(",", keys));
@@ -46,9 +47,11 @@ public sealed partial class ContextPlanDiagnostics(ILogger<ContextPlanDiagnostic
 
     [LoggerMessage(1002, LogLevel.Information,
         "LLM tool selection for {Model}: {SelectedCount}/{AvailableCount} tools, "
-        + "{SelectedTokens}/{BudgetTokens} selected schema tokens from {AvailableTokens} available tokens")]
+        + "{SelectedTokens}/{BudgetTokens} selected schema tokens from {AvailableTokens} available tokens, "
+        + "reason={Reason}, added={AddedCount}, removed={RemovedCount}, definitionsChanged={DefinitionChangedCount}, reordered={Reordered}")]
     private static partial void ToolsSelected(ILogger logger, string model, int availableCount, int selectedCount,
-        long availableTokens, long selectedTokens, long budgetTokens);
+        long availableTokens, long selectedTokens, long budgetTokens, string reason,
+        int addedCount, int removedCount, int definitionChangedCount, bool reordered);
 
     [LoggerMessage(1003, LogLevel.Information,
         "LLM hidden instructions for {Model}: {InstructionCount} instructions, {EstimatedTokens} tokens, keys={InstructionKeys}")]

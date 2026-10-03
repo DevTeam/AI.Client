@@ -32,7 +32,9 @@ public sealed record AdaptiveSummaryBudget(long InputLimit, int TargetTokens, in
     int MaximumCalls, int MaximumMergeRounds);
 
 public sealed record ToolSelection(IReadOnlyList<AgentTool> Tools, int AvailableCount,
-    long AvailableTokens, long SelectedTokens, long BudgetTokens);
+    long AvailableTokens, long SelectedTokens, long BudgetTokens,
+    string Reason = "initial", int AddedCount = 0, int RemovedCount = 0,
+    int DefinitionChangedCount = 0, bool Reordered = false);
 
 /// <summary>All compaction thresholds use the message allowance after tools, guidance and reserves.</summary>
 public sealed record AdaptiveCompactionBudget(long InputLimit, long MessageLimit, long TargetTokens,

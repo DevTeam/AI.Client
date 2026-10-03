@@ -153,7 +153,7 @@
                     var summaryKey = (turnId, "turn-summary");
                     var usageKey = (turnId, "turn-usage");
                     RenderFragment summaryContent = @<text>
-                        @if (IsRunningTurn(summary) || _loadingTurnIds.Contains(turnId))
+                        @if (_loadingTurnIds.Contains(turnId))
                         {
                             <span class="turn-summary-spinner" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
                         }

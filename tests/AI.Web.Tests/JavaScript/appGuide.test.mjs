@@ -229,35 +229,3 @@ test("a settings row points at its input and follows layout changes with the car
     f.context.clear();
     assert.equal(disconnected, true);
 });
-
-test("a card with no room beside a wide control sits below it", async () => {
-    const f = fixture(), request = { target: "chat.composer", action: "show" };
-    f.target.getBoundingClientRect = () => ({ left: 20, right: 780, top: 100, bottom: 140, width: 760, height: 40 });
-    f.card.getBoundingClientRect = () => ({ width: 350, height: 200 });
-    await f.context.show(request);
-    f.context.position(request);
-    assert.equal(f.card.style.top, "154px");
-    assert.equal(f.card.dataset.side, "none");
-});
-
-for (const [name, viewport, row, inputLeft, expectedSide] of [
-    ["context window screenshot", [1639, 702], [619, 172, 1597, 268], 946, "below"],
-    ["endpoint screenshot", [1438, 1018], [418, 272, 1396, 368], 728, "below"],
-    ["short viewport", [720, 400], [20, 180, 700, 276], 300, "above"]
-]) test(`the explanation preserves the entire highlighted row: ${name}`, async () => {
-    const f = fixture(), request = { target: "settings.connection.url", action: "show" };
-    [f.context.innerWidth, f.context.innerHeight] = viewport;
-    const [left, top, right, bottom] = row;
-    f.target.matches = () => false;
-    f.target.getBoundingClientRect = () => ({ left, top, right, bottom, width: right - left, height: bottom - top });
-    f.target.querySelector = () => ({ getBoundingClientRect: () => ({ left: inputLeft, top: top + 12,
-        right: right - 20, bottom: bottom - 12, width: right - 20 - inputLeft, height: bottom - top - 24 }) });
-    f.card.getBoundingClientRect = () => ({ width: 616, height: 370 });
-    await f.context.show(request);
-    f.context.position(request);
-    const cardTop = parseFloat(f.card.style.top);
-    const cardHeight = Math.min(370, parseFloat(f.card.style.maxHeight));
-    assert.ok(expectedSide === "below" ? cardTop >= bottom + 14 : cardTop + cardHeight <= top - 14);
-    assert.ok(cardTop >= 12 && cardTop + cardHeight <= viewport[1] - 12);
-    assert.equal(f.card.dataset.side, "none", "do not draw a sideways arrow for a vertical placement");
-});

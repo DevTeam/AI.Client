@@ -184,39 +184,19 @@ export function position(request) {
     }
     if (!card) return;
     layoutObserver?.observe(card);
-    // Reserve the entire highlighted row, including its label, for the target.
-    // The pointer uses the input's bounds, but the explanation must not cover the row.
     const rect = guideRect(element);
     const box = card.getBoundingClientRect();
     const padding = 12, gap = 14;
     const fitsRight = rect.right + gap + box.width + padding <= innerWidth;
     const fitsLeft = rect.left - gap - box.width >= padding;
-    let side = fitsRight || !fitsLeft ? "right" : "left";
+    const side = fitsRight || !fitsLeft ? "right" : "left";
     const left = side === "right" ? rect.right + gap : rect.left - gap - box.width;
     const clampedLeft = Math.max(padding, Math.min(left, innerWidth - box.width - padding));
-    let top = Math.max(padding, Math.min(rect.top + rect.height / 2 - 28, innerHeight - box.height - padding));
-    let maxHeight = innerHeight - padding * 2;
-    // Use vertical space when neither side can contain the card. Limit its height
-    // to that space rather than falling back to covering the highlighted row.
-    if (!fitsRight && !fitsLeft) {
-        const below = Math.max(0, innerHeight - rect.bottom - gap - padding);
-        const above = Math.max(0, rect.top - gap - padding);
-        if (below >= box.height || below >= above) {
-            side = "bottom";
-            maxHeight = below;
-            top = rect.bottom + gap;
-        } else {
-            side = "top";
-            maxHeight = above;
-            top = rect.top - gap - Math.min(box.height, above);
-        }
-    }
-    card.style.maxHeight = `${maxHeight}px`;
-    card.style.overflowY = side === "top" || side === "bottom" ? "auto" : "visible";
+    const top = Math.max(padding, Math.min(rect.top + rect.height / 2 - 28, innerHeight - box.height - padding));
     card.style.left = `${clampedLeft}px`;
     card.style.top = `${top}px`;
     // The arrow points at the control while the card sits beside it rather than over it.
-    const beside = side === "right" ? clampedLeft >= rect.right : side === "left" && clampedLeft + box.width <= rect.left;
+    const beside = side === "right" ? clampedLeft >= rect.right : clampedLeft + box.width <= rect.left;
     card.dataset.side = beside ? side : "none";
     card.style.setProperty("--app-guide-arrow-y", `${Math.max(14, Math.min(rect.top + rect.height / 2 - top, box.height - 14))}px`);
     if (!card.hasAttribute("data-placed")) {

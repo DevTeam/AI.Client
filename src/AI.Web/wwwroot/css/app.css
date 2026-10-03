@@ -6874,7 +6874,8 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 button.is-auto-pressed { filter: brightness(1.15); }
 
 /* Guides share the app's surfaces, accent and corner preference in every theme. */
-.app-guide-target { outline: 2px solid var(--color-accent); outline-offset: 3px; border-radius: calc(.4rem * var(--corner-scale)); }
+/* Keep the guide frame inside the target: scroll panes clip an outside outline. */
+.app-guide-target { outline: 2px solid var(--color-accent); outline-offset: -2px; border-radius: calc(.4rem * var(--corner-scale)); }
 .app-guide-hover { background: var(--color-fill-hover); }
 .app-guide-step, .app-guide-question, .app-guide-tooltip {
     position: fixed; z-index: 1001; border: 1px solid var(--color-border-strong);

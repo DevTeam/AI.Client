@@ -4855,84 +4855,6 @@ textarea {
     transition: border-color 180ms ease;
 }
 
-.workspace-changes.is-collapsed {
-    overflow: visible;
-}
-
-.workspace-changes-preview {
-    position: absolute;
-    z-index: 20;
-    bottom: calc(100% + 0.35rem);
-    left: 50%;
-    width: max-content;
-    min-width: min(20rem, calc(100vw - 2rem));
-    max-width: min(30rem, calc(100vw - 2rem));
-    padding: 0.55rem 0.7rem;
-    border: 1px solid var(--color-border);
-    border-radius: calc(0.85rem * var(--corner-scale));
-    background: var(--color-fill);
-    box-shadow: 0 0.55rem 1.6rem rgb(0 0 0 / calc(35% * var(--shadow-scale)));
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: auto;
-    transform: translate(-50%, 0.2rem);
-    transition: opacity 110ms ease, transform 110ms ease, visibility 0s linear 110ms;
-}
-
-.workspace-changes-preview::after {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    left: 0;
-    height: 0.36rem;
-    content: "";
-}
-
-.workspace-changes.is-collapsed:not(.is-preview-suppressed):hover .workspace-changes-preview {
-    opacity: 1;
-    visibility: visible;
-    transform: translate(-50%, 0);
-    transition-delay: 160ms;
-}
-
-.workspace-changes-preview ul {
-    max-height: min(18rem, 50vh);
-    margin: 0;
-    padding: 0;
-    overflow: auto;
-    list-style: none;
-}
-
-.workspace-changes-preview li {
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-    min-height: 1.35rem;
-    padding: 0.08rem 0;
-    line-height: 1.15;
-}
-
-.workspace-changes-preview-path {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--color-text);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* The same two fixed columns as the expanded file list, so +/− line up from row to row. */
-.workspace-changes-preview-counts {
-    display: grid;
-    flex: 0 0 auto;
-    grid-template-columns: 3rem 3rem;
-    column-gap: 0.45rem;
-    margin-left: auto;
-    font-variant-numeric: tabular-nums;
-}
-
-.workspace-changes-preview-counts .workspace-added { text-align: right; }
-.workspace-changes-preview-counts .workspace-removed { text-align: left; }
-
 .workspace-changes-header {
     display: flex;
     box-sizing: border-box;
@@ -5241,7 +5163,6 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
     .workspace-changes,
     .workspace-changes-header,
-    .workspace-changes-preview,
     .workspace-changes-chevron,
     .workspace-changes-details,
     .workspace-changes-details-inner,

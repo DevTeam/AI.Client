@@ -397,6 +397,8 @@
 }
 @code {
     [Parameter] public string Section { get; set; } = "Connections";
+    [Parameter] public Guid? ConnectionToEdit { get; set; }
+    private Guid? _appliedConnectionToEdit;
     [Parameter] public EventCallback Saved { get; set; }
     [Parameter] public EventCallback<bool> ContextWindowUsageChanged { get; set; }
     [Parameter] public EventCallback<bool> TurnTokensChanged { get; set; }
@@ -515,6 +517,13 @@
         _guideCompletedCount = clientSettings.CompletedGuideTopics.Count;
         await LoadGlobalSettingsAsync();
     }
+    protected override void OnParametersSet()
+    {
+        if (ConnectionToEdit == _appliedConnectionToEdit) return;
+        _appliedConnectionToEdit = ConnectionToEdit;
+        if (ConnectionToEdit is { } id && _connections.Any(item => item.Id == id)) SelectConnection(id);
+    }
+
     private async Task LoadGlobalSettingsAsync()
     {
         var settings = await GlobalSettingsApi.GetAsync(CancellationToken.None);
@@ -680,7 +689,7 @@
         _selectedConnectionId = _connections.FirstOrDefault()?.Id;
     }
 
-    private void SelectConnection(Guid id)
+    public void SelectConnection(Guid id)
     {
         _selectedConnectionId = id;
         // Switching connections cancels any pending debounce for the previous one — otherwise a

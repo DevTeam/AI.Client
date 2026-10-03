@@ -78,8 +78,9 @@ public sealed class MeteringChatCompletionClient(
         IReadOnlyList<ChatCompletionMessage> sent = request.ContextMessages is { Count: > 0 } messages
             ? messages
             : [new ChatCompletionMessage("user", request.Message)];
-        var input = estimator.EstimateMessages(sent) + (request.Tools is { Count: > 0 } tools ? estimator.EstimateTools(tools) : 0);
-        var output = estimator.EstimateMessages([new ChatCompletionMessage("assistant", content, calls.Count > 0 ? calls : null)]);
+        var modelEstimator = estimator.ForModel(request.Model);
+        var input = modelEstimator.EstimateMessages(sent) + (request.Tools is { Count: > 0 } tools ? modelEstimator.EstimateTools(tools) : 0);
+        var output = modelEstimator.EstimateMessages([new ChatCompletionMessage("assistant", content, calls.Count > 0 ? calls : null)]);
         return new TokenUsageMeasurement(name, request.CredentialProfileId, new TokenCounts(input, output), true, duration,
             firstToken, Shape: shape);
     }

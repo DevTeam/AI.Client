@@ -16,6 +16,26 @@ public sealed class AdaptiveCompactionTests
     private readonly ContextTokenEstimator _estimator = new();
     private readonly ToolResultContextProjector _projector = new();
 
+    [Fact]
+    public void ShouldDistinguishNewCompactionFromReusedProjectionAndMeasureSavings()
+    {
+        var connection = Connection(4_096);
+        var planner = Planner(Policy());
+        var memory = new ContextCompactionMemory();
+        var context = new List<ChatCompletionMessage> { new("user", "Investigate"),
+            new("assistant", "", [new("call", "read", "{}")]), new("tool", new string('x', 20_000), ToolCallId: "call") };
+        var first = planner.Plan(connection, connection.Model, context, [], memory: memory);
+        first.Fits.ShouldBeTrue();
+        first.CompactionReason.ShouldBe("input_pressure");
+        first.FreedInputTokens.ShouldBe(_estimator.EstimateMessages(context) - first.EstimatedInputTokens);
+        first.FreedInputTokens.ShouldBeGreaterThan(0);
+        context.Add(new("assistant", "A small appended step."));
+        var next = planner.Plan(connection, connection.Model, context, [], memory: memory);
+        next.Fits.ShouldBeTrue();
+        next.CompactionReason.ShouldBe("reused_projection");
+        next.Messages.Take(first.Messages.Count).ShouldBe(first.Messages);
+    }
+
     [Theory]
     [InlineData(4_096, 1_000)]
     [InlineData(8_192, 1_000)]
@@ -147,7 +167,7 @@ public sealed class AdaptiveCompactionTests
     [Fact]
     public async Task ShouldBoundMultilingualSummariesUsingTheSharedEstimator()
     {
-        var writer = new ContextSummaryWriter(_estimator, _projector);
+        var writer = new ContextSummaryWriter(_estimator, _projector, new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver()));
         var summary = await writer.WriteAsync([new ChatCompletionMessage("user", "Source")], 256,
             new Summarizer(string.Concat(Enumerable.Repeat("Ошибка 🚀 中文 ", 400))), TestContext.Current.CancellationToken);
         summary.ShouldNotBeNull();
@@ -249,7 +269,7 @@ public sealed class AdaptiveCompactionTests
 
     private AdaptiveContextPolicy Policy() => new(_estimator, new ConnectionContextLimitsResolver());
     private ChatContextPlanner Planner(IAdaptiveContextPolicy policy) => new(_estimator,
-        new ChatContextCompactor(_estimator, new ContextSummaryWriter(_estimator, _projector), _projector),
+        new ChatContextCompactor(_estimator, new ContextSummaryWriter(_estimator, _projector, new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver())), _projector),
         new ConnectionContextLimitsResolver(), policy);
     private static ConnectionSettings Connection(long window, long output = 1_000) =>
         new(Guid.NewGuid(), "Test", "https://example.test/v1", "model", true, true, false,

@@ -34,6 +34,7 @@ The documents describe the agreed-upon architecture and are the source of truth 
 28. [Token usage](28-token-usage.md)
 29. [Chat widgets](29-chat-widgets.md)
 30. [Dependency injection with Pure.DI](30-dependency-injection.md)
+31. [Context request budgets and quality evaluation](31-context-evaluation.md)
 
 Generator diagnostics and complaints are tracked separately in [Pure.DI observations and issues](pure-di-issues.md).
 
@@ -49,6 +50,7 @@ Generator diagnostics and complaints are tracked separately in [Pure.DI observat
 - [ADR-008: Desktop app on Avalonia with the system web view](decisions/ADR-008-desktop-app.md)
 - [ADR-009: One adaptive context policy](decisions/ADR-009-adaptive-context-policy.md)
 - [ADR-010: Adaptive compaction decisions and measured savings](decisions/ADR-010-adaptive-compaction-and-estimation.md)
+- [ADR-011: Budgeted summary requests and separate quality evaluations](decisions/ADR-011-budgeted-summary-requests.md)
 
 ## Document status
 

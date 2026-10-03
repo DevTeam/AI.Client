@@ -7,7 +7,7 @@ using Contracts.Settings;
 /// connection-level overrides can be added without changing the agent or transport boundary.
 /// </summary>
 public sealed class ChatContextPlanner(
-    IContextTokenEstimator estimator,
+    IContextTokenEstimator tokenEstimator,
     IChatContextCompactor compactor,
     IConnectionContextLimitsResolver limitsResolver, IAdaptiveContextPolicy policy) : IChatContextPlanner
 {
@@ -23,6 +23,7 @@ public sealed class ChatContextPlanner(
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(tools);
 
+        if (connection is not null) connection = connection with { Model = model };
         var core = PlanCore(connection, messages, tools, trailing, memory);
         return BuildPlan(core, core.Compaction);
     }
@@ -42,17 +43,20 @@ public sealed class ChatContextPlanner(
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(tools);
 
+        if (connection is not null) connection = connection with { Model = model };
         var core = PlanCore(connection, messages, tools, trailing, memory);
+        var estimator = core.Estimator;
         var compaction = core.Compaction;
         if (estimator.EstimateMessages(compaction.Messages) > core.ConversationLimit && summarizer is not null
             && estimator.EstimateMessages(messages.Where(message => message.Role == "system")
                 .Concat(messages.Where(message => message.Role == "user" && !message.IsContextSummary).TakeLast(1)).ToArray()) <= core.ConversationLimit)
         {
             var candidate = await compactor.CompactWithLlmAsync(messages, core.TargetTokens,
-                summaryTargetTokens, summarizer, cancellationToken);
-            if (policy.ShouldAcceptCompaction(compaction.Messages, candidate.Messages, 0))
+                summaryTargetTokens, summarizer, cancellationToken, connection);
+            if (policy.ShouldAcceptCompaction(compaction.Messages, candidate.Messages, 0, connection))
             {
                 compaction = candidate;
+                core = core with { Reason = "llm_fallback" };
                 memory?.Remember(messages, compaction);
             }
         }
@@ -67,13 +71,15 @@ public sealed class ChatContextPlanner(
         string? trailing,
         ContextCompactionMemory? memory)
     {
+        var estimator = tokenEstimator.ForModel(connection?.Model);
         var effective = limitsResolver.Resolve(connection);
         var budget = policy.Resolve(connection);
         var toolTokens = estimator.EstimateTools(tools);
-        var compactionBudget = policy.ResolveCompaction(connection, toolTokens, TrailingTokens(trailing), memory is not null);
+        var compactionBudget = policy.ResolveCompaction(connection, toolTokens, TrailingTokens(trailing, estimator), memory is not null);
         var inputLimit = compactionBudget.InputLimit;
         var conversationLimit = compactionBudget.MessageLimit;
         ContextCompactionResult compaction;
+        var reason = "none";
         if (estimator.EstimateMessages(messages) <= conversationLimit)
         {
             compaction = new ContextCompactionResult(messages, 0, false);
@@ -83,21 +89,23 @@ public sealed class ChatContextPlanner(
                  && estimator.EstimateMessages(continued.Messages) <= conversationLimit)
         {
             compaction = continued;
+            reason = "reused_projection";
         }
         else
         {
-            compaction = compactor.Compact(messages, compactionBudget.TargetTokens);
+            compaction = compactor.Compact(messages, compactionBudget.TargetTokens, connection?.Model);
+            reason = "input_pressure";
             memory?.Remember(messages, compaction);
         }
         return new PlanBasis(effective, budget, inputLimit, conversationLimit, compactionBudget.TargetTokens,
-            toolTokens, compaction, trailing);
+            toolTokens, compaction, trailing, estimator, estimator.EstimateMessages(messages), reason);
     }
 
     private sealed record PlanBasis(ResolvedConnectionContextLimits Effective, AdaptiveContextBudget Budget,
         long InputLimit, long ConversationLimit, long TargetTokens, long ToolTokens, ContextCompactionResult Compaction,
-        string? Trailing);
+        string? Trailing, IContextTokenEstimator Estimator, long OriginalTokens, string Reason);
 
-    private long TrailingTokens(string? trailing) =>
+    private static long TrailingTokens(string? trailing, IContextTokenEstimator estimator) =>
         trailing is null ? 0 : estimator.EstimateMessages([new ChatCompletionMessage("user", trailing)]);
 
     /// <summary>
@@ -115,8 +123,9 @@ public sealed class ChatContextPlanner(
         return attached;
     }
 
-    private ContextPlan BuildPlan(PlanBasis basis, ContextCompactionResult compaction)
+    private static ContextPlan BuildPlan(PlanBasis basis, ContextCompactionResult compaction)
     {
+        var estimator = basis.Estimator;
         var messages = Attach(compaction.Messages, basis.Trailing);
         return new(
             basis.InputLimit,
@@ -130,9 +139,11 @@ public sealed class ChatContextPlanner(
             compaction.OmittedMessages,
             messages,
             estimator.EstimateMessages(compaction.Messages.Where(message => message.Role == "system").ToArray())
-            + TrailingTokens(basis.Trailing),
+            + TrailingTokens(basis.Trailing, estimator),
             basis.Budget.OverheadTokens,
-            compaction.Summary);
+            compaction.Summary,
+            Math.Max(0, basis.OriginalTokens - estimator.EstimateMessages(compaction.Messages)),
+            basis.Reason);
     }
 
 }

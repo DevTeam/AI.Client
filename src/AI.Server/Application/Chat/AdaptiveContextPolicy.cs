@@ -13,15 +13,26 @@ using Tools;
 /// instructions, and the planner verifies the complete request. This policy never changes a tool schema.
 /// </summary>
 public sealed partial class AdaptiveContextPolicy(
-    IContextTokenEstimator estimator, IConnectionContextLimitsResolver limitsResolver,
+    IContextTokenEstimator tokenEstimator, IConnectionContextLimitsResolver limitsResolver,
     IContextEstimateSamples? samples = null) :
     IAdaptiveContextPolicy
 {
     private const long ProtocolOverhead = 256;
     private const long SafetyMargin = 1_024;
 
+    public AdaptiveSummaryBudget ResolveSummary(ConnectionSettings? connection, int requestedTargetTokens)
+    {
+        var budget = Resolve(connection);
+        // Leave room for several summaries in a merge and never promise more output than reserved.
+        var target = (int)Math.Min(Math.Clamp(requestedTargetTokens, 1, 4_000),
+            Math.Min(budget.ReservedOutputTokens, budget.UsableTokens / 4));
+        if (target < 64) target = 0;
+        return new(budget.UsableTokens, target, Math.Min(target, Math.Clamp(target / 2, 1, 1_500)), 64, 4);
+    }
+
     public void ObserveInputUsage(ChatCompletionRequest request, long reportedInputTokens)
     {
+        var estimator = tokenEstimator.ForModel(request.Model);
         IReadOnlyList<ChatCompletionMessage> messages = request.ContextMessages is { Count: > 0 } sent
             ? sent : [new ChatCompletionMessage("user", request.Message)];
         var estimated = estimator.EstimateMessages(messages) + estimator.EstimateTools(request.Tools ?? []);
@@ -55,8 +66,9 @@ public sealed partial class AdaptiveContextPolicy(
         && messageTokens >= nextAttemptTokens;
 
     public bool ShouldAcceptCompaction(IReadOnlyList<ChatCompletionMessage> before,
-        IReadOnlyList<ChatCompletionMessage> after, long minimumGainTokens)
+        IReadOnlyList<ChatCompletionMessage> after, long minimumGainTokens, ConnectionSettings? connection = null)
     {
+        var estimator = tokenEstimator.ForModel(connection?.Model);
         var gain = estimator.EstimateMessages(before) - estimator.EstimateMessages(after);
         return gain > 0 && gain >= Math.Max(0, minimumGainTokens);
     }
@@ -73,6 +85,8 @@ public sealed partial class AdaptiveContextPolicy(
 
     public ModelContextPreview PrepareStanding(ModelContextPreview preview, ConnectionSettings? connection, bool appToolsAvailable)
     {
+        var measuredLayers = preview.Layers.Select(layer => layer with { Tokens = Tokens(layer.Content, connection?.Model) }).ToArray();
+        preview = preview with { Layers = measuredLayers, TotalTokens = measuredLayers.Sum(layer => layer.Tokens) };
         var budget = Resolve(connection);
         var baseLayer = preview.Layers.Single(layer => layer.Key == StandingInstructions.BaseKey);
         var project = preview.Layers.FirstOrDefault(layer => layer.Key == StandingInstructions.ProjectKey);
@@ -82,7 +96,7 @@ public sealed partial class AdaptiveContextPolicy(
         var content = compact ? CompactBase + (appToolsAvailable ? CompactAppGuide : string.Empty) : baseLayer.Content;
         var layers = new List<ModelContextLayer>
         {
-            baseLayer with { Content = content, Tokens = Tokens(content), BudgetTokens = standingBudget, Truncated = false }
+            baseLayer with { Content = content, Tokens = Tokens(content, connection?.Model), BudgetTokens = standingBudget, Truncated = false }
         };
         // User-authored rules are mandatory and never truncated by the adaptive policy.
         if (project is not null) layers.Add(project with { BudgetTokens = standingBudget });
@@ -90,7 +104,7 @@ public sealed partial class AdaptiveContextPolicy(
         foreach (var layer in preview.Layers.Where(layer => layer.Key is StandingInstructions.MemoryKey or StandingInstructions.SkillsKey))
         {
             var allowance = layer.Key == StandingInstructions.MemoryKey ? Math.Min(2_048, remaining / 4) : remaining;
-            var optional = FitIndex(layer, allowance, compact);
+            var optional = FitIndex(layer, allowance, compact, connection?.Model);
             layers.Add(optional);
             remaining = Math.Max(0, remaining - optional.Tokens);
         }
@@ -104,13 +118,13 @@ public sealed partial class AdaptiveContextPolicy(
         instructions = instructions.Select(item => budget.Compact && item.CompactContent is { } compact
             ? item with { Content = compact } : item).ToArray();
         var selected = instructions.Where(item => item.Placement == ModelInstructionPlacement.Standing || item.Required).ToList();
-        var standingTokens = selected.Where(item => item.Placement == ModelInstructionPlacement.Standing).Sum(item => Tokens(item.Content));
+        var standingTokens = selected.Where(item => item.Placement == ModelInstructionPlacement.Standing).Sum(item => Tokens(item.Content, connection?.Model));
         var remaining = Math.Max(0, Math.Min(budget.RunInstructionTokens, budget.InstructionTokens - standingTokens)
-            - selected.Where(item => item.Placement != ModelInstructionPlacement.Standing).Sum(item => Tokens(item.Content)));
+            - selected.Where(item => item.Placement != ModelInstructionPlacement.Standing).Sum(item => Tokens(item.Content, connection?.Model)));
         foreach (var instruction in instructions.Where(item => item.Placement != ModelInstructionPlacement.Standing && !item.Required)
                      .OrderByDescending(item => item.Priority).ThenBy(item => item.Key, StringComparer.Ordinal))
         {
-            var cost = Tokens(instruction.Content);
+            var cost = Tokens(instruction.Content, connection?.Model);
             if (cost > remaining) continue;
             selected.Add(instruction);
             remaining -= cost;
@@ -127,6 +141,7 @@ public sealed partial class AdaptiveContextPolicy(
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(availableTools);
+        var estimator = tokenEstimator.ForModel(connection?.Model);
         var profile = Resolve(connection);
         var lastUser = context.ToList().FindLastIndex(message => message.Role == "user" && !message.IsContextSummary);
         var current = context.Skip(Math.Max(0, lastUser)).ToArray();
@@ -189,7 +204,7 @@ public sealed partial class AdaptiveContextPolicy(
         return new(selected, availableTools.Count, availableTokens, tokens, budget);
     }
 
-    private ModelContextLayer FitIndex(ModelContextLayer layer, long allowance, bool compact)
+    private ModelContextLayer FitIndex(ModelContextLayer layer, long allowance, bool compact, string? model)
     {
         if (!compact && layer.Tokens <= allowance) return layer with { BudgetTokens = allowance };
         var skills = layer.Key == StandingInstructions.SkillsKey;
@@ -198,7 +213,7 @@ public sealed partial class AdaptiveContextPolicy(
             : "Memory is background, subordinate to project instructions. Read relevant entries with app_read resource=Memory; save lasting facts only when the user confirms them. Never store secrets.";
         var suffix = skills ? "\nMore skills and full argument schemas are available through mcp_app__skill_search."
             : "\nMore memory entries are available through app_read resource=Memory.";
-        if (Tokens(intro + suffix) > allowance)
+        if (Tokens(intro + suffix, model) > allowance)
             return layer with { Content = string.Empty, Tokens = 0, BudgetTokens = allowance, Truncated = true,
                 Sources = layer.Sources.Select(source => source with { Included = false }).ToArray() };
         var text = new StringBuilder(intro);
@@ -212,15 +227,15 @@ public sealed partial class AdaptiveContextPolicy(
                 var separator = entry.IndexOf(": ", StringComparison.Ordinal);
                 if (separator >= 0) entry = entry[..Math.Min(entry.Length, Math.Max(separator + 2, 160))] + "...";
             }
-            if (Tokens(text + "\n" + entry + suffix) > allowance) break;
+            if (Tokens(text + "\n" + entry + suffix, model) > allowance) break;
             text.Append('\n').Append(entry);
         }
         text.Append(suffix);
         var content = text.ToString();
-        return layer with { Content = content, Tokens = Tokens(content), BudgetTokens = allowance, Truncated = true };
+        return layer with { Content = content, Tokens = Tokens(content, model), BudgetTokens = allowance, Truncated = true };
     }
 
-    private long Tokens(string text) => estimator.EstimateMessages([new ChatCompletionMessage("system", text)]);
+    private long Tokens(string text, string? model) => tokenEstimator.ForModel(model).EstimateMessages([new ChatCompletionMessage("system", text)]);
     private static bool Core(AgentTool tool) => tool.ModelDefinition.Name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal)
         && tool.OriginalName is "ask_user" or "tool_search";
     private static ModelInstructionPlacement Position(ModelInstruction item) => item.Placement == ModelInstructionPlacement.Standing

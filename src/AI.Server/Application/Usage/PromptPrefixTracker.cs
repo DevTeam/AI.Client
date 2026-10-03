@@ -38,6 +38,7 @@ public sealed class PromptPrefixTracker(IContextTokenEstimator estimator) : IPro
     public PromptShape Shape(ChatCompletionRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var modelEstimator = estimator.ForModel(request.Model);
         var tools = request.Tools ?? [];
         var toolsHash = new HashCode();
         foreach (var tool in tools)
@@ -67,9 +68,9 @@ public sealed class PromptPrefixTracker(IContextTokenEstimator estimator) : IPro
             }
             hashes[index] = hash.ToHashCode();
             system[index] = message.Role == "system";
-            tokens[index] = estimator.EstimateMessages([message]);
+            tokens[index] = modelEstimator.EstimateMessages([message]);
         }
-        return new PromptShape(toolsHash.ToHashCode(), tools.Count == 0 ? 0 : estimator.EstimateTools(tools), hashes, system, tokens);
+        return new PromptShape(toolsHash.ToHashCode(), tools.Count == 0 ? 0 : modelEstimator.EstimateTools(tools), hashes, system, tokens);
     }
 
     public PromptPrefix? Compare(PromptPrefixKey key, PromptShape shape)

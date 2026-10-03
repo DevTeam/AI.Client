@@ -38,6 +38,12 @@ Not allowed:
 
 Target guideline: the bulk of tests run in milliseconds, and the full suite runs in seconds.
 
+Model quality comparisons are separate experiments under `evals/AI.Context.Evals`, outside
+`AI.slnx` and normal unit-test runs. [ADR-011](decisions/ADR-011-budgeted-summary-requests.md)
+permits explicit, opt-in endpoint calls there; the unit-test rules above remain unchanged.
+Shared continuation fixtures keep budget/retention contract tests and live quality comparisons
+aligned. Configuration and interpretation are in [context evaluation](31-context-evaluation.md).
+
 ## Test structure
 
 The `Given`–`When`–`Then` style from `CSharpInteractive.Tests/CISettingsTests.cs` is used. One test verifies one observable behavior. The test class is `public`, dependencies are created as fields via `Mock<T>`, and the SUT is created in the instance method `CreateInstance`. `[Theory]` and `[InlineData]` are used for sets of boundary values. A name starts with `Should` and describes the observable behavior:
@@ -212,4 +218,3 @@ Verify the meaningful interaction at the module boundary: whether an MCP tool wa
 - A repeated run produces the same result.
 - The full suite stays fast; noticeable slowdown is treated as a regression.
 - Build and test pass identically locally and in CI.
-

@@ -2,6 +2,7 @@ namespace AI.Application.Chat;
 
 using System.Collections.Concurrent;
 using AI.Contracts.Chats;
+using AI.Contracts.Settings;
 using Projects;
 using Tools;
 
@@ -15,7 +16,7 @@ public sealed class ModelContentCheckpointService(
     IHistoryCheckpointService history,
     IClock clock,
     IIdGenerator ids,
-    IContextTokenEstimator estimator, IAdaptiveContextPolicy policy) : IModelContentCheckpointService
+    IContextTokenEstimator tokenEstimator, IAdaptiveContextPolicy policy) : IModelContentCheckpointService
 {
     /// <summary>
     /// A history compaction always leaves the turn in progress, and the one before it when both fit
@@ -26,10 +27,11 @@ public sealed class ModelContentCheckpointService(
     private readonly ConcurrentDictionary<Key, Entry> _entries = new();
 
     public IDisposable Begin(ToolRunContext run, string model, long historyKeepTokens,
-        Func<string, CancellationToken, Task<string>> summarize)
+        Func<string, CancellationToken, Task<string>> summarize, ConnectionSettings? connection = null)
     {
         var key = Key.Of(run);
-        _entries[key] = new Entry(model, new HistoryKeepPolicy(historyKeepTokens, 1, HistoryTurnsToKeep), summarize);
+        if (connection is not null) connection = connection with { Model = model };
+        _entries[key] = new Entry(model, new HistoryKeepPolicy(historyKeepTokens, 1, HistoryTurnsToKeep), summarize, connection);
         return new Scope(() => _entries.TryRemove(key, out _));
     }
 
@@ -65,6 +67,7 @@ public sealed class ModelContentCheckpointService(
     public ModelContentCompactionPreview Preview(ToolRunContext run, ContextCompactionScope scope = ContextCompactionScope.Turn)
     {
         if (!_entries.TryGetValue(Key.Of(run), out var entry)) return new(0, 0, false);
+        var estimator = tokenEstimator.ForModel(entry.Model);
         if (scope == ContextCompactionScope.History)
         {
             var context = entry.History is { } pinned ? history.Apply(entry.Context, pinned) : entry.Context;
@@ -106,6 +109,7 @@ public sealed class ModelContentCheckpointService(
         long minimumTokens, int targetTokens, CancellationToken cancellationToken)
     {
         if (!_entries.TryGetValue(Key.Of(run), out var entry)) return new(0, 0, 0, false, "No active run context is available.");
+        var estimator = tokenEstimator.ForModel(entry.Model);
         var context = entry.Context;
         var user = -1;
         for (var index = context.Count - 1; index >= 0 && user < 0; index--)
@@ -139,14 +143,14 @@ public sealed class ModelContentCheckpointService(
         ChatCompletionMessage[] source = previous is null
             ? covered
             : [new ChatCompletionMessage("user", TurnSummaryPrefix + previous.Summary), .. covered];
-        var summary = await summaryWriter.WriteAsync(source, targetTokens, new Summarizer(entry.Summarize), cancellationToken);
+        var summary = await summaryWriter.WriteAsync(source, targetTokens, new Summarizer(entry.Summarize), cancellationToken, entry.Connection);
         if (summary is null) return new(covered.Length, characters, 0, false, "The compaction task returned no summary.");
         var candidate = new Checkpoint(context[boundary].ToolCalls![0].Id, summary.Text);
         var before = Apply(run, context);
         IReadOnlyList<ChatCompletionMessage> after = context.Take(user + 1)
             .Append(new ChatCompletionMessage("user", TurnSummaryPrefix + summary.Text, IsContextSummary: true)).Concat(context.Skip(boundary)).ToArray();
         if (entry.History is { } historyCheckpoint) after = history.Apply(after, historyCheckpoint);
-        if (!policy.ShouldAcceptCompaction(before, after, minimumTokens))
+        if (!policy.ShouldAcceptCompaction(before, after, minimumTokens, entry.Connection))
             return new(covered.Length, characters, summary.Text.Length, false, "The summary did not free enough context tokens.");
         entry.Checkpoint = candidate;
         return new(covered.Length, characters, summary.Text.Length, true,
@@ -161,7 +165,7 @@ public sealed class ModelContentCheckpointService(
         var range = Range(entry.Context);
         if (range.Count == 0) return new(0, 0, 0, false, "There is no completed work in this turn to compact.");
         var summary = await summaryWriter.WriteAsync(entry.Context.Skip(range.Start).Take(range.Count).ToArray(),
-            targetTokens, new Summarizer(entry.Summarize), cancellationToken);
+            targetTokens, new Summarizer(entry.Summarize), cancellationToken, entry.Connection);
         if (summary is null) return new(range.Count, range.Characters, 0, false, "The compaction task returned no summary.");
         entry.Checkpoint = new Checkpoint(range.BoundaryCallId, summary.Text);
         return new(range.Count, range.Characters, summary.Text.Length, true,
@@ -177,13 +181,13 @@ public sealed class ModelContentCheckpointService(
         var coverable = history.Coverable(context, entry.Keep);
         if (coverable.Count == 0)
             return new(0, 0, 0, false, "Only the current turn and the recent ones kept in full are left; there is no earlier history to compact.");
-        var summary = await summaryWriter.WriteAsync(coverable, targetTokens, new Summarizer(entry.Summarize), cancellationToken);
+        var summary = await summaryWriter.WriteAsync(coverable, targetTokens, new Summarizer(entry.Summarize), cancellationToken, entry.Connection);
         var sourceCharacters = coverable.Sum(message => (long)message.ForModel.Length);
         if (summary is null) return new(coverable.Count, sourceCharacters, 0, false, "The compaction task returned no summary.");
         var checkpoint = new HistoryCheckpoint(ids.Create(), coverable.Last(message => message.MessageId is not null).MessageId!.Value,
             summary.Text, coverable.Count, summary.SourceCharacters, entry.Model, clock.UtcNow, origin);
         if (origin == HistoryCheckpointOrigin.Automatic
-            && !policy.ShouldAcceptCompaction(context, history.Apply(context, checkpoint), minimumGainTokens))
+            && !policy.ShouldAcceptCompaction(context, history.Apply(context, checkpoint), minimumGainTokens, entry.Connection))
             return new(coverable.Count, sourceCharacters, summary.Text.Length, false, "The summary did not free enough context tokens.");
         await history.AddAsync(run.ProjectId, run.ChatId, checkpoint, cancellationToken);
         entry.History = checkpoint;
@@ -217,9 +221,11 @@ public sealed class ModelContentCheckpointService(
         public static Key Of(ToolRunContext run) => new(run.ProjectId, run.ChatId, run.BranchId);
     }
 
-    private sealed class Entry(string model, HistoryKeepPolicy keep, Func<string, CancellationToken, Task<string>> summarize)
+    private sealed class Entry(string model, HistoryKeepPolicy keep, Func<string, CancellationToken, Task<string>> summarize,
+        ConnectionSettings? connection)
     {
         public string Model { get; } = model;
+        public ConnectionSettings? Connection { get; } = connection;
         public HistoryKeepPolicy Keep { get; set; } = keep;
         public Func<string, CancellationToken, Task<string>> Summarize { get; } = summarize;
         public IReadOnlyList<ChatCompletionMessage> Context { get; set; } = [];

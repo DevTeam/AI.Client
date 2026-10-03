@@ -1,6 +1,7 @@
 namespace AI.Application.Chat;
 
 using AI.Contracts.Chats;
+using AI.Contracts.Settings;
 using Tools;
 
 /// <summary>What a compaction covers.</summary>
@@ -20,7 +21,7 @@ public interface IModelContentCheckpointService
     /// <param name="model">The model the summaries are written by, recorded on a kept checkpoint.</param>
     /// <param name="historyKeepTokens">How much of the recent history a history compaction leaves in full.</param>
     IDisposable Begin(ToolRunContext run, string model, long historyKeepTokens,
-        Func<string, CancellationToken, Task<string>> summarize);
+        Func<string, CancellationToken, Task<string>> summarize, ConnectionSettings? connection = null);
     void Update(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context);
     /// <summary>Uses the policy's current message allowance for the recent history kept in full.</summary>
     void UpdateBudget(ToolRunContext run, AdaptiveCompactionBudget budget);

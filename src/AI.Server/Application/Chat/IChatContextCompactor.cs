@@ -1,10 +1,11 @@
 namespace AI.Application.Chat;
 
+using Contracts.Settings;
 
 /// <summary>Builds a smaller, request-only view of chat history without changing stored messages.</summary>
 public interface IChatContextCompactor
 {
-    ContextCompactionResult Compact(IReadOnlyList<ChatCompletionMessage> messages, long inputLimit);
+    ContextCompactionResult Compact(IReadOnlyList<ChatCompletionMessage> messages, long inputLimit, string? model = null);
 
     /// <summary>
     /// Falls back to a tool-free LLM summary of the oldest turns when deterministic truncation
@@ -16,5 +17,5 @@ public interface IChatContextCompactor
         long inputLimit,
         int targetTokens,
         IContextSummarizer summarizer,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, ConnectionSettings? connection = null);
 }

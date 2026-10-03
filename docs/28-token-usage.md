@@ -10,6 +10,13 @@ took, in `<data-dir>/usage/yyyy-MM.jsonl`. Counts come from the endpoint's `usag
 `stream_options.include_usage`); an endpoint that reports none is measured by estimate and the
 record is marked `Estimated`.
 
+Estimates now use a model-bound offline text tokenizer for recognized Cl100k/O200k models and
+the conservative UTF-8 fallback for unknown names. Protocol framing remains estimated. Usage
+calibration and prefix-token measurements use the same requested-model view. Summary operations
+also publish numeric call/input/result/latency diagnostics; see
+[context budgets and evaluation](31-context-evaluation.md). The separate opt-in evaluation
+project does not write to the production ledger.
+
 `ITokenUsageMeter` scopes say what a request was for (`TokenUsagePurpose`) and which project,
 chat, branch and turn it served. They follow the asynchronous flow, so a nested run, a skill or a
 summarizer is attributed without knowing it is measured.

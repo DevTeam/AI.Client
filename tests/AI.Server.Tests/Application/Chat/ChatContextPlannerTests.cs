@@ -72,7 +72,7 @@ public sealed class ChatContextPlannerTests
     {
         var saturated = new SaturatedEstimator();
         var planner = new ChatContextPlanner(saturated, new ChatContextCompactor(saturated, new ContextSummaryWriter()),
-            new ConnectionContextLimitsResolver());
+            new ConnectionContextLimitsResolver(), new AdaptiveContextPolicy(_estimator, new ConnectionContextLimitsResolver()));
 
         var plan = planner.Plan(null, "unknown-model", [new ChatCompletionMessage("user", "large")],
             [new ChatToolDefinition("tool", "large", JsonDocument.Parse("{}").RootElement.Clone())]);
@@ -148,7 +148,7 @@ public sealed class ChatContextPlannerTests
             new("tool", stored, ToolCallId: "call-1")
         ];
         var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
-            new FixedLimitsResolver(2_200, 256));
+            new FixedLimitsResolver(2_200, 256), new AdaptiveContextPolicy(_estimator, new FixedLimitsResolver(2_200, 256)));
 
         var plan = planner.Plan(null, "small-model", messages, []);
 
@@ -228,7 +228,7 @@ public sealed class ChatContextPlannerTests
             new("tool", new string('c', 2_000), ToolCallId: $"call-{index}")
         }).ToArray();
         var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
-            new FixedLimitsResolver(3_200, 256));
+            new FixedLimitsResolver(3_200, 256), new AdaptiveContextPolicy(_estimator, new FixedLimitsResolver(3_200, 256)));
         var summarizer = new RecordingSummarizer("Compacted earlier work.");
 
         var plan = await planner.PlanAsync(null, "small-model", messages, [], summarizer, 800,
@@ -256,7 +256,7 @@ public sealed class ChatContextPlannerTests
             new("assistant", $"outcome-{index} " + new string('b', 800), MessageId: ids[index * 2 + 1])
         }).ToArray();
         var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
-            new FixedLimitsResolver(3_200, 256));
+            new FixedLimitsResolver(3_200, 256), new AdaptiveContextPolicy(_estimator, new FixedLimitsResolver(3_200, 256)));
 
         var plan = await planner.PlanAsync(null, "small-model", messages, [], new RecordingSummarizer("Earlier work."), 800,
             CancellationToken.None);
@@ -283,7 +283,7 @@ public sealed class ChatContextPlannerTests
         }
 
         var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
-            new FixedLimitsResolver(3_200, 256));
+            new FixedLimitsResolver(3_200, 256), new AdaptiveContextPolicy(_estimator, new FixedLimitsResolver(3_200, 256)));
         var summarizer = new RecordingSummarizer("unused");
 
         var plan = await planner.PlanAsync(null, "small-model", messages, [], summarizer, 800,
@@ -305,7 +305,7 @@ public sealed class ChatContextPlannerTests
             new("assistant", $"outcome-{index} " + new string('b', 50))
         }).ToArray();
         var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
-            new ConnectionContextLimitsResolver());
+            new ConnectionContextLimitsResolver(), new AdaptiveContextPolicy(_estimator, new ConnectionContextLimitsResolver()));
         var summarizer = new RecordingSummarizer("should not run");
 
         var plan = await planner.PlanAsync(null, "unknown-model", messages, [], summarizer, 800,
@@ -325,7 +325,7 @@ public sealed class ChatContextPlannerTests
             new("tool", new string('c', 2_000), ToolCallId: $"call-{index}")
         }).ToArray();
         var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
-            new FixedLimitsResolver(3_200, 256));
+            new FixedLimitsResolver(3_200, 256), new AdaptiveContextPolicy(_estimator, new FixedLimitsResolver(3_200, 256)));
         var summarizer = new RecordingSummarizer(string.Empty);
 
         var plan = await planner.PlanAsync(null, "small-model", messages, [], summarizer, 800,
@@ -342,7 +342,7 @@ public sealed class ChatContextPlannerTests
     }
 
     private ChatContextPlanner Planner() => new(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
-        new ConnectionContextLimitsResolver());
+        new ConnectionContextLimitsResolver(), new AdaptiveContextPolicy(_estimator, new ConnectionContextLimitsResolver()));
 
     private static void AssertValidToolProtocol(IReadOnlyList<ChatCompletionMessage> messages)
     {
@@ -381,7 +381,7 @@ public sealed class ChatContextPlannerTests
             new("assistant", $"outcome-{index}")
         }).ToList();
         var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
-            new FixedLimitsResolver(24_000, 1_000));
+            new FixedLimitsResolver(24_000, 1_000), new AdaptiveContextPolicy(_estimator, new FixedLimitsResolver(24_000, 1_000)));
         var memory = new ContextCompactionMemory();
 
         var first = planner.Plan(null, "small-model", messages, [], memory: memory);
@@ -407,7 +407,7 @@ public sealed class ChatContextPlannerTests
             new("assistant", $"outcome-{index}")
         }).ToList();
         var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
-            new FixedLimitsResolver(24_000, 1_000));
+            new FixedLimitsResolver(24_000, 1_000), new AdaptiveContextPolicy(_estimator, new FixedLimitsResolver(24_000, 1_000)));
         var memory = new ContextCompactionMemory();
 
         planner.Plan(null, "small-model", messages, [], memory: memory);
@@ -428,7 +428,7 @@ public sealed class ChatContextPlannerTests
         }).Append(new ChatCompletionMessage("user", "next question")).ToArray();
         var trailing = ModelInstructionComposer.TrailingOpen + new string('g', 4_000) + ModelInstructionComposer.TrailingClose;
         var planner = new ChatContextPlanner(_estimator, new ChatContextCompactor(_estimator, new ContextSummaryWriter()),
-            new FixedLimitsResolver(24_000, 1_000));
+            new FixedLimitsResolver(24_000, 1_000), new AdaptiveContextPolicy(_estimator, new FixedLimitsResolver(24_000, 1_000)));
 
         var plan = planner.Plan(null, "small-model", messages, [], trailing);
 

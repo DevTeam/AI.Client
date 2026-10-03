@@ -9,6 +9,8 @@ using Chat;
 using Memory;
 using Projects;
 using Skills;
+using Settings;
+using AI.Contracts.Settings;
 
 public sealed class StandingInstructions(
     IProjectService projects,
@@ -16,7 +18,8 @@ public sealed class StandingInstructions(
     IInstructionFileReader files,
     IMemoryService memory,
     ISkillGuide skills,
-    IContextTokenEstimator estimator) : IStandingInstructions
+    IContextTokenEstimator estimator, IAdaptiveContextPolicy policy,
+    IGlobalSettingsRepository settings, IConnectionChoice connectionChoice) : IStandingInstructions
 {
     public const string BaseKey = "app.base";
     public const string ProjectKey = "project.instructions";
@@ -140,7 +143,8 @@ public sealed class StandingInstructions(
         + "- context_compact: after a long exploration, once you have what you need, replace the finished work of this turn "
         + "with a short summary that only you see. The transcript is not changed.";
 
-    public async Task<ModelContextPreview> BuildAsync(Guid projectId, bool appToolsAvailable, CancellationToken cancellationToken)
+    public async Task<ModelContextPreview> BuildAsync(Guid projectId, bool appToolsAvailable, CancellationToken cancellationToken,
+        ConnectionSettings? connection = null)
     {
         var project = await projects.GetAsync(projectId, cancellationToken)
             ?? throw new InvalidOperationException("Project not found.");
@@ -153,7 +157,8 @@ public sealed class StandingInstructions(
             layers.Add(memoryLayer);
         if (appToolsAvailable && await SkillsLayerAsync(projectId, cancellationToken) is { } skillsLayer)
             layers.Add(skillsLayer);
-        return new ModelContextPreview(layers, layers.Sum(layer => layer.Tokens));
+        connection ??= connectionChoice.Choose((await settings.LoadAsync(cancellationToken)).Connections, project.ConnectionId);
+        return policy.PrepareStanding(new ModelContextPreview(layers, layers.Sum(layer => layer.Tokens)), connection, appToolsAvailable);
     }
 
     private async Task<ModelContextLayer?> ProjectLayerAsync(Guid projectId, string name, string description,
@@ -169,23 +174,9 @@ public sealed class StandingInstructions(
         var truncated = false;
         void Append(string label, string section)
         {
-            var remaining = ProjectBudgetTokens - Tokens(text.ToString());
             var cost = Tokens(section);
-            if (cost <= remaining)
-            {
-                text.Append(section);
-                sources.Add(new ModelContextSource(label, cost, true));
-                return;
-            }
-            truncated = true;
-            var fitted = Fit(section, remaining - Tokens(TruncationNote));
-            if (fitted.Length == 0)
-            {
-                sources.Add(new ModelContextSource(label, cost, false));
-                return;
-            }
-            text.Append(fitted).Append(TruncationNote);
-            sources.Add(new ModelContextSource(label, Tokens(fitted), true));
+            text.Append(section);
+            sources.Add(new ModelContextSource(label, cost, true));
         }
 
         if (description.Length > 0) Append("Project description", "\n\nProject description: " + description);
@@ -300,8 +291,6 @@ public sealed class StandingInstructions(
     private static string MoreSkillsNote(int count) =>
         $"... {count} more skills are not listed; find them with mcp_app__skill_search and a query.";
 
-    private const string TruncationNote = "\n[Truncated to fit the project instructions budget.]";
-
     private static string MoreNote(int count) =>
         $"... {count} more entries are not listed; find them with app_read resource=Memory and a query.";
 
@@ -316,20 +305,4 @@ public sealed class StandingInstructions(
         new(key, title, sources, content, Tokens(content), budget, truncated);
 
     private long Tokens(string text) => estimator.EstimateMessages([new ChatCompletionMessage("system", text)]);
-
-    /// <summary>The longest prefix of <paramref name="text"/> that fits, cut at a line break when one is near.</summary>
-    private string Fit(string text, long budget)
-    {
-        if (budget <= 0) return string.Empty;
-        int low = 0, high = text.Length;
-        while (low < high)
-        {
-            var middle = (low + high + 1) / 2;
-            if (Tokens(text[..middle]) <= budget) low = middle;
-            else high = middle - 1;
-        }
-        var cut = text[..low];
-        var line = cut.LastIndexOf('\n');
-        return line > cut.Length * 3 / 4 ? cut[..line] : cut;
-    }
 }

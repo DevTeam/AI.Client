@@ -19,7 +19,7 @@
         {
             <details class="settings-disclosure">
                 <summary class="settings-row">
-                    <span class="settings-row-text"><span class="settings-row-label">Project context</span><span class="settings-row-hint @(layer.Truncated ? "instruction-budget-over" : null)">@(layer.Truncated ? "Some content omitted: over budget" : "What these instructions add, as saved")</span></span>
+                    <span class="settings-row-text"><span class="settings-row-label">Project context</span><span class="settings-row-hint @(layer.Truncated || layer.Tokens > layer.BudgetTokens ? "instruction-budget-over" : null)">@(layer.Truncated ? "An instruction file exceeded the read limit" : layer.Tokens > layer.BudgetTokens ? "Rules kept in full: exceed the recommended budget" : "What these instructions add, as saved")</span></span>
                     <span class="settings-row-value">@layer.Tokens / @layer.BudgetTokens</span>
                     <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                 </summary>
@@ -34,7 +34,7 @@
         }
         <details class="settings-disclosure">
             <summary class="settings-row">
-                <span class="settings-row-text"><span class="settings-row-label">What the model sees</span><span class="settings-row-hint">System instructions for the next run, in order</span></span>
+                <span class="settings-row-text"><span class="settings-row-label">What the model sees</span><span class="settings-row-hint">Project or default connection; chats can override it</span></span>
                 @if (_preview is { } total) { <span class="settings-row-value">@total.TotalTokens tokens</span> }
                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
             </summary>
@@ -42,12 +42,18 @@
             @if (_previewError is not null) { <div class="settings-row" role="status"><span class="settings-row-hint">@_previewError</span></div> }
             @if (_preview is { } preview)
             {
+                @if (preview.Profile is not null)
+                {
+                    <div class="settings-row">
+                        <span class="settings-row-text"><span class="settings-row-label">@preview.Profile context profile</span><span class="settings-row-hint">Window @preview.ContextWindowTokens · Instructions @preview.InstructionBudgetTokens · Tools up to @preview.ToolBudgetTokens tokens</span></span>
+                    </div>
+                }
                 @foreach (var item in preview.Layers)
                 {
                     <details class="settings-disclosure model-context-layer">
                         <summary class="settings-row">
                             <span class="settings-row-label">@item.Title</span>
-                            <span class="settings-row-value">@item.Tokens / @item.BudgetTokens@(item.Truncated ? " · cut" : string.Empty)</span>
+                            <span class="settings-row-value">@item.Tokens / @item.BudgetTokens@(item.Truncated ? " · reduced" : string.Empty)</span>
                             <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                         </summary>
                         <pre>@item.Content</pre>

@@ -23,6 +23,14 @@ public sealed class ToolCatalogRegistry : IToolCatalogRegistry
             ? entry.Pinned.Keys.ToHashSet(StringComparer.Ordinal)
             : new HashSet<string>(StringComparer.Ordinal);
 
+    public IReadOnlySet<string> ConsumePinned(ToolRunContext run)
+    {
+        if (!_entries.TryGetValue(Key.Of(run), out var entry)) return new HashSet<string>(StringComparer.Ordinal);
+        var names = entry.Pinned.Keys.ToHashSet(StringComparer.Ordinal);
+        foreach (var name in names) entry.Pinned.TryRemove(name, out _);
+        return names;
+    }
+
     public IReadOnlyList<ToolCatalogMatch> SearchAndPin(ToolRunContext run, string query, int limit)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
@@ -40,6 +48,8 @@ public sealed class ToolCatalogRegistry : IToolCatalogRegistry
             .Take(Math.Clamp(limit, 1, 8))
             .Select(item => item.Tool)
             .ToArray();
+        // All searches in this step contribute to the next selection. Its consumer releases the
+        // priorities; actual protocol calls are protected separately by the context policy.
         foreach (var tool in matches) entry.Pinned.TryAdd(tool.ModelDefinition.Name, 0);
         return matches.Select(tool => new ToolCatalogMatch(tool.ModelDefinition.Name,
             Short(tool.ModelDefinition.Description), tool.ServerId.ToString())).ToArray();

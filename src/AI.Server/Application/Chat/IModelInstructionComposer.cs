@@ -1,6 +1,7 @@
 namespace AI.Application.Chat;
 
 using Tools;
+using Contracts.Settings;
 
 /// <param name="Messages">The leading instructions followed by the conversation.</param>
 /// <param name="Trailing">
@@ -21,7 +22,8 @@ public sealed record ModelInstructionComposition(
 /// </summary>
 public interface IModelInstructionComposer
 {
-    ModelInstructionComposition Compose(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context);
+    ModelInstructionComposition Compose(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context,
+        ConnectionSettings? connection = null);
     void Acknowledge(ToolRunContext run, ModelInstructionComposition composition);
 }
 

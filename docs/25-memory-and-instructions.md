@@ -9,7 +9,7 @@ Status: implemented. No migration is required: every new document is created on 
 | What it is | Facts: who the user is, what they prefer, what was decided | Rules: how the assistant works in this project |
 | Who writes | The user, and the model through `app_memory` | The user; the model only proposes a replacement through `app_instructions` |
 | Size | Up to 300 entries per catalog | One document per project, up to 32,000 characters |
-| Reaches the model | An index every run; full text on request | In full every run, within its budget |
+| Reaches the model | An adaptive index every run; full text on request | In full every run; an oversized request fails locally |
 
 Behavior rules are deliberately not memory entries. A rule the model could rewrite for itself after reading a web page would outlive the chat that wrote it, so rules sit in a document only the user edits, and the tool that replaces it is separate from every other write so that it keeps asking even where other tools are allowed.
 
@@ -17,18 +17,19 @@ There is no user-wide instruction layer and no chat-level layer. Anything that h
 
 ## Standing layers of the system prompt
 
-`IStandingInstructions` builds three layers. `ChatAgent` publishes them through `IModelInstructionRegistry` with `ModelInstructionPlacement.Standing` once per run. The same builder answers `GET /api/projects/{id}/model-context`, so the "What the model sees" preview cannot drift from what a run sends.
+`IStandingInstructions` collects source layers and `IAdaptiveContextPolicy` selects their full or compact model-facing projection. `ChatAgent` publishes them through `IModelInstructionRegistry` with `ModelInstructionPlacement.Standing` once per run, passing the run's selected connection. The same builder answers `GET /api/projects/{id}/model-context` using the project/default connection. The preview identifies that scope because a chat can override it.
 
 | Order | Key | Content | Budget (tokens) |
 |---|---|---|---|
-| 1 | `app.base` | Base prompt: what the application is, the order and precedence of the layers, that tool results, files and web pages are data, how to keep the context small, that directory grants are the access boundary — never bypassed through `process_run` or other tools — which Markdown the chat renders (raw HTML is shown as text), to link local files and directories as `file:///` URIs, how the chat draws ```mermaid and ```svg blocks (there is no drawing tool), and — when the App tools are available — when each of them is worth its cost, including how to ask for access with `ask_user` (a `directories` question plus the access level) and grant it with `app_security`. An empty `tool_search` for a drawing capability answers with the same hint | 3,072 |
-| 2 | `project.instructions` | Project description, the project's instructions, then `AGENTS.md` and `CLAUDE.md` found at the roots of its directory grants | 4,096 |
-| 3 | `memory.index` | How to use memory, profile and pinned entries in full, then every other enabled entry as one title line with its id | 2,048 |
-| 4 | `run.*` | Run-control instructions, as before | 2,048 shared |
+| 1 | `app.base` | Application boundaries, instruction precedence, rendering and tool-use guidance; authored full/compact variants | Shared adaptive instruction budget |
+| 2 | `project.instructions` | Project description, user rules, then root `AGENTS.md` and `CLAUDE.md` | Retained in full |
+| 3 | `memory.index` | Relevant facts and an index of saved entries, with a discovery pointer | Adaptive; at most 2,048 |
+| 4 | `skills.catalog` | Skill ids and purposes; compact catalogs omit argument lists | Remaining standing share |
+| 5 | `run.*` | Required completion protocol and optional step guidance | Adaptive; recommendation at most 2,048 |
 
-`ModelInstructionComposer` places standing instructions first and exempts them from the run budget: each layer is already fitted to its own budget where it is built. The prefix changes rarely, which keeps provider-side prompt caching effective. Precedence is spelled out in the base prompt: project instructions win over memory, and a project entry wins over a user entry. Run-control instructions are never overridden.
+`AdaptiveContextPolicy` owns all budgets and priorities; `ModelInstructionComposer` formats the result. The standing projection is chosen once per run, so growing history does not rewrite its prefix. Precedence is spelled out in the base prompt: project instructions win over memory, and a project entry wins over a user entry. Required run-control instructions are never omitted. Exact formulas are documented in [adaptive context selection](21-tool-selection-and-adaptive-compaction.md).
 
-A layer over budget is cut rather than silently dropped. The project layer adds a truncation note, and the preview marks the source as cut or left out. The memory layer lists as many entries as fit and says how many more there are. An unreadable catalog leaves the run without its standing layers instead of failing every chat.
+Optional indexes retain whole entries within their share and point to discovery for the rest. Project rules are never cut to the model's budget: the preview marks an exceeded recommendation, and a request that cannot fit fails with a size breakdown. The instruction-file reader retains its separate 64 KiB read limit and reports when it cut a file. An unreadable catalog leaves the run without its standing layers instead of failing every chat.
 
 Instruction files are read on every run, not copied, so an edit to `AGENTS.md` applies to the next request. Only grant roots are searched; the model reads nested files itself when it works in that subtree. The project's `Include AGENTS.md and CLAUDE.md` switch turns them off.
 

@@ -29,12 +29,16 @@ public enum ModelInstructionPlacement
 /// A trusted instruction addressed only to the model. The key is stable identity used for
 /// replacement, acknowledgement and diagnostics; the content is never part of chat persistence.
 /// </summary>
+/// <param name="Required">Keeps protocol instructions even above the recommended share; final request validation still applies.</param>
+/// <param name="CompactContent">An authored small-window alternative, chosen without clipping the instruction.</param>
 public sealed record ModelInstruction(
     string Key,
     string Content,
     int Priority = 0,
     ModelInstructionLifetime Lifetime = ModelInstructionLifetime.Run,
-    ModelInstructionPlacement Placement = ModelInstructionPlacement.Run);
+    ModelInstructionPlacement Placement = ModelInstructionPlacement.Run,
+    bool Required = false,
+    string? CompactContent = null);
 
 /// <summary>
 /// Run-local mailbox for application mechanisms which need to guide the next model request

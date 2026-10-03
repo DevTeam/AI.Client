@@ -314,11 +314,12 @@ in the project, and the model's copy of the message starts with an instruction t
 When the App tools are available, the standing `skills.catalog` layer lists every enabled skill
 in effect for the project: its id, description and parameter names, with `*` marking required ones.
 Only executors the application runs on its own (`chat-reply-suggest`, `chat-tool-risk-assess`) are left out. It follows
-memory, has its own 12,288-token budget and ends with a pointer to `mcp_app__skill_search` when it is
-cut. Its lead tells the model to check the list before acting and when the user changes task, to
+memory and shares the adaptive standing-instruction budget through `IAdaptiveContextPolicy`. Small
+windows use short purposes without parameter lists; the index points to `mcp_app__skill_search`
+for the rest. Its lead tells the model to check the list before acting and when the user changes task, to
 run a fitting skill before other tools even for requests that look simple, and to run only listed
-or user-named ids. `skill_search` and `run_skill` are always in the request's tool schema, so a skill from the catalog
-runs without a `tool_search`.
+or user-named ids. `skill_search` and `run_skill` compete for the schema budget like other task
+capabilities; omitted ones can be discovered through `tool_search`.
 
 A playbook's instructions stay in the conversation as the `mcp_app__run_skill` result. Before every model
 step `ChatAgent` adds the run instruction `run.active-skill` naming the latest playbook loaded within
@@ -340,8 +341,10 @@ So before the first model step of every interactive turn that starts with a new 
 tools on the chat's own connection, 12 seconds at most. It gets the message, the end of the
 previous answer, the active playbook, the catalog lines and the permitted tools by their first
 sentence, and returns up to two skill ids and eight tool names; unknown ones are dropped. The
-tools, and those the chosen skills declare, are pinned before the tool selector cuts the list, so
-the first step has them without `app_tool_search`.
+tools, and those the chosen skills declare, receive pending discovery priority before the tool
+selector cuts the list. Their admission still depends on the schema budget. The optional routing
+request is checked by `IChatContextPlanner`; a catalogue too large for the connection is skipped,
+leaving discovery to the main chat instead of sending an oversized model request.
 
 When the first skill is a playbook without required parameters, `ChatAgent` loads it itself: it
 persists an `mcp_app__run_skill` call with `parameters: {}` and its result, as if the model had made

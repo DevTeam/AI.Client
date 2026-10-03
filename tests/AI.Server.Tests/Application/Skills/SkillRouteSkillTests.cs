@@ -103,12 +103,21 @@ public class SkillRouteSkillTests
         _requests.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task ShouldSkipAnOversizedRoutingCatalogueOnASmallConnection()
+    {
+        var route = await CreateRouting("{}", window: 4_096).RouteAsync(Run,
+            [new ChatCompletionMessage("user", "Summarize")], [], TestContext.Current.CancellationToken);
+        route.ShouldBeNull();
+        _requests.ShouldBeEmpty();
+    }
+
     private ToolRunContext Run => new(_projectId, _chatId, _chatId, true);
 
     private static AgentTool Tool(string name, string description) =>
         new(new ChatToolDefinition(name, description, JsonDocument.Parse("{}").RootElement), null!, Guid.Empty, name, "");
 
-    private SkillRouting CreateRouting(string answer, bool routeSkills = true)
+    private SkillRouting CreateRouting(string answer, bool routeSkills = true, long? window = null)
     {
         var now = DateTimeOffset.UtcNow;
         var chats = new Mock<IChatService>(MockBehavior.Strict);
@@ -119,7 +128,7 @@ public class SkillRouteSkillTests
         var settings = new Mock<IGlobalSettingsRepository>(MockBehavior.Strict);
         settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GlobalSettings([new ConnectionSettings(_connectionId, "Main", "https://example.test/v1",
-                "test-model", true, true, false)], [], []) { ChatAutomation = new ChatAutomationSettings(RouteSkills: routeSkills) });
+                "test-model", true, true, false, ContextWindowTokens: window)], [], []) { ChatAutomation = new ChatAutomationSettings(RouteSkills: routeSkills) });
         var secrets = new Mock<IGlobalSecretStore>(MockBehavior.Strict);
         secrets.Setup(item => item.GetAsync("connection", _connectionId, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
         var completion = new Mock<IChatCompletionClient>(MockBehavior.Strict);
@@ -127,8 +136,11 @@ public class SkillRouteSkillTests
             .Returns((ChatCompletionRequest request, CancellationToken token) => Respond(request, answer, token));
         var catalog = new BuiltInSkillCatalog();
         var guide = new SkillGuide(catalog);
+        var estimator = new ContextTokenEstimator();
+        var limits = new ConnectionContextLimitsResolver();
         var skill = new SkillRouteSkill(catalog, guide, chats.Object, projects.Object, settings.Object, secrets.Object,
-            completion.Object, NullLogger<SkillRouteSkill>.Instance);
+            completion.Object, new ChatContextPlanner(estimator, new ChatContextCompactor(estimator, new ContextSummaryWriter()),
+                limits, new AdaptiveContextPolicy(estimator, limits)), NullLogger<SkillRouteSkill>.Instance);
         return new SkillRouting(new SkillRunner(catalog, null!, skillRouteSkill: skill), guide, settings.Object);
     }
 

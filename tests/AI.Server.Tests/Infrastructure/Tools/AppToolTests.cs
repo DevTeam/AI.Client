@@ -1210,6 +1210,31 @@ public sealed class AppToolTests
         (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.ArchiveOperationId.ShouldBe(arguments.operationId);
     }
 
+    [Theory]
+    [InlineData(4_096)]
+    [InlineData(8_192)]
+    [InlineData(16_384)]
+    [InlineData(131_072)]
+    public async Task ShouldFitActualAppToolSchemasWithAdaptiveInstructions(long window)
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var connection = new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.test/v1", "model", true, true, false,
+            ContextWindowTokens: window, ReservedOutputTokens: 1_000);
+        var preview = await fixture.Standing.BuildAsync(fixture.ProjectId, true, TestContext.Current.CancellationToken, connection);
+        var estimator = new ContextTokenEstimator();
+        var resolver = new ConnectionContextLimitsResolver();
+        var policy = new AdaptiveContextPolicy(estimator, resolver);
+        ChatCompletionMessage[] messages = [.. preview.Layers.Where(layer => layer.Content.Length > 0)
+            .Select(layer => new ChatCompletionMessage("system", layer.Content)), new("system", "Finish the task with tools and a verified answer."), new("user", "Hello")];
+        var selection = policy.Choose(connection, "Hello", messages, session.Tools);
+        var plan = new ChatContextPlanner(estimator, new ChatContextCompactor(estimator, new ContextSummaryWriter()), resolver, policy)
+            .Plan(connection, "model", messages, selection.Tools.Select(tool => tool.ModelDefinition).ToArray());
+        plan.Fits.ShouldBeTrue();
+        selection.SelectedTokens.ShouldBeLessThanOrEqualTo(selection.BudgetTokens);
+        selection.Tools.ShouldContain(tool => tool.OriginalName == "tool_search");
+    }
+
     private sealed class AppFixture : IAsyncDisposable
     {
         private readonly AppToolsComposition _composition;

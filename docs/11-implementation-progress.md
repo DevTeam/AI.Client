@@ -303,3 +303,34 @@ real variables in the theme blocks. The solution build was not run to a green st
 fails on pre-existing errors in unrelated, uncommitted work (`AppGuide*` / `Home.Guide.cs` and a
 `CA1827` in `AppAskUserTool.cs`), none of which this increment touches. Both files changed here are
 static assets, so nothing in the compiled project depends on them.
+
+## 2026-10-03 — adaptive context budgets and stable request selection
+
+Implemented [ADR-009](decisions/ADR-009-adaptive-context-policy.md). A single transient
+`AdaptiveContextPolicy`, behind `IAdaptiveContextPolicy`, owns all window-dependent budgets,
+instruction variants and admission, tool ranking and carried-set replacement. The independent
+selector/priority/enrichment services were removed. Standing instructions are prepared once per
+run using its actual connection, and step guidance stays trailing.
+
+Small windows receive compact application guidance and bounded memory/skill indexes. User rules
+and the current request remain intact; impossible requests report the full cost breakdown and
+avoid a futile LLM summary. Discovery priorities combine searches in one batch and are consumed
+by the next selection. Tool schemas no longer embed a changing omitted-name catalogue. Tool sets
+preserve their order while fitting, and definitions covered by an automatic checkpoint are
+reselected before final planning. Optional skill routing is skipped when its catalogue cannot fit.
+
+The project preview shows the profile, resolved window and recommended instruction/tool shares
+using existing settings rows and styles. It identifies the project/default connection scope and
+shows oversized user rules as retained. The context, instruction, memory and skills documents
+were updated together with the new ADR.
+
+Checks: solution build with `--no-restore -m:1 /nodeReuse:false`, zero warnings/errors; 815 Server
+tests in the final serial run (814 passed, one Unix-permissions skip); all 427 Web tests passed;
+`git diff --check` passed. Tests include complete requests with generated App MCP schemas across
+4K–128K windows, real chat orchestration on small windows, reserve changes, priorities, checkpoint
+release, discovery batches and cached-prefix stability. No external LLM is used.
+
+Verification note: one parallel Server run failed the existing subtask transcript test because
+its generated MCP schema unexpectedly required `progress`. That test passed in isolation and
+the complete final serial suite passed. The intermittent parallel schema issue was not changed
+by this increment.

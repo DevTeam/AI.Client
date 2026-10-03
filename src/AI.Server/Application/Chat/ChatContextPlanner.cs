@@ -9,7 +9,7 @@ using Contracts.Settings;
 public sealed class ChatContextPlanner(
     IContextTokenEstimator estimator,
     IChatContextCompactor compactor,
-    IConnectionContextLimitsResolver limitsResolver) : IChatContextPlanner
+    IConnectionContextLimitsResolver limitsResolver, IAdaptiveContextPolicy policy) : IChatContextPlanner
 {
     /// <summary>
     /// When a compaction is needed and the run keeps a memory of it, the request is compacted to
@@ -50,7 +50,9 @@ public sealed class ChatContextPlanner(
 
         var core = PlanCore(connection, messages, tools, trailing, memory);
         var compaction = core.Compaction;
-        if (estimator.EstimateMessages(compaction.Messages) > core.ConversationLimit && summarizer is not null)
+        if (estimator.EstimateMessages(compaction.Messages) > core.ConversationLimit && summarizer is not null
+            && estimator.EstimateMessages(messages.Where(message => message.Role == "system")
+                .Concat(messages.Where(message => message.Role == "user").TakeLast(1)).ToArray()) <= core.ConversationLimit)
         {
             compaction = await compactor.CompactWithLlmAsync(messages, Target(core.ConversationLimit, memory),
                 summaryTargetTokens, summarizer, cancellationToken);
@@ -68,15 +70,10 @@ public sealed class ChatContextPlanner(
         ContextCompactionMemory? memory)
     {
         var effective = limitsResolver.Resolve(connection);
-        var limits = new ChatContextLimits(
-            effective.ContextWindowTokens,
-            effective.ReservedOutputTokens,
-            ProtocolOverheadTokens: 256,
-            SafetyMarginTokens: 1_024);
+        var budget = policy.Resolve(connection);
         var toolTokens = estimator.EstimateTools(tools);
-        var fixedCost = Add(limits.ReservedOutputTokens, toolTokens,
-            limits.ProtocolOverheadTokens, limits.SafetyMarginTokens);
-        var inputLimit = Math.Max(0, limits.ContextWindowTokens - Math.Min(limits.ContextWindowTokens, fixedCost));
+        var fixedCost = Add(budget.ReservedOutputTokens, toolTokens, budget.OverheadTokens);
+        var inputLimit = Math.Max(0, budget.ContextWindowTokens - Math.Min(budget.ContextWindowTokens, fixedCost));
         // The trailing note is never compacted: it is what this step is asked to do.
         var conversationLimit = Math.Max(0, inputLimit - TrailingTokens(trailing));
         ContextCompactionResult compaction;
@@ -95,14 +92,14 @@ public sealed class ChatContextPlanner(
             compaction = compactor.Compact(messages, Target(conversationLimit, memory));
             memory?.Remember(messages, compaction);
         }
-        return new PlanBasis(effective, limits, inputLimit, conversationLimit, toolTokens, compaction, trailing);
+        return new PlanBasis(effective, budget, inputLimit, conversationLimit, toolTokens, compaction, trailing);
     }
 
     /// <summary>A run that remembers its compaction compacts below the limit, so later steps can reuse it.</summary>
     private static long Target(long limit, ContextCompactionMemory? memory) =>
         memory is null ? limit : limit / 100 * CompactionSlackPercent;
 
-    private sealed record PlanBasis(ResolvedConnectionContextLimits Effective, ChatContextLimits Limits,
+    private sealed record PlanBasis(ResolvedConnectionContextLimits Effective, AdaptiveContextBudget Budget,
         long InputLimit, long ConversationLimit, long ToolTokens, ContextCompactionResult Compaction,
         string? Trailing);
 
@@ -140,7 +137,7 @@ public sealed class ChatContextPlanner(
             messages,
             estimator.EstimateMessages(compaction.Messages.Where(message => message.Role == "system").ToArray())
             + TrailingTokens(basis.Trailing),
-            Add(basis.Limits.ProtocolOverheadTokens, basis.Limits.SafetyMarginTokens),
+            basis.Budget.OverheadTokens,
             compaction.Summary);
     }
 

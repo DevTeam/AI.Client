@@ -11,7 +11,7 @@ public sealed class WorkspaceInstructionFileReader : IInstructionFileReader
 {
     public static readonly IReadOnlyList<string> FileNames = ["AGENTS.md", "CLAUDE.md"];
 
-    /// <summary>More than any layer budget holds; the budget, not this limit, normally cuts a long file.</summary>
+    /// <summary>Bounds file reads independently of the model window; the preview reports a cut file.</summary>
     private const int ReadLimitBytes = 64 * 1024;
 
     public async Task<IReadOnlyList<InstructionFile>> ReadAsync(IReadOnlyList<string> roots, CancellationToken cancellationToken)

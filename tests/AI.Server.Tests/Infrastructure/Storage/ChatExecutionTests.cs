@@ -1003,6 +1003,27 @@ public sealed class ChatExecutionTests
             .ShouldNotContain(message => message.Content.Contains("(deterministic;", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(4_096)]
+    [InlineData(8_192)]
+    [InlineData(16_384)]
+    public async Task ShouldRunWithAdaptiveInstructionsOnSmallConnections(long window)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetConnectionLimitsAsync(window, 1_000);
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Hello"));
+        var call = await fixture.NextCallAsync();
+        var estimator = new ContextTokenEstimator();
+        var messages = call.Request.ContextMessages.ShouldNotBeNull();
+        var tools = call.Request.Tools.ShouldNotBeNull();
+        (estimator.EstimateMessages(messages) + estimator.EstimateTools(tools) + 1_000 + 1_280)
+            .ShouldBeLessThanOrEqualTo(window);
+        messages.ShouldContain(message => message.Role == "system" && message.Content.Contains("Discover omitted capabilities", StringComparison.Ordinal));
+        tools.ShouldNotBeEmpty();
+        call.Answer.SetResult("Hello");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
     [Fact]
     public async Task LongHistoryShouldBeCompactedOnlyForTransport()
     {

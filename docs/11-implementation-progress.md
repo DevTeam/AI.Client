@@ -413,3 +413,21 @@ serial Server suite: 875 tests, 874 passed and one Unix-permissions skip on Wind
 tests passed, including rendering for new and legacy usage. Regression tests cover unknown-model
 tokenization, denominator persistence/legacy exclusion, model-connection isolation, progressive
 discovery at 32K/128K/250K, history pressure and permission/schema changes. No external LLM was used.
+
+## 2026-10-03 — current tool names and recovery after compaction
+
+Fixed discovery/recovery prompts that referenced the nonexistent `app_tool_search` instead of
+the provider-facing `mcp_app__tool_search`. `IToolDiscoveryGuidance` is one transient Pure.DI
+service for current-request and unavailable-call guidance. It references only offered control
+schemas, keeps current names authoritative over historical messages/summaries, and is refreshed
+after final selection/checkpoints before the planner gate. MCP metadata uses the shared discovery
+name; compact guidance makes availability explicit. Summary/merge prompts preserve historical
+tool names as evidence rather than a current capability catalogue. Unknown calls still receive
+paired errors and are never translated into executable aliases.
+
+Checks: solution build, zero warnings/errors; final serial Server suite: 884 tests, 883 passed
+and one Unix-permissions skip; all 430 Web tests passed; `git diff --check` passed. Two
+composition-backed cases build actual compacted history containing a stale `read_file` name,
+reject that call without invoking the tool session, and continue through offered definitions,
+with or without discovery. Unit/MCP tests cover exact names, query/limit guidance, missing
+control schemas and the full-catalogue case. Tests use scripted completions, not a live Gemma run.

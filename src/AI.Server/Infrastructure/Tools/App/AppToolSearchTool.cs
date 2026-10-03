@@ -1,6 +1,7 @@
 namespace AI.Mcp.App;
 
 using AI.Application.Tools;
+using AI.Contracts.Tools;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -17,7 +18,7 @@ public sealed class AppToolSearchTool(IToolCatalogRegistry catalog) : IAppTool
             new McpServerToolCreateOptions
             {
                 SerializerOptions = reply.Json,
-                Description = "Call app_tool_search when the capability needed for the user's task is absent from the visible tool list. "
+                Description = $"Call {ToolRef.ToolSearchName} when the capability needed for the user's task is absent from the visible tool list. "
                               + "Search with a short English capability description. Tools may have been omitted from this turn's schema "
                               + "budget; matching permitted tools are prioritized for the next model step when their schemas fit. "
                               + "Search narrowly if not all matches fit. Do not guess an omitted tool name."

@@ -22,6 +22,9 @@ public sealed record ToolRef(
     /// <summary>Prefix for the Host's own server, whose tools read and change the application's data.</summary>
     public const string AppPrefix = "mcp_app__";
 
+    /// <summary>The provider-facing name of the application's permitted-tool discovery endpoint.</summary>
+    public const string ToolSearchName = AppPrefix + "tool_search";
+
     /// <summary>Prefix for the optional C# scripting server, which only exists when the user opted in.</summary>
     public const string CSharpPrefix = "mcp_csharp__";
 

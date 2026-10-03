@@ -1024,6 +1024,62 @@ public sealed class ChatExecutionTests
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StaleToolNamesAfterCompactionShouldRecoverThroughOnlyOfferedTools(bool offerSearch)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        fixture.Tools.OfferToolSearch = offerSearch;
+        if (offerSearch) await fixture.AllowToolSearchAsync();
+        var instructions = await fixture.StandingInstructions.BuildAsync(fixture.ProjectId, true, CancellationToken.None);
+        await fixture.SetConnectionLimitsAsync(instructions.TotalTokens + 16_000, 2_000);
+        fixture.Completion.SummaryAnswer = "Goal: inspect architecture. Historical evidence: an old plan named mcp_built_in__read_file. Remaining work: read README.";
+        for (var turn = 0; turn < 4; turn++)
+        {
+            await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(),
+                "Study architecture " + new string((char)('a' + turn), 10_000)));
+            (await fixture.NextCallAsync()).Answer.SetResult("Continue the investigation.");
+            await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        }
+        fixture.Completion.SummaryRequests.ShouldBeGreaterThan(0);
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Continue architecture analysis"));
+        var stale = await fixture.NextCallAsync();
+        stale.Request.ContextMessages!.ShouldContain(message => message.IsContextSummary
+            && message.Content.Contains("mcp_built_in__read_file", StringComparison.Ordinal));
+        stale.Request.Tools!.ShouldNotContain(tool => tool.Name == "mcp_built_in__read_file");
+        stale.Request.ContextMessages!.ShouldContain(message => message.ForModel.Contains("Call only exact tool names shown in the current request", StringComparison.Ordinal));
+        stale.ToolCalls = [new("stale-call", "mcp_built_in__read_file", "{\"path\":\"README.md\"}")];
+        stale.Answer.SetResult("");
+        var recovery = await fixture.NextCallAsync();
+        fixture.Tools.CallCount.ShouldBe(0);
+        var error = recovery.Request.ContextMessages!.Single(message => message.ToolCallId == "stale-call").ForModel;
+        error.ShouldContain("There is no tool named");
+        error.ShouldContain("earlier messages and summaries may be stale");
+        error.ShouldNotContain("call app_tool_search");
+        if (offerSearch)
+        {
+            recovery.Request.Tools!.ShouldContain(tool => tool.Name == ToolRef.ToolSearchName);
+            error.ShouldContain("call " + ToolRef.ToolSearchName);
+            recovery.ToolCalls = [new("search-call", ToolRef.ToolSearchName, "{\"query\":\"read text file\",\"limit\":1}")];
+            recovery.Answer.SetResult("");
+            recovery = await fixture.NextCallAsync();
+            recovery.Request.ContextMessages!.Single(message => message.ToolCallId == "search-call").ForModel
+                .ShouldContain("mcp_built_in__process_run");
+        }
+        else
+        {
+            error.ShouldContain("No tool-discovery tool is offered");
+            error.ShouldNotContain(ToolRef.ToolSearchName);
+        }
+        recovery.ToolCalls = [new("read-call", "mcp_built_in__process_run", "{}")];
+        recovery.Answer.SetResult("");
+        (await fixture.NextCallAsync()).Answer.SetResult("Architecture inspection continued with the available tools.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        fixture.Tools.CallCount.ShouldBe(offerSearch ? 2 : 1);
+    }
+
     [Fact]
     public async Task LongHistoryShouldBeCompactedOnlyForTransport()
     {
@@ -1896,6 +1952,12 @@ public sealed class ChatExecutionTests
                 [new Contracts.Projects.McpServerSettings(DefaultMcpServer.Id, "Default", "Stdio", true)],
                 [new ToolPolicySettings(DefaultMcpServer.Id, "process_run", "schema", decision, maxCalls, timeoutSeconds)]), CancellationToken.None);
         }
+        public async Task AllowToolSearchAsync()
+        {
+            var global = await Settings.LoadAsync(CancellationToken.None);
+            await Settings.SaveAsync(global with { ToolPolicies = [.. global.ToolPolicies,
+                new McpToolPolicySettings(AppMcpServer.Id, "tool_search", "schema", "Allow", 20, 120)] }, CancellationToken.None);
+        }
         public async Task<Call> NextCallAsync() => await Completion.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
 
         /// <summary>
@@ -1991,12 +2053,19 @@ public sealed class ChatExecutionTests
             AppMcpServer.Id, "run_skill", "schema");
 
         public bool OfferRunSkill { get; set; }
+        public bool OfferToolSearch { get; set; }
+
+        private static readonly AgentTool ToolSearch = new(
+            new(ToolRef.ToolSearchName, "Discover permitted tools", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic(ToolRef.ToolSearchName, "tool_search", "Discover permitted tools", JsonSerializer.Deserialize<JsonElement>("{}")),
+            AppMcpServer.Id, "tool_search", "schema");
 
         /// <summary>The arguments of every run_skill call, in order.</summary>
         public List<string> SkillRuns { get; } = [];
 
         public IReadOnlyList<AgentTool> Tools =>
-            [ProcessRun, .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>()];
+            [ProcessRun, .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
+                .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>()];
 
         /// <summary>Set to route an ask_user call to the run that is waiting on it.</summary>
         public IUserPromptBroker? Broker { get; set; }
@@ -2025,6 +2094,9 @@ public sealed class ChatExecutionTests
         public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
         {
             CallCount++;
+            if (tool.OriginalName == "tool_search")
+                return _codec.Read("{\"structuredContent\":{\"tools\":[{\"name\":\"mcp_built_in__process_run\","
+                    + "\"description\":\"Read files through a shell command\"}],\"guidance\":\"Use an offered definition from the current request.\"}}");
             if (tool.OriginalName == "run_skill")
             {
                 SkillRuns.Add(arguments);

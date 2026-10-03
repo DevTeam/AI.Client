@@ -58,6 +58,8 @@ public sealed class AppGuideEndpoints(AppGuideTopics topics, AppGuideLanguageCon
                 + "timeoutSeconds=30, timeoutBehavior='cancel', with Finish recommended; no answer ends the completed tour. "
                 + "At such a boundary a free-text choice can still wait without a timer. Do not choose or advance while awaiting an answer. "
                 + "Teach visually through app_navigate comments beside relevant controls, not chat messages. "
+                + "Use aiclient://navigate Markdown shortcuts in visible step comments and question text, including a useful link in the final takeaway. "
+                + "Hidden service-chat messages are not visible. Links are optional navigation, never Continue, an answer or authorization to change anything. "
                 + "Chat text may contain only brief progress markers and one short completion phrase. "
                 + "Put takeaways in the final visible step. Follow these skill instructions:\n\n" + skill.Content;
             var snapshot = await runs.SubmitAsync(request.ProjectId, chat.Id,

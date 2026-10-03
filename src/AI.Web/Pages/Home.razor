@@ -949,19 +949,19 @@
                   TargetLabel="@(GuideTargets.Find(guideStep.Target ?? "project")?.Label ?? "this control")"
                   Busy="@_guideStepBusy" Paused="@_guidePaused" TargetUsed="@_guideTargetUsed"
                   SecondsLeft="@Math.Max(0, (int)Math.Ceiling((_guideStepDeadlineAt - DateTimeOffset.UtcNow).TotalSeconds))" AutoContinue="@_guideStepAutoContinue"
-                  OnContinue="ContinueGuideStepAsync" OnStop="StopGuideStepAsync" />
+                  OnContinue="ContinueGuideStepAsync" OnStop="StopGuideStepAsync" OnNavigateApp="OpenAppNavigationLinkAsync" />
 }
 @if (OutsideChatQuestion is { PendingPrompt: { } outsidePrompt } outsideRun)
 {
     <aside class="app-guide-question" aria-label="Question outside chat">
         <span class="app-guide-question-source">@(outsideRun.IsGuide ? "Application guide" : "Assistant · question outside chat")</span>
-        <UserPromptCard @key="outsidePrompt.Id" Prompt="@outsidePrompt" OnAnswer="response => AnswerOutsideChatQuestionAsync(outsideRun, response)" />
+        <UserPromptCard @key="outsidePrompt.Id" Prompt="@outsidePrompt" OnNavigateApp="OpenAppNavigationLinkAsync" OnAnswer="response => AnswerOutsideChatQuestionAsync(outsideRun, response)" />
     </aside>
 }
 else if (_guideInvitation is { } guideInvitation)
 {
     <aside class="app-guide-question" aria-label="Application guide invitation">
-        <UserPromptCard @key="guideInvitation.Id" Prompt="@guideInvitation" OnAnswer="AnswerGuideInvitationAsync" />
+        <UserPromptCard @key="guideInvitation.Id" Prompt="@guideInvitation" OnNavigateApp="OpenAppNavigationLinkAsync" OnAnswer="AnswerGuideInvitationAsync" />
     </aside>
 }
 @if (_globalSection is not null)

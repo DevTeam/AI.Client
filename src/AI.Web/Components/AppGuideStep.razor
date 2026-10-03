@@ -6,7 +6,7 @@
         <strong>@Title</strong>
         @if (StepNumber > 0) { <span class="app-guide-step-count">Step @StepNumber</span> }
     </div>
-    <p class="app-guide-step-comment">@(Step.Comment ?? $"Explore {TargetLabel}.")</p>
+    <p class="app-guide-step-comment"><AppNavigationText Text="@(Step.Comment ?? $"Explore {TargetLabel}.")" OnNavigateApp="@OnNavigateApp" /></p>
     @if (Step.Action is "click" or "set_value" or "focus")
     {
         <p class="app-guide-step-detail">@(Step.Action == "set_value" ? $"Set value to “{Step.Value}”" : Step.Action == "focus" ? "Continue to focus this editor." : "Continue to open or activate this control.")</p>
@@ -37,6 +37,7 @@
     [Parameter] public bool AutoContinue { get; set; }
     [Parameter] public EventCallback OnContinue { get; set; }
     [Parameter] public EventCallback OnStop { get; set; }
+    [Parameter] public EventCallback<string> OnNavigateApp { get; set; }
 
     /// <summary>The last seconds before the step stops on its own, so the user can still react.</summary>
     public const int ExpiringSeconds = 5;

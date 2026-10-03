@@ -488,6 +488,7 @@
         @if (SelectedRun is { PendingPrompt: { Presentation: "chat" } prompt } promptRun)
         {
             <UserPromptCard Prompt="prompt"
+                            OnNavigateApp="@OnNavigateApp"
                             OnAnswer="response => RunsApi.AnswerPromptAsync(promptRun.ProjectId, promptRun.ChatId, promptRun.BranchId, response, CancellationToken.None)" />
         }
     }

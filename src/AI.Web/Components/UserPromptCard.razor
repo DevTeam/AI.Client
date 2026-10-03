@@ -4,7 +4,6 @@
 @using AI.Contracts.Runs
 @using AI.Web.FileSystem
 @using AI.Web.Markdown
-@inject IMarkdownRenderer MarkdownRenderer
 @inject IJSRuntime JsRuntime
 @implements IDisposable
 
@@ -20,7 +19,7 @@
                 {
                     <span class="user-prompt-chip">@label</span>
                 }
-                <span>@((MarkupString)MarkdownRenderer.RenderInline(question.Text))</span>
+                <AppNavigationText Text="@question.Text" OnNavigateApp="@OnNavigateApp" />
             </legend>
             @for (var option = 0; option < question.Options.Count; option++)
             {
@@ -199,6 +198,7 @@
 
 @code {
     [Parameter, EditorRequired] public UserPrompt Prompt { get; set; } = default!;
+    [Parameter] public EventCallback<string> OnNavigateApp { get; set; }
 
     /// <summary>Sends the answer; returns false when the prompt is no longer the one being waited on.</summary>
     [Parameter, EditorRequired] public Func<UserPromptResponse, Task<bool>> OnAnswer { get; set; } = default!;

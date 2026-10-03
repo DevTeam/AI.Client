@@ -10,6 +10,20 @@ public class BuiltInSkillCatalogTests
     private static readonly string[] Domains = ["chat", "project", "memory", "skill", "instructions", "code", "git", "devops", "qa", "mermaid", "svg", "settings", "app"];
 
     [Fact]
+    public void ShouldExposeCSharpAndShellExecutionPlaybooks()
+    {
+        var catalog = new BuiltInSkillCatalog();
+        var csharp = catalog.GetById("code-run-csharp").ShouldNotBeNull();
+        csharp.Kind.ShouldBe(SkillKinds.Playbook);
+        csharp.Aliases.ShouldBe(["c#", "cs", "csharp", "cs-run"]);
+        csharp.AllowedTools.ShouldNotBeNull().ShouldContain("cs_run");
+        var shell = catalog.GetById("code-run-shell").ShouldNotBeNull();
+        shell.Kind.ShouldBe(SkillKinds.Playbook);
+        shell.Aliases.ShouldNotBeNull().ShouldContain("powershell");
+        shell.AllowedTools.ShouldNotBeNull().ShouldContain("process_run");
+    }
+
+    [Fact]
     public void ShouldExposeBundledChatRenameInstructions()
     {
         var catalog = new BuiltInSkillCatalog();

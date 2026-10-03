@@ -19,7 +19,7 @@ Skill conventions:
   search, eye, diff, git-branch, fork, message-circle, minimize, list-checks, edit, file, file-text,
   folder, folder-plus, folder-minus, project, package, database, memory, eraser, scroll, book, tag,
   link, globe, languages, mail, users, calendar, clock, chart, image, archive, trash, download,
-  import, export, refresh, settings, cpu, circuit-board, server, network, cloud, cloud-upload,
+  import, export, refresh, settings, skill-import, settings-import-mcp, cpu, circuit-board, server, network, cloud, cloud-upload,
   hard-drive, monitor, smartphone, wifi, workflow, git-merge, git-commit, brackets, regex, binary,
   variable, puzzle, blocks, filter, clipboard, clipboard-check, file-code, file-search, notebook,
   graduation-cap, bookmark, library, table, calculator, chart-line, chart-pie, trending-up, gauge,

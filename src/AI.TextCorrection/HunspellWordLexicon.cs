@@ -1,12 +1,13 @@
 namespace AI.TextCorrection;
 
 using WeCantSpell.Hunspell;
+using Pure.DI;
 using System.Collections.Concurrent;
 
 /// <summary>Embedded Hunspell dictionaries, with the application's technical vocabulary.</summary>
 public sealed class HunspellWordLexicon : IWordLexicon, IWordLexiconPreparation, IWordSuggestions
 {
-    private readonly WordLexicon _applicationVocabulary;
+    private readonly IWordLexicon _applicationVocabulary;
     private readonly Dictionary<string, Lazy<WordList>> _dictionaries;
     private readonly Dictionary<string, ITextDictionaryResource> _sources;
     private readonly ConcurrentDictionary<string, WordList> _prepared = new(StringComparer.Ordinal);
@@ -14,10 +15,10 @@ public sealed class HunspellWordLexicon : IWordLexicon, IWordLexiconPreparation,
     private readonly ConcurrentDictionary<string, char[]> _alphabets = new(StringComparer.Ordinal);
     private readonly IKeyboardLayouts _layouts;
 
-    public HunspellWordLexicon(WordLexicon applicationVocabulary, ITextDictionaries dictionaries)
+    public HunspellWordLexicon([Tag("application")] IWordLexicon applicationVocabulary, ITextDictionaries dictionaries)
         : this(applicationVocabulary, dictionaries, new KeyboardLayouts()) { }
 
-    public HunspellWordLexicon(WordLexicon applicationVocabulary, ITextDictionaries dictionaries, IKeyboardLayouts layouts)
+    public HunspellWordLexicon([Tag("application")] IWordLexicon applicationVocabulary, ITextDictionaries dictionaries, IKeyboardLayouts layouts)
     {
         _layouts = layouts;
         _applicationVocabulary = applicationVocabulary;

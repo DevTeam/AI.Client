@@ -1,3 +1,4 @@
+// DI guide: [Pure.DI conventions](../../docs/30-dependency-injection.md).
 // ReSharper disable UnusedMember.Local
 namespace AI.Server.Tests;
 
@@ -24,10 +25,11 @@ internal sealed class TestServer
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup(kind: CompositionKind.Internal)
+            .Hint(Hint.Comments, "Off")
             .Arg<MemoryFileSystem>("fileSystem")
             .Bind<ITextFileSystem>().To((MemoryFileSystem fileSystem) => fileSystem)
             .Arg<IChatCompletionClient>("completion")
-            .Bind<IGlobalSecretStore>().As(Lifetime.Singleton).To(_ => Mock.Of<IGlobalSecretStore>())
+            .Singleton(() => Mock.Of<IGlobalSecretStore>())
             // Outside ASP.NET nothing supplies Microsoft's loggers.
             .Bind<ILogger<TT>>().To(_ => NullLogger<TT>.Instance);
 }

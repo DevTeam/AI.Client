@@ -34,10 +34,10 @@
 @inject AI.Web.Updates.IUpdateClient Updates
 @inject IReplySuggestionState ReplySuggestions
 @inject AI.Web.Navigation.INavigationCues NavigationCues
-@inject AI.Web.Navigation.AppNavigationLinks NavigationLinks
+@inject AI.Web.Navigation.IAppNavigationLinks NavigationLinks
 @inject AI.Web.Navigation.IAppGuideApi GuideApi
-@inject AI.Contracts.Navigation.AppNavigationTargets GuideTargets
-@inject AI.Contracts.Navigation.AppGuideTopics GuideTopics
+@inject AI.Contracts.Navigation.IAppNavigationTargets GuideTargets
+@inject AI.Contracts.Navigation.IAppGuideTopics GuideTopics
 @inject IChatTipsState ChatTips
 @inject IComposerContextPresentation ContextPresentation
 @inject IClientSettingsService ClientSettings

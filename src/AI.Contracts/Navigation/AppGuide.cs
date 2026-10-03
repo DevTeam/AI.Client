@@ -5,7 +5,13 @@ public sealed record AppGuideStartRequest(Guid ProjectId, string Topic = "basic"
 
 public sealed record AppGuideTopic(string Id, string SkillId, string Title, string Description);
 
-public sealed class AppGuideTopics
+public interface IAppGuideTopics
+{
+    IReadOnlyList<AppGuideTopic> All { get; }
+    AppGuideTopic? Find(string id);
+}
+
+public sealed class AppGuideTopics : IAppGuideTopics
 {
     public IReadOnlyList<AppGuideTopic> All { get; } =
     [

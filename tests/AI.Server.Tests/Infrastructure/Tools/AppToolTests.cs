@@ -1217,14 +1217,14 @@ public sealed class AppToolTests
         /// <summary>Stands in for the run waiting on the question, so the tool can be exercised alone.</summary>
         public TestPromptBroker Broker { get; } = new();
         public Mock<IConnectionModelsResolver> Models { get; } = new(MockBehavior.Strict);
-        public Mock<IGlobalSecretStore> Secrets => Mock.Get(_composition.Resolve<IGlobalSecretStore>());
+        public Mock<IGlobalSecretStore> Secrets => Mock.Get(_composition.Secrets);
 
-        public IProjectService Projects => _composition.Resolve<IProjectService>();
-        public IChatService Chats => _composition.Resolve<IChatService>();
-        public IStandingInstructions Standing => _composition.Resolve<IStandingInstructions>();
-        public IGlobalSettingsService GlobalSettings => _composition.Resolve<IGlobalSettingsService>();
-        private IGlobalSettingsRepository Settings => _composition.Resolve<IGlobalSettingsRepository>();
-        private IToolSessionFactory Sessions => _composition.Resolve<IToolSessionFactory>();
+        public IProjectService Projects => _composition.Projects;
+        public IChatService Chats => _composition.Chats;
+        public IStandingInstructions Standing => _composition.Standing;
+        public IGlobalSettingsService GlobalSettings => _composition.GlobalSettings;
+        private IGlobalSettingsRepository Settings => _composition.Settings;
+        private IToolSessionFactory Sessions => _composition.Sessions;
         public Guid ProjectId { get; private set; }
         public Guid ChatId { get; private set; }
 
@@ -1263,9 +1263,9 @@ public sealed class AppToolTests
             return result.StructuredContent!.Value;
         }
 
-        public ChangeWatch WatchChanges() => new(_composition.Resolve<IAppDataChangeSignal>());
+        public ChangeWatch WatchChanges() => new(_composition.Changes);
 
-        public IAppNavigationSignal Navigation => _composition.Resolve<IAppNavigationSignal>();
+        public IAppNavigationSignal Navigation => _composition.Navigation;
 
         public ValueTask DisposeAsync() => _composition.DisposeAsync();
     }

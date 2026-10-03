@@ -18,12 +18,12 @@ public sealed record AppNavigateResult(bool Opened, Guid ProjectId, Guid? ChatId
 /// </summary>
 [McpServerToolType]
 public sealed class AppNavigateTool(IProjectService projects, IChatService chats, IAppNavigationSignal navigation,
-    AppNavigationTargets targets, Func<IGuideChats> guideChats) : IAppTool
+    IAppNavigationTargets targets, Func<IGuideChats> guideChats) : IAppTool
 {
     public McpServerTool Create(ToolRunContext run, IAppToolReply reply) =>
         new Session(projects, chats, navigation, targets, guideChats, run, reply).Create();
 
-    private sealed class Session(IProjectService projects, IChatService chats, IAppNavigationSignal navigation, AppNavigationTargets targets,
+    private sealed class Session(IProjectService projects, IChatService chats, IAppNavigationSignal navigation, IAppNavigationTargets targets,
         Func<IGuideChats> guideChats, ToolRunContext run, IAppToolReply reply)
     {
         public McpServerTool Create() => McpServerTool.Create(NavigateAsync,

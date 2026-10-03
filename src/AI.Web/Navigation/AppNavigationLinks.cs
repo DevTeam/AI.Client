@@ -4,7 +4,12 @@ using System.Text.RegularExpressions;
 using AI.Contracts.Navigation;
 
 /// <summary>Parses transcript shortcuts. Links can reveal UI or navigate, never mutate controls.</summary>
-public sealed partial class AppNavigationLinks(AppNavigationTargets targets)
+public interface IAppNavigationLinks
+{
+    AppNavigation? Parse(string href, Guid? currentProjectId);
+}
+
+public sealed partial class AppNavigationLinks(IAppNavigationTargets targets) : IAppNavigationLinks
 {
     public AppNavigation? Parse(string href, Guid? currentProjectId)
     {

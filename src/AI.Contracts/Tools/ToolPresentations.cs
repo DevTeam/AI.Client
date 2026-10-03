@@ -12,7 +12,7 @@ using System.Text.Json;
 /// that nothing reaches for a global instance behind the container's back.
 /// </remarks>
 public sealed class ToolPresentations(
-    IToolPresentationAdapter genericAdapter,
+    IGenericToolPresentationAdapter genericAdapter,
     IReadOnlyCollection<IToolPresentationAdapter> adapters)
     : IToolPresentations
 {

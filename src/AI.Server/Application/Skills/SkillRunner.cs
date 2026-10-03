@@ -2,15 +2,16 @@ namespace AI.Application.Skills;
 
 using System.Text.Json;
 using Json.Schema;
+using Pure.DI;
 using AI.Contracts.Skills;
 using AI.Contracts.Usage;
 using AI.Application.Usage;
 
 /// <summary>Validates a skill's declared parameters before dispatching to its implementation.</summary>
-public sealed class SkillRunner(ISkillCatalog catalog, ChatRenameSkill chatRenameSkill,
-    GenericSkillExecutor? genericExecutor = null, ChatReplySuggestSkill? chatReplySuggestSkill = null,
-    SkillRouteSkill? skillRouteSkill = null, ChatToolRiskAssessSkill? chatToolRiskAssessSkill = null,
-    ITokenUsageMeter? usageMeter = null, ChatCommentSuggestSkill? chatCommentSuggestSkill = null) : ISkillRunner
+public sealed class SkillRunner(ISkillCatalog catalog, [Tag("chat-rename")] ISkillExecutor chatRenameSkill,
+    IGenericSkillExecutor? genericExecutor = null, [Tag("chat-reply-suggest")] ISkillExecutor? chatReplySuggestSkill = null,
+    [Tag("skill-route")] ISkillExecutor? skillRouteSkill = null, [Tag("chat-tool-risk-assess")] ISkillExecutor? chatToolRiskAssessSkill = null,
+    ITokenUsageMeter? usageMeter = null, [Tag("chat-comment-suggest")] ISkillExecutor? chatCommentSuggestSkill = null) : ISkillRunner
 {
     private readonly object _gate = new();
     private readonly List<SkillRunRecord> _recent = [];

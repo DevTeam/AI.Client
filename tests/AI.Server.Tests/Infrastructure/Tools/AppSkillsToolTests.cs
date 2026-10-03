@@ -40,11 +40,11 @@ public sealed class AppSkillsToolTests
         await using var composition = new SubtaskComposition(
             new ServerOptions("data", null, true), new MemoryFileSystem(),
             Mock.Of<IChatCompletionClient>(), Mock.Of<IToolSessionFactory>());
-        var projects = composition.Resolve<IProjectService>();
-        var chats = composition.Resolve<IChatService>();
+        var projects = composition.Projects;
+        var chats = composition.Chats;
         var projectId = (await projects.CreateAsync(new CreateProjectRequest("Test", ""), CancellationToken.None)).Id;
         var chatId = (await chats.CreateAsync(projectId, new CreateChatRequest("Test"), CancellationToken.None)).Id;
-        var factory = composition.Resolve<AppToolSessionFactory>();
+        var factory = composition.Sessions;
         await using var session = await factory.OpenAsync([], new ToolRunContext(projectId, chatId, chatId, true),
             TestContext.Current.CancellationToken);
         var search = session.Tools.Single(tool => tool.OriginalName == "skill_search");
@@ -84,11 +84,11 @@ public sealed class AppSkillsToolTests
         await using var composition = new SubtaskComposition(
             new ServerOptions("data", null, true), new MemoryFileSystem(),
             Mock.Of<IChatCompletionClient>(), Mock.Of<IToolSessionFactory>());
-        var projectId = (await composition.Resolve<IProjectService>()
+        var projectId = (await composition.Projects
             .CreateAsync(new CreateProjectRequest("Test", ""), CancellationToken.None)).Id;
-        var chatId = (await composition.Resolve<IChatService>()
+        var chatId = (await composition.Chats
             .CreateAsync(projectId, new CreateChatRequest("Test"), CancellationToken.None)).Id;
-        await using var session = await composition.Resolve<AppToolSessionFactory>().OpenAsync([],
+        await using var session = await composition.Sessions.OpenAsync([],
             new ToolRunContext(projectId, chatId, chatId, true), TestContext.Current.CancellationToken);
         var search = session.Tools.Single(tool => tool.OriginalName == "skill_search");
 
@@ -108,15 +108,15 @@ public sealed class AppSkillsToolTests
     {
         await using var composition = new SubtaskComposition(new ServerOptions("data", null, true),
             new MemoryFileSystem(), new StaticCompletion(), Mock.Of<IToolSessionFactory>());
-        var settings = composition.Resolve<IGlobalSettingsRepository>();
+        var settings = composition.Settings;
         var connectionId = Guid.CreateVersion7();
         await settings.SaveAsync(new GlobalSettings([new ConnectionSettings(connectionId, "Test",
             "https://example.test/v1", "model", true, true, false)], [], []), CancellationToken.None);
-        var projectId = (await composition.Resolve<IProjectService>()
+        var projectId = (await composition.Projects
             .CreateAsync(new CreateProjectRequest("Test", ""), CancellationToken.None)).Id;
-        var chatId = (await composition.Resolve<IChatService>()
+        var chatId = (await composition.Chats
             .CreateAsync(projectId, new CreateChatRequest("Test"), CancellationToken.None)).Id;
-        await using var session = await composition.Resolve<AppToolSessionFactory>().OpenAsync([],
+        await using var session = await composition.Sessions.OpenAsync([],
             new ToolRunContext(projectId, chatId, chatId, true), TestContext.Current.CancellationToken);
         var manage = session.Tools.Single(tool => tool.OriginalName == "app_skills");
         var search = session.Tools.Single(tool => tool.OriginalName == "skill_search");
@@ -149,7 +149,7 @@ public sealed class AppSkillsToolTests
     {
         await using var composition = new SubtaskComposition(new ServerOptions("data", null, true),
             new MemoryFileSystem(), Mock.Of<IChatCompletionClient>(), Mock.Of<IToolSessionFactory>());
-        await using var session = await composition.Resolve<AppToolSessionFactory>().OpenAsync([],
+        await using var session = await composition.Sessions.OpenAsync([],
             new ToolRunContext(Guid.Empty, Guid.Empty, Guid.Empty, true), TestContext.Current.CancellationToken);
         var manage = session.Tools.Single(tool => tool.OriginalName == "app_skills");
         var operationId = Guid.CreateVersion7();
@@ -167,7 +167,7 @@ public sealed class AppSkillsToolTests
         error.GetProperty("applied").GetBoolean().ShouldBeFalse();
         error.GetProperty("error").GetString()!.ShouldContain($"SKILL.md {field}");
         error.GetProperty("error").GetString()!.ShouldContain("properties");
-        var catalog = composition.Resolve<ISkillCatalog>();
+        var catalog = composition.Skills;
         (await catalog.GetByIdAsync("short-summary", null, TestContext.Current.CancellationToken)).ShouldBeNull();
 
         var corrected = await session.CallAsync(manage, JsonSerializer.Serialize(new

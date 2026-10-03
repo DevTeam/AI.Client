@@ -4,7 +4,7 @@ AI.Server holds the whole server side: Domain (rules and invariants), Applicatio
 
 `GlobalSettings.Connections` is the unified connections catalog. A project stores a `ConnectionId`; a chat can override it. Secrets are available through `IGlobalSecretStore`. Duplicate project profiles have been removed.
 
-Services receive dependencies through their constructors. Composition defines implementations and lifetimes. Pure serializers have become static functions; path resolvers are concrete classes. No additional DI container is needed.
+Services receive interface dependencies through their constructors. Composition defines implementations and lifetimes; stateless services default to transient, while synchronization, signals and caches are shared where required. ASP.NET service-provider roots are separated from reusable server bindings. Follow the [Pure.DI conventions](30-dependency-injection.md) when adding or changing functionality.
 
 `ChatRunDispatcher` lives in the Application layer. Web and CLI send a single `Submit` command: Send, Queue, Fork, or Replace. The server manages the queue, idempotency, context, and result recording. `ChatSynchronization` serializes chat changes, but network requests for different branches run in parallel.
 

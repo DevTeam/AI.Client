@@ -10,7 +10,7 @@ using System.Text.Json;
 /// <summary>Connects user-configured servers for both discovery and chat execution.</summary>
 public sealed class ExternalToolSessionFactory(
     IGlobalSecretStore secrets,
-    IToolResultModelProjector modelProjector)
+    IToolResultModelProjector modelProjector) : IExternalToolSessionFactory
 {
     public async Task<IToolSession> OpenAsync(
         McpServerSettings server, CancellationToken cancellationToken, string? credential = null)

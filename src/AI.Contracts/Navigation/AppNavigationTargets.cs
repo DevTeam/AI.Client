@@ -4,7 +4,13 @@ public sealed record AppNavigationTarget(string Id, string Label, string? Sectio
     IReadOnlyList<string> Actions, bool? Visible = null);
 
 /// <summary>Semantic targets shared by the tool and the UI; selectors and coordinates stay in the client.</summary>
-public sealed class AppNavigationTargets
+public interface IAppNavigationTargets
+{
+    IReadOnlyList<AppNavigationTarget> All { get; }
+    AppNavigationTarget? Find(string id);
+}
+
+public sealed class AppNavigationTargets : IAppNavigationTargets
 {
     public IReadOnlyList<AppNavigationTarget> All { get; } =
     [

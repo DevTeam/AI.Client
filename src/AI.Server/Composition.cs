@@ -1,3 +1,4 @@
+// DI guide: [Pure.DI conventions](../../docs/30-dependency-injection.md).
 // ReSharper disable UnusedMember.Local
 namespace AI.Server;
 
@@ -34,78 +35,40 @@ using Pure.DI;
 using AI.Updates;
 
 /// <summary>
-/// Everything the server side of AI is made of, including the HTTP API and its roots.
-/// Nothing is generated here: each executable that hosts the server (the standalone Host, later
-/// the desktop app) and the integration tests link this file and build on it with
-/// <c>DependsOn("AI.Server.Composition")</c>, adding only their own entry-point types.
+/// Shared server bindings without consumer roots. Executables and tests link this internal setup.
+/// ASP.NET hosts use <c>DependsOn("AI.Server.AspNetComposition")</c> to include service-provider
+/// roots; direct composition consumers depend on this setup and declare their own named roots.
 /// </summary>
 internal sealed class Composition
 {
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup(kind: CompositionKind.Internal)
+            .Hint(Hint.Comments, "Off")
             // Pure.DI 2.5.4 miscompiles lightweight anonymous roots for this graph: a singleton
             // shared by several deferred factories (AppDataChangeSignal, via AppWrites) is used
             // before it is created, so AppWrites gets null. Off until that is fixed upstream.
             .Hint(Hint.LightweightAnonymousRoot, "Off")
             // What the entry point decided before starting the server: its command line, parsed.
             .Arg<ServerOptions>("options")
-            // Roots are what ASP.NET can resolve: the services endpoint handlers take as parameters
-            // and the hosted service's dependencies.
-            .Root<IAiClientServer>("Server")
-            .Root<IHostDescriptor>()
-            .Root<IProjectRepository>()
-            .Root<IDirectoryBrowser>()
-            .Root<IGitBrowser>()
-            .Root<IProjectService>()
-            .Root<IChatService>()
-            .Root<IChatArchiveService>()
-            .Singleton<ChatArchiveService>()
-            .Root<ISkillCatalog>()
-            .Root<ISkillRunner>()
-            .Root<IChatSearchService>()
-            .Root<IChatCompletionClient>()
-            .Root<ITokenUsageService>()
-            .Root<IHistoryCheckpointService>()
-            .Root<IChatHistoryCompaction>()
-            .Root<IGlobalSettingsService>()
-            .Root<IChatEndpoint>()
-            .Root<IChatRunRepository>()
-            .Root<IChatRunDispatcher>()
-            .Root<IGuideChats>()
-            .Root<IChatReplySuggestions>()
-            .Root<IResourceService>()
-            .Root<IResourceRepository>()
-            .Root<IWorkspacePathResolver>()
-            .Root<IWorkspaceFileSearch>()
-            .Root<IReviewService>()
-            .Root<IFilePreviewService>()
-            .Bind<IFilePreviewService>().As(Lifetime.Singleton).To<FilePreviewService>()
-            .Root<IReviewCommentSuggestions>()
-            .Root<IReviewRepository>()
-            .Root<IMemoryService>()
-            .Root<IProjectInstructionsService>()
-            .Root<IStandingInstructions>()
-            .Root<IUnifiedDiffParser>()
-            .Root<IChatBranchIds>()
-            .Root<IToolUserInterface>()
-            .Root<IAppToolReply>()
-            .Root<IToolSessionFactory>()
-            .Root<ExternalToolSessionFactory>()
-            .Root<IAppDataChangeSignal>()
-            .Root<IAppNavigationSignal>()
-            .Root<IRunEventsPublisher>()
-            .Root<IBrowserAccessService>()
-            .Root<IInstalledDesktop>()
-            .Root<IHostUpdateService>()
-            .Root<IUpdateManagerFactory>()
-            .Singleton<HostUpdateService, UpdateManagerFactory, GitHubUpdateFeed, UpdateInstaller, UpdateInstallationProvider>()
-            .Singleton<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, BrowserAccessService, InstalledDesktop>()
-            .Singleton<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints, ChatCompletionEndpoints, FileSystemEndpoints, FilePreviewEndpoints, GitEndpoints, MemoryEndpoints, SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints, AppGuideEndpoints>(Tag.Unique)
-            .Singleton<ProjectStorageLocation, DataDirectoryLock, JsonLineFileLoggerProvider, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths>()
+            .Transient<ChatArchiveService>()
+            // Preview tickets must survive across the describe and content HTTP requests.
+            .Singleton<FilePreviewService>()
+            .Singleton<HostUpdateService>()
+            .Transient<UpdateManagerFactory, GitHubUpdateFeed, UpdateInstaller, UpdateInstallationProvider>()
+            .Singleton<BrowserAccessService>()
+            .Transient<AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor, ChatEndpoint,
+                RunEventsPublisher, RunSnapshotComparer, InstalledDesktop>()
+            .Transient<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints,
+                ChatCompletionEndpoints, FileSystemEndpoints, FilePreviewEndpoints, GitEndpoints, MemoryEndpoints,
+                SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints,
+                AppGuideEndpoints>(Tag.Unique)
+            .Singleton((IProjectStorageLocation location) => new JsonLineFileLoggerProvider(location))
+            .Transient<ProjectStorageLocation, DataDirectoryLock, ProjectStoragePaths, ChatStoragePaths,
+                ChatRunStoragePaths, GlobalSettingsPaths>()
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.
-            .Bind<IUserDataProtector>().As(Lifetime.Singleton).To<IUserDataProtector>(ctx =>
+            .Singleton<IUserDataProtector>(ctx =>
             {
                 if (OperatingSystem.IsWindows())
                 {
@@ -116,7 +79,7 @@ internal sealed class Composition
                 ctx.Inject<MasterKeyUserDataProtector>(out var portable);
                 return portable;
             })
-            .Bind<IKeyringMasterKeyStore>().As(Lifetime.Singleton).To<IKeyringMasterKeyStore>(ctx =>
+            .Transient<IKeyringMasterKeyStore>(ctx =>
             {
                 if (OperatingSystem.IsMacOS())
                 {
@@ -127,37 +90,48 @@ internal sealed class Composition
                 ctx.Inject<SecretServiceMasterKeyStore>(out var secretService);
                 return secretService;
             })
-            .Bind<IFileMasterKeyStore>().As(Lifetime.Singleton).To<FileMasterKeyStore>()
-            .Singleton<PhysicalTextFileSystem, PhysicalDirectoryBrowser, JsonProjectRepository, ProjectDocumentSerializer,
-                Uuid7IdGenerator, SystemClock, ProjectService, JsonChatRepository, ChatDocumentSerializer, ChatService, ChatSearchService, ChatSynchronization, PinOrderKeys,
-                ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ChatTransportActivity,
-                JsonGlobalSettingsRepository, ProtectedGlobalSecretStore, ResourceService, ResourceModelProjection, JsonResourceRepository, ProjectPathAccess, WorkspacePathResolver,
-                ReviewService, JsonReviewRepository, MemoryService, JsonMemoryRepository, ProjectInstructionsService, JsonProjectInstructionsRepository,
-                WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService, OpenAiCompatibleConnectionModelsResolver, JsonChatRunRepository,
-                ChatRunDispatcher, ChatContext, ChatAgent, ContextTokenEstimator, ChatContextCompactor, ChatContextPlanner, ModelContentCheckpointService, KeyringOrFileMasterKeyStore, ChatRenameSkill,
-                ModelInstructionRegistry, ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy, ToolSearchDefinitionEnricher,
-                ToolPolicyResolver, ToolCatalogRegistry, WorkspaceChangeTracker, LineDiff, MasterKeyFormat, ProcessCommandRunner,
-                AppDataChangeSignal, AppNavigationSignal, AppOperationLog, AppWrites, AppMcpServerHost, CompositeToolSessionFactory, ExternalToolSessionFactory, ChatBranchIds, ToolUserInterface>()
-            .Singleton<WorkspaceFileSearch, GitWorkspaceDiffReader, GitBrowser, FileExcerptReader>()
-            .Singleton<ChatCompletionUsageReader, TokenUsageMeter, JsonLinesTokenUsageLedger, TokenUsageAggregator, TokenUsageService>()
-            .Singleton<PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits, RateLimitHeaderReader>()
-            .Singleton<ContextSummaryWriter, HistoryCheckpointService, JsonHistoryCheckpointRepository, ChatHistoryCompaction>()
-            // Bound by their own types only: every executor is an ISkillExecutor, and SkillRunner takes each by type.
-            .Bind<ChatReplySuggestSkill>().As(Lifetime.Singleton).To<ChatReplySuggestSkill>()
-            .Bind<ChatCommentSuggestSkill>().As(Lifetime.Singleton).To<ChatCommentSuggestSkill>()
-            .Bind<SkillRouteSkill>().As(Lifetime.Singleton).To<SkillRouteSkill>()
-            .Bind<ChatToolRiskAssessSkill>().As(Lifetime.Singleton).To<ChatToolRiskAssessSkill>()
-            .Bind<IToolAutoApprover>().As(Lifetime.Singleton).To<ToolAutoApprover>()
+            .Bind<IFileMasterKeyStore>().To<FileMasterKeyStore>()
+            .Singleton<JsonProjectRepository, JsonChatRepository, ChatSynchronization, ChatTransportActivity,
+                JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
+                JsonProjectInstructionsRepository, JsonChatRunRepository, ChatRunDispatcher,
+                ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, WorkspaceChangeTracker,
+                AppDataChangeSignal, AppNavigationSignal, AppOperationLog>()
+            .Transient<PhysicalTextFileSystem, PhysicalDirectoryBrowser, ProjectDocumentSerializer, Uuid7IdGenerator,
+                SystemClock, ProjectService, ChatDocumentSerializer, ChatService, ChatSearchService, PinOrderKeys,
+                ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ProtectedGlobalSecretStore,
+                ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,
+                MemoryService, ProjectInstructionsService, WorkspaceInstructionFileReader, StandingInstructions,
+                GlobalSettingsService, OpenAiCompatibleConnectionModelsResolver, ChatContext, ChatAgent,
+                ContextTokenEstimator, ChatContextCompactor, ChatContextPlanner, KeyringOrFileMasterKeyStore,
+                ModelInstructionComposer, ToolDefinitionSelector, ToolSelectionPriorityPolicy,
+                ToolSearchDefinitionEnricher, ToolPolicyResolver, LineDiff, MasterKeyFormat, ProcessCommandRunner,
+                AppWrites, AppMcpServerHost, ExternalToolSessionFactory, ChatBranchIds, ToolUserInterface>()
+            .Singleton<WorkspaceFileSearch>()
+            .Transient<GitWorkspaceDiffReader, GitBrowser, FileExcerptReader>()
+            .Singleton<TokenUsageMeter, JsonLinesTokenUsageLedger>()
+            .Transient<ChatCompletionUsageReader, TokenUsageAggregator, TokenUsageService>()
+            .Singleton<PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits>()
+            .Transient<RateLimitHeaderReader>()
+            .Singleton<JsonHistoryCheckpointRepository>()
+            .Transient<ContextSummaryWriter, HistoryCheckpointService, ChatHistoryCompaction>()
+            // Executors share a contract; tags identify the role without concrete dependencies.
+            .Transient<ChatRenameSkill>("chat-rename")
+            .Transient<ChatReplySuggestSkill>("chat-reply-suggest")
+            .Transient<ChatCommentSuggestSkill>("chat-comment-suggest")
+            .Transient<SkillRouteSkill>("skill-route")
+            .Transient<ChatToolRiskAssessSkill>("chat-tool-risk-assess")
             .Bind<IChatReplySuggestions>().As(Lifetime.Singleton).To<ChatReplySuggestions>()
-            .Bind<IGuideChats>().As(Lifetime.Singleton).To<GuideChats>()
-            .Bind<IConnectionChoice>().As(Lifetime.Singleton).To<ConnectionChoice>()
-            .Bind<IReviewCommentSuggestions>().As(Lifetime.Singleton).To<ReviewCommentSuggestions>()
-            .Transient<AppToolReply>()
-            .Bind<BuiltInSkillCatalog>().As(Lifetime.Singleton).To<BuiltInSkillCatalog>()
-            .Bind<ISkillCatalog>().As(Lifetime.Singleton).To<SkillCatalog>()
-            .Singleton<SkillRunner, GenericSkillExecutor, SkillGuide, SkillRouting>()
+            .Singleton<SkillCatalog>()
+            .Transient<ToolAutoApprover, GuideChats, ConnectionChoice, ReviewCommentSuggestions, AppToolReply>()
+            // Reading embedded skill definitions once avoids repeated parsing.
+            .Singleton<BuiltInSkillCatalog>("built-in")
+            .Singleton<SkillRunner>()
+            // Pure.DI 2.5.4 emits out-of-scope factory locals for a transient composite here.
+            // Keep this one cache until the generator issue recorded in docs/pure-di-issues.md is fixed.
+            .Singleton<CompositeToolSessionFactory>()
+            .Transient<GenericSkillExecutor, SkillGuide, SkillRouting>()
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
-            .Bind<IChatCompletionClient>().As(Lifetime.Singleton).To((
+            .Transient((
                 [Tag("base")] IChatCompletionClient baseClient,
                 ILogger<RetryingChatCompletionClient> retryLogger,
                 IChatTransportPolicy transportPolicy,
@@ -168,8 +142,55 @@ internal sealed class Composition
                 new MeteringChatCompletionClient(
                     new RetryingChatCompletionClient(baseClient, retryLogger, transportPolicy, transportActivity),
                     usageMeter, usageEstimator, prefixes))
-            .Singleton<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppAskUserTool, AppToolSearchTool,
-                AppContextCompactTool, AppResourcesTool, AppMemoryTool, AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool, AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>(Tag.Unique)
-            .Singleton<DefaultToolSessionFactory, AppToolSessionFactory, CSharpToolSessionFactory>(Tag.Unique)
+            .Transient<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool,
+                AppAskUserTool, AppToolSearchTool, AppContextCompactTool, AppResourcesTool, AppMemoryTool,
+                AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool>(Tag.Unique)
+            .Transient<AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>()
+            .Transient<AppToolSessionFactory>(Tag.Type)
+            .Transient<DefaultToolSessionFactory, CSharpToolSessionFactory>(Tag.Unique)
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan });
+}
+
+/// <summary>Only the roots resolved by ASP.NET handlers and hosted services.</summary>
+internal sealed class AspNetComposition
+{
+    [Conditional("DI")]
+    private static void Setup() =>
+        DI.Setup(kind: CompositionKind.Internal)
+            .Hint(Hint.Comments, "Off")
+            .DependsOn("AI.Server.Composition")
+            .Root<IHostDescriptor>()
+            .Root<IDirectoryBrowser>()
+            .Root<IGitBrowser>()
+            .Root<IProjectService>()
+            .Root<IChatService>()
+            .Root<IChatArchiveService>()
+            .Root<ISkillCatalog>()
+            .Root<ISkillRunner>()
+            .Root<IChatSearchService>()
+            .Root<ITokenUsageService>()
+            .Root<IHistoryCheckpointService>()
+            .Root<IChatHistoryCompaction>()
+            .Root<IGlobalSettingsService>()
+            .Root<IChatEndpoint>()
+            .Root<IChatRunDispatcher>()
+            .Root<IGuideChats>()
+            .Root<IChatReplySuggestions>()
+            .Root<IResourceService>()
+            .Root<IWorkspacePathResolver>()
+            .Root<IWorkspaceFileSearch>()
+            .Root<IReviewService>()
+            .Root<IFilePreviewService>()
+            .Root<IReviewCommentSuggestions>()
+            .Root<IMemoryService>()
+            .Root<IProjectInstructionsService>()
+            .Root<IStandingInstructions>()
+            .Root<IChatBranchIds>()
+            .Root<IToolSessionFactory>()
+            .Root<IExternalToolSessionFactory>()
+            .Root<IAppNavigationSignal>()
+            .Root<IRunEventsPublisher>()
+            .Root<IBrowserAccessService>()
+            .Root<IInstalledDesktop>()
+            .Root<IHostUpdateService>();
 }

@@ -1,3 +1,4 @@
+// DI guide: [Pure.DI conventions](../../docs/30-dependency-injection.md).
 // ReSharper disable UnusedMember.Local
 namespace AI.Contracts;
 
@@ -18,7 +19,9 @@ internal sealed class Composition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup(kind: CompositionKind.Internal)
-            .Singleton((GenericToolPresentationAdapter genericAdapter, IReadOnlyCollection<IToolPresentationAdapter> adapters) => new ToolPresentations(genericAdapter, adapters))
+            .Hint(Hint.Comments, "Off")
+            .Bind<IGenericToolPresentationAdapter>().To<GenericToolPresentationAdapter>()
+            // The adapter interface is inherited from a base class; bind that contract explicitly.
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<FileToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<ProcessToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<WebToolPresentationAdapter>()
@@ -28,5 +31,6 @@ internal sealed class Composition
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppSkillPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AskUserPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppNavigatePresentationAdapter>()
-            .Singleton<ToolResultModelProjector, ToolResultCodec, ConnectionContextLimitsResolver, UnifiedDiff>();
+            .Transient<ToolPresentations, ToolResultModelProjector, ToolResultCodec, ConnectionContextLimitsResolver,
+                UnifiedDiff>();
 }

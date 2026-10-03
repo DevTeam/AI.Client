@@ -1,3 +1,4 @@
+// DI guide: [Pure.DI conventions](../../../docs/30-dependency-injection.md).
 namespace AI.Server.Tests.Hosting;
 
 using System.Diagnostics;
@@ -10,6 +11,8 @@ internal sealed partial class StartupComposition : ServiceProviderFactory<Startu
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .Hint(Hint.Comments, "Off")
             .DependsOn("AI.Contracts.Composition")
-            .DependsOn("AI.Server.Composition");
+            .DependsOn("AI.Server.AspNetComposition")
+            .Root<AI.Server.Hosting.IAiClientServer>(nameof(Server));
 }

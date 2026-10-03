@@ -1,3 +1,4 @@
+// DI guide: [Pure.DI conventions](../../docs/30-dependency-injection.md).
 // ReSharper disable UnusedMember.Local
 namespace AI.Desktop;
 
@@ -11,9 +12,12 @@ internal sealed partial class CommandLineComposition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .Hint(Hint.Comments, "Off")
             .Hint(Hint.Resolve, "Off")
+            .Hint(Hint.ThreadSafe, "Off")
             .DependsOn("AI.Server.CommandLine.Composition")
-            .Singleton<DesktopCommand>(Tag.Unique)
+            .Root<AI.Server.CommandLine.ICommandLineApplication>(nameof(Root))
+            .Transient<DesktopCommand>(Tag.Unique)
             .Transient<DesktopRunner>()
             .Transient<SharedHostLocator>();
 }
@@ -24,9 +28,11 @@ internal sealed partial class ServerComposition : ServiceProviderFactory<ServerC
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .Hint(Hint.Comments, "Off")
             // Two calls on purpose: Pure.DI 2.5.4 crashes (DIE043) on DependsOn("a", "b").
             .DependsOn("AI.Contracts.Composition")
-            .DependsOn("AI.Server.Composition");
+            .DependsOn("AI.Server.AspNetComposition")
+            .Root<AI.Server.Hosting.IAiClientServer>(nameof(Server));
 }
 
 /// <summary>The window over the running server.</summary>
@@ -35,11 +41,14 @@ internal sealed partial class UiComposition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .Hint(Hint.Comments, "Off")
             .Hint(Hint.Resolve, "Off")
+            .Hint(Hint.ThreadSafe, "Off")
             .Arg<DesktopStart>("start")
-            .Singleton<AI.Updates.UpdateManagerFactory, AI.Updates.GitHubUpdateFeed, AI.Updates.UpdateInstaller, AI.Updates.UpdateInstallationProvider>()
+            .Transient<AI.Updates.UpdateManagerFactory, AI.Updates.GitHubUpdateFeed, AI.Updates.UpdateInstaller, AI.Updates.UpdateInstallationProvider>()
             .Singleton(_ => new HttpClient { Timeout = TimeSpan.FromMinutes(30) })
-            .Singleton<App, MainWindow, ProcessSignals, DesktopUpdates, JsonWindowPlacementStore, JsonWorkspaceLocationStore, JsonThemePreferenceStore, JsonClientSettingsStore, WindowsTaskbarBadge,
+            .Singleton<App>()
+            .Transient<MainWindow, ProcessSignals, DesktopUpdates, JsonWindowPlacementStore, JsonWorkspaceLocationStore, JsonThemePreferenceStore, JsonClientSettingsStore, WindowsTaskbarBadge,
                 WebView2FileDropBridge>()
             .Root<App>(nameof(App));
 }

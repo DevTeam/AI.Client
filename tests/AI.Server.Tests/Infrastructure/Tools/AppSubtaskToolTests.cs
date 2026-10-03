@@ -322,10 +322,10 @@ public sealed class AppSubtaskToolTests
         private readonly SubtaskComposition _composition;
 
         public StubCompletion Completion { get; } = new();
-        public IProjectService Projects => _composition.Resolve<IProjectService>();
-        public IChatService Chats => _composition.Resolve<IChatService>();
-        private IGlobalSettingsRepository Settings => _composition.Resolve<IGlobalSettingsRepository>();
-        private AppToolSessionFactory Sessions => _composition.Resolve<AppToolSessionFactory>();
+        public IProjectService Projects => _composition.Projects;
+        public IChatService Chats => _composition.Chats;
+        private IGlobalSettingsRepository Settings => _composition.Settings;
+        private IMcpServerConnection Sessions => _composition.Sessions;
         public Guid ProjectId { get; private set; }
         public Guid ChatId { get; private set; }
         public Guid DefaultConnectionId { get; } = Guid.NewGuid();

@@ -1,3 +1,4 @@
+// DI guide: [Pure.DI conventions](../../docs/30-dependency-injection.md).
 // ReSharper disable UnusedMember.Local
 namespace AI.Mcp.BuiltIn;
 
@@ -15,6 +16,7 @@ internal sealed partial class Composition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .Hint(Hint.Comments, "Off")
             .Hint(Hint.Resolve, "Off")
             .Hint(Hint.ThreadSafe, "Off")
             .Root<Program>(nameof(Root))
@@ -22,9 +24,9 @@ internal sealed partial class Composition
             .Transient<ProcessRunTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,
                 DeleteFileTool, DeleteDirectoryTool>(Tag.Unique)
-            .Singleton<ProcessRunner, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()
-            .Bind<IWebFetcher>().As(Lifetime.Singleton).To(_ => new WebFetcher(WebFetcher.CreateDefaultHandler()))
-            .Singleton((IEnumerable<IToolFactory> toolFactories) =>
+            .Transient<ProcessRunner, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()
+            .Transient(_ => new WebFetcher(WebFetcher.CreateDefaultHandler()))
+            .Transient((IEnumerable<IToolFactory> toolFactories) =>
             {
                 var tools = new McpServerPrimitiveCollection<McpServerTool>();
                 foreach (var toolFactory in toolFactories)

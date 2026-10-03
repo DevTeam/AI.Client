@@ -31,7 +31,7 @@ public sealed class ExternalToolSessionTests
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton<IGlobalSettingsService>(Mock.Of<IGlobalSettingsService>());
         builder.Services.AddSingleton<IToolSessionFactory>(new CompositeToolSessionFactory([], repository.Object, external));
-        builder.Services.AddSingleton(external);
+        builder.Services.AddSingleton<IExternalToolSessionFactory>(external);
         await using var app = builder.Build();
         new SettingsEndpoints().Map(app);
         await app.StartAsync(Token);

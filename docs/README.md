@@ -33,6 +33,9 @@ The documents describe the agreed-upon architecture and are the source of truth 
 27. [Skills](27-skills.md)
 28. [Token usage](28-token-usage.md)
 29. [Chat widgets](29-chat-widgets.md)
+30. [Dependency injection with Pure.DI](30-dependency-injection.md)
+
+Generator diagnostics and complaints are tracked separately in [Pure.DI observations and issues](pure-di-issues.md).
 
 ## Accepted decisions
 

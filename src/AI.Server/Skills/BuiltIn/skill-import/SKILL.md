@@ -97,7 +97,8 @@ reads at most 5 MiB and does not crawl sites. Follow API pagination separately f
 7. Use the explicitly requested User/Project scope; otherwise ask once for scope, explaining that
    User applies across projects. Project needs a current project. Show the selected source,
    destination, adaptations and remaining requirements before applying. Ask for replacement only
-   when an existing mutable skill would be changed without that authorization; use its current
+   when an existing mutable skill would be changed without that authorization; retain its full
+   pre-import content and enabled state for possible restoration, and use its current
    revision, otherwise revision=0 with a unique id. A dismissed/expired/interrupted replacement
    question never authorizes overwrite. Re-read immediately before `app_skills` Save with the
    full content, scope, enabled state and a fresh operationId. Fix validation errors; on a conflict
@@ -131,6 +132,29 @@ reads at most 5 MiB and does not crawl sites. Follow API pagination separately f
     known import/adaptation error within the authorized scope, verify the saved revision and
     retry the affected test once; do not loosen policies or hide a failure. Remove only disposable
     artifacts created by this test when authorized, and report anything left for inspection.
-    Report the imported skill, clickable source, adaptations, reused/added tools and unresolved
+12. If a functional test still fails after the bounded correction/retry, explain the failure
+    and ask with `ask_user` labelled "Failed test": "Remove this import and find an alternative?"
+    Offer "Remove and find an alternative (Recommended)" and "Keep for manual correction",
+    with allowOther=true and labels in the user's language. Name the exact skill and scope
+    affected. A blocked or skipped test is not evidence of failed behavior: explain its missing
+    prerequisite instead. Dismissed, declined, expired or interrupted means keep the import;
+    do not delete or start replacement installation without an explicit choice.
+    If removal was selected, re-read the skill's full document and revision. Delete only this
+    imported mutable skill through `app_skills` Delete with skillId, scope, current revision,
+    dryRun=false and a fresh operationId; verify the result and re-read the catalog in that
+    scope. Do not delete built-in skills, shared MCP dependencies or unrelated resource files.
+    If the import modified a pre-existing skill, explain that distinction and obtain an exact
+    choice to restore its pre-import content or delete it; never treat it as a newly created
+    disposable entry. On revision conflict or an uncertain result, re-read before proceeding;
+    do not remove intervening edits or claim removal succeeded without verification.
+    After verified removal/restoration, search the source catalog again for the original goal,
+    excluding the failed source/version and accounting for the observed incompatibility and
+    current tools. Show a suitable alternative and continue the import from step 2 with that
+    source, then offer its functional test as usual. Limit replacement to one alternative per
+    accepted recovery choice; if it also fails, report and offer the same explicit choice again
+    rather than automatically cycling through installations. If no alternative fits, report the
+    search outcome without inventing one or reinstalling the failed candidate.
+13. Report the imported skill, clickable source, adaptations, reused/added tools and unresolved
     requirements, plus the test performed, expected/actual result and passed/failed/blocked/skipped
-    status. Distinguish verified installation from tested behavior and partial test coverage.
+    status. Include any verified removal/restoration and alternative's separate installation/test
+    result. Distinguish verified installation from tested behavior and partial test coverage.

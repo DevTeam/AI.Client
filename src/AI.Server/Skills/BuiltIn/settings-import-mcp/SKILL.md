@@ -92,7 +92,8 @@ verify candidates against their actual publisher docs, not search snippets.
    and global effect. New servers use a fresh UUID, unique name and policy=Ask; enabled=true only
    when required prerequisites are ready and launching is authorized. Match existing entries by
    concrete endpoint or command/arguments/working directory, not name alone. Reuse their id and
-   credentials; never silently replace an existing differently configured or denied server.
+   credentials; retain any pre-import definition and affected policies for possible restoration.
+   Never silently replace an existing differently configured or denied server.
    Ask for any replacement not already requested. Re-read Settings immediately before saving,
    merge only the selected entry and preserve all Connections, other MCP servers, environment
    secret metadata and ToolPolicies. `app_security` SaveGlobalSettings replaces the whole document:
@@ -140,7 +141,33 @@ verify candidates against their actual publisher docs, not search snippets.
     result to its expected behavior. Correct a known configuration error within the authorized
     import scope, re-read settings and retry only the affected check once. Clean up only the
     disposable objects created by the tests when authorized, using verified tool capabilities;
-    report artifacts left behind. Finish with the server, clickable source/version, saved status,
+    report artifacts left behind.
+12. If a functional test still fails after the bounded correction/retry, explain the failure
+    and ask with `ask_user` labelled "Failed test": "Remove this import and find an alternative?"
+    Offer "Remove and find an alternative (Recommended)" and "Keep for manual correction",
+    with allowOther=true and labels in the user's language. Name the exact server and explain
+    that removal affects its global application definition and dependent projects/skills. A
+    blocked or skipped test is not evidence of failed behavior: explain the missing prerequisite
+    instead. Dismissed, declined, expired or interrupted means keep the import; do not remove
+    it or start replacement installation without an explicit choice.
+    If removal was selected, re-read Settings and relevant project/skill dependencies. Remove
+    only the imported server definition using `app_security` SaveGlobalSettings with a fresh
+    operationId and the complete latest payload, preserving Connections, other servers and
+    unrelated ToolPolicies. Remove only policies created for this import; do not rewrite shared
+    dependencies or project bindings silently. If this reused/modified a pre-existing server,
+    explain that distinction and obtain an exact choice to restore its prior configuration or
+    remove it. Do not uninstall shared packages/runtimes or delete users' data as part of removing
+    an application definition. Verify the write and re-read Settings to confirm the intended
+    removal/restoration before claiming success or installing a replacement.
+    Search the source catalog again for the original capability, excluding the failed server
+    source/version and accounting for the actual failure and available tools. Show a suitable
+    alternative and continue from step 2 with that source, configuring it and offering functional
+    tests as usual. Limit replacement to one alternative per accepted recovery choice; if that
+    also fails, report and offer the same explicit choice again rather than automatically cycling
+    through installations. If no compatible alternative exists, report the search outcome and
+    remaining requirements without inventing a candidate or reinstalling the failed server.
+13. Finish with the server, clickable source/version, saved status,
     discovery result, concrete remaining configuration and each functional test's expected/actual
     result and passed/failed/blocked/skipped status. Distinguish saved, connected, permitted and
     actually tested; report untested tools without claiming the whole server was verified.
+    Include any verified removal/restoration and the alternative's separate installation/test result.

@@ -14,7 +14,10 @@ public sealed partial class AppNavigationLinks(AppNavigationTargets targets)
         var target = match.Groups["target"].Value;
         var definition = targets.Find(target);
         var domain = target is "project" or "chat" or "branch";
-        if (definition is null || !domain && definition.Section is null) return null;
+        var chatControl = target.StartsWith("chat.", StringComparison.Ordinal) && definition?.Section is null;
+        // Showing a known control is safe even when that control can perform an action.
+        // The demo target is a guide command, not a destination in the visible UI.
+        if (definition is null || target == "chat.demo") return null;
         var ids = new Dictionary<string, Guid>(StringComparer.Ordinal);
         foreach (var pair in match.Groups["query"].Value.Split('&', StringSplitOptions.RemoveEmptyEntries))
         {
@@ -25,7 +28,7 @@ public sealed partial class AppNavigationLinks(AppNavigationTargets targets)
         var project = ids.TryGetValue("projectId", out var projectId) ? projectId : currentProjectId;
         Guid? chat = ids.TryGetValue("chatId", out var chatId) ? chatId : null;
         Guid? branch = ids.TryGetValue("branchId", out var branchId) ? branchId : null;
-        if (definition.Section is "ProjectSettings" or "ProjectPermissions" or "ChatPermissions" or "Widgets"
+        if ((chatControl || definition.Section is "ProjectSettings" or "ProjectPermissions" or "ChatPermissions" or "Widgets")
             && project is null) return null;
         if (definition.Section == "ChatPermissions" && chat is null) return null;
         if (domain && !ids.ContainsKey("projectId") || target is "chat" or "branch" && chat is null

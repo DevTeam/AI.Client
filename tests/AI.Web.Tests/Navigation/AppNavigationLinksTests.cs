@@ -26,6 +26,18 @@ public class AppNavigationLinksTests
     [InlineData("settings.skills")]
     [InlineData("settings.memory")]
     [InlineData("widgets.chat-tools")]
+    [InlineData("chat.context")]
+    [InlineData("chat.composer")]
+    [InlineData("chat.text_correction")]
+    [InlineData("chat.branches")]
+    [InlineData("chat.widgets")]
+    [InlineData("chat.send")]
+    [InlineData("chat.fork")]
+    [InlineData("chat.edit_branch")]
+    [InlineData("chat.new")]
+    [InlineData("projects.create")]
+    [InlineData("workspace.sidebar.toggle")]
+    [InlineData("workspace.notifications")]
     public void ShouldRevealPanelsWithoutActivatingControls(string target)
     {
         var result = _links.Parse($"aiclient://navigate/{target}", Project);
@@ -51,13 +63,22 @@ public class AppNavigationLinksTests
         _links.Parse("aiclient://navigate/settings", null).ShouldNotBeNull();
         _links.Parse("aiclient://navigate/widgets", null).ShouldBeNull();
         _links.Parse("aiclient://navigate/project.settings", null).ShouldBeNull();
+        _links.Parse("aiclient://navigate/chat.context", null).ShouldBeNull();
+    }
+
+    [Fact]
+    public void ShouldRevealContextInTheSpecifiedChat()
+    {
+        var result = _links.Parse($"aiclient://navigate/chat.context?projectId={Project}&chatId={Chat}", null);
+        result.ShouldNotBeNull().Target.ShouldBe("chat.context");
+        result.ProjectId.ShouldBe(Project);
+        result.ChatId.ShouldBe(Chat);
+        result.Action.ShouldBe("show");
     }
 
     [Theory]
     [InlineData("aiclient://navigate/chat")]
     [InlineData("aiclient://navigate/chat.demo")]
-    [InlineData("aiclient://navigate/chat.send")]
-    [InlineData("aiclient://navigate/projects.create")]
     [InlineData("aiclient://navigate/settings?action=set_value")]
     [InlineData("aiclient://navigate/settings?value=secret")]
     [InlineData("aiclient://navigate/settings?projectId=invalid")]

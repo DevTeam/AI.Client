@@ -1501,11 +1501,10 @@ else if (_guideInvitation is { } guideInvitation)
             return $"Rate limited · retrying in {seconds}s (attempt {wait.Attempt})" + GetGeneratingEnterHint();
         }
         var elapsed = GetGeneratingElapsed();
-        var fallback = $"Generating{(elapsed is { } value ? $"... {FormatElapsed(value)}" : "...")}";
         var activeMessageId = run?.ActiveMessageId
             ?? run?.Queue.FirstOrDefault(item => item.Stage == QueuedMessageStage.UserCommitted)?.Id;
         if (_selectedChat is null || elapsed is null || activeMessageId is null)
-            return fallback + GetGeneratingEnterHint();
+            return GetGeneratingEnterHint().TrimStart(' ', '·');
 
         var branch = Feed.BuildBranch(_selectedChat.Messages, _branchLeafId);
         // A run snapshot can reach the browser before the matching chat revision. Do not borrow
@@ -1513,9 +1512,9 @@ else if (_guideInvitation is { } guideInvitation)
         var turn = Feed.BuildTurns(branch, lastTurnEndedWithoutFinalAnswer: true)
             .LastOrDefault(item => item.UserMessage?.Id == activeMessageId);
         var title = turn is null ? null : Feed.RunningTitleOf(turn, elapsed.Value);
-        if (title is not null && _currentTurnSummaryVisible)
+        if (title is null || _currentTurnSummaryVisible)
             return GetGeneratingEnterHint().TrimStart(' ', '·');
-        return (title ?? fallback) + GetGeneratingEnterHint();
+        return title + GetGeneratingEnterHint();
     }
 
     private bool _currentTurnSummaryVisible;

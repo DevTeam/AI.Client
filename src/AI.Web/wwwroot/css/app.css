@@ -6246,8 +6246,11 @@ textarea {
    colour. A local path differs only by its dashed underline. */
 .markdown-content a,
 .markdown-content a:visited,
+.app-navigation-text a,
+.app-navigation-text a:visited,
 .markdown-content .file-link { color: var(--color-accent); }
 .markdown-content a:hover,
+.app-navigation-text a:hover,
 .markdown-content .file-link:hover { color: var(--color-accent-strong); }
 /* A local path carries the same mark as a message comment — the same tint and underline — and is
    told apart by being a link: accent text, and before it the icon of a file or a directory, with

@@ -2,7 +2,7 @@
 @inject IJSRuntime JsRuntime
 @implements IAsyncDisposable
 
-<span @ref="_element">@((MarkupString)MarkdownRenderer.RenderInline(Text))</span>
+<span class="app-navigation-text" @ref="_element">@((MarkupString)MarkdownRenderer.RenderInline(Text))</span>
 
 @code {
     [Parameter] public string Text { get; set; } = string.Empty;

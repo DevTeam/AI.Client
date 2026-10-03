@@ -2548,8 +2548,11 @@ div.chat-tip-head { cursor: default; }
    its own step. Links and review marks are accent tints themselves and would melt into the
    bubble at their usual strength; greys (chips, code) would look like grime on a coloured
    surface, so they sit on a translucent inset instead. */
-.workspace-message.user .markdown-content .file-link {
-    background: color-mix(in srgb, var(--color-accent) 35%, transparent);
+.workspace-message.user .markdown-content .file-link:not(.mention-link) {
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+.workspace-message.user .markdown-content .file-link:not(.mention-link):hover {
+    background: color-mix(in srgb, var(--color-accent) 28%, transparent);
 }
 .workspace-message.user .review-comment-mark {
     background-color: color-mix(in srgb, var(--color-accent) 38%, transparent);
@@ -6250,17 +6253,25 @@ textarea {
    told apart by being a link: accent text, and before it the icon of a file or a directory, with
    what the project may do there as a badge on it (see the "@" links below). */
 .markdown-content .file-link {
-    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
-    text-decoration: underline solid color-mix(in srgb, var(--color-accent) 80%, transparent);
-    border-radius: calc(.25rem * var(--corner-scale));
+    padding: .05em .3em;
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    text-decoration: underline solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+    text-decoration-thickness: 1px;
+    text-underline-offset: .2em;
+    border-radius: calc(.3rem * var(--corner-scale));
     -webkit-box-decoration-break: clone;
     box-decoration-break: clone;
     cursor: context-menu;
+    transition: background-color .12s, text-decoration-color .12s;
+}
+.markdown-content .file-link:not(.mention-link):hover {
+    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+    text-decoration-color: color-mix(in srgb, var(--color-accent) 75%, transparent);
 }
 .markdown-content .file-link[data-file-access="none"] {
     color: var(--color-text-muted);
-    background: color-mix(in srgb, var(--color-text-muted) 22%, transparent);
-    text-decoration-color: color-mix(in srgb, var(--color-text-muted) 80%, transparent);
+    background: color-mix(in srgb, var(--color-text-muted) 12%, transparent);
+    text-decoration-color: color-mix(in srgb, var(--color-text-muted) 35%, transparent);
 }
 /* A reference to what a message works with — a file, a directory, a chat, a review, a project,
    uncommitted changes — is one pill wherever it is drawn: an "@" link in the text, a pill the "+"
@@ -6381,6 +6392,19 @@ a.resource-pill-target.file-link { cursor: context-menu; }
     mask: var(--mention-icon) center / contain no-repeat;
 }
 .markdown-content :is(a.mention-link, .file-link)::before { vertical-align: text-bottom; }
+/* A plain path wraps, and an inline-block icon is a break opportunity: the icon was left alone at
+   the end of a line. An inline icon is part of the first word, so it moves along with it. */
+.markdown-content .file-link:not(.mention-link)::before {
+    display: inline;
+    width: auto;
+    height: auto;
+    padding-left: .85em;
+    vertical-align: baseline;
+    -webkit-mask-size: .85em .85em;
+    mask-size: .85em .85em;
+    -webkit-mask-position: left 55%;
+    mask-position: left 55%;
+}
 .resource-pill-target::before { width: 1em; height: 1em; margin-right: .3em; }
 .markdown-content .file-link:not(.mention-link) { --mention-icon: var(--file-icon); }
 .markdown-content .file-link:not(.mention-link)[data-file-kind="Directory"] { --mention-icon: var(--directory-icon); }

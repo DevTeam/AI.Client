@@ -3,7 +3,7 @@ id: settings-import-mcp
 name: Settings import mcp
 icon: settings-import-mcp
 kind: playbook
-description: Find and import an external MCP server by source, name or capability, reuse existing tools, configure its launch and required dependencies, merge application settings and verify tool discovery.
+description: Find and import an external MCP server by source, name or capability, reuse existing tools, configure dependencies, merge settings, verify discovery and offer functional tool tests that run only with the user's agreement.
 parameters: {"type":"object","properties":{"source":{"type":"string","description":"Registry entry, repository, documentation, configuration URL or local file supplied by the user"},"goal":{"type":"string","description":"MCP server name or capability to find without a supplied source"}},"additionalProperties":false}
 tools: ["app_read","tool_search","fetch","app_security","app_navigate","ask_user","run_skill","read_text_file","list_directory","get_file_info","process_run"]
 ---
@@ -113,6 +113,34 @@ verify candidates against their actual publisher docs, not search snippets.
    retain policy=Ask and existing overrides. Never grant blanket Allow, shadow explicit Deny,
    grant directories or rewrite project bindings implicitly. A newly saved server may require
    a refreshed tool session; do not claim its tools are already callable in this run solely
-   because discovery succeeded. Finish with the server, clickable source/version, saved status,
-   discovery result and concrete remaining configuration. Distinguish saved, connected and
-   permitted for the current project/chat.
+   because discovery succeeded.
+9. Prepare one to three small representative calls from the server's actually discovered tool
+   schemas, with concrete test inputs and observable expected results. Ask with `ask_user`
+   labelled "Functional test": "Would you like to test the imported MCP server's tools?"
+   Offer "Run tests (Recommended)" and "Skip tests" with allowOther=true. Describe the selected
+   calls and any external requests, temporary changes or usage cost. Write the question and
+   options in the user's language. Reuse an explicit testing decision already supplied in the
+   request instead of asking again. Run only after an explicit affirmative answer; skipped,
+   dismissed, declined, expired or interrupted means no functional calls and leaves the import
+   intact. Discovery alone is a connection check, not a functional tool test. If discovery or
+   required credentials are still missing, resolve that prerequisite before testing and report
+   blocked if it cannot be resolved.
+10. When testing was accepted, use `tool_search` to expose the selected server's permitted tools
+    in the current session, matching server identity and actual schemas before calling them.
+    Execute the described calls with schema-valid arguments and bounded inputs, preferring
+    reads/searches or documented dry-run behavior. For write capabilities use synthetic data
+    and an isolated disposable target; if the test needs a real target, external delivery or
+    another consequential action outside the described test, ask for that exact choice first.
+    Do not grant access, override Deny, invoke arbitrary tools from the server or call an
+    unrelated similarly named tool to manufacture a passing result. If the imported server's
+    tools need a refreshed session and remain unavailable, report blocked and the concrete
+    next step rather than claiming they were exercised.
+11. Inspect actual tool results, including error flags, application-level failures and expected
+    content/state; an HTTP success or schema-valid response alone is insufficient. Compare each
+    result to its expected behavior. Correct a known configuration error within the authorized
+    import scope, re-read settings and retry only the affected check once. Clean up only the
+    disposable objects created by the tests when authorized, using verified tool capabilities;
+    report artifacts left behind. Finish with the server, clickable source/version, saved status,
+    discovery result, concrete remaining configuration and each functional test's expected/actual
+    result and passed/failed/blocked/skipped status. Distinguish saved, connected, permitted and
+    actually tested; report untested tools without claiming the whole server was verified.

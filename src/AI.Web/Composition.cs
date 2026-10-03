@@ -90,6 +90,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .RootBind<IComposerHistoryNavigator>().To<ComposerHistoryNavigator>()
             .RootBind<IReplySuggestionState>().To<ReplySuggestionState>()
             .RootBind<INavigationCues>().To<NavigationCues>()
+            .Root<AppNavigationLinks>()
             .RootBind<IAppGuideApi>().To<AppGuideApi>()
             .Root<AI.Contracts.Navigation.AppNavigationTargets>()
             .Root<AI.Contracts.Navigation.AppGuideTopics>()

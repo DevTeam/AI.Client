@@ -7,6 +7,18 @@ const source = readFileSync(new URL("../../../src/AI.Web/wwwroot/js/appGuide.js"
     .replace(/import .*?;\r?\n/, "const cancelCursor = () => {};\n").replace(/export /g, "");
 const settle = () => new Promise(resolve => setTimeout(resolve, 40));
 
+test("navigation shortcuts reveal and scroll without clicking or starting a guide", async () => {
+    const f = fixture();
+    let scrolled = false;
+    f.target.scrollIntoView = () => { scrolled = true; };
+    const request = { target: "settings.connections", action: "show" };
+    assert.equal(await f.context.revealNavigationTarget(request), true);
+    assert.equal(scrolled, true);
+    assert.equal(f.target.clicks, undefined);
+    assert.equal(f.context.active, undefined);
+    assert.equal(f.created.length, 0);
+});
+
 test("a guided field is revealed through closed disclosures without activating or changing it", async () => {
     const f = fixture();
     const outer = { tagName: "DETAILS", open: false, parentElement: null };

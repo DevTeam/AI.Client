@@ -15,6 +15,7 @@ public sealed class ToolSelectionPriorityPolicy : IToolSelectionPriorityPolicy
         "tool_search" or
         "context_compact" or
         "app_read" or
+        "app_navigate" or
         "app_projects" or
         "app_security" or
         "skill_search" or

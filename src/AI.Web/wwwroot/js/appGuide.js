@@ -198,6 +198,13 @@ export function watchTarget(request, reference) {
     for (const type of ["click", "input", "change"]) element.addEventListener(type, onUsed, { signal });
 }
 
+// A user-clicked shortcut only reveals its destination; it does not start or alter a guide.
+export async function revealNavigationTarget(request) {
+    if (!await waitForTarget(request)) return false;
+    target(request)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    return true;
+}
+
 export async function perform(request, activate = true) {
     const element = target(request);
     if (!element || !active || !element.getClientRects().length) return "Target is unavailable.";

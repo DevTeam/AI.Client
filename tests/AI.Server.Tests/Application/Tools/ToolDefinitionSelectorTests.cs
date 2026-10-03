@@ -12,7 +12,7 @@ using Xunit;
 public sealed class ToolDefinitionSelectorTests
 {
     private static readonly string[] RequiredAppTools =
-        ["ask_user", "tool_search", "context_compact", "app_read", "app_projects", "app_security", "skill_search", "run_skill", "spawn_subtask"];
+        ["ask_user", "tool_search", "context_compact", "app_read", "app_navigate", "app_projects", "app_security", "skill_search", "run_skill", "spawn_subtask"];
     private readonly ContextTokenEstimator _estimator = new();
 
     [Fact]
@@ -65,6 +65,7 @@ public sealed class ToolDefinitionSelectorTests
         selection.Tools.Select(item => item.OriginalName).ShouldContain("app_security");
         selection.Tools.Select(item => item.OriginalName).ShouldContain("spawn_subtask");
         selection.Tools.Select(item => item.OriginalName).ShouldContain("app_read");
+        selection.Tools.Select(item => item.OriginalName).ShouldContain("app_navigate");
         selection.Tools.Select(item => item.OriginalName).ShouldContain("ask_user");
         selection.Tools.Select(item => item.OriginalName).ShouldContain("tool_search");
         selection.Tools.Select(item => item.OriginalName).ShouldContain("context_compact");

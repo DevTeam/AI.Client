@@ -35,7 +35,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IAdaptiveContextPolicy contextPolicy, IToolCatalogRegistry toolCatalog,
     IModelContentCheckpointService checkpoints, IModelInstructionRegistry instructions,
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
-    IStandingInstructions standingInstructions, IContextTokenEstimator estimator, ISkillGuide skillGuide,
+    IStandingInstructions standingInstructions, IContextTokenEstimator tokenEstimator, ISkillGuide skillGuide,
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
     IClock clock, IIdGenerator ids) : IChatAgent
 {
@@ -52,6 +52,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         Func<ContextUsage, CancellationToken, Task>? contextUsage = null,
         Func<string, CancellationToken, Task>? draftToolCall = null)
     {
+        var estimator = tokenEstimator.ForModel(request.Model);
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var transportScope = transport.BeginScope(transportActivity);
         var deadline = new TurnDeadline(source, TimeSpan.FromMinutes(60));
@@ -71,6 +72,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             ? global.Connections.SingleOrDefault(item => item.Id == connectionId)
             : global.Connections.SingleOrDefault(item => item.Model == request.Model
                 && item.BaseUrl.TrimEnd('/') == request.BaseUrl.TrimEnd('/'));
+        if (configuredConnection is not null) configuredConnection = configuredConnection with { Model = request.Model };
         var project = await projects.GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
         // Every server is gated the same way: enabled and not denied globally, and not switched off
         // for this project. A server that fails the test is never started, so nothing it could
@@ -109,7 +111,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 ContextMessages = [new ChatCompletionMessage("user", prompt)],
                 Tools = []
             }, ct)).Content;
-        });
+        }, configuredConnection);
         var sessionFactory = servers.Count > 0 ? sessions() : null;
         var initialSession = sessionFactory is not null
             ? await sessionFactory.OpenAsync(grants, servers, run, token)

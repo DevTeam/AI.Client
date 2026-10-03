@@ -2,6 +2,11 @@
 
 Status: Proposed
 
+Implementation note: the current request policy, model-bound estimates, summary gates and
+diagnostics are specified in [adaptive context selection](21-tool-selection-and-adaptive-compaction.md)
+and [context evaluation](31-context-evaluation.md). The broader persistence/cache proposals below
+are not all implemented and must not be read as the current storage contract.
+
 ## Goal
 
 The client must complete long conversations predictably: neither the size of the history nor large tool results should lead to an endless `Generating`, an endpoint rejection on the context window, or a repeated transmission of data that has already been reduced for the model.
@@ -43,7 +48,7 @@ Deterministic compaction of the old part of context
         +-- fits --> send
         |
         v
-Automatic LLM summary of older turns (tool-free, user-role, run-only)
+Budgeted LLM summary of older turns (tool-free, user-role, checkpoint eligible)
         |
         +-- fits --> send
         |
@@ -79,10 +84,13 @@ The new settings must be nullable and have working defaults, so the old `setting
 ### Effective input budget
 
 ```text
-EffectiveInputBudget = ContextWindowTokens - ReservedOutputTokens
+EffectiveInputBudget = ContextWindowTokens - ReservedOutputTokens - ProtocolAndSafetyReserve
 ```
 
-By default the budget is conservative: for an unknown connection the value is `16384 - 4096 = 12288`. OpenAI-compatible endpoints without a model hint receive the same value. The connection also carries the source of the values, which is shown in diagnostics.
+Without overrides the current defaults are a 32,768-token window and a 4,096-token output reserve.
+The baseline protocol/safety reserve is 1,280 tokens, yielding 27,392 usable input tokens before
+tools and trailing guidance. Reported underestimation can increase the safety reserve. Output
+reserve is local; no unverified generation-limit parameter is sent to a compatible provider.
 
 ## 2. Model projection of tool results
 
@@ -170,7 +178,9 @@ When `previous_response_id` is not supported by the connection, the planner alwa
 
 ## 7. Endpoints without Responses API
 
-For Chat Completions the projection is the same; the only difference is in the protocol framing. The compacted `[conversation summary]` is sent as a regular user message with a `name: "compaction"` marker that the model is told to treat as a system instruction; otherwise the model would treat the joined text as a user request.
+For Chat Completions summaries retain user-role authority. The application-only `IsContextSummary`
+marker distinguishes synthetic continuation state from a real user request; it is not a wire
+`name` field. Compaction never promotes source text to system instructions.
 
 ## Implementation notes
 

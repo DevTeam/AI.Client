@@ -8,13 +8,10 @@ This document is the log of actually completed work. It is updated after each fi
 
 Cross-cutting items that are not yet increments but must be picked up before they become silent behaviour gaps.
 
-- **Surface automatic LLM context fallback to the user.** Today the planner silently replaces old
-  turns with an LLM summary when deterministic compaction does not fit; the chat feed, run status
-  and persisted history show nothing. Three layered options are documented in
-  `21-tool-selection-and-adaptive-compaction.md` ("Making the fallback visible to the user"):
-  log + run journal first, transport-side notification second, chat feed item last. Until at
-  least the first option is implemented, neither users nor post-mortem log readers can tell that
-  a compaction happened, which makes the recovery invisible.
+- **Surface automatic LLM context fallback in the chat feed.** Numeric log diagnostics now
+  distinguish fallback, deterministic pressure and reused projections, and record summary
+  operations. Optional transport/feed notices remain described in
+  `21-tool-selection-and-adaptive-compaction.md`; existing history checkpoint marks remain.
 
 ## Recording rules
 
@@ -365,3 +362,33 @@ result and a smaller-model transition, and 80-step automatic-summary sequences. 
 compaction/prefix-change counts and verify mandatory text, complete parallel protocols, checkpoint
 rejection, multilingual sizing, calibration isolation and provider-only observations. No external
 LLM is used.
+
+## 2026-10-03 — budgeted summary requests and separate quality evaluations
+
+Implemented [ADR-011](decisions/ADR-011-budgeted-summary-requests.md). The same adaptive policy
+now budgets summary inputs, result targets, part targets and work limits. Source and merge
+requests are checked in their complete rendered form before transport; fixed 40,000-character
+chunks are removed. Manual history compaction, run checkpoints and planner fallback pass the
+connection's actual window and output reserve. Missing parts, failed merges, exhausted budgets
+and non-convergence retain the original source; cancellation propagates. Requests remain tool-free.
+
+Recognized models use offline text tokenization with packaged Cl100k/O200k vocabularies; unknown
+models retain conservative UTF-8 estimation. Model-bound estimator views also feed tool and
+instruction admission, planner/compactor checks, calibration, usage and prefix measurements.
+The tokenizer's shared lookup is bounded and singleton; policy and estimator services remain
+transient. Protocol framing remains estimated and provider generation caps are not inferred or
+sent without confirmed support. The tokenizer dependency's vulnerable transitive memory package
+was upgraded explicitly to the current stable 10.0.12 version; audit warnings are not suppressed.
+
+Summary prompts preserve structured continuation sections. Diagnostics report numeric outcomes,
+calls, total transmitted prompt tokens, result tokens and elapsed time; final plans report savings
+and distinguish pressure, reused projections and LLM fallback. Documentation includes the full
+context diagram, formulas and limitations. Normal tests cover 2K–128K windows, complete source
+coverage, Unicode, parts/merges, smaller models, failure/cancellation, work limits, known-model
+counts, concurrent views and repeated continuation contracts.
+
+Checks: solution and separate evaluation project builds passed with zero warnings/errors;
+the complete final serial Server suite passed, with the Unix-permissions check skipped on Windows;
+all 427 Web tests passed; `git diff --check` passed. The opt-in evaluation
+project was verified to skip without its enable switch. No external model quality result is
+claimed: endpoint/model configuration is required to run the shared real-model comparisons.

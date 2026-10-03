@@ -81,6 +81,7 @@ internal sealed class Composition
             // Reading embedded skill definitions once avoids repeated parsing.
             .Singleton<BuiltInSkillCatalog>("built-in")
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
+            .Singleton<ContextTextTokenizer>()
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
             .Bind<IChatReplySuggestions>().As(Lifetime.Singleton).To<ChatReplySuggestions>()
             // Bindings: one call per lifetime and tag. Order inside a call carries no meaning; a call

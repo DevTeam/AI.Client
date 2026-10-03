@@ -8,11 +8,12 @@ using Tools;
 public interface IAdaptiveContextPolicy
 {
     AdaptiveContextBudget Resolve(ConnectionSettings? connection);
+    AdaptiveSummaryBudget ResolveSummary(ConnectionSettings? connection, int requestedTargetTokens);
     AdaptiveCompactionBudget ResolveCompaction(ConnectionSettings? connection, long toolTokens = 0,
         long trailingInstructionTokens = 0, bool keepMemory = true);
     bool ShouldCompactAhead(AdaptiveCompactionBudget budget, long messageTokens, long nextAttemptTokens);
     bool ShouldAcceptCompaction(IReadOnlyList<ChatCompletionMessage> before,
-        IReadOnlyList<ChatCompletionMessage> after, long minimumGainTokens);
+        IReadOnlyList<ChatCompletionMessage> after, long minimumGainTokens, ConnectionSettings? connection = null);
     void ObserveInputUsage(ChatCompletionRequest request, long reportedInputTokens);
     ModelContextPreview PrepareStanding(ModelContextPreview preview, ConnectionSettings? connection, bool appToolsAvailable);
     IReadOnlyList<ModelInstruction> SelectInstructions(IReadOnlyList<ModelInstruction> instructions, ConnectionSettings? connection);
@@ -25,6 +26,10 @@ public interface IAdaptiveContextPolicy
 public sealed record AdaptiveContextBudget(long ContextWindowTokens, long ReservedOutputTokens,
     long OverheadTokens, long UsableTokens, long InstructionTokens, long RunInstructionTokens,
     long ToolTokens, int MaximumTools, bool Compact);
+
+/// <summary>Tool-free summary requests use the same input allowance as the main request.</summary>
+public sealed record AdaptiveSummaryBudget(long InputLimit, int TargetTokens, int PartTargetTokens,
+    int MaximumCalls, int MaximumMergeRounds);
 
 public sealed record ToolSelection(IReadOnlyList<AgentTool> Tools, int AvailableCount,
     long AvailableTokens, long SelectedTokens, long BudgetTokens);

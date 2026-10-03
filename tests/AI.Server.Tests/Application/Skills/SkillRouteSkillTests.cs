@@ -139,7 +139,7 @@ public class SkillRouteSkillTests
         var estimator = new ContextTokenEstimator();
         var limits = new ConnectionContextLimitsResolver();
         var skill = new SkillRouteSkill(catalog, guide, chats.Object, projects.Object, settings.Object, secrets.Object,
-            completion.Object, new ChatContextPlanner(estimator, new ChatContextCompactor(estimator, new ContextSummaryWriter(new ContextTokenEstimator(), new ToolResultContextProjector()), new ToolResultContextProjector()),
+            completion.Object, new ChatContextPlanner(estimator, new ChatContextCompactor(estimator, new ContextSummaryWriter(new ContextTokenEstimator(), new ToolResultContextProjector(), new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver())), new ToolResultContextProjector()),
                 limits, new AdaptiveContextPolicy(estimator, limits)), NullLogger<SkillRouteSkill>.Instance);
         return new SkillRouting(new SkillRunner(catalog, null!, skillRouteSkill: skill), guide, settings.Object);
     }

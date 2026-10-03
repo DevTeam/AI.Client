@@ -34,7 +34,7 @@ public sealed class ChatHistoryCompaction(
     IChatRunDispatcher runs,
     IClock clock,
     IIdGenerator ids,
-    IConnectionContextLimitsResolver contextLimits) : IChatHistoryCompaction
+    IAdaptiveContextPolicy contextPolicy) : IChatHistoryCompaction
 {
     /// <summary>
     /// At most this many recent turns stay in full, and only while they fit a fifth of the window
@@ -42,9 +42,6 @@ public sealed class ChatHistoryCompaction(
     /// question starts from the summary.
     /// </summary>
     private const int MaxTurnsToKeep = 2;
-
-    /// <summary>A whole conversation deserves a longer summary than one turn's work does.</summary>
-    private const int SummaryTargetTokens = 3_000;
 
     public async Task<HistoryCompactionResponse?> CompactAsync(Guid projectId, Guid chatId, Guid branchId,
         CancellationToken cancellationToken)
@@ -66,9 +63,9 @@ public sealed class ChatHistoryCompaction(
 
         var context = await history.ApplyAsync(projectId, chatId,
             await contextBuilder.BuildAsync(chat, head, cancellationToken), cancellationToken);
-        var limits = contextLimits.Resolve(connection);
+        var budget = contextPolicy.ResolveCompaction(connection);
         var coverable = history.Coverable(context, new HistoryKeepPolicy(
-            Math.Max(1_024, (limits.ContextWindowTokens - limits.ReservedOutputTokens) / 5), 0, MaxTurnsToKeep));
+            budget.HistoryKeepTokens, 0, MaxTurnsToKeep));
         if (coverable.Count == 0)
             return new HistoryCompactionResponse(HistoryCompactionStatus.NothingToCompact,
                 Error: "The history is already summarized up to the latest turn.");
@@ -77,8 +74,8 @@ public sealed class ChatHistoryCompaction(
             await secrets.GetAsync("connection", connection.Id, cancellationToken), "Summarize", connection.Id);
         ContextSummary? summary;
         using (usageMeter.Begin(new TokenUsageScope(TokenUsagePurpose.Compaction, projectId, chatId, branchId)))
-            summary = await summaryWriter.WriteAsync(coverable, SummaryTargetTokens, new Summarizer(completion, request),
-                cancellationToken);
+            summary = await summaryWriter.WriteAsync(coverable, budget.HistorySummaryTargetTokens, new Summarizer(completion, request),
+                cancellationToken, connection);
         if (summary is null)
             return new HistoryCompactionResponse(HistoryCompactionStatus.Failed, Error: "The model did not return a summary.");
 

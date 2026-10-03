@@ -3,7 +3,8 @@
 Status: implemented.
 
 Decisions: [ADR-009](decisions/ADR-009-adaptive-context-policy.md) and
-[ADR-010](decisions/ADR-010-adaptive-compaction-and-estimation.md).
+[ADR-010](decisions/ADR-010-adaptive-compaction-and-estimation.md) and
+[ADR-011](decisions/ADR-011-budgeted-summary-requests.md).
 
 ## Problem
 
@@ -121,9 +122,10 @@ every threshold; the agent and planner use the same basis.
 | Fallback/turn summary target | `min(1,500, 10% of M)` |
 | History summary target | `min(3,000, 20% of M)` |
 
-The summary writer has a minimum working target of 256 tokens and bounds its output with the same
-UTF-8 estimator; full summary framing is measured again at acceptance. On very small windows the
-minimum target may exceed the recommendation, so a summary can be rejected rather than forced in.
+The summary policy clamps the target to the reserved output and a quarter of usable input.
+Targets below 64 tokens disable summarization. The writer measures complete source and merge
+prompts with the model-bound estimator; full summary framing is measured again at acceptance.
+See [request budgets and evaluation](31-context-evaluation.md) for the complete formulas.
 
 The budget is checked before every request. Deterministic compaction runs only when the original
 or carried request exceeds `M`. There is no timer or every-N-messages schedule. Its carried
@@ -189,9 +191,12 @@ below remain for what is left: a summary that failed, or a single step larger th
   when it fits the keep budget — and keeps the summary as a history checkpoint (below), so every
   later request of the branch starts from it.
 
-Summaries are written by `ContextSummaryWriter`: a source that fits one request (about 40k
-characters) is summarized in one, a longer one part by part and then merged, so nothing past a
-character ceiling is silently dropped. Large tool results keep only their head and tail.
+Summaries are written by `ContextSummaryWriter`: a source fitting the connection's usable token
+allowance is summarized once, and a longer source is partitioned and merged within that same
+allowance. Every part and merge is checked before sending. The operation has at most 64 calls and
+four merge rounds. Empty parts, failures or exhausted budgets leave the original source intact.
+Large tool results retain bounded diagnostics/facts and excerpts before partitioning. Summary
+prompts request Goal, Constraints, Decisions, Evidence, Failures and Remaining work sections.
 
 ## History checkpoints
 
@@ -270,8 +275,10 @@ including any final shortening, so later requests do not restore an oversized ve
 
 ## Estimation observations
 
-`ContextTokenEstimator` remains conservative and provider-independent. `ContextSummaryWriter`
-also uses it to bound multilingual summaries instead of multiplying tokens by two characters.
+`ContextTokenEstimator` counts recognized model text offline with packaged Cl100k/O200k
+vocabularies; unknown models retain the conservative UTF-8 estimate. Protocol framing remains
+estimated. `ContextSummaryWriter` uses the same model-bound view to budget source and merge
+requests and bound multilingual results instead of multiplying tokens by two characters.
 `MeteringChatCompletionClient` passes only provider-reported input usage to the adaptive policy;
 estimated usage never calibrates another estimate. Reported input already includes its cached
 share and is not added to cached tokens again.
@@ -286,23 +293,18 @@ observational, not an exact tokenizer or a guarantee against every provider-spec
 
 ## User-visible status of automatic fallback
 
-The fallback is silent in the UI today: the chat feed shows nothing, the run status does not
-change, and no message is persisted. The fact that it happened is visible only through the
-`IContextPlanDiagnostics.Record` log line `LLM context plan for {Model}` with
-`compacted=true`, `omitted=N`, and the post-compaction estimate.
+The fallback does not add a chat-feed notification. Diagnostics distinguish `llm_fallback` from
+`input_pressure` and `reused_projection`, report saved projection tokens, and record every summary
+operation's numeric outcome, transmitted tokens, call count and latency. Existing history marks
+still show persisted checkpoints. Stored conversation content is unchanged.
 
 ## Making the fallback visible to the user
 
 Three layered options, in order of effort. Each is described as a separate change so they can be
 reviewed independently.
 
-1. **Log + run journal only** (recommended first step). Add `RecordLlmFallback(string model,
-   long inputLimit, long projectedTokens, int omittedMessages, int summaryCharacters)` to
-   `IContextPlanDiagnostics`. Call it from `ChatContextPlanner.PlanAsync` when the LLM step
-   changes the plan. The infrastructure `ContextPlanDiagnostics` logs the event under a new
-   `LoggerMessage(1005, LogLevel.Information, "LLM context fallback for {Model}: …")`. No UI
-   change. The fallback stays invisible in the chat feed but every run now leaves a single
-   distinguishing line in the run journal, which is enough to answer "did it just compact?".
+1. **Log diagnostics** (implemented). `LLM context plan` records the reason and savings;
+   `LLM context summary` records the summary operation and its cost/latency inputs. No UI change.
 2. **Transport-side notification.** Add a `ChatTransportWait`-style record
    `ContextCompactionNotice(int step, string kind, int omittedMessages, long estimatedTokens)`
    and report it through the existing `IChatTransportActivity.BeginScope` callback. The web

@@ -3,12 +3,20 @@ namespace AI.Application.Chat;
 using System.Text;
 
 /// <summary>
-/// Provider-independent conservative estimator. It uses two UTF-8 bytes per estimated token,
-/// rather than the optimistic four characters commonly used for English prose, so code, JSON and
-/// non-ASCII text retain a substantial safety margin without making normal tool schemas unusable.
+/// Estimates framing and counts payload text with a recognized offline model tokenizer.
+/// Unknown models use two UTF-8 bytes per estimated token, retaining a conservative fallback.
 /// </summary>
 public sealed class ContextTokenEstimator : IContextTokenEstimator
 {
+    private readonly IContextTextTokenizer? _tokenizer;
+    private readonly string? _model;
+
+    public ContextTokenEstimator(IContextTextTokenizer? tokenizer = null) => _tokenizer = tokenizer;
+    private ContextTokenEstimator(IContextTextTokenizer? tokenizer, string? model) => (_tokenizer, _model) = (tokenizer, model);
+
+    public IContextTokenEstimator ForModel(string? model) =>
+        string.Equals(model, _model, StringComparison.Ordinal) ? this : new ContextTokenEstimator(_tokenizer, model);
+
     public long EstimateMessages(IReadOnlyList<ChatCompletionMessage> messages)
     {
         ArgumentNullException.ThrowIfNull(messages);
@@ -46,9 +54,10 @@ public sealed class ContextTokenEstimator : IContextTokenEstimator
         return estimate;
     }
 
-    private static long AddText(long estimate, string? value)
+    private long AddText(long estimate, string? value)
     {
         if (string.IsNullOrEmpty(value)) return estimate;
+        if (_tokenizer?.TryCount(_model, value, out var tokens) == true) return Add(estimate, tokens);
         var bytes = Encoding.UTF8.GetByteCount(value);
         return Add(estimate, (bytes + 1L) / 2L);
     }

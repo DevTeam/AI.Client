@@ -19,7 +19,9 @@ public sealed record ContextPlan(
     // Protocol framing and the tokenizer safety margin, held back like the output reserve.
     long OverheadTokens = 0,
     // A summary the model wrote for this request, worth keeping for the next ones.
-    ContextHistorySummary? HistorySummary = null)
+    ContextHistorySummary? HistorySummary = null,
+    long FreedInputTokens = 0,
+    string CompactionReason = "none")
 {
     public bool Fits => EstimatedInputTokens <= InputLimit;
 }

@@ -24,7 +24,7 @@ public sealed class ModelContentCheckpointServiceTests
         clock.SetupGet(item => item.UtcNow).Returns(new DateTimeOffset(2026, 9, 30, 12, 0, 0, TimeSpan.Zero));
         var ids = new Mock<IIdGenerator>();
         ids.Setup(item => item.Create()).Returns(Guid.CreateVersion7);
-        _service = new ModelContentCheckpointService(new ContextSummaryWriter(new ContextTokenEstimator(), new ToolResultContextProjector()), _history, clock.Object, ids.Object, new ContextTokenEstimator(), new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver()));
+        _service = new ModelContentCheckpointService(new ContextSummaryWriter(new ContextTokenEstimator(), new ToolResultContextProjector(), new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver())), _history, clock.Object, ids.Object, new ContextTokenEstimator(), new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver()));
     }
 
     [Fact]
@@ -132,7 +132,8 @@ public sealed class ModelContentCheckpointServiceTests
         {
             prompts.Add(prompt);
             return Task.FromResult("summary");
-        });
+        }, new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.test/v1", "m", true, true, false,
+            ContextWindowTokens: 8_192, ReservedOutputTokens: 1_000));
         _service.Update(_run, context);
 
         await _service.CompactAsync(_run, 500, ContextCompactionScope.Turn, CancellationToken.None);

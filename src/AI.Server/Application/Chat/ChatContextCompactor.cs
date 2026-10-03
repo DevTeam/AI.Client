@@ -1,12 +1,13 @@
 namespace AI.Application.Chat;
 
 using System.Text;
+using Contracts.Settings;
 
 /// <summary>
 /// Deterministically reduces model input. Tool results are projected to bounded excerpts first;
 /// older user turns are then replaced as whole protocol groups by one synthetic summary.
 /// </summary>
-public sealed class ChatContextCompactor(IContextTokenEstimator estimator, IContextSummaryWriter summaryWriter,
+public sealed class ChatContextCompactor(IContextTokenEstimator tokenEstimator, IContextSummaryWriter summaryWriter,
     IToolResultContextProjector toolProjector) : IChatContextCompactor
 {
     private const int RecentTurnsToKeep = 2;
@@ -18,10 +19,10 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
     private const string ToolCompactionMarker = "[Tool result compacted for model context.";
     private static readonly int[] SummaryCharacterBudgets = [int.MaxValue, 2_000, 800, 300];
 
-    public ContextCompactionResult Compact(IReadOnlyList<ChatCompletionMessage> messages, long inputLimit)
+    public ContextCompactionResult Compact(IReadOnlyList<ChatCompletionMessage> messages, long inputLimit, string? model = null)
     {
         ArgumentNullException.ThrowIfNull(messages);
-        return CompactBest(messages, inputLimit).Result;
+        return CompactBest(messages, inputLimit, tokenEstimator.ForModel(model)).Result;
     }
 
     public async Task<ContextCompactionResult> CompactWithLlmAsync(
@@ -29,11 +30,12 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
         long inputLimit,
         int targetTokens,
         IContextSummarizer summarizer,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, ConnectionSettings? connection = null)
     {
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(summarizer);
-        var attempt = CompactBest(messages, inputLimit);
+        var estimator = tokenEstimator.ForModel(connection?.Model);
+        var attempt = CompactBest(messages, inputLimit, estimator);
         if (estimator.EstimateMessages(attempt.Result.Messages) <= inputLimit) return attempt.Result;
 
         // The result is assembled from the deterministically projected messages, never from the
@@ -54,7 +56,7 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
             var summarySource = (originalTurns.Count == turns.Count
                 ? originalTurns.Take(coveredTurnCount)
                 : turns.Take(coveredTurnCount)).SelectMany(turn => turn).ToArray();
-            var summary = await summaryWriter.WriteAsync(summarySource, targetTokens, summarizer, cancellationToken);
+            var summary = await summaryWriter.WriteAsync(summarySource, targetTokens, summarizer, cancellationToken, connection);
             // The last stored message the summary covers is what lets it be kept: without one it
             // describes messages that exist only in this request, and stays in this request.
             var upTo = summarySource.LastOrDefault(message => message.MessageId is not null)?.MessageId;
@@ -68,7 +70,7 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
         }
 
         if (summaryMessage is null) coveredTurnCount = 0;
-        var result = Assemble(preamble, summaryMessage, coveredTurnCount, turns, keptTurns, inputLimit);
+        var result = Assemble(preamble, summaryMessage, coveredTurnCount, turns, keptTurns, inputLimit, estimator);
         if (kept is not null)
         {
             var sentSummary = result.Messages.FirstOrDefault(message => message.ForModel.StartsWith(
@@ -85,13 +87,13 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
     /// Builds the final message list and verifies it against the limit, dropping further turns and
     /// finally trimming the current turn until the request fits.
     /// </summary>
-    private ContextCompactionResult Assemble(
+    private static ContextCompactionResult Assemble(
         IReadOnlyList<ChatCompletionMessage> preamble,
         ChatCompletionMessage? summary,
         int coveredTurnCount,
         IReadOnlyList<IReadOnlyList<ChatCompletionMessage>> turns,
         int keptTurns,
-        long inputLimit)
+        long inputLimit, IContextTokenEstimator estimator)
     {
         for (var keep = keptTurns; keep >= 1; keep--)
         {
@@ -116,7 +118,7 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
                 var prefix = new List<ChatCompletionMessage>(preamble);
                 if (summary is not null) prefix.Add(Truncate(summary, budget));
                 if (extra.Length > 0) prefix.Add(Truncate(BuildSummary(extra), budget));
-                smallest = TrimCurrentTurn(prefix, last, omittedMessages, inputLimit);
+                smallest = TrimCurrentTurn(prefix, last, omittedMessages, inputLimit, estimator);
                 if (estimator.EstimateMessages(smallest.Messages) <= inputLimit) break;
             }
 
@@ -132,11 +134,11 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
     /// falls monotonically as the cut moves forward, so the smallest fitting cut is found by
     /// bisection instead of by estimating every candidate.
     /// </summary>
-    private ContextCompactionResult TrimCurrentTurn(
+    private static ContextCompactionResult TrimCurrentTurn(
         IReadOnlyList<ChatCompletionMessage> prefix,
         IReadOnlyList<ChatCompletionMessage> turn,
         int omittedBefore,
-        long inputLimit)
+        long inputLimit, IContextTokenEstimator estimator)
     {
         var cuts = Enumerable.Range(1, Math.Max(0, turn.Count - 1))
             .Where(index => turn[index].Role != "tool")
@@ -198,12 +200,12 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
         return new ChatCompletionMessage("user", digest.ToString(), IsContextSummary: true);
     }
 
-    private CompactionAttempt CompactBest(IReadOnlyList<ChatCompletionMessage> messages, long inputLimit)
+    private CompactionAttempt CompactBest(IReadOnlyList<ChatCompletionMessage> messages, long inputLimit, IContextTokenEstimator estimator)
     {
         CompactionAttempt? smallest = null;
         foreach (var (head, tail) in ToolProjectionLimits)
         {
-            var attempt = CompactOnce(messages, inputLimit, head, tail);
+            var attempt = CompactOnce(messages, inputLimit, head, tail, estimator);
             smallest = attempt;
             if (estimator.EstimateMessages(attempt.Result.Messages) <= inputLimit) return attempt;
         }
@@ -212,7 +214,7 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
     }
 
     private CompactionAttempt CompactOnce(IReadOnlyList<ChatCompletionMessage> messages, long inputLimit,
-        int toolHeadCharacters, int toolTailCharacters)
+        int toolHeadCharacters, int toolTailCharacters, IContextTokenEstimator estimator)
     {
         var projected = ProjectLargeToolResults(messages, toolHeadCharacters, toolTailCharacters);
         var changedProjection = !ReferenceEquals(projected, messages);
@@ -224,7 +226,7 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
         if (turns.Count <= 1)
             return new CompactionAttempt(projected,
                 turns.Count == 0 ? new ContextCompactionResult(projected, 0, changedProjection)
-                    : Assemble(preamble, null, 0, turns, 1, inputLimit), turns.Count);
+                    : Assemble(preamble, null, 0, turns, 1, inputLimit, estimator), turns.Count);
 
         var omittedTurnCount = Math.Max(0, turns.Count - RecentTurnsToKeep);
         while (omittedTurnCount < turns.Count)
@@ -240,7 +242,7 @@ public sealed class ChatContextCompactor(IContextTokenEstimator estimator, ICont
                 return new CompactionAttempt(projected,
                     new ContextCompactionResult(compacted, omitted.Length, true), turns.Count - omittedTurnCount);
             if (omittedTurnCount == turns.Count - 1)
-                return new CompactionAttempt(projected, Assemble(preamble, null, 0, turns, 1, inputLimit), 1);
+                return new CompactionAttempt(projected, Assemble(preamble, null, 0, turns, 1, inputLimit, estimator), 1);
             omittedTurnCount++;
         }
 

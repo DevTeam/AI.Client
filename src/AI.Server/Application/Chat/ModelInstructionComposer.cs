@@ -21,7 +21,7 @@ public sealed class ModelInstructionComposer(
     {
         ArgumentNullException.ThrowIfNull(context);
         var selected = policy.SelectInstructions(registry.List(run), connection);
-        var tokens = estimator.EstimateMessages(selected.Select(item => new ChatCompletionMessage("system", item.Content)).ToArray());
+        var tokens = estimator.ForModel(connection?.Model).EstimateMessages(selected.Select(item => new ChatCompletionMessage("system", item.Content)).ToArray());
 
         if (selected.Count == 0)
             return new ModelInstructionComposition(context, [], 0);

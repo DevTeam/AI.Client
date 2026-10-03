@@ -78,6 +78,11 @@ const highlightAll = async container => {
     }
 };
 
+export async function highlightText(text, language) {
+    const hljs = await loadLibrary();
+    return await loadLanguage(hljs, language) ? hljs.highlight(text, { language, ignoreIllegals: true }).value : null;
+}
+
 export function attach(container) {
     let scheduled = false;
     let disposed = false;

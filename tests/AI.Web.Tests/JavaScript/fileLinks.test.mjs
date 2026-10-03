@@ -103,6 +103,24 @@ test('local paths, malformed URLs and unknown schemes never navigate or launch a
     }
     assert.equal(f.messages.length, 0);
     assert.equal(f.opened.length, 0);
+    assert.deepEqual(f.mentions, [
+        ['OnFileLinkClicked', 'C:\\repo\\app.cs'], ['OnFileLinkClicked', 'C:\\repo\\app.cs'],
+        ['OnFileLinkClicked', 'src/app.cs'], ['OnFileLinkClicked', '/repo/app.cs'],
+        ['OnFileLinkClicked', '../docs']
+    ]);
+});
+
+test('decorated file spans open the viewer by click and keyboard', () => {
+    const f = fixture();
+    const initial = f.click('ignored');
+    f.mentions.length = 0;
+    const target = initial.target;
+    target.href = null;
+    target.dataset.filePath = 'D:\\Sandbox\\picture.png';
+    target.tagName = 'SPAN';
+    f.click(null, { target });
+    f.click(null, { target, type: 'keydown', key: 'Enter' });
+    assert.deepEqual(f.mentions, Array.from({ length: 2 }, () => ['OnFileLinkClicked', 'D:\\Sandbox\\picture.png']));
 });
 
 test('mentions and fragment scrolling work without changing the current page', () => {

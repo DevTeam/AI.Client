@@ -7,31 +7,10 @@
 
 @if (Changes is { IsEmpty: false } changes)
 {
-    <section class="workspace-changes @(_showDetails ? "is-expanded" : "is-collapsed") @(_suppressPreview ? "is-preview-suppressed" : null)"
-             aria-label="Files changed by this run" @onmouseleave="EnablePreview">
-        <div class="workspace-changes-preview" id="@_previewId" role="tooltip">
-            <ul>
-                @foreach (var file in changes.Files)
-                {
-                    var dragPath = file.Kind == FileChangeKind.Deleted ? null : file.Path;
-                    <li @key="file.Path" draggable="@(dragPath is null ? "false" : "true")" data-drag-path="@dragPath" data-drag-kind="File">
-                        <span class="workspace-changes-preview-path" title="@file.Path">@PreviewDisplay(file)</span>
-                        @if (CommentCount(file.Path) is > 0 and var count)
-                        {
-                            <span class="workspace-change-comments" title="@count @(count == 1 ? "comment" : "comments")" aria-label="@count @(count == 1 ? "comment" : "comments")"><AppIcon Name="message-circle" />@count</span>
-                        }
-                        <span class="workspace-changes-preview-counts">
-                            <AnimatedCount Value="@file.Additions" Title="Net lines added to this file during the run; repeated edits are combined" Sign="+" Class="workspace-added" CountIn="@Live" />
-                            <AnimatedCount Value="@file.Deletions" Title="Net lines removed from this file during the run; repeated edits are combined" Sign="−" Class="workspace-removed" CountIn="@Live" />
-                            @if (file.IsBinary) { <span class="workspace-change-binary" title="Binary file; text line counts are unavailable">binary</span> }
-                        </span>
-                    </li>
-                }
-            </ul>
-        </div>
+    <section class="workspace-changes @(_showDetails ? "is-expanded" : "is-collapsed")"
+             aria-label="Files changed by this run">
         <div class="workspace-changes-top">
         <button class="workspace-changes-header" type="button" aria-expanded="@_showDetails"
-                aria-describedby="@(!_showDetails ? _previewId : null)"
                 title="@(_showDetails ? "Collapse file changes" : "Expand file changes")" @onclick="ToggleDetails">
             <span class="workspace-changes-icon" aria-hidden="true"><AppIcon Name="diff" /></span>
             <span class="workspace-changes-title">@(Label is null ? null : $"{Label} · ")@changes.Files.Count @(changes.Files.Count == 1 ? "file" : "files") changed</span>
@@ -100,19 +79,11 @@
     [Parameter] public bool InitiallyExpanded { get; set; }
 
     private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
-    private readonly string _previewId = $"workspace-changes-preview-{Guid.NewGuid():N}";
     private bool _showDetails;
-    private bool _suppressPreview;
 
     protected override void OnInitialized() => _showDetails = InitiallyExpanded;
 
-    private void ToggleDetails()
-    {
-        _suppressPreview = _showDetails;
-        _showDetails = !_showDetails;
-    }
-
-    private void EnablePreview() => _suppressPreview = false;
+    private void ToggleDetails() => _showDetails = !_showDetails;
 
     private int CommentCount(string path) => Review?.Comments.Count(comment => comment.Path == path) ?? 0;
 
@@ -120,16 +91,4 @@
     {
         if (!_expanded.Add(path)) _expanded.Remove(path);
     }
-
-    private static string PreviewDisplay(FileChange file) =>
-        file is { Kind: FileChangeKind.Renamed, PreviousPath: { } previous }
-            ? $"{FileName(previous)} → {FileName(file.Path)}"
-            : FileName(file.Path);
-
-    private static string FileName(string path)
-    {
-        var segments = path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
-        return segments.Length == 0 ? path : segments[^1];
-    }
-
 }

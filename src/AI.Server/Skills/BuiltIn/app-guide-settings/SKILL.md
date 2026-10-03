@@ -185,3 +185,15 @@ settings.sounds.notifications, settings.sounds.other, settings.guide.enabled,
 settings.guide.idle and settings.guide.progress. Explain which preference changes visual comfort or
 interruptions, and that manual guides remain available when idle invitations are disabled.
 Reset progress affects learned-topic marks, not chats. Show controls without changing them.
+
+## Links to skills and tools
+
+When naming a skill in visible answers, link its name with
+[Skill name](aiclient://navigate/settings.skills?skillId=EXACT_SKILL_ID).
+When naming a tool, use
+[Tool name](aiclient://navigate/settings.tools?toolName=EXACT_TOOL_CALL_NAME).
+Use real skill ids and full tool call names including the MCP server prefix from the catalog;
+URL-encode query values. Skill links use the effective current-project catalog. For another
+project append &projectId=REAL_PROJECT_ID. Link saved skills in the completion report too.
+The app supplies icons; do not add emoji or Markdown attributes. Links open settings or the
+skill document; clicking them never executes a skill/tool or changes permissions.

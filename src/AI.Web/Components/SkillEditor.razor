@@ -135,6 +135,22 @@
 @code {
     /// <summary>The project whose skills are edited; null edits the person's own beside the built-in ones.</summary>
     [Parameter] public Guid? ProjectId { get; set; }
+    [Parameter] public string? SkillToEdit { get; set; }
+    [Parameter] public string? SkillSource { get; set; }
+    [Parameter] public int LinkSelection { get; set; }
+    private int _appliedSelection = -1;
+
+    protected override void OnParametersSet() => SelectLinkedSkill();
+
+    private void SelectLinkedSkill()
+    {
+        if (!_loaded || SkillToEdit is null || _appliedSelection == LinkSelection) return;
+        _appliedSelection = LinkSelection;
+        var item = _items.FirstOrDefault(item => item.Stored?.Id == SkillToEdit
+            && (SkillSource is null || item.Stored.Source == SkillSource));
+        if (item is null) Notifications.ShowError("The skill in this link is unavailable.");
+        else _selectedKey = item.Key;
+    }
     /// <summary>Raised when the counts behind <see cref="Stats"/> change, so the drawer footer can follow.</summary>
     [Parameter] public EventCallback Changed { get; set; }
 
@@ -181,6 +197,7 @@
             _items.AddRange(skills.Where(skill => Sources.Contains(skill.Source)).Select(skill => new Item(skill)));
             _selectedKey = Sources.SelectMany(Group).FirstOrDefault()?.Key;
             _loaded = true;
+            SelectLinkedSkill();
             await RefreshRunsAsync();
             await Changed.InvokeAsync();
         }

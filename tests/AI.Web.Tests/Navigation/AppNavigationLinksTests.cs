@@ -13,6 +13,43 @@ public class AppNavigationLinksTests
     private static readonly Guid Branch = Guid.NewGuid();
 
     [Fact]
+    public void ShouldSelectSkillsAndToolsWithoutExecutingThem()
+    {
+        var skill = _links.Parse($"aiclient://navigate/settings.skills?skillId=my%20skill&projectId={Project}", null);
+        skill.ShouldNotBeNull().SkillId.ShouldBe("my skill");
+        skill.ProjectId.ShouldBe(Project);
+        skill.Action.ShouldBe("show");
+        var tool = _links.Parse("aiclient://navigate/settings.tools?toolName=mcp_csharp__cs_run", null);
+        tool.ShouldNotBeNull().ToolName.ShouldBe("mcp_csharp__cs_run");
+        tool.Action.ShouldBe("show");
+    }
+
+    [Theory]
+    [InlineData("settings.skills?skillId=")]
+    [InlineData("settings.skills?skillId=a&skillId=b")]
+    [InlineData("settings.tools?skillId=a")]
+    [InlineData("settings.skills?toolName=a")]
+    [InlineData("settings.tools?toolName=%0A")]
+    [InlineData("settings.tools?toolName=a&action=click")]
+    public void ShouldRejectInvalidCatalogLinks(string destination) =>
+        _links.Parse("aiclient://navigate/" + destination, Project).ShouldBeNull();
+
+    [Theory]
+    [InlineData("settings.skills?skillId=skill-create", "mention-skill")]
+    [InlineData("settings.tools?toolName=mcp_csharp__cs_run", "mention-tool")]
+    public void ShouldRenderCatalogLinksWithSharedIconClasses(string destination, string iconClass)
+    {
+        var renderer = new AI.Web.Markdown.SafeMarkdownRenderer();
+        var markdown = $"[Name](aiclient://navigate/{destination})";
+        foreach (var html in new[] { renderer.Render(markdown), renderer.RenderInline(markdown) })
+        {
+            html.ShouldContain($"class=\"mention-link {iconClass}\"");
+            html.ShouldContain($"href=\"aiclient://navigate/{destination}\"");
+        }
+        renderer.Render($"`{markdown}`").ShouldNotContain("<a ");
+    }
+
+    [Fact]
     public void ShouldPreserveApplicationLinksInRenderedMessages()
     {
         var html = new AI.Web.Markdown.SafeMarkdownRenderer().Render("[Settings](aiclient://navigate/settings)");

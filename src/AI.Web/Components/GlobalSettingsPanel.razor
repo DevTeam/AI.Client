@@ -173,7 +173,7 @@
                 case "Skills":
                 case "ProjectSkills":
                 {
-                    <SkillEditor @ref="_skillEditor" @key="Section" ProjectId="@(Section == "ProjectSkills" ? ProjectId : null)" Changed="StateHasChanged" />
+                    <SkillEditor @ref="_skillEditor" @key="Section" ProjectId="@(Section == "ProjectSkills" ? ProjectId : null)" SkillToEdit="@SkillToEdit" SkillSource="@SkillSource" LinkSelection="@LinkSelection" Changed="StateHasChanged" />
                     break;
                 }
                 case "Connections":
@@ -397,6 +397,37 @@
 }
 @code {
     [Parameter] public string Section { get; set; } = "Connections";
+    [Parameter] public string? SkillToEdit { get; set; }
+    [Parameter] public string? SkillSource { get; set; }
+    [Parameter] public string? ToolToEdit { get; set; }
+    [Parameter] public int LinkSelection { get; set; }
+    private int _appliedSelection = -1;
+
+    private void SelectLinkedTool()
+    {
+        if (!_loaded || Section != "MCP" || ToolToEdit is null || _appliedSelection == LinkSelection) return;
+        _appliedSelection = LinkSelection;
+        var tool = AI.Contracts.Tools.ToolRef.Parse(ToolToEdit);
+        Guid? serverId = tool.IsBuiltIn ? DefaultMcpServer.Id : tool.IsApp ? AppMcpServer.Id
+            : tool.IsCSharp ? CSharpMcpServer.Id
+            : tool.ServerPrefix.Length > 6 && tool.ServerPrefix.StartsWith("mcp_", StringComparison.Ordinal)
+                && Guid.TryParse(tool.ServerPrefix[4..^2], out var id) ? id : null;
+        var matches = _toolPolicies.Where(item => item.Name == tool.Name
+            && (serverId is null || item.ServerId == serverId)).ToArray();
+        if (serverId is null && tool.ServerPrefix.Length == 0 && matches.Select(item => item.ServerId).Distinct().Count() == 1)
+            serverId = matches[0].ServerId;
+        if (serverId is null || !_globalMcpServers.Any(item => item.Id == serverId))
+        {
+            Notifications.ShowError("The tool in this link is unavailable or ambiguous.");
+            return;
+        }
+        SelectMcpServer(serverId.Value);
+        _mcpTab = McpTab.Tools;
+        _toolFilter = tool.Name;
+        _expandedTool = tool.Name;
+        if (matches.Length == 0)
+            Notifications.ShowInfo("This tool is not in the saved catalog. Use Discover to load the server's tools.");
+    }
     [Parameter] public Guid? ConnectionToEdit { get; set; }
     private Guid? _appliedConnectionToEdit;
     [Parameter] public EventCallback Saved { get; set; }
@@ -519,6 +550,7 @@
     }
     protected override void OnParametersSet()
     {
+        SelectLinkedTool();
         if (ConnectionToEdit == _appliedConnectionToEdit) return;
         _appliedConnectionToEdit = ConnectionToEdit;
         if (ConnectionToEdit is { } id && _connections.Any(item => item.Id == id)) SelectConnection(id);
@@ -548,6 +580,7 @@
         _loadedMcpServerIds = _globalMcpServers.Select(item => item.Id).ToHashSet();
         _saveFailed = false;
         _loaded = true;
+        SelectLinkedTool();
     }
 
     /// <summary>The footer line, counted the way the permissions drawer counts its overrides.</summary>

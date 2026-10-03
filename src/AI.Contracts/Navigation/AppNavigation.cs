@@ -13,7 +13,8 @@ public sealed record AppNavigation(Guid ProjectId, Guid? ChatId = null, Guid? Br
     Guid? SourceChatId = null, string? ProjectName = null, string? ChatTitle = null,
     string? Target = null, string Action = "click", string? Comment = null,
     bool WaitForContinue = false, bool WaitForUser = false, string? Value = null,
-    Guid RequestId = default, DateTimeOffset? ExpiresAt = null)
+    Guid RequestId = default, DateTimeOffset? ExpiresAt = null,
+    string? SkillId = null, string? ToolName = null)
 {
     public const int DefaultTimeoutSeconds = 15;
 }

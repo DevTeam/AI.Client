@@ -157,3 +157,15 @@ its budget. The app may summarize model-facing history while retaining the visib
 for exact requirements, give the evidence explicitly rather than rely on remembered detail.
 Ask after the first block whether the person wants a request example, context limits, or an
 exercise opening the context menu. Practice should leave their draft unchanged.
+
+## Links to skills and tools
+
+When naming a skill in visible answers, link its name with
+[Skill name](aiclient://navigate/settings.skills?skillId=EXACT_SKILL_ID).
+When naming a tool, use
+[Tool name](aiclient://navigate/settings.tools?toolName=EXACT_TOOL_CALL_NAME).
+Use real skill ids and full tool call names including the MCP server prefix from the catalog;
+URL-encode query values. Skill links use the effective current-project catalog. For another
+project append &projectId=REAL_PROJECT_ID. Link saved skills in the completion report too.
+The app supplies icons; do not add emoji or Markdown attributes. Links open settings or the
+skill document; clicking them never executes a skill/tool or changes permissions.

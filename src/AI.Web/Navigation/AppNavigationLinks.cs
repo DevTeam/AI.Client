@@ -19,9 +19,22 @@ public sealed partial class AppNavigationLinks(AppNavigationTargets targets)
         // The demo target is a guide command, not a destination in the visible UI.
         if (definition is null || target == "chat.demo") return null;
         var ids = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        string? skillId = null;
+        string? toolName = null;
         foreach (var pair in match.Groups["query"].Value.Split('&', StringSplitOptions.RemoveEmptyEntries))
         {
             var parts = pair.Split('=');
+            if (parts.Length == 2 && parts[0] is "skillId" or "toolName")
+            {
+                if (parts[0] == "skillId" && target == "settings.skills" && skillId is null)
+                    skillId = Uri.UnescapeDataString(parts[1]);
+                else if (parts[0] == "toolName" && target == "settings.tools" && toolName is null)
+                    toolName = Uri.UnescapeDataString(parts[1]);
+                else return null;
+                var name = skillId ?? toolName!;
+                if (string.IsNullOrWhiteSpace(name) || name.Any(char.IsControl)) return null;
+                continue;
+            }
             if (parts.Length != 2 || parts[0] is not ("projectId" or "chatId" or "branchId")
                 || !Guid.TryParse(parts[1], out var id) || id == Guid.Empty || !ids.TryAdd(parts[0], id)) return null;
         }
@@ -35,7 +48,8 @@ public sealed partial class AppNavigationLinks(AppNavigationTargets targets)
             || target == "branch" && branch is null || branch is not null && chat is null
             || target == "project" && (chat is not null || branch is not null)
             || target == "chat" && branch is not null) return null;
-        return new AppNavigation(project ?? Guid.Empty, chat, branch, Target: target, Action: domain ? "click" : "show");
+        return new AppNavigation(project ?? Guid.Empty, chat, branch, Target: target, Action: domain ? "click" : "show",
+            SkillId: skillId, ToolName: toolName);
     }
 
     [GeneratedRegex("^aiclient://navigate/(?<target>[a-z][a-z0-9_.-]*)(?:\\?(?<query>[^#]*))?$", RegexOptions.CultureInvariant)]

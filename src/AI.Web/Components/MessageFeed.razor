@@ -320,7 +320,7 @@
                                 @foreach (var skill in message.Resources.Where(item => item.Kind == ChatResourceKind.Skill))
                                 {
                                     <span class="resource-pill" @key="skill.Id">
-                                        <span class="resource-pill-target mention-skill" title="@($"Skill {skill.Path}")"><span class="resource-pill-label">@(skill.Name ?? skill.Path)</span></span>
+                                        <a class="resource-pill-target mention-skill" href="@ResourcePresenter.Target(skill)" title="@($"Skill {skill.Path} · click to open")"><span class="resource-pill-label">@(skill.Name ?? skill.Path)</span></a>
                                     </span>
                                 }
                                 @foreach (var resource in message.Resources.Where(item => item.Kind != ChatResourceKind.Skill && item.Mention is null))

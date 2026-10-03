@@ -1,6 +1,9 @@
 namespace AI.Web.Markdown;
 
 using Markdig;
+using Markdig.Renderers.Html;
+using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
 
 /// <summary>
 /// Renders message markdown to the HTML the transcript injects into the DOM.
@@ -27,7 +30,27 @@ public sealed class SafeMarkdownRenderer : IMarkdownRenderer
         .DisableHtml()
         .Build();
 
-    public string Render(string markdown) => Markdown.ToHtml(markdown, _pipeline);
+    public string Render(string markdown) => RenderLinks(markdown, _pipeline);
+
+    private static string RenderLinks(string markdown, MarkdownPipeline pipeline)
+    {
+        var document = Markdown.Parse(markdown, pipeline);
+        foreach (var link in document.Descendants<LinkInline>())
+        {
+            if (link.IsImage || link.Url is not { } url) continue;
+            var target = url.Split('?', 2)[0];
+            var kind = target switch
+            {
+                "aiclient://navigate/settings.skills" => "mention-skill",
+                "aiclient://navigate/settings.tools" => "mention-tool",
+                _ => null
+            };
+            if (kind is null) continue;
+            link.GetAttributes().AddClass("mention-link");
+            link.GetAttributes().AddClass(kind);
+        }
+        return Markdown.ToHtml(document, pipeline);
+    }
 
     public string RenderInline(string markdown)
     {
@@ -35,7 +58,7 @@ public sealed class SafeMarkdownRenderer : IMarkdownRenderer
         // own lines to be one, so without them the syntax stays the literal text it looks like.
         var single = string.Join(' ', (markdown ?? string.Empty)
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        var html = Markdown.ToHtml(single, _inline).Trim();
+        var html = RenderLinks(single, _inline).Trim();
         return html.StartsWith("<p>", StringComparison.Ordinal) && html.EndsWith("</p>", StringComparison.Ordinal)
             ? html[3..^4]
             : html;

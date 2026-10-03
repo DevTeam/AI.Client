@@ -3,7 +3,7 @@ id: skill-import
 name: Skill import
 icon: skill-import
 kind: playbook
-description: Find and import an external skill by URL, local path, name or task, adapt it to this application's available tools, configure required dependencies and verify the saved User or Project skill.
+description: Find and import an external skill by URL, local path, name or task, adapt it to available tools, configure dependencies, verify the saved User or Project skill and offer a functional test that runs only with the user's agreement.
 parameters: {"type":"object","properties":{"source":{"type":"string","description":"Repository, SKILL.md URL or local path supplied by the user"},"goal":{"type":"string","description":"Skill name or capability to find when no source was supplied"},"scope":{"type":"string","enum":["User","Project"],"description":"Destination scope explicitly requested by the user"}},"additionalProperties":false}
 tools: ["app_read","tool_search","fetch","skill_search","app_skills","run_skill","ask_user","list_directory","read_text_file","read_multiple_files","get_file_info","create_directory","write_file"]
 ---
@@ -103,6 +103,34 @@ reads at most 5 MiB and does not crawl sites. Follow API pagination separately f
    full content, scope, enabled state and a fresh operationId. Fix validation errors; on a conflict
    re-read and preserve intervening changes rather than forcing an overwrite.
 8. Read the saved skill back with `app_read` resource=Skills and verify content, scope, enabled
-   state and dependencies. Do not run a skill that mutates data merely to test its import. Report
-   the imported skill, clickable source, adaptations, reused/added tools and any unresolved
-   requirements. Distinguish verified installation from a disabled draft or incomplete resources.
+   state and dependencies. This verifies the installation, not its runtime behavior. Do not
+   execute the imported skill before the user agrees to a functional test.
+9. Prepare a small representative test with sample inputs and an observable expected result.
+   Ask with `ask_user` labelled "Functional test": "Would you like to test the imported skill?"
+   Offer "Run test (Recommended)" and "Skip test" with allowOther=true. Describe the concrete
+   test, any temporary files, external requests or model cost it requires. Write the question
+   and options in the user's language. Reuse an explicit testing decision already supplied in
+   the request instead of asking again. Run only after an explicit affirmative answer; skipped,
+   dismissed, declined, expired or interrupted means no test and leaves the saved import intact.
+   If required prerequisites are unresolved, explain them in the question and resolve them
+   before testing; never enable a disabled draft merely because testing was requested.
+10. When testing was accepted, invoke `run_skill` with the saved id and schema-valid sample
+    parameters. A generic skill returns a result: check its schema and the expected behavior.
+    A playbook returns instructions: follow them with the actual permitted tools to completion;
+    receiving those instructions alone is not a passed test. Test the adapted tool calls and
+    required resource references, not just whether the document parses. Use synthetic data and
+    an isolated temporary location within an existing grant for skills that write files; use a
+    documented dry-run or disposable target for other mutations. Agreement to test authorizes
+    the described test, not production changes, external delivery or broader permissions. If
+    there is no bounded test for the skill's behavior, explain the concrete target/action needed
+    and obtain that choice before proceeding. Find any omitted testing/cleanup tools through
+    `tool_search`. Do not run downloaded installation scripts or unrelated source-repository
+    test suites as a substitute for exercising the imported skill.
+11. Compare actual output and observable state with the expected result. Record actual tool
+    failures, unavailable permissions and unmet dependencies as failed or blocked checks. Fix a
+    known import/adaptation error within the authorized scope, verify the saved revision and
+    retry the affected test once; do not loosen policies or hide a failure. Remove only disposable
+    artifacts created by this test when authorized, and report anything left for inspection.
+    Report the imported skill, clickable source, adaptations, reused/added tools and unresolved
+    requirements, plus the test performed, expected/actual result and passed/failed/blocked/skipped
+    status. Distinguish verified installation from tested behavior and partial test coverage.

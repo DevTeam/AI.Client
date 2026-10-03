@@ -11,6 +11,14 @@ public sealed class MentionLinkWriterTests
     private readonly MentionLinkWriter _writer = new(new ResourcePresenter(new DiffSnapshotReader()));
 
     [Fact]
+    public void ShouldUseNavigationLinksForSkillAttachments()
+    {
+        var skill = new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Skill, "skill create", "Skill create");
+        new ResourcePresenter(new DiffSnapshotReader()).Target(skill)
+            .ShouldBe("aiclient://navigate/settings.skills?skillId=skill%20create");
+    }
+
+    [Fact]
     public void ShouldLinkFilesAsLocalPathsAndTheRestByReference()
     {
         var chat = new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Chat, Guid.NewGuid().ToString(), "Deploy fix",

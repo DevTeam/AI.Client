@@ -63,7 +63,9 @@ public sealed class ResourcePresenter(IDiffSnapshotReader snapshots) : IResource
 
     public string Target(ChatResourceRef reference) => reference.Kind is ChatResourceKind.File or ChatResourceKind.Directory
         ? FileUri(reference.Path) + (reference.Lines is { } lines ? $"#L{lines.Start}-L{lines.End}" : string.Empty)
-        : $"#mention-{reference.Id}";
+        : reference.Kind == ChatResourceKind.Skill
+            ? $"aiclient://navigate/settings.skills?skillId={Uri.EscapeDataString(reference.Path)}"
+            : $"#mention-{reference.Id}";
 
     /// <summary>A file URI by hand: in the browser <see cref="Uri"/> does not know a Windows path for one.</summary>
     private static string FileUri(string path)

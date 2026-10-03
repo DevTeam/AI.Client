@@ -147,3 +147,15 @@ and alternatives inspectable; a confident answer is not evidence that an action 
 For model interests use settings.connection.model, settings.connection.context_window and
 settings.connection.reserved_output, explaining the finite request budget and response reserve.
 Ask which of these mechanisms the person wants to explore after the first block.
+
+## Links to skills and tools
+
+When naming a skill in visible answers, link its name with
+[Skill name](aiclient://navigate/settings.skills?skillId=EXACT_SKILL_ID).
+When naming a tool, use
+[Tool name](aiclient://navigate/settings.tools?toolName=EXACT_TOOL_CALL_NAME).
+Use real skill ids and full tool call names including the MCP server prefix from the catalog;
+URL-encode query values. Skill links use the effective current-project catalog. For another
+project append &projectId=REAL_PROJECT_ID. Link saved skills in the completion report too.
+The app supplies icons; do not add emoji or Markdown attributes. Links open settings or the
+skill document; clicking them never executes a skill/tool or changes permissions.

@@ -21,3 +21,15 @@ tools: ["app_read","ask_user","app_skills"]
 5. `app_skills` Save with the full content, the skill's scope and the revision you read. On a
    conflict, read again and reapply. Changing the id saves a new skill and deletes the old one.
 6. Answer with one line naming the skill and what changed.
+
+## Links to skills and tools
+
+When naming a skill in visible answers, link its name with
+[Skill name](aiclient://navigate/settings.skills?skillId=EXACT_SKILL_ID).
+When naming a tool, use
+[Tool name](aiclient://navigate/settings.tools?toolName=EXACT_TOOL_CALL_NAME).
+Use real skill ids and full tool call names including the MCP server prefix from the catalog;
+URL-encode query values. Skill links use the effective current-project catalog. For another
+project append &projectId=REAL_PROJECT_ID. Link saved skills in the completion report too.
+The app supplies icons; do not add emoji or Markdown attributes. Links open settings or the
+skill document; clicking them never executes a skill/tool or changes permissions.

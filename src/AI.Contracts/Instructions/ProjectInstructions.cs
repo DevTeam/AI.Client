@@ -14,11 +14,12 @@ public sealed record ProjectInstructions(
 public sealed record UpdateProjectInstructionsRequest(string Text, bool IncludeWorkspaceFiles, long Revision);
 
 /// <summary>The standing part of the system prompt, layer by layer, as the next run will send it.</summary>
-public sealed record ModelContextPreview(IReadOnlyList<ModelContextLayer> Layers, long TotalTokens);
+public sealed record ModelContextPreview(IReadOnlyList<ModelContextLayer> Layers, long TotalTokens,
+    long ContextWindowTokens = 0, long InstructionBudgetTokens = 0, long ToolBudgetTokens = 0, string? Profile = null);
 
 /// <param name="Key">Stable layer identity: app.base, project.instructions or memory.index.</param>
 /// <param name="Sources">Where the text came from, such as the project's own instructions or a file path.</param>
-/// <param name="Truncated">True when the layer's token budget cut the text.</param>
+/// <param name="Truncated">True when an optional projection was reduced or an instruction file exceeded its read limit.</param>
 public sealed record ModelContextLayer(
     string Key,
     string Title,

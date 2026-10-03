@@ -34,7 +34,7 @@ public sealed class ToolDefinitionSelectorTests
     [Fact]
     public void ShouldKeepToolsAlreadyUsedByTheCurrentTurnAndAskUser()
     {
-        var used = Tool("large_previous_tool", new string('x', 14_000));
+        var used = Tool("large_previous_tool", new string('x', 8_000));
         var ask = Tool("ask_user", new string('x', 2_000), ToolRef.AppPrefix + "ask_user");
         var others = Enumerable.Range(0, 20).Select(index => Tool($"other_{index}", new string('x', 1_000)));
         var context = new ChatCompletionMessage[]
@@ -50,10 +50,10 @@ public sealed class ToolDefinitionSelectorTests
         selection.Tools.ShouldContain(item => item.OriginalName == "ask_user");
     }
 
-    private ToolDefinitionSelector Selector() => new(_estimator, new ConnectionContextLimitsResolver(), new ToolSelectionPriorityPolicy());
+    private AdaptiveContextPolicy Selector() => new(_estimator, new ConnectionContextLimitsResolver());
 
     [Fact]
-    public void ShouldAlwaysIncludePrimaryAppCapabilities()
+    public void ShouldIncludePrimaryAppCapabilitiesWhenTheyFit()
     {
         var required = RequiredAppTools.Select(name => Tool(name, new string('x', 200), ToolRef.AppPrefix + name));
         var smaller = Enumerable.Range(0, 30).Select(index =>
@@ -89,7 +89,7 @@ public sealed class ToolDefinitionSelectorTests
     }
 
     [Fact]
-    public void ShouldKeepThePreviousStepsToolsInTheirOrderAndOnlyAddToThem()
+    public void ShouldKeepSurvivingToolsInTheirOrderWhenANewCapabilityNeedsSpace()
     {
         var tools = Enumerable.Range(0, 20).Select(index => Tool($"tool_{index}", "generic operation " + new string('x', 1_000)))
             .Append(Tool("github_issue_get", "Read a GitHub issue " + new string('x', 1_000)))
@@ -98,7 +98,9 @@ public sealed class ToolDefinitionSelectorTests
 
         var next = Selector().Choose(null, "Read the Jira ticket", [], tools, previousTools: previous);
 
-        next.Tools.Take(previous.Count).ShouldBe(previous);
+        var previousNames = previous.Select(item => item.ModelDefinition.Name).ToHashSet(StringComparer.Ordinal);
+        next.Tools.Where(item => previousNames.Contains(item.ModelDefinition.Name)).ShouldBe(previous.Where(next.Tools.Contains));
+        next.SelectedTokens.ShouldBeLessThanOrEqualTo(next.BudgetTokens);
         next.Tools.ShouldContain(item => item.OriginalName == "jira_ticket_get");
     }
 

@@ -32,10 +32,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IWorkspaceChangeTracker workspace, IToolResultModelProjector modelProjector,
     IToolResultCodec toolResultCodec, IChatContextPlanner contextPlanner,
     IContextPlanDiagnostics contextDiagnostics, IChatTransportActivity transport,
-    IToolDefinitionSelector toolSelector, IToolCatalogRegistry toolCatalog,
+    IAdaptiveContextPolicy contextPolicy, IToolCatalogRegistry toolCatalog,
     IModelContentCheckpointService checkpoints, IModelInstructionRegistry instructions,
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
-    IToolSearchDefinitionEnricher toolSearchEnricher,
     IStandingInstructions standingInstructions, IContextTokenEstimator estimator, ISkillGuide skillGuide,
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
     IClock clock, IIdGenerator ids, IConnectionContextLimitsResolver contextLimits) : IChatAgent
@@ -87,14 +86,15 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         using var catalogScope = toolCatalog.Begin(run);
         using var instructionScope = instructions.Begin(run);
         instructions.Upsert(run, new ModelInstruction("run.finishing", request.IsGuide ? GuideFinishingInstruction : FinishingInstruction,
-            1_000, ModelInstructionLifetime.Run));
+            1_000, ModelInstructionLifetime.Run, Required: true,
+            CompactContent: request.IsGuide ? null : CompactFinishingInstruction));
         // Several app tools take the project and chat they act on as ids, and nothing else in the
         // context says which ones this run belongs to; a model left to guess reads lists to find them.
         if (servers.Contains(AppMcpServer.Id))
             instructions.Upsert(run, new ModelInstruction("run.context",
                 $"This run: projectId {projectId}, chatId {chatId}, branchId {branchId}. The main branch id equals the chat id.",
-                900, ModelInstructionLifetime.Run));
-        if (!request.IsGuide) await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), token);
+                900, ModelInstructionLifetime.Run, Required: true));
+        if (!request.IsGuide) await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), configuredConnection, token);
         // Set while the application compacts the history itself, so its summary is accounted as a
         // compaction rather than as a checkpoint the model asked for.
         var compactingAhead = false;
@@ -250,25 +250,25 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     "Several tool calls produced no new information. Do not call another tool. Answer now: what you "
                     + "found and did, and what is missing or blocking the rest.",
                     970, ModelInstructionLifetime.Request));
-            var selection = toolSelector.Choose(configuredConnection, request.Message, modelContext, permitted,
-                toolCatalog.GetPinned(run), sentTools);
-            sentTools = selection.Tools;
-            var selectedTools = toolSearchEnricher.Enrich(selection.Tools, permitted, selection.BudgetTokens);
+            if (!request.IsGuide && servers.Contains(AppMcpServer.Id))
+                await UpsertActiveSkillAsync(run, context, token);
+            var composition = instructionComposer.Compose(run, modelContext, configuredConnection);
+            var pendingTools = toolCatalog.ConsumePinned(run);
+            var selection = contextPolicy.Choose(configuredConnection, request.Message, composition.Messages, permitted,
+                pendingTools, sentTools, composition.Trailing is null ? 0
+                    : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]));
+            var selectedTools = selection.Tools;
             var available = selectedTools.Select(item => item.ModelDefinition).ToArray();
-            contextDiagnostics.RecordToolSelection(request.Model, selection.AvailableCount, selectedTools.Count,
-                selection.AvailableTokens, selection.SelectedTokens, selection.BudgetTokens);
             if (selection.AvailableCount > selectedTools.Count)
                 instructions.Upsert(run, new ModelInstruction("run.tool-discovery",
                     ToolDiscoveryInstruction(selection.AvailableCount, selectedTools.Count),
                     990, ModelInstructionLifetime.Request));
             else instructions.Remove(run, "run.tool-discovery");
-            if (!request.IsGuide && servers.Contains(AppMcpServer.Id))
-                await UpsertActiveSkillAsync(run, context, token);
             var calls = new List<ChatToolCall>();
             var content = new StringBuilder();
             string? finish = null;
             var chunkCount = 0;
-            var composition = instructionComposer.Compose(run, modelContext);
+            composition = instructionComposer.Compose(run, modelContext, configuredConnection);
             // Measured with the instructions and tools the request carries: they share the window.
             if (CompactionAheadSize(configuredConnection, composition, available) is { } size && size >= compactAheadFrom)
             {
@@ -286,9 +286,19 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 if (compacted)
                 {
                     modelContext = checkpoints.Apply(run, context);
-                    composition = instructionComposer.Compose(run, modelContext);
+                    composition = instructionComposer.Compose(run, modelContext, configuredConnection);
                 }
             }
+            // The guidance and any new checkpoint are now known. Select against what will really
+            // be sent, releasing definitions whose protected protocol groups were summarized away.
+            selection = contextPolicy.Choose(configuredConnection, request.Message, composition.Messages, permitted,
+                pendingTools, sentTools, composition.Trailing is null ? 0
+                    : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]));
+            selectedTools = selection.Tools;
+            sentTools = selectedTools;
+            available = selectedTools.Select(item => item.ModelDefinition).ToArray();
+            contextDiagnostics.RecordToolSelection(request.Model, selection.AvailableCount, selectedTools.Count,
+                selection.AvailableTokens, selection.SelectedTokens, selection.BudgetTokens);
             instructionDiagnostics.RecordInstructions(request.Model, composition.Keys, composition.EstimatedTokens);
             var plan = await contextPlanner.PlanAsync(configuredConnection, request.Model, composition.Messages, available,
                 new CompletionClientSummarizer(completion, request, usageMeter), SummaryTargetTokens, token,
@@ -401,7 +411,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                         ?? throw new ArgumentException(permitted.Any(item => item.ModelDefinition.Name == call.Name)
                             ? $"Tool '{call.Name}' is not available in this turn. Its schema was omitted to fit the model's context budget. "
                               + "Call app_tool_search with a short English capability description (for example: 'read text file', 'list directory', 'grep in files') "
-                              + "so the matching tools are pinned and become available on the next model step. Do not invent or guess tool names."
+                              + "so matching tools are prioritized for the next model step when their schemas fit. Do not invent or guess tool names."
                             : $"There is no tool named '{call.Name}'. Use only the tool names you were given; call app_tool_search "
                               + "with a short English capability description when the one you need is not listed.");
                     var arguments = session!.ValidateArguments(tool, call.Arguments);
@@ -619,20 +629,24 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// the preview is their order in the prompt, so the priority is taken from it. A catalog that
     /// cannot be read leaves the run without its standing layers rather than failing every chat.
     /// </summary>
-    private async Task UpsertStandingAsync(ToolRunContext run, bool appToolsAvailable, CancellationToken token)
+    private async Task UpsertStandingAsync(ToolRunContext run, bool appToolsAvailable,
+        ConnectionSettings? connection, CancellationToken token)
     {
         ModelContextPreview preview;
         try
         {
-            preview = await standingInstructions.BuildAsync(run.ProjectId, appToolsAvailable, token);
+            preview = await standingInstructions.BuildAsync(run.ProjectId, appToolsAvailable, token, connection);
         }
         catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException)
         {
             return;
         }
         for (var index = 0; index < preview.Layers.Count; index++)
+        {
+            if (preview.Layers[index].Content.Length == 0) continue;
             instructions.Upsert(run, new ModelInstruction(preview.Layers[index].Key, preview.Layers[index].Content,
                 preview.Layers.Count - index, ModelInstructionLifetime.Run, ModelInstructionPlacement.Standing));
+        }
     }
 
     /// <summary>
@@ -669,7 +683,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             + "from the skill catalog that fits the new task, or none.",
             // Trailing: it appears once a playbook is loaded and goes once the task moves on, and
             // either change would otherwise cost the cached conversation after it.
-            880, ModelInstructionLifetime.Run, ModelInstructionPlacement.Trailing));
+            880, ModelInstructionLifetime.Run, ModelInstructionPlacement.Trailing,
+            CompactContent: $"Active skill: {active.Id}. Its playbook is in the earlier run_skill result. Continue it from the reached step "
+                + "for follow-ups, corrections and additions; preserve its checks and final report. Reload only if the playbook is missing. "
+                + "For a different task choose a matching skill again."));
     }
 
     private const string ActiveSkillKey = "run.active-skill";
@@ -778,10 +795,16 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         + "End with the complete answer. If information or tools are missing, say what you did, what is left and what "
         + "blocks it.";
 
+    private const string CompactFinishingInstruction =
+        "Complete the authorized request with tools. Before the first calls and about every minute of longer work, "
+        + "include a brief progress note in assistant content with the next tool calls, in the user's language. "
+        + "A reply without calls is final: never use it to announce another step or ask permission to continue authorized work. "
+        + "Use ask_user for decisions that need the user. Finish with the complete result, or verified progress and the remaining blocker.";
+
     private static string ToolDiscoveryInstruction(int availableCount, int selectedCount) =>
         $"Only {selectedCount} of {availableCount} permitted tools are shown. If a needed capability is missing, "
         + "call app_tool_search with a short English description before concluding it is unavailable. "
-        + "Call only tools shown in this request; search results become callable on the next step.";
+        + "Call only tools shown in this request; search results are prioritized within the next step's schema budget.";
 
     /// <summary>
     /// OpenAI-compatible endpoints report the ceiling as "length"; several report the Anthropic

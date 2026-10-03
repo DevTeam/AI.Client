@@ -131,6 +131,10 @@ ContextPlan
 
 If the original context exceeds the budget, the planner invokes compaction. If the resulting context still does not fit, the HTTP request is not made, and the run ends with a diagnosable error containing the actual estimate and the model's limit.
 
+Before history compaction, [the adaptive context policy](21-tool-selection-and-adaptive-compaction.md)
+selects instruction variants and a bounded tool catalogue using the resolved connection's window
+and output reserve. The planner uses that policy's protocol/safety allowance for final validation.
+
 ## 4. Deterministic compaction
 
 When the budget is exceeded, the planner compacts the older part of the request deterministically:
@@ -152,7 +156,9 @@ If the request cannot be reduced to the budget even after compaction, the agent:
 - does not perform the HTTP request;
 - returns `RunFailed` with `ErrorCode: ContextWindowExceeded`;
 - publishes diagnostics: `estimatedInputTokens`, `inputLimit`, `reservedOutputTokens`, `wasCompacted: true`, `omittedMessages`, and the identifiers of the last messages included in the projection;
-- shows in the UI: "The request does not fit in the model's context window. Reduce the visible history or increase the model's budget in connection settings."
+- shows the size breakdown in the run failure: total window, message allowance, instructions,
+  conversation, schemas, output reserve and protocol/safety allowance. If instructions and schemas
+  alone exhaust the window, it explicitly explains that history compaction cannot help.
 
 The error is final for the run; the agent does not make repeat attempts with an even more aggressive compaction in the same turn.
 

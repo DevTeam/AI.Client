@@ -15,8 +15,9 @@ The application owns one reusable pipeline behind dependency-injected interfaces
 
 - `IModelInstructionRegistry` is a run-local mailbox. Producers upsert instructions by stable key
   and choose `Request`, `UntilAcknowledged`, or `Run` lifetime, and a placement.
-- `IModelInstructionComposer` orders and deduplicates the active instructions and applies a
-  bounded token budget. Standing layers and run-long instructions lead the request as `system`
+- `IAdaptiveContextPolicy` selects instructions by priority within the connection-dependent
+  budget, chooses authored compact variants, and retains required protocol instructions.
+- `IModelInstructionComposer` formats the selected instructions. Standing layers and run-long instructions lead the request as `system`
   messages; step guidance — any instruction shorter-lived than the run, or placed `Trailing` —
   becomes one `<application-guidance>` block that the planner adds to the end of the request's
   last message. That keeps the provider's cached prefix intact when the guidance changes, and the
@@ -29,6 +30,11 @@ The application owns one reusable pipeline behind dependency-injected interfaces
 
 Hidden instructions never enter `ChatDetails`, `ChatRunState`, tool-result persistence, or the final
 assistant message. They are counted by the normal context planner and are never compacted.
+
+`ModelInstruction.Required` retains essential protocol guidance even when it exceeds the recommended
+share; final request validation still applies. `CompactContent` supplies an authored alternative
+for small windows. Optional instructions are selected by priority before placement, so transient
+guidance does not displace a higher-priority run instruction merely by appearing last.
 
 ## Ending a turn
 

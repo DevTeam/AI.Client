@@ -5,6 +5,8 @@ using AI.Application.Instructions;
 using AI.Application.Memory;
 using AI.Application.Projects;
 using AI.Application.Skills;
+using AI.Application.Settings;
+using AI.Contracts.Settings;
 using AI.Contracts.Instructions;
 using AI.Contracts.Memory;
 using AI.Contracts.Projects;
@@ -42,8 +44,13 @@ public sealed class StandingInstructionsTests : IDisposable
         _instructionsRepository = new JsonProjectInstructionsRepository(location.Object, files);
         _memory = new MemoryService(_memoryRepository, projects.Object, new Uuid7IdGenerator(), new SystemClock());
         _instructions = new ProjectInstructionsService(_instructionsRepository, projects.Object, new SystemClock());
+        var settings = new Mock<IGlobalSettingsRepository>();
+        settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new GlobalSettings(
+            [new ConnectionSettings(Guid.NewGuid(), "Large", "https://example.test/v1", "model", true, true, false,
+                ContextWindowTokens: 131_072)], [], []));
         _standing = new StandingInstructions(projects.Object, _instructionsRepository, new WorkspaceInstructionFileReader(),
-            _memory, new SkillGuide(new BuiltInSkillCatalog()), new ContextTokenEstimator());
+            _memory, new SkillGuide(new BuiltInSkillCatalog()), new ContextTokenEstimator(),
+            new AdaptiveContextPolicy(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()), settings.Object, new ConnectionChoice());
     }
 
     public void Dispose()
@@ -89,7 +96,7 @@ public sealed class StandingInstructionsTests : IDisposable
     }
 
     [Fact]
-    public async Task ShouldLeaveInstructionFilesOutWhenSwitchedOffAndCutWhatDoesNotFit()
+    public async Task ShouldLeaveInstructionFilesOutWhenSwitchedOffAndPreserveUserRules()
     {
         var token = TestContext.Current.CancellationToken;
         await File.WriteAllTextAsync(Path.Combine(_workspace, "CLAUDE.md"), "From the file.", token);
@@ -99,8 +106,8 @@ public sealed class StandingInstructionsTests : IDisposable
 
         var project = preview.Layers.Single(layer => layer.Key == "project.instructions");
         project.Content.ShouldNotContain("From the file.");
-        project.Truncated.ShouldBeTrue();
-        project.Tokens.ShouldBeLessThanOrEqualTo(project.BudgetTokens);
+        project.Truncated.ShouldBeFalse();
+        project.Content.ShouldContain(new string('x', 20_000));
         // Without the App tools the base prompt does not describe them, and there is nothing to
         // remember with and nothing remembered: no memory layer.
         preview.Layers[0].Content.ShouldNotContain("spawn_subtask");

@@ -11,7 +11,7 @@ public sealed class ModelInstructionComposerTests
     public void ShouldComposeHiddenInstructionsWithoutChangingOriginalContext()
     {
         var registry = new ModelInstructionRegistry();
-        var composer = new ModelInstructionComposer(registry, new ContextTokenEstimator());
+        var composer = new ModelInstructionComposer(registry, new ContextTokenEstimator(), new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver()));
         var run = new ToolRunContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), true);
         var context = new[] { new ChatCompletionMessage("user", "Visible request") };
         using var scope = registry.Begin(run);
@@ -31,7 +31,7 @@ public sealed class ModelInstructionComposerTests
     public void ShouldAcknowledgeTransientInstructionsAndKeepRunInstructions()
     {
         var registry = new ModelInstructionRegistry();
-        var composer = new ModelInstructionComposer(registry, new ContextTokenEstimator());
+        var composer = new ModelInstructionComposer(registry, new ContextTokenEstimator(), new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver()));
         var run = new ToolRunContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), true);
         using var scope = registry.Begin(run);
         registry.Upsert(run, new ModelInstruction("request", "Once", Lifetime: ModelInstructionLifetime.Request));
@@ -48,7 +48,7 @@ public sealed class ModelInstructionComposerTests
     public void ShouldPlaceStandingLayersFirstAndOutsideTheRunBudget()
     {
         var registry = new ModelInstructionRegistry();
-        var composer = new ModelInstructionComposer(registry, new ContextTokenEstimator());
+        var composer = new ModelInstructionComposer(registry, new ContextTokenEstimator(), new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver()));
         var run = new ToolRunContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), true);
         using var scope = registry.Begin(run);
         // Larger than the whole run budget on its own: a standing layer is bounded where it is built.
@@ -67,7 +67,7 @@ public sealed class ModelInstructionComposerTests
     public void ShouldSendStepGuidanceAfterTheConversationSoTheCachedPrefixStays()
     {
         var registry = new ModelInstructionRegistry();
-        var composer = new ModelInstructionComposer(registry, new ContextTokenEstimator());
+        var composer = new ModelInstructionComposer(registry, new ContextTokenEstimator(), new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver()));
         var run = new ToolRunContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), true);
         using var scope = registry.Begin(run);
         registry.Upsert(run, new ModelInstruction("run.protocol", "Protocol", 1_000));

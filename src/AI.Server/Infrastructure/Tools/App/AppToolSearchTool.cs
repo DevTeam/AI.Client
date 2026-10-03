@@ -19,7 +19,8 @@ public sealed class AppToolSearchTool(IToolCatalogRegistry catalog) : IAppTool
                 SerializerOptions = reply.Json,
                 Description = "Call app_tool_search when the capability needed for the user's task is absent from the visible tool list. "
                               + "Search with a short English capability description. Tools may have been omitted from this turn's schema "
-                              + "budget; matching permitted tools become available on the next model step. Do not guess an omitted tool name."
+                              + "budget; matching permitted tools are prioritized for the next model step when their schemas fit. "
+                              + "Search narrowly if not all matches fit. Do not guess an omitted tool name."
             });
 
         [McpServerTool(Name = "tool_search", ReadOnly = true, Destructive = false, Idempotent = true,
@@ -31,7 +32,7 @@ public sealed class AppToolSearchTool(IToolCatalogRegistry catalog) : IAppTool
                 var matches = catalog.SearchAndPin(run, query, limit);
                 return reply.Reply(new ToolSearchResult(matches,
                     matches.Count > 0
-                        ? "The listed tools are pinned and will be available on the next model step."
+                        ? "The listed tools are prioritized for the next model step within its schema budget. Search narrowly if not all matches fit."
                         : AsksForDrawing(query)
                             ? "Diagrams need no tool: write a ```mermaid or ```svg block in your answer and the chat draws it."
                             : "No matching permitted tools were found. Continue with the tools already available."));

@@ -2,6 +2,8 @@
 
 Status: implemented.
 
+Decision: [ADR-009](decisions/ADR-009-adaptive-context-policy.md).
+
 ## Problem
 
 An enabled MCP catalogue can consume most of a model context window before any chat messages are
@@ -14,27 +16,70 @@ For every model step `ChatAgent` now:
 
 1. applies tool permissions;
 2. publishes the permitted catalogue to the run-local tool registry;
-3. selects a bounded set through `IToolDefinitionSelector`;
-4. keeps tools used by the current turn and tools discovered through `app_tool_search` pinned;
+3. composes the adaptive instructions and selects tools through `IAdaptiveContextPolicy`;
+4. protects tools used by the current turn and consumes pending discovery priorities;
 5. plans and, when necessary, adaptively compacts the model-facing message projection;
 6. calls the endpoint only when the resulting `ContextPlan` fits.
 
-The schema budget is the smaller of 6,000 tokens and 25% of the effective context window. A
-selection contains at most 16 non-pinned tools. Pinned tools may exceed those limits because
-removing a tool already involved in the current protocol turn would make continuation unreliable.
+## Central adaptive policy
 
-Within a run the list a step sends is carried on to the next one in its order, and only extended:
-tools come before every message in the provider's cache key, so a list that is reordered or loses a
-tool costs the whole cached conversation. A carried list that grows past one and a half times the
-budget is chosen afresh, once. A stalled run keeps its tools offered too: it is told in words to
-stop calling them.
+`AdaptiveContextPolicy` implements `IAdaptiveContextPolicy`. All
+adaptive budgets, instruction admission and variants, tool ranking, and tool-set replacement
+live in this class. `StandingInstructions` reads source data, `ModelInstructionComposer` formats
+selected instructions, and `ChatContextPlanner` verifies the final request using the same policy's
+protocol/safety allowance.
+
+Let `U = max(0, context window - reserved output - 256 protocol - 1,024 safety)`.
+
+| Component | Budget |
+|---|---|
+| All instructions | `min(24,576, 60% of U)` |
+| Run/step instructions, within the instruction share | `min(2,048, 10% of U)` |
+| Tool definitions | `min(6,000, 20% of U)` |
+| Tool count | 8 below 8,192 usable tokens; otherwise 16 |
+
+The tool share is further reduced when standing instructions, current user text and trailing
+guidance leave less room. The message allowance is at least a quarter of `U` when these
+mandatory messages are smaller. History and tool results are projected/compacted by the existing
+planner. Connection overrides and the output reserve are respected; parameter count and model
+names do not determine the profile.
+
+The agent reselects tools after step guidance and automatic checkpoints are known, before final
+planning. Definitions whose protocol groups were summarized away can then leave the request,
+instead of retaining an oversized catalogue after a successful checkpoint.
+
+Tool admission order is current-turn protocol definitions, the small control pair (`ask_user`,
+`tool_search`), discovered/skill-routed tools, textual relevance, App-tool preference, smaller
+schemas, and stable name. Discovered tools cannot bypass the budget. Only current-turn protocol
+definitions can exceed the schema share; this does not bypass final request validation. Older
+turns do not permanently pin every tool they once called.
+
+Standing instructions use authored compact application text below 16,384 usable tokens,
+or when the full source layers exceed their share. Project rules are retained in full. Memory
+and skill indexes use whole entries and discovery pointers; compact skill entries omit parameter
+lists and shorten descriptions. Required run instructions have explicit compact variants and
+are retained even when the recommendation cannot accommodate them. Optional instructions are
+admitted by priority, independently of where they will be serialized.
+
+The selected standing content is fixed for the run. A carried tool set retains its exact order
+while it fits. New required/discovered tools can fill the whole schema share; opportunistic additions
+use only 80%, leaving growth hysteresis. Under pressure or a necessary discovery, the set is
+chosen again within the hard share and surviving tools retain their order. A stalled run keeps
+its fitting tools offered and receives trailing guidance to stop calling them.
 
 ## Progressive tool discovery
 
 `app_tool_search` receives a capability query and searches only tools that already passed the run's
 permission policy. It returns bounded names and descriptions, never full schemas. Matches are
 pinned in the run-local registry and their definitions become available on the next model step.
-The registry is keyed by project, chat and branch and is removed when the agent run ends.
+All searches in a batch contribute to pending priorities, consumed by the next tool selection;
+they do not accumulate permanent pins. A fitting carried tool set still retains the tools already offered.
+Its reply explicitly says that admission depends on the schema budget. The registry is keyed by
+project, chat and branch and is removed when the agent run ends. Search schemas do not contain a
+changing index of omitted names; search results carry those names without changing definitions.
+
+Automatic skill routing is also gated by the context planner. When its tool-free routing catalogue
+cannot fit, the optional routing request is skipped and the main chat uses progressive discovery.
 
 ## Adaptive tool-result projection
 
@@ -64,6 +109,11 @@ The deterministic compaction is carried on rather than redone (`ContextCompactio
 next request still starts with the previous input, the previous result plus the new messages is
 used as long as it fits, so its cut, trimmed tool results and digests stay put. When it has to be
 redone it compacts to 80% of the limit, leaving room for the following steps.
+
+Preserving order prevents unnecessary changes; adding a definition still changes the tools prefix.
+Discovery can therefore cause an intentional cache miss. Changing transient guidance stays at the
+end of the messages. The existing `PromptPrefixTracker` measures application-level prefix changes;
+an unchanged prefix does not promise a cache hit at every provider.
 
 ## Compaction by the model, ahead of the limit
 
@@ -132,6 +182,25 @@ history, with the summary behind a toggle and an Undo.
 Structured logs contain available and selected tool counts, available and selected schema-token
 estimates, and the effective schema budget. A final context-window failure reports whether
 compaction ran, how many messages were omitted and the remaining token deficit.
+
+Context-window failures also report the total window, instruction tokens, conversation tokens and
+protocol/safety allowance. When instructions and tools already exhaust the window, the error
+explicitly states that history compaction cannot help. LLM fallback is skipped when the immutable
+system messages and current user message cannot fit its conversation allowance.
+
+The project settings preview shows the Compact/Full profile, window and instruction/tool shares
+using existing settings rows. It uses the project/default connection and identifies that scope;
+actual runs pass their chosen chat connection. Project rules exceeding the recommendation are
+shown as retained, rather than silently clipped. Instruction files still have a 64 KiB read limit.
+
+## Adaptive verification
+
+Policy tests cover 4,096, 8,192, 16,384, 32,768 and 131,072-token windows, growing output reserves,
+instruction priorities and variants, intact project rules, current-turn protocol protection,
+oversized discovered schemas, pressure eviction, and exact schema/prefix stability across steps.
+Existing composition-backed chat tests run on small windows, and App-tool session tests validate
+complete requests using the actual generated MCP schemas. Tests use scripted completions rather
+than an external LLM.
 
 Every usage record of a chat request carries a `PromptPrefix`: the estimated tokens it shared with
 the previous request of the same branch and purpose, and what broke the shared start — `Tools`,

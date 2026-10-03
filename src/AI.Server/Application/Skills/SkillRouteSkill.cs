@@ -22,6 +22,7 @@ public sealed class SkillRouteSkill(
     IGlobalSettingsRepository settings,
     IGlobalSecretStore secrets,
     IChatCompletionClient completion,
+    IChatContextPlanner contextPlanner,
     ILogger<SkillRouteSkill> logger) : ISkillExecutor
 {
     public const string Id = "skill-route";
@@ -91,6 +92,10 @@ public sealed class SkillRouteSkill(
         };
         var request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
             await secrets.GetAsync("connection", connection.Id, token), "Route the request", connection.Id, conversation);
+        var plan = contextPlanner.Plan(connection, connection.Model, conversation, []);
+        if (!plan.Fits)
+            return new("Skipped", "The routing catalogue exceeds this connection's context budget; use progressive discovery in the chat.", invocation.CurrentChatId);
+        request = request with { ContextMessages = plan.Messages };
         var content = new StringBuilder();
         await foreach (var chunk in completion.StreamAsync(request, token)) content.Append(chunk.Content);
         var (skills, chosenTools) = Parse(content.ToString(),

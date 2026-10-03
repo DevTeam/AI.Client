@@ -4,6 +4,8 @@ let active = null;
 let positionedRequest = null;
 let cursorPosition = null;
 let pointerPosition = null;
+let pointedRequest = null;
+let layoutObserver = null;
 let lastActivity = Date.now();
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const delay = (ms, signal) => new Promise((resolve, reject) => {
@@ -91,6 +93,9 @@ export function clear(keepCursor = false) {
     active?.abort();
     active = null;
     positionedRequest = null;
+    pointedRequest = null;
+    layoutObserver?.disconnect();
+    layoutObserver = null;
     cancelCursor();
     document.querySelectorAll(".app-guide-hover").forEach(element => {
         element.dispatchEvent(new PointerEvent("pointerleave", { bubbles: false }));
@@ -144,6 +149,10 @@ export async function show(request) {
     if (!element || !element.getClientRects().length) return false;
     const controller = new AbortController();
     active = controller;
+    if (typeof ResizeObserver === "function") {
+        layoutObserver = new ResizeObserver(() => { if (positionedRequest) position(positionedRequest); });
+        for (let ancestor = control(element); ancestor; ancestor = ancestor.parentElement) layoutObserver.observe(ancestor);
+    }
     const pane = element.closest?.(".chat-widgets-list");
     const behavior = reduced() ? "instant" : "smooth";
     const scrollTop = pane ? Math.max(0, pane.scrollTop + element.getBoundingClientRect().top - pane.getBoundingClientRect().top - 8) : null;
@@ -164,20 +173,50 @@ export function position(request) {
     positionedRequest = request;
     const element = target(request);
     const card = document.querySelector(".app-guide-step:not(.is-leaving)");
-    if (!element || !card) return;
+    if (!element) return;
+    const inputRect = guideRect(control(element));
+    if (pointedRequest) {
+        const cursor = document.querySelector(".app-guide-cursor:not(.is-leaving)");
+        if (cursor && inputRect.width > 0 && inputRect.height > 0) {
+            cursorPosition = { x: inputRect.left + Math.min(28, inputRect.width / 2), y: inputRect.top + inputRect.height / 2 };
+            cursor.style.transform = `translate(${cursorPosition.x}px, ${cursorPosition.y}px)`;
+        }
+    }
+    if (!card) return;
+    layoutObserver?.observe(card);
+    // Reserve the entire highlighted row, including its label, for the target.
+    // The pointer uses the input's bounds, but the explanation must not cover the row.
     const rect = guideRect(element);
     const box = card.getBoundingClientRect();
     const padding = 12, gap = 14;
     const fitsRight = rect.right + gap + box.width + padding <= innerWidth;
     const fitsLeft = rect.left - gap - box.width >= padding;
-    const side = fitsRight || !fitsLeft ? "right" : "left";
+    let side = fitsRight || !fitsLeft ? "right" : "left";
     const left = side === "right" ? rect.right + gap : rect.left - gap - box.width;
     const clampedLeft = Math.max(padding, Math.min(left, innerWidth - box.width - padding));
-    const top = Math.max(padding, Math.min(rect.top + rect.height / 2 - 28, innerHeight - box.height - padding));
+    let top = Math.max(padding, Math.min(rect.top + rect.height / 2 - 28, innerHeight - box.height - padding));
+    let maxHeight = innerHeight - padding * 2;
+    // Use vertical space when neither side can contain the card. Limit its height
+    // to that space rather than falling back to covering the highlighted row.
+    if (!fitsRight && !fitsLeft) {
+        const below = Math.max(0, innerHeight - rect.bottom - gap - padding);
+        const above = Math.max(0, rect.top - gap - padding);
+        if (below >= box.height || below >= above) {
+            side = "bottom";
+            maxHeight = below;
+            top = rect.bottom + gap;
+        } else {
+            side = "top";
+            maxHeight = above;
+            top = rect.top - gap - Math.min(box.height, above);
+        }
+    }
+    card.style.maxHeight = `${maxHeight}px`;
+    card.style.overflowY = side === "top" || side === "bottom" ? "auto" : "visible";
     card.style.left = `${clampedLeft}px`;
     card.style.top = `${top}px`;
     // The arrow points at the control while the card sits beside it rather than over it.
-    const beside = side === "right" ? clampedLeft >= rect.right : clampedLeft + box.width <= rect.left;
+    const beside = side === "right" ? clampedLeft >= rect.right : side === "left" && clampedLeft + box.width <= rect.left;
     card.dataset.side = beside ? side : "none";
     card.style.setProperty("--app-guide-arrow-y", `${Math.max(14, Math.min(rect.top + rect.height / 2 - top, box.height - 14))}px`);
     if (!card.hasAttribute("data-placed")) {
@@ -214,7 +253,7 @@ export async function perform(request, activate = true) {
     // A pointer already on screen hands over in place, so a Continue does not blink it.
     const previous = document.querySelectorAll(".app-guide-cursor:not(.is-leaving)");
     previous.forEach(item => item.remove());
-    const rect = guideRect(element);
+    const rect = guideRect(input);
     const cursor = createCursor("app-guide-cursor");
     const x = rect.left + Math.min(28, rect.width / 2), y = rect.top + rect.height / 2;
     const origin = cursorPosition || pointerPosition || { x: innerWidth / 2, y: innerHeight / 2 };
@@ -289,6 +328,7 @@ export async function perform(request, activate = true) {
             }
         }
         completed = true;
+        pointedRequest = request;
         return null;
     } catch (error) {
         if (error.name === "AbortError") return "Action was stopped.";
@@ -302,6 +342,7 @@ export async function perform(request, activate = true) {
 export async function press(button) {
     const element = typeof button === "string" ? document.querySelector(button) : button;
     if (!element?.isConnected || !element.getClientRects().length) return false;
+    pointedRequest = null;
     element.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
     const rect = element.getBoundingClientRect();
     const x = rect.left + Math.min(rect.width / 2, 28), y = rect.top + rect.height / 2;

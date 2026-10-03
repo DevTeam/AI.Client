@@ -23,6 +23,10 @@ public interface IChatFeedProjection
 
     List<FeedItem> BuildFeedItems(IReadOnlyList<ChatMessageView> chain);
 
+    /// <summary>Actual answer model changes, ordered along the visible branch and keyed by user turn.</summary>
+    IReadOnlyDictionary<Guid, IReadOnlyList<ModelSwitch>> BuildModelSwitches(IReadOnlyList<ChatMessageView> chain,
+        IReadOnlyList<AI.Contracts.Usage.TurnTokenUsage> turns, AI.Contracts.Usage.TurnTokenUsage? liveTurn);
+
     /// <summary>
     /// Splits the rendered feed at user messages and identifies the last plain assistant message
     /// in each segment as its final answer. Earlier plain assistant messages remain intermediate:

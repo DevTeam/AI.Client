@@ -40,7 +40,7 @@ public sealed class TokenUsageAggregator : ITokenUsageAggregator
         var turns = own.Where(record => record.TurnId is not null)
             .GroupBy(record => record.TurnId!.Value)
             .Select(turn => new TurnTokenUsage(turn.Key, turn.First().BranchId ?? chatId, turn.Min(record => record.At),
-                Total(turn), Group(turn, Purpose)))
+                Total(turn), Group(turn, Purpose), AnswerModels(turn)))
             .OrderBy(turn => turn.StartedAt)
             .ToArray();
         return new ChatTokenUsage(projectId, chatId, Total(own), Group(own, Purpose), turns);
@@ -56,4 +56,10 @@ public sealed class TokenUsageAggregator : ITokenUsageAggregator
     }
 
     private static string Purpose(TokenUsageRecord record) => record.Purpose.ToString();
+
+    public IReadOnlyList<AnswerModelUsage> AnswerModels(IEnumerable<TokenUsageRecord> records) =>
+        records.Where(record => record.Purpose == TokenUsagePurpose.Answer && !string.IsNullOrWhiteSpace(record.Model))
+            .OrderBy(record => record.At)
+            .Select(record => new AnswerModelUsage(record.Id, record.At, record.Model.Trim()))
+            .ToArray();
 }

@@ -176,6 +176,25 @@ public class TokenUsageTests
     }
 
     [Fact]
+    public void ShouldKeepOnlyActualAnswerModelsInRequestOrder()
+    {
+        var turn = Guid.NewGuid();
+        var start = new DateTimeOffset(2026, 10, 3, 10, 0, 0, TimeSpan.Zero);
+        var records = new[]
+        {
+            Record(turn, TokenUsagePurpose.Answer, 10, 1) with { Model = "second", At = start.AddSeconds(2) },
+            Record(turn, TokenUsagePurpose.Subtask, 10, 1) with { Model = "subtask" },
+            Record(turn, TokenUsagePurpose.Answer, 10, 1) with { Model = "first", At = start },
+            Record(turn, TokenUsagePurpose.Routing, 10, 1) with { Model = "router" },
+            Record(turn, TokenUsagePurpose.Answer, 10, 1) with { Model = " " }
+        };
+
+        var usage = new TokenUsageAggregator().Chat(ProjectId, ChatId, records);
+
+        usage.Turns.Single().AnswerModels!.Select(model => model.Model).ShouldBe(["first", "second"]);
+    }
+
+    [Fact]
     public void ShouldReportAPeriodByDayModelAndPurpose()
     {
         var records = new[]

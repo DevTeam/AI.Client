@@ -3405,16 +3405,39 @@ div.chat-tip-head { cursor: default; }
     max-width: min(20rem, 70vw);
 }
 
-.composer-endpoint-menu button {
+.composer-endpoint-row {
+    display: flex;
+    align-items: center;
+    border-radius: calc(0.4rem * var(--corner-scale));
+}
+
+.composer-endpoint-menu .composer-endpoint-select {
     display: grid;
     grid-template-columns: 1rem minmax(0, 1fr) auto;
     align-items: center;
     text-align: left;
+    flex: 1;
+    min-width: 0;
 }
 
-.composer-endpoint-menu button:hover,
-.composer-endpoint-menu button.selected {
+.composer-endpoint-row:hover,
+.composer-endpoint-row:focus-within,
+.composer-endpoint-row.selected {
     background: var(--color-fill-active);
+}
+
+.composer-endpoint-menu .composer-endpoint-edit {
+    display: inline-flex;
+    flex: none;
+    padding: 0.35rem;
+    margin-right: 0.25rem;
+    color: var(--color-text-muted);
+}
+
+.composer-endpoint-menu .composer-endpoint-edit:hover,
+.composer-endpoint-menu .composer-endpoint-edit:focus-visible {
+    color: var(--color-accent);
+    background: var(--color-overlay-active);
 }
 
 .composer-endpoint-menu button > span:nth-child(2) {

@@ -607,11 +607,14 @@
                             @foreach (var connection in _connections.Where(item => item.Enabled))
                             {
                                 var isSelected = connection.Id == _chat.CredentialProfileId;
-                                <button type="button" role="menuitem" class="@(isSelected ? "selected" : string.Empty)" @onclick="() => SelectChatEndpointAsync(connection.Id)">
-                                    @if (isSelected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }
-                                    <span>@connection.Name</span>
-                                    @if (connection.IsDefault) { <span class="composer-endpoint-default">Default</span> }
-                                </button>
+                                <span class="composer-endpoint-row @(isSelected ? "selected" : string.Empty)">
+                                    <button type="button" role="menuitem" class="composer-endpoint-select" @onclick="() => SelectChatEndpointAsync(connection.Id)">
+                                        @if (isSelected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }
+                                        <span>@connection.Name</span>
+                                        @if (connection.IsDefault) { <span class="composer-endpoint-default">Default</span> }
+                                    </button>
+                                    <button type="button" role="menuitem" class="icon-action composer-endpoint-edit" title="Edit connection" aria-label="@($"Edit connection {connection.Name}")" @onclick="() => EditChatConnectionAsync(connection.Id)"><AppIcon Name="edit" /></button>
+                                </span>
                             }
                         </span>
                     }
@@ -972,7 +975,7 @@ else if (_guideInvitation is { } guideInvitation)
 }
 @if (_globalSection is not null)
 {
-    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" ContextWindowUsageChanged="value => _showContextWindowUsage = value" TurnTokensChanged="value => _showTurnTokens = value" />
+    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ConnectionToEdit="@_connectionToEdit" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" ContextWindowUsageChanged="value => _showContextWindowUsage = value" TurnTokensChanged="value => _showTurnTokens = value" />
 }
 
 @if (_permissionsScope is not null && _selectedProject is not null)
@@ -1064,6 +1067,7 @@ else if (_guideInvitation is { } guideInvitation)
     private static readonly object PinDividerKey = new();
     private string _sidebarAnnouncement = string.Empty;
     private string? _globalSection;
+    private Guid? _connectionToEdit;
     private bool _showContextWindowUsage = true;
     private IJSObjectReference? _navigationModule;
     private IJSObjectReference? _navigationHandle;
@@ -6280,7 +6284,19 @@ else if (_guideInvitation is { } guideInvitation)
         if (_globalSettingsPanel is not null && !await _globalSettingsPanel.SaveAsync()) return;
         if (!await CloseDrawersExceptAsync(Drawer.GlobalSettings)) return;
         _globalSection = section;
+        _connectionToEdit = null;
         await LoadSidebarCountsAsync();
+    }
+
+    private async Task EditChatConnectionAsync(Guid connectionId)
+    {
+        CloseEndpointMenu();
+        if (_globalSection != "Connections") await OpenGlobalSection("Connections");
+        if (_globalSection == "Connections")
+        {
+            _connectionToEdit = connectionId;
+            _globalSettingsPanel?.SelectConnection(connectionId);
+        }
     }
 
     private async Task RequestCloseGlobalSettingsAsync()
@@ -6292,6 +6308,7 @@ else if (_guideInvitation is { } guideInvitation)
     private async Task CloseGlobalSettings()
     {
         _globalSection = null;
+        _connectionToEdit = null;
         _globalSettingsPanel = null;
         await LoadSidebarCountsAsync();
     }

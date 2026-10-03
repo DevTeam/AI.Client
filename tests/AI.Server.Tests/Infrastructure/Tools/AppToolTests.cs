@@ -932,6 +932,27 @@ public sealed class AppToolTests
     }
 
     [Fact]
+    public async Task ShouldOpenSettingsForADirectRequestWithoutAContinueStep()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var requests = fixture.Navigation.SubscribeAsync(timeout.Token).GetAsyncEnumerator(timeout.Token);
+        var opening = AppFixture.CallAsync(session, "app_navigate", new { target = "settings", action = "show" });
+        (await requests.MoveNextAsync()).ShouldBeTrue();
+        requests.Current.Target.ShouldBe("settings");
+        requests.Current.WaitForContinue.ShouldBeFalse();
+        requests.Current.WaitForUser.ShouldBeFalse();
+        requests.Current.Comment.ShouldBeNull();
+        var owner = Guid.NewGuid();
+        fixture.Navigation.Claim(requests.Current.RequestId, owner).ShouldBeTrue();
+        fixture.Navigation.Complete(requests.Current.RequestId, new(owner, "applied")).ShouldBeTrue();
+        var result = await opening;
+        result.GetProperty("opened").GetBoolean().ShouldBeTrue();
+        result.GetProperty("outcome").GetString().ShouldBe("applied");
+    }
+
+    [Fact]
     public async Task ShouldTellAGuideToContinueWithAVisibleControlWhenOneIsNotInTheView()
     {
         await using var fixture = await AppFixture.CreateAsync();

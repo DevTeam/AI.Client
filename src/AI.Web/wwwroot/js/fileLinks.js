@@ -362,6 +362,10 @@ export function attach(container, dotnet) {
         // clicks. Unknown schemes and unresolved local paths stay inert.
         event.preventDefault();
         const href = (anchor.getAttribute('href') ?? '').trim();
+        if (/^aiclient:/i.test(href)) {
+            dotnet.invokeMethodAsync('OnAppNavigationLinkClicked', href);
+            return;
+        }
         // An "@" link to a chat or a review opens it; the page knows the reference by its id.
         if (href.startsWith('#mention-')) {
             dotnet.invokeMethodAsync('OnMentionLinkClicked', href.slice('#mention-'.length));

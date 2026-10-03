@@ -34,6 +34,7 @@
 @inject AI.Web.Updates.IUpdateClient Updates
 @inject IReplySuggestionState ReplySuggestions
 @inject AI.Web.Navigation.INavigationCues NavigationCues
+@inject AI.Web.Navigation.AppNavigationLinks NavigationLinks
 @inject AI.Web.Navigation.IAppGuideApi GuideApi
 @inject AI.Contracts.Navigation.AppNavigationTargets GuideTargets
 @inject AI.Contracts.Navigation.AppGuideTopics GuideTopics
@@ -439,6 +440,7 @@
             OnReviewChanges="OpenReviewFromChangesAsync"
             OnOpenReview="OpenAttachedReviewAsync"
             OnOpenChat="SelectChatAsync"
+            OnNavigateApp="OpenAppNavigationLinkAsync"
             OnFileLinkMenu="OpenFileLinkMenu"
             ReviewNames="@_reviews.ToDictionary(item => item.Id, item => item.Name)"
             MessageReviewIds="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).Select(item => item.Id).ToHashSet()"

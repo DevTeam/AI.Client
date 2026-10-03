@@ -589,6 +589,7 @@
     [Parameter] public EventCallback<ChatReview> OnDiffReviewChanged { get; set; }
     [Parameter] public EventCallback<ChatResourceRef> OnOpenReview { get; set; }
     [Parameter] public EventCallback<Guid> OnOpenChat { get; set; }
+    [Parameter] public EventCallback<string> OnNavigateApp { get; set; }
     [Parameter] public EventCallback<FileLinkMenuRequest> OnFileLinkMenu { get; set; }
     [Parameter] public IReadOnlyDictionary<Guid, string>? ReviewNames { get; set; }
     [Parameter] public IReadOnlySet<Guid>? MessageReviewIds { get; set; }
@@ -852,6 +853,9 @@
         }
         return Task.CompletedTask;
     }
+
+    [JSInvokable]
+    public Task OnAppNavigationLinkClicked(string href) => OnNavigateApp.InvokeAsync(href);
 
     /// <summary>The "@diff" references whose captured changes are open under their message.</summary>
     private readonly HashSet<Guid> _shownSnapshots = [];

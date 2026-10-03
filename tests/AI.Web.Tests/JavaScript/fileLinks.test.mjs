@@ -56,6 +56,18 @@ test('rendered web links have a safe new-tab target for native browser actions',
     }
 });
 
+test('application shortcuts go to Blazor without leaving the transcript', () => {
+    for (const desktop of [false, true]) {
+        const f = fixture(desktop);
+        const href = 'aiclient://navigate/settings.connections';
+        for (const options of [{}, { ctrlKey: true }, { type: 'auxclick', button: 1 }])
+            assert.equal(f.click(href, options).defaultPrevented, true);
+        assert.deepEqual(f.mentions, Array.from({ length: 3 }, () => ['OnAppNavigationLinkClicked', href]));
+        assert.equal(f.opened.length, 0);
+        assert.equal(f.messages.length, 0);
+    }
+});
+
 test('desktop links use the bridge before any navigation, including modifier and middle clicks', () => {
     const f = fixture(true);
     for (const options of [{}, { ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { type: 'auxclick', button: 1 }]) {

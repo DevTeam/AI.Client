@@ -2,7 +2,8 @@
 
 Status: implemented.
 
-Decision: [ADR-009](decisions/ADR-009-adaptive-context-policy.md).
+Decisions: [ADR-009](decisions/ADR-009-adaptive-context-policy.md) and
+[ADR-010](decisions/ADR-010-adaptive-compaction-and-estimation.md).
 
 ## Problem
 
@@ -24,12 +25,14 @@ For every model step `ChatAgent` now:
 ## Central adaptive policy
 
 `AdaptiveContextPolicy` implements `IAdaptiveContextPolicy`. All
-adaptive budgets, instruction admission and variants, tool ranking, and tool-set replacement
+adaptive budgets, instruction admission and variants, tool ranking, tool-set replacement,
+compaction thresholds, summary acceptance and estimation safety
 live in this class. `StandingInstructions` reads source data, `ModelInstructionComposer` formats
 selected instructions, and `ChatContextPlanner` verifies the final request using the same policy's
 protocol/safety allowance.
 
-Let `U = max(0, context window - reserved output - 256 protocol - 1,024 safety)`.
+Let `U = max(0, context window - reserved output - 256 protocol - safety)`.
+Safety starts at 1,024 tokens and can increase from reported provider input counts (see below).
 
 | Component | Budget |
 |---|---|
@@ -83,10 +86,48 @@ cannot fit, the optional routing request is skipped and the main chat uses progr
 
 ## Adaptive tool-result projection
 
-`IChatContextCompactor` still leaves stored `Content` and the visible transcript unchanged. If the
-normal 3,000-character head plus 1,000-character tail projection does not fit, it retries with
-progressively smaller model-only projections down to 384 head characters and 128 tail characters.
-Tool-call groups remain intact and the current user request is never truncated.
+`IChatContextCompactor` leaves stored `Content` and the visible transcript unchanged. Its
+`IToolResultContextProjector` retains bounded process outcomes, file/application paths and ids,
+errors, and diagnostic lines found in the middle of stdout/stderr or plain text. Recognized JSON
+results retain those facts before spending the remaining excerpt allowance on the beginning and
+end. Malformed and unknown output uses diagnostic lines and excerpts. A retained path/resource or
+the original tool can retrieve the full details; the projection never includes host metadata.
+
+If the normal 3,000 + 1,000 character allowance does not fit, compaction retries with progressively
+smaller allowances down to 384 + 128. These allowances cover facts and excerpts; the marker and
+labels are additional and counted by the final estimator.
+
+Deterministic compaction first projects results, then replaces older turns with an extractive
+digest, then shortens the completed head of the current turn. It works without a summarizer.
+The actual current user request, system preamble, and latest protocol exchange (including parallel
+calls and all their results) remain. An impossible latest exchange fails the gate instead of being
+discarded. Synthetic summaries carry `IsContextSummary` in the application; they retain the user
+role on the wire but do not start a new user turn or displace the real current question.
+
+## Compaction budget and frequency
+
+All thresholds come from `IAdaptiveContextPolicy.ResolveCompaction`. Let
+`M = max(0, U - selected tool tokens - trailing guidance tokens)`, the allowance for messages,
+including standing and run instructions. The reserves and tools are removed before calculating
+every threshold; the agent and planner use the same basis.
+
+| Decision | Budget |
+|---|---|
+| Automatic summary trigger | 70% of `M` |
+| Required actual savings from an automatic checkpoint | 10% of `M`, at least one token |
+| Growth before another automatic attempt | 10% of `M`, at least one token |
+| Deterministic target with run-local compaction memory | 80% of `M` |
+| Recent history/turn keep allowance | 20% of `M`; always retain the current turn/latest step |
+| Fallback/turn summary target | `min(1,500, 10% of M)` |
+| History summary target | `min(3,000, 20% of M)` |
+
+The summary writer has a minimum working target of 256 tokens and bounds its output with the same
+UTF-8 estimator; full summary framing is measured again at acceptance. On very small windows the
+minimum target may exceed the recommendation, so a summary can be rejected rather than forced in.
+
+The budget is checked before every request. Deterministic compaction runs only when the original
+or carried request exceeds `M`. There is no timer or every-N-messages schedule. Its carried
+projection is reused while fitting; a new cut leaves room for subsequent append-only steps.
 
 ## Prompt-cache stability
 
@@ -117,18 +158,23 @@ an unchanged prefix does not promise a cache hit at every provider.
 
 ## Compaction by the model, ahead of the limit
 
-When a request — instructions, tools and messages — reaches 70% of the connection's input window,
+When messages reach 70% of `M`,
 `ChatAgent` has the model summarize before anything has to be cut:
 
 1. the earlier turns, kept as an automatic history checkpoint (below), when that frees at least a
-   tenth of the window;
+   tenth of `M`;
 2. otherwise the completed steps of the turn in progress (`CompactTurnAheadAsync`): the latest steps
    that fit the keep budget stay in full, at least the last one, and an earlier summary of the turn
    is folded into the new one. This lasts for the run.
 
-The summary costs one request and one cache miss; the requests after it share a stable, smaller
-prefix. An attempt that frees too little or gets no summary is not repeated until the request has
-grown by another tenth of the window. The deterministic compaction and the planner's LLM fallback
+Before applying or storing an automatic checkpoint, the policy compares the full message lists
+before and after, including the summary role, prefix and retained messages. A summary that grows
+the request or frees too little is rejected without replacing the existing checkpoint. Preview
+eligibility uses estimated message tokens, never a character-count approximation.
+
+A summary costs model requests and may change the cache prefix; the requests after it share a
+stable, smaller prefix. Both successful and unsuccessful attempts wait for growth by another
+tenth of `M` before retrying. The deterministic compaction and the planner's LLM fallback
 below remain for what is left: a summary that failed, or a single step larger than the window.
 
 ## Explicit checkpoints
@@ -217,8 +263,26 @@ budget, `IChatContextPlanner.PlanAsync` falls back to a tool-free LLM summary of
 turns. `ChatContextCompactor.CompactWithLlmAsync` reuses the same `IChatCompletionClient` as the
 run, sends one user message containing the older turns and no tool list, and inserts the reply as
 a `user`-role summary so untrusted history cannot be promoted to a system instruction. Token
-budget for the summary is `ChatAgent.SummaryTargetTokens` (1500 tokens). If the summarizer
-returns empty or throws a non-cancellation exception the deterministic result is kept.
+budget for the summary comes from the policy (up to 1,500 tokens). An empty, failed or
+non-improving fallback keeps the deterministic result. The final gate can fail when mandatory
+input still does not fit. A persisted fallback checkpoint contains the exact summary sent,
+including any final shortening, so later requests do not restore an oversized version.
+
+## Estimation observations
+
+`ContextTokenEstimator` remains conservative and provider-independent. `ContextSummaryWriter`
+also uses it to bound multilingual summaries instead of multiplying tokens by two characters.
+`MeteringChatCompletionClient` passes only provider-reported input usage to the adaptive policy;
+estimated usage never calibrates another estimate. Reported input already includes its cached
+share and is not added to cached tokens again.
+
+The singleton `IContextEstimateSamples` holds at most 16 estimate/report pairs for each connection,
+endpoint and requested model, with at most 256 keys. It stores numbers only, in memory. The policy
+adds the largest positive reported-minus-estimated difference in the recent samples to the baseline
+safety reserve, bounded by the window. Lower reports never reduce the baseline. Provider aliases
+are attributed to the requested model; endpoint/model changes use independent observations. When
+the samples expire or the application restarts the baseline applies again. This protection is
+observational, not an exact tokenizer or a guarantee against every provider-specific count.
 
 ## User-visible status of automatic fallback
 

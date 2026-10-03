@@ -13,17 +13,60 @@ using Tools;
 /// instructions, and the planner verifies the complete request. This policy never changes a tool schema.
 /// </summary>
 public sealed partial class AdaptiveContextPolicy(
-    IContextTokenEstimator estimator, IConnectionContextLimitsResolver limitsResolver) :
+    IContextTokenEstimator estimator, IConnectionContextLimitsResolver limitsResolver,
+    IContextEstimateSamples? samples = null) :
     IAdaptiveContextPolicy
 {
     private const long ProtocolOverhead = 256;
     private const long SafetyMargin = 1_024;
 
+    public void ObserveInputUsage(ChatCompletionRequest request, long reportedInputTokens)
+    {
+        IReadOnlyList<ChatCompletionMessage> messages = request.ContextMessages is { Count: > 0 } sent
+            ? sent : [new ChatCompletionMessage("user", request.Message)];
+        var estimated = estimator.EstimateMessages(messages) + estimator.EstimateTools(request.Tools ?? []);
+        samples?.Add(request.CredentialProfileId, request.BaseUrl, request.Model, new(estimated, reportedInputTokens));
+    }
+
+    private long SafetyTokens(ConnectionSettings? connection, long window)
+    {
+        if (connection is null || samples is null) return SafetyMargin;
+        // Increase protection when a provider counts more than expected; never lower the baseline.
+        var observations = samples.Read(connection.Id, connection.BaseUrl, connection.Model);
+        var deficit = observations.Select(sample => Math.Max(0, sample.ReportedTokens - sample.EstimatedTokens))
+            .DefaultIfEmpty(0).Max();
+        return SafetyMargin + Math.Min(Math.Max(0, window - SafetyMargin), deficit);
+    }
+
+    public AdaptiveCompactionBudget ResolveCompaction(ConnectionSettings? connection, long toolTokens = 0,
+        long trailingInstructionTokens = 0, bool keepMemory = true)
+    {
+        var usable = Resolve(connection).UsableTokens;
+        var input = Math.Max(0, usable - Math.Min(usable, Math.Max(0, toolTokens)));
+        var messages = Math.Max(0, input - Math.Min(input, Math.Max(0, trailingInstructionTokens)));
+        var growth = Math.Max(1, messages / 10);
+        return new(input, messages, keepMemory ? messages * 4 / 5 : messages,
+            messages * 7 / 10, growth, growth, messages / 5,
+            (int)Math.Min(1_500, messages / 10), (int)Math.Min(3_000, messages / 5));
+    }
+
+    public bool ShouldCompactAhead(AdaptiveCompactionBudget budget, long messageTokens, long nextAttemptTokens) =>
+        budget.MessageLimit > 0 && messageTokens >= budget.AheadThresholdTokens
+        && messageTokens >= nextAttemptTokens;
+
+    public bool ShouldAcceptCompaction(IReadOnlyList<ChatCompletionMessage> before,
+        IReadOnlyList<ChatCompletionMessage> after, long minimumGainTokens)
+    {
+        var gain = estimator.EstimateMessages(before) - estimator.EstimateMessages(after);
+        return gain > 0 && gain >= Math.Max(0, minimumGainTokens);
+    }
+
     public AdaptiveContextBudget Resolve(ConnectionSettings? connection)
     {
         var limits = limitsResolver.Resolve(connection);
-        var usable = Math.Max(0, limits.ContextWindowTokens - limits.ReservedOutputTokens - ProtocolOverhead - SafetyMargin);
-        return new(limits.ContextWindowTokens, limits.ReservedOutputTokens, ProtocolOverhead + SafetyMargin,
+        var safety = SafetyTokens(connection, limits.ContextWindowTokens);
+        var usable = Math.Max(0, limits.ContextWindowTokens - limits.ReservedOutputTokens - ProtocolOverhead - safety);
+        return new(limits.ContextWindowTokens, limits.ReservedOutputTokens, ProtocolOverhead + safety,
             usable, Math.Min(24_576, usable * 3 / 5), Math.Min(2_048, usable / 10),
             Math.Min(6_000, usable / 5), usable < 8_192 ? 8 : 16, usable < 16_384);
     }
@@ -85,7 +128,7 @@ public sealed partial class AdaptiveContextPolicy(
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(availableTools);
         var profile = Resolve(connection);
-        var lastUser = context.ToList().FindLastIndex(message => message.Role == "user");
+        var lastUser = context.ToList().FindLastIndex(message => message.Role == "user" && !message.IsContextSummary);
         var current = context.Skip(Math.Max(0, lastUser)).ToArray();
         var requiredNames = current.SelectMany(message => message.ToolCalls ?? []).Select(call => call.Name).ToHashSet(StringComparer.Ordinal);
         var fixedMessages = context.Where(message => message.Role == "system").Concat(current.Where(message => message.Role == "user")).ToArray();

@@ -590,10 +590,7 @@
                         </div>
                     }
                 </div>
-                @if (_textCorrection.Languages.Count > 0)
-                {
-                    <TextCorrectionToggle State="@_textCorrection" OnToggle="ToggleTextCorrectionAsync" />
-                }
+                <TextCorrectionToggle State="@_textCorrection" OnToggle="ToggleTextCorrectionAsync" />
                 <ApprovalModePicker Mode="@GetApprovalMode()" ModeChanged="SetApprovalModeAsync" Disabled="@(_selectedProject is null)" />
                 <div class="composer-endpoint">
                     <button class="composer-endpoint-trigger" type="button" title="Endpoint for this chat" aria-label="Endpoint for this chat" aria-haspopup="true" aria-expanded="@(_isEndpointMenuOpen ? "true" : "false")" @onclick="ToggleEndpointMenu" disabled="@(_connections.Count == 0)">

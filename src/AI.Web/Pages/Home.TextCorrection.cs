@@ -19,7 +19,7 @@ public partial class Home
         return TextCorrection.Analyze(text, layouts, excludedRanges);
     }
 
-    // Settings and the switch beside the editor share it; the editor shows the switch only while a language is selected.
+    // Settings and the shortcut beside the editor share the correction state.
     private AI.Web.Settings.TextCorrectionState _textCorrection = new([], true);
 
     private void OnTextCorrectionChanged() => _ = InvokeAsync(async () =>
@@ -30,6 +30,11 @@ public partial class Home
 
     private async Task ToggleTextCorrectionAsync()
     {
+        if (_textCorrection.Languages.Count == 0)
+        {
+            await OpenAppNavigationLinkAsync("aiclient://navigate/settings.chat.text_correction.languages", focus: true);
+            return;
+        }
         try
         {
             await CorrectionLanguages.SetEnabledAsync(!_textCorrection.Enabled);

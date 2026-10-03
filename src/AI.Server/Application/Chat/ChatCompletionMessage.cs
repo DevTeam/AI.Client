@@ -15,9 +15,12 @@ using AI.Contracts.Chat;
 /// The stored message this one was built from, or null for one made only for the request. It is
 /// what lets a summary say which part of the history it stands in for.
 /// </param>
+/// <param name="IsContextSummary">
+/// Application-only origin marker. A synthetic user-role summary does not start a new user turn.
+/// </param>
 public sealed record ChatCompletionMessage(string Role, string Content,
     IReadOnlyList<ChatToolCall>? ToolCalls = null, string? ToolCallId = null, string? ModelContent = null,
-    Guid? MessageId = null)
+    Guid? MessageId = null, bool IsContextSummary = false)
 {
     /// <summary>The text to put on the wire for this message.</summary>
     public string ForModel => ModelContent ?? Content;

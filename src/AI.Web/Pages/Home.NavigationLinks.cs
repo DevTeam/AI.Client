@@ -9,7 +9,9 @@ public partial class Home
     private string? _linkedToolName;
     private int _linkedSelection;
 
-    private async Task OpenAppNavigationLinkAsync(string href)
+    private Task OpenAppNavigationLinkAsync(string href) => OpenAppNavigationLinkAsync(href, focus: false);
+
+    private async Task OpenAppNavigationLinkAsync(string href, bool focus)
     {
         var target = NavigationLinks.Parse(href, _selectedProject?.Id);
         if (target is null)
@@ -66,7 +68,7 @@ public partial class Home
                 await RevealGuideTargetAsync(target);
                 await InvokeAsync(StateHasChanged);
                 var module = _guideModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/appGuide.js");
-                if (!await module.InvokeAsync<bool>("revealNavigationTarget", target))
+                if (!await module.InvokeAsync<bool>("revealNavigationTarget", target, focus))
                     Notifications.ShowError("The control in this link is unavailable in the current view.");
             }
         }

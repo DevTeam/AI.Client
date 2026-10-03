@@ -2,6 +2,9 @@
 
 Date: 2026-10-03. Status: accepted.
 
+Compaction thresholds, measured savings and estimation observations are extended by
+[ADR-010](ADR-010-adaptive-compaction-and-estimation.md).
+
 ## Context
 
 Small context windows could be exhausted before a user message was sent. Tool definitions had

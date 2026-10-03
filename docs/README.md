@@ -48,6 +48,7 @@ Generator diagnostics and complaints are tracked separately in [Pure.DI observat
 - [ADR-007: Application management tools in an in-process MCP server](decisions/ADR-007-in-process-app-tools.md)
 - [ADR-008: Desktop app on Avalonia with the system web view](decisions/ADR-008-desktop-app.md)
 - [ADR-009: One adaptive context policy](decisions/ADR-009-adaptive-context-policy.md)
+- [ADR-010: Adaptive compaction decisions and measured savings](decisions/ADR-010-adaptive-compaction-and-estimation.md)
 
 ## Document status
 

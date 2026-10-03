@@ -22,6 +22,8 @@ public interface IModelContentCheckpointService
     IDisposable Begin(ToolRunContext run, string model, long historyKeepTokens,
         Func<string, CancellationToken, Task<string>> summarize);
     void Update(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context);
+    /// <summary>Uses the policy's current message allowance for the recent history kept in full.</summary>
+    void UpdateBudget(ToolRunContext run, AdaptiveCompactionBudget budget);
     IReadOnlyList<ChatCompletionMessage> Apply(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context);
 
     /// <summary>
@@ -34,7 +36,8 @@ public interface IModelContentCheckpointService
     ModelContentCompactionPreview Preview(ToolRunContext run, ContextCompactionScope scope = ContextCompactionScope.Turn);
     /// <param name="origin">Who asked for a history compaction, recorded on the checkpoint it keeps.</param>
     Task<ModelContentCompactionResult> CompactAsync(ToolRunContext run, int targetTokens, ContextCompactionScope scope,
-        CancellationToken cancellationToken, HistoryCheckpointOrigin origin = HistoryCheckpointOrigin.Model);
+        CancellationToken cancellationToken, HistoryCheckpointOrigin origin = HistoryCheckpointOrigin.Model,
+        long minimumGainTokens = 0);
 
     /// <summary>
     /// Summarizes the completed steps of the turn in progress, as a turn compaction does, with no
@@ -50,7 +53,8 @@ public interface IModelContentCheckpointService
     Task<bool> ResetAsync(ToolRunContext run, ContextCompactionScope scope, CancellationToken cancellationToken);
 }
 
-public sealed record ModelContentCompactionPreview(int CoveredMessages, long SourceCharacters, bool CanCompact);
+public sealed record ModelContentCompactionPreview(int CoveredMessages, long SourceCharacters, bool CanCompact,
+    long SourceTokens = 0);
 
 public sealed record ModelContentCompactionResult(
     int CoveredMessages,

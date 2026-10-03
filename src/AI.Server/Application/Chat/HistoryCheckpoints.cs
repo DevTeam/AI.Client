@@ -99,7 +99,7 @@ public sealed class HistoryCheckpointService(IHistoryCheckpointRepository reposi
         if (covered < 0) return context;
         var cut = -1;
         for (var index = covered + 1; index < context.Count; index++)
-            if (context[index].Role == "user")
+            if (context[index].Role == "user" && !context[index].IsContextSummary)
             {
                 cut = index;
                 break;
@@ -146,7 +146,7 @@ public sealed class HistoryCheckpointService(IHistoryCheckpointRepository reposi
         ArgumentNullException.ThrowIfNull(keep);
         var starts = new List<int>();
         for (var index = 0; index < context.Count; index++)
-            if (context[index].Role == "user") starts.Add(index);
+            if (context[index].Role == "user" && (!context[index].IsContextSummary || starts.Count == 0)) starts.Add(index);
         if (starts.Count == 0) return [];
         var kept = 0;
         long keptTokens = 0;
@@ -169,8 +169,8 @@ public sealed class HistoryCheckpointService(IHistoryCheckpointRepository reposi
     }
 
     public ChatCompletionMessage SummaryMessage(HistoryCheckpoint checkpoint) =>
-        new("user", SummaryPrefix + checkpoint.Summary, MessageId: checkpoint.UpToMessageId);
+        new("user", SummaryPrefix + checkpoint.Summary, MessageId: checkpoint.UpToMessageId, IsContextSummary: true);
 
     private static bool IsSummary(ChatCompletionMessage message) =>
-        message.Role == "user" && message.Content.StartsWith(SummaryPrefix, StringComparison.Ordinal);
+        message.IsContextSummary;
 }

@@ -1228,7 +1228,7 @@ public sealed class AppToolTests
         ChatCompletionMessage[] messages = [.. preview.Layers.Where(layer => layer.Content.Length > 0)
             .Select(layer => new ChatCompletionMessage("system", layer.Content)), new("system", "Finish the task with tools and a verified answer."), new("user", "Hello")];
         var selection = policy.Choose(connection, "Hello", messages, session.Tools);
-        var plan = new ChatContextPlanner(estimator, new ChatContextCompactor(estimator, new ContextSummaryWriter()), resolver, policy)
+        var plan = new ChatContextPlanner(estimator, new ChatContextCompactor(estimator, new ContextSummaryWriter(new ContextTokenEstimator(), new ToolResultContextProjector()), new ToolResultContextProjector()), resolver, policy)
             .Plan(connection, "model", messages, selection.Tools.Select(tool => tool.ModelDefinition).ToArray());
         plan.Fits.ShouldBeTrue();
         selection.SelectedTokens.ShouldBeLessThanOrEqualTo(selection.BudgetTokens);

@@ -60,6 +60,18 @@ const relativeTargetOf = href => {
     }
 };
 
+// Only these schemes may leave the transcript. Resolve protocol-relative links too, but never
+// turn a relative file path into a URL on the app's own server.
+const externalUrlOf = href => {
+    if (!/^(?:https?:|mailto:|\/\/)/i.test(href.trim())) return null;
+    try {
+        const url = new URL(href, location.href);
+        return ['http:', 'https:', 'mailto:'].includes(url.protocol) ? url.href : null;
+    } catch {
+        return null;
+    }
+};
+
 // Whether a code span reads like a path. Wrong guesses cost one cached lookup, so this errs
 // towards asking, but it keeps calls, URLs, expressions and namespaces out.
 const looksLikePath = text => {
@@ -175,6 +187,13 @@ export function attach(container, dotnet) {
         const known = input => !cachedOnly || cache.has(input);
         for (const anchor of block.querySelectorAll('a[href]:not([data-path-state])')) {
             const href = anchor.getAttribute('href') ?? '';
+            if (externalUrlOf(href)) {
+                // Also covers the browser's native "open in new tab" context-menu action.
+                anchor.target = '_blank';
+                anchor.rel = 'noopener noreferrer';
+                anchor.dataset.pathState = 'no';
+                continue;
+            }
             const direct = directPathOf(href);
             if (direct) {
                 // Usable at once; the Host's answer only adds the kind and the canonical form.
@@ -336,17 +355,34 @@ export function attach(container, dotnet) {
     };
 
     const onClick = event => {
+        if (event.defaultPrevented || (event.type === 'auxclick' && event.button !== 1)) return;
         const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
         if (!anchor || !container.contains(anchor)) return;
-        const href = anchor.getAttribute('href') ?? '';
+        // Cancel before Blazor or the WebView starts navigating, including Ctrl/Cmd and middle
+        // clicks. Unknown schemes and unresolved local paths stay inert.
+        event.preventDefault();
+        const href = (anchor.getAttribute('href') ?? '').trim();
         // An "@" link to a chat or a review opens it; the page knows the reference by its id.
         if (href.startsWith('#mention-')) {
-            event.preventDefault();
             dotnet.invokeMethodAsync('OnMentionLinkClicked', href.slice('#mention-'.length));
             return;
         }
         // A local path, or any relative link, would navigate the app itself; neither may.
-        if (anchor.dataset.filePath || directPathOf(href) || relativeTargetOf(href)) event.preventDefault();
+        if (anchor.dataset.filePath || directPathOf(href)) return;
+        const url = externalUrlOf(href);
+        if (url) {
+            if (typeof globalThis.invokeCSharpAction === 'function')
+                globalThis.invokeCSharpAction(JSON.stringify({ type: 'open-external-link', url }));
+            else window.open(url, '_blank', 'noopener,noreferrer');
+            return;
+        }
+        if (href.startsWith('#') && href.length > 1) {
+            try {
+                document.getElementById(decodeURIComponent(href.slice(1)))?.scrollIntoView();
+            } catch {
+                // A malformed fragment cannot be a DOM id.
+            }
+        }
     };
 
     const onContextMenu = event => {
@@ -379,7 +415,8 @@ export function attach(container, dotnet) {
         scheduleScan(SCAN_DELAY_MS);
     });
 
-    container.addEventListener('click', onClick);
+    container.addEventListener('click', onClick, true);
+    container.addEventListener('auxclick', onClick, true);
     container.addEventListener('contextmenu', onContextMenu);
     observer.observe(container, { childList: true, subtree: true, characterData: true });
     for (const block of container.querySelectorAll(BLOCK)) dirty.add(block);
@@ -409,7 +446,8 @@ export function attach(container, dotnet) {
             observer.disconnect();
             clearTimeout(scanTimer);
             clearTimeout(flushTimer);
-            container.removeEventListener('click', onClick);
+            container.removeEventListener('click', onClick, true);
+            container.removeEventListener('auxclick', onClick, true);
             container.removeEventListener('contextmenu', onContextMenu);
         }
     };

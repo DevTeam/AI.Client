@@ -2,10 +2,13 @@ namespace AI.Web.Tests.Components;
 
 using AI.Contracts.Navigation;
 using AI.Web.Components;
+using AI.Web.Markdown;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.JSInterop;
+using Moq;
 using Shouldly;
 using Xunit;
 
@@ -17,7 +20,7 @@ public sealed class AppGuideStepRenderingTests
     [InlineData(0, "0:00")]
     public async Task ShouldShowTheTimeLimitAndPreventAnExpiredStepFromContinuing(int seconds, string time)
     {
-        await using var services = new ServiceCollection().BuildServiceProvider();
+        await using var services = Services();
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
         await renderer.Dispatcher.InvokeAsync(async () =>
         {
@@ -42,7 +45,7 @@ public sealed class AppGuideStepRenderingTests
     [InlineData(1, true, "0.067")]
     public async Task ShouldWarnDuringTheLastSecondsBeforeTheStepStopsOnItsOwn(int seconds, bool expiring, string remaining)
     {
-        await using var services = new ServiceCollection().BuildServiceProvider();
+        await using var services = Services();
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
         await renderer.Dispatcher.InvokeAsync(async () =>
         {
@@ -65,7 +68,7 @@ public sealed class AppGuideStepRenderingTests
     [Fact]
     public async Task ShouldSayThatAGuideStepContinuesOnItsOwnWhenTheTimeRunsOut()
     {
-        await using var services = new ServiceCollection().BuildServiceProvider();
+        await using var services = Services();
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
         await renderer.Dispatcher.InvokeAsync(async () =>
         {
@@ -83,4 +86,29 @@ public sealed class AppGuideStepRenderingTests
             html.ShouldContain("Pressed automatically when the time runs out");
         });
     }
+    [Fact]
+    public async Task ShouldRenderLLMNavigationLinksInTheVisibleStepComment()
+    {
+        await using var services = Services();
+        await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var component = await renderer.RenderComponentAsync<AppGuideStep>(ParameterView.FromDictionary(
+                new Dictionary<string, object?>
+                {
+                    [nameof(AppGuideStep.Step)] = new AppNavigation(Guid.NewGuid(), Target: "settings", Action: "show",
+                        Comment: "Open [Connections](aiclient://navigate/settings.connections) or **stay here**. <script>alert(1)</script>")
+                }));
+            var html = component.ToHtmlString();
+            html.ShouldContain("href=\"aiclient://navigate/settings.connections\"");
+            html.ShouldContain("<strong>stay here</strong>");
+            html.ShouldNotContain("<script>");
+            html.ShouldContain(">Continue</button>");
+        });
+    }
+
+    private static ServiceProvider Services() => new ServiceCollection()
+        .AddSingleton<IMarkdownRenderer, SafeMarkdownRenderer>()
+        .AddSingleton(Mock.Of<IJSRuntime>())
+        .BuildServiceProvider();
 }

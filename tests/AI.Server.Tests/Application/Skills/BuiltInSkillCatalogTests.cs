@@ -87,6 +87,21 @@ public class BuiltInSkillCatalogTests
     }
 
     [Fact]
+    public void ShouldOfferNavigationShortcutsInEveryGuideWithoutReplacingVisualSteps()
+    {
+        var guides = new BuiltInSkillCatalog().List().Where(skill => skill.Id.StartsWith("app-guide-", StringComparison.Ordinal)).ToArray();
+        guides.Length.ShouldBe(11);
+        foreach (var guide in guides)
+        {
+            guide.Content.ShouldContain("aiclient://navigate/settings.connections");
+            guide.Content.ShouldContain("final visible takeaway");
+            guide.Content.ShouldContain("visible step comment or `ask_user` question text");
+            guide.Content.ShouldContain("must not replace its tool calls");
+            guide.Content.ShouldContain("Never link to the hidden guide chat");
+        }
+    }
+
+    [Fact]
     public void ShouldGiveEveryBundledSkillAnIconThatSkillCreateOffers()
     {
         var skills = new BuiltInSkillCatalog().List();

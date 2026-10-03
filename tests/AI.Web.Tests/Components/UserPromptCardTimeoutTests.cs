@@ -94,6 +94,16 @@ public sealed class UserPromptCardTimeoutTests
         });
     }
 
+    [Fact]
+    public async Task ShouldRenderNavigationLinksInAnOverlayQuestionWithoutAnsweringIt()
+    {
+        var answered = false;
+        var question = Question with { Text = "Check [Connections](aiclient://navigate/settings.connections), then choose." };
+        var html = await RenderAsync(new UserPrompt(Guid.NewGuid(), [question], 0, "overlay"), () => answered = true);
+        html.ShouldContain("href=\"aiclient://navigate/settings.connections\"");
+        answered.ShouldBeFalse();
+    }
+
     private sealed class NoJsRuntime : IJSRuntime
     {
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) =>

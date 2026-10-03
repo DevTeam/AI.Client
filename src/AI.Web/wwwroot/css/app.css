@@ -3718,21 +3718,21 @@ div.chat-tip-head { cursor: default; }
     position: absolute;
     z-index: 6;
     top: 0;
-    /* Keep the header from sliding under the chat's vertical scrollbar. The JS in
+    /* Keep the header clear of the chat's vertical scrollbar. The JS in
        chatScrollbarGutter.js measures the live scrollbar width and writes it to
        --chat-scrollbar-width on .workspace-conversation, which this element inherits.
-       Fallback 0px keeps the header flush to the right on macOS overlay scrollbars
+       Mirror the gutter on the left so both toggles stay equally inset from their panels.
+       Fallback 0px keeps the header flush on macOS overlay scrollbars
        (where offsetWidth - clientWidth is 0). */
     right: var(--chat-scrollbar-width, 0px);
-    left: 0;
+    left: var(--chat-scrollbar-width, 0px);
     display: flex;
     align-items: center;
     gap: .35rem;
     min-width: 0;
     height: 2.4rem;
     box-sizing: border-box;
-    /* Centre the first 1.65rem button (the sidebar toggle) over the 1.1rem history rail at left .5rem.
-       The right inset matches it so both panel toggles sit the same distance from their panels. */
+    /* Equal padding keeps both panel toggles symmetric inside the scrollbar-safe header. */
     padding: .2rem .225rem .45rem;
     background: linear-gradient(to bottom, var(--color-bg) 0%, color-mix(in srgb, var(--color-bg) 92%, transparent) 55%, transparent 100%);
     pointer-events: none;
@@ -7156,9 +7156,7 @@ button.is-auto-pressed { filter: brightness(1.15); }
    then the body. Every widget uses these classes and adds only what its content needs, so new
    widgets look like they belong to the set without styling a frame of their own. */
 .workspace-shell.widgets-open { --widgets-track: var(--widgets-width); }
-/* The header stops before the chat's scrollbar gutter; the toggle reaches back over it so its
-   gap to the right panel equals the sidebar toggle's gap to the left one. */
-.workspace-widgets-toggle { flex: none; margin-left: auto; margin-right: calc(-1 * var(--chat-scrollbar-width, 0px)); pointer-events: auto; }
+.workspace-widgets-toggle { flex: none; margin-left: auto; pointer-events: auto; }
 
 .chat-widgets {
     grid-column: 4;

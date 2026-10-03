@@ -139,9 +139,11 @@
                                   TurnElapsedSeconds="@GetGeneratingElapsedSeconds()"
                                   LiveTextVersion="@GetLiveTextInputVersion()"
                                   UsageVersion="@_usageVersion">
+        @{ var modelSwitches = Feed.BuildModelSwitches(GetVisibleBranchMessages(), ChatUsage?.Turns ?? [], SelectedRun?.TurnUsage); }
         @foreach (var feedTurn in GetRenderedFeedTurns())
         {
-            <TranscriptTurnBoundary @key="feedTurn.Key" Stamp="@GetTurnStamp(feedTurn)" Messages="@feedTurn.Messages">
+            var turnModelSwitches = feedTurn.Key is Guid modelTurnId ? modelSwitches.GetValueOrDefault(modelTurnId) : null;
+            <TranscriptTurnBoundary @key="feedTurn.Key" Stamp="@GetTurnStamp(feedTurn, turnModelSwitches)" Messages="@feedTurn.Messages">
             @foreach (var entry in feedTurn.Entries)
             {
                 var item = entry.Item;
@@ -280,6 +282,19 @@
                 }
                 else if (item?.Message is { } message)
                 {
+                    @if (message.Role == "User" && turnModelSwitches is not null)
+                    {
+                        @foreach (var change in turnModelSwitches)
+                        {
+                            <div class="history-checkpoint-mark model-switch-mark" role="note">
+                                <div class="history-checkpoint-line">
+                                    <span class="history-checkpoint-rule" aria-hidden="true"></span>
+                                    <span class="history-checkpoint-label"><AppIcon Name="sparkles" />Model switched · @change.PreviousModel → @change.Model</span>
+                                    <span class="history-checkpoint-rule" aria-hidden="true"></span>
+                                </div>
+                            </div>
+                        }
+                    }
                     @if (ActiveCheckpoint is { } activeCheckpoint && message.Role == "User" && message.ParentId == activeCheckpoint.UpToMessageId)
                     {
                         <HistoryCheckpointMark @key="activeCheckpoint.Id" Checkpoint="@activeCheckpoint" OnUndo="OnUndoCheckpoint" />
@@ -1469,7 +1484,7 @@
         return turns;
     }
 
-    private TranscriptTurnStamp GetTurnStamp(RenderedFeedTurn turn)
+    private TranscriptTurnStamp GetTurnStamp(RenderedFeedTurn turn, IReadOnlyList<ModelSwitch>? modelSwitches)
     {
         var shared = new TranscriptSharedStamp(SelectedChat?.Id ?? Guid.Empty, _expandedTurnsVersion, ReviewVersion, ShowTurnTokens);
         Guid? Held(Guid? id) => id is { } value && turn.Messages.Any(message => message.Id == value) ? value : null;
@@ -1494,7 +1509,9 @@
         var usage = turn.Key is Guid turnId ? GetTurnUsage(turnId)?.Totals : null;
         var checkpoint = ActiveCheckpoint is { } active && turn.Messages.FirstOrDefault() is { Role: "User" } user
             && user.ParentId == active.UpToMessageId ? active : null;
-        return new TranscriptTurnStamp(shared, marks, runs, pickers.ToHashCode(), usage, checkpoint, live);
+        var modelSwitchHash = new HashCode();
+        foreach (var change in modelSwitches ?? []) modelSwitchHash.Add(change);
+        return new TranscriptTurnStamp(shared, marks, runs, pickers.ToHashCode(), usage, checkpoint, live, modelSwitchHash.ToHashCode());
     }
 
     private LiveTextFrame _liveFrame;

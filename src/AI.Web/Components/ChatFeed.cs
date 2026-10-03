@@ -11,6 +11,32 @@ namespace AI.Web.Components;
 /// </summary>
 public sealed class ChatFeed : IChatFeedProjection
 {
+    public IReadOnlyDictionary<Guid, IReadOnlyList<ModelSwitch>> BuildModelSwitches(IReadOnlyList<ChatMessageView> chain,
+        IReadOnlyList<AI.Contracts.Usage.TurnTokenUsage> turns, AI.Contracts.Usage.TurnTokenUsage? liveTurn)
+    {
+        var usage = turns.ToDictionary(turn => turn.TurnId);
+        var result = new Dictionary<Guid, IReadOnlyList<ModelSwitch>>();
+        string? previous = null;
+        foreach (var user in chain.Where(message => message.Role == "User"))
+        {
+            usage.TryGetValue(user.Id, out var stored);
+            var models = (stored?.AnswerModels ?? [])
+                .Concat(liveTurn?.TurnId == user.Id ? liveTurn.AnswerModels ?? [] : [])
+                .DistinctBy(model => model.RequestId)
+                .OrderBy(model => model.At);
+            var changes = new List<ModelSwitch>();
+            foreach (var request in models)
+            {
+                if (string.IsNullOrWhiteSpace(request.Model)) continue;
+                if (previous is not null && !string.Equals(previous, request.Model, StringComparison.Ordinal))
+                    changes.Add(new ModelSwitch(previous, request.Model));
+                previous = request.Model;
+            }
+            if (changes.Count > 0) result.Add(user.Id, changes);
+        }
+        return result;
+    }
+
     public bool IsToolActivity(ChatMessageView message) =>
         message.Role == "Tool" || (message.Role == "Assistant" && message.ToolCalls is { Count: > 0 });
 

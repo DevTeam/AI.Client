@@ -7453,6 +7453,8 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .history-checkpoint-line { display: flex; align-items: center; gap: .6rem; }
 .history-checkpoint-rule { flex: 1; min-width: 1rem; height: 1px; background: var(--color-border-subtle); }
 .history-checkpoint-label { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.model-switch-mark .history-checkpoint-label { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+.model-switch-mark .app-icon { flex: none; }
 .history-checkpoint-action { padding: 0; border: 0; background: none; color: var(--color-text-muted); font: inherit; cursor: pointer; white-space: nowrap; }
 .history-checkpoint-action:hover { color: var(--color-text); text-decoration: underline; }
 .history-checkpoint-action:disabled { color: var(--color-text-faint); cursor: default; text-decoration: none; }

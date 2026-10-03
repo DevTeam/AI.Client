@@ -126,7 +126,10 @@ public sealed record TokenUsageSlice(string Key, TokenUsageTotals Totals);
 
 /// <summary>What one turn used, in total and by why the model was asked.</summary>
 public sealed record TurnTokenUsage(Guid TurnId, Guid BranchId, DateTimeOffset StartedAt, TokenUsageTotals Totals,
-    IReadOnlyList<TokenUsageSlice> ByPurpose);
+    IReadOnlyList<TokenUsageSlice> ByPurpose, IReadOnlyList<AnswerModelUsage>? AnswerModels = null);
+
+/// <summary>A model actually used for an answer request, including interrupted streams.</summary>
+public sealed record AnswerModelUsage(Guid RequestId, DateTimeOffset At, string Model);
 
 /// <summary>
 /// Everything one chat has used. Requests that belong to no turn — naming the chat, drafting reply

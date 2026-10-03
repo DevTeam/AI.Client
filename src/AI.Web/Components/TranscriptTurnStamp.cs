@@ -10,7 +10,8 @@ namespace AI.Web.Components;
 /// of the branch, which is the one the run is writing into.
 /// </summary>
 public readonly record struct TranscriptTurnStamp(TranscriptSharedStamp Shared, TranscriptTurnMarks Marks, int RunPresentationVersion, int BranchPickers,
-    AI.Contracts.Usage.TokenUsageTotals? Usage, AI.Contracts.Chats.HistoryCheckpoint? Checkpoint, TranscriptLiveStamp? Live);
+    AI.Contracts.Usage.TokenUsageTotals? Usage, AI.Contracts.Chats.HistoryCheckpoint? Checkpoint, TranscriptLiveStamp? Live,
+    int ModelSwitches = 0);
 
 public readonly record struct TranscriptSharedStamp(
     Guid ChatId,

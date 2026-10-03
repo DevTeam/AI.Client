@@ -901,7 +901,8 @@ public sealed class ChatRunDispatcher(
         runtime.TurnRecords.Add(record);
         runtime.TurnUsage = new TurnTokenUsage(turnId, runtime.State.BranchId, runtime.TurnRecords[0].At,
             usageAggregator.Total(runtime.TurnRecords),
-            usageAggregator.Group(runtime.TurnRecords, item => item.Purpose.ToString()));
+            usageAggregator.Group(runtime.TurnRecords, item => item.Purpose.ToString()),
+            usageAggregator.AnswerModels(runtime.TurnRecords));
         runtime.Snapshot = runtime.Snapshot with { TurnUsage = runtime.TurnUsage };
         Publish();
     }

@@ -11,6 +11,8 @@ public interface ITokenUsageAggregator
 
     IReadOnlyList<TokenUsageSlice> Group(IEnumerable<TokenUsageRecord> records, Func<TokenUsageRecord, string> key);
 
+    IReadOnlyList<AnswerModelUsage> AnswerModels(IEnumerable<TokenUsageRecord> records);
+
     ChatTokenUsage Chat(Guid projectId, Guid chatId, IEnumerable<TokenUsageRecord> records);
 
     TokenUsageReport Report(DateTimeOffset from, DateTimeOffset until, IEnumerable<TokenUsageRecord> records);

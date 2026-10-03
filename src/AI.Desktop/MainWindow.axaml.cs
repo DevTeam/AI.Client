@@ -234,7 +234,13 @@ internal sealed partial class MainWindow : Window
                     ? prefs.Deserialize<AI.Contracts.Updates.UpdatePreferences>(UpdateJson) : null);
                 return;
             }
-            if (type.GetString() == "workspace-location")
+            if (type.GetString() == "open-external-link"
+                && root.TryGetProperty("url", out var link) && link.ValueKind == JsonValueKind.String
+                && Uri.TryCreate(link.GetString(), UriKind.Absolute, out var external))
+            {
+                OpenOutside(external);
+            }
+            else if (type.GetString() == "workspace-location")
             {
                 Guid? ReadId(string name) => root.TryGetProperty(name, out var value)
                     && value.ValueKind == JsonValueKind.String && Guid.TryParse(value.GetString(), out var id)

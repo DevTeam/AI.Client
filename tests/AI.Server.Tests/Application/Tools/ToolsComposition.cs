@@ -15,9 +15,9 @@ internal sealed partial class ToolsComposition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .DependsOn("AI.Contracts.Composition")
             .Hint(Hint.Comments, "Off")
             .Hint(Hint.Resolve, "Off")
-            .DependsOn("AI.Contracts.Composition")
             .Root<IToolPresentations>(nameof(Presentations))
             .Root<IToolResultModelProjector>(nameof(ModelProjector))
             .Root<IToolResultCodec>(nameof(Codec));

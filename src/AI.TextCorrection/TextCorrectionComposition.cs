@@ -10,9 +10,9 @@ public sealed partial class TextCorrectionComposition
     [Conditional("DI")]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822", Justification = "Pure.DI composition uses instance methods.")]
     private void Setup() => DI.Setup()
+        .DependsOn("AI.TextCorrection.Configuration.TextCorrectionComposition")
         .Hint(Hint.Comments, "Off")
         .Hint(Hint.Resolve, "Off")
-        .DependsOn("AI.TextCorrection.Configuration.TextCorrectionComposition")
         .Root<ITextCorrectionAnalyzer>(nameof(Analyzer))
         .Root<ITextAutoCorrectionAnalyzer>(nameof(AutoCorrection))
         .Root<IKeyboardLayouts>(nameof(Layouts))

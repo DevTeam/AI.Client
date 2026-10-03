@@ -13,16 +13,13 @@ internal sealed partial class CommandLineComposition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .DependsOn("AI.Server.CommandLine.Composition")
             .Hint(Hint.Comments, "Off")
             .Hint(Hint.Resolve, "Off")
             .Hint(Hint.ThreadSafe, "Off")
-            .DependsOn("AI.Server.CommandLine.Composition")
-            .Root<AI.Server.CommandLine.ICommandLineApplication>(nameof(Root))
-            .Transient<StandaloneCommand>(Tag.Unique)
-            .Transient<OpenCommand>(Tag.Unique)
-            .Transient<HostStatus>()
-            .Transient<BrowserOpener, HostProcess, WebAppLauncher>()
-            .Transient<ServerRunner, HostRunner, HostTray>();
+            .Root<ICommandLineApplication>(nameof(Root))
+            .Transient<StandaloneCommand, OpenCommand>(Tag.Unique)
+            .Transient<HostStatus, BrowserOpener, HostProcess, WebAppLauncher, ServerRunner, HostRunner, HostTray>();
 }
 
 /// <summary>The server graph for one run; also ASP.NET's service provider factory.</summary>
@@ -31,9 +28,9 @@ internal sealed partial class ServerComposition : ServiceProviderFactory<ServerC
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
-            .Hint(Hint.Comments, "Off")
             // Two calls on purpose: Pure.DI 2.5.4 crashes (DIE043) on DependsOn("a", "b").
             .DependsOn("AI.Contracts.Composition")
             .DependsOn("AI.Server.AspNetComposition")
-            .Root<AI.Server.Hosting.IAiClientServer>(nameof(Server));
+            .Hint(Hint.Comments, "Off")
+            .Root<Server.Hosting.IAiClientServer>(nameof(Server));
 }

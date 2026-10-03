@@ -23,13 +23,11 @@ internal sealed partial class AppToolsComposition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
-            .Hint(Hint.Comments, "Off")
-            .Hint(Hint.Resolve, "Off")
             .DependsOn("AI.Contracts.Composition")
             .DependsOn("AI.Server.Composition")
             .DependsOn("AI.Server.Tests.TestServer")
-            .Arg<IUserPromptBroker>("broker")
-            .Arg<IConnectionModelsResolver>("modelsResolver")
+            .Hint(Hint.Comments, "Off")
+            .Hint(Hint.Resolve, "Off")
             .Root<IGlobalSettingsRepository>(nameof(Settings))
             .Root<IGlobalSecretStore>(nameof(Secrets))
             .Root<IProjectService>(nameof(Projects))
@@ -38,5 +36,7 @@ internal sealed partial class AppToolsComposition
             .Root<IGlobalSettingsService>(nameof(GlobalSettings))
             .Root<IToolSessionFactory>(nameof(Sessions))
             .Root<IAppDataChangeSignal>(nameof(Changes))
-            .Root<IAppNavigationSignal>(nameof(Navigation));
+            .Root<IAppNavigationSignal>(nameof(Navigation))
+            .Arg<IUserPromptBroker>("broker")
+            .Arg<IConnectionModelsResolver>("modelsResolver");
 }

@@ -3,9 +3,9 @@ id: settings-import-mcp
 name: Settings import mcp
 icon: settings-import-mcp
 kind: playbook
-description: Find and import an external MCP server by source, name or capability, reuse existing tools, configure dependencies, merge settings, verify discovery and offer functional tool tests that run only with the user's agreement.
+description: Find and import an external MCP server by source, name or capability, configure dependencies, merge settings, verify discovery, offer functional tests and propose relevant skills for its tools; testing and skill creation require the user's agreement.
 parameters: {"type":"object","properties":{"source":{"type":"string","description":"Registry entry, repository, documentation, configuration URL or local file supplied by the user"},"goal":{"type":"string","description":"MCP server name or capability to find without a supplied source"}},"additionalProperties":false}
-tools: ["app_read","tool_search","fetch","app_security","app_navigate","ask_user","run_skill","read_text_file","list_directory","get_file_info","process_run"]
+tools: ["app_read","tool_search","fetch","app_security","app_navigate","ask_user","run_skill","skill_search","app_skills","read_text_file","list_directory","get_file_info","process_run"]
 ---
 
 The user's instructions take precedence. An import request authorizes finding the server,
@@ -166,8 +166,38 @@ verify candidates against their actual publisher docs, not search snippets.
     also fails, report and offer the same explicit choice again rather than automatically cycling
     through installations. If no compatible alternative exists, report the search outcome and
     remaining requirements without inventing a candidate or reinstalling the failed server.
-13. Finish with the server, clickable source/version, saved status,
+13. After successful setup and discovery, and after any accepted functional tests have passed,
+    propose two to four relevant skills based on the server's actual tool schemas, observed
+    behavior and the user's original goal. If only one useful workflow exists, propose one;
+    do not manufacture more. Prefer complete user tasks over one wrapper per tool. Search
+    existing skills with `skill_search` and read relevant full documents with `app_read`
+    resource=Skills to avoid duplicates; propose reuse or an explicitly chosen adaptation when
+    an existing skill already fits. For each new proposal show a name, concrete purpose, inputs,
+    output and exact discovered tools it would use. Account for available tools and effective
+    permissions, and distinguish tested capabilities from discovered but untested ones. If
+    functional testing was skipped, say so without describing the proposals as runtime-verified.
+    Do not offer to create enabled dependent skills for a failed, blocked, removed or disabled
+    server; resolve that state or use the verified alternative first.
+    Ask with `ask_user` labelled "Tool skills": "Would you like to create these skills for the
+    connected server?" Offer "Create proposed skills (Recommended)", "Choose specific skills"
+    and "Skip", with allowOther=true and labels in the user's language. If a subset is requested,
+    let the user select the concrete proposals with multiSelect=true. Ask for User/Project scope
+    in the same call when it has not already been specified, explaining the scope's effect.
+    Reuse an explicit creation choice already supplied by the user. Dismissed, declined, expired
+    or interrupted means no creation; the configured server and test results remain intact.
+    For accepted proposals, read `app_read` resource=Skills query=skill-create and call
+    `run_skill` id=skill-create with each selected concrete goal and destination scope. Include
+    the verified server identity, actual tool names/schemas, workflow, inputs, expected output,
+    observed limitations and test coverage in the goal so creation adapts to this application.
+    Continue the returned creation playbook to completion, preserving unrelated skills and
+    policies. Do not count a proposal or returned instructions as a saved skill. Read each
+    saved document back with `app_read` resource=Skills and verify scope, enabled state and
+    tool references. Creating skills grants no new tool permissions and does not itself
+    authorize executing their workflows or changing production data.
+14. Finish with the server, clickable source/version, saved status,
     discovery result, concrete remaining configuration and each functional test's expected/actual
     result and passed/failed/blocked/skipped status. Distinguish saved, connected, permitted and
     actually tested; report untested tools without claiming the whole server was verified.
     Include any verified removal/restoration and the alternative's separate installation/test result.
+    Include the created/reused skills and their purposes, or report that skill creation was
+    skipped, blocked or failed; never claim unsaved proposals were created.

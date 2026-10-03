@@ -12,7 +12,7 @@ public interface IUsagePresentation
     string FormatTokens(long tokens);
 
     /// <summary>
-    /// Input and output as "42k → 1.8k". A leading "≈" says some of it is the application's own
+    /// Cumulative input and output as "42k in → 1.8k out". A leading "≈" says some of it is the application's own
     /// estimate, because the endpoint did not report what it used.
     /// </summary>
     string FormatFlow(TokenUsageTotals totals);
@@ -32,8 +32,8 @@ public interface IUsagePresentation
     string? FormatCost(TokenUsageTotals totals);
 
     /// <summary>
-    /// The share of input the provider's cache could have served — what each request shared with the
-    /// one before it — or null when no request was compared.
+    /// Estimated overlap divided by estimated full input of compared requests. Both counts use
+    /// the same scale; this is not provider cache eligibility. Null without a recorded denominator.
     /// </summary>
     int? ReusablePercent(TokenUsageTotals totals);
 

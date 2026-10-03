@@ -51,6 +51,7 @@ Generator diagnostics and complaints are tracked separately in [Pure.DI observat
 - [ADR-009: One adaptive context policy](decisions/ADR-009-adaptive-context-policy.md)
 - [ADR-010: Adaptive compaction decisions and measured savings](decisions/ADR-010-adaptive-compaction-and-estimation.md)
 - [ADR-011: Budgeted summary requests and separate quality evaluations](decisions/ADR-011-budgeted-summary-requests.md)
+- [ADR-012: Comparable prefix overlap and adaptive tool headroom](decisions/ADR-012-prefix-overlap-and-tool-headroom.md)
 
 ## Document status
 

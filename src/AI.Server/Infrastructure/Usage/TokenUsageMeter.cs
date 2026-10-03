@@ -66,7 +66,7 @@ public sealed class TokenUsageMeter(
         var chatId = Find(scope => scope.ChatId);
         var branchId = Find(scope => scope.BranchId);
         var prefix = measurement.Shape is { } shape && chatId is { } chat
-            ? prefixes.Compare(new PromptPrefixKey(chat, branchId, purpose), shape)
+            ? prefixes.Compare(new PromptPrefixKey(chat, branchId, purpose, measurement.ConnectionId, shape.Model, shape.BaseUrl), shape)
             : null;
 
         var record = new TokenUsageRecord(ids.Create(), clock.UtcNow, purpose,

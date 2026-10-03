@@ -308,8 +308,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             stepBudget = contextPolicy.ResolveCompaction(configuredConnection, estimator.EstimateTools(available),
                 composition.Trailing is null ? 0 : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]));
             checkpoints.UpdateBudget(run, stepBudget);
-            contextDiagnostics.RecordToolSelection(request.Model, selection.AvailableCount, selectedTools.Count,
-                selection.AvailableTokens, selection.SelectedTokens, selection.BudgetTokens);
+            contextDiagnostics.RecordToolSelection(request.Model, selection);
             instructionDiagnostics.RecordInstructions(request.Model, composition.Keys, composition.EstimatedTokens);
             var plan = await contextPlanner.PlanAsync(configuredConnection, request.Model, composition.Messages, available,
                 new CompletionClientSummarizer(completion, request, usageMeter), stepBudget.SummaryTargetTokens, token,

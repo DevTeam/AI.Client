@@ -262,9 +262,75 @@ public class TokenUsageTests
         records[2].Prefix!.Change.ShouldBeNull();
         records[3].Prefix!.Change.ShouldBe(PromptPrefixChange.Instructions);
         records[4].Prefix!.Change.ShouldBe(PromptPrefixChange.History);
-        records[5].Prefix.ShouldBe(new PromptPrefix(0, PromptPrefixChange.Tools));
+        records[5].Prefix!.Change.ShouldBe(PromptPrefixChange.Tools);
+        records[5].Prefix!.ReusableTokens.ShouldBe(0);
+        records[5].Prefix!.EstimatedInputTokens.ShouldBeGreaterThan(0);
         var totals = new TokenUsageAggregator().Total(records);
         (totals.ToolChanges, totals.InstructionChanges, totals.HistoryChanges).ShouldBe((1, 1, 1));
+    }
+
+    [Fact]
+    public async Task ShouldPersistAnOverlapDenominatorForAnUnknownTokenizer()
+    {
+        var tokenizer = new ContextTextTokenizer();
+        const string model = "custom_openai//models/DeepSeek-V4.1-Flash";
+        tokenizer.TryCount(model, "Question", out _).ShouldBeFalse();
+        var estimator = new ContextTokenEstimator(tokenizer);
+        var tracker = new PromptPrefixTracker(estimator);
+        var (meter, ledger) = CreateMeter(tracker);
+        ChatCompletionMessage[] messages = [new("system", new string('s', 2_000)), new("user", "Question")];
+        var request = new ChatCompletionRequest("https://llm.example/v1", model, null, "", ConnectionId, messages);
+        using var scope = meter.Begin(new TokenUsageScope(TokenUsagePurpose.Answer, ProjectId, ChatId, ChatId));
+        var client = new MeteringChatCompletionClient(new FakeClient(new ChatCompletionChunk("ok", model,
+            Usage: new ChatCompletionUsage(new TokenCounts(600, 2, 400)))), meter, estimator, tracker);
+        await DrainAsync(client, request);
+        await DrainAsync(client, request with { ContextMessages = [.. messages, new("assistant", "ok"), new("user", "Continue")] });
+
+        var records = await ledger.ReadAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, CancellationToken.None);
+        var prefix = records[1].Prefix.ShouldNotBeNull();
+        prefix.ReusableTokens.ShouldBeGreaterThan(records[1].Tokens.InputTokens);
+        prefix.EstimatedInputTokens.ShouldBeGreaterThan(prefix.ReusableTokens);
+        var totals = new TokenUsageAggregator().Total(records);
+        totals.PrefixInputTokens.ShouldBe(prefix.EstimatedInputTokens);
+        totals.ReusableInputTokens.ShouldBe(prefix.ReusableTokens);
+        records[0].Prefix.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ShouldReadLegacyOverlapRecordsWithoutADenominatorAndKeepTheirChangeDiagnostics()
+    {
+        var old = Record(null, TokenUsagePurpose.Answer, 500, 10) with { Prefix = new(2_000, PromptPrefixChange.Tools) };
+        using var ledger = new JsonLinesTokenUsageLedger(Location(), _files);
+        await ledger.AppendAsync(old, CancellationToken.None);
+        var path = _files.Files.Keys.Single();
+        _files.Files[path] = _files.Files[path].Replace(",\"estimatedInputTokens\":0", "", StringComparison.Ordinal);
+        _files.Files[path].ShouldNotContain("estimatedInputTokens");
+        using var reloaded = new JsonLinesTokenUsageLedger(Location(), _files);
+        var loaded = (await reloaded.ReadAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, CancellationToken.None)).Single();
+        loaded.Prefix.ShouldBe(old.Prefix);
+        var current = old with { Prefix = new(800, null, 1_000) };
+        var changed = old with { Prefix = new(0, PromptPrefixChange.Tools, 500) };
+        var totals = new TokenUsageAggregator().Total([loaded, current, changed]);
+        totals.Tokens.InputTokens.ShouldBe(1_500);
+        totals.ReusableInputTokens.ShouldBe(800);
+        totals.PrefixInputTokens.ShouldBe(1_500);
+        totals.ToolChanges.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task ShouldComparePrefixesOnlyWithinTheSameModelConnectionAndEndpoint()
+    {
+        var (meter, ledger) = CreateMeter();
+        var tracker = new PromptPrefixTracker(new ContextTokenEstimator());
+        var request = new ChatCompletionRequest("https://one.example/v1", "one", null, "Question", ConnectionId);
+        using var scope = meter.Begin(new TokenUsageScope(TokenUsagePurpose.Answer, ProjectId, ChatId, ChatId));
+        foreach (var sent in new[] { request, request with { Model = "two" },
+                     request with { CredentialProfileId = Guid.NewGuid() }, request with { BaseUrl = "https://two.example/v1" }, request })
+            await meter.RecordAsync(Measurement(new TokenCounts(500, 10)) with { Shape = tracker.Shape(sent),
+                ConnectionId = sent.CredentialProfileId, Model = sent.Model }, CancellationToken.None);
+        var records = await ledger.ReadAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, CancellationToken.None);
+        records.Take(4).ShouldAllBe(record => record.Prefix == null);
+        records[4].Prefix.ShouldNotBeNull().Change.ShouldBeNull();
     }
 
     [Fact]
@@ -314,11 +380,11 @@ public class TokenUsageTests
         unreported.CostEstimated.ShouldBeTrue();
     }
 
-    private (TokenUsageMeter Meter, JsonLinesTokenUsageLedger Ledger) CreateMeter()
+    private (TokenUsageMeter Meter, JsonLinesTokenUsageLedger Ledger) CreateMeter(IPromptPrefixTracker? tracker = null)
     {
         var ledger = new JsonLinesTokenUsageLedger(Location(), _files);
         return (new TokenUsageMeter(ledger, _settings.Object, Clock(), Ids(), NullLogger<TokenUsageMeter>.Instance,
-            new PromptPrefixTracker(new ContextTokenEstimator()), new UsageCostEstimator()), ledger);
+            tracker ?? new PromptPrefixTracker(new ContextTokenEstimator()), new UsageCostEstimator()), ledger);
     }
 
     private IClock Clock()

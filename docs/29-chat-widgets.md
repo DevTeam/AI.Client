@@ -314,16 +314,18 @@ module is disposed with the rail; `JSDisconnectedException` is ignored on teardo
 
 Context window, tokens and cost (`ChatUsageWidget`).
 
-- **Context.** One heading line — "Context · connection" on the left, `used / capacity  percent`
+- **Context.** One heading line — "Context · connection" on the left, `≈used / capacity  percent`
   on the right, the percentage coloured when filling up — then the layer bar, the legend with
   free space, the provider's limits when stated, and the notes and actions for a filling window
   ("Compact now", "New chat", "Compact earlier turns", "Undo" of a summary). The context section
   ignores the scope: it is always the window as it stands. It is hidden when context usage is
   switched off.
-- **Scoped figures.** Headline `input → output` and cost (with "partial" or "estimated", or "Set
-  prices" when unknown). Then the grid: Turns (whole chat only), Requests, Cached (with the
-  achievable share when the cache served at least 20 points less than it could have), Reasoning,
-  Speed, and Cache reset on a row of its own. Then the shares by purpose when there is more than
+- **Scoped figures.** Headline `input in → output out` and cost (with "partial" or "estimated", or "Set
+  prices" when unknown). The flow is cumulative traffic, not a compression ratio. Then the grid:
+  Turns (whole chat only), Requests, measured Cached, approximate Prefix overlap when comparable
+  estimates are recorded, Reasoning, Speed, and Prefix changes on a row of its own. Overlap
+  describes application stability; it does not predict cache eligibility or expiry. Legacy
+  records without a denominator are excluded from overlap. Then the shares by purpose when there is more than
   one, and the "≈ estimated" footnote.
 - **Last turn** is the run's live turn while it is newer than the stored one, otherwise the last
   stored turn (`GetTurn`). Requests outside any turn — naming the chat, reply suggestions — count

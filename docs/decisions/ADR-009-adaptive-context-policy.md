@@ -4,6 +4,8 @@ Date: 2026-10-03. Status: accepted.
 
 Compaction thresholds, measured savings and estimation observations are extended by
 [ADR-010](ADR-010-adaptive-compaction-and-estimation.md).
+Large-window tool retention and comparable prefix estimates are extended by
+[ADR-012](ADR-012-prefix-overlap-and-tool-headroom.md).
 
 ## Context
 

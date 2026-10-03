@@ -39,12 +39,13 @@ Safety starts at 1,024 tokens and can increase from reported provider input coun
 |---|---|
 | All instructions | `min(24,576, 60% of U)` |
 | Run/step instructions, within the instruction share | `min(2,048, 10% of U)` |
-| Tool definitions | `min(6,000, 20% of U)` |
-| Tool count | 8 below 8,192 usable tokens; otherwise 16 |
+| Tool definitions | `min(24,576, 20% of U)` |
+| Opportunistic tool admission count | 8 below 8,192 usable tokens; 16 below 65,536; otherwise 64 |
 
-The tool share is further reduced when standing instructions, current user text and trailing
-guidance leave less room. The message allowance is at least a quarter of `U` when these
-mandatory messages are smaller. History and tool results are projected/compacted by the existing
+The tool share is further reduced by the complete projected conversation, including standing
+instructions, tool results and trailing guidance. It is `min(schema share, max(0, U -
+max(U / 4, estimated context messages + trailing guidance)))`. At least a quarter of `U` is left
+for messages even when history is short. History and tool results are projected/compacted by the existing
 planner. Connection overrides and the output reserve are respected; parameter count and model
 names do not determine the profile.
 
@@ -66,8 +67,12 @@ are retained even when the recommendation cannot accommodate them. Optional inst
 admitted by priority, independently of where they will be serialized.
 
 The selected standing content is fixed for the run. A carried tool set retains its exact order
-while it fits. New required/discovered tools can fill the whole schema share; opportunistic additions
-use only 80%, leaving growth hysteresis. Under pressure or a necessary discovery, the set is
+while it fits, including sets already above the current admission count. Initial opportunistic
+selection uses only 80% of the schema budget; core and discovered tools can fill the whole share.
+Later steps append only newly required, discovered or core capabilities, rather than admitting
+tools merely because the query relevance changed. Core and discovered additions may exceed the
+opportunistic count while fitting the token budget; only protocol-required definitions may exceed
+that token budget. Under pressure or a necessary discovery, the set is
 chosen again within the hard share and surviving tools retain their order. A stalled run keeps
 its fitting tools offered and receives trailing guidance to stop calling them.
 
@@ -246,20 +251,26 @@ shown as retained, rather than silently clipped. Instruction files still have a 
 
 ## Adaptive verification
 
-Policy tests cover 4,096, 8,192, 16,384, 32,768 and 131,072-token windows, growing output reserves,
+Policy tests cover 4,096, 8,192, 16,384, 32,768, 131,072 and 250,000-token windows, growing output reserves,
 instruction priorities and variants, intact project rules, current-turn protocol protection,
 oversized discovered schemas, pressure eviction, and exact schema/prefix stability across steps.
 Existing composition-backed chat tests run on small windows, and App-tool session tests validate
 complete requests using the actual generated MCP schemas. Tests use scripted completions rather
 than an external LLM.
 
-Every usage record of a chat request carries a `PromptPrefix`: the estimated tokens it shared with
-the previous request of the same branch and purpose, and what broke the shared start — `Tools`,
-`Instructions` or `History` — or nothing (`PromptPrefixTracker`, fingerprints only, in memory). The
+Compared usage records carry a `PromptPrefix`: the estimated tokens shared with
+the previous request of the same branch, purpose and model connection, the full estimated current
+input on the same scale, and what broke the shared start — `Tools`,
+`Instructions` or `History` — or nothing (`PromptPrefixTracker`, fingerprints and counts only, in memory). The
 previous request's last message is allowed to be missing, since the trailing note and a continued
-answer go every step. The usage widget shows, for the turn, the cached share against what could
-have been cached (a large gap with no change means the provider dropped its cache) and the count of
-resets by cause.
+answer go every step. The usage widget separates actual cached input, approximate application
+prefix overlap and change counts. It cannot infer provider cache expiry or total invalidation.
+Older records without an overlap denominator retain usage/change counts but are excluded from
+the overlap percentage. See [token usage](28-token-usage.md).
+
+Tool selection diagnostics include `reason` (`initial`, `retained`, `expanded`, `pressure`,
+`discovery`, `catalog_changed`), added/removed/changed-definition counts and an order-change flag.
+They never contain prompt text, tool arguments or schema contents.
 
 ## Automatic LLM fallback
 

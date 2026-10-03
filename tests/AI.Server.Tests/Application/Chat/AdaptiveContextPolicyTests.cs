@@ -304,4 +304,102 @@ public sealed class AdaptiveContextPolicyTests
     private static ChatCompletionRequest Request(IReadOnlyList<ChatCompletionMessage> messages, IReadOnlyList<AgentTool> tools) =>
         new("https://example.test/v1", "model", null, "Investigate", ContextMessages: messages,
             Tools: tools.Select(tool => tool.ModelDefinition).ToArray());
+
+    [Theory]
+    [InlineData(32_768)]
+    [InlineData(131_072)]
+    [InlineData(250_000)]
+    public void ShouldRetainEveryOfferedToolDuringProgressiveDiscovery(long window)
+    {
+        var policy = Policy();
+        var connection = Connection(window);
+        var tools = Enumerable.Range(0, 45).Select(index => Tool($"operation_{index}", new string('x', 1_000))).ToArray();
+        var initial = policy.Choose(connection, "request", [new("user", "request")], tools);
+        initial.SelectedTokens.ShouldBeLessThanOrEqualTo(initial.BudgetTokens * 4 / 5);
+        var previous = initial;
+        for (var step = 0; step < 3; step++)
+        {
+            var discovered = tools.First(tool => !previous.Tools.Contains(tool));
+            var cost = _estimator.EstimateTools([discovered.ModelDefinition]);
+            if (previous.SelectedTokens + cost > previous.BudgetTokens) break;
+            var pins = new HashSet<string>([discovered.ModelDefinition.Name]);
+            var next = policy.Choose(connection, "request", [new("user", "request")], tools, pins, previous.Tools);
+            next.Tools.Take(previous.Tools.Count).ShouldBe(previous.Tools);
+            next.Tools.ShouldContain(discovered);
+            next.Reason.ShouldBe("expanded");
+            next.AddedCount.ShouldBe(1);
+            next.RemovedCount.ShouldBe(0);
+            next.Reordered.ShouldBeFalse();
+            next.SelectedTokens.ShouldBeLessThanOrEqualTo(next.BudgetTokens);
+            policy.Choose(connection, "another query", [new("user", "request")], tools, previousTools: next.Tools).Tools.ShouldBe(next.Tools);
+            previous = next;
+        }
+        previous.Tools.Count.ShouldBeGreaterThan(initial.Tools.Count);
+    }
+
+    [Fact]
+    public void ShouldUseLargeWindowHeadroomInsteadOfTheFormerSixThousandTokenCeiling()
+    {
+        var policy = Policy();
+        var tools = Enumerable.Range(0, 49).Select(index => Tool($"operation_{index}", new string('x', 1_000))).ToArray();
+        var connection = Connection(250_000, 10_000);
+        var selection = policy.Choose(connection, "request", [new("system", new string('s', 38_000)), new("user", "request")], tools);
+        selection.SelectedTokens.ShouldBeGreaterThan(6_000);
+        selection.Tools.Count.ShouldBeGreaterThan(16);
+        var smaller = policy.Choose(Connection(32_768), "request", [], tools);
+        selection.BudgetTokens.ShouldBeGreaterThan(smaller.BudgetTokens);
+    }
+
+    [Fact]
+    public void ShouldReduceTheSchemaBudgetWhenConversationHistoryConsumesHeadroom()
+    {
+        var policy = Policy();
+        var connection = Connection(32_768);
+        var tools = Enumerable.Range(0, 30).Select(index => Tool($"operation_{index}", new string('x', 1_000))).ToArray();
+        ChatCompletionMessage[] start = [new("system", "Stable"), new("user", "request")];
+        var first = policy.Choose(connection, "request", start, tools);
+        ChatCompletionMessage[] history = [.. start, new("assistant", new string('h', 57_000))];
+        var next = policy.Choose(connection, "request", history, tools, previousTools: first.Tools);
+        next.BudgetTokens.ShouldBeLessThan(first.BudgetTokens);
+        next.Reason.ShouldBe("pressure");
+        next.RemovedCount.ShouldBeGreaterThan(0);
+        next.Tools.Count.ShouldBeLessThan(first.Tools.Count);
+        next.SelectedTokens.ShouldBeLessThanOrEqualTo(next.BudgetTokens);
+        next.Tools.ShouldBe(first.Tools.Where(next.Tools.Contains));
+        policy.Choose(connection, "request", history, tools, previousTools: next.Tools).Tools.ShouldBe(next.Tools);
+    }
+
+    [Fact]
+    public void ShouldReportPermissionRemovalAndSchemaChangesWithoutKeepingStaleDefinitions()
+    {
+        var policy = Policy();
+        var connection = Connection(32_768);
+        var read = Tool("read", "Read files");
+        var write = Tool("write", "Write files");
+        var first = policy.Choose(connection, "files", [], [read, write]);
+        var updatedRead = read with { ModelDefinition = read.ModelDefinition with { Description = "Read permitted files" } };
+        var next = policy.Choose(connection, "files", [], [updatedRead], previousTools: first.Tools);
+        next.Tools.ShouldBe([updatedRead]);
+        next.Reason.ShouldBe("catalog_changed");
+        next.RemovedCount.ShouldBe(1);
+        next.DefinitionChangedCount.ShouldBe(1);
+        next.AddedCount.ShouldBe(0);
+        next.Reordered.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ShouldAppendDiscoveredToolsBeyondTheOpportunisticCountWhileTheyFit()
+    {
+        var policy = Policy();
+        var connection = Connection(32_768);
+        var tools = Enumerable.Range(0, 25).Select(index => Tool($"operation_{index}", "Operation")).ToArray();
+        var first = policy.Choose(connection, "request", [], tools);
+        first.Tools.Count.ShouldBe(policy.Resolve(connection).MaximumTools);
+        var discovered = tools.First(tool => !first.Tools.Contains(tool));
+        var next = policy.Choose(connection, "request", [], tools,
+            new HashSet<string>([discovered.ModelDefinition.Name]), first.Tools);
+        next.Tools.ShouldBe([.. first.Tools, discovered]);
+        next.SelectedTokens.ShouldBeLessThanOrEqualTo(next.BudgetTokens);
+        policy.Choose(connection, "request", [], tools, previousTools: next.Tools).Tools.ShouldBe(next.Tools);
+    }
 }

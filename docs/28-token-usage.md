@@ -38,15 +38,26 @@ A gateway that quotes cost on only some responses therefore still gives a whole 
 
 ## Prompt-cache diagnostics
 
-Each record of a chat request carries a `PromptPrefix`: how much it shared with the previous request
-of the same branch and purpose (estimated tokens of tools and leading messages), and what broke
-the shared start — `Tools`, `Instructions` or `History` — or nothing. `PromptPrefixTracker` keeps
-only fingerprints, in memory, for the last 512 branches. Totals add up the shared tokens
-(`ReusableInputTokens`) and the resets by cause.
+Each compared chat request carries a `PromptPrefix`: estimated shared tokens, estimated full
+current input (`EstimatedInputTokens`), and the changed part — `Tools`, `Instructions` or `History`.
+Both token estimates use the same requested-model view. Comparisons are isolated by chat, branch,
+purpose, connection id, requested model and endpoint. `PromptPrefixTracker` keeps only fingerprints
+and numeric counts, in memory, for the last 512 comparison keys. First requests have no comparison.
 
-Reading it: a low cached share with resets names the application's change; a low cached share
-without resets against a high reusable share means the provider did not serve its cache (expired
-or not supported). How the request is kept stable is described in
+The widget separates provider-reported `Cached` from approximate `Prefix overlap`. The latter is
+`100 * ReusableInputTokens / PrefixInputTokens`, summed only over requests carrying the estimation
+denominator. It never divides a local estimate by provider input. Older ledger records remain
+readable and contribute usage and change counts; their overlap estimates without denominators
+are excluded. No migration or reconstruction of old prompts is needed.
+
+`Prefix changes` counts application changes, not complete provider cache resets. A changed tool
+catalogue may still receive partial hits. High overlap with low cache hits does not establish
+expiry, lack of support or a provider fault: serialization and eligibility are provider-dependent.
+`Input in → Output out` is cumulative request traffic, including cached input and supporting
+requests in the selected scope; it is not a compression ratio. The context estimate is separately
+marked `≈` and includes reserved space.
+
+How the request is kept stable is described in
 [21-tool-selection-and-adaptive-compaction.md](21-tool-selection-and-adaptive-compaction.md).
 
 ## Rate limits

@@ -11,7 +11,7 @@
             <div class="chat-usage-row chat-usage-heading">
                 <span class="chat-usage-connection" title="@ConnectionName">Context@(ConnectionName is null ? null : " · ")<span class="chat-usage-muted">@ConnectionName</span></span>
                 <span class="chat-usage-figure" title="@($"Estimated context use: {Usage.FormatExact(context.UsedTokens)} of {Usage.FormatExact(context.CapacityTokens)} tokens. Includes reserved space; capacity {(context.IsDefaultCapacity ? "uses the default limit" : "comes from the connection settings")}")">
-                    <span class="chat-usage-muted">@Usage.FormatTokens(context.UsedTokens) / @(context.IsDefaultCapacity ? "~" : null)@Usage.FormatTokens(context.CapacityTokens)</span>
+                    <span class="chat-usage-muted">≈@Usage.FormatTokens(context.UsedTokens) / @(context.IsDefaultCapacity ? "~" : null)@Usage.FormatTokens(context.CapacityTokens)</span>
                     <span class="context-fill-@context.Level.ToString().ToLowerInvariant()">@context.Percent%</span>
                 </span>
             </div>
@@ -97,18 +97,19 @@
                 <dt>Requests</dt><dd title="Model requests in the selected scope, including supporting requests such as subtasks and summaries">@totals.Requests</dd>
                 @if (Usage.CachePercent(totals.Tokens) is { } cache)
                 {
-                    var reusable = Usage.ReusablePercent(totals);
-                    var missed = reusable is { } possible && possible - cache >= 20;
                     <dt>Cached</dt>
-                    <dd title="@(missed ? $"Up to {reusable}% could have come from the cache: the requests started the same as the ones before them, but the provider did not serve that, so it may have expired or been dropped" : "Input served from the provider's cache")">
-                        @cache%@if (missed) { <small>/@reusable%</small> }
-                    </dd>
+                    <dd title="Input served from the provider's cache">@cache%</dd>
+                }
+                @if (Usage.ReusablePercent(totals) is { } reusable)
+                {
+                    <dt>Prefix overlap</dt>
+                    <dd title="Estimated shared prefix divided by estimated full input of compared requests. Excludes first requests and older records without an estimation denominator. Provider serialization and cache eligibility can differ">≈@reusable%</dd>
                 }
                 @if (totals.Tokens.ReasoningTokens > 0) { <dt>Reasoning</dt><dd title="@($"{Usage.FormatExact(totals.Tokens.ReasoningTokens)} reasoning tokens reported by the endpoint in the selected scope")">@Usage.FormatTokens(totals.Tokens.ReasoningTokens)</dd> }
                 @if (Usage.OutputSpeed(totals) is { } speed) { <dt>Speed</dt><dd title="Output tokens divided by total recorded request duration in the selected scope">@speed tok/s</dd> }
                 @if (Usage.FormatPrefixChanges(totals) is { } changes)
                 {
-                    <dt class="chat-usage-grid-row" title="Requests whose start differed from the request before them, which costs the provider's cache">Cache reset</dt>
+                    <dt class="chat-usage-grid-row" title="Application request prefixes that changed; partial provider cache hits may still occur">Prefix changes</dt>
                     <dd class="chat-usage-grid-wide" title="Requests where tools, instructions or history changed the reusable input prefix; each number counts changes of that kind">@changes</dd>
                 }
             </dl>

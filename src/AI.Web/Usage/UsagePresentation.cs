@@ -16,7 +16,7 @@ public sealed class UsagePresentation(IComposerContextPresentation context) : IU
 
     public string FormatFlow(TokenUsageTotals totals) =>
         (IsEstimated(totals) ? "≈" : string.Empty)
-        + $"{FormatTokens(totals.Tokens.InputTokens)} → {FormatTokens(totals.Tokens.OutputTokens)}";
+        + $"{FormatTokens(totals.Tokens.InputTokens)} in → {FormatTokens(totals.Tokens.OutputTokens)} out";
 
     public string FormatExact(long tokens)
     {
@@ -44,9 +44,9 @@ public sealed class UsagePresentation(IComposerContextPresentation context) : IU
     };
 
     public int? ReusablePercent(TokenUsageTotals totals) =>
-        totals.ReusableInputTokens <= 0 || totals.Tokens.InputTokens <= 0
+        totals.PrefixInputTokens <= 0
             ? null
-            : (int)Math.Round(100d * Math.Min(totals.ReusableInputTokens, totals.Tokens.InputTokens) / totals.Tokens.InputTokens);
+            : (int)Math.Round(100d * Math.Clamp(totals.ReusableInputTokens, 0, totals.PrefixInputTokens) / totals.PrefixInputTokens);
 
     public string? FormatPrefixChanges(TokenUsageTotals totals)
     {

@@ -27,6 +27,10 @@ The application owns one reusable pipeline behind dependency-injected interfaces
   instruction content.
 - `ChatAgent` is the orchestrator: it opens and disposes the run scope, composes instructions before
   context planning, and acknowledges transient instructions after a successful provider response.
+- `IToolDiscoveryGuidance` formats `run.tool-discovery` and unavailable-call recovery in one
+  transient service. Current schemas override historical names; search is referenced only when
+  its actual provider-facing definition is offered. The agent refreshes this guidance after
+  checkpoint/final selection and recomposes before the final planner gate.
 
 Hidden instructions never enter `ChatDetails`, `ChatRunState`, tool-result persistence, or the final
 assistant message. They are counted by the normal context planner and are never compacted.

@@ -153,6 +153,10 @@ public sealed class AppToolTests
             ["app_chats", "app_instructions", "app_memory", "app_navigate", "app_projects", "app_read", "app_resources", "app_runs", "app_security", "app_skills", "ask_user", "context_compact", "run_skill", "skill_search", "spawn_subtask", "tool_search"]);
         session.Tools.ShouldAllBe(tool => tool.ServerId == AppMcpServer.Id);
         session.Tools.ShouldAllBe(tool => tool.ModelDefinition.Name.StartsWith("mcp_app__", StringComparison.Ordinal));
+        var search = session.Tools.Single(tool => tool.OriginalName == "tool_search");
+        search.ModelDefinition.Name.ShouldBe(AI.Contracts.Tools.ToolRef.ToolSearchName);
+        search.ModelDefinition.Description.ShouldContain("Call " + search.ModelDefinition.Name);
+        search.ModelDefinition.Description.ShouldNotContain("app_tool_search");
         // A schema hash is what ties a saved policy to the tool it was granted for.
         session.Tools.ShouldAllBe(tool => tool.SchemaHash.Length == 64);
     }

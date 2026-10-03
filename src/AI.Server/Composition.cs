@@ -100,7 +100,7 @@ internal sealed class Composition
             .Transient<WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService,
                 OpenAiCompatibleConnectionModelsResolver, ChatContext, ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, KeyringOrFileMasterKeyStore, ModelInstructionComposer,
-                AdaptiveContextPolicy, ToolResultContextProjector,
+                AdaptiveContextPolicy, ToolResultContextProjector, ToolDiscoveryGuidance,
                 ToolPolicyResolver, LineDiff, MasterKeyFormat, ProcessCommandRunner, AppWrites, AppMcpServerHost,
                 ExternalToolSessionFactory, ChatBranchIds, ToolUserInterface, GitWorkspaceDiffReader, GitBrowser,
                 FileExcerptReader, ChatCompletionUsageReader, TokenUsageAggregator, TokenUsageService,

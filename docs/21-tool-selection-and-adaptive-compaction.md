@@ -78,7 +78,7 @@ its fitting tools offered and receives trailing guidance to stop calling them.
 
 ## Progressive tool discovery
 
-`app_tool_search` receives a capability query and searches only tools that already passed the run's
+`mcp_app__tool_search` receives a capability query and searches only tools that already passed the run's
 permission policy. It returns bounded names and descriptions, never full schemas. Matches are
 pinned in the run-local registry and their definitions become available on the next model step.
 All searches in a batch contribute to pending priorities, consumed by the next tool selection;
@@ -86,6 +86,21 @@ they do not accumulate permanent pins. A fitting carried tool set still retains 
 Its reply explicitly says that admission depends on the schema budget. The registry is keyed by
 project, chat and branch and is removed when the agent run ends. Search schemas do not contain a
 changing index of omitted names; search results carry those names without changing definitions.
+
+### Current names and recovery after summaries
+
+`IToolDiscoveryGuidance` formats request and error guidance in one transient service. It uses the
+actual provider-facing discovery name from the selected definitions (`mcp_app__tool_search` for
+App), with `query` and a narrow `limit=1`. It never advertises discovery when that definition is
+absent, even if the tool exists in the larger permitted catalogue. The agent refreshes guidance
+after final selection and any automatic checkpoint, before planning the transport request.
+
+Current definitions are authoritative even when the entire catalogue fits. Names from previous
+messages, a plan or a summary do not establish availability. Summary and merge prompts preserve
+tool history as evidence rather than a current capability catalogue. An unknown call or a call to
+an omitted tool receives a bounded error identifying the current recovery path; no guessed name
+is translated into an executable alias. Rejected calls retain their tool-result protocol pair and
+the run may continue with an offered tool under the normal permission and argument checks.
 
 Automatic skill routing is also gated by the context planner. When its tool-free routing catalogue
 cannot fit, the optional routing request is skipped and the main chat uses progressive discovery.

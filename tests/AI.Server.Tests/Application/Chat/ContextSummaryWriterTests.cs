@@ -23,6 +23,7 @@ public sealed class ContextSummaryWriterTests
                 var result = await Writer().WriteAsync(context, 512, new Summarizer(prompt =>
                 {
                     prompt.ShouldContain("Do not invent facts or mark pending work complete");
+                    prompt.ShouldContain("Historical tool names are evidence, not an available-tool catalogue");
                     foreach (var fact in scenario.RequiredFacts) prompt.ShouldContain(fact);
                     // Contract fixture: the real-model evaluation uses the same scenarios separately.
                     return string.Join("\n", scenario.RequiredFacts.Select(fact => "Evidence: " + fact));

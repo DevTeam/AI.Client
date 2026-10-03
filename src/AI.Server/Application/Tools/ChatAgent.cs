@@ -32,7 +32,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IWorkspaceChangeTracker workspace, IToolResultModelProjector modelProjector,
     IToolResultCodec toolResultCodec, IChatContextPlanner contextPlanner,
     IContextPlanDiagnostics contextDiagnostics, IChatTransportActivity transport,
-    IAdaptiveContextPolicy contextPolicy, IToolCatalogRegistry toolCatalog,
+    IAdaptiveContextPolicy contextPolicy, IToolCatalogRegistry toolCatalog, IToolDiscoveryGuidance toolGuidance,
     IModelContentCheckpointService checkpoints, IModelInstructionRegistry instructions,
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
     IStandingInstructions standingInstructions, IContextTokenEstimator tokenEstimator, ISkillGuide skillGuide,
@@ -262,9 +262,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]));
             var selectedTools = selection.Tools;
             var available = selectedTools.Select(item => item.ModelDefinition).ToArray();
-            if (selection.AvailableCount > selectedTools.Count)
+            if (toolGuidance.ForSelection(selection) is { } discovery)
                 instructions.Upsert(run, new ModelInstruction("run.tool-discovery",
-                    ToolDiscoveryInstruction(selection.AvailableCount, selectedTools.Count),
+                    discovery,
                     990, ModelInstructionLifetime.Request));
             else instructions.Remove(run, "run.tool-discovery");
             var calls = new List<ChatToolCall>();
@@ -305,6 +305,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             selectedTools = selection.Tools;
             sentTools = selectedTools;
             available = selectedTools.Select(item => item.ModelDefinition).ToArray();
+            // Check discovery against the final schemas after checkpoints and guidance changed
+            // the budget. Never direct the model to a control tool that was itself omitted.
+            if (toolGuidance.ForSelection(selection) is { } finalDiscovery)
+                instructions.Upsert(run, new ModelInstruction("run.tool-discovery", finalDiscovery,
+                    990, ModelInstructionLifetime.Request));
+            else instructions.Remove(run, "run.tool-discovery");
+            composition = instructionComposer.Compose(run, modelContext, configuredConnection);
             stepBudget = contextPolicy.ResolveCompaction(configuredConnection, estimator.EstimateTools(available),
                 composition.Trailing is null ? 0 : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]));
             checkpoints.UpdateBudget(run, stepBudget);
@@ -418,12 +425,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 {
                     token.ThrowIfCancellationRequested();
                     var tool = selectedTools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name)
-                        ?? throw new ArgumentException(permitted.Any(item => item.ModelDefinition.Name == call.Name)
-                            ? $"Tool '{call.Name}' is not available in this turn. Its schema was omitted to fit the model's context budget. "
-                              + "Call app_tool_search with a short English capability description (for example: 'read text file', 'list directory', 'grep in files') "
-                              + "so matching tools are prioritized for the next model step when their schemas fit. Do not invent or guess tool names."
-                            : $"There is no tool named '{call.Name}'. Use only the tool names you were given; call app_tool_search "
-                              + "with a short English capability description when the one you need is not listed.");
+                        ?? throw new ArgumentException(toolGuidance.ForUnavailableCall(call.Name, selectedTools, permitted));
                     var arguments = session!.ValidateArguments(tool, call.Arguments);
                     var policy = await PolicyAsync(projectId, chatId, tool, token);
                     if (tool.OriginalName == "process_run")
@@ -757,11 +759,6 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         + "include a brief progress note in assistant content with the next tool calls, in the user's language. "
         + "A reply without calls is final: never use it to announce another step or ask permission to continue authorized work. "
         + "Use ask_user for decisions that need the user. Finish with the complete result, or verified progress and the remaining blocker.";
-
-    private static string ToolDiscoveryInstruction(int availableCount, int selectedCount) =>
-        $"Only {selectedCount} of {availableCount} permitted tools are shown. If a needed capability is missing, "
-        + "call app_tool_search with a short English description before concluding it is unavailable. "
-        + "Call only tools shown in this request; search results are prioritized within the next step's schema budget.";
 
     /// <summary>
     /// OpenAI-compatible endpoints report the ceiling as "length"; several report the Anthropic

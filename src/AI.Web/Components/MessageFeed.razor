@@ -1115,6 +1115,7 @@
     // from the position this feed is restored to.
     protected override void OnParametersSet()
     {
+        UpdateThinkingPhrase();
         // Moves whenever anything the turn lines or the checkpoint mark read from has changed.
         var usageState = (ChatUsage, ShowTurnTokens, ActiveCheckpoint, SelectedRun?.TurnUsage);
         if (!ReferenceEquals(_usageState.ChatUsage, usageState.ChatUsage) || _usageState.ShowTurnTokens != usageState.ShowTurnTokens
@@ -1542,6 +1543,30 @@
         "Putting it together…"
     ];
 
+    private int _thinkingPhraseIndex = -1;
+    private (Guid ChatId, Guid BranchId, Guid? MessageId)? _thinkingTurn;
+
+    private void UpdateThinkingPhrase()
+    {
+        if (SelectedRun is not { Status: ChatRunStatus.Generating } run
+            || run.PendingPrompt is not null || run.Wait is not null || run.PendingApproval is not null
+            || run.ActiveTools is { Count: > 0 } || run.DraftToolCall is not null
+            || !string.IsNullOrWhiteSpace(run.DraftContent))
+        {
+            _thinkingTurn = null;
+            return;
+        }
+
+        var turn = (run.ChatId, run.BranchId, run.ActiveMessageId);
+        if (_thinkingTurn == turn) return;
+        _thinkingTurn = turn;
+
+        // Choose once per thinking phase; skip the last phrase when entering the next one.
+        var next = Random.Shared.Next(_thinkingPhrases.Length - (_thinkingPhraseIndex >= 0 ? 1 : 0));
+        if (_thinkingPhraseIndex >= 0 && next >= _thinkingPhraseIndex) next++;
+        _thinkingPhraseIndex = next;
+    }
+
     /// <summary>
     /// The one line under the live text saying what the turn is doing now. Nothing while the
     /// model is writing prose — the text itself is the activity — and nothing for a question or a
@@ -1549,7 +1574,7 @@
     /// </summary>
     private TurnActivity? GetTurnActivity()
     {
-        if (SelectedRun is not { } run || run.PendingPrompt is not null || run.Wait is not null) return null;
+        if (SelectedRun is not { Status: ChatRunStatus.Generating } run || run.PendingPrompt is not null || run.Wait is not null) return null;
         if (run.PendingApproval is not null) return new TurnActivity("Waiting for tool approval", null);
         if (run.ActiveTools is { Count: > 0 } tools)
         {
@@ -1559,7 +1584,7 @@
         if (run.DraftToolCall is { } preparing)
             return new TurnActivity($"Preparing {Presentations.DescribeCall(preparing, null).Title}…", null);
         if (!string.IsNullOrWhiteSpace(run.DraftContent)) return null;
-        return new TurnActivity(_thinkingPhrases[Random.Shared.Next(_thinkingPhrases.Length)], null);
+        return new TurnActivity(_thinkingPhrases[_thinkingPhraseIndex], null);
     }
 
     // Everything the live text is computed from that the transcript boundary does not already

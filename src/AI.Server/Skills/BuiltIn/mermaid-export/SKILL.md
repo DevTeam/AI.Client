@@ -37,6 +37,9 @@ Clarify only missing decisions for a new dependency, materially different scope 
 4. Identify exact source, destination, format, dimensions, theme and background. Keep the
    editable Mermaid source; avoid overwriting an existing artifact unless that replacement
    is requested. Follow the repository's generated-asset conventions.
+   Preserve the source orientation and explicitly requested dimensions. When layout changes are
+   requested for chat, prefer a narrow top-to-bottom view where the type supports it; otherwise
+   keep the native layout compact. Do not shrink text to illegibility to fit a wide graph.
 5. Prefer an existing compatible Mermaid CLI or discovered renderer. For mmdc pass executable
    and arguments separately, for example ["-i","input.mmd","-o","output.svg"]; use explicit paths
    and check the installed --help before version-specific flags. Do not run npx in a way
@@ -52,7 +55,8 @@ Validation and delivery:
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.

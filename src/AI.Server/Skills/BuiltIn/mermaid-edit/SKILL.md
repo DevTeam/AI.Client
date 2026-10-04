@@ -39,6 +39,10 @@ Clarify only missing decisions for a new dependency, materially different scope 
 5. Make the smallest complete change. Preserve stable IDs and semantics outside the request;
    reconnect renamed/deleted nodes and update related labels. Layout changes must not silently
    remove edges, reverse dependencies or turn alternatives into sequential steps.
+   When creating or revising layout for chat, prefer a narrow top-to-bottom view using the type's
+   supported direction syntax, unless another orientation is requested or required by the target.
+   Keep labels concise and split wide views while retaining relationships. Preserve orientation
+   for content-only edits; types without vertical layout need compact native views.
 6. Update only the selected diagram and directly affected explanatory text. For generated
    diagrams edit the source/template and use its existing generator. Validate the complete
    result and describe meaningful additions/removals.
@@ -48,7 +52,8 @@ Validation and delivery:
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.

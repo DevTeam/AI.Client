@@ -41,6 +41,10 @@ Clarify only missing decisions for a new dependency, materially different scope 
    Declare groups/services before referencing their IDs and use documented side-qualified
    connections. Reuse built-in icons; external icon packs need explicit host registration.
    If unsupported, use a labeled flowchart/subgraph view and state that it is a fallback.
+   Prefer vertical service layers for the chat viewport unless another orientation is requested
+   or required by the destination. Use bottom-to-top ports for downward connections, such as
+   api:B --> T:db, without reversing their meaning. For the flowchart fallback use flowchart TB
+   and compact subgraphs; do not add a flowchart direction directive to architecture-beta.
 6. C4 syntax is a separate experimental option; consult its official docs and verify support
    before using it. Do not call a service/resource view a complete C4 model.
    Verify arrows convey the intended dependency/data direction, not a guessed topology.
@@ -50,7 +54,8 @@ Validation and delivery:
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.
@@ -70,5 +75,5 @@ architecture-beta
     group backend(cloud)[Backend]
     service api(server)[API] in backend
     service db(database)[Database] in backend
-    api:R --> L:db
+    api:B --> T:db
 ```

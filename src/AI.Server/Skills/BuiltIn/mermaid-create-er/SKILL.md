@@ -42,13 +42,17 @@ Clarify only missing decisions for a new dependency, materially different scope 
    Check both ends and the identifying/non-identifying line semantics in the official docs.
 6. Show junction entities when they matter. Do not infer one-or-more merely from a non-null
    parent key: a parent can still have no children. Never inspect or copy real record values.
+   Prefer direction TB for the vertical chat viewport when the target supports it, unless another
+   orientation is requested or required by the destination. Keep attributes relevant and split
+   wide schemas into focused views while retaining key relationships and cardinalities.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.
@@ -65,6 +69,7 @@ Minimal syntax example (illustrative; adapt to actual requirements and validate 
 
 ```mermaid
 erDiagram
+    direction TB
     CUSTOMER ||--o{ ORDER : places
     CUSTOMER {
         int id PK

@@ -39,6 +39,10 @@ This is a read-only review. Do not edit project files; isolated temporary valida
    connectors, density, contrast and supported accTitle/accDescr metadata. Do not communicate
    meaning only by color. When a type cannot carry accessible metadata provide adjacent
    explanatory prose. Parsing success alone does not establish visual accessibility.
+   For chat, assess readability at the narrow message width: flag unnecessary horizontal spread
+   that forces scrolling or shrinks labels, and recommend a top-to-bottom layout where supported.
+   Respect requested orientation; for sequence, Gantt and mindmap suggest compact native views
+   or focused splits. Recommend changes without editing source or inventing direction syntax.
 6. Report prioritized actionable findings with source block/line, impact and concrete
    suggested corrections. Separate observed faults from hypotheses/unverified checks.
    No findings is not proof of semantic correctness or accessibility compliance.
@@ -49,7 +53,8 @@ Validation and delivery:
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.

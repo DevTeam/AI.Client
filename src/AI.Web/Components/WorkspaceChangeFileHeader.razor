@@ -2,10 +2,17 @@
 
 @* A file still on disk can be dragged into the composer to reference it; chatComposer.js reads
    data-drag-path. A deleted one has nothing left to reference. *@
-<button class="workspace-change-summary" type="button" aria-expanded="@Expanded" @onclick="OnToggle"
+<div class="workspace-change-summary" @onclick="OnToggle"
         draggable="@(DragPath is null ? "false" : "true")" data-drag-path="@DragPath" data-drag-kind="File">
-    <span class="workspace-change-kind" title="@KindTitle(File.Kind)">@KindGlyph(File.Kind)</span>
-    <span class="workspace-change-path" title="@File.Path">@Display(File)</span>
+    <button class="workspace-change-toggle" type="button" aria-expanded="@Expanded" aria-controls="@DetailsId">
+        <span class="workspace-change-kind" title="@KindTitle(File.Kind)">@KindGlyph(File.Kind)</span>
+        <span class="workspace-change-path" title="@File.Path">@Display(File)</span>
+    </button>
+    @if (OnComment.HasDelegate)
+    {
+        <button class="icon-action workspace-change-comment-action" type="button" title="Comment on file" aria-label="Comment on file"
+                @onclick="OnComment" @onclick:stopPropagation="true"><AppIcon Name="message-circle" /></button>
+    }
     @if (File.Confidence == FileChangeConfidence.Approximate)
     {
         <span class="workspace-change-approximate" title="Exact line counts were not available for this file">approx.</span>
@@ -19,14 +26,16 @@
         <AnimatedCount Value="@File.Deletions" Title="Net lines removed from this file during the run; repeated edits are combined" Sign="−" Class="workspace-removed" CountIn="@Live" />
         @if (File.IsBinary) { <span class="workspace-change-binary" title="Binary file; text line counts are unavailable">binary</span> }
     </span>
-</button>
+</div>
 
 @code {
     [Parameter, EditorRequired] public FileChange File { get; set; } = default!;
     [Parameter] public bool Expanded { get; set; }
+    [Parameter] public string? DetailsId { get; set; }
     [Parameter] public int CommentCount { get; set; }
     [Parameter] public bool Live { get; set; }
     [Parameter] public EventCallback OnToggle { get; set; }
+    [Parameter] public EventCallback OnComment { get; set; }
 
     private string? DragPath => File.Kind == FileChangeKind.Deleted ? null : File.Path;
 

@@ -6,34 +6,41 @@
 @inject INotificationService Notifications
 @inject IUnifiedDiffParser DiffParser
 
-<div class="review-diff-content">
-    @if (SourceMessageId != Guid.Empty)
-    {
-        <button class="review-file-comment-action" type="button" @onclick="BeginFileComment">Comment on file</button>
-    }
-    @if (DiffParser.Parse(File.Diff) is { Count: > 0 } lines)
-    {
-        @foreach (var line in lines.Take(MaxLines))
+@if (HeaderTemplate is not null)
+{
+    @HeaderTemplate(SourceMessageId != Guid.Empty ? EventCallback.Factory.Create(this, BeginFileCommentAsync) : default)
+}
+@if (Expanded)
+{
+    <div class="review-diff-content @DiffClass" id="@DetailsId">
+        @if (DiffParser.Parse(File.Diff).Where(line => line.Kind != DiffLineKind.Hunk).ToList() is { Count: > 0 } lines)
         {
-            <WorkspaceDiffLine Line="@line" ReviewMode="@(SourceMessageId != Guid.Empty)"
-                               Commented="@HasSavedComment(line)"
-                               Selected="@IsInPendingRange(line)"
-                               OnComment="args => BeginLineComment(line, args.ShiftKey)"
-                               OnLineClick="args => HandleLineClick(line, args)" />
-            @if (line.Kind is not (DiffLineKind.Hunk or DiffLineKind.Note))
+            @foreach (var line in lines.Take(MaxLines))
             {
-                @foreach (var comment in CommentsAt(line)) { @CommentCard(comment) }
-                @if (_editingCommentId is null && PendingEndsAt(line)) { @CommentEditor() }
+                <WorkspaceDiffLine Line="@line" ReviewMode="@(SourceMessageId != Guid.Empty)"
+                                   Commented="@HasSavedComment(line)"
+                                   Selected="@IsInPendingRange(line)"
+                                   OnComment="args => BeginLineComment(line, args.ShiftKey)"
+                                   OnLineClick="args => HandleLineClick(line, args)" />
+                @if (line.Kind is not (DiffLineKind.Hunk or DiffLineKind.Note))
+                {
+                    @foreach (var comment in CommentsAt(line)) { @CommentCard(comment) }
+                    @if (_editingCommentId is null && PendingEndsAt(line)) { @CommentEditor() }
+                }
             }
+            @if (lines.Count > MaxLines) { <div class="diff-note">… @(lines.Count - MaxLines) more lines not shown</div> }
         }
-        @if (lines.Count > MaxLines) { <div class="diff-note">… @(lines.Count - MaxLines) more lines not shown</div> }
-    }
-    else { <p class="workspace-change-unavailable">@UnavailableReason(File)</p> }
-    @foreach (var comment in (_current?.Comments ?? []).Where(item => item.Path == File.Path && item.OldStart is null && item.NewStart is null))
-    { @CommentCard(comment) }
-    @if (_editingCommentId is null && _pending && _pendingOldStart is null && _pendingNewStart is null) { @CommentEditor() }
-    @if (_error is not null) { <p class="review-error" role="alert">@_error</p> }
-</div>
+        else { <p class="workspace-change-unavailable">@UnavailableReason(File)</p> }
+        @foreach (var comment in (_current?.Comments ?? []).Where(item => item.Path == File.Path && item.OldStart is null && item.NewStart is null))
+        { @CommentCard(comment) }
+        @if (_editingCommentId is null && _pending && _pendingOldStart is null && _pendingNewStart is null) { @CommentEditor() }
+        @if (_error is not null) { <p class="review-error" role="alert">@_error</p> }
+    </div>
+}
+else if (DetailsId is not null)
+{
+    <span id="@DetailsId" hidden></span>
+}
 
 @code {
     [Parameter, EditorRequired] public FileChange File { get; set; } = default!;
@@ -44,6 +51,11 @@
     [Parameter] public ChatReview? Review { get; set; }
     [Parameter] public EventCallback<ChatReview> OnChanged { get; set; }
     [Parameter] public int MaxLines { get; set; } = 1500;
+    [Parameter] public bool Expanded { get; set; } = true;
+    [Parameter] public EventCallback OnExpand { get; set; }
+    [Parameter] public RenderFragment<EventCallback>? HeaderTemplate { get; set; }
+    [Parameter] public string? DiffClass { get; set; }
+    [Parameter] public string? DetailsId { get; set; }
 
     private ChatReview? _current;
     private Guid? _editingCommentId;
@@ -67,7 +79,11 @@
         if (_commentInput is not null) await _commentInput.FocusAsync();
     }
 
-    private void BeginFileComment() => BeginComment(null, null);
+    private async Task BeginFileCommentAsync()
+    {
+        BeginComment(null, null);
+        if (!Expanded) await OnExpand.InvokeAsync();
+    }
 
     private void HandleLineClick(DiffLine line, MouseEventArgs args)
     {

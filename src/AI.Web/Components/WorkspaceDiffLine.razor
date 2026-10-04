@@ -1,15 +1,11 @@
 @using AI.Contracts.Workspace
 @using Microsoft.AspNetCore.Components.Web
 
-@if (Line.Kind == DiffLineKind.Hunk)
-{
-    <div class="diff-hunk">@Line.Text</div>
-}
-else if (Line.Kind == DiffLineKind.Note)
+@if (Line.Kind == DiffLineKind.Note)
 {
     <div class="diff-note">@Line.Text</div>
 }
-else
+else if (Line.Kind != DiffLineKind.Hunk)
 {
     <div class="diff-line @KindClass(Line.Kind) @(ReviewMode ? "diff-line-review" : null) @(Commented ? "diff-line-commented" : null) @(Selected ? "diff-line-selected" : null)"
          @onclick="OnLineClick">

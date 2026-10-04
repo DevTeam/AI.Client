@@ -40,6 +40,9 @@ Clarify only missing decisions for a new dependency, materially different scope 
 5. Repair the smallest demonstrated cause: declaration, quoting, delimiters, IDs, references,
    indentation, nested blocks or unsupported version-specific syntax. Consult the official
    docs for that type. Preserve intended nodes and edges; do not delete content just to pass.
+   When fixing width or readability in chat, prefer a narrow top-to-bottom layout if the type
+   supports it, unless another orientation is requested or required by the target. Use compact
+   native layouts otherwise. Preserve orientation for syntax-only fixes.
 6. Parse then render again where possible. Compare semantics and visual clarity with the input.
    An unavailable runtime remains unverified, not fixed. If the cause is host integration,
    report it and route requested implementation work to the relevant code skill.
@@ -50,7 +53,8 @@ Validation and delivery:
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.

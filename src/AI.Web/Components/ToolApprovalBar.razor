@@ -1,15 +1,17 @@
 @inject IChatRunsApi RunsApi
 @inject INotificationService Notifications
 @inject IToolPresentations Presentations
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
 @using AI.Contracts.Tools
 
 @{ var presentation = Presentations.DescribeCall(Approval.Name, Approval.Arguments); }
-<section class="tool-approval-bar @(_detailsOpen ? "is-expanded" : "is-collapsed")" data-app-target="chat.approval" role="region" aria-label="Tool approval" aria-busy="@(_decidingApproval ? "true" : "false")">
-    <div class="tool-approval-main">
-        <button class="tool-approval-header" type="button" aria-expanded="@_detailsOpen" title="@(_detailsOpen ? "Collapse tool details" : "Expand tool details")" @onclick="ToggleDetails">
-            <span class="tool-approval-mark" aria-hidden="true"><AppIcon Name="shield" /></span>
+<section class="tool-approval-bar opens-upward @(_detailsOpen ? "is-expanded" : "is-collapsed")" data-app-target="chat.approval" role="region" aria-label="Tool approval" aria-busy="@(_decidingApproval ? "true" : "false")">
+    <div class="tool-approval-main chat-card-header">
+        <button class="tool-approval-header" type="button" aria-expanded="@_detailsOpen" aria-controls="@_detailsId" @ref="_header" title="@(_detailsOpen ? "Collapse tool details" : "Expand tool details")" @onclick="ToggleDetails">
+            <span class="tool-approval-mark chat-card-mark" aria-hidden="true"><AppIcon Name="shield" /></span>
             <span class="tool-approval-copy">
-                <span class="tool-approval-heading">Tool needs permission</span>
+                <span class="tool-approval-heading chat-card-title">Tool needs permission</span>
                 <span class="tool-approval-summary" title="@presentation.Detail">
                     <strong>@presentation.Title</strong>
                     @if (presentation.Detail is { Length: > 0 } detail)
@@ -28,34 +30,40 @@
                 }
             </span>
         </button>
-        <div class="tool-approval-actions">
-            <button class="secondary-action tool-approval-deny" data-app-target="chat.approval.deny" type="button" title="Refuse this call without saving a permission rule" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Deny)">Deny</button>
-            <div class="tool-approval-allow">
-                <button class="tool-approval-once" data-app-target="chat.approval.once" type="button" title="Run this call once without saving a permission rule" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Allow)">Allow once</button>
-                <div class="tool-approval-more @(_allowMenuOpen ? "is-open" : null)">
-                    <button type="button" title="More allow options" aria-label="More allow options" aria-expanded="@_allowMenuOpen" @onclick="ToggleAllowMenu"><AppIcon Name="chevron-down" /></button>
-                    @if (_allowMenuOpen)
-                    {
-                        <div class="tool-approval-menu-backdrop" @onclick="CloseAllowMenu"></div>
-                        <div class="tool-approval-menu">
-                            <button type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.AllowForChat)"><strong>Allow for this chat</strong><span>Remember in @ChatTitle</span></button>
-                            <button type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.AllowForProject)"><strong>Allow for this project</strong><span>Use in every chat in this project</span></button>
-                            @if (_confirmGlobal)
-                            {
-                                <div class="tool-approval-global-confirm"><span>Allow <code>@Approval.Name</code> in every project?</span><div><button type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.AllowGlobally)">Always allow</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="CancelGlobalApproval"><AppIcon Name="x" /></button></div></div>
-                            }
-                            else
-                            {
-                                <button type="button" @onclick="BeginGlobalApproval"><strong>Always allow this tool</strong><span>Apply to every project</span></button>
-                            }
-                        </div>
-                    }
+        <div class="chat-card-header-actions tool-approval-controls">
+            <div class="tool-approval-actions">
+                <button class="secondary-action tool-approval-deny chat-card-action" data-app-target="chat.approval.deny" type="button" title="Refuse this call without saving a permission rule" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Deny)">Deny</button>
+                <div class="tool-approval-allow">
+                    <button class="tool-approval-once chat-card-action chat-card-action-primary" data-app-target="chat.approval.once" type="button" title="Run this call once without saving a permission rule" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Allow)">Allow once</button>
+                    <div class="tool-approval-more @(_allowMenuOpen ? "is-open" : null)">
+                        <button class="chat-card-action chat-card-action-icon" type="button" title="More allow options" aria-label="More allow options" aria-expanded="@_allowMenuOpen" aria-controls="@_menuId" @onclick="ToggleAllowMenu"><AppIcon Name="chevron-down" /></button>
+                        @if (_allowMenuOpen)
+                        {
+                            <div class="tool-approval-menu-backdrop" @onclick="CloseAllowMenu"></div>
+                            <div class="tool-approval-menu" id="@_menuId">
+                                <button type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.AllowForChat)"><strong>Allow for this chat</strong><span>Remember in @ChatTitle</span></button>
+                                <button type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.AllowForProject)"><strong>Allow for this project</strong><span>Use in every chat in this project</span></button>
+                                @if (_confirmGlobal)
+                                {
+                                    <div class="tool-approval-global-confirm"><span>Allow <code>@Approval.Name</code> in every project?</span><div><button type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.AllowGlobally)">Always allow</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="CancelGlobalApproval"><AppIcon Name="x" /></button></div></div>
+                                }
+                                else
+                                {
+                                    <button type="button" @onclick="BeginGlobalApproval"><strong>Always allow this tool</strong><span>Apply to every project</span></button>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <span id="@_menuId" hidden></span>
+                        }
+                    </div>
                 </div>
             </div>
+            <button class="tool-approval-details-toggle chat-card-action chat-card-action-icon" type="button" title="@(_detailsOpen ? "Collapse tool details" : "Expand tool details")" aria-label="@(_detailsOpen ? "Collapse tool details" : "Expand tool details")" aria-expanded="@_detailsOpen" aria-controls="@_detailsId" @onclick="ToggleDetails"><AppIcon Name="chevron-down" /></button>
         </div>
-        <button class="tool-approval-details-toggle" type="button" title="@(_detailsOpen ? "Collapse tool details" : "Expand tool details")" aria-label="@(_detailsOpen ? "Collapse tool details" : "Expand tool details")" aria-expanded="@_detailsOpen" @onclick="ToggleDetails"><AppIcon Name="chevron-down" /></button>
     </div>
-    <div class="tool-approval-details" aria-hidden="@(!_detailsOpen)">
+    <div class="tool-approval-details" id="@_detailsId" aria-hidden="@(!_detailsOpen)" inert="@(!_detailsOpen)">
         <div class="tool-approval-details-inner">
             <div class="tool-approval-details-content">
                 <div class="tool-approval-details-label">@Approval.Name · Arguments</div>
@@ -81,8 +89,34 @@
     private bool _allowMenuOpen;
     private bool _detailsOpen;
     private string? _approvalError;
+    private readonly string _detailsId = $"tool-approval-details-{Guid.NewGuid():N}";
+    private readonly string _menuId = $"tool-approval-menu-{Guid.NewGuid():N}";
+    private ElementReference _header;
+    private IJSObjectReference? _summaryModule;
+    private double? _headerTop;
 
-    private void ToggleDetails() => _detailsOpen = !_detailsOpen;
+    private async Task ToggleDetails()
+    {
+        _summaryModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatSummary.js");
+        _headerTop = await _summaryModule.InvokeAsync<double?>("captureHeader", _header);
+        _detailsOpen = !_detailsOpen;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_headerTop is not { } top || _summaryModule is null) return;
+        _headerTop = null;
+        await _summaryModule.InvokeVoidAsync("restoreHeader", _header, top);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_summaryModule is not null)
+        {
+            try { await _summaryModule.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+    }
     private void ToggleAllowMenu()
     {
         if (_allowMenuOpen) CloseAllowMenu();

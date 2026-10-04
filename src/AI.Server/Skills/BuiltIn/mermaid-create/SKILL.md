@@ -42,6 +42,10 @@ Clarify only missing decisions for a new dependency, materially different scope 
 5. Establish the nodes, relationships, audience and abstraction level. Produce one focused view;
    split an unreadable graph into linked views rather than deleting important relationships.
    Other Mermaid types may be used when their official syntax and target support are verified.
+   Prefer a narrow top-to-bottom layout for the vertical chat viewport, unless the user requests
+   another orientation or the destination requires it. Use the type's supported direction syntax;
+   keep labels concise and split wide views without losing relationships or inventing ordering.
+   For types without vertical layout, reduce width within their native structure.
 6. Return the complete diagram and a brief explanation of assumptions and scope.
 
 Validation and delivery:
@@ -49,7 +53,8 @@ Validation and delivery:
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.

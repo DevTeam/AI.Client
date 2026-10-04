@@ -42,13 +42,17 @@ Clarify only missing decisions for a new dependency, materially different scope 
    multiplicity labels when known; do not infer lifetime or cardinality from naming.
 6. Represent generic types using Mermaid's supported notation for the target version; do not
    paste language-specific syntax that the parser cannot accept. Mark omitted detail explicitly.
+   Default to direction TB for the vertical chat viewport unless another orientation is requested
+   or required by the destination. Limit displayed members and split wide views by responsibility
+   while preserving relevant relationships; placement must not imply a different relationship.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.
@@ -65,6 +69,7 @@ Minimal syntax example (illustrative; adapt to actual requirements and validate 
 
 ```mermaid
 classDiagram
+    direction TB
     class Store {
         +save() Result
     }

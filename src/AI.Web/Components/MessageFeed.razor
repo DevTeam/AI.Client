@@ -209,6 +209,7 @@
                 {
                     var changesKey = (entry.ChangesMessage.Id, "workspace-changes-collapsed");
                     <WorkspaceChanges @key="changesKey" Changes="@collapsedChanges" SourceMessageId="@entry.ChangesMessage.Id"
+                                      ExpandUpward="true"
                                       ProjectId="@SelectedChat.ProjectId" ChatId="@SelectedChat.Id"
                                       Review="@(DiffReviews?.GetValueOrDefault(entry.ChangesMessage.Id))"
                                       OnReview="OnReviewChanges" OnReviewChanged="OnDiffReviewChanged" />
@@ -397,6 +398,7 @@
                     {
                         var changesKey = (message.Id, "workspace-changes");
                         <WorkspaceChanges @key="changesKey" Changes="@messageChanges" SourceMessageId="@message.Id"
+                                          ExpandUpward="@(!entry.IsExpandedIntermediate)"
                                           ProjectId="@SelectedChat.ProjectId" ChatId="@SelectedChat.Id"
                                           Review="@(DiffReviews?.GetValueOrDefault(message.Id))"
                                           OnReview="OnReviewChanges" OnReviewChanged="OnDiffReviewChanged" />
@@ -452,28 +454,28 @@
             </TranscriptTurnBoundary>
         }
         </TranscriptRenderBoundary>
-        @* The changes of a run not yet saved as a receipt are docked above the composer by the
-           page, not drawn here: at the end of the feed they sat under the live text and jumped
-           with it. *@
+        @* The live cards are appended after the transcript, outside its render boundary. *@
         @* Why the turn stopped, and what can be done about it. Only for a turn that is NOT
            running: while it generates, the composer already says so and already offers Stop, and
            a second copy of both here was pure duplication. *@
         @if (GetTurnState() is { } turn)
         {
-            <section class="turn-status turn-status-@turn.Kind" role="status">
-                <span class="turn-status-icon" aria-hidden="true"><AppIcon Name="@turn.Icon" /></span>
-                <span class="turn-status-text">@turn.Text</span>
-                <button class="icon-action turn-status-copy" type="button" title="Copy error" aria-label="Copy error" @onclick="() => OnCopyMessage.InvokeAsync(turn.Text)"><AppIcon Name="copy" /></button>
-                <span class="turn-status-actions">
-                    @if (turn.CanResume)
-                    {
-                        <button type="button" class="turn-status-action turn-status-primary" title="Run this message again" @onclick="() => OnResumeRun.InvokeAsync()">@(turn.Kind == "failed" ? "Retry" : "Continue")</button>
-                    }
-                    @if (turn.CanRebase)
-                    {
-                        <button type="button" class="turn-status-action" title="Continue this message from the current branch head" @onclick="() => OnRebaseRun.InvokeAsync()">From branch head</button>
-                    }
-                    <button type="button" class="turn-status-action destructive-action" title="Drop this message from the queue and let the rest of it continue" @onclick="() => OnDiscardRun.InvokeAsync()">Discard</button>
+            <section class="turn-status chat-card-header turn-status-@turn.Kind" role="status">
+                <span class="turn-status-icon chat-card-mark" aria-hidden="true"><AppIcon Name="@turn.Icon" /></span>
+                <span class="turn-status-text chat-card-title">@turn.Text</span>
+                <span class="chat-card-header-actions turn-status-controls">
+                    <button class="icon-action turn-status-copy chat-card-action chat-card-action-icon" type="button" title="Copy error" aria-label="Copy error" @onclick="() => OnCopyMessage.InvokeAsync(turn.Text)"><AppIcon Name="copy" /></button>
+                    <span class="turn-status-actions">
+                        @if (turn.CanResume)
+                        {
+                            <button type="button" class="turn-status-action turn-status-primary chat-card-action chat-card-action-primary" title="Run this message again" aria-label="@(turn.Kind == "failed" ? "Retry" : "Continue")" @onclick="() => OnResumeRun.InvokeAsync()"><AppIcon Name="@(turn.Kind == "failed" ? "refresh" : "play")" Class="turn-status-action-icon" /><span class="turn-status-action-label">@(turn.Kind == "failed" ? "Retry" : "Continue")</span></button>
+                        }
+                        @if (turn.CanRebase)
+                        {
+                            <button type="button" class="turn-status-action chat-card-action" title="Continue this message from the current branch head" aria-label="From branch head" @onclick="() => OnRebaseRun.InvokeAsync()"><AppIcon Name="fork" Class="turn-status-action-icon" /><span class="turn-status-action-label">From branch head</span></button>
+                        }
+                        <button type="button" class="turn-status-action destructive-action chat-card-action chat-card-action-danger" title="Drop this message from the queue and let the rest of it continue" aria-label="Discard" @onclick="() => OnDiscardRun.InvokeAsync()"><AppIcon Name="trash" Class="turn-status-action-icon" /><span class="turn-status-action-label">Discard</span></button>
+                    </span>
                 </span>
             </section>
         }
@@ -491,6 +493,7 @@
                             OnNavigateApp="@OnNavigateApp"
                             OnAnswer="response => RunsApi.AnswerPromptAsync(promptRun.ProjectId, promptRun.ChatId, promptRun.BranchId, response, CancellationToken.None)" />
         }
+        @DockContent
     }
 </div>
 @* Only shown when the feed is NOT following the bottom and there is in fact something down
@@ -569,6 +572,8 @@
     [Parameter] public Guid? ForkSourceId { get; set; }
     [Parameter] public Guid? MessageBranchMenuId { get; set; }
     [Parameter] public ChatRunSnapshot? SelectedRun { get; set; }
+    [Parameter] public RenderFragment? DockContent { get; set; }
+    [Parameter] public string? DockStateKey { get; set; }
     /// <summary>What the chat's finished turns used, by the Host's ledger; the running turn comes with <see cref="SelectedRun"/>.</summary>
     [Parameter] public ChatTokenUsage? ChatUsage { get; set; }
     [Parameter] public bool ShowTurnTokens { get; set; }
@@ -686,6 +691,7 @@
     private Guid? _renderedForkSourceId;
     private Guid? _renderedMessageBranchMenuId;
     private ChatRunSnapshot? _renderedSelectedRun;
+    private string? _renderedDockStateKey;
     private ChatTokenUsage? _renderedChatUsage;
     private bool _renderedShowTurnTokens;
     private HistoryCheckpoint? _renderedActiveCheckpoint;
@@ -714,6 +720,7 @@
             || _renderedForkSourceId != ForkSourceId
             || _renderedMessageBranchMenuId != MessageBranchMenuId
             || !ReferenceEquals(_renderedSelectedRun, SelectedRun)
+            || _renderedDockStateKey != DockStateKey
             || !ReferenceEquals(_renderedChatUsage, ChatUsage)
             || _renderedShowTurnTokens != ShowTurnTokens
             || !ReferenceEquals(_renderedActiveCheckpoint, ActiveCheckpoint)
@@ -742,6 +749,7 @@
         _renderedForkSourceId = ForkSourceId;
         _renderedMessageBranchMenuId = MessageBranchMenuId;
         _renderedSelectedRun = SelectedRun;
+        _renderedDockStateKey = DockStateKey;
         _renderedChatUsage = ChatUsage;
         _renderedShowTurnTokens = ShowTurnTokens;
         _renderedActiveCheckpoint = ActiveCheckpoint;

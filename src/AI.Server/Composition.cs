@@ -60,10 +60,10 @@ internal sealed class Composition
                 JsonProjectRepository, JsonChatRepository, ChatSynchronization, ChatTransportActivity,
                 JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
                 JsonProjectInstructionsRepository, JsonChatRunRepository, ChatRunDispatcher,
-                ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, WorkspaceChangeTracker, ContextEstimateSamples,
-                AppDataChangeSignal, AppNavigationSignal, AppOperationLog, WorkspaceFileSearch, TokenUsageMeter,
-                JsonLinesTokenUsageLedger, PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits,
-                JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, CompositeToolSessionFactory>()
+                ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, WorkspaceChangeTracker,
+                ContextEstimateSamples, AppDataChangeSignal, AppNavigationSignal, AppOperationLog, WorkspaceFileSearch,
+                TokenUsageMeter, JsonLinesTokenUsageLedger, PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits,
+                JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, CompositeToolSessionFactory, ContextTextTokenizer>()
             .Singleton((IProjectStorageLocation location) => new JsonLineFileLoggerProvider(location))
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.
@@ -78,11 +78,10 @@ internal sealed class Composition
                 ctx.Inject<MasterKeyUserDataProtector>(out var portable);
                 return portable;
             })
+            .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
             // Reading embedded skill definitions once avoids repeated parsing.
             .Singleton<BuiltInSkillCatalog>("built-in")
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
-            .Singleton<ContextTextTokenizer>()
-            .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
             .Bind<IChatReplySuggestions>().As(Lifetime.Singleton).To<ChatReplySuggestions>()
             // Bindings: one call per lifetime and tag. Order inside a call carries no meaning; a call
             // carries at most the number of type parameters Pure.DI declares for one binding method.
@@ -106,8 +105,7 @@ internal sealed class Composition
                 FileExcerptReader, ChatCompletionUsageReader, TokenUsageAggregator, TokenUsageService,
                 RateLimitHeaderReader, ContextSummaryWriter, HistoryCheckpointService, ChatHistoryCompaction,
                 ToolAutoApprover, GuideChats, ConnectionChoice, ReviewCommentSuggestions, AppToolReply,
-                GenericSkillExecutor, SkillGuide>()
-            .Transient<SkillRouting, AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>()
+                GenericSkillExecutor, SkillGuide, SkillRouting, AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>()
             .Transient<IKeyringMasterKeyStore>(ctx =>
             {
                 if (OperatingSystem.IsMacOS())

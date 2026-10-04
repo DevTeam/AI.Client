@@ -414,6 +414,36 @@ tests passed, including rendering for new and legacy usage. Regression tests cov
 tokenization, denominator persistence/legacy exclusion, model-connection isolation, progressive
 discovery at 32K/128K/250K, history pressure and permission/schema changes. No external LLM was used.
 
+## 2026-10-03 — zip archive tools in the built-in MCP server
+
+Added four tools to `AI.Mcp.BuiltIn` in a new `Archives` folder: `zip_list`, `zip_read`,
+`zip_extract` and `zip_create`. The composition grew from 16 to 20 tools. `zip_list` reports
+entries with sizes and modification times and narrows them with a glob `pattern`; `zip_read`
+returns one entry as UTF-8 text and reports binary content as such; `zip_extract` unpacks into a
+destination directory and plans the whole call before the first write, so a refused entry leaves
+nothing behind; `zip_create` packs files and directories recursively from a temporary sibling moved
+into place, so a failed call never destroys an existing archive or leaves a partial one.
+
+Access stays fail-closed and reuses `PathGuard`: reading an archive needs the `read` capability and
+writing one or extracting needs `write`, so no path outside the project's grants is ever touched.
+Entry names are untrusted input: each one is re-based under the destination and checked for
+containment, so a rooted name or one climbing out with `..` fails the call (Zip Slip). New shared
+pieces are `ArchiveLimits` and `ArchivePaths`; `ResultBudget` and the existing reply contract are
+reused, so results match their declared schema including failures.
+
+The duplicated tool catalogues were updated in lockstep: `BuiltInToolTests` composition and a new
+real-stdio scenario, `FileToolPresentationAdapter` names, call titles, safety and result summaries,
+`ChatKnowledgeStatistics` read tools and labels, `WorkspaceChangeTracker.MutatingPathArguments`
+(only `zip_create`, because extraction writes paths that live inside the archive and cannot be named
+in the arguments), and `docs/16-default-mcp-tools.md`.
+
+Checks: solution build with zero warnings/errors in every library and test project; the `AI.Server.Tests`
+`BuiltInToolTests` class passed 19 tests, including the archive scenario covering packing, listing
+with and without a glob, reading an entry and a missing one, extraction, a refused overwrite, a Zip
+Slip entry, a path outside the grant and a plain file reported as not a zip. The `AI.Desktop` project
+could not be relinked because a running instance held its DLLs; that step is unrelated to these
+changes and every project that compiles the tools and their consumers built clean.
+
 ## 2026-10-03 — current tool names and recovery after compaction
 
 Fixed discovery/recovery prompts that referenced the nonexistent `app_tool_search` instead of

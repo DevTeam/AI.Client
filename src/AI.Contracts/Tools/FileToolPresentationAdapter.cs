@@ -10,6 +10,7 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
     {
         "read_text_file", "read_multiple_files", "list_directory", "directory_tree", "search_files", "grep_files",
         "get_file_info", "write_file", "edit_file", "create_directory", "move_file", "delete_file", "delete_directory",
+        "zip_list", "zip_read", "zip_extract", "zip_create",
         "list_allowed_directories",
     };
 
@@ -45,6 +46,12 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
             "delete_directory" => new ToolCallPresentation(
                 FlagArgument(arguments, "recursive") ? "Delete directory (recursive)" : "Delete directory",
                 FileLabel(path), ToolSafety.Destructive),
+            "zip_list" => new ToolCallPresentation("List archive", FileLabel(path), ToolSafety.ReadOnly),
+            "zip_read" => new ToolCallPresentation("Read archive entry",
+                Argument(arguments, "entryPath") ?? FileLabel(path), ToolSafety.ReadOnly),
+            "zip_extract" => new ToolCallPresentation("Unpack archive",
+                FileLabel(Argument(arguments, "destination")), ToolSafety.Destructive),
+            "zip_create" => new ToolCallPresentation("Create archive", FileLabel(path), ToolSafety.Mutating),
             _ => new ToolCallPresentation(tool.FallbackLabel, FileLabel(path), ToolSafety.Unknown),
         };
     }
@@ -135,6 +142,52 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
                     ToolResultSeverity.Ok,
                     Facts(("Path", Text(structured, "path")), ("Recursive", Flag(structured, "recursive") ? "yes" : null)),
                     null);
+            case "zip_list":
+            {
+                var entries = Count(structured, "entries") ?? 0;
+                var total = Number(structured, "entryCount") ?? entries;
+                return new ToolResultPresentation(
+                    Plural(entries, "entry", "entries") + (truncated ? ", truncated" : ""),
+                    SeverityFor(truncated),
+                    Facts(("Path", Text(structured, "path")), ("Entries in archive", total.ToString(CultureInfo.InvariantCulture)),
+                        ("Uncompressed", Bytes(Size(structured, "totalBytes"))),
+                        ("Compressed", Bytes(Size(structured, "compressedBytes"))),
+                        ("Truncated", truncated ? "yes" : null)),
+                    null);
+            }
+            case "zip_read":
+            {
+                var size = Size(structured, "size");
+                return new ToolResultPresentation(
+                    Plural((int)Math.Min(size ?? 0, int.MaxValue), "byte", "bytes") + (truncated ? ", truncated" : ""),
+                    SeverityFor(truncated),
+                    Facts(("Path", Text(structured, "path")), ("Entry", Text(structured, "entryPath")),
+                        ("Size", Bytes(size)), ("Truncated", truncated ? "yes" : null)),
+                    Text(structured, "content"));
+            }
+            case "zip_extract":
+            {
+                var files = Count(structured, "files") ?? 0;
+                var skipped = Number(structured, "skipped") ?? 0;
+                return new ToolResultPresentation(
+                    Plural(files, "file", "files") + (truncated ? ", truncated" : ""),
+                    SeverityFor(truncated),
+                    Facts(("Path", Text(structured, "path")), ("Destination", Text(structured, "destination")),
+                        ("Skipped", skipped > 0 ? skipped.ToString(CultureInfo.InvariantCulture) : null),
+                        ("Overwrite", Flag(structured, "overwrite") ? "yes" : null),
+                        ("Truncated", truncated ? "yes" : null)),
+                    null);
+            }
+            case "zip_create":
+            {
+                var entries = Number(structured, "entries") ?? 0;
+                return new ToolResultPresentation(
+                    Plural(entries, "entry", "entries") + Suffix(Bytes(Size(structured, "compressedBytes"))),
+                    ToolResultSeverity.Ok,
+                    Facts(("Path", Text(structured, "path")), ("Uncompressed", Bytes(Size(structured, "bytes"))),
+                        ("Overwritten", Flag(structured, "overwritten") ? "yes" : null)),
+                    null);
+            }
             case "list_allowed_directories":
             {
                 var directories = Count(structured, "directories") ?? 0;

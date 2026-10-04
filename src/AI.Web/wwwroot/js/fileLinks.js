@@ -253,7 +253,6 @@ export function attach(container, dotnet) {
             }
             if (unknown) {
                 if (!cachedOnly) block.dataset.pathTextPending = 'true';
-                continue;
             }
             const fragment = document.createDocumentFragment();
             let offset = 0;
@@ -294,12 +293,12 @@ export function attach(container, dotnet) {
         scanTimer = setTimeout(runScan, delay);
     };
 
-    const markDirty = node => {
+    const markDirty = (node, blocks) => {
         const element = node instanceof Element ? node : node.parentElement;
         if (!element || !container.contains(element)) return;
         const block = element.closest(BLOCK);
-        if (block) dirty.add(block);
-        else for (const inner of element.querySelectorAll(BLOCK)) dirty.add(inner);
+        if (block) blocks.add(block);
+        else for (const inner of element.querySelectorAll(BLOCK)) blocks.add(inner);
     };
 
     const queue = input => {
@@ -415,23 +414,20 @@ export function attach(container, dotnet) {
         onClick(event);
     };
 
-    // Runs before the browser paints the re-rendered markup, within one slice; the blocks stay
-    // dirty, so the scan on the timer still asks the Host about whatever is new.
-    const decorateFromCache = () => {
-        const started = performance.now();
-        for (const block of dirty) {
-            scanBlock(block, true);
-            if (performance.now() - started > SLICE_MS) return;
-        }
-    };
-
     const observer = new MutationObserver(records => {
+        // Restore every changed block before paint. A slice limit here left later blocks without
+        // their links until the delayed scan; unrelated blocks waiting for that scan also used
+        // up the slice. Only discovering new paths needs the timer and its time budget.
+        const changed = new Set();
         for (const record of records) {
-            markDirty(record.target);
-            for (const node of record.addedNodes) markDirty(node);
+            markDirty(record.target, changed);
+            for (const node of record.addedNodes) markDirty(node, changed);
         }
-        if (dirty.size === 0) return;
-        decorateFromCache();
+        if (changed.size === 0) return;
+        for (const block of changed) {
+            dirty.add(block);
+            scanBlock(block, true);
+        }
         // The pass above changes the DOM too; those records describe nothing new.
         observer.takeRecords();
         scheduleScan(SCAN_DELAY_MS);

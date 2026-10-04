@@ -8,7 +8,11 @@
 @implements IDisposable
 
 <section class="@CssClass" role="region" aria-label="Question from the assistant" @onkeydown="HandleKeyDownAsync" @onfocusin="PauseDefaults">
-    <strong class="user-prompt-title">@(Prompt.Questions.Count > 1 ? $"Questions ({Prompt.Questions.Count})" : "Question")</strong>
+    <div class="user-prompt-heading chat-card-header">
+        <span class="chat-card-mark" aria-hidden="true"><AppIcon Name="info" /></span>
+        <strong class="user-prompt-title chat-card-title">@(Prompt.Questions.Count > 1 ? $"Questions ({Prompt.Questions.Count})" : "Question")</strong>
+    </div>
+    <div class="user-prompt-content">
     @for (var index = 0; index < Prompt.Questions.Count; index++)
     {
         var questionIndex = index;
@@ -152,14 +156,14 @@
     <div class="user-prompt-actions">
         @* Two ways not to answer, and they mean opposite things: "decide yourself" hands the choice
            over and the work goes on, "decline" refuses it and the work stops until they say more. *@
-        <button class="secondary-action user-prompt-decline" type="button" disabled="@_sending" @onclick="DeclineAsync" @onkeydown:stopPropagation="true"
+        <button class="secondary-action user-prompt-decline chat-card-action chat-card-action-danger" type="button" disabled="@_sending" @onclick="DeclineAsync" @onkeydown:stopPropagation="true"
                 title="Don't answer and stop the assistant here"><span>Decline</span></button>
         @if (Prompt.Presentation != "overlay")
         {
-            <button class="secondary-action" type="button" disabled="@_sending" @onclick="DismissAsync" @onkeydown:stopPropagation="true"
+            <button class="secondary-action chat-card-action" type="button" disabled="@_sending" @onclick="DismissAsync" @onkeydown:stopPropagation="true"
                     title="Let the assistant choose and carry on"><span>Decide yourself</span></button>
         }
-        <button @ref="_submitButton" class="user-prompt-submit" type="button" disabled="@_sending" @onclick="AnswerAsync" @onkeydown:stopPropagation="true"
+        <button @ref="_submitButton" class="user-prompt-submit chat-card-action chat-card-action-primary" type="button" disabled="@_sending" @onclick="AnswerAsync" @onkeydown:stopPropagation="true"
                 title="@(AutoContinue ? "Pressed automatically when the time runs out" : null)">
             @if (_sending)
             {
@@ -180,6 +184,7 @@
     {
         <div class="user-prompt-progress" aria-hidden="true"><span style="transform: scaleX(@Remaining.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture))"></span></div>
     }
+    </div>
 </section>
 
 @if (_pickerQuestion is { } picking)

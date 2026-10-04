@@ -35,6 +35,29 @@ prose are preserved where possible. Proposed designs and synthetic history/sched
 and actual behavior is traced to inspected code/configuration. GitGraph operations inside diagram
 source are syntax, not commands to mutate a repository.
 
+## Layout for chat
+
+Prefer narrow diagrams that read from top to bottom because the chat viewport is vertical.
+An explicitly requested orientation or destination requirement takes precedence. Keep labels
+concise and split wide diagrams into focused views while preserving relevant relationships;
+do not turn alternatives, concurrent behavior or dependencies into an invented sequence.
+
+- Flowcharts use `flowchart TD` or `flowchart TB`, including vertical subgraphs where practical.
+  Connections outside a subgraph can override its direction; check the rendered result.
+- Class and state diagrams use `direction TB`; ER diagrams use it when the target supports it.
+- Architecture views prefer vertical service layers with connections such as `api:B --> T:db`.
+  The flowchart fallback uses `flowchart TB`; `architecture-beta` has no flowchart direction directive.
+- GitGraph uses `gitGraph TB:` on supporting runtimes (Mermaid 10.3+). Branches still occupy width.
+- Sequence diagrams already advance downward in time; use concise participant aliases/messages
+  and focused scenarios to reduce width. Gantt keeps its horizontal time axis; use focused time
+  windows or sections. Mindmap keeps its radial layout; offer a `flowchart TB` hierarchy when
+  vertical presentation is needed. Do not invent direction directives for these types.
+
+Apply the preference during creation and requested layout changes. Content-only edits,
+syntax-only fixes and exports preserve source orientation. Reviews recommend improvements
+without editing. For visual verification, check the actual chat width, horizontal overflow
+and label readability as well as the diagram's overall layout.
+
 ## Compatibility and verification
 
 Inspect the target's actual version and build before relying on current upstream features.

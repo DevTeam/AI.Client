@@ -460,48 +460,122 @@
             OnCurrentTurnSummaryVisibilityChanged="SetCurrentTurnSummaryVisibility"
             OnResumeRun="ResumeQueueAsync"
             OnRebaseRun="RebaseQueueAsync"
-            OnDiscardRun="DiscardCommandAsync" />
+            OnDiscardRun="DiscardCommandAsync"
+            DockStateKey="@GetDockStateKey()">
+            <DockContent>
         <div class="composer-dock">
         @if (GetDockedChanges() is { } dockedChanges)
         {
-            @* The run's changes so far, fixed above the composer while it works. In the feed the
-               card sat under the live text and moved every time a new note replaced the last. *@
-            <WorkspaceChanges Changes="@dockedChanges" Live="true" />
+            @* The run's changes share the feed scrollbar with its transcript. *@
+            <WorkspaceChanges Changes="@dockedChanges" Live="true" ExpandUpward="true" />
         }
         @if (GetSelectedRun() is { } selectedRun && GetPendingQueue(selectedRun) is { Count: > 0 } pendingQueue)
         {
             @* Only what has not been sent yet. A command that is already a message in the
                transcript belongs to the turn chip above, not to a list whose every row promises
                that it can still be edited, reordered or removed. *@
-            <section class="chat-queue @(_queueActionPending ? "queue-busy" : null)" aria-busy="@(_queueActionPending ? "true" : "false")"><div class="queue-header"><button class="queue-summary" type="button" aria-expanded="@(_isQueueExpanded ? "true" : "false")" @onclick="() => _isQueueExpanded = !_isQueueExpanded"><AppIcon Name="queue" /><span>Queued · @pendingQueue.Count</span><AppIcon Name="chevron-right" /></button><div class="queue-actions">@if (_isConfirmingQueueClearAll) { <span class="queue-clear-confirm"><span>Stop the run and drop everything?</span><button class="danger compact-action" type="button" @onclick="ClearEverythingAsync">Clear all</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="() => _isConfirmingQueueClearAll = false"><AppIcon Name="x" /></button></span> } else { <button type="button" class="queue-action-button queue-action-clear" title="@($"Remove the {pendingQueue.Count} message(s) still waiting in the queue")" aria-label="Clear queued messages" @onclick="ClearQueueAsync"><AppIcon Name="queue-clear" /></button>@if (HasCommittedCommand(selectedRun)) { <button type="button" class="queue-action-button destructive-action" title="Stop the run and clear everything, including the message already sent" aria-label="Stop and clear everything" @onclick="() => _isConfirmingQueueClearAll = true"><AppIcon Name="trash" /></button> } }</div></div>@if (_isQueueExpanded) { <div class="queue-items">@foreach (var item in pendingQueue) { <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">@if (_editingQueueId == item.Id) { <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty" @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus /> } else { <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button><span title="@item.Content">@(string.IsNullOrWhiteSpace(item.Content) ? "Workspace references" : GetSingleLine(item.Content))@if (item.Resources is { Count: > 0 }) { <span class="queue-resource-count"> refs: @item.Resources.Count</span> }</span><button class="icon-action queue-send-now" type="button" title="Interrupt and send this message now" aria-label="Interrupt and send this message now" @onclick="() => SendQueuedMessageNowAsync(item.Id)"><AppIcon Name="zap" /></button><button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button><button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button><button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button><button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button> }</div> }</div> }</section>
+            <section class="chat-queue chat-summary-card opens-upward @(_isQueueExpanded ? "is-expanded" : "is-collapsed") @(_queueActionPending ? "queue-busy" : null)"
+                     aria-label="Queued messages" aria-busy="@(_queueActionPending ? "true" : "false")">
+                <div class="queue-header chat-summary-top">
+                    <button class="queue-summary chat-summary-toggle chat-card-header" type="button" aria-expanded="@_isQueueExpanded" @ref="_queueHeader"
+                            aria-controls="queued-message-details" title="@(_isQueueExpanded ? "Collapse queued messages" : "Expand queued messages")"
+                            @onclick="ToggleQueueDetailsAsync">
+                        <span class="chat-summary-icon chat-card-mark" aria-hidden="true"><AppIcon Name="queue" /></span>
+                        <span class="chat-summary-title chat-card-title">Queued · @pendingQueue.Count</span>
+                        <span class="chat-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-down" /></span>
+                    </button>
+                    <div class="queue-actions chat-card-header-actions">
+                        @if (_isConfirmingQueueClearAll)
+                        {
+                            <span class="queue-clear-confirm">
+                                <span>Stop the run and drop everything?</span>
+                                <button class="chat-card-action chat-card-action-danger" type="button" @onclick="ClearEverythingAsync">Clear all</button>
+                                <button class="chat-card-action chat-card-action-icon" type="button" title="Cancel" aria-label="Cancel" @onclick="() => _isConfirmingQueueClearAll = false"><AppIcon Name="x" /></button>
+                            </span>
+                        }
+                        else
+                        {
+                            <button type="button" class="queue-action-button queue-action-clear chat-card-action chat-card-action-icon" title="@($"Remove the {pendingQueue.Count} message(s) still waiting in the queue")"
+                                    aria-label="Clear queued messages" @onclick="ClearQueueAsync"><AppIcon Name="queue-clear" /></button>
+                            @if (HasCommittedCommand(selectedRun))
+                            {
+                                <button type="button" class="queue-action-button destructive-action chat-card-action chat-card-action-icon chat-card-action-danger" title="Stop the run and clear everything, including the message already sent"
+                                        aria-label="Stop and clear everything" @onclick="() => _isConfirmingQueueClearAll = true"><AppIcon Name="trash" /></button>
+                            }
+                        }
+                    </div>
+                </div>
+                <div class="chat-summary-details" id="queued-message-details" aria-hidden="@(!_isQueueExpanded)" inert="@(!_isQueueExpanded)">
+                    <div class="chat-summary-details-inner">
+                        <div class="queue-items">
+                            @foreach (var item in pendingQueue)
+                            {
+                                <div @key="item.Id" class="queue-item" data-queue-id="@item.Id">
+                                    @if (_editingQueueId == item.Id)
+                                    {
+                                        <input value="@_editingQueueText" @oninput="args => _editingQueueText = args.Value?.ToString() ?? string.Empty"
+                                               @onkeydown="args => HandleQueueEditKeyAsync(args, item.Id)" @onblur="() => SaveQueuedMessageAsync(item.Id)" autofocus />
+                                    }
+                                    else
+                                    {
+                                        <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button>
+                                        <span title="@item.Content">
+                                            @(string.IsNullOrWhiteSpace(item.Content) ? "Workspace references" : GetSingleLine(item.Content))
+                                            @if (item.Resources is { Count: > 0 })
+                                            {
+                                                <span class="queue-resource-count"> refs: @item.Resources.Count</span>
+                                            }
+                                        </span>
+                                        <button class="icon-action queue-send-now" type="button" title="Interrupt and send this message now" aria-label="Interrupt and send this message now" @onclick="() => SendQueuedMessageNowAsync(item.Id)"><AppIcon Name="zap" /></button>
+                                        <button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button>
+                                        <button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button>
+                                        <button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button>
+                                        <button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </section>
+        }
+        @if (GetSelectedRun() is { PendingApproval: { } dockedApproval } dockedApprovalRun)
+        {
+            <ToolApprovalBar @ref="_toolApprovalBar" @key="dockedApproval.Id" Run="dockedApprovalRun" Approval="dockedApproval" ChatTitle="@_selectedChat?.Title" />
         }
         </div>
+            </DockContent>
+        </MessageFeed>
         <div class="composer-prelude">
             @if (_navigationCue is { } cue)
             {
                 @* A move the assistant asked for. It is announced before it happens, and can be refused. *@
-                <div @key="cue.Id" class="navigation-cue @(cue.Automatic ? "is-counting" : "is-offer")" role="status" aria-live="polite">
-                    <AppIcon Name="@(cue.Automatic ? "chevron-right" : "info")" />
-                    <span class="navigation-cue-text">@(cue.Automatic ? $"The assistant is opening {cue.Where} in {cue.SecondsLeft} s" : $"The assistant created {cue.Where}")</span>
-                    @if (cue.Automatic)
-                    {
-                        <button class="compact-action" type="button" @onclick="StayOnNavigationCue">Stay here</button>
-                        <button class="compact-action primary" type="button" @onclick="() => FollowNavigationCueAsync(cue)">Open now</button>
-                    }
-                    else
-                    {
-                        <button class="compact-action primary" type="button" @onclick="() => FollowNavigationCueAsync(cue)">Open</button>
-                        <button class="compact-action" type="button" @onclick="StayOnNavigationCue">Not now</button>
-                    }
+                <div @key="cue.Id" class="navigation-cue chat-card-header @(cue.Automatic ? "is-counting" : "is-offer")" role="status" aria-live="polite">
+                    <span class="chat-card-mark" aria-hidden="true"><AppIcon Name="@(cue.Automatic ? "chevron-right" : "info")" /></span>
+                    <span class="navigation-cue-text chat-card-title">@(cue.Automatic ? $"The assistant is opening {cue.Where} in {cue.SecondsLeft} s" : $"The assistant created {cue.Where}")</span>
+                    <span class="chat-card-header-actions">
+                        @if (cue.Automatic)
+                        {
+                            <button class="chat-card-action" type="button" @onclick="StayOnNavigationCue">Stay here</button>
+                            <button class="chat-card-action chat-card-action-primary" type="button" @onclick="() => FollowNavigationCueAsync(cue)">Open now</button>
+                        }
+                        else
+                        {
+                            <button class="chat-card-action chat-card-action-primary" type="button" @onclick="() => FollowNavigationCueAsync(cue)">Open</button>
+                            <button class="chat-card-action" type="button" @onclick="StayOnNavigationCue">Not now</button>
+                        }
+                    </span>
                 </div>
             }
             else if (_navigationArrival is { } arrival)
             {
-                <div @key="arrival.Id" class="navigation-cue is-arrival" role="status" aria-live="polite">
-                    <AppIcon Name="info" />
-                    <span class="navigation-cue-text">The assistant opened @arrival.Where. You were in @arrival.From.</span>
-                    <button class="compact-action" type="button" @onclick="ReturnFromNavigationAsync">Go back</button>
-                    <button class="icon-action" type="button" title="Dismiss" aria-label="Dismiss" @onclick="() => _navigationArrival = null"><AppIcon Name="x" /></button>
+                <div @key="arrival.Id" class="navigation-cue chat-card-header is-arrival" role="status" aria-live="polite">
+                    <span class="chat-card-mark" aria-hidden="true"><AppIcon Name="info" /></span>
+                    <span class="navigation-cue-text chat-card-title">The assistant opened @arrival.Where. You were in @arrival.From.</span>
+                    <span class="chat-card-header-actions">
+                        <button class="chat-card-action" type="button" @onclick="ReturnFromNavigationAsync">Go back</button>
+                        <button class="chat-card-action chat-card-action-icon" type="button" title="Dismiss" aria-label="Dismiss" @onclick="() => _navigationArrival = null"><AppIcon Name="x" /></button>
+                    </span>
                 </div>
             }        <div class="composer-status" role="status">
             @* While the composer shows a history entry the counter comes first and the plain
@@ -521,10 +595,6 @@
             else if (_isForking) { <span class="fork-mode"><AppIcon Name="fork" /><span>@GetForkModeText()</span><button class="icon-action" type="button" title="Cancel fork" aria-label="Cancel fork" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
             else if (!_composerHistoryNavigator.IsActive) { <span>@GetComposerHint()</span> }
         </div>
-        @if (GetSelectedRun() is { PendingApproval: { } approval } approvalRun)
-        {
-            <ToolApprovalBar @ref="_toolApprovalBar" @key="approval.Id" Run="approvalRun" Approval="approval" ChatTitle="@_selectedChat?.Title" />
-        }
         </div>
         <footer class="workspace-composer">
             @if (_draftResources.Any(item => item.Mention is null))
@@ -1227,7 +1297,10 @@ else if (_guideInvitation is { } guideInvitation)
     private ElementReference _workspace;
     private bool _attachComposer = true;
     private bool _composerNeedsResize;
-    private bool _isQueueExpanded;
+    private bool _isQueueExpanded = true;
+    private ElementReference _queueHeader;
+    private IJSObjectReference? _chatSummaryModule;
+    private double? _queueHeaderTop;
     private bool _isConfirmingQueueClearAll;
     private bool _isSubmittingMessage;
     private bool _isSendingNowFromComposer;
@@ -1578,6 +1651,12 @@ else if (_guideInvitation is { } guideInvitation)
             }
 
             StateHasChanged();
+        }
+
+        if (_queueHeaderTop is { } queueTop && _chatSummaryModule is not null)
+        {
+            _queueHeaderTop = null;
+            await _chatSummaryModule.InvokeVoidAsync("restoreHeader", _queueHeader, queueTop);
         }
 
         if (_focusSearchInput && _isSearchOpen)
@@ -3647,6 +3726,17 @@ else if (_guideInvitation is { } guideInvitation)
         && !Feed.LastTurnHasWorkspaceReceipt(Feed.BuildBranch(_selectedChat.Messages, _branchLeafId))
             ? changes
             : null;
+
+    private async Task ToggleQueueDetailsAsync()
+    {
+        _chatSummaryModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatSummary.js");
+        _queueHeaderTop = await _chatSummaryModule.InvokeAsync<double?>("captureHeader", _queueHeader);
+        _isQueueExpanded = !_isQueueExpanded;
+    }
+
+    // Keep the dock independent of composer keystrokes while refreshing its local queue controls.
+    private string GetDockStateKey() =>
+        $"{_isQueueExpanded}|{_isConfirmingQueueClearAll}|{_queueActionPending}|{_hidePendingQueue}|{_editingQueueId}|{_editingQueueText}|{string.Join(',', _optimisticallyHiddenQueueIds.Order())}";
 
     private int GetTranscriptRunPresentationVersion()
     {
@@ -6607,6 +6697,7 @@ else if (_guideInvitation is { } guideInvitation)
 
         if (_scrollbarGutterHandle is not null) { await _scrollbarGutterHandle.InvokeVoidAsync("dispose"); await _scrollbarGutterHandle.DisposeAsync(); }
         if (_scrollbarGutterModule is not null) await _scrollbarGutterModule.DisposeAsync();
+        if (_chatSummaryModule is not null) await _chatSummaryModule.DisposeAsync();
 
         _dotNetReference?.Dispose();
         await WorkspaceLayoutService.DisposeAsync();

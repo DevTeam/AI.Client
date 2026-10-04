@@ -4,51 +4,52 @@
    and anything the user changed beforehand is never counted here. *@
 @using AI.Contracts.Workspace
 @using AI.Contracts.Resources
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
 
 @if (Changes is { IsEmpty: false } changes)
 {
-    <section class="workspace-changes @(_showDetails ? "is-expanded" : "is-collapsed")"
+    <section class="workspace-changes chat-summary-card @(ExpandUpward ? "opens-upward" : null) @(_showDetails ? "is-expanded" : "is-collapsed")"
              aria-label="Files changed by this run">
-        <div class="workspace-changes-top">
-        <button class="workspace-changes-header" type="button" aria-expanded="@_showDetails"
+        <div class="workspace-changes-top chat-summary-top">
+        <button class="workspace-changes-header chat-summary-toggle chat-card-header" type="button" aria-expanded="@_showDetails" aria-controls="@_detailsId" @ref="_header"
                 title="@(_showDetails ? "Collapse file changes" : "Expand file changes")" @onclick="ToggleDetails">
-            <span class="workspace-changes-icon" aria-hidden="true"><AppIcon Name="diff" /></span>
-            <span class="workspace-changes-title">@(Label is null ? null : $"{Label} · ")@changes.Files.Count @(changes.Files.Count == 1 ? "file" : "files") changed</span>
+            <span class="workspace-changes-icon chat-summary-icon chat-card-mark" aria-hidden="true"><AppIcon Name="diff" /></span>
+            <span class="workspace-changes-title chat-summary-title chat-card-title">@(Label is null ? null : $"{Label} · ")@changes.Files.Count @(changes.Files.Count == 1 ? "file" : "files") changed</span>
             @* The sign carries the meaning, not the colour: red/green alone fails for anyone who
                cannot tell them apart, and in a diff the direction is the whole point. *@
-            <span class="workspace-changes-chevron" aria-hidden="true"><AppIcon Name="chevron-down" /></span>
+            <span class="workspace-changes-chevron chat-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-down" /></span>
         </button>
-        @if (SourceMessageId is { } sourceId)
-        {
-            <button class="workspace-review-action" type="button" title="Review these changes" @onclick="() => OnReview.InvokeAsync(sourceId)">Review</button>
-        }
-        <span class="workspace-changes-totals" aria-label="@changes.Additions additions, @changes.Deletions deletions">
-            <AnimatedCount Value="@changes.Additions" Title="Net lines added across all files changed by this run" Sign="+" Class="workspace-added" CountIn="@Live" />
-            <AnimatedCount Value="@changes.Deletions" Title="Net lines removed across all files changed by this run" Sign="−" Class="workspace-removed" CountIn="@Live" />
+        <span class="chat-card-header-actions">
+            @if (SourceMessageId is { } sourceId)
+            {
+                <button class="workspace-review-action chat-card-action" type="button" title="Review these changes" @onclick="() => OnReview.InvokeAsync(sourceId)">Review</button>
+            }
+            <span class="workspace-changes-totals" aria-label="@changes.Additions additions, @changes.Deletions deletions">
+                <AnimatedCount Value="@changes.Additions" Title="Net lines added across all files changed by this run" Sign="+" Class="workspace-added" CountIn="@Live" />
+                <AnimatedCount Value="@changes.Deletions" Title="Net lines removed across all files changed by this run" Sign="−" Class="workspace-removed" CountIn="@Live" />
+            </span>
         </span>
         </div>
-        <div class="workspace-changes-details" aria-hidden="@(!_showDetails)">
-            <div class="workspace-changes-details-inner">
+        <div class="workspace-changes-details chat-summary-details" id="@_detailsId" aria-hidden="@(!_showDetails)" inert="@(!_showDetails)">
+            <div class="workspace-changes-details-inner chat-summary-details-inner">
             <ul class="workspace-changes-list">
+                @{ var fileIndex = 0; }
                 @foreach (var file in changes.Files)
                 {
                     var expanded = _expanded.Contains(file.Path);
-                    var bodyId = $"diff-{file.Path.GetHashCode(StringComparison.Ordinal):x8}";
+                    var fileDetailsId = $"{_detailsId}-file-{fileIndex++}";
                     <li @key="file.Path">
-                        @* Expansion is tracked here rather than left to <details>, which keeps its
-                           contents in the DOM whether open or shut. A diff can run to thousands of
-                           lines, and several closed files would each be paying for one. *@
-                        <WorkspaceChangeFileHeader File="@file" Expanded="@expanded" CommentCount="@CommentCount(file.Path)" OnToggle="() => Toggle(file.Path)" Live="@Live" />
-                        @if (expanded)
-                        {
-                            <div class="workspace-change-body" id="@bodyId">
-                                <div class="workspace-change-diff">
-                                    <ReviewDiffFile File="@file" SourceFiles="@changes.Files" ProjectId="@ProjectId" ChatId="@ChatId"
-                                                    SourceMessageId="@(SourceMessageId ?? Guid.Empty)" Review="@Review"
-                                                    OnChanged="OnReviewChanged" />
-                                </div>
-                            </div>
-                        }
+                        @* Closed files render only their header; opening a comment also opens the diff. *@
+                        <ReviewDiffFile File="@file" SourceFiles="@changes.Files" ProjectId="@ProjectId" ChatId="@ChatId"
+                                        SourceMessageId="@(SourceMessageId ?? Guid.Empty)" Review="@Review"
+                                        OnChanged="OnReviewChanged" MaxLines="int.MaxValue" Expanded="@expanded"
+                                        OnExpand="() => { _expanded.Add(file.Path); }" DiffClass="workspace-change-diff" DetailsId="@fileDetailsId">
+                            <HeaderTemplate Context="comment">
+                                <WorkspaceChangeFileHeader File="@file" Expanded="@expanded" DetailsId="@fileDetailsId" CommentCount="@CommentCount(file.Path)"
+                                                           OnToggle="() => Toggle(file.Path)" OnComment="@comment" Live="@Live" />
+                            </HeaderTemplate>
+                        </ReviewDiffFile>
                     </li>
                 }
             </ul>
@@ -65,6 +66,8 @@
     /// they first appear. A receipt in the transcript shows its numbers as they are.
     /// </summary>
     [Parameter] public bool Live { get; set; }
+    /// <summary>Shows details above a round summary while keeping its header in place.</summary>
+    [Parameter] public bool ExpandUpward { get; set; }
     [Parameter] public Guid ProjectId { get; set; }
     [Parameter] public Guid ChatId { get; set; }
     [Parameter] public Guid? SourceMessageId { get; set; }
@@ -79,11 +82,39 @@
     [Parameter] public bool InitiallyExpanded { get; set; }
 
     private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
+    private readonly string _detailsId = $"workspace-changes-details-{Guid.NewGuid():N}";
     private bool _showDetails;
+    private ElementReference _header;
+    private IJSObjectReference? _summaryModule;
+    private double? _headerTop;
 
     protected override void OnInitialized() => _showDetails = InitiallyExpanded;
 
-    private void ToggleDetails() => _showDetails = !_showDetails;
+    private async Task ToggleDetails()
+    {
+        if (ExpandUpward)
+        {
+            _summaryModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatSummary.js");
+            _headerTop = await _summaryModule.InvokeAsync<double?>("captureHeader", _header);
+        }
+        _showDetails = !_showDetails;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_headerTop is not { } top || _summaryModule is null) return;
+        _headerTop = null;
+        await _summaryModule.InvokeVoidAsync("restoreHeader", _header, top);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_summaryModule is not null)
+        {
+            try { await _summaryModule.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+    }
 
     private int CommentCount(string path) => Review?.Comments.Count(comment => comment.Path == path) ?? 0;
 

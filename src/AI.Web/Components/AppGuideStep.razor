@@ -16,8 +16,8 @@
     <div class="app-guide-step-footer">
         <div class="app-guide-step-timeout" role="timer" aria-live="off"><AppIcon Name="timer" />@(AutoContinue ? "Continues" : "Stops") automatically in @(SecondsLeft / 60):@((SecondsLeft % 60).ToString("00"))</div>
         <div class="app-guide-actions">
-            <button class="compact-action" type="button" @onclick="OnStop">Stop</button>
-            <button class="compact-action primary" type="button" title="@(AutoContinue ? "Pressed automatically when the time runs out" : null)" disabled="@(SecondsLeft <= 0 || Busy || Paused || Step.WaitForUser && !TargetUsed)" @onclick="OnContinue">Continue</button>
+            <button class="chat-card-action" type="button" @onclick="OnStop">Stop</button>
+            <button class="chat-card-action chat-card-action-primary" type="button" title="@(AutoContinue ? "Pressed automatically when the time runs out" : null)" disabled="@(SecondsLeft <= 0 || Busy || Paused || Step.WaitForUser && !TargetUsed)" @onclick="OnContinue">Continue</button>
         </div>
     </div>
     <div class="app-guide-step-progress" aria-hidden="true"><span style="transform: scaleX(@Remaining.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture))"></span></div>

@@ -42,13 +42,17 @@ Clarify only missing decisions for a new dependency, materially different scope 
    dates: excluded days extend a task's elapsed bar instead of creating a gap inside it.
 6. Check missing/cyclic references, impossible ordering and the effective dates. Distinguish
    calendar duration from effort and do not update trackers or create reminders.
+   Gantt uses a horizontal time axis; do not invent direction TB syntax. For the narrow chat
+   viewport use concise task labels and focused time windows or sections, preserving actual
+   dates and cross-view dependencies. Respect explicitly requested export dimensions.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.

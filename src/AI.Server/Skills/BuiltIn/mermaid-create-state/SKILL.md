@@ -41,13 +41,17 @@ Clarify only missing decisions for a new dependency, materially different scope 
    transition triggers. Composite/concurrent states need actual behavioral evidence.
 6. Check reachability, missing outcomes and failure/cancellation transitions. Report illegal
    transitions found in code rather than changing the documented machine to conceal them.
+   Default to direction TB for the vertical chat viewport unless another orientation is requested
+   or required by the destination. Keep composite states compact and split wide views without
+   turning alternative or concurrent states into a sequential lifecycle.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.
@@ -64,6 +68,7 @@ Minimal syntax example (illustrative; adapt to actual requirements and validate 
 
 ```mermaid
 stateDiagram-v2
+    direction TB
     [*] --> Idle
     Idle --> Running: start
     Running --> Done: succeed

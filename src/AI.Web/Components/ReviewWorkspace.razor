@@ -45,15 +45,16 @@
                 {
                     var fileId = FileId(file.Path);
                     <section class="review-file @(_hoveredFilePath == file.Path ? "is-tree-hovered" : null)" id="@fileId" @key="file.Path">
-                        <WorkspaceChangeFileHeader File="@file" Expanded="@_expandedFiles.Contains(file.Path)"
-                                                   CommentCount="@_current.Comments.Count(comment => comment.Path == file.Path)"
-                                                   OnToggle="() => ToggleExpandedFile(file.Path)" />
-                        @if (_expandedFiles.Contains(file.Path))
-                        {
-                            <ReviewDiffFile @key="file.Path" File="@file" SourceFiles="@changes.Files"
-                                            ProjectId="@ProjectId" ChatId="@Chat.Id" SourceMessageId="@_current.SourceMessageId"
-                                            Review="@_current" OnChanged="ReviewChangedAsync" />
-                        }
+                        <ReviewDiffFile @key="file.Path" File="@file" SourceFiles="@changes.Files"
+                                        ProjectId="@ProjectId" ChatId="@Chat.Id" SourceMessageId="@_current.SourceMessageId"
+                                        Review="@_current" OnChanged="ReviewChangedAsync" Expanded="@_expandedFiles.Contains(file.Path)"
+                                        OnExpand="() => { _expandedFiles.Add(file.Path); }">
+                            <HeaderTemplate Context="comment">
+                                <WorkspaceChangeFileHeader File="@file" Expanded="@_expandedFiles.Contains(file.Path)"
+                                                           CommentCount="@_current.Comments.Count(item => item.Path == file.Path)"
+                                                           OnToggle="() => ToggleExpandedFile(file.Path)" OnComment="@comment" />
+                            </HeaderTemplate>
+                        </ReviewDiffFile>
                     </section>
                 }
             </div>

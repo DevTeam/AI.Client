@@ -45,13 +45,17 @@ Clarify only missing decisions for a new dependency, materially different scope 
    into a misleading merge sequence; disclose unsupported/omitted topology.
 6. Use documented cherry-pick syntax only for actual or explicitly proposed cherry-picks.
    Label synthetic diagrams and simplified views clearly; never fabricate SHAs.
+   Default to gitGraph TB: for the vertical chat viewport when supported (Mermaid 10.3+), unless
+   another orientation is requested or required by the destination. Branches still occupy width;
+   keep labels concise and select a focused history without inventing or hiding relevant merges.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.
@@ -67,7 +71,7 @@ Official references:
 Minimal syntax example (illustrative; adapt to actual requirements and validate on the target):
 
 ```mermaid
-gitGraph
+gitGraph TB:
     commit id: "base"
     branch feature
     checkout feature

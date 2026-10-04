@@ -36,10 +36,13 @@ Clarify only missing decisions for a new dependency, materially different scope 
 
 4. Extract actual entry/exit points, actions, decisions, loops and error paths from requirements
    or code. A decision must show its relevant alternatives; do not invent success paths.
-5. Use flowchart TD/TB or LR for the reading direction, stable IDs distinct from quoted labels,
-   rectangles for actions and diamonds for decisions. Label conditional edges; group genuinely
+5. Default to flowchart TD/TB for the vertical chat viewport; use LR/RL when the user requests
+   it or the destination requires it. Use stable IDs distinct from quoted labels, rectangles
+   for actions and diamonds for decisions. Label conditional edges; group genuinely
    related steps with subgraph. Avoid a lowercase end as an unquoted node label and ambiguous
    o/x edge syntax. Reserve newer shapes/configuration for verified target support.
+   Prefer vertical subgraphs, concise labels and focused views over wide rows of sibling nodes.
+   External subgraph connections may override its direction; inspect the actual rendered layout.
 6. Compare every edge with the source and keep the layout readable without implying timing.
 
 Validation and delivery:
@@ -47,7 +50,8 @@ Validation and delivery:
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.

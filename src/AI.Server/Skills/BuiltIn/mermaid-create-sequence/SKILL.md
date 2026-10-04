@@ -41,13 +41,17 @@ Clarify only missing decisions for a new dependency, materially different scope 
    parallel execution, retries, transactions or asynchronous delivery from a static dependency.
 6. Include the relevant failure/cancellation path and separate unrelated scenarios. Verify
    message direction, ordering and participant lifetime against the implementation.
+   Time already runs vertically; participants occupy horizontal space. For the narrow chat
+   viewport keep participant aliases and messages concise, and split broad interactions into
+   connected scenarios without losing relevant calls. Do not add unsupported direction TB syntax.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.

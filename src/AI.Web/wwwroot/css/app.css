@@ -4,6 +4,12 @@
 :root {
     --message-font-size: 0.93rem;
     --corner-scale: 1;
+    --chat-content-max-width: 48rem;
+    --chat-card-radius: calc(0.85rem * var(--corner-scale));
+    --chat-card-spacing: 0.75rem;
+    --chat-card-inset: 0.75rem;
+    --chat-card-action-radius: calc(0.45rem * var(--corner-scale));
+    --chat-card-action-size: 2rem;
     font-family: Inter, ui-sans-serif, system-ui, sans-serif;
     background: var(--color-bg);
     color: var(--color-text);
@@ -1750,6 +1756,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .chat-branch-count.run-status-interrupted { color: var(--color-text-faint); }
 
 .workspace-conversation {
+    --chat-content-inset: max(2rem, calc((100% - var(--chat-content-max-width)) / 2));
     position: relative;
     grid-column: 3;
     grid-row: 1;
@@ -1878,7 +1885,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
        re-measures on every layout change and writes the real value to --chat-scrollbar-width
        on .workspace-conversation, which the absolute header then uses for its right inset. */
     scrollbar-gutter: stable;
-    padding: 3rem max(2rem, calc((100% - 48rem) / 2)) 1.1rem;
+    padding: 3rem var(--chat-content-inset) 1.1rem;
     /* Browser scroll anchoring: when a block above the viewport changes height — a tool group
        being expanded, an image or markdown block finishing its layout — the reading position
        stays put instead of sliding down. Stated explicitly because it is load-bearing here, not
@@ -2874,18 +2881,20 @@ div.chat-tip-head { cursor: default; }
     z-index: 30;
     grid-row: 4;
     grid-column: 1;
-    width: min(48rem, calc(100% - 3rem));
-    margin: 0 auto 0.4rem;
+    min-width: 0;
+    margin: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: .4rem;
+    gap: 0;
 }
 
 .composer-status {
     min-width: 0;
+    margin-bottom: .4rem;
     color: var(--color-text-faint);
     font-size: 0.8rem;
 }
+.composer-prelude > .composer-status:not(:last-child) { margin-bottom: var(--chat-card-spacing); }
 
 .composer-generating-status {
     display: inline-block;
@@ -2908,22 +2917,121 @@ div.chat-tip-head { cursor: default; }
     font-size: 0.9rem;
 }
 
-/* What belongs to the run but not to any one line of the feed: its file changes and the queue.
-   Out of the scroller, so neither is pushed around by the text above it. */
-.composer-dock { grid-row: 3; grid-column: 1; min-width: 0; }
-.composer-dock > .workspace-changes { width: min(48rem, calc(100% - 3rem)); margin: 0 auto .4rem; }
-/* Opened, the list scrolls inside the dock instead of shoving the transcript off the screen. */
-.composer-dock > .workspace-changes.is-expanded .workspace-changes-details-inner { max-height: min(22rem, 40vh); overflow-y: auto; }
-.chat-queue { width: min(48rem, calc(100% - 3rem)); margin: 0 auto .4rem; }
-.queue-header { display: flex; align-items: center; justify-content: space-between; gap: .45rem; }
-.queue-summary, .queue-actions { display: flex; align-items: center; gap: .45rem; }
-.queue-summary { padding: .35rem .5rem; border-color: transparent; background: transparent; color: var(--color-text-muted); }
-.queue-summary > .app-icon:last-child { transition: transform 150ms ease; }
-.queue-summary[aria-expanded="true"] > .app-icon:last-child { transform: rotate(90deg); }
-/* Capped at ~5 rows (row height + gap, times 5, plus one row's padding of breathing room) with
-   overflow-y:auto — always applied rather than conditioned on count, since a shorter queue just
-   never reaches this height and never shows a scrollbar. */
-.queue-items { display: grid; gap: .2rem; padding: .3rem 0; max-height: calc(5 * 1.9rem + 4 * .2rem); overflow-y: auto; }
+/* Shared geometry for informational cards in the transcript and above the composer.
+   The radius follows the application's corner setting. */
+.chat-summary-card,
+.turn-status,
+.tool-approval-bar,
+.user-prompt,
+.navigation-cue {
+    box-sizing: border-box;
+    min-width: 0;
+    width: 100%;
+    max-width: var(--chat-content-max-width);
+    margin: 0 auto var(--chat-card-spacing);
+    border: 1px solid var(--color-border);
+    border-radius: var(--chat-card-radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+}
+
+/* The same heading scale and icon frame are used by summaries, alerts and decisions. */
+.chat-card-header {
+    display: flex;
+    box-sizing: border-box;
+    min-height: 3rem;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.58rem var(--chat-card-inset);
+    font-size: 0.92rem;
+}
+
+.chat-card-mark {
+    display: inline-grid;
+    box-sizing: border-box;
+    flex: none;
+    width: 1.6rem;
+    height: 1.6rem;
+    place-items: center;
+    border: 1px solid var(--color-border);
+    border-radius: var(--chat-card-action-radius);
+    background: var(--color-surface-raised);
+    color: var(--color-text-muted);
+}
+
+.chat-card-mark .app-icon { width: 0.9rem; height: 0.9rem; }
+
+.chat-card-title {
+    min-width: 0;
+    overflow: hidden;
+    color: inherit;
+    font-size: 0.92rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-card-header-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: auto;
+}
+
+/* Visible card actions share one size and state treatment; role colours are modifiers. */
+.chat-card-action {
+    display: inline-flex;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    min-height: var(--chat-card-action-size);
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--chat-card-action-radius);
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.chat-card-action:hover:not(:disabled) { border-color: var(--color-border-strong); background: var(--color-fill); color: var(--color-text-strong); }
+.chat-card-action:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.chat-card-action-primary { border-color: var(--color-accent); color: var(--color-accent-text); }
+.chat-card-action-primary:hover:not(:disabled) { border-color: var(--color-accent-strong); background: var(--color-accent-bg); color: var(--color-accent-text); }
+.chat-card-action-danger { color: var(--color-danger-text); }
+.chat-card-action-danger:hover:not(:disabled) { border-color: var(--color-danger-border); background: var(--color-danger-bg-hover); color: var(--color-danger-text); }
+.chat-card-action-icon { width: var(--chat-card-action-size); min-width: var(--chat-card-action-size); height: var(--chat-card-action-size); padding: 0; place-items: center; }
+.chat-card-action-icon .app-icon { width: 1rem; height: 1rem; }
+
+.navigation-cue .chat-card-mark { color: inherit; }
+.user-prompt .chat-card-mark { color: var(--color-accent-text); }
+
+.composer-prelude {
+    box-sizing: border-box;
+    /* Match the transcript's content edges, including its reserved scrollbar gutter. */
+    padding-inline: var(--chat-content-inset) calc(var(--chat-content-inset) + var(--chat-scrollbar-width, 0px));
+}
+
+.composer-dock {
+    /* Live cards use the transcript scrollbar, including when their details exceed the viewport. */
+    min-width: 0;
+}
+/* Details precede the header so opening a live card leaves its click target in place. */
+.chat-summary-card.opens-upward { display: flex; flex-direction: column-reverse; }
+/* A transcript card restores the clicked header after rendering; its height must settle in that
+   render rather than continue changing after the scroll position has been restored. */
+.workspace-messages .chat-summary-card.opens-upward > .chat-summary-details { transition: none; }
+.chat-summary-card.opens-upward .chat-summary-details-inner { transform: translateY(.25rem); }
+.chat-summary-card.opens-upward.is-expanded .chat-summary-details-inner { transform: translateY(0); }
+.chat-summary-card.opens-upward .chat-summary-chevron { transform: rotate(180deg); }
+.chat-summary-card.opens-upward.is-expanded .chat-summary-chevron { transform: rotate(0); }
+.chat-summary-card.opens-upward.is-expanded .chat-summary-top { border-top: 1px solid var(--color-border-subtle); border-bottom: 0; border-radius: 0 0 var(--chat-card-radius) var(--chat-card-radius); }
+.chat-summary-card.opens-upward.is-expanded .chat-summary-toggle { border-radius: inherit; }
+.queue-items { display: grid; box-sizing: border-box; gap: .2rem; padding: .4rem; }
 .queue-item { display: flex; min-width: 0; align-items: center; gap: .2rem; padding: .2rem .4rem; border-radius: calc(.4rem * var(--corner-scale)); background: var(--color-surface-raised); }
 .queue-item.dragging { opacity: .45; }
 .queue-item.drop-target { box-shadow: inset 0 2px var(--color-accent); }
@@ -2938,23 +3046,10 @@ div.chat-tip-head { cursor: default; }
 .queue-busy { pointer-events: none; }
 .queue-transition-status { display: inline-flex; align-items: center; gap: .35rem; color: var(--color-warning); }
 .queue-transition-status .app-icon { width: .9rem; height: .9rem; }
-.queue-actions { justify-content: flex-end; gap: .35rem; flex: 0 0 auto; }
+.queue-actions { display: flex; align-items: center; justify-content: flex-end; gap: .35rem; flex: 0 0 auto; padding-right: .5rem; }
 .queue-action-button {
-    display: inline-grid;
-    place-items: center;
-    width: 2rem;
-    height: 2rem;
-    padding: 0;
-    border: 1px solid transparent;
-    border-radius: calc(.4rem * var(--corner-scale));
-    background: transparent;
     color: var(--color-text-muted);
-    cursor: pointer;
-    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
-.queue-action-button .app-icon { width: 1rem; height: 1rem; }
-.queue-action-button:hover { background: var(--color-overlay-hover); }
-.queue-action-button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .queue-action-resume:hover { color: var(--color-accent-text); border-color: var(--color-accent); }
 .queue-action-clear:hover { color: var(--color-danger); border-color: var(--color-danger-border); }
 .queue-clear-confirm { display: flex; align-items: center; gap: .4rem; color: var(--color-text-secondary); font-size: .85rem; }
@@ -2963,54 +3058,30 @@ div.chat-tip-head { cursor: default; }
    summary it sits under - same width, radius, border and background - so the end of a turn reads
    as one stack of cards rather than a pile of unrelated widgets. */
 .turn-status {
-    display: flex;
-    box-sizing: border-box;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    max-width: 48rem;
-    margin: 0 auto 0.75rem;
-    padding: 0.58rem 0.75rem;
-    border: 1px solid var(--color-border);
-    border-radius: calc(0.85rem * var(--corner-scale));
-    background: var(--color-surface);
-    color: var(--color-text);
-    font-size: 0.92rem;
+    flex-wrap: wrap;
 }
 
-.turn-status-icon { display: inline-grid; flex: 0 0 auto; place-items: center; }
-.turn-status-icon .app-icon { width: 1rem; height: 1rem; }
+.turn-status-icon { color: var(--color-text-muted); }
 .turn-status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Failed turns show the full provider error (often a multi-line JSON blob). The chip stays the
-   same width, but the text wraps inside its track and scrolls vertically when the message
-   gets long, so a 4kb error no longer reads as "Failed: litellm.Context". */
+/* Failed turns show the full provider error in the feed's scrollbar. */
 .turn-status-failed .turn-status-text {
-    max-height: 7.5rem;
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: visible;
     text-overflow: clip;
     white-space: pre-wrap;
     word-break: break-word;
     align-self: stretch;
 }
 .turn-status-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 0.3rem; }
+.turn-status-action-icon { display: none; }
 
 /* The copy button sits in the same row as the error text. Always rendered, but muted so a
    quiet chip doesn't carry an action button as loud as Retry/Discard; brightens on hover and
    keyboard focus so the affordance is unmistakable when the user looks for it. Same vocabulary
    as .message-actions: 1.7rem square, transparent background, border only on hover. */
 .turn-status-copy {
-    flex: 0 0 auto;
-    width: 1.7rem;
-    height: 1.7rem;
-    padding: 0;
-    border-color: transparent;
-    background: transparent;
-    color: inherit;
     opacity: 0.5;
     transition: opacity 140ms ease, background-color 140ms ease, color 140ms ease;
-    align-self: flex-start;
 }
 
 .turn-status:hover .turn-status-copy,
@@ -3019,27 +3090,6 @@ div.chat-tip-head { cursor: default; }
     opacity: 1;
 }
 
-.turn-status-copy:hover {
-    background: var(--color-fill);
-    color: var(--color-text);
-}
-
-.turn-status-action {
-    padding: 0.2rem 0.55rem;
-    border: 1px solid var(--color-border);
-    border-radius: calc(0.45rem * var(--corner-scale));
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-size: 0.82rem;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: background-color 140ms ease, border-color 140ms ease;
-}
-
-.turn-status-action:hover { background: var(--color-fill); }
-.turn-status-action:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
-.turn-status-primary { border-color: var(--color-accent); color: var(--color-accent-text); }
 .turn-status-stopped .turn-status-icon { color: var(--color-warning); }
 .turn-status-failed .turn-status-icon { color: var(--color-danger); }
 .turn-status-failed .turn-status-text { color: var(--color-danger-text); }
@@ -4249,7 +4299,7 @@ textarea {
     .workspace-sidebar { grid-row: 1; }
     /* The stacked layout has no divider to bring a hidden sidebar back, so it always shows. */
     .workspace-shell.sidebar-collapsed .workspace-sidebar { visibility: visible; }
-    .workspace-conversation { grid-column: 1; grid-row: 2; }
+    .workspace-conversation { --chat-content-inset: 1rem; grid-column: 1; grid-row: 2; }
 
     .workspace-resizer,
     .sidebar-toggle-button {
@@ -4263,7 +4313,7 @@ textarea {
     }
 
     .workspace-messages {
-        padding: 3rem 1rem 1rem;
+        padding-bottom: 1rem;
     }
 
     .history-markers {
@@ -4275,15 +4325,15 @@ textarea {
     display: none;
 }
 
-.tool-approval-bar { min-width: 0; border: 1px solid var(--color-border); border-radius: calc(.85rem * var(--corner-scale)); background: var(--color-surface); }
-.tool-approval-main { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; min-height: 3rem; padding: .4rem .75rem; border-radius: inherit; transition: background-color 140ms ease, border-color 180ms ease; }
+.tool-approval-main { flex-wrap: wrap; border-radius: inherit; transition: background-color 140ms ease, border-color 180ms ease; }
+.tool-approval-bar.opens-upward { display: flex; flex-direction: column-reverse; }
+.workspace-messages .tool-approval-bar.opens-upward > .tool-approval-details { transition: none; }
 .tool-approval-main:hover { background: var(--color-fill); }
-.tool-approval-bar.is-expanded .tool-approval-main { border-bottom: 1px solid var(--color-border-subtle); border-radius: calc(.85rem * var(--corner-scale)) calc(.85rem * var(--corner-scale)) 0 0; }
+.tool-approval-bar.is-expanded .tool-approval-main { border-bottom: 1px solid var(--color-border-subtle); border-radius: var(--chat-card-radius) var(--chat-card-radius) 0 0; }
+.tool-approval-bar.opens-upward.is-expanded .tool-approval-main { border-top: 1px solid var(--color-border-subtle); border-bottom: 0; border-radius: 0 0 var(--chat-card-radius) var(--chat-card-radius); }
 .tool-approval-header { display: flex; flex: 1; align-items: center; gap: .5rem; min-width: 12rem; padding: 0; border: 0; border-radius: 0; background: transparent; text-align: left; }
-.tool-approval-mark { display: inline-grid; flex: none; width: 1.6rem; height: 1.6rem; place-items: center; border: 1px solid var(--color-border); border-radius: calc(.45rem * var(--corner-scale)); background: var(--color-surface-raised); color: var(--color-accent-text); }
-.tool-approval-mark .app-icon { width: .9rem; height: .9rem; }
+.tool-approval-mark { color: var(--color-accent-text); }
 .tool-approval-copy { display: grid; flex: 1; gap: .08rem; min-width: 0; }
-.tool-approval-heading { color: var(--color-text); font-size: .92rem; font-weight: 600; }
 .tool-approval-summary { display: flex; align-items: baseline; gap: .5rem; min-width: 0; overflow: hidden; color: var(--color-text-subtle); font-size: .74rem; white-space: nowrap; }
 .tool-approval-summary strong { flex: none; overflow: hidden; font-weight: 500; text-overflow: ellipsis; }
 .tool-approval-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -4292,19 +4342,17 @@ textarea {
 .tool-approval-assessment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-approval-assessment .app-icon { flex: none; width: .8rem; height: .8rem; }
 .tool-approval-actions { display: flex; flex: none; align-items: center; gap: .25rem; margin-left: auto; }
-.tool-approval-actions > button { min-height: 2rem; margin: 0; padding: .35rem .6rem; font-size: .78rem; }
+.tool-approval-actions > button { margin: 0; }
 .tool-approval-deny { color: var(--color-text-muted); }
-.tool-approval-allow { display: flex; align-items: stretch; border: 1px solid var(--color-border); border-radius: calc(.5rem * var(--corner-scale)); background: var(--color-fill-active); }
-.tool-approval-allow:hover { border-color: var(--color-border-strong); }
-.tool-approval-once { min-height: 2rem; padding: .35rem .6rem .35rem .75rem; border-radius: calc(.45rem * var(--corner-scale)) 0 0 calc(.45rem * var(--corner-scale)); color: var(--color-text-strong); font-size: .78rem; font-weight: 600; white-space: nowrap; }
-.tool-approval-more { position: relative; border-left: 1px solid var(--color-border); }
+.tool-approval-allow { display: flex; box-sizing: border-box; align-items: stretch; height: var(--chat-card-action-size); border: 1px solid var(--color-accent); border-radius: var(--chat-card-action-radius); }
+.tool-approval-allow:hover { border-color: var(--color-accent-strong); }
+.tool-approval-once.chat-card-action { min-height: 0; border: 0; border-radius: var(--chat-card-action-radius) 0 0 var(--chat-card-action-radius); font-weight: 600; }
+.tool-approval-more { position: relative; border-left: 1px solid var(--color-accent); }
 .tool-approval-more.is-open { z-index: 31; }
-.tool-approval-more > button { position: relative; z-index: 31; display: grid; width: 1.8rem; height: 2rem; padding: 0; place-items: center; border-radius: 0 calc(.45rem * var(--corner-scale)) calc(.45rem * var(--corner-scale)) 0; color: var(--color-text-muted); }
-.tool-approval-more > button:hover, .tool-approval-more.is-open > button { color: var(--color-text-strong); background: var(--color-fill-hover); }
-.tool-approval-more .app-icon { width: .85rem; height: .85rem; }
+.tool-approval-more > button { position: relative; z-index: 31; height: 100%; min-height: 0; border: 0; border-radius: 0 var(--chat-card-action-radius) var(--chat-card-action-radius) 0; }
+.tool-approval-more > button:hover, .tool-approval-more.is-open > button { background: var(--color-fill-hover); }
 .tool-approval-menu-backdrop { position: fixed; z-index: 29; inset: 0; }
-.tool-approval-details-toggle { display: inline-grid; flex: none; width: 1.5rem; height: 2rem; padding: 0; place-items: center; color: var(--color-text-subtle); }
-.tool-approval-details-toggle:hover { color: var(--color-text-secondary); }
+.tool-approval-details-toggle { color: var(--color-text-subtle); }
 .tool-approval-details-toggle .app-icon { width: .85rem; height: .85rem; transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1), color 140ms ease; }
 .tool-approval-bar.is-expanded .tool-approval-details-toggle .app-icon { transform: rotate(180deg); }
 .tool-approval-menu { position: absolute; z-index: 30; right: 0; bottom: calc(100% + .4rem); display: grid; width: min(17rem, calc(100vw - 2rem)); padding: .3rem; border: 1px solid var(--color-border); border-radius: calc(.65rem * var(--corner-scale)); background: var(--color-surface-raised); box-shadow: 0 .7rem 1.8rem rgb(0 0 0 / calc(40% * var(--shadow-scale))); }
@@ -4315,20 +4363,20 @@ textarea {
 .tool-approval-global-confirm > div { display: flex; justify-content: flex-end; gap: .4rem; }
 .tool-approval-global-confirm > div button { display: block; width: auto; padding: .4rem .55rem; }
 .tool-approval-details { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows 200ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 130ms ease, visibility 0s linear 200ms; }
-.tool-approval-details-inner { min-height: 0; overflow: hidden; transform: translateY(-.25rem); transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.tool-approval-details-inner { min-height: 0; overflow: hidden; transform: translateY(.25rem); transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 .tool-approval-details-content { display: grid; gap: .45rem; padding: .65rem .8rem .75rem; }
 .tool-approval-bar.is-expanded .tool-approval-details { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition-delay: 0s; }
 .tool-approval-bar.is-expanded .tool-approval-details-inner { transform: translateY(0); }
 .tool-approval-details-label { color: var(--color-text-muted); font-size: .72rem; font-weight: 600; }
-.tool-approval-details pre { max-height: 12rem; margin: 0; padding: .65rem; overflow: auto; border-radius: calc(.4rem * var(--corner-scale)); background: var(--color-bg-inset); font-size: .76rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tool-approval-details pre { margin: 0; padding: .65rem; border-radius: calc(.4rem * var(--corner-scale)); background: var(--color-bg-inset); font-size: .76rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .tool-approval-details p { margin: 0; color: var(--color-text-subtle); font-size: .73rem; line-height: 1.4; }
 .tool-approval-error { margin: 0; padding: 0 .8rem .7rem; color: var(--color-danger-text); font-size: .75rem; }
 
 /* A question from the assistant. Built to read as one decision: the accent edge marks it as the
    thing to act on, and every option is a full-width hit target so choosing is one click anywhere
    on the line rather than one on a control the size of a full stop. */
-.user-prompt { display: grid; gap: .85rem; padding: 1rem; border: 1px solid var(--color-border); border-left: 3px solid var(--color-accent-strong); border-radius: calc(.5rem * var(--corner-scale)); background: var(--color-surface-raised); }
-.user-prompt-title { font-size: .95rem; }
+.user-prompt { display: grid; grid-template-columns: minmax(0, 1fr); border-left: 3px solid var(--color-accent-strong); }
+.user-prompt-content { display: grid; gap: .85rem; min-width: 0; padding: .4rem var(--chat-card-inset) var(--chat-card-inset); }
 .user-prompt-question { display: grid; gap: .3rem; margin: 0; padding: 0; border: 0; }
 .user-prompt-question > legend { display: flex; align-items: baseline; gap: .45rem; margin-bottom: .35rem; padding: 0; font-size: .9rem; }
 .user-prompt-question + .user-prompt-question { padding-top: .65rem; border-top: 1px solid var(--color-border); }
@@ -4896,79 +4944,42 @@ textarea {
 }
 
 
-/* Net file changes for the run, as a card closing the turn. Structured like a small commit
-   summary: a header naming the count and the totals, then one row per file with its own counts
-   on the right. */
-.workspace-changes {
+/* The file list and queue share the same expanding shell. */
+.chat-summary-card {
     position: relative;
-    box-sizing: border-box;
-    width: 100%;
-    max-width: 48rem;
-    margin: 0 auto 0.75rem;
-    border: 1px solid var(--color-border);
-    border-radius: calc(0.85rem * var(--corner-scale));
-    background: var(--color-surface);
     font-size: 0.78rem;
     overflow: hidden;
     transition: border-color 180ms ease;
 }
 
-.workspace-changes-header {
-    display: flex;
-    box-sizing: border-box;
+.chat-summary-toggle {
     width: 100%;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.58rem 0.75rem;
     border: 0;
     border-bottom: 1px solid transparent;
     border-radius: inherit;
     background: transparent;
-    color: var(--color-text);
-    font: inherit;
-    font-size: 0.92rem;
     text-align: left;
     white-space: nowrap;
     cursor: pointer;
     transition: background-color 140ms ease, border-color 180ms ease;
 }
 
-.workspace-changes-header:hover {
+.chat-summary-toggle:hover {
     background: var(--color-fill);
 }
 
-.workspace-changes.is-collapsed .workspace-changes-header {
+.chat-summary-toggle:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+}
+
+.chat-summary-card.is-collapsed .chat-summary-toggle {
     width: 100%;
 }
 
-.workspace-changes.is-expanded .workspace-changes-header {
+.chat-summary-card.is-expanded .chat-summary-toggle {
     border-bottom-color: var(--color-border-subtle);
-    border-radius: calc(0.85rem * var(--corner-scale)) calc(0.85rem * var(--corner-scale)) 0 0;
-}
-
-.workspace-changes-icon {
-    display: inline-grid;
-    flex: 0 0 auto;
-    place-items: center;
-    width: 1.6rem;
-    height: 1.6rem;
-    border: 1px solid var(--color-border);
-    border-radius: calc(0.45rem * var(--corner-scale));
-    background: var(--color-surface-raised);
-    color: var(--color-text-muted);
-}
-
-.workspace-changes-icon .app-icon {
-    width: 0.9rem;
-    height: 0.9rem;
-}
-
-.workspace-changes-title {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--color-text);
-    font-weight: 600;
-    text-overflow: ellipsis;
+    border-radius: var(--chat-card-radius) var(--chat-card-radius) 0 0;
 }
 
 .workspace-change-approximate,
@@ -4976,7 +4987,7 @@ textarea {
     color: var(--color-text-disabled);
 }
 
-.workspace-changes-chevron {
+.chat-summary-chevron {
     display: inline-grid;
     flex: 0 0 auto;
     place-items: center;
@@ -4984,16 +4995,16 @@ textarea {
     transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1), color 140ms ease;
 }
 
-.workspace-changes-chevron .app-icon {
+.chat-summary-chevron .app-icon {
     width: 0.85rem;
     height: 0.85rem;
 }
 
-.workspace-changes-header:hover .workspace-changes-chevron {
+.chat-summary-toggle:hover .chat-summary-chevron {
     color: var(--color-text-secondary);
 }
 
-.workspace-changes.is-expanded .workspace-changes-chevron {
+.chat-summary-card.is-expanded .chat-summary-chevron {
     transform: rotate(180deg);
 }
 
@@ -5006,7 +5017,7 @@ textarea {
     font-variant-numeric: tabular-nums;
 }
 
-.workspace-changes-details {
+.chat-summary-details {
     display: grid;
     grid-template-rows: 0fr;
     opacity: 0;
@@ -5015,21 +5026,22 @@ textarea {
         visibility 0s linear 200ms;
 }
 
-.workspace-changes-details-inner {
+.chat-summary-details-inner {
     min-height: 0;
     overflow: hidden;
     transform: translateY(-0.25rem);
     transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.workspace-changes.is-expanded .workspace-changes-details {
+.chat-summary-card.is-expanded .chat-summary-details {
     grid-template-rows: 1fr;
     opacity: 1;
     visibility: visible;
     transition-delay: 0s;
 }
 
-.workspace-changes.is-expanded .workspace-changes-details-inner {
+.chat-summary-card.is-expanded .chat-summary-details-inner {
+    overflow: visible;
     transform: translateY(0);
 }
 
@@ -5086,6 +5098,12 @@ textarea {
     background: var(--color-surface-raised);
 }
 
+.workspace-change-toggle { display: flex; align-items: center; gap: .5rem; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+.workspace-change-toggle:hover:not(:disabled), .workspace-change-toggle:active:not(:disabled) { background: transparent; color: inherit; }
+.workspace-change-comment-action { flex: 0 0 auto; width: 1.4rem; height: 1.4rem; border: 0; border-radius: calc(.3rem * var(--corner-scale)); background: transparent; color: var(--color-text-muted); }
+.workspace-change-comment-action .app-icon { width: .85rem; height: .85rem; }
+.workspace-change-comment-action:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-accent); }
+
 .workspace-change-kind {
     flex: 0 0 auto;
     width: 0.9rem;
@@ -5101,8 +5119,8 @@ textarea {
     white-space: nowrap;
 }
 
-.workspace-changes .workspace-changes-totals,
-.workspace-changes .workspace-change-counts {
+.chat-summary-card .workspace-changes-totals,
+.chat-summary-card .workspace-change-counts {
     display: grid;
     grid-template-columns: 3rem 3rem;
     align-items: center;
@@ -5110,15 +5128,15 @@ textarea {
     padding-left: 0;
 }
 
-.workspace-changes .workspace-changes-totals { flex: 0 0 auto; margin: 0; padding: 0 .7rem 0 .5rem; }
-.workspace-changes .workspace-changes-totals .workspace-added,
-.workspace-changes .workspace-changes-totals .workspace-removed,
-.workspace-changes .workspace-change-counts .workspace-added,
-.workspace-changes .workspace-change-counts .workspace-removed { min-width: 0; }
-.workspace-changes .workspace-changes-totals .workspace-added,
-.workspace-changes .workspace-change-counts .workspace-added { text-align: right; }
-.workspace-changes .workspace-changes-totals .workspace-removed,
-.workspace-changes .workspace-change-counts .workspace-removed { text-align: left; }
+.chat-summary-card .workspace-changes-totals { flex: 0 0 auto; margin: 0; padding: 0 .7rem 0 .5rem; }
+.chat-summary-card .workspace-changes-totals .workspace-added,
+.chat-summary-card .workspace-changes-totals .workspace-removed,
+.chat-summary-card .workspace-change-counts .workspace-added,
+.chat-summary-card .workspace-change-counts .workspace-removed { min-width: 0; }
+.chat-summary-card .workspace-changes-totals .workspace-added,
+.chat-summary-card .workspace-change-counts .workspace-added { text-align: right; }
+.chat-summary-card .workspace-changes-totals .workspace-removed,
+.chat-summary-card .workspace-change-counts .workspace-removed { text-align: left; }
 
 .workspace-change-comments {
     display: inline-flex;
@@ -5132,15 +5150,11 @@ textarea {
 
 .workspace-change-comments .app-icon { width: .85rem; height: .85rem; }
 
-.workspace-change-body {
-    padding: 0 0 0.45rem;
-}
-
-/* One scroll box for the whole diff: lines do not wrap, so a long line moves the viewport rather
-   than reflowing the file around it. */
+/* File diffs use the feed scrollbar and wrap long lines within the card. */
+.workspace-changes .diff-line { white-space: pre-wrap; }
+.workspace-changes .diff-text { min-width: 0; overflow-wrap: anywhere; }
 .workspace-change-diff {
-    max-height: 24rem;
-    overflow: auto;
+    margin-bottom: .45rem;
     border-top: 1px solid var(--color-border-subtle);
     border-bottom: 1px solid var(--color-border-subtle);
     background: var(--color-bg-inset);
@@ -5199,14 +5213,6 @@ textarea {
 .diff-line-added .diff-text { color: var(--color-success-text); }
 .diff-line-removed .diff-text { color: var(--color-danger-text); }
 
-/* Where in the file the lines below it sit — a caption between hunks, not a line of the file. */
-.diff-hunk {
-    padding: 0.15rem 0.7rem;
-    background: var(--color-surface);
-    color: var(--color-text-disabled);
-    white-space: pre;
-}
-
 .diff-note {
     padding: 0.2rem 0.7rem;
     color: var(--color-warning);
@@ -5219,11 +5225,11 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .workspace-changes,
-    .workspace-changes-header,
-    .workspace-changes-chevron,
-    .workspace-changes-details,
-    .workspace-changes-details-inner,
+    .chat-summary-card,
+    .chat-summary-toggle,
+    .chat-summary-chevron,
+    .chat-summary-details,
+    .chat-summary-details-inner,
     .tool-approval-main,
     .tool-approval-details-toggle .app-icon,
     .tool-approval-details,
@@ -5233,9 +5239,98 @@ textarea {
 }
 
 @media (max-width: 640px) {
-    .workspace-changes { font-size: 0.72rem; }
-    .workspace-changes-header { font-size: 0.85rem; }
+    .chat-summary-card { font-size: 0.72rem; }
+    .chat-summary-toggle { font-size: 0.85rem; }
     .workspace-change-summary { flex-wrap: wrap; }
+
+    /* As in the sidebar, action tracks cover the fading end of a full-width title. */
+    .chat-summary-card .chat-summary-top,
+    .tool-approval-main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        --chat-card-fade-bg: var(--color-surface);
+    }
+    .chat-summary-top:has(.chat-summary-toggle:hover),
+    .tool-approval-main:hover { --chat-card-fade-bg: var(--color-fill); }
+    .chat-summary-top > .chat-summary-toggle,
+    .tool-approval-main > .tool-approval-header {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        min-width: 0;
+    }
+    .chat-summary-top > .chat-card-header-actions,
+    .tool-approval-main > .chat-card-header-actions {
+        grid-column: 2;
+        grid-row: 1;
+    }
+    .chat-summary-card .chat-summary-top .chat-summary-chevron { order: 1; margin-left: 0; }
+    .chat-summary-title { order: 2; flex: 1; }
+    .tool-approval-header { min-width: 0; }
+
+    .navigation-cue {
+        display: grid;
+        grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+        --chat-card-fade-bg: var(--color-surface);
+    }
+    .navigation-cue > .chat-card-mark { grid-column: 1; grid-row: 1; }
+    .navigation-cue > .chat-card-title { grid-column: 2 / -1; grid-row: 1; }
+    .navigation-cue > .chat-card-header-actions { grid-column: 3; grid-row: 1; }
+
+    .turn-status-stopped {
+        display: grid;
+        grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+        --chat-card-fade-bg: var(--color-surface);
+    }
+    .turn-status-stopped > .chat-card-mark { grid-column: 1; grid-row: 1; }
+    .turn-status-stopped > .chat-card-title { grid-column: 2 / -1; grid-row: 1; }
+    .turn-status-stopped > .chat-card-header-actions { grid-column: 3; grid-row: 1; }
+    .turn-status-action { width: var(--chat-card-action-size); min-width: var(--chat-card-action-size); padding: 0; }
+    .turn-status-action-icon { display: block; }
+    .turn-status-action-label { display: none; }
+
+    .turn-status-failed {
+        display: grid;
+        grid-template-columns: 1.6rem minmax(0, 1fr);
+    }
+    .turn-status-failed > .chat-card-mark { grid-column: 1; grid-row: 1; }
+    .turn-status-failed > .chat-card-title { grid-column: 2; grid-row: 1; }
+    .turn-status-failed > .turn-status-controls { grid-column: 2; grid-row: 2; justify-self: end; }
+
+    .chat-summary-top::after,
+    .tool-approval-main::after,
+    .navigation-cue::after,
+    .turn-status-stopped::after {
+        content: "";
+        grid-column: -2 / -1;
+        grid-row: 1;
+        z-index: 1;
+        justify-self: end;
+        width: calc(100% + 2.5rem);
+        height: 100%;
+        background: linear-gradient(to right, transparent, var(--chat-card-fade-bg) 2.5rem);
+        pointer-events: none;
+    }
+    .chat-summary-top > .chat-card-header-actions,
+    .tool-approval-main > .chat-card-header-actions,
+    .navigation-cue > .chat-card-header-actions,
+    .turn-status-stopped > .chat-card-header-actions { position: relative; z-index: 2; }
+    .queue-actions { padding-right: var(--chat-card-inset); }
+}
+
+@media (max-width: 420px) {
+    .queue-header:has(.queue-clear-confirm) { display: flex; flex-wrap: wrap; }
+    .queue-header:has(.queue-clear-confirm) > .queue-summary { width: 100%; }
+    .queue-header:has(.queue-clear-confirm) > .queue-actions { width: 100%; padding: 0 var(--chat-card-inset) .4rem; }
+    .queue-clear-confirm { width: 100%; flex-wrap: wrap; justify-content: flex-end; }
+    .queue-clear-confirm > span:first-child { flex: 1 1 100%; }
+}
+
+@media (max-width: 360px) {
+    .tool-approval-main { grid-template-columns: minmax(0, 1fr); row-gap: .35rem; }
+    .tool-approval-main > .tool-approval-header { grid-column: 1; grid-row: 1; }
+    .tool-approval-main > .chat-card-header-actions { grid-column: 1; grid-row: 2; justify-self: end; }
+    .tool-approval-main::after { display: none; }
 }
 
 /* Search matches and the diff comment action use the selected accent in either theme. */
@@ -6083,13 +6178,12 @@ textarea {
 /* In a context menu the row takes the place of a menu item, so it keeps that item's box: the menu does not jump. */
 .chat-menu > .review-menu-row { border: 1px solid transparent; }
 .chat-menu > .review-menu-row > .review-menu-confirm-label { padding: .45rem .6rem; white-space: nowrap; }
-.workspace-changes-top { display: flex; align-items: center; min-width: 0; }
-.workspace-changes-top .workspace-changes-header { flex: 1; width: auto; min-width: 0; }
-.workspace-changes-top .workspace-changes-chevron { margin-left: auto; }
-.workspace-review-action { flex: 0 0 auto; margin-left: .5rem; padding: .2rem .55rem; border: 1px solid var(--color-border-stronger); border-radius: calc(.45rem * var(--corner-scale)); background: var(--color-fill); color: var(--color-text); cursor: pointer; }
-.workspace-review-action:hover { background: var(--color-fill-strong); }
-.workspace-changes.is-expanded .workspace-changes-top { border-bottom: 1px solid var(--color-border-subtle); }
-.workspace-changes.is-expanded .workspace-changes-header { border-bottom-color: transparent; }
+.chat-summary-top { display: flex; align-items: center; min-width: 0; border-radius: inherit; }
+.chat-summary-top .chat-summary-toggle { flex: 1; width: auto; min-width: 0; }
+.chat-summary-top .chat-summary-chevron { margin-left: auto; }
+.workspace-review-action { flex: 0 0 auto; }
+.chat-summary-card.is-expanded .chat-summary-top { border-bottom: 1px solid var(--color-border-subtle); }
+.chat-summary-card.is-expanded .chat-summary-toggle { border-bottom-color: transparent; }
 
 .review-workspace { position: fixed; z-index: 100; top: 0; right: 0; bottom: 0; width: min(90rem, 94vw); display: flex; flex-direction: column; min-width: 0; color: var(--color-text); background: var(--color-surface); border-left: 1px solid var(--color-border); box-shadow: -1rem 0 2.5rem rgb(0 0 0 / calc(38% * var(--shadow-scale))); }
 .review-workspace-header { display: flex; align-items: center; gap: .6rem; min-height: 2.8rem; padding: .4rem .8rem; border-bottom: 1px solid var(--color-border); }
@@ -6133,11 +6227,9 @@ textarea {
 .diff-line-review .diff-gutter { left: 1.8rem; }
 .diff-line-review .diff-gutter + .diff-gutter { left: 4.6rem; }
 .diff-line-review .diff-sign { left: 7.4rem; }
-.review-diff-scroll .diff-hunk, .review-diff-scroll .diff-note { padding-left: .6rem; }
+.review-diff-scroll .diff-note { padding-left: .6rem; }
 .review-diff-content { min-width: 0; }
 .review-comment-range-hint { display: block; margin-bottom: .2rem; color: var(--color-text-subtle); font-size: .68rem; }
-.review-file-comment-action { display: block; margin: .1rem .45rem .1rem auto; padding: .1rem .25rem; border: 0; background: transparent; color: var(--color-accent); font-size: .68rem; cursor: pointer; }
-.review-file-comment-action:hover { text-decoration: underline; }
 .review-comment, .review-comment-editor { margin: .15rem .5rem .2rem 6rem; padding: .25rem .4rem; border: 1px solid var(--color-border-strong); border-radius: calc(.35rem * var(--corner-scale)); background: var(--color-surface-raised); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: .75rem; line-height: 1.4; }
 .review-comment-anchor { margin-bottom: .15rem; color: var(--color-accent); font-size: .68rem; }
 .review-comment { box-sizing: border-box; width: fit-content; max-width: calc(100% - 6.5rem); }
@@ -6655,21 +6747,12 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 /* The assistant opening another project or chat: announced above the composer, with a pointer
    that travels to the sidebar row it presses and a highlight where the window lands. */
 .navigation-cue {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin: 0 0 0.4rem;
-    padding: 0.4rem 0.5rem 0.4rem 0.7rem;
     border: 1px solid var(--color-accent-fill);
-    border-radius: 0.6rem;
-    background: var(--color-accent-bg);
     color: var(--color-accent-text);
-    font-size: 0.82rem;
 }
 
 .navigation-cue.is-arrival {
     border-color: var(--color-border);
-    background: var(--color-surface-raised);
     color: var(--color-text-secondary);
 }
 
@@ -6685,16 +6768,6 @@ select.settings-import-action { flex: none; width: auto; padding: 0.2rem 0.4rem;
 .navigation-cue > button {
     flex: none;
     white-space: nowrap;
-}
-
-.navigation-cue .compact-action:not(.primary) {
-    border-color: var(--color-border-strong);
-}
-
-.navigation-cue .compact-action.primary {
-    border-color: var(--color-accent-strong);
-    background: var(--color-accent-fill);
-    color: var(--color-text-strong);
 }
 
 /* The virtual pointer: an accent arrow with a soft glow, whose tip sits at the point it moves to. */
@@ -6934,15 +7007,11 @@ button.is-auto-pressed { filter: brightness(1.15); }
 }
 .app-guide-cursor { z-index: 1003; }
 .app-guide-actions { display: flex; flex: none; gap: .4rem; }
-/* Continue is the default button: filled with the accent, as in the navigation cue. */
-.app-guide-actions .primary { border-color: var(--color-accent-strong); background: var(--color-accent-fill); color: var(--color-text-strong); font-weight: 600; }
-.app-guide-actions .primary:not(:disabled):hover { border-color: var(--color-accent); background: var(--color-accent-strong); }
-.app-guide-actions .primary:disabled { border-color: var(--color-border); background: var(--color-fill); color: var(--color-text-subtle); font-weight: 500; }
 /* A step that goes on by itself warns in the accent and makes Continue glow before it is pressed. */
 .app-guide-step.is-auto.is-expiring { --app-guide-edge: var(--color-accent); animation: none; }
 .app-guide-step.is-auto.is-expiring .app-guide-step-timeout { color: var(--color-accent-text); }
 .app-guide-step.is-auto.is-expiring .app-guide-step-progress > span { background: var(--color-accent); }
-.app-guide-step.is-auto.is-expiring .app-guide-actions .primary:not(:disabled) {
+.app-guide-step.is-auto.is-expiring .app-guide-actions .chat-card-action-primary:not(:disabled) {
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 45%, transparent);
     animation: app-guide-default 1s ease-in-out infinite alternate;
 }

@@ -42,13 +42,17 @@ Clarify only missing decisions for a new dependency, materially different scope 
    Prefer concise labels; shapes/Markdown/icons must be supported by the target build.
 6. Confirm categories cover the requested scope without inventing facts. If the target uses
    a build without mindmap support, report that limitation and offer a flowchart hierarchy.
+   Mindmap layout is radial; do not invent direction TB syntax. Keep branches and labels compact
+   for the narrow chat viewport. If a vertical hierarchy is needed, offer flowchart TB with the
+   same parent/child relationships; honor an explicit request to retain the mindmap type.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.
   Await mermaid.parse(source) when available; false with suppressErrors or a thrown parse error
   means invalid syntax. A runtime/tool startup failure is a separate blocked validation.
 - Parse validation does not prove layout. Render in the actual compatible runtime when possible
-  and inspect labels, connectors and readability. Do not assume a parser or CLI is installed,
+  and inspect labels, connectors and readability at the destination width. For chat, check
+  horizontal overflow and labels becoming too small. Do not assume a parser or CLI is installed,
   silently install dependencies or claim to have viewed an unrendered diagram.
 - Add accTitle/accDescr where that diagram type/version supports them; otherwise provide useful
   adjacent prose. Keep meaning understandable without color and avoid secrets/real personal data.

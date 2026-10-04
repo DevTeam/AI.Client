@@ -49,7 +49,9 @@ public sealed record ToolRef(
 
     /// <summary>
     /// A last-resort human label for a tool nothing knows anything about: <c>read_text_file</c>
-    /// becomes "Read text file". Never invented beyond reformatting the name the server gave.
+    /// becomes "Read text file". Never invented beyond reformatting the name the server gave —
+    /// apart from the one abbreviation a tool server uses, which a person writes differently:
+    /// <c>cs_run</c> reads "C# run", not "Cs run".
     /// </summary>
     public string FallbackLabel
     {
@@ -58,7 +60,17 @@ public sealed record ToolRef(
             if (!string.IsNullOrWhiteSpace(Title)) return Title.Trim();
             var words = Name.Replace('_', ' ').Replace('-', ' ').Trim();
             if (words.Length == 0) return "Tool";
-            return char.ToUpperInvariant(words[0]) + words[1..];
+            return Label(words);
         }
     }
+
+    /// <summary>
+    /// One tool name as a label: the first word is capitalized and the rest is left as the server
+    /// wrote it. A leading <c>cs</c> is the exception, because '#' cannot appear in the protocol
+    /// name the server has to use, and "Cs run" is not how anyone reads <c>cs_run</c>.
+    /// </summary>
+    private static string Label(string words) =>
+        words.StartsWith("cs", StringComparison.OrdinalIgnoreCase) && (words.Length == 2 || words[2] == ' ')
+            ? "C#" + words[2..]
+            : char.ToUpperInvariant(words[0]) + words[1..];
 }

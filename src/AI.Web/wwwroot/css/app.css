@@ -3314,12 +3314,12 @@ div.chat-tip-head { cursor: default; }
 .composer-review-submenu button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-review-submenu button { min-height: 2.5rem; }
 
-/* Active correction uses the accent and a check. Paused and unconfigured correction share an
+/* Active correction uses neutral palette colours and a check. Paused and unconfigured correction share an
    inverted letter; the unconfigured shortcut uses the muted palette colour. */
 .composer-correction-toggle { position: relative; display: inline-grid; width: 2rem; height: 2rem; padding: 0; place-items: center; border-color: transparent; border-radius: 50%; background: transparent; color: var(--color-text-secondary); transition: color .18s ease, background-color .18s ease; }
 .composer-correction-toggle .app-icon { width: 1.05rem; height: 1.05rem; overflow: visible; }
-.composer-correction-toggle.is-on { background: var(--color-accent-bg); color: var(--color-accent); }
-.composer-correction-toggle.is-on:hover { background: var(--color-accent-bg-hover); color: var(--color-accent-text); }
+.composer-correction-toggle.is-on { background: var(--color-fill); color: var(--color-text-secondary); }
+.composer-correction-toggle.is-on:hover { background: var(--color-fill-hover); color: var(--color-text); }
 .composer-correction-toggle.is-off:hover { background: var(--color-fill-hover); color: var(--color-text-secondary); }
 .composer-correction-toggle.is-unconfigured { color: var(--color-text-subtle); }
 .composer-correction-toggle.is-unconfigured:hover { background: var(--color-fill-hover); }

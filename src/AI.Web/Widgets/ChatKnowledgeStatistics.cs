@@ -63,6 +63,7 @@ public sealed class ChatKnowledgeStatisticsCalculator : IChatKnowledgeStatistics
         "list_directory", "directory_tree",
         "search_files", "grep_files",
         "get_file_info", "list_allowed_directories",
+        "zip_list", "zip_read",
         "fetch"
     };
 
@@ -227,6 +228,8 @@ public sealed class ChatKnowledgeStatisticsCalculator : IChatKnowledgeStatistics
         "grep_files" => "Search in files",
         "get_file_info" => "Inspect file",
         "list_allowed_directories" => "List allowed directories",
+        "zip_list" => "List archive",
+        "zip_read" => "Read archive entry",
         "fetch" => "Fetch page",
         _ => new ToolRef("__" + name, "__", name).FallbackLabel
     };

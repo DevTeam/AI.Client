@@ -2,7 +2,7 @@
 
 ## Composition
 
-The built-in server ships 16 tools. All of them receive the `Ask` policy on first discovery, like any new tool.
+The built-in server ships 20 tools. All of them receive the `Ask` policy on first discovery, like any new tool.
 
 In addition, the Host ships a second built-in server — [App tools](17-app-tools.md) with five tools over the application's own data.
 
@@ -24,6 +24,10 @@ In addition, the Host ships a second built-in server — [App tools](17-app-tool
 | `move_file` | move and rename | `delete` for source, `write` for destination |
 | `delete_file` | delete a file | `delete` |
 | `delete_directory` | delete a directory; non-empty only with `recursive` | `delete` |
+| `zip_list` | list archive entries, optional glob `pattern` | `read` |
+| `zip_read` | read one archive entry as text | `read` |
+| `zip_extract` | unpack entries into a destination directory | `read` for the archive, `write` for the destination |
+| `zip_create` | pack files and directories into a new archive | `read` for the sources, `write` for the archive |
 
 The following reference servers from `modelcontextprotocol/servers` are intentionally not adopted: `git` (12 tools are covered by `process_run`), `memory` (9 tools — a separate product decision about memory architecture), `sequentialthinking`, `time`, the deprecated `read_file`, as well as `read_media_file` and `list_directory_with_sizes` as excessive for the current scenarios.
 
@@ -79,6 +83,16 @@ Result limits: 262144 characters per file contents, 32 files and 262144 characte
 
 Not implemented: `IncludePatterns`/`ExcludePatterns` from the `DirectoryGrant` model, media file reading.
 
+## zip_list, zip_read, zip_extract, zip_create
+
+Archive tools work only inside the granted directories and reuse `PathGuard`: reading an archive and reading an entry need the `read` capability, writing an archive or extracting needs `write`. There is no access outside the grant roots, and a path outside every grant is refused before the archive is even opened.
+
+`zip_list` returns `entryCount` and `entries` with `path`, `kind` (`file`/`directory`), `size`, `compressedSize`, and `modifiedAt`; the optional `pattern` is a glob over entry names, and a pattern that matches nothing yields an empty list rather than an error. `EntryCount`, `totalBytes` and `compressedBytes` describe the whole archive even when a cap or a pattern left fewer rows in `entries`. `zip_read` returns the contents of a single entry with `size` and `truncated`; a missing entry is an error that names `zip_list` as the way to see what the archive holds, and an entry that looks binary is reported as such rather than returned as garbled text. `zip_extract` unpacks the selected entries into `destination`, returns the written `files`, refuses to overwrite an existing file unless `overwrite` is true, and fails the whole call on a Zip Slip entry: an entry name never decides where a file lands, so a name that is rooted or climbs out with `..` is an error and nothing is written at all. The whole extraction is planned before the first write, so a call over the caps or colliding with an existing file extracts nothing rather than part of the archive. `zip_create` packs files and directories into a new archive, a directory contributing its files recursively under its own name with forward-slash entry names, skipping default service directories unless `excludeDefaults` is false, and writing to a temporary sibling moved into place, so a failed call leaves no half-written or destroyed archive.
+
+Limits: 5000 entries and 131072 characters per listing, 262144 characters per entry read, and 10000 entries, 1024 sources and 268435456 uncompressed bytes per extraction or pack. Extraction is limited further by what is already on disk and by `pattern`, which is the way through an archive over the cap; the pack result lists at most 2000 written files and sets `truncated` instead of dropping the rest silently.
+
+Not implemented: archive formats other than zip, entry comments and extra fields, encrypted or password-protected archives, and `read_media_file`-style extraction of a single entry to disk.
+
 ## grep_files
 
 Content search. `path` points to a file or to a directory walked recursively; file selection is governed by `filePattern` and `excludePatterns`; service directories are skipped by default, as in `search_files`.
@@ -133,8 +147,12 @@ Third-party stdio/HTTP server execution, OAuth, dynamic `list_changed`, the Resp
 
 The standard command is `dotnet run --project build -- verify`.
 
-Tests cover the real stdio MCP with `dotnet --info`, the 16-tool composition, fragmented model calls, schema validation, confirm/refuse/policy withdrawal, history recovery, both output streams, non-zero exit code, timeout, cancellation, environment, and child termination.
+Tests cover the real stdio MCP with `dotnet --info`, the 20-tool composition, fragmented model calls, schema validation, confirm/refuse/policy withdrawal, history recovery, both output streams, non-zero exit code, timeout, cancellation, environment, and child termination.
 
 For FileSystem tools and `fetch` additional checks cover: refusal when grants are missing, capability and containment (including non-recursive grant, `..`, and relative path), parsing and filtering of `AI_CLIENT_DIRECTORY_GRANTS`, Markdown extraction from HTML, and an end-to-end scenario through a real stdio — `create_directory`, `write_file`, `read_text_file` with `tail`, `edit_file` with `dryRun` and a repeat failed replacement, `read_multiple_files`, `search_files`, `list_directory`, `directory_tree`, `get_file_info`, `move_file`, `delete_file`, and `delete_directory` along with a denial of deletion under a grant without the `delete` capability, refusal of a path outside the grant, and rejection of a relative path before confirmation.
+
+For the archive tools an end-to-end scenario through the real stdio packs a directory, lists the archive with and without a glob, reads one entry and a missing one, unpacks it, refuses a repeat extraction without `overwrite`, refuses a Zip Slip entry contained in a hostile archive, refuses a path outside the grant for both listing and creating, and reports a plain file as not a valid zip archive.
+
+For the archive tools an end-to-end scenario through the real stdio packs a directory, lists the archive with and without a glob, reads one entry, unpacks it, refuses a repeat extraction without `overwrite`, refuses a Zip Slip entry contained in a hostile archive, refuses a path outside the grant for both listing and creating, and reports a plain file as not a valid zip archive.
 
 The publish build includes the server under `mcp`.

@@ -3,6 +3,7 @@
 namespace AI.Mcp.BuiltIn;
 
 using System.Diagnostics;
+using Archives;
 using Files;
 using Grants;
 using ModelContextProtocol.Protocol;
@@ -23,7 +24,7 @@ internal sealed partial class Composition
             // Tools
             .Transient<ProcessRunTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,
-                DeleteFileTool, DeleteDirectoryTool>(Tag.Unique)
+                DeleteFileTool, DeleteDirectoryTool, ZipListTool, ZipReadTool, ZipExtractTool, ZipCreateTool>(Tag.Unique)
             .Transient<ProcessRunner, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()
             .Transient(_ => new WebFetcher(WebFetcher.CreateDefaultHandler()))
             .Transient((IEnumerable<IToolFactory> toolFactories) =>

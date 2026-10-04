@@ -59,7 +59,7 @@ public sealed class BuiltInToolTests
         [
             "process_run", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "list_directory",
             "directory_tree", "search_files", "grep_files", "get_file_info", "write_file", "edit_file", "create_directory",
-            "move_file", "delete_file", "delete_directory"
+            "move_file", "delete_file", "delete_directory", "zip_list", "zip_read", "zip_extract", "zip_create"
         ], ignoreOrder: true);
         var tool = session.Tools.Single(item => item.OriginalName == "process_run");
         tool.SchemaHash.Length.ShouldBe(64);
@@ -553,6 +553,89 @@ public sealed class BuiltInToolTests
                 .GetProperty("files").EnumerateArray()
                 .Single(item => Path.GetFileName(item.GetProperty("path").GetString()!) == "busy.txt")
                 .GetProperty("matches").GetArrayLength().ShouldBe(40);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ShouldPackListReadAndUnpackArchiveWithinGrantOverStdio()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-zip").FullName;
+        try
+        {
+            var source = Directory.CreateDirectory(Path.Combine(root, "src"));
+            var nested = Directory.CreateDirectory(Path.Combine(source.FullName, "nested"));
+            await File.WriteAllTextAsync(Path.Combine(nested.FullName, "note.txt"), "alpha\nbeta\n", TestContext.Current.CancellationToken);
+            // A default-excluded directory must not end up in the archive any more than it ends up
+            // in a directory listing.
+            var skipped = Directory.CreateDirectory(Path.Combine(source.FullName, ".git"));
+            await File.WriteAllTextAsync(Path.Combine(skipped.FullName, "HEAD"), "ref: refs/heads/master", TestContext.Current.CancellationToken);
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
+                [new ToolDirectoryGrant(root, true, ["read", "write", "edit", "delete"])], ToolRunContext.None, timeout.Token);
+            var token = timeout.Token;
+
+            var archive = Path.Combine(root, "bundle.zip");
+            var created = await Structured(session, "zip_create", new { path = archive, paths = (string[])[source.FullName] }, token);
+            created.GetProperty("error").ValueKind.ShouldBe(JsonValueKind.Null);
+            created.GetProperty("entries").GetInt32().ShouldBe(1);
+            File.Exists(archive).ShouldBeTrue();
+
+            var listing = await Structured(session, "zip_list", new { path = archive }, token);
+            listing.GetProperty("entryCount").GetInt32().ShouldBe(1);
+            var entry = listing.GetProperty("entries").EnumerateArray().Single();
+            entry.GetProperty("path").GetString().ShouldBe("src/nested/note.txt");
+            entry.GetProperty("kind").GetString().ShouldBe("file");
+
+            // The listing can be narrowed by a glob, and a pattern that matches nothing is not an error.
+            (await Structured(session, "zip_list", new { path = archive, pattern = "*.md" }, token))
+                .GetProperty("entries").GetArrayLength().ShouldBe(0);
+
+            (await Structured(session, "zip_read", new { path = archive, entryPath = "src/nested/note.txt" }, token))
+                .GetProperty("content").GetString().ShouldBe("alpha\nbeta\n");
+            (await Structured(session, "zip_read", new { path = archive, entryPath = "src/nested/absent.txt" }, token))
+                .GetProperty("error").GetString()!.ShouldContain("Use zip_list");
+
+            var destination = Path.Combine(root, "out");
+            var extracted = await Structured(session, "zip_extract", new { path = archive, destination }, token);
+            extracted.GetProperty("files").GetArrayLength().ShouldBe(1);
+            File.ReadAllText(Path.Combine(destination, "src", "nested", "note.txt")).ShouldBe("alpha\nbeta\n");
+
+            // An existing file is refused before anything is written, unless the call asks for it.
+            (await Structured(session, "zip_extract", new { path = archive, destination }, token))
+                .GetProperty("error").GetString()!.ShouldContain("overwrite");
+            (await Structured(session, "zip_extract", new { path = archive, destination, overwrite = true }, token))
+                .GetProperty("files").GetArrayLength().ShouldBe(1);
+            (await Structured(session, "zip_extract", new { path = archive, destination, pattern = "*.md", overwrite = true }, token))
+                .GetProperty("files").GetArrayLength().ShouldBe(0);
+
+            // Zip Slip: an entry whose name climbs out of the destination is refused as a whole,
+            // and the file it aimed at is not created.
+            var escape = Path.Combine(root, "escape.zip");
+            using (var hostile = System.IO.Compression.ZipFile.Open(escape, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                using var writer = new StreamWriter(hostile.CreateEntry("../escaped.txt").Open());
+                writer.Write("owned");
+            }
+
+            (await Structured(session, "zip_extract", new { path = escape, destination = Path.Combine(root, "slip") }, token))
+                .GetProperty("error").GetString()!.ShouldContain("outside the destination");
+            File.Exists(Path.Combine(root, "escaped.txt")).ShouldBeFalse();
+
+            // A path outside every grant is refused, for reading an archive and for writing one.
+            var outside = Path.Combine(Path.GetTempPath(), "ai-client-zip-outside.zip");
+            (await Structured(session, "zip_list", new { path = outside }, token))
+                .GetProperty("error").GetString()!.ShouldContain("No directory grant");
+            (await Structured(session, "zip_create", new { path = outside, paths = (string[])[archive] }, token))
+                .GetProperty("error").GetString()!.ShouldContain("No directory grant");
+            File.Exists(outside).ShouldBeFalse();
+
+            // A file that is not an archive is reported as such rather than as a crash.
+            var plain = Path.Combine(root, "plain.txt");
+            await File.WriteAllTextAsync(plain, "not a zip", TestContext.Current.CancellationToken);
+            (await Structured(session, "zip_list", new { path = plain }, token))
+                .GetProperty("error").GetString()!.ShouldContain("Not a valid zip archive");
         }
         finally { Directory.Delete(root, true); }
     }

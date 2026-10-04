@@ -21,6 +21,10 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTra
         ["move_file"] = ["source", "destination"],
         ["delete_file"] = ["path"],
         ["delete_directory"] = ["path"],
+        // Extraction writes the entries of an archive, and entry names live inside it rather than
+        // in the arguments, so the files it produces cannot be named here. The archive itself is
+        // tracked for creation, which is the write the run actually chooses.
+        ["zip_create"] = ["path"],
     };
 
     /// <summary>Past this size a file is compared by existence only; reading it twice is not worth it.</summary>

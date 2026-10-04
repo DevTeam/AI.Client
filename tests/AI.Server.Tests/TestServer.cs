@@ -26,9 +26,9 @@ internal sealed class TestServer
     private static void Setup() =>
         DI.Setup(kind: CompositionKind.Internal)
             .Hint(Hint.Comments, "Off")
-            .Singleton(() => Mock.Of<IGlobalSecretStore>())
             .Arg<MemoryFileSystem>("fileSystem")
             .Arg<IChatCompletionClient>("completion")
+            .Singleton(() => Mock.Of<IGlobalSecretStore>())
             .Bind<ITextFileSystem>().To((MemoryFileSystem fileSystem) => fileSystem)
             // Outside ASP.NET nothing supplies Microsoft's loggers.
             .Bind<ILogger<TT>>().To(_ => NullLogger<TT>.Instance);

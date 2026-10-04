@@ -141,3 +141,141 @@ test('right clicks and previously handled events are left alone; disposal remove
     f.handle.dispose();
     assert.equal(f.listeners.size, 0);
 });
+
+// A small DOM for the observer/cache path. Timers and mutation delivery are explicit so the
+// assertions see what is ready for the first paint, before the delayed discovery scan runs.
+function scanningFixture() {
+    const blocks = [], timers = new Map(), requests = [];
+    let timerId = 0, clock = 0, deliver;
+    class Element {
+        constructor(tagName) {
+            this.tagName = tagName;
+            this.dataset = {};
+            this.attributes = new Map();
+            const classes = new Set();
+            this.classList = { add: value => classes.add(value), remove: value => classes.delete(value),
+                contains: value => classes.has(value) };
+            this.isConnected = true;
+        }
+        setAttribute(name, value) { this.attributes.set(name, value); }
+        getAttribute(name) { return this.attributes.get(name) ?? null; }
+        removeAttribute(name) { this.attributes.delete(name); }
+        closest(selector) { return selector === '.markdown-content, .message-resource-list' ? this.block : null; }
+        querySelectorAll(selector) {
+            this.scans++;
+            const elements = selector.startsWith('code') ? this.codes : selector.startsWith('span') ? this.spans : [];
+            return elements.filter(element => !element.dataset.pathState);
+        }
+    }
+    function block(codeText = null, prose = null) {
+        const result = new Element('DIV');
+        result.block = result;
+        result.codes = [];
+        result.spans = [];
+        result.texts = [];
+        result.scans = 0;
+        if (codeText) {
+            const code = new Element('CODE');
+            code.textContent = codeText;
+            code.block = result;
+            result.codes.push(code);
+        }
+        if (prose) {
+            const textNode = data => ({ data, parentElement: result, replaceWith(fragment) {
+                const index = result.texts.indexOf(this);
+                result.texts.splice(index, 1, ...fragment.parts.filter(part => typeof part === 'string').map(textNode));
+                result.spans.push(...fragment.parts.filter(part => part instanceof Element));
+            } });
+            result.texts.push(textNode(prose));
+        }
+        blocks.push(result);
+        return result;
+    }
+    const container = {
+        contains: () => true,
+        addEventListener() {}, removeEventListener() {},
+        querySelectorAll(selector) {
+            if (selector === '.markdown-content, .message-resource-list') return blocks;
+            if (selector === '[data-path-state]') return blocks.flatMap(block => [...block.codes, ...block.spans])
+                .filter(element => element.dataset.pathState);
+            if (selector === '[data-path-state="pending"]') return blocks.flatMap(block => [...block.codes, ...block.spans])
+                .filter(element => element.dataset.pathState === 'pending');
+            if (selector.endsWith('[data-path-text-pending]')) return blocks.filter(block => block.dataset.pathTextPending);
+            return [];
+        }
+    };
+    const context = createContext({
+        Element, URL, location: { href: 'https://app.test/' },
+        NodeFilter: { SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2 },
+        document: {
+            createElement: tag => new Element(tag.toUpperCase()),
+            createDocumentFragment: () => ({ parts: [], append(part) { this.parts.push(part); } }),
+            createTreeWalker(block, _, filter) {
+                const nodes = block.texts.filter(node => filter.acceptNode(node) === 1);
+                let index = 0;
+                return { nextNode() { this.currentNode = nodes[index++]; return !!this.currentNode; } };
+            }
+        },
+        MutationObserver: class {
+            constructor(callback) { deliver = callback; }
+            observe() {} disconnect() {} takeRecords() { return []; }
+        },
+        performance: { now: () => clock += 9 },
+        setTimeout(callback) { timers.set(++timerId, callback); return timerId; },
+        clearTimeout(id) { timers.delete(id); },
+        async fetch(_, options) {
+            const paths = JSON.parse(options.body).paths;
+            requests.push(...paths);
+            return { ok: true, json: async () => paths.map(input => ({ input, path: input, kind: 0, access: 1 })) };
+        }
+    });
+    runInContext(source, context);
+    const handle = context.attach(container, { invokeMethodAsync() {} });
+    handle.setScope('project', '/resolve');
+    return { block, requests,
+        async tick() {
+            const [id, callback] = timers.entries().next().value;
+            timers.delete(id);
+            await callback();
+        },
+        change(...targets) { deliver(targets.map(target => ({ target, addedNodes: [] }))); }
+    };
+}
+
+test('all cached file links are restored before paint when several message blocks change', async () => {
+    const f = scanningFixture();
+    const original = f.block('src/app.cs');
+    f.change(original);
+    await f.tick(); // Discover the path.
+    await f.tick(); // Resolve and cache it.
+    assert.equal(original.codes[0].classList.contains('file-link'), true);
+    original.scans = 0;
+    const first = f.block('src/app.cs'), second = f.block('src/app.cs');
+    f.change(first, second);
+    for (const block of [first, second]) {
+        assert.equal(block.codes[0].classList.contains('file-link'), true);
+        assert.equal(block.codes[0].dataset.fileAccess, 'read');
+    }
+    assert.equal(original.scans, 0, 'unchanged blocks waiting for the timer must not be scanned');
+    assert.deepEqual(f.requests, ['src/app.cs']);
+});
+
+test('a new unknown path in growing prose does not hide a cached file link before paint', async () => {
+    const f = scanningFixture();
+    const original = f.block(null, 'Read C:\\repo\\app.cs');
+    f.change(original);
+    await f.tick();
+    await f.tick();
+    await f.tick(); // Finish the first prose decoration.
+    const grown = f.block(null, 'Read C:\\repo\\app.cs and C:\\repo\\next.cs');
+    f.change(grown);
+    assert.equal(grown.spans.length, 1);
+    assert.equal(grown.spans[0].dataset.filePath, 'C:\\repo\\app.cs');
+    assert.equal(grown.spans[0].classList.contains('file-link'), true);
+    assert.deepEqual(f.requests, ['C:\\repo\\app.cs']);
+    await f.tick(); // Discover only the new path.
+    await f.tick(); // Resolve it.
+    await f.tick(); // Decorate the remaining prose.
+    assert.deepEqual(grown.spans.map(span => span.dataset.filePath), ['C:\\repo\\app.cs', 'C:\\repo\\next.cs']);
+    assert.deepEqual(f.requests, ['C:\\repo\\app.cs', 'C:\\repo\\next.cs']);
+});

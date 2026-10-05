@@ -7652,7 +7652,11 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .file-preview-directory button { display: flex; align-items: center; gap: .5rem; padding: .6rem; border: 0; text-align: left; color: var(--color-text); background: none; cursor: pointer; }
 .file-preview-directory button:hover { background: var(--color-fill); }
 .file-preview-directory button span { overflow-wrap: anywhere; }
-.file-preview-toolbar button[aria-pressed="true"] { background: var(--color-fill-strong, var(--color-fill)); border-color: var(--color-accent); }
+.file-preview-modes { display: flex; gap: .25rem; }
+.file-preview-toolbar .file-preview-mode { display: inline-flex; align-items: center; gap: .35rem; color: var(--color-text-muted); }
+.file-preview-toolbar .file-preview-mode.is-active { color: var(--color-text-strong); background: color-mix(in srgb, var(--color-accent) 22%, var(--color-fill)); border-color: var(--color-accent); box-shadow: inset 0 -2px var(--color-accent); font-weight: 600; }
+.file-preview-mode-check { width: .85rem; height: .85rem; visibility: hidden; }
+.file-preview-mode.is-active .file-preview-mode-check { visibility: visible; color: var(--color-accent); }
 .file-preview-markdown { padding: 1rem 1.2rem; overflow-wrap: anywhere; }
 .file-preview-diff { min-width: max-content; padding-block: .5rem; font: .8rem/1.2rem var(--font-mono, monospace); }
 .file-preview-diff .diff-note, .file-preview-diff .diff-hunk { padding: .4rem .8rem; white-space: pre; }

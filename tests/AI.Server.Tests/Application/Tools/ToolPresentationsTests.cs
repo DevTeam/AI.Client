@@ -16,11 +16,11 @@ public class ToolPresentationsTests
     // Same tool name, but another server: the built-in adapters must not claim it.
     [InlineData("mcp_default__process_run", "Process run")]
     [InlineData("weather-lookup", "Weather lookup")]
-    // '#' cannot appear in a protocol tool name, so the C# server has to write 'cs_run'; a person
-    // still reads it as "C# run".
-    [InlineData("mcp_csharp__cs_run", "C# run")]
-    [InlineData("cs_run", "C# run")]
-    // Only the abbreviation is expanded: any other name keeps its own spelling.
+    // A name the generic adapter has no knowledge of is only reformatted; the C# server's own tool
+    // is claimed by CSharpToolPresentationAdapter before the fallback is ever reached, so no
+    // abbreviation is expanded here.
+    [InlineData("cs_run", "Cs run")]
+    // Any other name keeps its own spelling and order.
     [InlineData("mcp_built_in__css_lint", "Css lint")]
     [InlineData("mcp_built_in__csharp_analyze", "Csharp analyze")]
     [InlineData("", "Tool")]

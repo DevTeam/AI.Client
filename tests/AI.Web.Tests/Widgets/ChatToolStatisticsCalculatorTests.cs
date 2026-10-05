@@ -10,7 +10,20 @@ using Xunit;
 
 public class ChatToolStatisticsCalculatorTests
 {
-    private readonly ChatToolStatisticsCalculator _calculator = new(new ToolResultCodec(new ToolResultModelProjector()));
+    // The adapter set the containers ship, so the label asserted here is the one a person sees.
+    private readonly ChatToolStatisticsCalculator _calculator = new(
+        new ToolResultCodec(new ToolResultModelProjector()),
+        new ToolPresentations(new GenericToolPresentationAdapter(), [new CSharpToolPresentationAdapter()]));
+
+    [Fact]
+    public void ShouldLabelAToolThroughItsPresentationAdapter()
+    {
+        var stats = Calculate([User(), Calls(new ChatToolCall("a", "mcp_csharp__cs_run", "{\"code\":\"1+1\"}")),
+            Result("a", "{\"isError\":false}")]);
+
+        // The adapter claims cs_run, so the row reads "Run C#" and not a reformatted call name.
+        stats.Tools.Single().Label.ShouldBe("Run C#");
+    }
 
     [Fact]
     public void ShouldGroupByFullToolNameAndCountResultsAndTurns()

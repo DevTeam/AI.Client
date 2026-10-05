@@ -4,4 +4,4 @@ public sealed record QueuedRunMessage(Guid Id, string Content, DateTimeOffset Cr
     MessageParentMode ParentMode = MessageParentMode.BranchHead, Guid? ParentMessageId = null,
     Guid? ReplaceSourceId = null, Guid? ParentBranchId = null, long? ExpectedBranchRevision = null,
     QueuedRunStage Stage = QueuedRunStage.Prepared,
-    IReadOnlyList<AI.Domain.Resources.ChatResourceRef>? Resources = null, bool Interactive = true);
+    IReadOnlyList<AI.Domain.Resources.ChatResource>? Resources = null, bool Interactive = true);

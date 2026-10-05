@@ -20,11 +20,13 @@ public sealed class ChatContext(IToolResultCodec toolResultCodec, IResourceModel
             var role = message.Role.ToLowerInvariant();
             var modelContent = role == "tool" ? toolResultCodec.TryRead(message.Content)?.ModelContent : null;
             if (role == "user") modelContent = resources.Project(message.Content, message.Resources);
-            path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent, message.Id));
+            path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent, message.Id,
+                ImageAssetIds: message.Resources?.Where(item => item.Kind == AI.Contracts.Resources.ChatResourceKind.Image)
+                    .Select(item => item.AssetId).OfType<string>().ToArray()));
             current = message.ParentId;
         }
         path.Reverse();
-        return RepairToolExchanges(path);
+        return WithToolImages(RepairToolExchanges(path));
     }
 
     public async Task<IReadOnlyList<ChatCompletionMessage>> BuildAsync(ChatDetails chat, Guid headId,
@@ -42,11 +44,32 @@ public sealed class ChatContext(IToolResultCodec toolResultCodec, IResourceModel
             var modelContent = role == "tool" ? toolResultCodec.TryRead(message.Content)?.ModelContent : null;
             if (role == "user") modelContent = await resources.ProjectAsync(chat.ProjectId, chat.Id,
                 message.Content, message.Resources, cancellationToken);
-            path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent, message.Id));
+            path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent, message.Id,
+                ImageAssetIds: message.Resources?.Where(item => item.Kind == AI.Contracts.Resources.ChatResourceKind.Image)
+                    .Select(item => item.AssetId).OfType<string>().ToArray()));
             current = message.ParentId;
         }
         path.Reverse();
-        return RepairToolExchanges(path);
+        return WithToolImages(RepairToolExchanges(path));
+    }
+
+    private List<ChatCompletionMessage> WithToolImages(List<ChatCompletionMessage> path)
+    {
+        var result = new List<ChatCompletionMessage>();
+        var images = new List<string>();
+        for (var index = 0; index < path.Count; index++)
+        {
+            var message = path[index];
+            result.Add(message);
+            if (message.Role != "tool") continue;
+            images.AddRange(toolResultCodec.TryRead(message.Content)?.Content
+                .Where(item => item.Kind == ToolContentKind.Image).Select(item => item.AssetId).OfType<string>() ?? []);
+            if (images.Count == 0 || index + 1 < path.Count && path[index + 1].Role == "tool") continue;
+            result.Add(new ChatCompletionMessage("user", "Images returned by the preceding tools:",
+                IsContextSummary: true, ImageAssetIds: images.ToArray()));
+            images.Clear();
+        }
+        return result;
     }
 
     private static List<ChatCompletionMessage> RepairToolExchanges(IReadOnlyList<ChatCompletionMessage> path)

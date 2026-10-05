@@ -171,7 +171,8 @@ public class ChatCompletionUsageTests
 
     private OpenAiCompatibleChatCompletionClient CreateInstance() =>
         new(new HttpClient(_handler.Object), new ChatCompletionSseParser(new ChatCompletionUsageReader(), new ChatTransportPolicy()),
-            new ChatTransportPolicy(), new ChatCompletionUsageReader(), new RateLimitHeaderReader(), _rateLimits, new SystemClock());
+            new ChatTransportPolicy(), new ChatCompletionUsageReader(), new RateLimitHeaderReader(), _rateLimits, new SystemClock(),
+            new Mock<AI.Application.Resources.IResourceAssetService>().Object);
 
     [Fact]
     public async Task ShouldKeepTheLimitsTheEndpointStatesForItsConnection()

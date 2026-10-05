@@ -3,13 +3,14 @@ namespace AI.Application.Resources;
 using AI.Contracts.Resources;
 using System.Text.Json;
 
-public sealed class ResourceModelProjection(IReviewService? reviews) : IResourceModelProjection
+public sealed class ResourceModelProjection(IReviewService? reviews, IResourceAssetService? assets) : IResourceModelProjection
 {
     // The sync projection remains useful for simple file references and tests. Running chat
     // requests use ProjectAsync so mutable review comments are resolved at request time.
-    public ResourceModelProjection() : this(null) { }
+    public ResourceModelProjection() : this(null, null) { }
+    public ResourceModelProjection(IReviewService reviews) : this(reviews, null) { }
 
-    public string Project(string content, IReadOnlyList<ChatResourceRef>? references)
+    public string Project(string content, IReadOnlyList<ChatResource>? references)
     {
         if (references is null or { Count: 0 }) return content;
         content = WithInvokedSkill(content, references);
@@ -19,12 +20,12 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
             item.Kind == ChatResourceKind.Review
                 ? [$"- review: {JsonSerializer.Serialize(item.Name ?? item.Path)} [resource {item.Id}]"]
                 : Describe(item));
-        return string.Join('\n', (new[] { content, "Attached workspace references:" }).Concat(lines)
+        return string.Join('\n', (new[] { content, "Attached resources:" }).Concat(lines)
             .Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
     public async Task<string> ProjectAsync(Guid projectId, Guid chatId, string content,
-        IReadOnlyList<ChatResourceRef>? references, CancellationToken cancellationToken)
+        IReadOnlyList<ChatResource>? references, CancellationToken cancellationToken)
     {
         if (references is null or { Count: 0 }) return content;
         content = WithInvokedSkill(content, references);
@@ -40,6 +41,17 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
             if (reference.Kind != ChatResourceKind.Review)
             {
                 lines.AddRange(Describe(reference));
+                if (reference.Kind == ChatResourceKind.File && reference.AssetId is { } assetId)
+                {
+                    var text = await (assets ?? throw new InvalidOperationException("Asset service is required."))
+                        .ReadTextAsync(projectId, assetId, cancellationToken);
+                    if (text is null) lines.Add("  Binary content is not available as text to this model.");
+                    else
+                    {
+                        lines.AddRange(Fenced(text.Text, string.Empty));
+                        if (text.Truncated) lines.Add("  Only the first 64 KiB of this file are shown.");
+                    }
+                }
                 continue;
             }
             if (!reviewItems.TryGetValue(reference.Id, out var review))
@@ -73,7 +85,7 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
             if (review.Comments.Count > 10) lines.Add($"  - {review.Comments.Count - 10} more comments; use app_read to inspect the resource.");
         }
         if (lines.Count == 0) return content;
-        return string.Join('\n', new[] { content, "Attached workspace references:" }.Concat(lines)
+        return string.Join('\n', new[] { content, "Attached resources:" }.Concat(lines)
             .Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
@@ -81,11 +93,19 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
     /// Everything but a review, which needs the live review state. Files and directories stay live
     /// paths; a line range and uncommitted changes carry the text captured when the message was sent.
     /// </summary>
-    private static IEnumerable<string> Describe(ChatResourceRef reference)
+    private static IEnumerable<string> Describe(ChatResource reference)
     {
         var name = JsonSerializer.Serialize(reference.Name ?? reference.Path);
         switch (reference.Kind)
         {
+            case ChatResourceKind.Image:
+                yield return $"- image: {name}{Linked(reference)} [resource {reference.Id}; attached image; "
+                             + $"source {reference.Source}: {JsonSerializer.Serialize(reference.Path)}]";
+                yield break;
+            case ChatResourceKind.File when reference.AssetId is not null:
+                yield return $"- uploaded file: {name}{Linked(reference)} [resource {reference.Id}; "
+                             + $"media type {reference.MediaType}; {reference.Size} bytes; saved content follows when readable]";
+                yield break;
             case ChatResourceKind.Chat:
                 yield return $"- chat: {name}{Linked(reference)} [chat {reference.Path} in this project; read its messages with app_read "
                              + $"resource Messages and chatId {reference.Path}]";
@@ -112,7 +132,7 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
     }
 
     /// <summary>Which "@" link in the text the reference is, so the model can tell them apart.</summary>
-    private static string Linked(ChatResourceRef reference) =>
+    private static string Linked(ChatResource reference) =>
         reference.Mention is { } mention ? $" (linked in the message as {JsonSerializer.Serialize(mention)})" : string.Empty;
 
     /// <summary>A fence longer than any backtick run inside, so captured text cannot close it early.</summary>
@@ -135,7 +155,7 @@ public sealed class ResourceModelProjection(IReviewService? reviews) : IResource
     /// A skill chosen from the composer's slash list. The message text is the user's instructions
     /// for it; the model still prepares the parameters with its ordinary tools and runs it.
     /// </summary>
-    private static string WithInvokedSkill(string content, IReadOnlyList<ChatResourceRef> references)
+    private static string WithInvokedSkill(string content, IReadOnlyList<ChatResource> references)
     {
         if (references.FirstOrDefault(item => item.Kind == ChatResourceKind.Skill) is not { } skill) return content;
         var line = $"The user invoked the skill {JsonSerializer.Serialize(skill.Path)}"

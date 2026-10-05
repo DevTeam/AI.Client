@@ -4,7 +4,11 @@ using AI.Contracts.Resources;
 
 public interface IResourceApi
 {
-    Task<ChatResourceRef> CreateAsync(Guid projectId, ChatResourceKind kind, string path, CancellationToken cancellationToken);
+    Task<ChatResource> CreateAsync(Guid projectId, ChatResourceKind kind, string path, CancellationToken cancellationToken);
+    Task<ChatResource> UploadFileAsync(Guid projectId, byte[] bytes, string name, ChatResourceSource source,
+        CancellationToken cancellationToken);
+    Task<string> GetAssetUrlAsync(Guid projectId, string assetId, CancellationToken cancellationToken);
+    Task<ResourceAssetText?> GetAssetTextAsync(Guid projectId, string assetId, CancellationToken cancellationToken);
 
     /// <summary>What each path names and whether the project may read it; see <see cref="ResolvedPath"/>.</summary>
     Task<IReadOnlyList<ResolvedPath>> ResolveAsync(Guid projectId, IReadOnlyList<string> paths, CancellationToken cancellationToken);

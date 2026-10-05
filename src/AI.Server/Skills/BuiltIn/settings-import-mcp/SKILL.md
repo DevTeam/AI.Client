@@ -152,14 +152,15 @@ verify candidates against their actual publisher docs, not search snippets.
     blocked or skipped test is not evidence of failed behavior: explain the missing prerequisite
     instead. Dismissed, declined, expired or interrupted means keep the import; do not remove
     it or start replacement installation without an explicit choice.
-    If removal was selected, re-read Settings and relevant project/skill dependencies. Remove
-    only the imported server definition using `app_security` RemoveMcpServer with serverId,
-    the latest server as expectedMcpServer, and a fresh operationId. This also removes that
-    server's global tool policies; do not rewrite shared
-    dependencies or project bindings silently. If this reused/modified a pre-existing server,
-    explain that distinction and obtain an exact choice to restore its prior configuration or
-    remove it. Do not uninstall shared packages/runtimes or delete users' data as part of removing
-    an application definition. Verify the write and re-read Settings to confirm the intended
+    If this reused/modified a pre-existing server, explain that distinction and obtain an exact
+    choice to restore its prior configuration or remove it before changing anything. Re-read
+    Settings and relevant project/skill dependencies. Restore a pre-existing definition with
+    `app_security` UpsertMcpServer, passing the latest server as expectedMcpServer. For a new
+    import, or an explicitly chosen removal of a pre-existing server, call RemoveMcpServer with
+    serverId and the latest server as expectedMcpServer. Use a fresh operationId for each change.
+    Removal also removes that server's global tool policies; do not rewrite shared dependencies
+    or project bindings silently. Do not uninstall shared packages/runtimes or delete users'
+    data as part of removing an application definition. Verify the write and re-read Settings to confirm the intended
     removal/restoration before claiming success or installing a replacement.
     Search the source catalog again for the original capability, excluding the failed server
     source/version and accounting for the actual failure and available tools. Show a suitable

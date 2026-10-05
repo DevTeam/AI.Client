@@ -29,7 +29,7 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
     // -> A must not lose A's own context, and a chat can be mid-draft in more than one place at once.
     private Dictionary<Guid, ProjectContextEntry> _projectContexts = [];
     private Dictionary<string, string> _composerDrafts = [];
-    private Dictionary<string, AI.Contracts.Resources.ChatResourceRef[]> _composerResourceDrafts = [];
+    private Dictionary<string, AI.Contracts.Resources.ChatResource[]> _composerResourceDrafts = [];
     // Per project, newest first. Scoped to the project rather than the chat because the point of
     // the feature is re-sending a phrasing the user already used ("run the tests", "do the
     // recommended thing"), and that reuse happens across the project's chats — a per-chat history
@@ -60,7 +60,7 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
 
         _projectContexts = await LoadDictionaryAsync<Guid, ProjectContextEntry>(ProjectContextKey);
         _composerDrafts = await LoadDictionaryAsync<string, string>(ComposerDraftKey);
-        _composerResourceDrafts = await LoadDictionaryAsync<string, AI.Contracts.Resources.ChatResourceRef[]>(ComposerResourceDraftKey);
+        _composerResourceDrafts = await LoadDictionaryAsync<string, AI.Contracts.Resources.ChatResource[]>(ComposerResourceDraftKey);
         _composerHistory = await LoadDictionaryAsync<Guid, List<string>>(ComposerHistoryKey);
         LastBrowsedDirectory = await jsRuntime.InvokeAsync<string?>("localStorage.getItem", LastBrowsedDirectoryKey);
     }
@@ -109,11 +109,11 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
     public string GetComposerDraft(string draftKey) =>
         draftKey.Length == 0 ? string.Empty : _composerDrafts.GetValueOrDefault(draftKey, string.Empty);
 
-    public IReadOnlyList<AI.Contracts.Resources.ChatResourceRef> GetComposerResourceDraft(string draftKey) =>
+    public IReadOnlyList<AI.Contracts.Resources.ChatResource> GetComposerResourceDraft(string draftKey) =>
         draftKey.Length == 0 ? [] : _composerResourceDrafts.GetValueOrDefault(draftKey, []);
 
     public async Task SetComposerResourceDraftAsync(string draftKey,
-        IReadOnlyList<AI.Contracts.Resources.ChatResourceRef> references)
+        IReadOnlyList<AI.Contracts.Resources.ChatResource> references)
     {
         if (draftKey.Length == 0) return;
         if (references.Count == 0) _composerResourceDrafts.Remove(draftKey);

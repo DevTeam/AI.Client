@@ -1,18 +1,47 @@
 namespace AI.Infrastructure.Tests.Chat;
 
 using AI.Application.Chat;
+using AI.Application.Resources;
 using AI.Infrastructure.Chat;
 using Moq;
 using Moq.Protected;
 using Shouldly;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Runtime.CompilerServices;
 using Xunit;
 
 public class OpenAiCompatibleChatCompletionClientTests
 {
     private readonly Mock<HttpMessageHandler> _handler = new(MockBehavior.Strict);
+
+    [Fact]
+    public async Task ShouldSendStoredImageAsMultimodalContent()
+    {
+        var projectId = Guid.NewGuid();
+        var assetId = new string('a', 64);
+        var images = new Mock<IResourceAssetService>();
+        images.Setup(item => item.ReadAsync(projectId, assetId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResourceAsset([1, 2, 3], "image/png"));
+        var client = CreateInstance(images: images.Object);
+        string? payload = null;
+        _handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .Callback<HttpRequestMessage, CancellationToken>((request, _) =>
+                payload = request.Content!.ReadAsStringAsync(CancellationToken.None).GetAwaiter().GetResult())
+            .ReturnsAsync(CreateResponse(HttpStatusCode.OK, """{"choices":[{"message":{"content":"A picture"}}]}"""));
+
+        await client.CompleteAsync(new ChatCompletionRequest("https://llm.example/v1", "model", null, string.Empty,
+            ContextMessages: [new ChatCompletionMessage("user", string.Empty, ImageAssetIds: [assetId])],
+            ProjectId: projectId), CancellationToken.None);
+
+        using var document = JsonDocument.Parse(payload.ShouldNotBeNull());
+        var parts = document.RootElement.GetProperty("messages")[0].GetProperty("content");
+        parts[0].GetProperty("type").GetString().ShouldBe("text");
+        parts[1].GetProperty("type").GetString().ShouldBe("image_url");
+        parts[1].GetProperty("image_url").GetProperty("url").GetString().ShouldBe("data:image/png;base64,AQID");
+    }
 
     [Fact]
     public async Task ShouldSendOpenAiCompatibleRequestWithBearerToken()
@@ -220,10 +249,11 @@ public class OpenAiCompatibleChatCompletionClientTests
     }
 
     private OpenAiCompatibleChatCompletionClient CreateInstance(
-        IChatCompletionSseParser? parser = null, IChatTransportPolicy? policy = null) =>
+        IChatCompletionSseParser? parser = null, IChatTransportPolicy? policy = null,
+        IResourceAssetService? images = null) =>
         new(new HttpClient(_handler.Object), parser ?? new ChatCompletionSseParser(new ChatCompletionUsageReader(), new ChatTransportPolicy()), policy ?? new ChatTransportPolicy(), new ChatCompletionUsageReader(),
             new AI.Infrastructure.Chat.RateLimitHeaderReader(), new AI.Application.Usage.ConnectionRateLimits(),
-            new AI.Infrastructure.Projects.SystemClock());
+            new AI.Infrastructure.Projects.SystemClock(), images ?? new Mock<IResourceAssetService>().Object);
 
     private sealed class DelayedParser : IChatCompletionSseParser
     {

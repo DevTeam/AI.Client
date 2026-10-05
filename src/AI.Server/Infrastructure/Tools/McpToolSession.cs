@@ -255,7 +255,7 @@ public sealed class McpToolSession : IToolSession
         ModelContextProtocol.Protocol.TextContentBlock text =>
             new ToolContent(ToolContentKind.Text, text.Text, null, null, null),
         ModelContextProtocol.Protocol.ImageContentBlock image =>
-            new ToolContent(ToolContentKind.Image, null, image.MimeType, null, null),
+            new ToolContent(ToolContentKind.Image, null, image.MimeType, null, null, Data: image.Data.ToArray()),
         ModelContextProtocol.Protocol.AudioContentBlock audio =>
             new ToolContent(ToolContentKind.Audio, null, audio.MimeType, null, null),
         ModelContextProtocol.Protocol.ResourceLinkBlock link =>

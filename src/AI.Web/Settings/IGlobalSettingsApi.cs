@@ -29,4 +29,5 @@ public interface IGlobalSettingsApi
     /// </summary>
     Task<IReadOnlyList<ResolvedModelInfo>> GetConnectionModelsAsync(
         Guid id, ResolveConnectionModelsRequest request, CancellationToken cancellationToken);
+    Task<ImageProbeResult> TestConnectionImageAsync(Guid id, ImageProbeRequest request, CancellationToken cancellationToken);
 }

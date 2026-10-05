@@ -70,6 +70,8 @@ public sealed partial class SettingsTransferCodec : ISettingsTransferCodec
         if (connection.ReservedOutputTokens is { } reserved) writer.WriteNumber("reservedOutputTokens", reserved);
         if (connection.Capability is { } capability) writer.WriteNumber("capability", capability);
         if (!string.IsNullOrWhiteSpace(connection.GoodFor)) writer.WriteString("goodFor", connection.GoodFor);
+        if (connection.ImageInput != ImageInputMode.Automatic)
+            writer.WriteString("imageInput", connection.ImageInput.ToString());
         if (connection.Prices is { } prices)
         {
             writer.WriteStartObject("prices");
@@ -442,7 +444,9 @@ public sealed partial class SettingsTransferCodec : ISettingsTransferCodec
                 Guid.CreateVersion7(), name, baseUrl!.TrimEnd('/'), model, IsEnabled(element), false, false, false,
                 Rating(Number(element, "capability")),
                 String(element, "goodFor")?.Trim() is { Length: > 0 } goodFor ? goodFor : null,
-                Number(element, "contextWindowTokens"), Number(element, "reservedOutputTokens"), Prices(element));
+                Number(element, "contextWindowTokens"), Number(element, "reservedOutputTokens"), Prices(element),
+                Enum.TryParse<ImageInputMode>(String(element, "imageInput"), true, out var imageInput)
+                    && Enum.IsDefined(imageInput) ? imageInput : ImageInputMode.Automatic);
             Connections.Add(new ImportedSettingsItem<ConnectionSettings>(settings, credentialOmitted, notes));
         }
 

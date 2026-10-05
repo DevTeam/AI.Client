@@ -21,7 +21,9 @@ public sealed record ToolContent(
     string? Text,
     string? MimeType,
     string? Uri,
-    string? Name)
+    string? Name,
+    string? AssetId = null,
+    byte[]? Data = null)
 {
     public static ToolContent OfText(string text) => new(ToolContentKind.Text, text, null, null, null);
 
@@ -32,6 +34,7 @@ public sealed record ToolContent(
         if (MimeType is not null) node["mimeType"] = MimeType;
         if (Uri is not null) node["uri"] = Uri;
         if (Name is not null) node["name"] = Name;
+        if (AssetId is not null) node["assetId"] = AssetId;
         return node;
     }
 }

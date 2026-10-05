@@ -343,6 +343,15 @@ export function attach(textarea, dotNetReference) {
         paintMentions();
     };
     textarea.addEventListener("input", resize);
+    const onPaste = event => {
+        const file = Array.from(event.clipboardData?.items ?? [])
+            .find(item => item.kind === "file" && item.type.startsWith("image/"))?.getAsFile();
+        if (!file) return;
+        event.preventDefault();
+        void file.arrayBuffer().then(bytes => dotNetReference.invokeMethodAsync(
+            "OnComposerImagePasted", new Uint8Array(bytes), file.name || "Pasted image"));
+    };
+    textarea.addEventListener("paste", onPaste);
     textarea.addEventListener("input", reportCaret);
     textarea.addEventListener("keyup", caretKeyHandler);
     textarea.addEventListener("click", reportCaret);
@@ -354,6 +363,7 @@ export function attach(textarea, dotNetReference) {
         textarea.removeEventListener("keyup", releaseHandler);
         textarea.removeEventListener("blur", blurHandler);
         textarea.removeEventListener("input", resize);
+        textarea.removeEventListener("paste", onPaste);
         textarea.removeEventListener("input", reportCaret);
         textarea.removeEventListener("keyup", caretKeyHandler);
         textarea.removeEventListener("click", reportCaret);
@@ -426,6 +436,13 @@ export function attach(textarea, dotNetReference) {
 
 export function copyText(text) {
     return navigator.clipboard.writeText(text);
+}
+
+export function openFilePicker() {
+    const picker = document.getElementById("composer-file-picker");
+    if (!picker) return;
+    picker.value = "";
+    picker.click();
 }
 
 /**
@@ -552,6 +569,14 @@ export function watchResourceDrop(dotNetReference) {
         if (!hasFiles(event.dataTransfer)) return;
         event.preventDefault();
         clearHighlight();
+        const imageFiles = Array.from(event.dataTransfer?.files ?? [])
+            .filter(file => file.type.startsWith("image/"));
+        if (imageFiles.length && imageFiles.length === (event.dataTransfer?.files?.length ?? 0)) {
+            for (const file of imageFiles.slice(0, 20))
+                void file.arrayBuffer().then(bytes => dotNetReference.invokeMethodAsync(
+                    "OnComposerImagePasted", new Uint8Array(bytes), file.name || "Dropped image"));
+            return;
+        }
         const paths = pathsFromTransfer(event.dataTransfer);
         if (paths.length) {
             clearTimeout(unsupportedTimer);

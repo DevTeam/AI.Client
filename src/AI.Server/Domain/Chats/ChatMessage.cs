@@ -12,7 +12,7 @@ public sealed class ChatMessage(
     IReadOnlyList<ChatToolCall>? toolCalls = null,
     string? toolCallId = null,
     ChatWorkspaceChangeSet? workspaceChanges = null,
-    IReadOnlyList<AI.Domain.Resources.ChatResourceRef>? resources = null,
+    IReadOnlyList<AI.Domain.Resources.ChatResource>? resources = null,
     bool allowEmptyAfterResourceRemoval = false)
 {
     public ChatMessageId Id { get; } = id;
@@ -32,7 +32,7 @@ public sealed class ChatMessage(
 
     public IReadOnlyList<ChatToolCall>? ToolCalls { get; } = toolCalls?.ToArray();
     public string? ToolCallId { get; } = toolCallId;
-    public IReadOnlyList<AI.Domain.Resources.ChatResourceRef>? Resources { get; } = resources?.ToArray();
+    public IReadOnlyList<AI.Domain.Resources.ChatResource>? Resources { get; } = resources?.ToArray();
     public ChatWorkspaceChangeSet? WorkspaceChanges { get; } = workspaceChanges is null
         ? null
         : workspaceChanges with { Files = workspaceChanges.Files.ToArray() };

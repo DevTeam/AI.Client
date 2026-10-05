@@ -11,7 +11,7 @@ public class ChatRunStateTests
     public void ShouldQueueAResourceOnlyMessage()
     {
         var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
-        var reference = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.Directory, "C:\\work");
+        var reference = new ChatResource(Guid.CreateVersion7(), ChatResourceKind.Directory, "C:\\work");
         var message = new QueuedRunMessage(Guid.CreateVersion7(), string.Empty, DateTimeOffset.UtcNow,
             Resources: [reference]);
 

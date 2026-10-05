@@ -16,6 +16,30 @@ using Xunit;
 public sealed class ResourceServiceTests
 {
     [Fact]
+    public async Task ShouldValidateUploadedFileInsideTheSelectedProjectWithoutAWorkspaceGrant()
+    {
+        var projectId = Guid.NewGuid();
+        var assetId = new string('a', 64);
+        var assets = new Mock<IResourceAssetService>();
+        assets.Setup(service => service.ReadAsync(projectId, assetId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResourceAsset([65, 66], "text/plain"));
+        var service = new ResourceService(new Mock<IProjectService>().Object,
+            new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object,
+            new Mock<IReviewService>().Object, new ProjectPathAccess(), new Mock<ISkillCatalog>().Object,
+            new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object,
+            new FileExcerptReader(), assets.Object);
+        var reference = new ChatResource(Guid.NewGuid(), ChatResourceKind.File, "note.txt", "note.txt",
+            Source: ChatResourceSource.Upload, AssetId: assetId);
+
+        var validated = await service.ValidateForChatAsync(projectId, Guid.NewGuid(), [reference], CancellationToken.None);
+
+        validated.ShouldHaveSingleItem().Kind.ShouldBe(ChatResourceKind.File);
+        validated[0].MediaType.ShouldBe("text/plain");
+        await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(
+            Guid.NewGuid(), Guid.NewGuid(), [reference], CancellationToken.None));
+    }
+
+    [Fact]
     public async Task ShouldReuseAProjectReferenceAndRejectItAfterRetirement()
     {
         var root = Path.Combine(Path.GetTempPath(), "ai-client-resources-" + Guid.NewGuid().ToString("N"));
@@ -36,7 +60,7 @@ public sealed class ResourceServiceTests
             location.SetupGet(item => item.RootDirectory).Returns(root);
             using var repository = new JsonResourceRepository(location.Object, new PhysicalTextFileSystem());
             var service = new ResourceService(projects.Object, new PhysicalDirectoryBrowser(), repository,
-                new Mock<IReviewService>().Object, new ProjectPathAccess(), new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader());
+                new Mock<IReviewService>().Object, new ProjectPathAccess(), new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
 
             var first = await service.CreateAsync(projectId, ChatResourceKind.File, source, token);
             var second = await service.CreateAsync(projectId, ChatResourceKind.File, source, token);
@@ -76,11 +100,11 @@ public sealed class ResourceServiceTests
             .ReturnsAsync([]);
         var service = new ResourceService(new Mock<IProjectService>().Object,
             new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object, reviews.Object, new ProjectPathAccess(),
-            new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader());
+            new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
         var token = TestContext.Current.CancellationToken;
 
         var validated = await service.ValidateForChatAsync(projectId, chatId,
-            [new ChatResourceRef(reviewId, ChatResourceKind.Review, string.Empty, "Old name")], token);
+            [new ChatResource(reviewId, ChatResourceKind.Review, string.Empty, "Old name")], token);
 
         validated.ShouldHaveSingleItem().Name.ShouldBe("Current name");
         await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId,
@@ -103,10 +127,10 @@ public sealed class ResourceServiceTests
             .ReturnsAsync([review]);
         var service = new ResourceService(new Mock<IProjectService>().Object,
             new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object, reviews.Object, new ProjectPathAccess(),
-            new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader());
+            new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId, chatId,
-            [new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty)],
+            [new ChatResource(review.Id, ChatResourceKind.Review, string.Empty)],
             TestContext.Current.CancellationToken));
     }
 
@@ -122,27 +146,27 @@ public sealed class ResourceServiceTests
             .ReturnsAsync(Skill("off", "Off", false));
         var service = new ResourceService(new Mock<IProjectService>().Object, new PhysicalDirectoryBrowser(),
             new Mock<IResourceRepository>().Object, new Mock<IReviewService>().Object, new ProjectPathAccess(),
-            catalog.Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader());
+            catalog.Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
         var token = TestContext.Current.CancellationToken;
 
         var validated = await service.ValidateForChatAsync(projectId, chatId,
-            [new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Skill, "project-name", "Stale name")], token);
+            [new ChatResource(Guid.NewGuid(), ChatResourceKind.Skill, "project-name", "Stale name")], token);
 
         validated.ShouldHaveSingleItem().Name.ShouldBe("Project name");
         await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId, chatId,
-            [new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Skill, "off")], token));
+            [new ChatResource(Guid.NewGuid(), ChatResourceKind.Skill, "off")], token));
         await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId, chatId,
-            [new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Skill, "missing")], token));
+            [new ChatResource(Guid.NewGuid(), ChatResourceKind.Skill, "missing")], token));
         await Should.ThrowAsync<ArgumentException>(() => service.ValidateForChatAsync(projectId, chatId,
-            [new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Skill, "project-name"),
-                new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Skill, "project-name")], token));
+            [new ChatResource(Guid.NewGuid(), ChatResourceKind.Skill, "project-name"),
+                new ChatResource(Guid.NewGuid(), ChatResourceKind.Skill, "project-name")], token));
     }
 
     [Fact]
     public void ShouldTellTheModelWhichSkillTheUserInvoked()
     {
         var projected = new ResourceModelProjection().Project("Make it shorter",
-            [new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Skill, "project-name", "Project name")]);
+            [new ChatResource(Guid.NewGuid(), ChatResourceKind.Skill, "project-name", "Project name")]);
 
         projected.ShouldStartWith("The user invoked the skill \"project-name\" (\"Project name\")");
         projected.ShouldContain("mcp_app__run_skill");
@@ -167,7 +191,7 @@ public sealed class ResourceServiceTests
             using var repository = new JsonResourceRepository(location.Object, new PhysicalTextFileSystem());
             var service = new ResourceService(projects.Object, new PhysicalDirectoryBrowser(), repository,
                 new Mock<IReviewService>().Object, new ProjectPathAccess(), new Mock<ISkillCatalog>().Object,
-                new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader());
+                new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
             var created = await service.CreateAsync(projectId, ChatResourceKind.File, source, token);
 
             var validated = await service.ValidateForChatAsync(projectId, Guid.NewGuid(),
@@ -210,12 +234,12 @@ public sealed class ResourceServiceTests
             diffs.Setup(item => item.ReadDiff(It.IsAny<string>())).Returns("diff --git a/x b/x");
             var service = new ResourceService(projects.Object, new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object,
                 new Mock<IReviewService>().Object, new ProjectPathAccess(), new Mock<ISkillCatalog>().Object,
-                chats.Object, diffs.Object, new FileExcerptReader());
+                chats.Object, diffs.Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
 
             var validated = await service.ValidateForChatAsync(projectId, chatId, [
-                new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Chat, otherChatId.ToString(), "Stale", Mention: "@chat:\"Deploy fix\""),
-                new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Project, projectId.ToString()),
-                new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Diff, root, Excerpt: "forged", Mention: "@diff")], token);
+                new ChatResource(Guid.NewGuid(), ChatResourceKind.Chat, otherChatId.ToString(), "Stale", Mention: "@chat:\"Deploy fix\""),
+                new ChatResource(Guid.NewGuid(), ChatResourceKind.Project, projectId.ToString()),
+                new ChatResource(Guid.NewGuid(), ChatResourceKind.Diff, root, Excerpt: "forged", Mention: "@diff")], token);
 
             validated[0].Name.ShouldBe("Deploy fix");
             validated[0].Mention.ShouldBe("@chat:\"Deploy fix\"");
@@ -223,11 +247,11 @@ public sealed class ResourceServiceTests
             validated[2].Excerpt.ShouldBe("diff --git a/x b/x");
             validated[2].Mention.ShouldBe("@diff");
             await Should.ThrowAsync<ArgumentException>(() => service.ValidateForChatAsync(projectId, chatId,
-                [new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Chat, chatId.ToString())], token));
+                [new ChatResource(Guid.NewGuid(), ChatResourceKind.Chat, chatId.ToString())], token));
             await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId, chatId,
-                [new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Diff, Path.GetTempPath())], token));
+                [new ChatResource(Guid.NewGuid(), ChatResourceKind.Diff, Path.GetTempPath())], token));
             await Should.ThrowAsync<ArgumentException>(() => service.ValidateForChatAsync(projectId, chatId,
-                [new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Project, projectId.ToString(), Mention: "no at sign")], token));
+                [new ChatResource(Guid.NewGuid(), ChatResourceKind.Project, projectId.ToString(), Mention: "no at sign")], token));
         }
         finally
         {
@@ -257,7 +281,7 @@ public sealed class ResourceServiceTests
             diffs.Setup(item => item.ChangedFiles(clean)).Returns([]);
             var service = new ResourceService(ProjectsWith(projectId, root).Object, new PhysicalDirectoryBrowser(),
                 new Mock<IResourceRepository>().Object, new Mock<IReviewService>().Object, new ProjectPathAccess(),
-                new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, diffs.Object, new FileExcerptReader());
+                new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, diffs.Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
 
             var sources = await service.ListDiffSourcesAsync(projectId, token);
 
@@ -276,10 +300,10 @@ public sealed class ResourceServiceTests
     {
         var chatId = Guid.NewGuid();
         var projected = new ResourceModelProjection().Project("Compare @app.cs:2-3 with @chat:x", [
-            new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.File, "C:\\repo\\app.cs", Lines: new ChatLineRange(2, 3),
+            new ChatResource(Guid.NewGuid(), ChatResourceKind.File, "C:\\repo\\app.cs", Lines: new ChatLineRange(2, 3),
                 Excerpt: "two\n```\nthree\n", Mention: "@app.cs:2-3"),
-            new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Chat, chatId.ToString(), "x", Mention: "@chat:x"),
-            new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Diff, "C:\\repo", "repo", Excerpt: "+added")]);
+            new ChatResource(Guid.NewGuid(), ChatResourceKind.Chat, chatId.ToString(), "x", Mention: "@chat:x"),
+            new ChatResource(Guid.NewGuid(), ChatResourceKind.Diff, "C:\\repo", "repo", Excerpt: "+added")]);
 
         projected.ShouldContain("lines 2-3 (linked in the message as \"@app.cs:2-3\")");
         // The captured text holds a fence of its own, so the one around it is longer.

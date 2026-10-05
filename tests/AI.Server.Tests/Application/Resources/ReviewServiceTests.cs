@@ -139,7 +139,7 @@ public sealed class ReviewServiceTests
         var projectId = Guid.NewGuid();
         var chatId = Guid.NewGuid();
         var reviewId = Guid.NewGuid();
-        var reference = new ChatResourceRef(reviewId, ChatResourceKind.Review, string.Empty, "Old name");
+        var reference = new ChatResource(reviewId, ChatResourceKind.Review, string.Empty, "Old name");
         var review = new ChatReview(reviewId, projectId, chatId, "Current name", Guid.NewGuid(),
             DateTimeOffset.UnixEpoch, ["src/file.cs"],
             [new ReviewComment(Guid.NewGuid(), "src/file.cs", null, null, 3, 3, "Updated comment")],
@@ -172,7 +172,7 @@ public sealed class ReviewServiceTests
             .ReturnsAsync([review]);
 
         var projected = await new ResourceModelProjection(reviews.Object).ProjectAsync(projectId, chatId,
-            "Consider this comment", [new ChatResourceRef(reviewId, ChatResourceKind.Review, string.Empty,
+            "Consider this comment", [new ChatResource(reviewId, ChatResourceKind.Review, string.Empty,
                 review.Name, ChatReviewKind.Message)], TestContext.Current.CancellationToken);
 
         projected.ShouldContain("message review");
@@ -195,9 +195,9 @@ public sealed class ReviewServiceTests
             .ReturnsAsync([messageReview, diffReview]);
 
         var projected = await new ResourceModelProjection(reviews.Object).ProjectAsync(projectId, chatId,
-            "Please fix", [new ChatResourceRef(messageReview.Id, ChatResourceKind.Review, string.Empty,
+            "Please fix", [new ChatResource(messageReview.Id, ChatResourceKind.Review, string.Empty,
                 messageReview.Name, ChatReviewKind.Message),
-                new ChatResourceRef(diffReview.Id, ChatResourceKind.Review, string.Empty, diffReview.Name)],
+                new ChatResource(diffReview.Id, ChatResourceKind.Review, string.Empty, diffReview.Name)],
             TestContext.Current.CancellationToken);
 
         projected.ShouldBe("Please fix");

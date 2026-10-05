@@ -6,13 +6,40 @@ using AI.Contracts.Resources;
 
 public sealed class ResourceApi(HttpClient http) : IResourceApi
 {
-    public async Task<ChatResourceRef> CreateAsync(Guid projectId, ChatResourceKind kind, string path,
+    public async Task<ChatResource> UploadFileAsync(Guid projectId, byte[] bytes, string name,
+        ChatResourceSource source, CancellationToken cancellationToken)
+    {
+        using var body = new ByteArrayContent(bytes);
+        using var response = await http.PostAsync($"api/projects/{projectId}/assets?name={Uri.EscapeDataString(name)}&source={source.ToString().ToLowerInvariant()}",
+            body, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<ChatResource>(cancellationToken)
+            ?? throw new InvalidOperationException("The asset service returned no resource.");
+    }
+
+    public async Task<string> GetAssetUrlAsync(Guid projectId, string assetId, CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync($"api/projects/{projectId}/assets/{Uri.EscapeDataString(assetId)}/ticket", cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+        return new Uri(http.BaseAddress!, document.RootElement.GetProperty("contentUrl").GetString()).ToString();
+    }
+
+    public async Task<ResourceAssetText?> GetAssetTextAsync(Guid projectId, string assetId, CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync($"api/projects/{projectId}/assets/{Uri.EscapeDataString(assetId)}/text", cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return response.StatusCode == System.Net.HttpStatusCode.NoContent ? null
+            : await response.Content.ReadFromJsonAsync<ResourceAssetText>(cancellationToken);
+    }
+
+    public async Task<ChatResource> CreateAsync(Guid projectId, ChatResourceKind kind, string path,
         CancellationToken cancellationToken)
     {
         using var response = await http.PostAsJsonAsync($"api/projects/{projectId}/resources",
             new CreateResourceRequest(kind, path), cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<ChatResourceRef>(cancellationToken)
+        return await response.Content.ReadFromJsonAsync<ChatResource>(cancellationToken)
             ?? throw new InvalidOperationException("The resource service returned no reference.");
     }
 

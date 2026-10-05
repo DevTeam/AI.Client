@@ -5,6 +5,7 @@
    anything the Host did not observe. Raw arguments and bulk output stay out of the DOM until a
    row is expanded, so a 10MB stdout costs nothing to scroll past. *@
 @using AI.Contracts.Tools
+@using AI.Contracts.Resources
 @inject IToolPresentations Presentations
 @inject IChatFeedProjection Feed
 @inject IToolResultCodec ToolResultCodec
@@ -76,6 +77,7 @@
 @code {
     [Parameter] [EditorRequired] public IReadOnlyList<ChatMessageView> Group { get; set; } = [];
     [Parameter] public Guid ProjectId { get; set; }
+    [Parameter] public EventCallback<ChatResource> OnOpenAsset { get; set; }
     [Parameter] public Guid ChatId { get; set; }
     [Parameter] public long ChatRevision { get; set; }
 
@@ -224,6 +226,13 @@
                 {
                     <pre class="tool-row-output @(result.BodyFormat == ToolBodyFormat.Diff ? "tool-row-diff" : string.Empty)">@body</pre>
                 }
+                @foreach (var image in ToolImages(invocation))
+                {
+                    <button class="chat-image-link" type="button" title="@(image.Name ?? "Image")" aria-label="Open image"
+                            @onclick="() => OnOpenAsset.InvokeAsync(image)">
+                        <ChatImageThumbnail ProjectId="ProjectId" Resource="image" />
+                    </button>
+                }
                 else if (_loadingResults.Contains(invocation.Call.Id))
                 {
                     <p class="tool-row-running">Loading result…</p>
@@ -337,6 +346,21 @@
             invocation.Call.Name, invocation.Call.Arguments, ToolResultCodec.Read(message.Content));
         _described[message.Id] = described;
         return described;
+    }
+
+    private readonly Dictionary<Guid, ChatResource[]> _toolImages = [];
+
+    private IReadOnlyList<ChatResource> ToolImages(ToolInvocation invocation)
+    {
+        if (invocation.Result is not { ContentOmitted: false } message) return [];
+        if (_toolImages.TryGetValue(message.Id, out var cached)) return cached;
+        var images = (ToolResultCodec.TryRead(message.Content)?.Content ?? [])
+            .Where(block => block.Kind == ToolContentKind.Image && block.AssetId is not null)
+            .Select(block => new ChatResource(Guid.Empty, ChatResourceKind.Image, invocation.Call.Name,
+                block.Name ?? "Tool image", Source: ChatResourceSource.Tool, AssetId: block.AssetId,
+                MediaType: block.MimeType)).ToArray();
+        _toolImages[message.Id] = images;
+        return images;
     }
 
     private static readonly ToolResultPresentation EmptyResult = new("", ToolResultSeverity.Ok, [], null);

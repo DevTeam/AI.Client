@@ -87,6 +87,10 @@ public sealed class SettingsEndpoints : IEndpointModule
             (Guid id, ResolveConnectionModelsRequest request, IGlobalSettingsService service, CancellationToken token) =>
                 service.ResolveConnectionModelsAsync(id, request, token));
 
+        routes.MapPost("/api/settings/connections/{id:guid}/image-test",
+            (Guid id, ImageProbeRequest request, IConnectionImageProbe probe, CancellationToken token) =>
+                probe.TestAsync(id, request, token));
+
         routes.MapGet("/api/mcp/default/tools", async (IToolSessionFactory factory, CancellationToken token) =>
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);

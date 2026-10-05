@@ -463,6 +463,9 @@ public sealed class ChatRunDispatcher(
                         TrackMessage(runtime, baseRevision, chat, queued.Id);
                     }
                     runtime.State.MarkUserCommitted(queued.Id);
+                    if (connection.ImageInput == AI.Contracts.Settings.ImageInputMode.Disabled &&
+                        queued.Resources?.Any(item => item.Kind == AI.Domain.Resources.ChatResourceKind.Image) == true)
+                        throw new InvalidOperationException("This connection is set to reject image input. Choose another connection or enable image input in its settings.");
                     request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
                         await secretStore.GetAsync("connection", connection.Id, token),
                         await resourceProjection.ProjectAsync(runtime.State.ProjectId, runtime.State.ChatId, queued.Content,
@@ -471,11 +474,16 @@ public sealed class ChatRunDispatcher(
                         // summary of its deepest checkpoint on.
                         kindPolicies.Resolve(new ChatKind(chat.Kind)).Behavior.UseFullHistory
                             ? chat.Messages.Select(message => new ChatCompletionMessage(message.Role.ToLowerInvariant(),
-                            message.Content, message.ToolCalls, message.ToolCallId)).ToArray()
+                            message.Content, message.ToolCalls, message.ToolCallId,
+                            ImageAssetIds: message.Resources?.Where(item => item.Kind == AI.Contracts.Resources.ChatResourceKind.Image)
+                                .Select(item => item.AssetId).OfType<string>().ToArray())).ToArray()
                             : await historyCheckpoints.ApplyAsync(chat.ProjectId, chat.Id,
                                 await contextBuilder.BuildAsync(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id), token), token),
                         Kind: new ChatKind(chat.Kind), KindState: chat.KindState,
-                        KindStateVersion: chat.KindStateVersion);
+                        KindStateVersion: chat.KindStateVersion, ProjectId: runtime.State.ProjectId);
+                    if (connection.ImageInput == AI.Contracts.Settings.ImageInputMode.Disabled)
+                        request = request with { ContextMessages = request.ContextMessages?
+                            .Select(item => item with { ImageAssetIds = null }).ToArray() };
                     runtime.ToolHead = ResumeHead(chat, runtime.State.BranchId, queued.Id);
                     await SaveAsync(runtime, chat, token);
                 }

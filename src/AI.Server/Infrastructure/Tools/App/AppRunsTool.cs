@@ -88,7 +88,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         SubmitMode mode = SubmitMode.Send,
         Guid? parentMessageId = null,
         Guid? messageId = null,
-        ChatResourceRef[]? resources = null,
+        ChatResource[]? resources = null,
         int? position = null,
         bool wait = false,
         int waitTimeoutMs = 60_000,
@@ -123,7 +123,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
 
     private async Task<AppWriteResult> SubmitAsync(
         AppWriteBuilder builder, Guid projectId, Guid chatId, Guid branchId, Guid operationId, string? content,
-        ChatResourceRef[]? resources, SubmitMode mode,
+        ChatResource[]? resources, SubmitMode mode,
         Guid? parentMessageId, bool wait, int waitTimeoutMs, CancellationToken cancellationToken)
     {
         var text = content ?? string.Empty;

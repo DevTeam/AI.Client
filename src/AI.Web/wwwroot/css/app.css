@@ -3321,6 +3321,7 @@ div.chat-tip-head { cursor: default; }
     box-shadow: 0 .6rem 2rem rgb(0 0 0 / calc(53% * var(--shadow-scale)));
 }
 .composer-resource-menu-label { padding: .3rem .55rem; color: var(--color-text-subtle); font-size: .75rem; }
+.composer-file-picker-input { display: none; }
 /* The slash list over the composer: one row per skill, name then description, source on the right. */
 .skill-command-menu {
     position: absolute;
@@ -6383,6 +6384,10 @@ textarea {
     text-decoration: none;
     white-space: nowrap;
 }
+.chat-image-link { display: inline-flex; align-items: center; gap: .3rem; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.chat-image-link.resource-pill-target::before { content: none; }
+.chat-image-thumbnail { display: block; width: 3rem; height: 3rem; object-fit: cover; border-radius: calc(.25rem * var(--corner-scale)); background: var(--color-bg-inset); }
+.chat-image-placeholder { display: grid; place-items: center; }
 .markdown-content a.mention-link {
     -webkit-box-decoration-break: clone;
     box-decoration-break: clone;
@@ -7645,6 +7650,7 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .file-preview-toolbar > span { flex: 1; color: var(--color-text-muted); }
 .file-preview-toolbar button, .file-preview-load { padding: .25rem .6rem; color: var(--color-text); background: var(--color-fill); border: 1px solid var(--color-border); border-radius: .3rem; cursor: pointer; }
 .file-preview-body { flex: 1; min-height: 0; overflow: auto; }
+.file-preview-asset-text { margin: 0; padding: .8rem; color: var(--color-text); font: .8rem/1.2rem var(--font-mono, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
 .file-preview-status { padding: .8rem; color: var(--color-text-muted); }
 .file-preview-image { height: 100%; min-height: 12rem; overflow: auto; display: grid; place-items: center; }
 .file-preview-image img { max-width: 100%; max-height: 100%; object-fit: contain; }

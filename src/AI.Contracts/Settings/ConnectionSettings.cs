@@ -42,6 +42,11 @@ public sealed record ResolvedModelInfo(string Id, string? DisplayName = null, st
 /// <param name="ApiKey">A key typed but not yet saved; null falls back to the saved credential.</param>
 public sealed record ResolveConnectionModelsRequest(string BaseUrl, string? ApiKey = null);
 
+public enum ImageInputMode { Automatic, Enabled, Disabled }
+
+public sealed record ImageProbeRequest(string BaseUrl, string Model, string? ApiKey = null);
+public sealed record ImageProbeResult(bool Supported, string Detail);
+
 public sealed record ConnectionSettings(
     Guid Id,
     string Name,
@@ -55,4 +60,5 @@ public sealed record ConnectionSettings(
     string? GoodFor = null,
     long? ContextWindowTokens = null,
     long? ReservedOutputTokens = null,
-    Usage.TokenPrices? Prices = null);
+    Usage.TokenPrices? Prices = null,
+    ImageInputMode ImageInput = ImageInputMode.Automatic);

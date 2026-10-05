@@ -97,6 +97,16 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
         return await response.Content.ReadFromJsonAsync<ResolvedModelInfo[]>(cancellationToken) ?? [];
     }
 
+    public async Task<ImageProbeResult> TestConnectionImageAsync(Guid id, ImageProbeRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PostAsJsonAsync($"api/settings/connections/{id}/image-test", request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(await ReadProblemDetailAsync(response, cancellationToken));
+        return await response.Content.ReadFromJsonAsync<ImageProbeResult>(cancellationToken)
+            ?? throw new InvalidOperationException("The image test returned no result.");
+    }
+
     private static async Task<string> ReadProblemDetailAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         var fallback = $"The Host returned {(int)response.StatusCode} ({response.ReasonPhrase}).";

@@ -13,7 +13,7 @@ public sealed class MentionLinkWriterTests
     [Fact]
     public void ShouldUseNavigationLinksForSkillAttachments()
     {
-        var skill = new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Skill, "skill create", "Skill create");
+        var skill = new ChatResource(Guid.NewGuid(), ChatResourceKind.Skill, "skill create", "Skill create");
         new ResourcePresenter(new DiffSnapshotReader()).Target(skill)
             .ShouldBe("aiclient://navigate/settings.skills?skillId=skill%20create");
     }
@@ -21,9 +21,9 @@ public sealed class MentionLinkWriterTests
     [Fact]
     public void ShouldLinkFilesAsLocalPathsAndTheRestByReference()
     {
-        var chat = new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Chat, Guid.NewGuid().ToString(), "Deploy fix",
+        var chat = new ChatResource(Guid.NewGuid(), ChatResourceKind.Chat, Guid.NewGuid().ToString(), "Deploy fix",
             Mention: "@chat:\"Deploy fix\"");
-        var file = new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.File, "C:\\repo\\my app.cs",
+        var file = new ChatResource(Guid.NewGuid(), ChatResourceKind.File, "C:\\repo\\my app.cs",
             Lines: new ChatLineRange(2, 4), Mention: "@\"my app.cs\":2-4");
 
         var html = new SafeMarkdownRenderer().Render(_writer.Link("Compare @\"my app.cs\":2-4 with @chat:\"Deploy fix\".", [chat, file]));
@@ -39,7 +39,7 @@ public sealed class MentionLinkWriterTests
     [Fact]
     public void ShouldKeepTheTokenInTheTitleOnOneMarkdownLine()
     {
-        var file = new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.File, "C:\\repo\\a&b \"x\".cs", Mention: "@a.cs");
+        var file = new ChatResource(Guid.NewGuid(), ChatResourceKind.File, "C:\\repo\\a&b \"x\".cs", Mention: "@a.cs");
 
         var markdown = _writer.Link("| @a.cs |", [file]);
         var html = new SafeMarkdownRenderer().Render(markdown);
@@ -51,7 +51,7 @@ public sealed class MentionLinkWriterTests
     [Fact]
     public void ShouldShowTheCapturedTotalsOfADiff()
     {
-        var diff = new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Diff, "C:\\repo", "repo",
+        var diff = new ChatResource(Guid.NewGuid(), ChatResourceKind.Diff, "C:\\repo", "repo",
             Excerpt: "diff --git a/x.cs b/x.cs\n--- a/x.cs\n+++ b/x.cs\n@@ -1,2 +1,2 @@\n-old\n+new\n+more\n", Mention: "@diff:repo");
 
         var html = new SafeMarkdownRenderer().Render(_writer.Link("@diff:repo?", [diff]));
@@ -64,9 +64,9 @@ public sealed class MentionLinkWriterTests
     [Fact]
     public void ShouldLeaveCodeAndLongerWordsAlone()
     {
-        var folder = new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Directory, "C:\\repo\\src", Mention: "@src/");
+        var folder = new ChatResource(Guid.NewGuid(), ChatResourceKind.Directory, "C:\\repo\\src", Mention: "@src/");
 
         _writer.Link("`@src/` and @src/x.cs and me@src/", [folder]).ShouldBe("`@src/` and @src/x.cs and me@src/");
-        _writer.Link("no links", [new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.File, "C:\\x")]).ShouldBe("no links");
+        _writer.Link("no links", [new ChatResource(Guid.NewGuid(), ChatResourceKind.File, "C:\\x")]).ShouldBe("no links");
     }
 }

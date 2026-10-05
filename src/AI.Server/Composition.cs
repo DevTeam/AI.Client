@@ -56,7 +56,7 @@ internal sealed class Composition
             // usage accounting, preview tickets, parsed caches and the running update service.
             // CompositeToolSessionFactory is cached here only because Pure.DI 2.5.4 emits out-of-scope
             // factory locals for it when transient — see docs/pure-di-issues.md.
-            .Singleton<FilePreviewService, HostUpdateService, BrowserAccessService,
+            .Singleton<FilePreviewService, ResourceAssetService, HostUpdateService, BrowserAccessService,
                 JsonProjectRepository, ChatSynchronization, ChatTransportActivity,
                 JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
                 JsonProjectInstructionsRepository, ChatRunDispatcher,
@@ -107,7 +107,7 @@ internal sealed class Composition
                 MarkupFilePreviewFormat>(Tag.Unique)
             // Instruction composition, context planning, credentials and usage accounting.
             .Transient<WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService,
-                OpenAiCompatibleConnectionModelsResolver, ChatContext, ChatAgent, ContextTokenEstimator,
+                OpenAiCompatibleConnectionModelsResolver, ConnectionImageProbe, ChatContext, ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, KeyringOrFileMasterKeyStore, ModelInstructionComposer,
                 AdaptiveContextPolicy, ToolResultContextProjector, ToolDiscoveryGuidance,
                 ToolPolicyResolver, LineDiff, MasterKeyFormat, ProcessCommandRunner, AppWrites, AppMcpServerHost,
@@ -181,6 +181,7 @@ internal sealed class AspNetComposition
             .Root<IHistoryCheckpointService>()
             .Root<IChatHistoryCompaction>()
             .Root<IGlobalSettingsService>()
+            .Root<IConnectionImageProbe>()
             .Root<IChatEndpoint>()
             .Root<IChatRunDispatcher>()
             .Root<IGuideChats>()
@@ -190,6 +191,7 @@ internal sealed class AspNetComposition
             .Root<IWorkspaceFileSearch>()
             .Root<IReviewService>()
             .Root<IFilePreviewService>()
+            .Root<IResourceAssetService>()
             .Root<IReviewCommentSuggestions>()
             .Root<IMemoryService>()
             .Root<IProjectInstructionsService>()

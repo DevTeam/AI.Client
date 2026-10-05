@@ -21,5 +21,5 @@ public sealed record ComposerSubmitRequest(
     string Message,
     ChatRunSnapshot? SelectedRun,
     Guid? SelectedBranchId = null,
-    IReadOnlyList<AI.Contracts.Resources.ChatResourceRef>? Resources = null,
+    IReadOnlyList<AI.Contracts.Resources.ChatResource>? Resources = null,
     ToolApprovalMode ApprovalMode = ToolApprovalMode.Ask);

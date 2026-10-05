@@ -14,10 +14,36 @@ public sealed class ChatContextTests
     private static readonly ToolResultCodec ToolResults = new(new ToolResultModelProjector());
 
     [Fact]
+    public void ShouldRestoreImageReturnedByToolForModelAnalysis()
+    {
+        var user = Guid.NewGuid();
+        var assistant = Guid.NewGuid();
+        var tool = Guid.NewGuid();
+        var assetId = new string('a', 64);
+        var result = new ToolCallResult([new ToolContent(ToolContentKind.Image, null, "image/png", null, null, assetId)],
+            null, null, false, string.Empty);
+        var chat = new ChatDetails(Guid.NewGuid(), Guid.NewGuid(), "Chat", DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, 1, null,
+            [
+                new ChatMessageView(user, null, "User", "Inspect the output", DateTimeOffset.UnixEpoch),
+                new ChatMessageView(assistant, user, "Assistant", "", DateTimeOffset.UnixEpoch,
+                    ToolCalls: [new ChatToolCall("call-1", "tool", "{}")]),
+                new ChatMessageView(tool, assistant, "Tool", ToolResults.Write(result), DateTimeOffset.UnixEpoch,
+                    ToolCallId: "call-1")
+            ]);
+
+        var context = new ChatContext(ToolResults, new ResourceModelProjection()).Build(chat, tool);
+
+        context.Select(item => item.Role).ShouldBe(["user", "assistant", "tool", "user"]);
+        context[^1].ImageAssetIds.ShouldBe([assetId]);
+        context[^1].IsContextSummary.ShouldBeTrue();
+    }
+
+    [Fact]
     public void ShouldExposeReferencesToModelWithoutChangingStoredText()
     {
         var id = Guid.CreateVersion7();
-        var reference = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.File, "C:\\work\\code.cs");
+        var reference = new ChatResource(Guid.CreateVersion7(), ChatResourceKind.File, "C:\\work\\code.cs");
         var chat = new ChatDetails(Guid.CreateVersion7(), Guid.CreateVersion7(), "Chat",
             DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1, null,
             [new ChatMessageView(id, null, "User", "Check this", DateTimeOffset.UnixEpoch,

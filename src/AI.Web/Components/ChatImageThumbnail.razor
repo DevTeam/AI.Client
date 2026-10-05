@@ -1,0 +1,30 @@
+@inject AI.Web.Resources.IResourceApi Resources
+@using AI.Contracts.Resources
+
+@if (_url is not null)
+{
+    <img class="chat-image-thumbnail" src="@_url" alt="Attached image" />
+}
+else
+{
+    <span class="chat-image-thumbnail chat-image-placeholder" aria-hidden="true"><AppIcon Name="image" /></span>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+    [Parameter, EditorRequired] public ChatResource Resource { get; set; } = default!;
+    private string? _url;
+    private string? _assetId;
+    private Guid _projectId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Resource.AssetId is null || Resource.AssetId == _assetId && ProjectId == _projectId) return;
+        _assetId = Resource.AssetId;
+        _projectId = ProjectId;
+        _url = null;
+        try { _url = await Resources.GetAssetUrlAsync(ProjectId, _assetId, CancellationToken.None); }
+        catch (HttpRequestException) { _url = null; }
+        catch (InvalidOperationException) { _url = null; }
+    }
+}

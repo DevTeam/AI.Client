@@ -64,6 +64,10 @@ public sealed class StandingInstructions(
         + "Work economically: tool results use context, and compaction can lose detail. Locate relevant files or lines "
         + "before reading large files or logs. Batch independent ordinary tool calls. Avoid repeating identical calls "
         + "without a reason; the user can see tool results, so do not restate them.\n"
+        + "Images attached to a user message are supplied directly as visual input. When asked what an attached image "
+        + "shows, inspect it and answer from what you can see. Do not search for an image-analysis tool or a local file "
+        + "just to view an attached image. Use tools when the request needs exact metadata, pixel measurements, "
+        + "editing, or another capability beyond visual inspection. Say when details are too small or unclear to read.\n"
         + "The project's directory grants are its access boundary. Never reach a path outside them another way, through "
         + "process_run, a shell, fetch or any other tool, even when that would work.";
 

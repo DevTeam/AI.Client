@@ -137,7 +137,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             return changes;
         }
         var context = request.ContextMessages?.ToList() ?? [new ChatCompletionMessage("user", request.Message)];
-        var runStart = context.FindLastIndex(message => message.Role == "user");
+        var runStart = context.FindLastIndex(message => message.Role == "user" && !message.IsContextSummary);
         var counts = context.Skip(Math.Max(0, runStart)).SelectMany(message => message.ToolCalls ?? [])
             .GroupBy(call => call.Name, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
         var seenIds = context.SelectMany(message => message.ToolCalls ?? []).Select(call => call.Id).ToHashSet(StringComparer.Ordinal);
@@ -423,6 +423,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             await persist(assistant, token); // Durable intent before any side effect.
             context.Add(assistant);
             checkpoints.Update(run, context);
+            var toolImages = new List<string>();
             for (var index = 0; index < calls.Count; index++)
             {
                 var call = calls[index];
@@ -527,12 +528,17 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 var message = ToolMessage(call.Id, result);
                 await persist(message, token);
                 context.Add(message);
+                toolImages.AddRange(result.Content.Where(item => item.Kind == ToolContentKind.Image)
+                    .Select(item => item.AssetId).OfType<string>());
                 await activity(null, token);
                 if (!result.IsError && observedResults.Add((call.Name, call.Arguments, result.ModelContent)))
                     stalledSteps = 0;
                 else
                     stalledSteps++;
             }
+            if (toolImages.Count > 0 && configuredConnection?.ImageInput != ImageInputMode.Disabled)
+                context.Add(new ChatCompletionMessage("user", "Images returned by the preceding tools:",
+                    IsContextSummary: true, ImageAssetIds: toolImages));
         }
     }
     /// <summary>

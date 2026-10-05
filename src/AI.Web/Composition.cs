@@ -87,6 +87,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<INavigationCues>()
             .Root<IAppNavigationLinks>()
             .Root<IAppGuideApi>()
+            .Root<IAppControlHints>()
             .Root<AI.Contracts.Navigation.IAppNavigationTargets>()
             .Root<AI.Contracts.Navigation.IAppGuideTopics>()
             .Root<IChatTipsState>()
@@ -116,7 +117,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 WorkspaceStateService, RunStateService, ClientSettingsService, ThemeService>()
             .Transient<GitPickerState, DropAccessPlanner, ChatFeed, TurnLiveText, DirectoryPickerState,
                 SettingsTransferCodec, SettingsImportPlanner, RunStatusPresentation, ComposerHistoryNavigator,
-                ReplySuggestionState, NavigationCues, AppNavigationLinks, AppGuideApi,
+                ReplySuggestionState, NavigationCues, AppNavigationLinks, AppGuideApi, AppControlHints,
                 AI.Contracts.Navigation.AppNavigationTargets, AI.Contracts.Navigation.AppGuideTopics,
                 SkillCommandMatcher, ResourceMentionMatcher, SearchResultPresentation, MentionLinkWriter,
                 ResourcePresenter, DiffSnapshotReader, ComposerContextPresentation, UsagePresentation,

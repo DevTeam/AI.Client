@@ -1,3 +1,4 @@
+@inject AI.Web.Navigation.IAppControlHints ControlHints
 @implements IAsyncDisposable
 @inject IJSRuntime JsRuntime
 @inject IChatWidgetCatalog Catalog
@@ -6,11 +7,11 @@
    the conversation narrows to make room, and the drawers — settings, review and the rest — open
    over it as they open over everything else. What each widget shows is the caller's; the column
    owns their order, which of them are shown, and the shell they share. *@
-<aside class="chat-widgets" data-app-target="widgets" aria-label="Chat widgets">
+<aside @attributes="@(ControlHints.Attributes("widgets"))" class="chat-widgets" aria-label="Chat widgets">
     <header class="chat-widgets-header">
         <span class="chat-widgets-heading">Widgets</span>
         <span class="chat-widgets-menu-anchor">
-            <button class="icon-action" type="button" title="Show or hide widgets" aria-label="Show or hide widgets" data-app-target="widgets.menu"
+            <button @attributes="@(ControlHints.Attributes("widgets.menu", "Show or hide widgets"))" class="icon-action" type="button" aria-label="Show or hide widgets"
                     aria-haspopup="true" aria-expanded="@(_menuOpen ? "true" : "false")" @onclick="ToggleMenu">
                 <AppIcon Name="sliders" />
             </button>
@@ -35,15 +36,14 @@
             var anyExpanded = visible.Any(item => !item.Collapsed || item.Id == GuideExpandedWidgetId);
             var collapseAll = visible.Count > 0 && anyExpanded;
         }
-        <button class="icon-action" type="button"
-                title="@(collapseAll ? "Collapse all widgets" : "Expand all widgets")"
+        <button @attributes="@(ControlHints.Attributes("widgets.collapse", (collapseAll ? "Collapse all widgets" : "Expand all widgets")))" class="icon-action" type="button"
                 aria-label="@(collapseAll ? "Collapse all widgets" : "Expand all widgets")"
-                data-app-target="widgets.collapse" aria-pressed="@(collapseAll ? "true" : "false")"
+                aria-pressed="@(collapseAll ? "true" : "false")"
                 disabled="@(visible.Count == 0)"
                 @onclick="ToggleAllCollapsedAsync">
             <AppIcon Name="@(collapseAll ? "chevrons-up" : "chevrons-down")" />
         </button>
-        <button class="icon-action" type="button" title="Close widgets" aria-label="Close widgets" data-app-target="widgets.close" @onclick="OnClose">
+        <button @attributes="@(ControlHints.Attributes("widgets.close", "Close widgets"))" class="icon-action" type="button" aria-label="Close widgets" @onclick="OnClose">
             <AppIcon Name="drawer-close" />
         </button>
     </header>

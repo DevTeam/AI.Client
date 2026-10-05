@@ -23,6 +23,8 @@ public sealed class CorrectionLanguagesSettingsRenderingTests
         languages.Setup(value => value.GetStateAsync()).Returns(new ValueTask<TextCorrectionState>(new TextCorrectionState([], true)));
         var preparation = new Mock<ITextCorrectionPreparation>(MockBehavior.Strict);
         var registrations = new ServiceCollection();
+        registrations.AddTransient<AI.Contracts.Navigation.IAppNavigationTargets, AI.Contracts.Navigation.AppNavigationTargets>();
+        registrations.AddTransient<AI.Web.Navigation.IAppControlHints, AI.Web.Navigation.AppControlHints>();
         registrations.AddSingleton(languages.Object);
         registrations.AddSingleton(preparation.Object);
         registrations.AddSingleton(Mock.Of<INotificationService>());
@@ -36,6 +38,7 @@ public sealed class CorrectionLanguagesSettingsRenderingTests
             foreach (var target in targets)
             {
                 html.ShouldContain($"data-app-target=\"{target.Id}\"");
+                html.ShouldContain($"data-app-hint=\"{System.Text.Encodings.Web.HtmlEncoder.Default.Encode(target.Hint!)}\"");
                 target.Section.ShouldBe("Settings");
                 target.Actions.ShouldBe(["show", "hover"]);
             }

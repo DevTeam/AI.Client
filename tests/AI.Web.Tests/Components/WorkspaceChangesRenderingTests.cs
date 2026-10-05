@@ -21,6 +21,8 @@ public sealed class WorkspaceChangesRenderingTests
     {
         var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
         var registrations = new ServiceCollection();
+        registrations.AddTransient<AI.Contracts.Navigation.IAppNavigationTargets, AI.Contracts.Navigation.AppNavigationTargets>();
+        registrations.AddTransient<AI.Web.Navigation.IAppControlHints, AI.Web.Navigation.AppControlHints>();
         registrations.AddSingleton(Mock.Of<IJSRuntime>());
         await using var services = (ServiceProvider)composition.CreateServiceProvider(composition.CreateBuilder(registrations));
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
@@ -50,6 +52,8 @@ public sealed class WorkspaceChangesRenderingTests
     {
         var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
         var registrations = new ServiceCollection();
+        registrations.AddTransient<AI.Contracts.Navigation.IAppNavigationTargets, AI.Contracts.Navigation.AppNavigationTargets>();
+        registrations.AddTransient<AI.Web.Navigation.IAppControlHints, AI.Web.Navigation.AppControlHints>();
         registrations.AddSingleton(Mock.Of<IJSRuntime>());
         await using var services = (ServiceProvider)composition.CreateServiceProvider(composition.CreateBuilder(registrations));
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
@@ -117,6 +121,8 @@ public sealed class WorkspaceChangesRenderingTests
     {
         var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
         var registrations = new ServiceCollection();
+        registrations.AddTransient<AI.Contracts.Navigation.IAppNavigationTargets, AI.Contracts.Navigation.AppNavigationTargets>();
+        registrations.AddTransient<AI.Web.Navigation.IAppControlHints, AI.Web.Navigation.AppControlHints>();
         registrations.AddSingleton(Mock.Of<IJSRuntime>());
         await using var services = (ServiceProvider)composition.CreateServiceProvider(composition.CreateBuilder(registrations));
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);

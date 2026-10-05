@@ -1,3 +1,4 @@
+@inject AI.Web.Navigation.IAppControlHints ControlHints
 @inject IComposerContextPresentation ContextPresentation
 <span class="composer-send-wrapper @(Context is { } ringContext ? $"has-context context-{ringContext.Level.ToString().ToLowerInvariant()}" : null)">
     @* The ring sits around the button as a quiet halo, grey at rest and in the layer colours
@@ -9,10 +10,11 @@
     {
         <button class="composer-send-context-open" type="button" tabindex="-1" aria-label="Show chat usage" @onclick="OnContextClick"></button>
     }
-    <button class="composer-send" data-app-target="chat.send" type="button" disabled="@Disabled" aria-label="@GetAriaLabel()" @onclick="OnClick">
+    <button @attributes="@(ControlHints.Attributes("chat.send", GetActionLabel(), nativeTooltip: false))" class="composer-send" type="button" disabled="@Disabled" aria-label="@GetAriaLabel()" aria-describedby="composer-send-tooltip" @onclick="OnClick">
         <AppIcon Name="@GetIcon()" Class="@(Busy ? "tool-row-spinner" : null)" />
     </button>
-    <span class="composer-send-tooltip" role="tooltip">
+    <span class="composer-send-tooltip" id="composer-send-tooltip" role="tooltip">
+        <span class="composer-send-tooltip-help">@ControlHints.GetHint("chat.send")</span>
         @if (Context is { } context)
         {
             <span class="composer-send-context">
@@ -44,18 +46,18 @@
         }
         @if (ActiveMode == SendMode.EditFork)
         {
-            <span class="composer-send-tooltip-row active"><kbd>Enter</kbd><span class="composer-send-tooltip-label">Create edited branch</span></span>
+            <span class="composer-send-tooltip-row active" data-app-tooltip-hint><kbd>Enter</kbd><span class="composer-send-tooltip-label">Create edited branch</span></span>
         }
         else if (ActiveMode == SendMode.Replace)
         {
-            <span class="composer-send-tooltip-row active"><kbd>Enter</kbd><span class="composer-send-tooltip-label">Replace branch now</span></span>
+            <span class="composer-send-tooltip-row active" data-app-tooltip-hint><kbd>Enter</kbd><span class="composer-send-tooltip-label">Replace branch now</span></span>
         }
         else
         {
-            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Send ? "active" : string.Empty)"><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send</span></span>
-            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Queue ? "active" : string.Empty)"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Queue for later</span></span>
-            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Fork ? "active" : string.Empty)"><kbd>Ctrl</kbd><span>+</span><kbd>Alt</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send in a forked session</span></span>
-            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.SendNow ? "active" : string.Empty)"><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Interrupt and send now</span></span>
+            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Send ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send</span></span>
+            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Queue ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Queue for later</span></span>
+            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Fork ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Ctrl</kbd><span>+</span><kbd>Alt</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send in a forked session</span></span>
+            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.SendNow ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Interrupt and send now</span></span>
         }
     </span>
 </span>
@@ -96,6 +98,8 @@
         SendMode.SendNow => "Interrupt and send now",
         SendMode.EditFork => "Create edited branch",
         SendMode.Replace => "Replace branch now",
+        SendMode.Queue => "Queue for later",
+        SendMode.Fork => "Send in a forked session",
         _ => "Send message"
     };
 

@@ -1064,12 +1064,22 @@ public sealed class AppToolTests
         request.Action.ShouldBe("targets");
         var owner = Guid.NewGuid();
         fixture.Navigation.Claim(request.RequestId, owner).ShouldBeTrue();
-        var targets = new AppNavigationTargets().All.Select(target => target with { Visible = target.Id == "project" }).ToArray();
+        var targets = new AppNavigationTargets().All.Select(target => target with
+        {
+            Visible = target.Id == "project", UiLabel = target.Id == "project" ? "Current project" : null,
+            UiHint = target.Id == "project" ? "Open project" : null, Enabled = target.Id == "project", State = "aria-expanded=false"
+        }).ToArray();
         fixture.Navigation.Complete(request.RequestId, new(owner, "applied", Targets: targets)).ShouldBeTrue();
         var result = await action;
         result.GetProperty("outcome").GetString().ShouldBe("targets");
         result.GetProperty("targets").EnumerateArray().Single(target => target.GetProperty("id").GetString() == "project")
             .GetProperty("visible").GetBoolean().ShouldBeTrue();
+        var project = result.GetProperty("targets").EnumerateArray().Single(target => target.GetProperty("id").GetString() == "project");
+        project.GetProperty("hint").GetString().ShouldBe(targets.Single(target => target.Id == "project").Hint);
+        project.GetProperty("uiLabel").GetString().ShouldBe("Current project");
+        project.GetProperty("uiHint").GetString().ShouldBe("Open project");
+        project.GetProperty("enabled").GetBoolean().ShouldBeTrue();
+        project.GetProperty("state").GetString().ShouldBe("aria-expanded=false");
     }
 
     [Fact]

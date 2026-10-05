@@ -19,6 +19,8 @@ public sealed class CompositionTests
 
         var client = provider.GetRequiredService<HttpClient>();
         client.BaseAddress.ShouldBe(new Uri("http://127.0.0.1:52173/"));
+        provider.GetRequiredService<AI.Web.Navigation.IAppControlHints>()
+            .Attributes("settings.connection.reserved_output")["title"].ShouldNotBeNull();
         provider.GetRequiredService<AI.TextCorrection.ITextAutoCorrectionAnalyzer>()
             .Analyze("helllo", ["en"]).Single().Text.ShouldBe("hello");
         provider.GetRequiredService<AI.Web.Settings.ITextCorrectionLanguages>().Available.Count.ShouldBe(4);

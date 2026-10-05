@@ -1,17 +1,18 @@
+@inject AI.Web.Navigation.IAppControlHints ControlHints
 @inject IProjectApi ProjectApi
 @inject IChatHistoryApi ChatHistoryApi
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject INotificationService Notifications
 
 <div class="permissions-drawer-backdrop"></div>
-<aside class="permissions-drawer" data-app-target="@GuideTarget" aria-label="Tool permissions" @onclick:stopPropagation="true">
+<aside @attributes="@(ControlHints.Attributes(GuideTarget))" class="permissions-drawer" aria-label="Tool permissions" @onclick:stopPropagation="true">
     <header>
         <div><h2>Tool permissions</h2><p>@Scope · @Title</p></div>
         <button class="icon-action" type="button" title="Close" aria-label="Close permissions" @onclick="() => Close.InvokeAsync()"><AppIcon Name="drawer-close" /></button>
     </header>
     <nav class="permissions-tabs" aria-label="Permission view">
-        <button class="@(!_showAll ? "selected" : string.Empty)" data-app-target="@(GuideTarget + ".overrides")" type="button" title="Show permission rules saved in this scope" @onclick="() => _showAll = false">Overrides <span>@Overrides.Count</span></button>
-        <button class="@(_showAll ? "selected" : string.Empty)" data-app-target="@(GuideTarget + ".effective")" type="button" title="Show saved rules after applying chat, project and global precedence" @onclick="() => _showAll = true">All effective</button>
+        <button @attributes="@(ControlHints.Attributes((GuideTarget + ".overrides"), "Show permission rules saved in this scope"))" class="@(!_showAll ? "selected" : string.Empty)" type="button" @onclick="() => _showAll = false">Overrides <span>@Overrides.Count</span></button>
+        <button @attributes="@(ControlHints.Attributes((GuideTarget + ".effective")))" class="@(_showAll ? "selected" : string.Empty)" type="button" @onclick="() => _showAll = true">All effective</button>
     </nav>
     <div class="permissions-content">
         <p class="permissions-intro">@Description</p>

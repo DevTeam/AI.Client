@@ -1,3 +1,4 @@
+@inject AI.Web.Navigation.IAppControlHints ControlHints
 @* Split out of Home.razor so that typing in the composer doesn't re-render the whole message
    list: Blazor only re-renders a child component if ShouldRender() says so, so this component
    can be skipped entirely on renders where none of its parameters actually changed (see
@@ -111,7 +112,7 @@
                         else
                         {
                             var options = GetBranchOptions(pickerMessage);
-                            <button class="branch-picker-trigger" data-app-target="chat.branches" type="button" title="Choose branch" aria-label="Choose branch" aria-expanded="@(MessageBranchMenuId == pickerMessage.Id ? "true" : "false")" @onclick="() => OnToggleBranchMenu.InvokeAsync(pickerMessage.Id)"><AppIcon Name="git-branch" /><span>Branch @GetActiveBranchPosition(options) of @options.Count</span></button>
+                            <button @attributes="@(ControlHints.Attributes("chat.branches", "Choose branch"))" class="branch-picker-trigger" type="button" aria-label="Choose branch" aria-expanded="@(MessageBranchMenuId == pickerMessage.Id ? "true" : "false")" @onclick="() => OnToggleBranchMenu.InvokeAsync(pickerMessage.Id)"><AppIcon Name="git-branch" /><span>Branch @GetActiveBranchPosition(options) of @options.Count</span></button>
                             @if (MessageBranchMenuId == pickerMessage.Id)
                             {
                                 <span class="branch-picker-menu" role="menu">
@@ -373,13 +374,13 @@
                             }
                             @if (message.Role == "User")
                             {
-                                <button class="icon-action" type="button" title="Edit and branch" aria-label="Edit and branch" @onclick="() => OnEditAndBranch.InvokeAsync(message)"><AppIcon Name="edit" /></button>
-                                <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
+                                <button class="icon-action" type="button" @attributes="@(ControlHints.Attributes("chat.edit_branch", "Edit and branch"))" aria-label="Edit and branch" @onclick="() => OnEditAndBranch.InvokeAsync(message)"><AppIcon Name="edit" /></button>
+                                <button class="icon-action" type="button" @attributes="@(ControlHints.Attributes("chat.fork", IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here"))" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
                                 <button class="icon-action destructive-action" type="button" title="Edit and replace branch…" aria-label="Edit and replace branch" @onclick="() => OnEditAndReplaceBranch.InvokeAsync(message)"><AppIcon Name="edit-replace" /></button>
                             }
                             else
                             {
-                                <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
+                                <button class="icon-action" type="button" @attributes="@(ControlHints.Attributes("chat.fork", IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here"))" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
                             }
                         </div>
                         @renderBranchPicker(message)
@@ -434,7 +435,7 @@
                                            IsLive="@(IsBranchGenerating() && anchor.Id == BranchLeafId)" />
                         <div class="message-actions">
                             <button class="icon-action" type="button" title="Copy" aria-label="Copy" @onclick="() => OnCopyMessage.InvokeAsync(BuildToolGroupSummaryText(group))"><AppIcon Name="copy" /></button>
-                            <button class="icon-action" type="button" title="@(IsActiveBranchLeaf(anchor) ? "This is already the end of the current branch" : "Fork from here")" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(anchor)" @onclick="() => OnForkFromMessage.InvokeAsync(anchor)"><AppIcon Name="fork" /></button>
+                            <button class="icon-action" type="button" @attributes="@(ControlHints.Attributes("chat.fork", IsActiveBranchLeaf(anchor) ? "This is already the end of the current branch" : "Fork from here"))" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(anchor)" @onclick="() => OnForkFromMessage.InvokeAsync(anchor)"><AppIcon Name="fork" /></button>
                         </div>
                         @renderBranchPicker(anchor)
                     </article>

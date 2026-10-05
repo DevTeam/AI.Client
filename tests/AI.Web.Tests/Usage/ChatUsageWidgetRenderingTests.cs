@@ -23,12 +23,14 @@ public sealed class ChatUsageWidgetRenderingTests
     {
         var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
         var registrations = new ServiceCollection();
+        registrations.AddTransient<AI.Contracts.Navigation.IAppNavigationTargets, AI.Contracts.Navigation.AppNavigationTargets>();
+        registrations.AddTransient<AI.Web.Navigation.IAppControlHints, AI.Web.Navigation.AppControlHints>();
         registrations.AddSingleton(Mock.Of<IJSRuntime>());
         await using var services = (ServiceProvider)composition.CreateServiceProvider(composition.CreateBuilder(registrations));
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
         var totals = new TokenUsageTotals(new(627_477, 24_053, 402_432), 23, 0, null, 0, 1_000,
             ReusableInputTokens: 702_260, ToolChanges: 9, PrefixInputTokens: denominator);
-        var definition = new ChatWidgetCatalog().Find(ChatWidgetCatalog.ChatUsage)!;
+        var definition = new ChatWidgetCatalog(new AI.Contracts.Navigation.AppNavigationTargets()).Find(ChatWidgetCatalog.ChatUsage)!;
         var widget = new ChatWidgetContext(definition, new(definition.Id), () => Task.CompletedTask,
             () => Task.CompletedTask, _ => Task.CompletedTask);
         await renderer.Dispatcher.InvokeAsync(async () =>

@@ -127,6 +127,50 @@ export function available(request) {
         && (["show", "hover"].includes(request.action) || !control(element).disabled);
 }
 
+// Describe only control help and interaction state. Never read editor values, credentials,
+// conversation text, option values or arbitrary panel contents into the guide's context.
+export function describeTargets(request, definitions) {
+    const text = value => typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, 2000) : null;
+    const attribute = (element, name) => text(element.getAttribute(name));
+    return definitions.map(definition => {
+        const element = target({ ...request, target: definition.id });
+        if (!element) return { ...definition, visible: false, uiLabel: null, uiHint: null, enabled: null, state: null };
+        const input = control(element);
+        const own = item => item.closest("[data-app-target]") === element;
+        const labelledBy = element.getAttribute("aria-labelledby")?.split(/\s+/) || [];
+        const label = attribute(element, "aria-label")
+            || text(labelledBy.map(id => document.getElementById(id)?.textContent || "").join(" "))
+            || text(element.querySelector(".settings-row-label,.nav-item-label,.chat-widget-name")?.textContent)
+            || attribute(input, "aria-label")
+            || (element.matches("button,summary,a") ? text(element.textContent) : null);
+        const hints = [attribute(element, "data-app-ui-hint")];
+        const sharedHint = attribute(element, "data-app-hint");
+        const title = attribute(element, "title");
+        if (title) hints.push(sharedHint ? title.replace(sharedHint, "").trim() : title);
+        for (const item of element.querySelectorAll(".settings-row-hint,[data-app-tooltip-hint],[title]")) {
+            if (!own(item)) continue;
+            const childTitle = attribute(item, "title");
+            if (childTitle) hints.push(sharedHint ? childTitle.replace(sharedHint, "").trim() : childTitle);
+            if (item.matches(".settings-row-hint,[data-app-tooltip-hint]")) hints.push(text(item.textContent));
+        }
+        const describedBy = element.getAttribute("aria-describedby")?.split(/\s+/) || [];
+        for (const id of describedBy) {
+            const tooltip = document.getElementById(id);
+            if (tooltip?.matches('[role="tooltip"]')) {
+                for (const item of tooltip.querySelectorAll("[data-app-tooltip-hint]")) hints.push(text(item.textContent));
+            }
+        }
+        const state = [];
+        for (const name of ["aria-pressed", "aria-expanded", "aria-checked", "aria-busy"])
+            if (input.hasAttribute(name) || element.hasAttribute(name)) state.push(`${name}=${input.getAttribute(name) ?? element.getAttribute(name)}`);
+        if (input.matches('input[type="checkbox"],input[type="radio"]')) state.push(`checked=${input.checked}`);
+        return { ...definition, hint: sharedHint || definition.hint,
+            visible: element.getClientRects().length > 0, enabled: !input.disabled,
+            uiLabel: label || null, uiHint: [...new Set(hints.filter(Boolean))].join("\n").slice(0, 4000) || null,
+            state: state.join(", ") || null };
+    });
+}
+
 export async function waitForTarget(request) {
     for (let attempt = 0; attempt < 40; attempt++) {
         // A guided field can be inside a closed disclosure. Reveal it without changing its value.

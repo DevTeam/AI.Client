@@ -1,3 +1,4 @@
+@inject AI.Web.Navigation.IAppControlHints ControlHints
 @implements IDisposable
 @inject AI.Web.Settings.ITextCorrectionLanguages Languages
 @inject AI.TextCorrection.ITextCorrectionPreparation Preparation
@@ -6,23 +7,23 @@
 <section class="settings-group" aria-label="Text correction">
     <div class="settings-card">
         <details class="settings-disclosure">
-            <summary class="settings-row" data-app-target="settings.chat.text_correction">
+            <summary @attributes="@(ControlHints.Attributes("settings.chat.text_correction"))" class="settings-row">
                 <span class="settings-row-label">Text correction</span>
                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
             </summary>
-            <label class="settings-row" data-app-target="settings.chat.text_correction.enabled">
+            <label @attributes="@(ControlHints.Attributes("settings.chat.text_correction.enabled"))" class="settings-row">
                 <span class="settings-row-text">
                     <span class="settings-row-label">Correct while typing</span>
-                    <span class="settings-row-hint">The button in the message editor pauses or resumes correction. If no languages are selected, it opens these language settings.</span>
+                    <span class="settings-row-hint">@ControlHints.GetSummary("settings.chat.text_correction.enabled")</span>
                 </span>
                 <input class="settings-switch" type="checkbox" role="switch" checked="@_state.Enabled" disabled="@_saving" @onchange="args => SetEnabledAsync(args.Value is true)" />
             </label>
-            <div class="settings-row" data-app-target="settings.chat.text_correction.languages" tabindex="-1" aria-label="Text correction languages">
+            <div @attributes="@(ControlHints.Attributes("settings.chat.text_correction.languages"))" class="settings-row" tabindex="-1" aria-label="Text correction languages">
                 <span class="settings-row-text">
                     <span class="settings-row-label">Languages</span>
                     @if (_state.Languages.Count == 0)
                     {
-                        <span class="settings-row-hint">Select a language for spelling correction. Select two or more to also correct text typed in the wrong layout.</span>
+                        <span class="settings-row-hint">@ControlHints.GetSummary("settings.chat.text_correction.languages")</span>
                     }
                     else if (!_state.Enabled)
                     {
@@ -40,7 +41,7 @@
             </div>
             @foreach (var language in Languages.Available)
             {
-                <label class="settings-row" data-app-target="@($"settings.chat.text_correction.{language.LanguageId}")">
+                <label @attributes="@(ControlHints.Attributes(($"settings.chat.text_correction.{language.LanguageId}")))" class="settings-row">
                     <span class="settings-row-label">@language.Name</span>
                     <input class="settings-switch" type="checkbox" role="switch" checked="@_state.Languages.Any(item => item.LanguageId == language.LanguageId)" disabled="@_saving" @onchange="args => SetLanguageAsync(language.LanguageId, args.Value is true)" />
                 </label>

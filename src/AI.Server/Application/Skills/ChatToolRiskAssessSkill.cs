@@ -10,8 +10,8 @@ using AI.Contracts.Chats;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
-/// One model call without tools that judges one pending tool call for the chat's "Approve for me"
-/// mode. It only ever answers; the caller decides, and treats anything but a well-formed
+/// One model call without tools that judges one pending tool call for manual and automatic approval
+/// modes. It only ever answers; the caller decides, and treats anything but a well-formed
 /// <c>allow</c> as a reason to ask the person.
 /// </summary>
 public sealed class ChatToolRiskAssessSkill(

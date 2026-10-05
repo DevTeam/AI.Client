@@ -67,16 +67,28 @@ public class ChatToolRiskAssessSkillTests
     }
 
     [Theory]
-    [InlineData(ToolApprovalMode.FullAccess, true)]
-    [InlineData(ToolApprovalMode.Ask, false)]
-    public async Task ShouldAnswerTheOtherModesWithoutAnAssessment(ToolApprovalMode mode, bool allowed)
+    [InlineData("allow", "low")]
+    [InlineData("ask", "high")]
+    public async Task ShouldRecommendInManualModeWithoutAllowingTheCall(string decision, string risk)
     {
-        _mode = mode;
+        _mode = ToolApprovalMode.Ask;
+
+        var result = await CreateApprover($$"""{"decision":"{{decision}}","risk":"{{risk}}","reason":"Review this call."}""")
+            .DecideAsync(_projectId, _chatId, _chatId, Tool(), "{}", TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new ToolAutoApproval(false, "Review this call."));
+        _requests.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ShouldAllowFullAccessWithoutAnAssessment()
+    {
+        _mode = ToolApprovalMode.FullAccess;
 
         var result = await CreateApprover("""{"decision":"allow","risk":"low","reason":"x"}""")
             .DecideAsync(_projectId, _chatId, _chatId, Tool(), "{}", TestContext.Current.CancellationToken);
 
-        result.Allowed.ShouldBe(allowed);
+        result.Allowed.ShouldBeTrue();
         _requests.ShouldBeEmpty();
     }
 

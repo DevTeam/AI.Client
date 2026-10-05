@@ -7,7 +7,7 @@ namespace AI.Contracts.Chats;
 /// </summary>
 public enum ToolApprovalMode
 {
-    /// <summary>Every such call waits for the person's confirmation.</summary>
+    /// <summary>Assess each call for advice, then always wait for the person's confirmation.</summary>
     Ask,
 
     /// <summary>

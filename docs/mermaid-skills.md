@@ -42,6 +42,11 @@ An explicitly requested orientation or destination requirement takes precedence.
 concise and split wide diagrams into focused views while preserving relevant relationships;
 do not turn alternatives, concurrent behavior or dependencies into an invented sequence.
 
+Keep diagrams small. Oversized diagrams are hard to read in the chat, so prefer a few focused
+views over one complete view; do not shrink labels or dimensions to force an oversized diagram
+into one image. The same guidance applies during creation, requested layout changes, fixes,
+exports and reviews.
+
 - Flowcharts use `flowchart TD` or `flowchart TB`, including vertical subgraphs where practical.
   Connections outside a subgraph can override its direction; check the rendered result.
 - Class and state diagrams use `direction TB`; ER diagrams use it when the target supports it.

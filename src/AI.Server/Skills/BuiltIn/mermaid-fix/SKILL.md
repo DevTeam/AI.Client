@@ -43,6 +43,8 @@ Clarify only missing decisions for a new dependency, materially different scope 
    When fixing width or readability in chat, prefer a narrow top-to-bottom layout if the type
    supports it, unless another orientation is requested or required by the target. Use compact
    native layouts otherwise. Preserve orientation for syntax-only fixes.
+   Keep the diagram small: oversized diagrams are hard to read in the chat, so prefer a few
+   focused views over one complete view; split an oversized diagram where the request allows it.
 6. Parse then render again where possible. Compare semantics and visual clarity with the input.
    An unavailable runtime remains unverified, not fixed. If the cause is host integration,
    report it and route requested implementation work to the relevant code skill.

@@ -40,6 +40,9 @@ Clarify only missing decisions for a new dependency, materially different scope 
    Preserve the source orientation and explicitly requested dimensions. When layout changes are
    requested for chat, prefer a narrow top-to-bottom view where the type supports it; otherwise
    keep the native layout compact. Do not shrink text to illegibility to fit a wide graph.
+   Keep the diagram small: oversized diagrams are hard to read in the chat, so prefer a few
+   focused views over one complete view, and do not shrink text or dimensions to fit an
+   oversized graph into one image.
 5. Prefer an existing compatible Mermaid CLI or discovered renderer. For mmdc pass executable
    and arguments separately, for example ["-i","input.mmd","-o","output.svg"]; use explicit paths
    and check the installed --help before version-specific flags. Do not run npx in a way

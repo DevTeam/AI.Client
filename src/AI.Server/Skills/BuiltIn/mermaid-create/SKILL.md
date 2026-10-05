@@ -46,6 +46,8 @@ Clarify only missing decisions for a new dependency, materially different scope 
    another orientation or the destination requires it. Use the type's supported direction syntax;
    keep labels concise and split wide views without losing relationships or inventing ordering.
    For types without vertical layout, reduce width within their native structure.
+   Keep the diagram small: oversized diagrams are hard to read in the chat, so prefer a few
+   focused views over one complete view.
 6. Return the complete diagram and a brief explanation of assumptions and scope.
 
 Validation and delivery:

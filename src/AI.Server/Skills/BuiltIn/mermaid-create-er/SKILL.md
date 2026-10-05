@@ -45,6 +45,8 @@ Clarify only missing decisions for a new dependency, materially different scope 
    Prefer direction TB for the vertical chat viewport when the target supports it, unless another
    orientation is requested or required by the destination. Keep attributes relevant and split
    wide schemas into focused views while retaining key relationships and cardinalities.
+   Keep the diagram small: oversized diagrams are hard to read in the chat, so prefer a few
+   focused views over one complete view.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.

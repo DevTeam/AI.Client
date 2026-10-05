@@ -23,14 +23,24 @@ const BATCH_SIZE = 100;
 const SLICE_MS = 8;
 // Text in these is not scanned for bare paths: code has its own rule, and the rest is not prose.
 const NOT_PROSE = 'pre, code, a, .mermaid-block, .svg-block, .file-link';
-const LINE_SUFFIX = /(?:#L\d+(?:-L?\d+)?|:\d+(?::\d+)?)$/;
+const LINE_SUFFIX = /(?:#L(\d+)(?:-L?(\d+))?|:(\d+)(?:-(\d+)|:\d+)?)$/;
 const WINDOWS_PATH = /[A-Za-z]:\\[^\s<>"'|*?`]+/g;
+
+// Keep source locations separate from canonical paths, including after the Host resolves a link.
+const locationOf = input => {
+    const match = LINE_SUFFIX.exec(input ?? '');
+    if (!match) return { path: input, startLine: null, endLine: null };
+    const start = Number(match[1] ?? match[3]);
+    const end = Number(match[2] ?? match[4] ?? start);
+    const valid = Number.isInteger(start) && start > 0 && end >= start && end <= 2147483647;
+    return { path: input.slice(0, match.index), startLine: valid ? start : null, endLine: valid ? end : null };
+};
 
 // The local path a link names on sight — a file URI or a Windows path — or null.
 const directPathOf = href => {
     if (/^file:/i.test(href)) {
         try {
-            const url = new URL(href);
+            const url = new URL(locationOf(href).path);
             const path = decodeURIComponent(url.pathname);
             if (url.host) return `\\\\${url.host}${path.replace(/\//g, '\\')}`;
             // file:///C:/repo → C:\repo; file:///home/me stays a POSIX path.
@@ -42,9 +52,9 @@ const directPathOf = href => {
     }
     if (/^[A-Za-z]:(\\|\/|%5C)/i.test(href)) {
         try {
-            return decodeURIComponent(href);
+            return decodeURIComponent(locationOf(href).path);
         } catch {
-            return href;
+            return locationOf(href).path;
         }
     }
     return null;
@@ -54,9 +64,9 @@ const directPathOf = href => {
 const relativeTargetOf = href => {
     if (!href || href.startsWith('#') || href.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(href)) return null;
     try {
-        return decodeURIComponent(href);
+        return decodeURIComponent(locationOf(href).path);
     } catch {
-        return href;
+        return locationOf(href).path;
     }
 };
 
@@ -381,7 +391,9 @@ export function attach(container, dotnet) {
         // A local path, or any relative link, would navigate the app itself; neither may.
         const localPath = anchor.dataset.filePath || directPathOf(href) || relativeTargetOf(href);
         if (localPath) {
-            dotnet.invokeMethodAsync('OnFileLinkClicked', localPath);
+            const source = href || anchor.dataset.pathInput || anchor.dataset.filePath;
+            const { startLine, endLine } = locationOf(source);
+            dotnet.invokeMethodAsync('OnFileLinkClicked', localPath, startLine, endLine);
             return;
         }
         const url = externalUrlOf(href);

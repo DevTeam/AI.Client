@@ -74,6 +74,6 @@ public sealed partial class WorkspacePathResolver(IProjectService projects, IDir
         return text.Length is 0 or > InputLengthLimit || text.IndexOfAny(Path.GetInvalidPathChars()) >= 0 ? null : text;
     }
 
-    [GeneratedRegex(@"(?:#L\d+(?:-L?\d+)?|:\d+(?::\d+)?)$")]
+    [GeneratedRegex(@"(?:#L\d+(?:-L?\d+)?|:\d+(?:-\d+|:\d+)?)$")]
     private static partial Regex LineSuffix();
 }

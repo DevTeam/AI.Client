@@ -38,6 +38,7 @@ data or repository files. Report any unavailable evidence instead of treating it
    example when useful; cover error handling, async/concurrent behavior and important edge
    cases. Distinguish what the code does from an inferred reason why it was designed that way.
 5. For a diagram, derive nodes and edges from the inspected code. Cite real files and symbols,
-   and line numbers when verified. Do not fabricate APIs, execution results or author intent.
+   and line numbers when verified. Link source locations with absolute file URIs ending in
+   `#L42` or `#L42-L48`. Do not fabricate APIs, execution results or author intent.
 6. The final answer contains the explanation in full, source links, relevant limitations and
    any remaining uncertainty. Recommendations may be included when requested, but are not edits.

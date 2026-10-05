@@ -48,6 +48,17 @@ export function attach(id) {
 
 export const copy = text => navigator.clipboard.writeText(text);
 export const imageWidth = id => document.getElementById(id)?.querySelector('img')?.naturalWidth ?? 0;
+export function scrollToLine(id, line) {
+    const panel = document.getElementById(id);
+    const body = panel?.querySelector('.file-preview-body');
+    const code = panel?.querySelector('.file-preview-code');
+    const pre = code?.querySelector('pre');
+    if (!body || !pre || !Number.isInteger(line) || line < 1) return;
+    const style = getComputedStyle(pre);
+    const top = code.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
+    body.scrollTop = Math.max(0, top + parseFloat(style.paddingTop)
+        + (line - 1) * parseFloat(style.lineHeight) - body.clientHeight / 3);
+}
 export async function fullscreen(id) {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await document.getElementById(id).requestFullscreen();

@@ -44,13 +44,15 @@ public sealed class WorkspacePathResolverTests : IDisposable
         var resolver = new WorkspacePathResolver(projects.Object, new PhysicalDirectoryBrowser(), new ProjectPathAccess());
 
         var result = await resolver.ResolveAsync(projectId,
-            ["src/Program.cs:12", "./src", program, "docs", secret, "missing.cs", "../outside/secret.txt"], token);
+            ["src/Program.cs:12", "./src", program, "docs", secret, "missing.cs", "../outside/secret.txt",
+                "src/Program.cs:12-18", "src/Program.cs#L12-L18", "src/Program.cs:12:7"], token);
 
         result.Select(item => item.Kind).ShouldBe(
             [ChatResourceKind.File, ChatResourceKind.Directory, ChatResourceKind.File, ChatResourceKind.Directory,
-                ChatResourceKind.File, null, null]);
+                ChatResourceKind.File, null, null, ChatResourceKind.File, ChatResourceKind.File, ChatResourceKind.File]);
         result.Select(item => item.Access).ShouldBe([PathAccess.ReadWrite, PathAccess.ReadWrite, PathAccess.ReadWrite,
-            PathAccess.Read, PathAccess.None, PathAccess.None, PathAccess.None]);
+            PathAccess.Read, PathAccess.None, PathAccess.None, PathAccess.None,
+            PathAccess.ReadWrite, PathAccess.ReadWrite, PathAccess.ReadWrite]);
         result[0].Input.ShouldBe("src/Program.cs:12");
         result[0].Path.ShouldBe(program, StringCompareShould.IgnoreCase);
         // A relative path is tried under every root in grant order; "docs" only exists under the first.
@@ -59,5 +61,6 @@ public sealed class WorkspacePathResolverTests : IDisposable
         // granted; a relative one that climbs out of the roots names nothing.
         result[4].Path.ShouldBe(secret, StringCompareShould.IgnoreCase);
         result[6].Path.ShouldBeNull();
+        foreach (var item in result.Skip(7)) item.Path.ShouldBe(program, StringCompareShould.IgnoreCase);
     }
 }

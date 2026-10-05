@@ -15,6 +15,8 @@ Status: File and directory references, diff reviews, and reviews of selected cha
 
 ## Entry points and layout
 
+File links can target a one-based line (`file:///C:/repo/src/Program.cs#L42`) or an inclusive range (`#L42-L48`). The text preview highlights the rows and scrolls to the first line, retaining syntax highlighting. It loads further text pages as needed up to the existing 1 MB preview limit and reports locations beyond the loaded limit or end of file. Relative links, Windows paths and inline code paths also accept `#L42`, `#L42-L48`, `:42` and `:42-48`; the existing `:42:7` spelling selects line 42. Source locations are kept separately from canonical paths, so attachment, access grants and copying paths continue to use the file itself. Invalid or reversed ranges open the file without selecting lines.
+
 `Review` on a saved `WorkspaceChanges` card opens the review workspace for that round and permits creating another review of those changes. Chat and branch popup menus open existing reviews. `+ -> Review` attaches an existing review to the composer without opening the editor.
 
 The review workspace opens as a right panel beside the chat. Its wide left area shows the saved diff, one file after another; the right area is a filterable file tree with checkboxes and comment counts. Selecting a file scrolls to its diff. A `+` in a diff line opens a comment editor below that line. Shift-click on another line of the same side selects a range. Each saved comment has inline Edit and Delete actions. Binary files and files without a saved text diff allow file-level comments. A file with comments cannot be unchecked until its comments are removed.

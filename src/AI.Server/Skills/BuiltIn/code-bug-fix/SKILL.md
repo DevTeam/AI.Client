@@ -30,3 +30,4 @@ The project instructions and instruction files win over these steps where they d
    or push.
 8. The final answer contains, in full: the root cause in one or two sentences, the fix, each
    changed file as a link, the commands run with their results, and anything you could not verify.
+   Link verified source locations with absolute file URIs ending in `#L42` or `#L42-L48`.

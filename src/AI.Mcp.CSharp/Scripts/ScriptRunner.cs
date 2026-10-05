@@ -61,6 +61,11 @@ public sealed class ScriptRunner : IScriptRunner
         var stopwatch = Stopwatch.StartNew();
         var diagnostics = new List<ScriptDiagnostic>();
 
+        if (request.TimeoutMs is < 1 or > ScriptLimits.MaxTimeoutMs)
+        {
+            return Failure(stopwatch, $"Timeout must be between 1 and {ScriptLimits.MaxTimeoutMs} milliseconds.");
+        }
+
         if (string.IsNullOrWhiteSpace(request.Code))
         {
             return Failure(stopwatch, "Script code is empty.");

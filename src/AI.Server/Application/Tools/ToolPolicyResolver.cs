@@ -3,6 +3,7 @@ namespace AI.Application.Tools;
 using Chats;
 using Projects;
 using Settings;
+using AI.Contracts.Settings;
 
 /// <summary>What the layered policies add up to for one tool in one chat.</summary>
 public sealed record EffectiveToolPolicy(
@@ -49,11 +50,11 @@ public sealed class ToolPolicyResolver(IProjectService projects, IChatService ch
             : projectPolicy?.MaxCallsPerRun is not null ? "project"
             : globalPolicy?.MaxCallsPerRun is not null ? "global" : "default";
         var timeout = chatPolicy?.TimeoutSeconds ?? projectPolicy?.TimeoutSeconds
-            ?? globalPolicy?.TimeoutSeconds ?? 120;
+            ?? globalPolicy?.TimeoutSeconds ?? McpToolPolicySettings.DefaultTimeoutSeconds;
         return new EffectiveToolPolicy(
             decision,
             Math.Clamp(maxCalls, 1, int.MaxValue),
             maxCallsScope,
-            Math.Clamp(timeout, 1, 600));
+            Math.Clamp(timeout, 1, McpToolPolicySettings.MaxTimeoutSeconds));
     }
 }

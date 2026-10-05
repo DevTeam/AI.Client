@@ -434,10 +434,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                         ?? throw new ArgumentException(toolGuidance.ForUnavailableCall(call.Name, selectedTools, permitted));
                     var arguments = session!.ValidateArguments(tool, call.Arguments);
                     var policy = await PolicyAsync(projectId, chatId, tool, token);
-                    if (tool.OriginalName == "process_run")
+                    if (tool.OriginalName is "process_run" or "cs_run")
                     {
                         var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
-                        input["timeoutMs"] = Math.Min(input["timeoutMs"]?.GetValue<int>() ?? 120000, (int)policy.TimeoutSeconds * 1000);
+                        var policyTimeoutMs = (int)policy.TimeoutSeconds * 1000;
+                        input["timeoutMs"] = Math.Min(input["timeoutMs"]?.GetValue<int>() ?? policyTimeoutMs, policyTimeoutMs);
                         arguments = input.ToJsonString();
                     }
                     var count = counts.GetValueOrDefault(call.Name) + 1;
@@ -468,7 +469,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                             // kill the question in under a minute, and the turn's own hour, which
                             // must not be spent on time the person took to read it.
                             var asking = AsksTheUser(tool);
-                            // Leave a short transport margin for process_run to report its own timeout.
+                            // Leave a short transport margin for execution tools to report their own timeout.
                             var patience = asking
                                 ? null
                                 : new Patience(timeout, TimeSpan.FromSeconds(policy.TimeoutSeconds + 2), MaxCallDuration);

@@ -53,7 +53,7 @@ Input:
   "executable": "dotnet",
   "arguments": ["--info"],
   "workingDirectory": "C:\\Projects\\DevTeam\\AI",
-  "timeoutMs": 120000
+  "timeoutMs": 600000
 }
 ```
 
@@ -61,7 +61,9 @@ Input:
 
 The structured result contains `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `truncated`, `error`. A non-zero exit code is recorded as the process result with MCP `isError` rather than being swallowed by an exception. Each stream is limited to 32768 characters; remaining data continues to be read and discarded so the process does not block.
 
-Limits: up to 256 arguments, up to 65536 characters of arguments JSON on the Host side, up to 65535 calls of a single tool per run by default, up to 120 seconds per process and up to one hour for the agent loop including confirmations. There is no separate model-iteration limit; the number of parallel `tool_calls` in a single assistant message is capped at 1024. The project policy may lower the limits. The process timeout is reduced to what the policy allows and is shown before confirmation.
+Limits: up to 256 arguments, up to 65536 characters of arguments JSON on the Host side, up to 65535 calls of a single tool per run by default, up to 600 seconds per process and up to one hour for the agent loop, excluding time waiting for a person. There is no separate model-iteration limit; the number of parallel `tool_calls` in a single assistant message is capped at 1024. Tool policies inherit chat -> project -> global, with a default timeout of 600 seconds and an allowed range of 1..600 seconds. Saved shorter timeouts remain in effect.
+
+For `process_run` and the optional C# server's `cs_run`, `timeoutMs` accepts 1..600000 milliseconds and defaults to 600000. Omit it to use the effective tool policy; an explicit value can shorten the run but cannot exceed that policy. The Host passes the effective run timeout to the server before confirmation. Other tools use the policy as a silence timeout renewed by progress, subject to their own internal limits. `fetch` retains its 30-second HTTP timeout, and `app_runs` accepts a wait window of up to 600 seconds.
 
 ## FileSystem tools
 

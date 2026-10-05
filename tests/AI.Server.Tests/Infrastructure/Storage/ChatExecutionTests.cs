@@ -847,6 +847,37 @@ public sealed class ChatExecutionTests
         chat!.Messages.Single(message => message.ToolCallId == "call-1").Content.ShouldContain("went silent for");
     }
 
+    [Theory]
+    [InlineData("process_run", null, null, 600000)]
+    [InlineData("process_run", 600, null, 600000)]
+    [InlineData("process_run", 90, null, 90000)]
+    [InlineData("process_run", 90, 600000, 90000)]
+    [InlineData("process_run", 600, 120000, 120000)]
+    [InlineData("cs_run", null, null, 600000)]
+    [InlineData("cs_run", 600, null, 600000)]
+    [InlineData("cs_run", 90, null, 90000)]
+    [InlineData("cs_run", 90, 600000, 90000)]
+    [InlineData("cs_run", 600, 120000, 120000)]
+    public async Task ExecutionTimeoutShouldUsePolicyAndHonorShorterExplicitDeadline(
+        string toolName, int? policySeconds, int? requestedMs, int expectedMs)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferCSharp = toolName == "cs_run";
+        await fixture.SetPolicyAsync("Allow", timeoutSeconds: policySeconds, toolName: toolName);
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        var name = toolName == "cs_run" ? "mcp_csharp__cs_run" : "mcp_built_in__process_run";
+        var arguments = requestedMs is { } ms ? JsonSerializer.Serialize(new { timeoutMs = ms }) : "{}";
+        first.ToolCalls = [new ChatToolCall("call-1", name, arguments)];
+        first.Answer.SetResult("");
+
+        var second = await fixture.NextCallAsync();
+        using var executed = JsonDocument.Parse(fixture.Tools.LastExecutionArguments!);
+        executed.RootElement.GetProperty("timeoutMs").GetInt32().ShouldBe(expectedMs);
+        second.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
     [Fact]
     public async Task AnEmptyTurnShouldBeAskedAgainRatherThanEndTheRun()
     {
@@ -1969,14 +2000,16 @@ public sealed class ChatExecutionTests
             }, CancellationToken.None);
         }
 
-        public async Task SetPolicyAsync(string decision, long timeoutSeconds = 120, int maxCalls = 20)
+        public async Task SetPolicyAsync(string decision, long? timeoutSeconds = McpToolPolicySettings.DefaultTimeoutSeconds,
+            int maxCalls = 20, string toolName = "process_run")
         {
+            var server = toolName == "cs_run" ? CSharpMcpServer.Settings : DefaultMcpServer.Settings;
             var global = await Settings.LoadAsync(CancellationToken.None);
-            await Settings.SaveAsync(global with { McpServers = [DefaultMcpServer.Settings with { Policy = "Allow" }] }, CancellationToken.None);
+            await Settings.SaveAsync(global with { McpServers = [server with { Policy = "Allow" }] }, CancellationToken.None);
             var project = await Projects.GetAsync(ProjectId, CancellationToken.None);
             await Projects.UpdateSecurityAsync(ProjectId, new UpdateProjectSecurityRequest(project!.Revision, [],
-                [new Contracts.Projects.McpServerSettings(DefaultMcpServer.Id, "Default", "Stdio", true)],
-                [new ToolPolicySettings(DefaultMcpServer.Id, "process_run", "schema", decision, maxCalls, timeoutSeconds)]), CancellationToken.None);
+                [new Contracts.Projects.McpServerSettings(server.Id, server.Name, "Stdio", true)],
+                [new ToolPolicySettings(server.Id, toolName, "schema", decision, maxCalls, timeoutSeconds)]), CancellationToken.None);
         }
         public async Task AllowToolSearchAsync()
         {
@@ -2061,6 +2094,14 @@ public sealed class ChatExecutionTests
             ToolDescriptor.Basic("mcp_built_in__process_run", "process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
             DefaultMcpServer.Id, "process_run", "schema");
 
+        private static readonly AgentTool ScriptRun = new(
+            new ChatToolDefinition("mcp_csharp__cs_run", "Run script", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_csharp__cs_run", "cs_run", "Run script", JsonSerializer.Deserialize<JsonElement>("{}")),
+            CSharpMcpServer.Id, "cs_run", "schema");
+
+        public bool OfferCSharp { get; set; }
+        public string? LastExecutionArguments { get; private set; }
+
         /// <summary>
         /// Stands in for the real ask_user: same server, same name, and it reaches the person the
         /// same way — through the broker — so the run's side of a question is exercised here rather
@@ -2090,7 +2131,7 @@ public sealed class ChatExecutionTests
         public List<string> SkillRuns { get; } = [];
 
         public IReadOnlyList<AgentTool> Tools =>
-            [ProcessRun, .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
+            [ProcessRun, .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
                 .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>()];
 
         /// <summary>Set to route an ask_user call to the run that is waiting on it.</summary>
@@ -2120,6 +2161,7 @@ public sealed class ChatExecutionTests
         public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
         {
             CallCount++;
+            if (tool.OriginalName is "process_run" or "cs_run") LastExecutionArguments = arguments;
             if (tool.OriginalName == "tool_search")
                 return _codec.Read("{\"structuredContent\":{\"tools\":[{\"name\":\"mcp_built_in__process_run\","
                     + "\"description\":\"Read files through a shell command\"}],\"guidance\":\"Use an offered definition from the current request.\"}}");

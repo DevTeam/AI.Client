@@ -8,6 +8,13 @@ public interface IGlobalSettingsService
 
     Task<GlobalSettings> SaveAsync(SaveGlobalSettingsRequest request, CancellationToken cancellationToken);
 
+    Task<GlobalSettings> UpsertConnectionAsync(ConnectionSettings connection, ConnectionSettings? expected,
+        CancellationToken cancellationToken);
+    Task<GlobalSettings> RemoveConnectionAsync(Guid id, ConnectionSettings expected, CancellationToken cancellationToken);
+    Task<GlobalSettings> UpsertMcpServerAsync(McpServerSettings server, McpServerSettings? expected,
+        CancellationToken cancellationToken);
+    Task<GlobalSettings> RemoveMcpServerAsync(Guid id, McpServerSettings expected, CancellationToken cancellationToken);
+
     Task<bool> SetConnectionCredentialAsync(Guid id, string? value, CancellationToken cancellationToken);
 
     Task<bool> SetMcpCredentialAsync(Guid id, string? value, CancellationToken cancellationToken);

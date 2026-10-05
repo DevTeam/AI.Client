@@ -184,6 +184,13 @@ public class GlobalSettingsServiceTests
             .Callback<GlobalSettings, CancellationToken>((settings, _) => saved = settings)
             .Returns(Task.CompletedTask);
         _repository.Setup(item => item.LoadAsync(CancellationToken.None)).ReturnsAsync(() => saved);
+        _repository.Setup(item => item.UpdateAsync(
+                It.IsAny<Func<GlobalSettings, CancellationToken, Task<GlobalSettings>>>(), CancellationToken.None))
+            .Returns(async (Func<GlobalSettings, CancellationToken, Task<GlobalSettings>> update, CancellationToken token) =>
+            {
+                saved = await update(saved, token);
+                return saved;
+            });
         _secretStore.Setup(item => item.ExistsAsync("connection", It.IsAny<Guid>(), CancellationToken.None))
             .ReturnsAsync(false);
         var service = CreateInstance();

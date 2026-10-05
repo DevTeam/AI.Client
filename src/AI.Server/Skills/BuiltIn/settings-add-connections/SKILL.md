@@ -32,20 +32,23 @@ tools: ["app_read","app_security","ask_user","run_skill"]
    for confirmation ("Add selected connections (Recommended)" / "Keep settings"). Skip this
    confirmation only if the user already approved these exact values. Dismissed, declined,
    expired or interrupted leaves the proposal unapplied.
-5. Read Settings again immediately before saving. Merge by normalized URL plus exact model id:
+5. Read Settings again immediately before saving. Match by normalized URL plus exact model id:
    keep the existing id, name, credentials, enabled/default/subtask flags, ratings and context
    overrides unless the user explicitly approved changing them. If several existing entries
    match, report the duplicates; do not delete or guess which to replace. New entries get fresh
    ids, enabled true, ForSubtasks false, unknown ratings and context limits unset. Preserve the
    existing global default; if there is no enabled default, explain and confirm which selected
    entry will become the default (the settings service otherwise chooses the first enabled one).
-   Preserve all other Connections, MCP servers, environment variable metadata and tool policies.
+   Leave all other Connections, MCP servers, environment variable metadata and tool policies untouched.
    Never copy a credential to another model's id; if authentication is needed, tell the user
    which new entries need their key set in Settings -> Connections.
-6. If nothing changed, do not write. Otherwise call `app_security` SaveGlobalSettings with the
-   complete merged settings and a fresh operationId. Omit HasCredential from payloads: it is
-   managed by the Host. On failure, report what was saved and what was not; do not claim success.
-   Read Settings after saving to verify the intended entries and flags.
+6. If nothing changed, do not write. Otherwise call `app_security` UpsertConnection once per
+   changed connection with a fresh operationId per item. Send only the intended connection;
+   for an update also send the current entry as expectedConnection, and for a new id omit it.
+   Omit HasCredential from payloads: it is managed by the Host. If the expected item conflicts,
+   re-read Settings and review that entry before deciding whether to retry. On failure, report
+   what was saved and what was not; do not claim success. Read Settings after saving to verify
+   the intended entries and flags.
 7. Offer "Compare connections (Recommended)" / "Finish" with `ask_user`: explain that the
    comparison sends small synthetic tasks to the selected providers and may use paid tokens.
    Dismissed, declined, expired or interrupted finishes without testing. If selected, call

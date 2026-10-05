@@ -95,11 +95,13 @@ verify candidates against their actual publisher docs, not search snippets.
    credentials; retain any pre-import definition and affected policies for possible restoration.
    Never silently replace an existing differently configured or denied server.
    Ask for any replacement not already requested. Re-read Settings immediately before saving,
-   merge only the selected entry and preserve all Connections, other MCP servers, environment
-   secret metadata and ToolPolicies. `app_security` SaveGlobalSettings replaces the whole document:
-   send the complete merged payload, omit read-only HasCredential/HasSecret and use null for
-   unchanged IsSecret values so the Host retains them. Use a fresh operationId per distinct
-   change. On an uncertain result, read before retrying with the same operationId/payload.
+   then call `app_security` UpsertMcpServer for only the selected server. For a new id omit
+   expectedMcpServer; for an update pass the current server as expectedMcpServer and the intended
+   definition as mcpServer. Omit read-only HasCredential/HasSecret and use null for unchanged
+   IsSecret values so the Host retains them. A conflict means another edit landed: re-read,
+   review that server and decide whether to retry; never overwrite it automatically. Use a fresh
+   operationId per distinct change. On an uncertain result, read before retrying with the same
+   operationId/payload.
 7. Read saved Settings and verify the exact intended fields. For a ready enabled non-denied server,
    call `app_read` resource=McpTools with its resourceId and follow all pages. This starts/connects
    to the server and discovers tools without invoking them. Verify actual names, schemas and
@@ -151,9 +153,9 @@ verify candidates against their actual publisher docs, not search snippets.
     instead. Dismissed, declined, expired or interrupted means keep the import; do not remove
     it or start replacement installation without an explicit choice.
     If removal was selected, re-read Settings and relevant project/skill dependencies. Remove
-    only the imported server definition using `app_security` SaveGlobalSettings with a fresh
-    operationId and the complete latest payload, preserving Connections, other servers and
-    unrelated ToolPolicies. Remove only policies created for this import; do not rewrite shared
+    only the imported server definition using `app_security` RemoveMcpServer with serverId,
+    the latest server as expectedMcpServer, and a fresh operationId. This also removes that
+    server's global tool policies; do not rewrite shared
     dependencies or project bindings silently. If this reused/modified a pre-existing server,
     explain that distinction and obtain an exact choice to restore its prior configuration or
     remove it. Do not uninstall shared packages/runtimes or delete users' data as part of removing

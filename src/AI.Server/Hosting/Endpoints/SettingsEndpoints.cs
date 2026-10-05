@@ -21,6 +21,44 @@ public sealed class SettingsEndpoints : IEndpointModule
             (SaveGlobalSettingsRequest request, IGlobalSettingsService service, CancellationToken cancellationToken) =>
                 service.SaveAsync(request, cancellationToken));
 
+        routes.MapPut("/api/settings/connections/{id:guid}", async (Guid id,
+            SettingsItemChange<ConnectionSettings> request, IGlobalSettingsService service, CancellationToken token) =>
+        {
+            if (request.Item.Id != id) return Results.BadRequest("Connection id does not match the URL.");
+            try { return Results.Ok(await service.UpsertConnectionAsync(request.Item, request.Expected, token)); }
+            catch (SettingsConflictException error) { return Results.Problem(error.Message, statusCode: 409); }
+        });
+
+        routes.MapPost("/api/settings/connections/{id:guid}/remove", async (Guid id,
+            SettingsItemRemoval<ConnectionSettings> request, IGlobalSettingsService service, CancellationToken token) =>
+        {
+            if (request.Expected.Id != id) return Results.BadRequest("Connection id does not match the URL.");
+            try { return Results.Ok(await service.RemoveConnectionAsync(id, request.Expected, token)); }
+            catch (SettingsConflictException error) { return Results.Problem(error.Message, statusCode: 409); }
+        });
+
+        routes.MapPut("/api/settings/mcp/{id:guid}", async (Guid id,
+            SettingsItemChange<McpServerSettings> request, IGlobalSettingsService service, CancellationToken token) =>
+        {
+            if (request.Item.Id != id) return Results.BadRequest("MCP server id does not match the URL.");
+            try { return Results.Ok(await service.UpsertMcpServerAsync(request.Item, request.Expected, token)); }
+            catch (SettingsConflictException error) { return Results.Problem(error.Message, statusCode: 409); }
+        });
+
+        routes.MapPost("/api/settings/mcp/{id:guid}/remove", async (Guid id,
+            SettingsItemRemoval<McpServerSettings> request, IGlobalSettingsService service, CancellationToken token) =>
+        {
+            if (request.Expected.Id != id) return Results.BadRequest("MCP server id does not match the URL.");
+            try { return Results.Ok(await service.RemoveMcpServerAsync(id, request.Expected, token)); }
+            catch (SettingsConflictException error) { return Results.Problem(error.Message, statusCode: 409); }
+        });
+
+        routes.MapPut("/api/settings/mcp/{serverId:guid}/tool-policies", async (Guid serverId,
+            McpToolPolicySettings policy, IGlobalSettingsService service, CancellationToken token) =>
+            policy.ServerId == serverId
+                ? Results.Ok(await service.SetToolPolicyAsync(policy, token))
+                : Results.BadRequest("Tool policy server id does not match the URL."));
+
         routes.MapPut(
             "/api/settings/chat-automation",
             (ChatAutomationSettings request, IGlobalSettingsService service, CancellationToken cancellationToken) =>

@@ -11,3 +11,6 @@ public interface IChatRepository
     Task<ChatSaveResult> SaveAsync(ChatThread chat, long expectedRevision, CancellationToken cancellationToken);
     Task<ChatDeleteResult> DeleteAsync(ProjectId projectId, ChatId id, long expectedRevision, CancellationToken cancellationToken);
 }
+
+public interface IPersistentChatRepository : IChatRepository { }
+public interface IHostLifetimeChatRepository : IChatRepository { }

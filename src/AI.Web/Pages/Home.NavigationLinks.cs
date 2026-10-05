@@ -63,7 +63,7 @@ public partial class Home
                 if (target.ChatId is { } chatId)
                 {
                     var chat = await ChatHistoryApi.GetAsync(target.ProjectId, chatId, CancellationToken.None);
-                    if (chat is null || chat.IsGuide) { Notifications.ShowError("The chat in this link is unavailable."); return; }
+                    if (chat is null || !chat.AllowChatNavigation) { Notifications.ShowError("The chat in this link is unavailable."); return; }
                 }
                 await RevealGuideTargetAsync(target);
                 await InvokeAsync(StateHasChanged);

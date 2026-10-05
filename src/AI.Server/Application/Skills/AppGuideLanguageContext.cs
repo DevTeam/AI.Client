@@ -13,7 +13,7 @@ public sealed class AppGuideLanguageContext : IAppGuideLanguageContext
     public string Create(AppGuideStartRequest request, ChatDetails? visibleChat)
     {
         string? message = null;
-        if (visibleChat is { IsGuide: false })
+        if (visibleChat is { AllowChatNavigation: true })
         {
             var messages = visibleChat.Messages.ToDictionary(item => item.Id);
             var head = visibleChat.Branches?.FirstOrDefault(branch => branch.Id == (request.BranchId ?? visibleChat.Id))?.HeadMessageId;

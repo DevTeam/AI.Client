@@ -15,6 +15,7 @@ using AI.Contracts.Projects;
 using AI.Contracts.Runs;
 using AI.Contracts.Settings;
 using AI.Contracts.Tools;
+using AI.Domain.Chats;
 using AI.Infrastructure.Projects;
 using AI.Infrastructure.Chat;
 using AI.Infrastructure.Settings;
@@ -981,7 +982,8 @@ public sealed class AppToolTests
     {
         await using var fixture = await AppFixture.CreateAsync();
         await using var session = await fixture.OpenAsync(isGuide: true);
-        var guide = await fixture.Chats.CreateAsync(fixture.ProjectId, new CreateChatRequest("Guide · Branches", IsGuide: true), CancellationToken.None);
+        var guide = await fixture.Chats.CreateAsync(fixture.ProjectId,
+            new CreateChatRequest("Guide · Branches", Kind: ChatKind.Guide.Value), CancellationToken.None);
 
         var other = await AppFixture.CallAsync(session, "app_navigate",
             new { projectId = fixture.ProjectId, chatId = guide.Id, target = "chat.fork", action = "show" }, expectError: true);
@@ -1015,8 +1017,7 @@ public sealed class AppToolTests
         opened.GetProperty("opened").GetBoolean().ShouldBeTrue();
         var demo = await fixture.Chats.GetAsync(fixture.ProjectId, request.ChatId.ShouldNotBeNull(), CancellationToken.None);
         demo.ShouldNotBeNull();
-        demo.IsGuide.ShouldBeFalse();
-        demo.GuideMode.ShouldBe(GuideChats.DemoMode);
+        demo.Kind.ShouldBe(ChatKind.Demo.Value);
         demo.Messages.Select(message => message.Role).ShouldBe(["User", "Assistant"]);
     }
 
@@ -1076,11 +1077,12 @@ public sealed class AppToolTests
     {
         await using var fixture = await AppFixture.CreateAsync();
         var guide = await fixture.Chats.CreateAsync(fixture.ProjectId,
-            new CreateChatRequest("Guide", IsGuide: true, GuideMode: "click"), CancellationToken.None);
+            new CreateChatRequest("Guide", Kind: ChatKind.Guide.Value,
+                KindState: JsonSerializer.SerializeToElement(new { mode = "click" })), CancellationToken.None);
         (await fixture.Chats.ListAsync(fixture.ProjectId, CancellationToken.None)).ShouldNotContain(chat => chat.Id == guide.Id);
         var restored = await fixture.Chats.GetAsync(fixture.ProjectId, guide.Id, CancellationToken.None);
-        restored.ShouldNotBeNull().IsGuide.ShouldBeTrue();
-        restored.GuideMode.ShouldBe("click");
+        restored.ShouldNotBeNull().Kind.ShouldBe(ChatKind.Guide.Value);
+        restored.KindState!.Value.GetProperty("mode").GetString().ShouldBe("click");
     }
 
     [Fact]
@@ -1279,7 +1281,8 @@ public sealed class AppToolTests
         }
 
         public Task<IToolSession> OpenAsync(bool interactive = true, bool isGuide = false) =>
-            Sessions.OpenAsync([], AppServerOnly, new ToolRunContext(ProjectId, ChatId, ChatId, interactive, IsGuide: isGuide),
+            Sessions.OpenAsync([], AppServerOnly, new ToolRunContext(ProjectId, ChatId, ChatId, interactive,
+                    Kind: isGuide ? ChatKind.Guide : ChatKind.Conversation),
                 TestContext.Current.CancellationToken);
 
         /// <summary>Calls a tool the way the agent does, and hands back its structured result.</summary>

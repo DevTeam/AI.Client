@@ -10,12 +10,13 @@ using AI.Domain.Chats;
 using AI.Domain.Projects;
 using AI.Application.Resources;
 
-public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, IChatSynchronization synchronization, IPinOrderKeys pinOrderKeys) : IChatService, IChatMutations
+public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, IChatSynchronization synchronization,
+    IPinOrderKeys pinOrderKeys, IChatKindPolicyRegistry kindPolicies) : IChatService, IChatMutations
 {
     public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken)
     {
         var summaries = (await repository.ListSummariesAsync(new ProjectId(projectId), cancellationToken))
-            .Where(item => !item.IsGuide).ToArray();
+            .Where(item => kindPolicies.TryResolve(item.Kind)?.Behavior.ShowInChatList == true).ToArray();
         return OrderPinned(summaries.Where(item => item.IsPinned))
             .Concat(summaries.Where(item => !item.IsPinned).OrderByDescending(item => item.LastActivityAt))
             .Select(ToSummary)
@@ -44,7 +45,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         item.IsPinned,
         item.PinnedAt,
         item.BranchCount,
-        item.IsEmpty, item.ArchivedAt, item.ArchiveOperationId);
+        item.IsEmpty, item.ArchivedAt, item.ArchiveOperationId,
+        item.Kind == default ? ChatKind.Conversation.Value : item.Kind.Value);
 
     public async Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
     {
@@ -143,16 +145,19 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
     {
         ArgumentNullException.ThrowIfNull(request);
         var now = clock.UtcNow;
+        var kind = new ChatKind(request.Kind);
+        var policy = kindPolicies.Resolve(kind);
+        policy.ValidateState(request.KindState, request.KindStateVersion);
         var chat = new ChatThread(
             new ChatId(idGenerator.Create()),
             new ProjectId(projectId),
             request.Title,
             now,
             request.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null,
-            request.AutoTitlePending, request.IsGuide, request.GuideMode);
+            request.AutoTitlePending, kind, request.KindState, request.KindStateVersion);
         if (request.ApprovalMode != ToolApprovalMode.Ask) chat.SetApprovalMode(ToDomain(request.ApprovalMode), now);
         var result = await repository.SaveAsync(chat, 0, cancellationToken);
-        return ToDetails(chat, result.Revision);
+        return await policy.InitializeAsync(ToDetails(chat, result.Revision), this, cancellationToken);
     }
 
     public async Task<ChatDetails?> AppendMessageAsync(Guid projectId, Guid chatId, AppendChatMessageRequest request, CancellationToken cancellationToken)
@@ -457,7 +462,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             parent.ParentHeadMessageId?.Value);
     }
 
-    private static ChatDetails ToDetails(ChatThread chat, long revision) => new(
+    private ChatDetails ToDetails(ChatThread chat, long revision) => new(
         chat.Id.Value,
         chat.ProjectId.Value,
         chat.Title,
@@ -471,12 +476,15 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
             policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
             policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
-        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode), chat.IsGuide, chat.GuideMode);
+        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode),
+        chat.Kind.Value, chat.KindState, kindPolicies.TryResolve(chat.Kind)?.Behavior.InteractionSurface ?? "unsupported",
+        kindPolicies.TryResolve(chat.Kind)?.Behavior.AllowChatNavigation ?? false,
+        kindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion);
 
     // Also the answer to a change of the chat's settings (connection, approval mode, titles, tool
     // policies): the page may keep it as the open chat, and the full chat carries every tool
     // output — megabytes for a long run — for the page to parse and re-read on each render.
-    private static ChatDetails ToTranscript(ChatThread chat, long revision)
+    private ChatDetails ToTranscript(ChatThread chat, long revision)
     {
         var messages = chat.Messages.OrderBy(item => item.CreatedAt).ToArray();
         var branchHeads = chat.Branches
@@ -512,7 +520,10 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
                 policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
                 policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
-            chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode), chat.IsGuide, chat.GuideMode);
+            chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode),
+            chat.Kind.Value, chat.KindState, kindPolicies.TryResolve(chat.Kind)?.Behavior.InteractionSurface ?? "unsupported",
+            kindPolicies.TryResolve(chat.Kind)?.Behavior.AllowChatNavigation ?? false,
+            kindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion);
     }
 
     private static bool IsPlainAssistant(ChatMessage message) =>

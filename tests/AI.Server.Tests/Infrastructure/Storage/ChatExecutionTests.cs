@@ -30,6 +30,32 @@ using System.Text.Json;
 public sealed class ChatExecutionTests
 {
     [Fact]
+    public async Task RegisteredExtensionKindRunsThroughDispatcherAndAgent()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var kind = ExtensionChatKindPolicy.KindValue;
+        var chat = await fixture.Chats.CreateAsync(fixture.ProjectId,
+            new CreateChatRequest("Extension", Kind: kind.Value,
+                KindState: JsonSerializer.SerializeToElement(new { marker = 42 }), KindStateVersion: 3),
+            CancellationToken.None);
+
+        await fixture.Dispatcher.SubmitAsync(fixture.ProjectId, chat.Id,
+            new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Hello from extension"),
+            CancellationToken.None);
+        var call = await fixture.NextCallAsync();
+        call.Request.ContextMessages!.ShouldContain(message => message.Content == "Hello from extension");
+        call.Answer.SetResult("Extension reply");
+        await fixture.WaitAsync(run => run.ChatId == chat.Id && run.Status == ChatRunStatus.Completed);
+
+        var completed = await fixture.Chats.GetAsync(fixture.ProjectId, chat.Id, CancellationToken.None);
+        completed.ShouldNotBeNull().Kind.ShouldBe(kind.Value);
+        completed.Messages[^1].Content.ShouldBe("Extension reply");
+
+        await fixture.RestartAsync();
+        (await fixture.Chats.GetAsync(fixture.ProjectId, chat.Id, CancellationToken.None)).ShouldBeNull();
+    }
+
+    [Fact]
     public async Task UpdateMaintenanceWaitsForActiveRunAndBlocksNewSubmissionsUntilReleased()
     {
         await using var fixture = await Fixture.CreateAsync();

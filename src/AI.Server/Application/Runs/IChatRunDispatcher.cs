@@ -12,6 +12,9 @@ public interface IChatRunDispatcher
     Task<bool> AnswerPromptAsync(Guid projectId, Guid chatId, Guid branchId, UserPromptResponse response, CancellationToken token);
     Task ShutdownAsync(CancellationToken cancellationToken);
     Task<ChatRunSnapshot> SubmitAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request, CancellationToken cancellationToken);
+    /// <summary>Enqueues a run from a trusted host component without a person to answer prompts.</summary>
+    Task<ChatRunSnapshot> SubmitUnattendedAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request,
+        CancellationToken cancellationToken);
     Task WarmUpAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ChatRunSnapshot>> GetSnapshotAsync(CancellationToken cancellationToken);

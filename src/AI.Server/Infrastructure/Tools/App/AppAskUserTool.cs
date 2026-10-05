@@ -1,6 +1,8 @@
 namespace AI.Mcp.App;
 
 using AI.Application.Runs;
+using AI.Application.Chats;
+using AI.Domain.Chats;
 using AI.Application.Tools;
 using AI.Contracts.Runs;
 using ModelContextProtocol.Protocol;
@@ -73,7 +75,7 @@ public sealed record AskUserResult(
 /// obliged to say what it chose. That is why nothing here returns an error for silence.
 /// </remarks>
 [McpServerToolType]
-public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
+public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPolicyRegistry kindPolicies) : IAppTool
 {
     /// <summary>
     /// The tool is built per session and the application registers one instance of this class, so
@@ -81,9 +83,10 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
     /// Each session gets its own <see cref="Session"/> holding its own run, and the shared instance
     /// holds nothing but the way to reach the broker.
     /// </summary>
-    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(broker, run, reply).Create();
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(broker, kindPolicies, run, reply).Create();
 
-    private sealed class Session(Func<IUserPromptBroker> broker, ToolRunContext run, IAppToolReply reply)
+    private sealed class Session(Func<IUserPromptBroker> broker, IChatKindPolicyRegistry kindPolicies,
+        ToolRunContext run, IAppToolReply reply)
     {
         /// <summary>
         /// How long a question waits. Long enough to fetch a coffee and come back, short enough that a
@@ -148,11 +151,12 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker) : IAppTool
         private async Task<CallToolResult> AskAsync(AskUserQuestion[] questions, string presentation = "chat",
             int? timeoutSeconds = null, string timeoutBehavior = "cancel", CancellationToken cancellationToken = default)
         {
-            if (run.IsGuide) presentation = "overlay";
+            var behavior = kindPolicies.Resolve(run.Kind == default ? ChatKind.Conversation : run.Kind).Behavior;
+            if (behavior.ForceOverlayQuestions) presentation = "overlay";
             if (Validate(questions) is { } invalid)
                 return reply.Reply(new AskUserResult([], "invalid", "Fix the call and ask again.", invalid), isError: true);
             if (presentation is not ("chat" or "overlay") || timeoutBehavior is not ("cancel" or "submit_defaults")
-                || ((timeoutSeconds is < 5 or > 900) && !(run.IsGuide && timeoutSeconds == 0 && timeoutBehavior == "cancel"))
+                || ((timeoutSeconds is < 5 or > 900) && !(behavior.AllowUntimedQuestions && timeoutSeconds == 0 && timeoutBehavior == "cancel"))
                 || presentation == "overlay" && timeoutSeconds is > 120)
                 return reply.Reply(new AskUserResult([], "invalid", "Fix the presentation, timeout or timeout behavior."), true);
             var submitDefaults = timeoutBehavior == "submit_defaults";

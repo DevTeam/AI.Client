@@ -9,7 +9,7 @@ using System.Text.Json.Nodes;
 public sealed class JsonChatRepository(
     ITextFileSystem fileSystem,
     IChatStoragePaths paths,
-    IChatDocumentSerializer serializer) : IChatRepository, IDisposable
+    IChatDocumentSerializer serializer) : IPersistentChatRepository, IDisposable
 {
     public void Dispose() => _writes.Dispose();
 
@@ -25,16 +25,16 @@ public sealed class JsonChatRepository(
             if (json is not null)
             {
                 var summary = serializer.DeserializeSummary(json);
-                chats.Add(summary.HasStoredBranchCount
+                chats.Add(summary.HasCurrentManifest
                     ? summary
-                    : await MigrateBranchCountAsync(summary, cancellationToken));
+                    : await MigrateSummaryAsync(summary, cancellationToken));
             }
         }
 
         return chats;
     }
 
-    private async Task<StoredChatSummary> MigrateBranchCountAsync(
+    private async Task<StoredChatSummary> MigrateSummaryAsync(
         StoredChatSummary staleSummary,
         CancellationToken cancellationToken)
     {
@@ -46,7 +46,7 @@ public sealed class JsonChatRepository(
         var currentSummaryJson = await fileSystem.ReadTextAsync(summaryPath, cancellationToken);
         if (currentSummaryJson is null) return staleSummary;
         var currentSummary = serializer.DeserializeSummary(currentSummaryJson);
-        if (currentSummary.HasStoredBranchCount) return currentSummary;
+        if (currentSummary.HasCurrentManifest) return currentSummary;
 
         var chatJson = await fileSystem.ReadTextAsync(
             paths.GetChatPath(currentSummary.Id, currentSummary.ProjectId), cancellationToken);

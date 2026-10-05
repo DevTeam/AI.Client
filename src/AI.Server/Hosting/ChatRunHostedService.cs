@@ -1,28 +1,41 @@
 namespace AI.Server.Hosting;
 
-using Application.Projects;
+using Application.Chats;
 using Application.Runs;
 using Microsoft.Extensions.Hosting;
 
-internal sealed class ChatRunHostedService(IChatRunDispatcher dispatcher, IGuideChats guideChats, IProjectService projects) : IHostedService
+internal sealed class ChatRunHostedService(IChatRunDispatcher dispatcher, IChatKindPolicyRegistry kinds) : IHostedService, IDisposable
 {
+    private readonly CancellationTokenSource _startupCancellation = new();
+    private Task _startupTask = Task.CompletedTask;
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await dispatcher.WarmUpAsync(cancellationToken);
-        // A guide tour cannot outlive the Host: the window that drove it is gone. Its service chat
-        // is removed in the background so that startup does not wait for it.
-        _ = Task.Run(() => RemoveGuideChatsAsync(CancellationToken.None), CancellationToken.None);
+        _startupTask = Task.Run(() => StartChatKindsAsync(_startupCancellation.Token), CancellationToken.None);
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => dispatcher.ShutdownAsync(cancellationToken);
-
-    private async Task RemoveGuideChatsAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
+        await _startupCancellation.CancelAsync();
+        try { await _startupTask.WaitAsync(cancellationToken); }
+        catch (OperationCanceledException) when (_startupCancellation.IsCancellationRequested) { }
         try
         {
-            foreach (var project in await projects.ListAsync(cancellationToken))
-                await guideChats.CleanUpAsync(project.Id, null, cancellationToken);
+            foreach (var kind in kinds.All) await kind.OnHostStoppingAsync(cancellationToken);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException) { }
+        finally { await dispatcher.ShutdownAsync(cancellationToken); }
+    }
+
+    public void Dispose() => _startupCancellation.Dispose();
+
+    private async Task StartChatKindsAsync(CancellationToken cancellationToken)
+    {
+        foreach (var kind in kinds.All)
+        {
+            try { await kind.OnHostStartedAsync(cancellationToken); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException) { }
+        }
     }
 }

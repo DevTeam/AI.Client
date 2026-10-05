@@ -23,7 +23,8 @@ public sealed class RunSnapshotComparer : IRunSnapshotComparer
     }
 
     private static bool SameApartFromText(ChatRunSnapshot old, ChatRunSnapshot current) =>
-        current.IsGuide == old.IsGuide && current.Status == old.Status
+        current.Kind == old.Kind && current.InteractionSurface == old.InteractionSurface
+        && current.ShowInMainRuns == old.ShowInMainRuns && current.Status == old.Status
         && current.Queue.Count == old.Queue.Count
         && current.Queue.Zip(old.Queue).All(pair => QueueItemEqual(pair.First, pair.Second))
         && current.HasUnreadResponse == old.HasUnreadResponse

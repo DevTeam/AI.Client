@@ -1,5 +1,7 @@
 namespace AI.Contracts.Chats;
 
+using System.Text.Json;
+
 public sealed record ChatDetails(
     Guid Id,
     Guid ProjectId,
@@ -14,4 +16,6 @@ public sealed record ChatDetails(
     bool AutoTitlePending = false,
     DateTimeOffset? ArchivedAt = null,
     Guid? ArchiveOperationId = null,
-    ToolApprovalMode ApprovalMode = ToolApprovalMode.Ask, bool IsGuide = false, string GuideMode = "show");
+    ToolApprovalMode ApprovalMode = ToolApprovalMode.Ask, string Kind = "conversation",
+    JsonElement? KindState = null, string InteractionSurface = "chat", bool AllowChatNavigation = true,
+    bool ShowInMainRuns = true, int KindStateVersion = 1);

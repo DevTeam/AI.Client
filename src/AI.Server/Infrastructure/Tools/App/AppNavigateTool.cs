@@ -6,6 +6,7 @@ using AI.Application.Projects;
 using AI.Application.Runs;
 using AI.Application.Tools;
 using AI.Contracts.Navigation;
+using AI.Domain.Chats;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -18,14 +19,17 @@ public sealed record AppNavigateResult(bool Opened, Guid ProjectId, Guid? ChatId
 /// </summary>
 [McpServerToolType]
 public sealed class AppNavigateTool(IProjectService projects, IChatService chats, IAppNavigationSignal navigation,
-    IAppNavigationTargets targets, Func<IGuideChats> guideChats) : IAppTool
+    IAppNavigationTargets targets, Func<IGuideChats> guideChats, IChatKindPolicyRegistry kindPolicies) : IAppTool
 {
     public McpServerTool Create(ToolRunContext run, IAppToolReply reply) =>
-        new Session(projects, chats, navigation, targets, guideChats, run, reply).Create();
+        new Session(projects, chats, navigation, targets, guideChats, kindPolicies, run, reply).Create();
 
     private sealed class Session(IProjectService projects, IChatService chats, IAppNavigationSignal navigation, IAppNavigationTargets targets,
-        Func<IGuideChats> guideChats, ToolRunContext run, IAppToolReply reply)
+        Func<IGuideChats> guideChats, IChatKindPolicyRegistry kindPolicies, ToolRunContext run, IAppToolReply reply)
     {
+        private readonly ChatKindBehavior _behavior =
+            kindPolicies.Resolve(run.Kind == default ? ChatKind.Conversation : run.Kind).Behavior;
+
         public McpServerTool Create() => McpServerTool.Create(NavigateAsync,
             new McpServerToolCreateOptions
             {
@@ -77,7 +81,9 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
             var definition = targets.Find(target);
             if (definition is null || !definition.Actions.Contains(action))
                 return reply.Reply(Failed("Unknown target or unsupported action. Use action='targets' to discover targets."), true);
-            if (run.IsGuide && run.GuideMode == "show" && action is not ("show" or "hover")) action = "show";
+            if (_behavior.RestrictNavigation
+                && kindPolicies.Resolve(run.Kind).NavigationMode(run.KindState) == "show"
+                && action is not ("show" or "hover")) action = "show";
             if (comment?.Length > 1000 || value?.Length > 10000)
                 return reply.Reply(Failed("Comment or value is too long."), true);
             if (action == "set_value" && value is null)
@@ -96,7 +102,7 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
                 if (chat is null) return reply.Reply(Failed("Chat not found in that project."), true);
                 // A guide's service chat is hidden from the sidebar and is never the thing to show:
                 // opening it puts the tour's own instructions in front of the person.
-                if (chat.IsGuide || id == run.ChatId)
+                if (!chat.AllowChatNavigation || id == run.ChatId)
                     return reply.Reply(Failed("That is a hidden service chat and is never shown. Use one of the person's chats from app_chats."), true);
                 if (branchId is { } branch && branch != id && chat.Branches?.Any(item => item.Id == branch) != true)
                     return reply.Reply(Failed("Branch not found in that chat."), true);
@@ -107,13 +113,13 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
                 return reply.Reply(Failed("This target requires chatId (and branchId for a branch)."), true);
             var response = await navigation.RequestAsync(new AppNavigation(idProject, chatId,
                 branchId == chatId ? null : branchId, run.ChatId, project.Name, chatTitle,
-                target, action, comment, run.IsGuide || waitForContinue || action == "set_value"
+                target, action, comment, _behavior.RestrictNavigation || waitForContinue || action == "set_value"
                     || action == "click" && target is not ("project" or "chat" or "branch"), waitForUser, value,
                 ExpiresAt: DateTimeOffset.UtcNow.AddSeconds(timeoutSeconds)), cancellationToken);
             var applied = response.Outcome == "applied";
             return reply.Reply(new AppNavigateResult(applied, idProject, chatId, branchId,
                 applied ? $"Applied {action} to {(target is "project" or "chat" or "branch" ? title : definition.Label)}."
-                    : response.Outcome == "unavailable" && run.IsGuide
+                    : response.Outcome == "unavailable" && _behavior.ContinueOnUnavailableNavigation
                         // Not on this screen is not the person saying stop: the tour goes on elsewhere.
                         ? "That control is not in the current view, so it cannot be shown yet. Do not stop the guide. "
                           + "Call action='targets' to see what is visible. Then, beside a visible control that leads there, say what is "
@@ -131,7 +137,7 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
         /// </summary>
         private async Task<CallToolResult> OpenDemoAsync(Guid idProject, string? comment, int timeoutSeconds, CancellationToken cancellationToken)
         {
-            if (!run.IsGuide || !run.Interactive)
+            if (!_behavior.CanCreateDemo || !run.Interactive)
                 return reply.Reply(new AppNavigateResult(false, idProject, null, null, "Nothing was created.",
                     "Only an application guide in the person's window can set up a demo chat.", "unavailable"), true);
             var project = await projects.GetAsync(idProject, cancellationToken);

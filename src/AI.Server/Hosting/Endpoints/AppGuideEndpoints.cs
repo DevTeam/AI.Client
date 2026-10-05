@@ -11,6 +11,8 @@ using AI.Contracts.Runs;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using System.Text.Json;
+using AI.Domain.Chats;
 
 public sealed class AppGuideEndpoints(IAppGuideTopics topics, IAppGuideLanguageContext languageContext, IGuideChats guideChats) : IEndpointModule
 {
@@ -33,7 +35,8 @@ public sealed class AppGuideEndpoints(IAppGuideTopics topics, IAppGuideLanguageC
             // Finished tours are removed here as well, in case a window closed before it cleaned up.
             await guideChats.CleanUpAsync(request.ProjectId, null, token);
             var chat = await chats.CreateAsync(request.ProjectId,
-                new CreateChatRequest($"Guide · {topic.Title}", connectionId, IsGuide: true, GuideMode: request.Mode), token);
+                new CreateChatRequest($"Guide · {topic.Title}", connectionId, Kind: ChatKind.Guide.Value,
+                    KindState: JsonSerializer.SerializeToElement(new { mode = request.Mode })), token);
             var prompt = languageContext.Create(request, visibleChat)
                 + $"Run the built-in application guide '{topic.SkillId}' in this hidden service chat. "
                 + $"The visible project is {request.ProjectId}, visible chat is {request.ChatId?.ToString() ?? "none"}, "

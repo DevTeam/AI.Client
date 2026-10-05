@@ -11,3 +11,6 @@ public interface IChatRunRepository
     Task DeleteChatAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task DeleteExceptAsync(Guid projectId, Guid chatId, IReadOnlySet<Guid> branchIds, CancellationToken cancellationToken);
 }
+
+public interface IPersistentChatRunRepository : IChatRunRepository { }
+public interface IHostLifetimeChatRunRepository : IChatRunRepository { }

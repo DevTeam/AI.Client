@@ -3,13 +3,14 @@ using AI.Domain.Chats;
 using AI.Domain.Projects;
 using AI.Application.Resources;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 // ReSharper disable UseCollectionExpression
 
 namespace AI.Infrastructure.Storage;
 
 public sealed class ChatDocumentSerializer : IChatDocumentSerializer
 {
-    private const int SchemaVersion = 8;
+    private const int SchemaVersion = 9;
     private const int PreviousSchemaVersion = 6;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
@@ -38,7 +39,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         chat.PinnedAt,
         chat.LastActivityAt,
         chat.PinOrder,
-        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, chat.ApprovalMode, chat.IsGuide, chat.GuideMode), Options);
+        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, chat.ApprovalMode,
+        Kind: chat.Kind.Value, KindState: chat.KindState, KindStateVersion: chat.KindStateVersion), Options);
 
     public string SerializeSummary(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatSummaryDocument(
         SchemaVersion,
@@ -52,13 +54,13 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         chat.LastActivityAt,
         chat.BranchCount,
         chat.PinOrder,
-        chat.Messages.Count == 0, chat.ArchivedAt, chat.ArchiveOperationId, chat.IsGuide), Options);
+        chat.Messages.Count == 0, chat.ArchivedAt, chat.ArchiveOperationId, Kind: chat.Kind.Value), Options);
 
     public StoredChat Deserialize(string json)
     {
         var document = JsonSerializer.Deserialize<ChatDocument>(json, Options)
             ?? throw new JsonException("Chat document is empty.");
-        if (document.SchemaVersion is not (5 or PreviousSchemaVersion or 7 or SchemaVersion) || document.Revision < 0)
+        if (document.SchemaVersion is not (5 or PreviousSchemaVersion or 7 or 8 or SchemaVersion) || document.Revision < 0)
         {
             throw new JsonException("Chat document schema or revision is invalid.");
         }
@@ -69,7 +71,10 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             document.Title,
             document.CreatedAt,
             document.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null,
-            isGuide: document.IsGuide, guideMode: document.GuideMode);
+            kind: LegacyKind(document.Kind, document.IsGuide, document.GuideMode), kindState:
+            document.Kind is null && document.IsGuide
+                ? JsonSerializer.SerializeToElement(new { mode = document.GuideMode ?? "show" }) : document.KindState,
+            kindStateVersion: document.KindStateVersion);
         foreach (var message in document.Messages.OrderBy(item => item.CreatedAt))
         {
             chat.AddMessage(new ChatMessage(
@@ -102,7 +107,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
     {
         var document = JsonSerializer.Deserialize<ChatSummaryDocument>(json, Options)
             ?? throw new JsonException("Chat document is empty.");
-        if (document.SchemaVersion is not (5 or PreviousSchemaVersion or 7 or SchemaVersion) || document.Revision < 0)
+        if (document.SchemaVersion is not (5 or PreviousSchemaVersion or 7 or 8 or SchemaVersion) || document.Revision < 0)
         {
             throw new JsonException("Chat document schema or revision is invalid.");
         }
@@ -117,10 +122,15 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             document.IsPinned,
             document.PinnedAt,
             document.BranchCount ?? 0,
-            document.BranchCount is not null,
+            document.BranchCount is not null && document.SchemaVersion == SchemaVersion,
             document.IsPinned ? document.PinOrder : null,
-            document.IsEmpty, document.ArchivedAt, document.ArchiveOperationId, document.IsGuide);
+            document.IsEmpty, document.ArchivedAt, document.ArchiveOperationId,
+            document.Kind is { } kind ? new ChatKind(kind) : document.IsGuide ? ChatKind.Guide : ChatKind.Conversation);
     }
+
+    private static ChatKind LegacyKind(string? kind, bool isGuide, string? guideMode) =>
+        kind is { } known ? new ChatKind(known)
+        : isGuide ? ChatKind.Guide : guideMode == "demo" ? ChatKind.Demo : ChatKind.Conversation;
 
     private sealed record ChatDocument(
         // ReSharper disable once MemberHidesStaticFromOuterClass
@@ -143,7 +153,10 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         DateTimeOffset? ArchivedAt = null,
         Guid? ArchiveOperationId = null,
         // Absent from documents written before chats had a mode, which read as the old behaviour.
-        ChatApprovalMode ApprovalMode = ChatApprovalMode.Ask, bool IsGuide = false, string GuideMode = "show");
+        ChatApprovalMode ApprovalMode = ChatApprovalMode.Ask,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool IsGuide = false,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? GuideMode = null,
+        string? Kind = null, JsonElement? KindState = null, int KindStateVersion = 1);
 
     // Deliberately contains only sidebar fields. System.Text.Json skips MessageIds without
     // materialising message nodes, so listing chats stays proportional to the small manifests
@@ -167,7 +180,9 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         // field existed read as non-empty, so no old chat disappears from the sidebar.
         bool IsEmpty = false,
         DateTimeOffset? ArchivedAt = null,
-        Guid? ArchiveOperationId = null, bool IsGuide = false);
+        Guid? ArchiveOperationId = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool IsGuide = false,
+        string? Kind = null);
 
     private sealed record ToolPolicyDocument(Guid ServerId, string Name, string SchemaHash,
         ToolPolicyDecision Decision, int? MaxCallsPerRun, TimeSpan? Timeout);

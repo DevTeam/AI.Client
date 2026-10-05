@@ -13,8 +13,8 @@ public sealed record StoredChatSummary(
     bool IsPinned,
     DateTimeOffset? PinnedAt,
     int BranchCount = 0,
-    bool HasStoredBranchCount = true,
+    bool HasCurrentManifest = true,
     string? PinOrder = null,
     bool IsEmpty = false,
     DateTimeOffset? ArchivedAt = null,
-    Guid? ArchiveOperationId = null, bool IsGuide = false);
+    Guid? ArchiveOperationId = null, ChatKind Kind = default);

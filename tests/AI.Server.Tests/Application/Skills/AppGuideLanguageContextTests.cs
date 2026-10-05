@@ -45,7 +45,7 @@ public sealed class AppGuideLanguageContextTests
     {
         var chatId = Guid.NewGuid();
         var launch = Message("User", "Run the built-in application guide in this hidden service chat");
-        var hidden = Chat(chatId, [launch], [new(chatId, launch.Id, "Guide")]) with { IsGuide = true };
+        var hidden = Chat(chatId, [launch], [new(chatId, launch.Id, "Guide")]) with { AllowChatNavigation = false };
         var context = new AppGuideLanguageContext().Create(new(hidden.ProjectId, UiLocale: "ru-RU"), hidden);
         Data(context).GetProperty("lastUserMessage").ValueKind.ShouldBe(JsonValueKind.Null);
         Data(context).GetProperty("clientLocale").GetString().ShouldBe("ru-RU");

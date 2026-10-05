@@ -74,12 +74,44 @@ public sealed class JsonChatRepositoryTests
         var summary = (await repository.ListSummariesAsync(projectId, CancellationToken.None)).ShouldHaveSingleItem();
 
         summary.BranchCount.ShouldBe(1);
-        summary.HasStoredBranchCount.ShouldBeTrue();
+        summary.HasCurrentManifest.ShouldBeTrue();
         JsonNode.Parse(fs.Files[summaryPath])!["BranchCount"]!.GetValue<int>().ShouldBe(1);
 
         while (fs.ReadPaths.TryDequeue(out _)) { }
         await repository.ListSummariesAsync(projectId, CancellationToken.None);
         fs.ReadPaths.ShouldAllBe(path => path == summaryPath);
+    }
+
+    [Fact]
+    public async Task ShouldUpgradeLegacyDemoSummaryFromItsFullDocument()
+    {
+        var projectId = new ProjectId(Guid.NewGuid());
+        var chatId = new ChatId(Guid.NewGuid());
+        var fs = new MemoryFileSystem();
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(item => item.RootDirectory).Returns("data");
+        var paths = new ChatStoragePaths(location.Object);
+        using var repository = new JsonChatRepository(fs, paths, new ChatDocumentSerializer());
+        await repository.SaveAsync(new ChatThread(chatId, projectId, "Guide demo", DateTimeOffset.UnixEpoch),
+            0, CancellationToken.None);
+        var chatPath = paths.GetChatPath(chatId, projectId);
+        var summaryPath = paths.GetChatSummaryPath(chatId, projectId);
+        var oldChat = JsonNode.Parse(fs.Files[chatPath])!.AsObject();
+        oldChat["SchemaVersion"] = 8;
+        oldChat.Remove("Kind");
+        oldChat.Remove("KindState");
+        oldChat.Remove("KindStateVersion");
+        oldChat["GuideMode"] = "demo";
+        fs.Files[chatPath] = oldChat.ToJsonString();
+        var oldSummary = JsonNode.Parse(fs.Files[summaryPath])!.AsObject();
+        oldSummary["SchemaVersion"] = 8;
+        oldSummary.Remove("Kind");
+        fs.Files[summaryPath] = oldSummary.ToJsonString();
+
+        var summary = (await repository.ListSummariesAsync(projectId, CancellationToken.None)).ShouldHaveSingleItem();
+
+        summary.Kind.ShouldBe(ChatKind.Demo);
+        JsonNode.Parse(fs.Files[summaryPath])!["Kind"]!.GetValue<string>().ShouldBe(ChatKind.Demo.Value);
     }
 
     [Fact]

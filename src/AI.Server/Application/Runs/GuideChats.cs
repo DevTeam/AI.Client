@@ -7,6 +7,7 @@ using AI.Contracts.Chats;
 using AI.Contracts.Runs;
 using AI.Contracts.Settings;
 using AI.Domain.Projects;
+using AI.Domain.Chats;
 
 /// <summary>
 /// The chats the application guide uses: the hidden service chats its tours run in, and the
@@ -38,30 +39,16 @@ public interface IGuideChats
 }
 
 public sealed class GuideChats(IChatRepository repository, IChatRunDispatcher runs, IChatService chats, IAppDataChangeSignal changes,
-    IConnectionChoice connectionChoice) : IGuideChats
+    IConnectionChoice connectionChoice, IChatKindPolicyRegistry kindPolicies) : IGuideChats
 {
-    /// <summary>Marks a demo chat; ordinary chats keep the default mode, so a chat a person named alike is never taken for one.</summary>
-    public const string DemoMode = "demo";
-    public const string DemoTitle = "Guide demo";
-    private const string DemoQuestion = "Suggest a name for a small weather app.";
-    private const string DemoAnswer = "Three ideas:\n\n1. **Skyline**: short and calm.\n2. **Drizzle**: light and playful.\n"
-        + "3. **Forecastly**: says what it does.\n\nThis chat was set up by the application guide to show forking, branches and "
-        + "comments. It is removed when the tour ends unless you write in it.";
-    private const int DemoMessages = 2;
+    public const string DemoTitle = DemoChatKindPolicy.Title;
 
     public Guid? PickConnection(GlobalSettings settings, Guid? visibleChatConnection, Guid? projectConnection) =>
         connectionChoice.Choose(settings.Connections, visibleChatConnection, projectConnection)?.Id;
 
     public async Task<ChatDetails> CreateDemoAsync(Guid projectId, CancellationToken cancellationToken)
     {
-        var chat = await chats.CreateAsync(projectId, new CreateChatRequest(DemoTitle, GuideMode: DemoMode), cancellationToken);
-        var questionId = Guid.CreateVersion7();
-        chat = await chats.AppendMessageAsync(projectId, chat.Id,
-                   new AppendChatMessageRequest(questionId, null, "User", DemoQuestion, chat.Revision), cancellationToken)
-               ?? throw new InvalidOperationException("The demo chat could not be written.");
-        chat = await chats.AppendMessageAsync(projectId, chat.Id,
-                   new AppendChatMessageRequest(Guid.CreateVersion7(), questionId, "Assistant", DemoAnswer, chat.Revision), cancellationToken)
-               ?? throw new InvalidOperationException("The demo chat could not be written.");
+        var chat = await chats.CreateAsync(projectId, new CreateChatRequest(DemoTitle, Kind: ChatKind.Demo.Value), cancellationToken);
         // The window learns about chats a tool made from this signal, and lists the new one.
         changes.Notify();
         return chat;
@@ -71,12 +58,12 @@ public sealed class GuideChats(IChatRepository repository, IChatRunDispatcher ru
     {
         var summaries = (await repository.ListSummariesAsync(new ProjectId(projectId), cancellationToken))
             .Where(item => item.Id.Value != keep).ToArray();
-        var guides = summaries.Where(item => item.IsGuide).ToList();
-        foreach (var candidate in summaries.Where(item => !item.IsGuide && item.Title == DemoTitle))
+        var guides = new List<StoredChatSummary>();
+        foreach (var candidate in summaries)
         {
-            // Only a demo the person left as it was goes: one they wrote in is theirs now.
-            if (await chats.GetAsync(projectId, candidate.Id.Value, cancellationToken) is { GuideMode: DemoMode } demo
-                && demo.Messages.Count <= DemoMessages)
+            if (kindPolicies.TryResolve(candidate.Kind) is { } policy
+                && await policy.ShouldCleanUpAsync(candidate,
+                    ct => chats.GetAsync(projectId, candidate.Id.Value, ct), cancellationToken))
                 guides.Add(candidate);
         }
         if (guides.Count == 0) return 0;

@@ -5794,6 +5794,10 @@ textarea {
     margin-bottom: 0.6rem;
 }
 
+.directory-picker-history-toolbar {
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+}
+
 .directory-picker-path,
 .directory-picker-filter {
     box-sizing: border-box;

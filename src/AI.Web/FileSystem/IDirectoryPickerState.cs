@@ -51,6 +51,14 @@ public interface IDirectoryPickerState
 
     bool CanGoUp { get; }
 
+    bool CanGoBack { get; }
+
+    bool CanGoForward { get; }
+
+    Task GoBackAsync(CancellationToken cancellationToken);
+
+    Task GoForwardAsync(CancellationToken cancellationToken);
+
     Task OpenAsync(string? startPath, DirectoryPickerMode mode, CancellationToken cancellationToken);
 
     Task NavigateAsync(string path, CancellationToken cancellationToken);

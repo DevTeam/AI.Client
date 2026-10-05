@@ -36,12 +36,17 @@ export function attach(dialog, dotNetReference) {
         dotNetReference.invokeMethodAsync("OnPickerKey", "Enter", source, row?.getAttribute("title") ?? null);
     };
     document.addEventListener("keydown", handler, true);
+    const navigate = event => dotNetReference.invokeMethodAsync("OnPickerKey", event.detail, "", null);
+    dialog.addEventListener("dialognavigate", navigate);
 
     return {
         // The filter takes the focus after a folder opens, so typing narrows the new level.
         focusFilter: () => dialog.querySelector(".directory-picker-filter")?.focus(),
         scrollHighlightIntoView: () => dialog.querySelector(".directory-picker-item.highlighted")
             ?.scrollIntoView({ block: "nearest" }),
-        dispose: () => document.removeEventListener("keydown", handler, true)
+        dispose: () => {
+            document.removeEventListener("keydown", handler, true);
+            dialog.removeEventListener("dialognavigate", navigate);
+        }
     };
 }

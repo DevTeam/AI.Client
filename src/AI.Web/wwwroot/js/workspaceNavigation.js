@@ -5,6 +5,8 @@ function currentIndex() { return Number.isInteger(history.state?.[indexKey]) ? h
 function maximumIndex() { return Number(sessionStorage.getItem(maxKey) ?? currentIndex()); }
 function state() { const index = currentIndex(); return { canBack: index > 0, canForward: index < maximumIndex() }; }
 
+function activeDialog() { return [...document.querySelectorAll('[aria-modal="true"], dialog[open]')].at(-1); }
+
 function rememberWorkspace() {
     if (typeof globalThis.invokeCSharpAction !== "function") return;
     const query = new URL(location.href).searchParams;
@@ -21,8 +23,38 @@ export function attach(dotNetReference) {
         history.replaceState({ ...history.state, [indexKey]: 0 }, "", location.href);
         sessionStorage.setItem(maxKey, "0");
     }
-    const onPop = () => { rememberWorkspace(); void dotNetReference.invokeMethodAsync("OnWorkspaceHistoryChanged", location.href, state()); };
+    let workspaceIndex = currentIndex();
+    let restoring = false;
+    const onPop = () => {
+        const index = currentIndex();
+        if (restoring || activeDialog()) {
+            // Browser history traversal cannot be cancelled. Restore the entry without sending
+            // either the attempted location or its restoration to the workspace.
+            if (index !== workspaceIndex) {
+                restoring = true;
+                history.go(workspaceIndex - index);
+            } else {
+                restoring = false;
+            }
+            return;
+        }
+        workspaceIndex = index;
+        rememberWorkspace();
+        void dotNetReference.invokeMethodAsync("OnWorkspaceHistoryChanged", location.href, state());
+    };
+    const onMouse = event => {
+        if (event.button !== 3 && event.button !== 4) return;
+        const dialog = activeDialog();
+        if (!dialog) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.type === "mousedown") {
+            dialog.dispatchEvent(new CustomEvent("dialognavigate", { detail: event.button === 3 ? "Back" : "Forward" }));
+        }
+    };
     window.addEventListener("popstate", onPop);
+    const mouseEvents = ["mousedown", "mouseup", "auxclick"];
+    for (const type of mouseEvents) window.addEventListener(type, onMouse, true);
     return {
         state,
         url() { return location.href; },
@@ -41,11 +73,15 @@ export function attach(dotNetReference) {
                 history.pushState({ ...history.state, [indexKey]: next }, "", url);
                 sessionStorage.setItem(maxKey, String(next));
             }
+            workspaceIndex = currentIndex();
             rememberWorkspace();
             return state();
         },
-        back() { if (state().canBack) history.back(); },
-        forward() { if (state().canForward) history.forward(); },
-        dispose() { window.removeEventListener("popstate", onPop); }
+        back() { if (!activeDialog() && state().canBack) history.back(); },
+        forward() { if (!activeDialog() && state().canForward) history.forward(); },
+        dispose() {
+            window.removeEventListener("popstate", onPop);
+            for (const type of mouseEvents) window.removeEventListener(type, onMouse, true);
+        }
     };
 }

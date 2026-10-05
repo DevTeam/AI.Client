@@ -13,7 +13,9 @@
             <div><strong id="directory-picker-title">@Title</strong><span>@Subtitle</span></div>
             <button class="icon-action" type="button" title="Close" aria-label="Close picker" @onclick="CancelAsync"><AppIcon Name="x" /></button>
         </header>
-        <div class="directory-picker-toolbar">
+        <div class="directory-picker-toolbar directory-picker-history-toolbar">
+            <button class="icon-action" type="button" title="Back" aria-label="Back" disabled="@(!Picker.CanGoBack)" @onclick="() => NavigateHistoryAsync(false)"><AppIcon Name="chevron-left" /></button>
+            <button class="icon-action" type="button" title="Forward" aria-label="Forward" disabled="@(!Picker.CanGoForward)" @onclick="() => NavigateHistoryAsync(true)"><AppIcon Name="chevron-right" /></button>
             <button class="icon-action" type="button" title="Up one level" aria-label="Up one level" disabled="@(!Picker.CanGoUp || Picker.IsLoading)" @onclick="GoUpAsync"><AppIcon Name="arrow-up" /></button>
             <input class="directory-picker-path" @ref="_pathInput" value="@Picker.PathText" aria-label="@PathLabel" placeholder="Type or paste a path"
                    @oninput="OnPathInput" />
@@ -158,6 +160,9 @@
     {
         switch (key)
         {
+            case "Back" or "Forward":
+                await NavigateHistoryAsync(key == "Forward");
+                return;
             case "Escape":
                 await CancelAsync();
                 return;
@@ -232,6 +237,14 @@
     private async Task NavigateAsync(string path)
     {
         await Picker.NavigateAsync(path, _cancellation.Token);
+        OnLevelChanged();
+    }
+
+    private async Task NavigateHistoryAsync(bool forward)
+    {
+        if (forward ? !Picker.CanGoForward : !Picker.CanGoBack) return;
+        if (forward) await Picker.GoForwardAsync(_cancellation.Token);
+        else await Picker.GoBackAsync(_cancellation.Token);
         OnLevelChanged();
     }
 

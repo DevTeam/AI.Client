@@ -36,6 +36,73 @@ public class DirectoryPickerStateTests
         .ReturnsAsync(listing);
 
     [Fact]
+    public async Task HistoryStaysInsideThePickerAndIncludesRootsAndTypedPaths()
+    {
+        SetupRoots();
+        SetupListing("/projects", Projects);
+        SetupListing("/projects/Alpha", Alpha);
+        var state = CreateState();
+        var token = TestContext.Current.CancellationToken;
+        await state.OpenAsync(null, DirectoryPickerMode.File, token);
+        state.CanGoBack.ShouldBeFalse();
+        await state.NavigateAsync("/projects", token);
+        state.SetPathText("/projects/Alpha");
+        await state.GoToTypedPathAsync(token);
+        state.SelectFile("/projects/Alpha/one.txt");
+        await state.GoBackAsync(token);
+        state.Listing.ShouldBe(Projects);
+        state.SelectedFile.ShouldBeNull();
+        await state.GoBackAsync(token);
+        state.Listing.ShouldBe(Roots);
+        state.CanGoBack.ShouldBeFalse();
+        await state.GoForwardAsync(token);
+        await state.GoForwardAsync(token);
+        state.Listing.ShouldBe(Alpha);
+        state.CanGoForward.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task NewNavigationDiscardsForwardHistoryAndReopeningClearsIt()
+    {
+        SetupRoots();
+        SetupListing("/projects", Projects);
+        SetupListing("/projects/Alpha", Alpha);
+        var state = CreateState();
+        var token = TestContext.Current.CancellationToken;
+        await state.OpenAsync(null, DirectoryPickerMode.Directory, token);
+        await state.NavigateAsync("/projects", token);
+        await state.NavigateAsync("/projects/Alpha", token);
+        await state.GoBackAsync(token);
+        await state.NavigateAsync("/projects", token);
+        state.CanGoForward.ShouldBeTrue();
+        await state.NavigateAsync(string.Empty, token);
+        state.CanGoForward.ShouldBeFalse();
+        await state.OpenAsync("/projects", DirectoryPickerMode.Directory, token);
+        state.CanGoBack.ShouldBeFalse();
+        state.CanGoForward.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task FailedHistoryNavigationKeepsThePositionAndCanBeRetried()
+    {
+        SetupListing("/projects", Projects);
+        SetupListing("/projects/Alpha", Alpha);
+        var state = CreateState();
+        var token = TestContext.Current.CancellationToken;
+        await state.OpenAsync("/projects", DirectoryPickerMode.Directory, token);
+        await state.NavigateAsync("/projects/Alpha", token);
+        SetupListing("/projects", null);
+        await state.GoBackAsync(token);
+        state.Listing.ShouldBe(Alpha);
+        state.ErrorMessage.ShouldNotBeNull();
+        state.CanGoBack.ShouldBeTrue();
+        state.CanGoForward.ShouldBeFalse();
+        SetupListing("/projects", Projects);
+        await state.GoBackAsync(token);
+        state.Listing.ShouldBe(Projects);
+    }
+
+    [Fact]
     public async Task OpensAtTheRememberedDirectory()
     {
         SetupListing("/projects", Projects);

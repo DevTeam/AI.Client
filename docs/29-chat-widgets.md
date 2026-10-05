@@ -378,7 +378,9 @@ Tool use on the visible branch (`ChatToolsWidget`, `IChatToolStatisticsCalculato
   Awaiting result. Ended calls without a result say No result. Incomplete or unrecognized legacy
   results, and omitted results without an error status, say Unknown result. Empty outcome rows are hidden.
 - **Layout.** Scope switch; total calls and distinct tools; outcome grid; Most used, sorted by
-  call count then name, six shown with Show more. Each tool shows its server, count, relative
+  call count then name, six shown with Show more. A tool's label comes from `IToolPresentations`,
+  so a dedicated adapter names it here exactly as the message feed does and an unknown tool is
+  only reformatted from its call name. Each tool shows its server, count, relative
   usage bar and errors when present. The raw call name is in the tooltip; different servers
   remain separate. In the whole-chat scope the footer shows turns with calls.
 - **Folded summary.** Call count and errors for the selected scope.

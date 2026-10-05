@@ -25,6 +25,7 @@ internal sealed class Composition
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<FileToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<ProcessToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<WebToolPresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<CSharpToolPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppReadPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppWritePresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppSubtaskPresentationAdapter>()

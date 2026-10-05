@@ -44,6 +44,8 @@ Clarify only missing decisions for a new dependency, materially different scope 
    Default to direction TB for the vertical chat viewport unless another orientation is requested
    or required by the destination. Keep composite states compact and split wide views without
    turning alternative or concurrent states into a sequential lifecycle.
+   Keep the diagram small: oversized diagrams are hard to read in the chat, so prefer a few
+   focused views over one complete view.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.

@@ -48,6 +48,8 @@ Clarify only missing decisions for a new dependency, materially different scope 
    Default to gitGraph TB: for the vertical chat viewport when supported (Mermaid 10.3+), unless
    another orientation is requested or required by the destination. Branches still occupy width;
    keep labels concise and select a focused history without inventing or hiding relevant merges.
+   Keep the diagram small: oversized diagrams are hard to read in the chat, so prefer a few
+   focused views over one complete view.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.

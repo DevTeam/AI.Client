@@ -43,6 +43,8 @@ Clarify only missing decisions for a new dependency, materially different scope 
    o/x edge syntax. Reserve newer shapes/configuration for verified target support.
    Prefer vertical subgraphs, concise labels and focused views over wide rows of sibling nodes.
    External subgraph connections may override its direction; inspect the actual rendered layout.
+   Keep the diagram small: oversized diagrams are hard to read in the chat, so prefer a few
+   focused views over one complete view.
 6. Compare every edge with the source and keep the layout readable without implying timing.
 
 Validation and delivery:

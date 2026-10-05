@@ -45,6 +45,8 @@ Clarify only missing decisions for a new dependency, materially different scope 
    Gantt uses a horizontal time axis; do not invent direction TB syntax. For the narrow chat
    viewport use concise task labels and focused time windows or sections, preserving actual
    dates and cross-view dependencies. Respect explicitly requested export dimensions.
+   Keep the diagram small: oversized diagrams are hard to read in the chat, so prefer a few
+   focused views over one complete view.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.

@@ -45,6 +45,8 @@ Clarify only missing decisions for a new dependency, materially different scope 
    or required by the destination. Use bottom-to-top ports for downward connections, such as
    api:B --> T:db, without reversing their meaning. For the flowchart fallback use flowchart TB
    and compact subgraphs; do not add a flowchart direction directive to architecture-beta.
+   Keep the diagram small: oversized diagrams are hard to read in the chat, so prefer a few
+   focused views over one complete view.
 6. C4 syntax is a separate experimental option; consult its official docs and verify support
    before using it. Do not call a service/resource view a complete C4 model.
    Verify arrows convey the intended dependency/data direction, not a guessed topology.

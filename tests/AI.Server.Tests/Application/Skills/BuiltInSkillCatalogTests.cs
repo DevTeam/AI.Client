@@ -143,6 +143,17 @@ public class BuiltInSkillCatalogTests
     }
 
     [Fact]
+    public void ShouldTellEveryMermaidSkillToKeepDiagramsSmall()
+    {
+        var mermaid = new BuiltInSkillCatalog().List()
+            .Where(skill => skill.Id.StartsWith("mermaid-", StringComparison.Ordinal)).ToArray();
+
+        mermaid.Length.ShouldBe(14);
+        foreach (var skill in mermaid)
+            skill.Content.Contains("hard to read in the chat", StringComparison.Ordinal).ShouldBeTrue(skill.Id);
+    }
+
+    [Fact]
     public void ShouldGiveEveryAliasToOneSkillOnly()
     {
         var skills = new BuiltInSkillCatalog().List();

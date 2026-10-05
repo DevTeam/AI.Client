@@ -44,6 +44,8 @@ Clarify only missing decisions for a new dependency, materially different scope 
    Time already runs vertically; participants occupy horizontal space. For the narrow chat
    viewport keep participant aliases and messages concise, and split broad interactions into
    connected scenarios without losing relevant calls. Do not add unsupported direction TB syntax.
+   Keep the diagram small: oversized diagrams are hard to read in the chat, so prefer a few
+   focused views over one complete view.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.

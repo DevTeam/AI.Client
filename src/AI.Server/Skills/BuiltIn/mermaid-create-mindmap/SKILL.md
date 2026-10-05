@@ -45,6 +45,8 @@ Clarify only missing decisions for a new dependency, materially different scope 
    Mindmap layout is radial; do not invent direction TB syntax. Keep branches and labels compact
    for the narrow chat viewport. If a vertical hierarchy is needed, offer flowchart TB with the
    same parent/child relationships; honor an explicit request to retain the mindmap type.
+   Keep the diagram small: oversized diagrams are hard to read in the chat, so prefer a few
+   focused views over one complete view.
 
 Validation and delivery:
 - Use the target's existing parser/runner or discover permitted rendering tools with tool_search.

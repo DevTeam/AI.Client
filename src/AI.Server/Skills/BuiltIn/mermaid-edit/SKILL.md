@@ -43,6 +43,8 @@ Clarify only missing decisions for a new dependency, materially different scope 
    supported direction syntax, unless another orientation is requested or required by the target.
    Keep labels concise and split wide views while retaining relationships. Preserve orientation
    for content-only edits; types without vertical layout need compact native views.
+   Keep the diagram small: oversized diagrams are hard to read in the chat, so prefer a few
+   focused views over one complete view.
 6. Update only the selected diagram and directly affected explanatory text. For generated
    diagrams edit the source/template and use its existing generator. Validate the complete
    result and describe meaningful additions/removals.

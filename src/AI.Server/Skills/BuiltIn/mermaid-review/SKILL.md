@@ -43,6 +43,9 @@ This is a read-only review. Do not edit project files; isolated temporary valida
    that forces scrolling or shrinks labels, and recommend a top-to-bottom layout where supported.
    Respect requested orientation; for sequence, Gantt and mindmap suggest compact native views
    or focused splits. Recommend changes without editing source or inventing direction syntax.
+   Keep the diagram small: oversized diagrams are hard to read in the chat; one that stays
+   readable only by zooming or scrolling is a readability finding, so recommend a few focused
+   views over one complete view.
 6. Report prioritized actionable findings with source block/line, impact and concrete
    suggested corrections. Separate observed faults from hypotheses/unverified checks.
    No findings is not proof of semantic correctness or accessibility compliance.

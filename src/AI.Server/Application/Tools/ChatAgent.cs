@@ -19,6 +19,7 @@ using Usage;
 using Contracts.Usage;
 using System.Text;
 using System.Text.Json;
+using ChatKind = AI.Domain.Chats.ChatKind;
 
 /// <remarks>
 /// The tool session factory arrives as a factory rather than an instance. A session is opened per
@@ -37,7 +38,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
     IStandingInstructions standingInstructions, IContextTokenEstimator tokenEstimator, ISkillGuide skillGuide,
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
-    IClock clock, IIdGenerator ids) : IChatAgent
+    IClock clock, IIdGenerator ids, IChatKindPolicyRegistry kindPolicies) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -50,7 +51,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         Guid? parentBranchId = null,
         Func<string?, CancellationToken, Task>? draft = null,
         Func<ContextUsage, CancellationToken, Task>? contextUsage = null,
-        Func<string, CancellationToken, Task>? draftToolCall = null)
+        Func<string, CancellationToken, Task>? draftToolCall = null,
+        bool overlayPromptsAllowed = true)
     {
         var estimator = tokenEstimator.ForModel(request.Model);
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -80,23 +82,27 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         bool Enabled(Guid serverId) =>
             global.McpServers.SingleOrDefault(server => server.Id == serverId) is { Enabled: true, Policy: not "Deny" }
             && project.McpServers.SingleOrDefault(server => server.Id == serverId) is not { Enabled: false };
+        var kindPolicy = kindPolicies.Resolve(request.Kind == default ? ChatKind.Conversation : request.Kind);
+        kindPolicy.ValidateState(request.KindState, request.KindStateVersion);
+        var behavior = kindPolicy.Behavior;
         var servers = global.McpServers.Select(server => server.Id).Where(Enabled)
-            .Where(id => !request.IsGuide || id == AppMcpServer.Id).ToHashSet();
-        var grants = project.DirectoryGrants.Where(_ => !request.IsGuide)
+            .Where(kindPolicy.AllowsServer).ToHashSet();
+        var grants = project.DirectoryGrants.Where(_ => behavior.AllowDirectoryGrants)
             .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
-        var run = new ToolRunContext(projectId, chatId, branchId, interactive, request.IsGuide, request.GuideMode);
+        var run = new ToolRunContext(projectId, chatId, branchId, interactive, kindPolicy.Kind, request.KindState,
+            request.KindStateVersion, overlayPromptsAllowed);
         using var catalogScope = toolCatalog.Begin(run);
         using var instructionScope = instructions.Begin(run);
-        instructions.Upsert(run, new ModelInstruction("run.finishing", request.IsGuide ? GuideFinishingInstruction : FinishingInstruction,
+        instructions.Upsert(run, new ModelInstruction("run.finishing", behavior.FinishingInstruction ?? FinishingInstruction,
             1_000, ModelInstructionLifetime.Run, Required: true,
-            CompactContent: request.IsGuide ? null : CompactFinishingInstruction));
+            CompactContent: behavior.CompactFinishingInstruction ?? (behavior.FinishingInstruction is null ? CompactFinishingInstruction : null)));
         // Several app tools take the project and chat they act on as ids, and nothing else in the
         // context says which ones this run belongs to; a model left to guess reads lists to find them.
         if (servers.Contains(AppMcpServer.Id))
             instructions.Upsert(run, new ModelInstruction("run.context",
                 $"This run: projectId {projectId}, chatId {chatId}, branchId {branchId}. The main branch id equals the chat id.",
                 900, ModelInstructionLifetime.Run, Required: true));
-        if (!request.IsGuide) await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), configuredConnection, token);
+        if (behavior.IncludeStandingInstructions) await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), configuredConnection, token);
         // Set while the application compacts the history itself, so its summary is accounted as a
         // compaction rather than as a checkpoint the model asked for.
         var compactingAhead = false;
@@ -224,16 +230,16 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var permitted = new List<AgentTool>();
             if (session is not null)
                 foreach (var tool in session.Tools)
-                    if ((!request.IsGuide || tool.ServerId == AppMcpServer.Id && tool.OriginalName is "app_navigate" or "ask_user")
+                    if (kindPolicy.AllowsTool(tool.ServerId, tool.OriginalName)
                         && (await PolicyAsync(projectId, chatId, tool, token)).Decision != "Deny") permitted.Add(tool);
-            if (request.IsGuide) toolCatalog.Pin(run, ["app_navigate", "ask_user"]);
+            if (behavior.PinnedTools is { Count: > 0 } pinnedTools) toolCatalog.Pin(run, pinnedTools);
             toolCatalog.Update(run, permitted);
             // Once per turn, before its first step: which skill fits the new message, and which tools
             // the first steps need. The tools are pinned before the selector cuts the list.
             if (!routed)
             {
                 routed = true;
-                if (interactive && !request.IsGuide && servers.Contains(AppMcpServer.Id)
+                if (interactive && behavior.RouteSkills && servers.Contains(AppMcpServer.Id)
                     && await RouteAsync(run, context, permitted, token) is { } route)
                 {
                     var runSkill = permitted.FirstOrDefault(tool =>
@@ -253,7 +259,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     "Several tool calls produced no new information. Do not call another tool. Answer now: what you "
                     + "found and did, and what is missing or blocking the rest.",
                     970, ModelInstructionLifetime.Request));
-            if (!request.IsGuide && servers.Contains(AppMcpServer.Id))
+            if (behavior.UseActiveSkills && servers.Contains(AppMcpServer.Id))
                 await UpsertActiveSkillAsync(run, context, token);
             var composition = instructionComposer.Compose(run, modelContext, configuredConnection);
             var pendingTools = toolCatalog.ConsumePinned(run);
@@ -721,25 +727,6 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// The run-wide rule for ending a turn. A response without tool calls is the final answer, so a
     /// model that stops to announce its next step has ended the turn there; this says not to.
     /// </summary>
-    private const string GuideFinishingInstruction =
-        "This is a visual application guide. Teach with app_navigate comments beside the relevant controls; "
-        + "all substantive explanations, examples and takeaways belong there. Ask learning choices through ask_user, "
-        + "with concrete options, allowOther=true and an invitation to write a custom interest. Follow the answers. "
-        + "Opening interests and questions within an unfinished topic explicitly use timeoutSeconds=0 and timeoutBehavior='cancel'. "
-        + "Recommend continuing that topic, not Stop. Only an important fork after the current branch and takeaway are complete "
-        + "may use timeoutSeconds=30 and timeoutBehavior='cancel', with Finish recommended; silence then ends the completed tour. "
-        + "Do not infer topic completion from a fixed number of steps. Do not advance or choose while a question is pending. "
-        + "Assistant chat content may only record brief progress markers, never essays or instructional lists. "
-        + "Use aiclient://navigate Markdown links in visible step comments and ask_user question text for useful optional routes; "
-        + "include a relevant shortcut in the final visible takeaway. Hidden service-chat messages are not visible, so put links in the visible UI. "
-        + "Links reveal destinations only: a click is not Continue, an answer or permission to modify anything. Keep using app_navigate for timed tour steps. "
-        + "Include the next tool call with progress text: a reply without a tool call ends the tour. "
-        + "Do not create or change content as a demonstration. Stop when a navigation result is stopped/expired. "
-        + "On unavailable, discover targets and offer a visible route through ask_user instead of ending the guide. "
-        + "Use app_navigate action='show' on widgets.* even when not currently visible: the window temporarily shows, opens and scrolls to it. "
-        + "Stop when an outside-chat question is cancelled or unanswered. Use the tour's resolved language. Finish with one short "
-        + "completion or stop phrase; do not recap the lesson at length in chat.";
-
     private const string FinishingInstruction =
         "Keep working with tools until the request is done. Before your first tool calls, write a brief "
         + "user-facing progress note in the assistant message's content explaining what you will do. During longer "

@@ -1031,7 +1031,7 @@
 @if (OutsideChatQuestion is { PendingPrompt: { } outsidePrompt } outsideRun)
 {
     <aside class="app-guide-question" aria-label="Question outside chat">
-        <span class="app-guide-question-source">@(outsideRun.IsGuide ? "Application guide" : "Assistant · question outside chat")</span>
+        <span class="app-guide-question-source">@(outsideRun.InteractionSurface == "guide" ? "Application guide" : "Assistant · question outside chat")</span>
         <UserPromptCard @key="outsidePrompt.Id" Prompt="@outsidePrompt" OnNavigateApp="OpenAppNavigationLinkAsync" OnAnswer="response => AnswerOutsideChatQuestionAsync(outsideRun, response)" />
     </aside>
 }
@@ -2275,7 +2275,7 @@ else if (_guideInvitation is { } guideInvitation)
 
     private async Task ShowRunNotificationAsync(ChatRunSnapshot? previous, ChatRunSnapshot current)
     {
-        if (current.IsGuide) return;
+        if (!current.ShowInMainRuns) return;
         if (!StatusPresentation.NeedsAttention(current) && current.Status != ChatRunStatus.Failed)
             Notifications.ResolveChatAttention(current.ChatId, current.BranchId);
         if (!_workspaceInitialized || previous is null || current.Revision <= previous.Revision) return;
@@ -3797,7 +3797,7 @@ else if (_guideInvitation is { } guideInvitation)
     private string GetProjectRunTooltip(Guid projectId) { var runs = GetProjectRuns(projectId).ToArray(); return $"{runs.Count(item => item.Status == ChatRunStatus.Generating)} generating · {runs.Count(item => item.HasUnreadResponse)} unread · {runs.Count(item => item.Status == ChatRunStatus.Failed)} failed"; }
     private IEnumerable<ChatRunSnapshot> GetProjectRuns(Guid projectId)
     {
-        return RunState.Runs.Values.Where(run => run.ProjectId == projectId && !run.IsGuide);
+        return RunState.Runs.Values.Where(run => run.ProjectId == projectId && run.ShowInMainRuns);
     }
     // The open project's own status is already visible per-chat below it, so the project row
     // itself shows nothing — repeating it there would be the same redundant echo we just

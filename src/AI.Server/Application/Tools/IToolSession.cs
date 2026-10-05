@@ -2,6 +2,8 @@ namespace AI.Application.Tools;
 
 using Chat;
 using Contracts.Tools;
+using AI.Domain.Chats;
+using System.Text.Json;
 
 /// <summary>
 /// A tool as the Host sees it: the function definition the provider is allowed to see, and the
@@ -48,7 +50,8 @@ public sealed record ToolDirectoryGrant(string Root, bool Recursive, IReadOnlyLi
 /// once instead of waiting out a timeout nobody will interrupt.
 /// </param>
 public sealed record ToolRunContext(Guid ProjectId, Guid ChatId, Guid BranchId, bool Interactive,
-    bool IsGuide = false, string GuideMode = "show")
+    ChatKind Kind = default, JsonElement? KindState = null, int KindStateVersion = 1,
+    bool OverlayPromptsAllowed = true)
 {
     /// <summary>
     /// No run at all: a session opened to inspect what the servers offer, never to call anything.

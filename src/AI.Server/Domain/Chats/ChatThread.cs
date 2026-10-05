@@ -2,6 +2,7 @@ namespace AI.Domain.Chats;
 
 using Common;
 using Projects;
+using System.Text.Json;
 
 public sealed class ChatThread
 {
@@ -15,12 +16,14 @@ public sealed class ChatThread
         string title,
         DateTimeOffset createdAt,
         ConnectionId? connectionId = null,
-        bool autoTitlePending = false, bool isGuide = false, string guideMode = "show")
+        bool autoTitlePending = false, ChatKind kind = default, JsonElement? kindState = null,
+        int kindStateVersion = 1)
     {
         if (string.IsNullOrWhiteSpace(title))
         {
             throw new DomainException("Chat title cannot be empty.");
         }
+        if (kindStateVersion < 1) throw new DomainException("Chat kind state version must be positive.");
 
         Id = id;
         ProjectId = projectId;
@@ -30,8 +33,9 @@ public sealed class ChatThread
         LastActivityAt = createdAt;
         ConnectionId = connectionId;
         AutoTitlePending = autoTitlePending;
-        IsGuide = isGuide;
-        GuideMode = guideMode;
+        Kind = kind == default ? ChatKind.Conversation : kind;
+        KindState = kindState?.Clone();
+        KindStateVersion = kindStateVersion;
         _branches[id.Value] = new ChatBranch(id.Value, null, title.Trim());
     }
 
@@ -39,8 +43,9 @@ public sealed class ChatThread
     public ProjectId ProjectId { get; }
     public string Title { get; private set; }
     public bool AutoTitlePending { get; private set; }
-    public bool IsGuide { get; }
-    public string GuideMode { get; }
+    public ChatKind Kind { get; }
+    public JsonElement? KindState { get; }
+    public int KindStateVersion { get; }
     public DateTimeOffset CreatedAt { get; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset LastActivityAt { get; private set; }

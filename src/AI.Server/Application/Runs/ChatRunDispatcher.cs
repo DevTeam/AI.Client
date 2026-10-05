@@ -19,6 +19,7 @@ using AI.Application.Skills;
 using AI.Application.Usage;
 using Contracts.Usage;
 using Domain.Runs;
+using Domain.Chats;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 
@@ -31,7 +32,8 @@ public sealed class ChatRunDispatcher(
     IResourceModelProjection resourceProjection, IMemoryService memory, IProjectInstructionsService projectInstructions,
     ISkillRunner skillRunner, ISkillCatalog skillCatalog, IChatReplySuggestions replySuggestions,
     IToolAutoApprover autoApprover, ITokenUsageMeter usageMeter, ITokenUsageAggregator usageAggregator,
-    IHistoryCheckpointService historyCheckpoints, IConnectionChoice connectionChoice)
+    IHistoryCheckpointService historyCheckpoints, IConnectionChoice connectionChoice,
+    IChatKindPolicyRegistry kindPolicies)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -86,6 +88,7 @@ public sealed class ChatRunDispatcher(
                 loadedChats[key] = chat;
             }
             if (chat is null) continue;
+            if (kindPolicies.TryResolve(new ChatKind(chat.Kind)) is null) continue;
             state.RecoverAfterRestart();
             await repository.SaveAsync(state, cancellationToken);
             var runtime = new Runtime(state)
@@ -101,6 +104,7 @@ public sealed class ChatRunDispatcher(
         foreach (var ((projectId, chatId), loadedChat) in loadedChats)
         {
             if (loadedChat is null) continue;
+            if (kindPolicies.TryResolve(new ChatKind(loadedChat.Kind)) is null) continue;
             using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
             var pruned = await chatMutations.PruneMessagesCoreAsync(projectId, chatId,
                 RetainedMessageIds(chatId), cancellationToken);
@@ -147,7 +151,14 @@ public sealed class ChatRunDispatcher(
         finally { _subscribers.TryRemove(id, out _); }
     }
 
-    public async Task<ChatRunSnapshot> SubmitAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request, CancellationToken cancellationToken)
+    public Task<ChatRunSnapshot> SubmitAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request,
+        CancellationToken cancellationToken) => SubmitCoreAsync(projectId, chatId, request, true, cancellationToken);
+
+    public Task<ChatRunSnapshot> SubmitUnattendedAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request,
+        CancellationToken cancellationToken) => SubmitCoreAsync(projectId, chatId, request, false, cancellationToken);
+
+    private async Task<ChatRunSnapshot> SubmitCoreAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request,
+        bool interactive, CancellationToken cancellationToken)
     {
         if (_updating) throw new InvalidOperationException("The application is restarting to install an update. Try again after it reconnects.");
         _shutdown.Token.ThrowIfCancellationRequested();
@@ -164,6 +175,7 @@ public sealed class ChatRunDispatcher(
         if (_maintenance.ContainsKey(chatId) || _deletingProjects.ContainsKey(projectId)) throw new InvalidOperationException("Chat is being changed.");
         _ = await projects.GetAsync(projectId, cancellationToken) ?? throw new InvalidOperationException("Project not found.");
         var chat = await chats.GetAsync(projectId, chatId, cancellationToken) ?? throw new InvalidOperationException("Chat not found.");
+        _ = kindPolicies.Resolve(new ChatKind(chat.Kind));
         var branchId = request.Mode == ChatSubmitMode.Fork ? request.MessageId : request.BranchId ?? chat.Id;
         var sourceBranchId = request.BranchId ?? chat.Id;
         var sourceBranch = chat.Branches?.SingleOrDefault(branch => branch.Id == sourceBranchId)
@@ -220,7 +232,7 @@ public sealed class ChatRunDispatcher(
         if (request.Mode == ChatSubmitMode.Replace) runtime.State.Clear();
         runtime.State.Enqueue(request.OperationId, new QueuedRunMessage(request.MessageId, request.Content.Trim(), clock.UtcNow,
             parentMode, parentId, replaceId, request.Mode == ChatSubmitMode.Fork ? sourceBranchId : null,
-            sourceBranch.Revision, Resources: ResourceReferences.ToDomain(validatedResources)));
+            sourceBranch.Revision, Resources: ResourceReferences.ToDomain(validatedResources), Interactive: interactive));
         if (request.Mode == ChatSubmitMode.Queue)
         {
             runtime.ResumeRequested = false;
@@ -457,11 +469,13 @@ public sealed class ChatRunDispatcher(
                             ResourceReferences.ToContract(queued.Resources), token), connection.Id,
                         // The branch's history as the model is to see it: in full, or from the
                         // summary of its deepest checkpoint on.
-                        chat.IsGuide ? chat.Messages.Select(message => new ChatCompletionMessage(message.Role.ToLowerInvariant(),
+                        kindPolicies.Resolve(new ChatKind(chat.Kind)).Behavior.UseFullHistory
+                            ? chat.Messages.Select(message => new ChatCompletionMessage(message.Role.ToLowerInvariant(),
                             message.Content, message.ToolCalls, message.ToolCallId)).ToArray()
                             : await historyCheckpoints.ApplyAsync(chat.ProjectId, chat.Id,
                                 await contextBuilder.BuildAsync(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id), token), token),
-                        IsGuide: chat.IsGuide, GuideMode: chat.GuideMode);
+                        Kind: new ChatKind(chat.Kind), KindState: chat.KindState,
+                        KindStateVersion: chat.KindStateVersion);
                     runtime.ToolHead = ResumeHead(chat, runtime.State.BranchId, queued.Id);
                     await SaveAsync(runtime, chat, token);
                 }
@@ -493,9 +507,11 @@ public sealed class ChatRunDispatcher(
                     (activity, ct) => ReportToolActivityAsync(runtime, activity, ct),
                     (wait, ct) => ReportTransportActivityAsync(runtime, wait, ct),
                     (tool, arguments, timeout, position, ct) => ApproveAsync(runtime, tool, arguments, timeout, position, ct), token,
+                    interactive: queued.Interactive,
                     draft: (chunk, ct) => ReportDraftAsync(runtime, chunk, ct),
                     contextUsage: (usage, ct) => ReportContextAsync(runtime, usage, ct),
-                    draftToolCall: (name, ct) => ReportDraftToolCallAsync(runtime, name, ct));
+                    draftToolCall: (name, ct) => ReportDraftToolCallAsync(runtime, name, ct),
+                    overlayPromptsAllowed: queued.Interactive);
                 var suggestTitle = false;
                 Guid? answeredHead = null;
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
@@ -530,7 +546,7 @@ public sealed class ChatRunDispatcher(
                         && chat.Messages.Count(message => message.Role == "User") == 1;
                     // A reply is drafted only for the answer the user is left with: with more
                     // messages queued behind it, the next one is already the reply.
-                    if (runtime.State.Queue.Count == 0 && !chat.IsGuide)
+                    if (runtime.State.Queue.Count == 0 && kindPolicies.Resolve(new ChatKind(chat.Kind)).Behavior.SuggestReplies)
                         answeredHead = chat.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId)?.HeadMessageId;
                 }
                 if (suggestTitle || answeredHead is not null)
@@ -574,7 +590,9 @@ public sealed class ChatRunDispatcher(
                 {
                     Context = runtime.Context,
                     TurnUsage = runtime.TurnUsage,
-                    IsGuide = runtime.Snapshot.IsGuide
+                    Kind = runtime.Snapshot.Kind,
+                    InteractionSurface = runtime.Snapshot.InteractionSurface,
+                    ShowInMainRuns = runtime.Snapshot.ShowInMainRuns
                 };
                 Publish();
             }
@@ -694,6 +712,8 @@ public sealed class ChatRunDispatcher(
         // The chat's mode answers first; a card is only for what it leaves to the person.
         var automatic = await autoApprover.DecideAsync(projectId, chatId, branchId, tool, arguments, token);
         if (automatic.Allowed) return ToolApprovalAction.Allow;
+        if (runtime.State.Queue.FirstOrDefault(item => item.Id == runtime.ActiveMessageId)?.Interactive == false)
+            return ToolApprovalAction.Deny;
         var mode = await autoApprover.ModeAsync(projectId, chatId, token);
         var completion = new TaskCompletionSource<ToolApprovalAction>(TaskCreationOptions.RunContinuationsAsynchronously);
         using (await synchronization.EnterAsync(runtime.State.ChatId, token))
@@ -755,7 +775,8 @@ public sealed class ChatRunDispatcher(
         var unanswerable = new UserPromptResponse(prompt.Id, UserPromptOutcome.Interrupted, []);
         // Nobody to ask: a background run, or one already on its way out. Answered at once rather
         // than waited out, so a subtask reports what it could not decide instead of stalling on it.
-        if (!run.Interactive && (request.Presentation != "overlay" || run.ChatId == Guid.Empty)) return unanswerable;
+        if (!run.Interactive && (request.Presentation != "overlay" || run.ChatId == Guid.Empty
+                || !run.OverlayPromptsAllowed)) return unanswerable;
 
         var completion = new TaskCompletionSource<UserPromptResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
         Runtime runtime;
@@ -1135,7 +1156,9 @@ public sealed class ChatRunDispatcher(
             DraftToolCall = runtime.DraftToolCall,
             Context = runtime.Context,
             TurnUsage = runtime.TurnUsage,
-            IsGuide = chat?.IsGuide ?? previous.IsGuide
+            Kind = chat?.Kind ?? previous.Kind,
+            InteractionSurface = chat?.InteractionSurface ?? previous.InteractionSurface,
+            ShowInMainRuns = chat?.ShowInMainRuns ?? previous.ShowInMainRuns
         };
         if (chat is not null)
             foreach (var other in _runtimes.Values.Where(item => item.State.ChatId == chat.Id && item != runtime))
@@ -1348,7 +1371,9 @@ public sealed class ChatRunDispatcher(
         chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.HeadMessageId,
         FailureCode: FailureCode(state.FailureKind), CanRetry: state.CanRetry,
         BranchRevision: chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.Revision ?? 0,
-        RecoveryActions: RecoveryActions(state), ActiveMessageId: activeMessageId, IsGuide: chat?.IsGuide ?? false);
+        RecoveryActions: RecoveryActions(state), ActiveMessageId: activeMessageId,
+        Kind: chat?.Kind ?? "conversation", InteractionSurface: chat?.InteractionSurface ?? "chat",
+        ShowInMainRuns: chat?.ShowInMainRuns ?? true);
 
     private static QueuedMessageStage Stage(QueuedRunStage stage) => stage switch
     {

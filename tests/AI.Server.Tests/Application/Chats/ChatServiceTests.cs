@@ -288,5 +288,6 @@ public class ChatServiceTests
         string.CompareOrdinal(chat.PinOrder, "V").ShouldBeLessThan(0);
     }
 
-    private ChatService CreateInstance() => new(_repository.Object, _idGenerator.Object, _clock.Object, new ChatSynchronization(), new PinOrderKeys());
+    private ChatService CreateInstance() => new(_repository.Object, _idGenerator.Object, _clock.Object,
+        new ChatSynchronization(), new PinOrderKeys(), new ChatKindPolicyRegistry([new ConversationChatKindPolicy()]));
 }

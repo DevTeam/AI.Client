@@ -16,4 +16,4 @@ public sealed record ChatSummary(
     // No message has been written yet: the sidebar hides such a chat until its first message.
     bool IsEmpty = false,
     DateTimeOffset? ArchivedAt = null,
-    Guid? ArchiveOperationId = null);
+    Guid? ArchiveOperationId = null, string Kind = "conversation");

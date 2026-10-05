@@ -57,13 +57,20 @@ internal sealed class Composition
             // CompositeToolSessionFactory is cached here only because Pure.DI 2.5.4 emits out-of-scope
             // factory locals for it when transient — see docs/pure-di-issues.md.
             .Singleton<FilePreviewService, HostUpdateService, BrowserAccessService,
-                JsonProjectRepository, JsonChatRepository, ChatSynchronization, ChatTransportActivity,
+                JsonProjectRepository, ChatSynchronization, ChatTransportActivity,
                 JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
-                JsonProjectInstructionsRepository, JsonChatRunRepository, ChatRunDispatcher,
+                JsonProjectInstructionsRepository, ChatRunDispatcher,
                 ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, WorkspaceChangeTracker,
                 ContextEstimateSamples, AppDataChangeSignal, AppNavigationSignal, AppOperationLog, WorkspaceFileSearch,
                 TokenUsageMeter, JsonLinesTokenUsageLedger, PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits,
                 JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, CompositeToolSessionFactory, ContextTextTokenizer>()
+            .Singleton<ChatKindPolicyRegistry>()
+            .Bind<IPersistentChatRepository>().As(Lifetime.Singleton).To<JsonChatRepository>()
+            .Bind<IHostLifetimeChatRepository>().As(Lifetime.Singleton).To<HostLifetimeChatRepository>()
+            .Bind<IPersistentChatRunRepository>().As(Lifetime.Singleton).To<JsonChatRunRepository>()
+            .Bind<IHostLifetimeChatRunRepository>().As(Lifetime.Singleton).To<HostLifetimeChatRunRepository>()
+            .Bind<IChatRepository>().As(Lifetime.Singleton).To<ChatRepositoryRouter>()
+            .Bind<IChatRunRepository>().As(Lifetime.Singleton).To<ChatRunRepositoryRouter>()
             .Singleton((IProjectStorageLocation location) => new JsonLineFileLoggerProvider(location))
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.
@@ -126,6 +133,7 @@ internal sealed class Composition
             .Transient<ChatToolRiskAssessSkill>("chat-tool-risk-assess")
             // Endpoints, app tools and session factories are injected as collections; the tag belongs to
             // the call, so each tagged group stays on its own.
+            .Transient<ConversationChatKindPolicy, GuideChatKindPolicy, DemoChatKindPolicy>(Tag.Unique)
             .Transient<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints,
                 ChatCompletionEndpoints, FileSystemEndpoints, FilePreviewEndpoints, GitEndpoints, MemoryEndpoints,
                 SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints,
@@ -161,6 +169,7 @@ internal sealed class AspNetComposition
             .Root<IGitBrowser>()
             .Root<IProjectService>()
             .Root<IChatService>()
+            .Root<IChatKindPolicyRegistry>()
             .Root<IChatArchiveService>()
             .Root<ISkillCatalog>()
             .Root<ISkillRunner>()

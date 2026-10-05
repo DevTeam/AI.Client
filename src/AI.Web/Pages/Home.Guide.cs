@@ -175,7 +175,7 @@ public partial class Home
         }
         if (target.RequestId != Guid.Empty)
         {
-            if (target.SourceChatId != _guideChatId && RunState.Runs.Values.Any(run => run.ChatId == target.SourceChatId && run.IsGuide)) return;
+            if (target.SourceChatId != _guideChatId && RunState.Runs.Values.Any(run => run.ChatId == target.SourceChatId && run.InteractionSurface == "guide")) return;
             // A hidden guide belongs to the window that started it. Ordinary chats may offer a move
             // in the focused window, preserving the existing navigation behavior.
             if (target.SourceChatId != _guideChatId && target.SourceChatId != _selectedChat?.Id && !_applicationFocused) return;
@@ -184,7 +184,7 @@ public partial class Home
         // The guide's own chats stay hidden even if a step names one: the tour would open its
         // instructions in front of the person.
         if (target.ChatId is { } namedChat && (namedChat == target.SourceChatId || namedChat == _guideChatId
-            || RunState.Runs.Values.Any(run => run.ChatId == namedChat && run.IsGuide)))
+            || RunState.Runs.Values.Any(run => run.ChatId == namedChat && run.InteractionSurface == "guide")))
         {
             if (target.RequestId != Guid.Empty)
                 await GuideApi.CompleteAsync(target.RequestId, new AppNavigationDecision(_guideClientId, "unavailable",
@@ -479,7 +479,7 @@ public partial class Home
     private async Task RemoveFinishedGuideChatsAsync()
     {
         if (_guideCleanupProjectId is not { } projectId || GuideRunning
-            || RunState.Runs.Values.Any(run => run.IsGuide && run.ProjectId == projectId && run.Status == ChatRunStatus.Generating)) return;
+            || RunState.Runs.Values.Any(run => run.InteractionSurface == "guide" && run.ProjectId == projectId && run.Status == ChatRunStatus.Generating)) return;
         _guideCleanupProjectId = null;
         try { await GuideApi.CleanUpAsync(projectId, CancellationToken.None); }
         catch (HttpRequestException) { }
@@ -507,7 +507,7 @@ public partial class Home
         await RemoveFinishedGuideChatsAsync();
         if (GuideRunning || _guideInvitation is not null || OutsideChatQuestion is not null || _guideModule is null || !_applicationFocused
             || !string.IsNullOrWhiteSpace(_chat.Message) || _globalSection is not null || _isProjectSettingsOpen
-            || RunState.Runs.Values.Any(run => !run.IsGuide && (run.Status == ChatRunStatus.Generating
+            || RunState.Runs.Values.Any(run => run.ShowInMainRuns && (run.Status == ChatRunStatus.Generating
                 || run.PendingPrompt is not null || run.PendingApproval is not null))) return;
         var preferences = await ClientSettings.GetAsync();
         _completedGuideTopics = preferences.CompletedGuideTopics;
@@ -537,13 +537,13 @@ public partial class Home
     }
 
     private ChatRunSnapshot? OutsideChatQuestion => RunState.Runs.Values
-        .Where(run => run.PendingPrompt?.Presentation == "overlay" && (!run.IsGuide || run.ChatId == _guideChatId))
+        .Where(run => run.PendingPrompt?.Presentation == "overlay" && (run.InteractionSurface != "guide" || run.ChatId == _guideChatId))
         .OrderBy(run => run.PendingPrompt!.ExpiresAt).FirstOrDefault();
 
     private async Task<bool> AnswerOutsideChatQuestionAsync(ChatRunSnapshot run, UserPromptResponse response)
     {
         var accepted = await ChatRunsApi.AnswerPromptAsync(run.ProjectId, run.ChatId, run.BranchId, response, CancellationToken.None);
-        if (accepted && run.IsGuide && response.Outcome != UserPromptOutcome.Answered) await StopGuideAsync();
+        if (accepted && run.InteractionSurface == "guide" && response.Outcome != UserPromptOutcome.Answered) await StopGuideAsync();
         return accepted;
     }
 

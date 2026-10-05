@@ -37,5 +37,6 @@ public interface IChatAgent
         // The tool the step in flight has started to call, named as soon as the stream names it,
         // before its arguments are complete. A null draft ends it along with the step's prose.
         // The completion protocol's own tool is not reported: it is how the run ends, not work.
-        Func<string, CancellationToken, Task>? draftToolCall = null);
+        Func<string, CancellationToken, Task>? draftToolCall = null,
+        bool overlayPromptsAllowed = true);
 }

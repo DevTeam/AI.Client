@@ -5,7 +5,7 @@ using Application.Runs;
 using Domain.Runs;
 using System.Text.Json;
 
-public sealed class JsonChatRunRepository(ITextFileSystem fileSystem, IChatRunStoragePaths paths) : IChatRunRepository, IDisposable
+public sealed class JsonChatRunRepository(ITextFileSystem fileSystem, IChatRunStoragePaths paths) : IPersistentChatRunRepository, IDisposable
 {
     public void Dispose() => _writes.Dispose();
 

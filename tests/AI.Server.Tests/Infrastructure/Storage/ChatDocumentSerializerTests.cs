@@ -6,6 +6,7 @@ using AI.Infrastructure.Storage;
 using AI.Domain.Resources;
 using Shouldly;
 using System.Text.Json.Nodes;
+using System.Text.Json;
 using Xunit;
 
 public class ChatDocumentSerializerTests
@@ -13,19 +14,31 @@ public class ChatDocumentSerializerTests
     private readonly ChatDocumentSerializer _serializer = new();
 
     [Fact]
-    public void ShouldPreserveHiddenGuideModeAndReadOldChatsAsVisible()
+    public void ShouldPreserveGuideStateAndMigrateLegacyKinds()
     {
         var chat = new ChatThread(new ChatId(Guid.NewGuid()), new ProjectId(Guid.NewGuid()),
-            "Guide", DateTimeOffset.UnixEpoch, isGuide: true, guideMode: "click");
+            "Guide", DateTimeOffset.UnixEpoch, kind: ChatKind.Guide,
+            kindState: JsonSerializer.SerializeToElement(new { mode = "click" }));
         var json = _serializer.Serialize(chat, 1);
+        var written = JsonNode.Parse(json)!.AsObject();
+        written.ContainsKey("IsGuide").ShouldBeFalse();
+        written.ContainsKey("GuideMode").ShouldBeFalse();
         var restored = _serializer.Deserialize(json).Chat;
-        restored.IsGuide.ShouldBeTrue();
-        restored.GuideMode.ShouldBe("click");
-        _serializer.DeserializeSummary(_serializer.SerializeSummary(chat, 1)).IsGuide.ShouldBeTrue();
+        restored.Kind.ShouldBe(ChatKind.Guide);
+        restored.KindState!.Value.GetProperty("mode").GetString().ShouldBe("click");
+        _serializer.DeserializeSummary(_serializer.SerializeSummary(chat, 1)).Kind.ShouldBe(ChatKind.Guide);
         var old = JsonNode.Parse(json)!.AsObject();
-        old.Remove("IsGuide");
+        old["SchemaVersion"] = 8;
+        old.Remove("Kind");
+        old.Remove("KindState");
+        old["IsGuide"] = true;
+        old["GuideMode"] = "click";
+        _serializer.Deserialize(old.ToJsonString()).Chat.Kind.ShouldBe(ChatKind.Guide);
+        old["IsGuide"] = false;
+        old["GuideMode"] = "demo";
+        _serializer.Deserialize(old.ToJsonString()).Chat.Kind.ShouldBe(ChatKind.Demo);
         old.Remove("GuideMode");
-        _serializer.Deserialize(old.ToJsonString()).Chat.IsGuide.ShouldBeFalse();
+        _serializer.Deserialize(old.ToJsonString()).Chat.Kind.ShouldBe(ChatKind.Conversation);
     }
 
     [Fact]
@@ -279,7 +292,7 @@ public class ChatDocumentSerializerTests
         var summary = _serializer.DeserializeSummary(_serializer.SerializeSummary(chat, 4));
 
         summary.BranchCount.ShouldBe(2);
-        summary.HasStoredBranchCount.ShouldBeTrue();
+        summary.HasCurrentManifest.ShouldBeTrue();
     }
 
     [Fact]
@@ -323,7 +336,7 @@ public class ChatDocumentSerializerTests
         var summary = _serializer.DeserializeSummary(withoutCount);
 
         summary.BranchCount.ShouldBe(0);
-        summary.HasStoredBranchCount.ShouldBeFalse();
+        summary.HasCurrentManifest.ShouldBeFalse();
         summary.Title.ShouldBe("Chat");
     }
 }

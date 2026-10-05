@@ -11,6 +11,8 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
     // Only the newest navigation may write to the state; an older one that finishes late is
     // dropped, so the list never jumps back to a folder the user already left.
     private int _operation;
+    private readonly List<string> _history = [];
+    private int _historyIndex = -1;
 
     /// <summary>
     /// A path the user typed that resolves fine but is not there. Granting a directory that does
@@ -51,6 +53,23 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
 
     public bool CanGoUp => Listing?.ParentPath is not null;
 
+    public bool CanGoBack => !IsLoading && _historyIndex > 0;
+
+    public bool CanGoForward => !IsLoading && _historyIndex + 1 < _history.Count;
+
+    public Task GoBackAsync(CancellationToken cancellationToken) =>
+        CanGoBack ? NavigateHistoryAsync(_historyIndex - 1, cancellationToken) : Task.CompletedTask;
+
+    public Task GoForwardAsync(CancellationToken cancellationToken) =>
+        CanGoForward ? NavigateHistoryAsync(_historyIndex + 1, cancellationToken) : Task.CompletedTask;
+
+    private async Task NavigateHistoryAsync(int index, CancellationToken cancellationToken)
+    {
+        var path = _history[index];
+        if (path.Length == 0) await LoadRootsAsync(cancellationToken, index);
+        else if (!await LoadAsync(path, cancellationToken, index)) ErrorMessage = $"'{path}' could not be opened.";
+    }
+
     public IReadOnlyList<DirectoryEntry> VisibleDirectories => Visible(Listing?.Directories);
 
     // Directory mode does not ask for files, and does not show them if a host sends some anyway:
@@ -61,6 +80,8 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
     public async Task OpenAsync(string? startPath, DirectoryPickerMode mode, CancellationToken cancellationToken)
     {
         Mode = mode;
+        _history.Clear();
+        _historyIndex = -1;
         Listing = null;
         PathText = string.Empty;
         Filter = string.Empty;
@@ -198,7 +219,7 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
         return separator > 0 && await LoadAsync(path[..separator], cancellationToken);
     }
 
-    private async Task LoadRootsAsync(CancellationToken cancellationToken)
+    private async Task LoadRootsAsync(CancellationToken cancellationToken, int? historyIndex = null)
     {
         var operation = ++_operation;
         IsLoading = true;
@@ -212,7 +233,7 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
                 return;
             }
 
-            Apply(roots);
+            Apply(roots, historyIndex);
         }
         catch (HttpRequestException)
         {
@@ -224,7 +245,7 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
         }
     }
 
-    private async Task<bool> LoadAsync(string path, CancellationToken cancellationToken)
+    private async Task<bool> LoadAsync(string path, CancellationToken cancellationToken, int? historyIndex = null)
     {
         var operation = ++_operation;
         IsLoading = true;
@@ -235,7 +256,7 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
             // caller does not start a third one on top of the two already in flight.
             if (operation != _operation) return true;
             if (listing is null) return false;
-            Apply(listing);
+            Apply(listing, historyIndex);
             return true;
         }
         catch (HttpRequestException)
@@ -249,8 +270,15 @@ public sealed class DirectoryPickerState(IFileSystemApi api) : IDirectoryPickerS
         }
     }
 
-    private void Apply(DirectoryListing listing)
+    private void Apply(DirectoryListing listing, int? historyIndex)
     {
+        if (historyIndex is { } index) _historyIndex = index;
+        else if (_historyIndex < 0 || _history[_historyIndex] != listing.CurrentPath)
+        {
+            _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
+            _history.Add(listing.CurrentPath);
+            _historyIndex = _history.Count - 1;
+        }
         Listing = listing;
         PathText = listing.CurrentPath;
         Filter = string.Empty;

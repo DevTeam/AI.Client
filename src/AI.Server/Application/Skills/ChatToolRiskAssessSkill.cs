@@ -27,8 +27,6 @@ public sealed class ChatToolRiskAssessSkill(
 
     public string SkillId => Id;
 
-    private const int MaxReasonLength = 240;
-
     private static readonly Action<ILogger, Guid, Exception?> SkillFailed =
         LoggerMessage.Define<Guid>(LogLevel.Warning, new EventId(1604, "ChatToolRiskAssessSkillFailed"),
             "Chat tool risk assessment failed for chat {ChatId}");
@@ -151,7 +149,7 @@ public sealed class ChatToolRiskAssessSkill(
             // An allow that does not also call the risk low contradicts itself; the safe reading wins.
             if (decision == "allow" && risk != "low") decision = "ask";
             var reason = Text(root, "reason")?.Trim();
-            return (decision, risk, reason is { Length: > 0 } ? Clip(reason, MaxReasonLength) : null);
+            return (decision, risk, reason is { Length: > 0 } ? reason : null);
         }
         catch (JsonException)
         {

@@ -4345,9 +4345,9 @@ textarea {
 .tool-approval-summary strong { flex: none; overflow: hidden; font-weight: 500; text-overflow: ellipsis; }
 .tool-approval-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tool-approval-count { flex: none; color: var(--color-text-faint); }
-.tool-approval-assessment { display: flex; align-items: center; gap: .3rem; min-width: 0; color: var(--color-warning-text); font-size: .74rem; }
-.tool-approval-assessment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tool-approval-assessment .app-icon { flex: none; width: .8rem; height: .8rem; }
+.tool-approval-assessment { display: flex; align-items: flex-start; gap: .3rem; min-width: 0; color: var(--color-warning-text); font-size: .74rem; line-height: 1.4; }
+.tool-approval-assessment span { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tool-approval-assessment .app-icon { flex: none; width: .8rem; height: .8rem; margin-top: .1rem; }
 .tool-approval-actions { display: flex; flex: none; align-items: center; gap: .25rem; margin-left: auto; }
 .tool-approval-actions > button { margin: 0; }
 .tool-approval-deny { color: var(--color-text-muted); }
@@ -5323,6 +5323,10 @@ textarea {
     .navigation-cue > .chat-card-header-actions,
     .turn-status-stopped > .chat-card-header-actions { position: relative; z-index: 2; }
     .queue-actions { padding-right: var(--chat-card-inset); }
+    .tool-approval-main:has(.tool-approval-assessment) { grid-template-columns: minmax(0, 1fr); row-gap: .35rem; }
+    .tool-approval-main:has(.tool-approval-assessment) > .tool-approval-header { grid-column: 1; grid-row: 1; }
+    .tool-approval-main:has(.tool-approval-assessment) > .chat-card-header-actions { grid-column: 1; grid-row: 2; justify-self: end; }
+    .tool-approval-main:has(.tool-approval-assessment)::after { display: none; }
 }
 
 @media (max-width: 420px) {

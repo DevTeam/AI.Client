@@ -67,6 +67,21 @@ public class ChatToolRiskAssessSkillTests
     }
 
     [Theory]
+    [InlineData(ToolApprovalMode.Ask)]
+    [InlineData(ToolApprovalMode.Auto)]
+    public async Task ShouldPreserveTheCompleteAssessmentInBothModes(ToolApprovalMode mode)
+    {
+        _mode = mode;
+        var reason = new string('x', 300) + "\nCheck the destination before allowing this call.";
+        var answer = JsonSerializer.Serialize(new { decision = "ask", risk = "high", reason });
+
+        var result = await CreateApprover(answer).DecideAsync(_projectId, _chatId, _chatId, Tool(), "{}",
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new ToolAutoApproval(false, reason));
+    }
+
+    [Theory]
     [InlineData("allow", "low")]
     [InlineData("ask", "high")]
     public async Task ShouldRecommendInManualModeWithoutAllowingTheCall(string decision, string risk)

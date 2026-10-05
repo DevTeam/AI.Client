@@ -8,6 +8,21 @@ using Xunit;
 public class UnifiedDiffTests
 {
     [Fact]
+    public void ShouldSeparateFileHeadersFromContentThatStartsWithRepeatedSigns()
+    {
+        var lines = new UnifiedDiff().Parse("--- a/one.txt\n+++ b/one.txt\n@@ -1 +1 @@\n--- old content\n+++ new content\n--- a/two.txt\n+++ b/two.txt\n@@ -4 +7 @@\n-old\n+new");
+
+        lines[0].Kind.ShouldBe(DiffLineKind.Note);
+        lines[1].Kind.ShouldBe(DiffLineKind.Note);
+        lines[3].ShouldBe(new DiffLine(DiffLineKind.Removed, "-- old content", 1));
+        lines[4].ShouldBe(new DiffLine(DiffLineKind.Added, "++ new content", null, 1));
+        lines[5].Kind.ShouldBe(DiffLineKind.Note);
+        lines[6].Kind.ShouldBe(DiffLineKind.Note);
+        lines[^2].OldLine.ShouldBe(4);
+        lines[^1].NewLine.ShouldBe(7);
+    }
+
+    [Fact]
     public void ShouldClassifyEveryLineOfAHunk()
     {
         var lines = new UnifiedDiff().Parse("@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three");

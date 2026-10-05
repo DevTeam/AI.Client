@@ -1,0 +1,48 @@
+@inherits FilePreviewViewer
+@using AI.Contracts.Resources
+
+<div class="file-preview-toolbar" aria-label="Archive navigation">
+    <button type="button" disabled="@(_folder.Length == 0)" @onclick="Up">Up</button>
+    <span>@(_folder.Length == 0 ? "Archive root" : _folder)</span>
+</div>
+<div class="file-preview-body">
+    <div class="file-preview-directory file-preview-archive">
+        @foreach (var entry in Children())
+        {
+            @if (entry.IsDirectory)
+            {
+                <button type="button" @onclick="() => _folder = entry.Path"><AppIcon Name="folder" /><span>@entry.Name</span></button>
+            }
+            else
+            {
+                <div class="file-preview-archive-entry"><AppIcon Name="file" /><span>@entry.Name</span><small>@entry.Size?.ToString("N0") bytes</small><small>@entry.CompressedSize?.ToString("N0") compressed</small></div>
+            }
+        }
+        @if (Context.File.HasMoreEntries) { <p>Showing the first 1,000 entries in this archive.</p> }
+        else if (Context.File.Entries.Count == 0) { <p>This archive has no entries.</p> }
+    </div>
+</div>
+
+@code {
+    private string _folder = "";
+
+    private IReadOnlyList<FilePreviewEntry> Children()
+    {
+        var children = new Dictionary<string, FilePreviewEntry>(StringComparer.Ordinal);
+        foreach (var entry in Context.File.Entries.Where(entry => entry.Path.StartsWith(_folder, StringComparison.Ordinal)))
+        {
+            var relative = entry.Path[_folder.Length..];
+            if (relative.Length == 0) continue;
+            var slash = relative.IndexOf('/');
+            var child = slash < 0 ? entry : new FilePreviewEntry(_folder + relative[..(slash + 1)], relative[..slash], true);
+            children.TryAdd(child.Path, child);
+        }
+        return children.Values.OrderByDescending(entry => entry.IsDirectory).ThenBy(entry => entry.Name, StringComparer.Ordinal).ToArray();
+    }
+
+    private void Up()
+    {
+        var slash = _folder.TrimEnd('/').LastIndexOf('/');
+        _folder = slash >= 0 ? _folder[..(slash + 1)] : "";
+    }
+}

@@ -66,6 +66,9 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<INotificationService>()
             .Root<IChatRunsApi>()
             .Root<IResourceApi>()
+            .Root<IFilePreviewApi>()
+            .Root<IFilePreviewViewers>()
+            .Root<IFileMarkdownRenderer>()
             .Root<IReviewApi>()
             .Root<IMemoryApi>()
             .Root<ISkillApi>()
@@ -126,7 +129,10 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 ChatTimelineStatisticsCalculator, ChatBranchesStatisticsCalculator, ChatUsageApi, HistoryCheckpointApi,
                 DelayedBusyIndicatorFactory, ApiBaseUrl, ClientMode, ClientMetadata, ChatComposerService,
                 ChatMessageDeltaMerger, ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi,
-                GitApi, ResourceApi, ReviewApi, MemoryApi, SkillApi>()
+                GitApi, ResourceApi, ReviewApi, MemoryApi, SkillApi, FilePreviewApi, FilePreviewViewers,
+                FileMarkdownRenderer>()
+            .Transient<MediaFilePreviewRegistration, TextFilePreviewRegistration,
+                DirectoryFilePreviewRegistration, ArchiveFilePreviewRegistration>(Tag.Unique)
             .Transient<NotificationService>("base")
             .Bind<IUnreadCountPublisher>().To<DesktopUnreadCountPublisher>()
             .Transient((IApiBaseUrl arg, IClientMode mode, IJSRuntime jsRuntime) =>

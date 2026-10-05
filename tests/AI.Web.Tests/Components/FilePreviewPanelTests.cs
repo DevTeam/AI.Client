@@ -4,6 +4,8 @@ using System.Net;
 using System.Net.Http.Json;
 using AI.Contracts.Resources;
 using AI.Web.Components;
+using AI.Web.Resources;
+using AI.Contracts.Workspace;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +24,7 @@ public sealed class FilePreviewPanelTests
     [InlineData("pdf", "<iframe")]
     [InlineData("binary", "This format cannot be previewed")]
     [InlineData("directory", "No readable files")]
+    [InlineData("archive", "This archive has no entries")]
     public async Task RendersEachFileTypeInTheSharedDrawer(string kind, string expected)
     {
         var file = new FilePreview("/workspace/sample", "sample", kind, "test/type", 42,
@@ -44,6 +47,66 @@ public sealed class FilePreviewPanelTests
         html.ShouldContain("&lt;script&gt;");
         html.ShouldContain("file-preview-line-numbers");
         html.ShouldContain("Load more text");
+    }
+
+    [Fact]
+    public async Task RendersMarkdownWithoutExecutableHtmlOrUnsafeLinks()
+    {
+        var file = new FilePreview("/workspace/README.md", "README.md", "markdown", "text/markdown", 100,
+            "file-preview-content/ticket", []);
+        var html = await RenderAsync(file, new FilePreviewText("# Read me\n\n**Bold**\n\n<script>alert(1)</script>\n\n[unsafe](javascript:alert%281%29)\n\n<javascript:alert(1)>\n\n![unsafe](data:image/svg+xml;base64,AAAA)\n\n[web](https://example.com)\n\ntext{onclick=alert(1)}", null));
+
+        html.ShouldContain("<h1>Read me</h1>");
+        html.ShouldContain("<strong>Bold</strong>");
+        html.ShouldContain("Source");
+        html.ShouldNotContain("<script>");
+        html.ShouldNotContain("href=\"javascript:");
+        html.ShouldNotContain("src=\"data:");
+        html.ShouldNotContain(" onclick=");
+        html.ShouldContain("href=\"https://example.com\"");
+    }
+
+    [Fact]
+    public async Task RendersPatchHeadersHunksAndAddedAndRemovedLines()
+    {
+        var file = new FilePreview("/workspace/change.patch", "change.patch", "diff", "text/plain", 100, null, []);
+        var html = await RenderAsync(file, new FilePreviewText("--- a/test\n+++ b/test\n@@ -10 +20 @@\n-before\n+<after>", null));
+
+        html.ShouldContain("file-preview-diff");
+        html.ShouldContain("diff-hunk");
+        html.ShouldContain("diff-line-added");
+        html.ShouldContain("diff-line-removed");
+        html.ShouldContain("&lt;after&gt;");
+        html.ShouldContain(">10</span>");
+        html.ShouldContain(">20</span>");
+    }
+
+    [Fact]
+    public async Task ShowsImplicitArchiveDirectoriesWithoutOpeningHostPaths()
+    {
+        var file = new FilePreview("/workspace/files.zip", "files.zip", "archive", "application/zip", 100,
+            "file-preview-content/ticket", [new("src/nested/file.txt", "file.txt", false, 12, 8), new("root.txt", "root.txt", false, 10, 6)]);
+        var html = await RenderAsync(file);
+        html.ShouldContain("Archive root");
+        html.ShouldContain(">src</span>");
+        html.ShouldContain("root.txt");
+        html.ShouldContain("10 bytes");
+        html.ShouldNotContain("nested/file.txt");
+    }
+
+    [Fact]
+    public async Task RegistersViewersThroughTheApplicationComposition()
+    {
+        var composition = new Composition("https://host.test/", publicWeb: true);
+        var registrations = new ServiceCollection();
+        registrations.AddSingleton(Mock.Of<IJSRuntime>());
+        await using var services = (ServiceProvider)composition.CreateServiceProvider(composition.CreateBuilder(registrations));
+        var viewers = services.GetRequiredService<IFilePreviewViewers>();
+        viewers.Resolve("markdown").ShouldBe(typeof(AI.Web.Components.FilePreviews.TextFilePreview));
+        viewers.Resolve("diff").ShouldBe(typeof(AI.Web.Components.FilePreviews.TextFilePreview));
+        viewers.Resolve("archive").ShouldBe(typeof(AI.Web.Components.FilePreviews.ArchiveFilePreview));
+        viewers.Resolve("directory").ShouldBe(typeof(AI.Web.Components.FilePreviews.DirectoryFilePreview));
+        viewers.Resolve("future-format").ShouldBe(typeof(AI.Web.Components.FilePreviews.BinaryFilePreview));
     }
 
     [Fact]
@@ -111,6 +174,11 @@ public sealed class FilePreviewPanelTests
         url.SetupGet(value => value.Value).Returns(new Uri("https://host.test/"));
         registrations.AddSingleton(url.Object);
         registrations.AddSingleton(Mock.Of<IJSRuntime>());
+        registrations.AddTransient<IFilePreviewApi, FilePreviewApi>();
+        registrations.AddSingleton<IFilePreviewViewers>(new FilePreviewViewers([new MediaFilePreviewRegistration(),
+            new TextFilePreviewRegistration(), new DirectoryFilePreviewRegistration(), new ArchiveFilePreviewRegistration()]));
+        registrations.AddTransient<IFileMarkdownRenderer, FileMarkdownRenderer>();
+        registrations.AddTransient<IUnifiedDiffParser, UnifiedDiff>();
         await using var services = registrations.BuildServiceProvider();
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
         return await renderer.Dispatcher.InvokeAsync(async () =>

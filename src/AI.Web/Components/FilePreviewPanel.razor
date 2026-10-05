@@ -1,7 +1,9 @@
-@using System.Net.Http.Json
+@using AI.Web.Resources
+@using AI.Web.Components.FilePreviews
 @using AI.Contracts.Resources
 @implements IAsyncDisposable
-@inject HttpClient Http
+@inject IFilePreviewApi Api
+@inject IFilePreviewViewers Viewers
 @inject IApiBaseUrl ApiBaseUrl
 @inject IJSRuntime Js
 
@@ -30,77 +32,9 @@
     else if (_file is not null)
     {
         <div class="file-preview-toolbar">
-            <span>@(_file.Kind == "directory" ? $"{_file.Entries.Count} entries" : $"{_file.Size:N0} bytes · {_file.ContentType}")</span>
-            @if (_file.Kind == "image")
-            {
-                <button type="button" @onclick="() => Zoom(-.25)">−</button>
-                <button type="button" @onclick="() => Zoom(.25)">+</button>
-                <button type="button" @onclick="() => _zoom = 0">Fit</button>
-                <button type="button" @onclick="() => _zoom = 1">100%</button>
-            }
-            @if (_file.Kind == "text")
-            {
-                @if (SelectionStart is { } start)
-                {
-                    <span class="file-preview-location">@(SelectionEnd == start ? $"Line {start}" : $"Lines {start}–{SelectionEnd}")</span>
-                }
-                <button type="button" @onclick="CopyTextAsync">Copy loaded text</button>
-            }
+            <span>@(_file.Kind is "directory" or "archive" ? $"{_file.Entries.Count} entries" : $"{_file.Size:N0} bytes · {_file.ContentType}")</span>
         </div>
-        <div class="file-preview-body">
-            @switch (_file.Kind)
-            {
-                case "image":
-                    <div class="file-preview-image"><img src="@ContentUrl" alt="@_file.Name" style="@(_zoom == 0 || _imageWidth == 0 ? null : $"width:{_imageWidth * _zoom}px;max-width:none;max-height:none")" @onload="ImageLoadedAsync" @onerror="MediaFailed" /></div>
-                    break;
-                case "video":
-                    <video class="file-preview-media" src="@ContentUrl" controls preload="metadata" @onerror="MediaFailed"></video>
-                    break;
-                case "audio":
-                    <audio class="file-preview-media" src="@ContentUrl" controls preload="metadata" @onerror="MediaFailed"></audio>
-                    break;
-                case "pdf":
-                    <iframe class="file-preview-pdf" src="@ContentUrl" title="@_file.Name"></iframe>
-                    <p class="file-preview-status">If the PDF cannot be displayed, use Download.</p>
-                    break;
-                case "text":
-                    <div class="file-preview-code" data-start-line="@SelectionStart" data-end-line="@SelectionEnd">
-                        @if (SelectionStart is { } first && first <= _lineCount)
-                        {
-                            <div class="file-preview-selection" aria-hidden="true" style="@($"--selection-offset:{first - 1};--selection-lines:{Math.Min(SelectionEnd!.Value, _lineCount) - first + 1}")"></div>
-                        }
-                        <pre class="file-preview-line-numbers" aria-hidden="true">@string.Join('\n', Enumerable.Range(1, _lineCount))</pre>
-                        <pre><code class="hljs">@if (_highlighted is null) { @_displayText } else { @((MarkupString)_highlighted) }</code></pre>
-                    </div>
-                    @if ((_nextOffset is null || _text.Length >= TextLimit)
-                        && (SelectionEnd > _lineCount || SelectionEnd == _lineCount && _nextOffset is not null))
-                    {
-                        <p class="file-preview-status" role="status">@(_nextOffset is null ? "The requested location extends beyond the end of this file." : "The requested location extends beyond the 1 MB text preview limit. Download the file to read the rest.")</p>
-                    }
-                    @if (_nextOffset is not null && _text.Length < TextLimit)
-                    {
-                        <button class="file-preview-load" type="button" disabled="@_loadingText" @onclick="LoadMoreAsync">@(_loadingText ? "Loading…" : "Load more text")</button>
-                    }
-                    else if (_nextOffset is not null)
-                    {
-                        <p class="file-preview-status">Showing the first 1 MB of text. Download the file to read the rest.</p>
-                    }
-                    break;
-                case "directory":
-                    <div class="file-preview-directory">
-                        @foreach (var entry in _file.Entries)
-                        {
-                            <button type="button" @onclick="() => OnOpenPath.InvokeAsync(entry.Path)"><AppIcon Name="@(entry.IsDirectory ? "folder" : "file")" /><span>@entry.Name</span></button>
-                        }
-                        @if (_file.HasMoreEntries) { <p>Showing the first 1,000 entries.</p> }
-                        else if (_file.Entries.Count == 0) { <p>No readable files in this directory.</p> }
-                    </div>
-                    break;
-                default:
-                    <p class="file-preview-status">This format cannot be previewed. Use Download to open it in another application.</p>
-                    break;
-            }
-        </div>
+        <DynamicComponent Type="@Viewers.Resolve(_file.Kind)" Parameters="@ViewerParameters" />
     }
 </section>
 
@@ -116,32 +50,19 @@
     private readonly CancellationTokenSource _cancel = new();
     private FilePreview? _file;
     private IJSObjectReference? _module, _handle;
-    private string? _error, _highlighted;
-    private string _text = "";
-    private string _displayText = "";
-    private bool _loading = true, _loadingText, _highlightPending, _scrollPending;
-    private const int TextLimit = 1_048_576;
-    private int _lineCount = 1;
-    private int? _nextOffset;
-    private double _zoom;
-    private int _imageWidth;
+    private string? _error;
+    private bool _loading = true;
     private string? ContentUrl => _file?.ContentUrl is { } url ? new Uri(ApiBaseUrl.Value, url).AbsoluteUri : null;
-    private int? SelectionStart => StartLine is > 0 && (EndLine ?? StartLine) >= StartLine ? StartLine : null;
-    private int? SelectionEnd => SelectionStart is not null ? EndLine ?? StartLine : null;
-
+    private IDictionary<string, object> ViewerParameters => new Dictionary<string, object>
+    {
+        [nameof(FilePreviewViewer.Context)] = new FilePreviewViewContext(ProjectId, _file!, ContentUrl,
+            _id, StartLine, EndLine, OnOpenPath)
+    };
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            _file = await GetAsync<FilePreview>("preview");
-            if (_file.Kind == "text")
-            {
-                await ReadTextAsync(0);
-                while (_nextOffset is { } offset && _text.Length < TextLimit
-                    && SelectionEnd >= _lineCount)
-                    await ReadTextAsync(offset);
-                _scrollPending = SelectionStart is not null;
-            }
+            _file = await Api.DescribeAsync(ProjectId, Path, _cancel.Token);
         }
         catch (OperationCanceledException) when (_cancel.IsCancellationRequested) { }
         catch (Exception error) { _error = error.Message; }
@@ -156,67 +77,10 @@
             _module = await Js.InvokeAsync<IJSObjectReference>("import", "./js/filePreview.js");
             _handle = await _module.InvokeAsync<IJSObjectReference>("attach", _id);
         }
-        if (_file?.Kind == "image" && _imageWidth == 0 && _module is not null) await ImageLoadedAsync();
-        if (_highlightPending && _module is not null)
-        {
-            _highlightPending = false;
-            try { _highlighted = await _module.InvokeAsync<string?>("highlight", _displayText, _file?.Name); }
-            catch (JSException) { }
-            if (!_cancel.IsCancellationRequested) StateHasChanged();
-        }
-        if (_cancel.IsCancellationRequested) return;
-        if (_scrollPending && !_loading && _module is not null)
-        {
-            _scrollPending = false;
-            await _module.InvokeVoidAsync("scrollToLine", _id, SelectionStart);
-        }
     }
 
-    private async Task<T> GetAsync<T>(string action, int offset = 0)
-    {
-        using var response = await Http.GetAsync($"api/projects/{ProjectId}/resources/{action}?path={Uri.EscapeDataString(Path)}&offset={offset}", _cancel.Token);
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException(response.StatusCode switch
-            {
-                System.Net.HttpStatusCode.Forbidden => "The project does not have read access to this file.",
-                System.Net.HttpStatusCode.NotFound => "The file or directory is no longer available.",
-                _ => $"Could not load the file ({(int)response.StatusCode})."
-            });
-        return await response.Content.ReadFromJsonAsync<T>(_cancel.Token)
-            ?? throw new InvalidOperationException("The Host returned no file information.");
-    }
-
-    private async Task ReadTextAsync(int offset)
-    {
-        var chunk = await GetAsync<FilePreviewText>("preview-text", offset);
-        _text += chunk.Text;
-        _nextOffset = chunk.NextOffset;
-        _displayText = _text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
-        _lineCount = _displayText.Count(character => character == '\n') + 1;
-        _highlighted = null;
-        _highlightPending = true;
-    }
-
-    private async Task LoadMoreAsync()
-    {
-        if (_nextOffset is not { } offset || _loadingText) return;
-        _loadingText = true;
-        try { await ReadTextAsync(offset); }
-        catch (OperationCanceledException) when (_cancel.IsCancellationRequested) { }
-        catch (Exception error) { _error = error.Message; }
-        finally { _loadingText = false; }
-    }
-
-    private void Zoom(double amount) => _zoom = Math.Clamp((_zoom == 0 ? 1 : _zoom) + amount, .25, 4);
-    private async Task ImageLoadedAsync()
-    {
-        if (_module is null) return;
-        var width = await _module.InvokeAsync<int>("imageWidth", _id);
-        if (width > 0 && width != _imageWidth) { _imageWidth = width; StateHasChanged(); }
-    }
-    private void MediaFailed() => _error = "This media format or codec could not be displayed, or file access has changed. Try reopening it or use Download.";
     private async Task CopyPathAsync() { if (_module is not null) await _module.InvokeVoidAsync("copy", _file?.Path ?? Path); }
-    private async Task CopyTextAsync() { if (_module is not null) await _module.InvokeVoidAsync("copy", _text); }
+
     private async Task FullScreenAsync() { if (_module is not null) await _module.InvokeVoidAsync("fullscreen", _id); }
     private async Task DownloadAsync()
     {

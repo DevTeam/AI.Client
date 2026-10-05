@@ -461,3 +461,27 @@ composition-backed cases build actual compacted history containing a stale `read
 reject that call without invoking the tool session, and continue through offered definitions,
 with or without discovery. Unit/MCP tests cover exact names, query/limit guidance, missing
 control schemas and the full-catalogue case. Tests use scripted completions, not a live Gemma run.
+
+## 2026-10-05 — extensible file previews
+
+The right file drawer now renders Markdown and unified diff/patch files with a Preview/Source
+toggle, and browses ZIP metadata as folders with file sizes. Source links retain numbered text,
+inclusive line selection and scrolling. Archive browsing includes implicit folders, limits the
+listing to 1,000 entries, omits absolute/traversal names, and never extracts files. Markdown
+disables raw HTML and arbitrary attributes and rejects unsafe link/image schemes, including
+autolinks. Text previews retain Unicode-safe paging and the 1 MB display limit.
+
+Server format handlers and client viewer registrations are transient Pure.DI collections.
+Directory listing participates in the same format/viewer architecture. Authorization and
+expiring download tickets remain in the shared service; unknown formats use the text/binary
+fallback. The shared diff parser distinguishes file headers from hunk content with repeated
+signs. The drawer owns only common actions and layout. Extension points and limits are described
+in `24-chat-artifacts.md`.
+
+Checks: all 463 Web tests passed; the final Markdown safety checks passed with all 19 file-preview
+rendering tests. The 36 focused Server tests and three HTTP/startup tests passed, including
+composition-backed format discovery, malformed archives, access revocation, ZIP limits and
+unified diff numbering. The file-preview JavaScript navigation test passed. Web and Server test
+projects built with zero warnings/errors. The normal solution build encountered DLL locks held
+by the running Desktop app; Desktop and Host then built with zero warnings/errors into separate
+verification output directories. `git diff --check` passed.

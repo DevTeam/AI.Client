@@ -21,14 +21,32 @@ public sealed class UnifiedDiff : IUnifiedDiffParser
         var lines = new List<DiffLine>();
         var oldLine = 0;
         var newLine = 0;
+        var oldRemaining = 0;
+        var newRemaining = 0;
 
         foreach (var raw in diff.ReplaceLineEndings("\n").Split('\n'))
         {
             if (raw.Length == 0) continue;
 
+            if (raw.StartsWith("diff --git ", StringComparison.Ordinal))
+            {
+                oldRemaining = newRemaining = 0;
+                lines.Add(new DiffLine(DiffLineKind.Note, raw));
+                continue;
+            }
+
+            if (oldRemaining == 0 && newRemaining == 0
+                && (raw.StartsWith("--- ", StringComparison.Ordinal) || raw.StartsWith("+++ ", StringComparison.Ordinal)))
+            {
+                lines.Add(new DiffLine(DiffLineKind.Note, raw));
+                continue;
+            }
+
             if (raw.StartsWith("@@", StringComparison.Ordinal))
             {
                 (oldLine, newLine) = ReadHunkStarts(raw);
+                oldRemaining = ReadCount(raw, '-');
+                newRemaining = ReadCount(raw, '+');
                 lines.Add(new DiffLine(DiffLineKind.Hunk, raw));
                 continue;
             }
@@ -39,14 +57,18 @@ public sealed class UnifiedDiff : IUnifiedDiffParser
                     lines.Add(new DiffLine(DiffLineKind.Context, raw[1..], oldLine, newLine));
                     oldLine++;
                     newLine++;
+                    oldRemaining = Math.Max(0, oldRemaining - 1);
+                    newRemaining = Math.Max(0, newRemaining - 1);
                     break;
                 case '+':
                     lines.Add(new DiffLine(DiffLineKind.Added, raw[1..], null, newLine));
                     newLine++;
+                    newRemaining = Math.Max(0, newRemaining - 1);
                     break;
                 case '-':
                     lines.Add(new DiffLine(DiffLineKind.Removed, raw[1..], oldLine, null));
                     oldLine++;
+                    oldRemaining = Math.Max(0, oldRemaining - 1);
                     break;
                 default:
                     // The truncation trailer, or anything the format did not promise.
@@ -76,6 +98,20 @@ public sealed class UnifiedDiff : IUnifiedDiffParser
         return end > start && int.TryParse(header.AsSpan(start, end - start), CultureInfo.InvariantCulture, out var value)
             ? value
             : null;
+    }
+
+    private static int ReadCount(string header, char marker)
+    {
+        var at = header.IndexOf(marker);
+        if (at < 0) return int.MaxValue;
+        var start = at + 1;
+        while (start < header.Length && char.IsAsciiDigit(header[start])) start++;
+        if (start >= header.Length || header[start] != ',') return 1;
+        start++;
+        var end = start;
+        while (end < header.Length && char.IsAsciiDigit(header[end])) end++;
+        return int.TryParse(header.AsSpan(start, end - start), CultureInfo.InvariantCulture, out var count)
+            ? count : int.MaxValue;
     }
 }
 

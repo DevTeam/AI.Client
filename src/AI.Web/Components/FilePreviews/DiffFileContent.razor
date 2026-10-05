@@ -1,0 +1,28 @@
+@using AI.Contracts.Workspace
+@inject IUnifiedDiffParser Parser
+
+<div class="file-preview-diff" aria-label="Unified diff">
+    @foreach (var line in _lines)
+    {
+        @if (line.Kind == DiffLineKind.Hunk)
+        {
+            <div class="diff-hunk">@line.Text</div>
+        }
+        else
+        {
+            <WorkspaceDiffLine Line="@line" />
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    private string? _parsed;
+    private IReadOnlyList<DiffLine> _lines = [];
+    protected override void OnParametersSet()
+    {
+        if (_parsed == Text) return;
+        _parsed = Text;
+        _lines = Parser.Parse(Text);
+    }
+}

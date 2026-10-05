@@ -410,8 +410,8 @@ public partial class Home
     // The virtual pointer reaches and presses the button the timer is about to apply just before it
     // runs out, so the step does not change under the person with nothing to show why.
     private static readonly TimeSpan GuidePressLead = TimeSpan.FromMilliseconds(1200);
-    private const string GuideContinueButton = ".app-guide-step:not(.is-leaving) .app-guide-actions .primary";
-    private const string GuideStopButton = ".app-guide-step:not(.is-leaving) .app-guide-actions .compact-action:not(.primary)";
+    private const string GuideContinueButton = ".app-guide-step:not(.is-leaving) button[data-app-guide-action=\"continue\"]";
+    private const string GuideStopButton = ".app-guide-step:not(.is-leaving) button[data-app-guide-action=\"stop\"]";
 
     private async Task PressWhenDueAsync(AppNavigation target, DateTimeOffset at, string button, Func<bool> applies, CancellationToken token)
     {

@@ -7,6 +7,8 @@ const source = readFileSync(new URL("../../../src/AI.Web/wwwroot/js/appGuide.js"
     .replace(/import .*?;\r?\n/, "").replace(/export /g, "");
 const cursorSource = readFileSync(new URL("../../../src/AI.Web/wwwroot/js/navigationCue.js", import.meta.url), "utf8")
     .replace(/export /g, "");
+const stepSource = readFileSync(new URL("../../../src/AI.Web/Components/AppGuideStep.razor", import.meta.url), "utf8");
+const homeGuideSource = readFileSync(new URL("../../../src/AI.Web/Pages/Home.Guide.cs", import.meta.url), "utf8");
 const settle = () => new Promise(resolve => setTimeout(resolve, 40));
 
 test("navigation shortcuts reveal and scroll without clicking or starting a guide", async () => {
@@ -60,7 +62,7 @@ function fixture(reduced = false) {
                 animations.push(animation);
                 return animation;
             } };
-        item.classList = { add: value => item.classes.push(value), remove() {} };
+        item.classList = { add: value => item.classes.push(value), remove() {}, contains: value => has(item, value) };
         return item;
     }
     const has = (item, cls) => (item.className || "").split(" ").includes(cls) || item.classes.includes(cls);
@@ -71,8 +73,21 @@ function fixture(reduced = false) {
     });
     const target = element(true), card = element();
     card.className = "app-guide-step";
+    const buttons = [...stepSource.matchAll(/<button\b([^>]*)>(Stop|Continue)<\/button>/g)].map(([, attributes, label]) => {
+        const button = element(true);
+        button.label = label;
+        for (const [, name, value] of attributes.matchAll(/([\w-]+)="([^"]*)"/g))
+            if (name === "class") button.className = value;
+            else button.setAttribute(name, value);
+        return button;
+    });
     const document = {
         querySelector: selector => selector.startsWith("[data-app-target") ? target
+            : selector.startsWith(".app-guide-step:not(.is-leaving) ") ? buttons.find(button => {
+                const action = selector.match(/button\[data-app-guide-action="([^"]+)"\]$/)?.[1];
+                return action ? button.getAttribute("data-app-guide-action") === action
+                    : matches(button, selector.split(" ").at(-1));
+            }) || null
             : [card, ...created].find(item => !item.removed && matches(item, selector)) || null,
         querySelectorAll: selector => created.filter(item => !item.removed && matches(item, selector)),
         createElement() { const item = element(); created.push(item); return item; },
@@ -83,9 +98,30 @@ function fixture(reduced = false) {
         innerWidth: 800, innerHeight: 600, AbortController, DOMException, Event, PointerEvent: Event, MouseEvent: Event,
         setTimeout: callback => setTimeout(callback, 5), clearTimeout });
     runInContext(cursorSource + "\n" + source, context);
-    return { context, target, card, created, animations,
+    return { context, target, card, buttons, created, animations,
         travel: () => animations.filter(item => item.frames[0].transform && item.element.className?.includes("app-guide-cursor")),
         cursor: () => created.filter(item => item.className?.includes("app-guide-cursor")).at(-1) };
+}
+
+for (const action of ["Continue", "Stop"]) {
+    test(`the guide timeout pointer reaches and presses the rendered ${action} button`, async () => {
+        const f = fixture();
+        const selector = homeGuideSource.match(new RegExp(`Guide${action}Button = "(.*)";`))[1].replace(/\\"/g, '"');
+        const button = f.buttons.find(item => item.label === action);
+        assert.ok(button);
+        await f.context.show({ target: "chat.composer", action: "show" });
+        await f.context.perform({ target: "chat.composer", action: "show" });
+        const cursor = f.cursor();
+        assert.equal(await f.context.press(selector), true);
+        assert.equal(f.cursor(), cursor, "the existing pointer should move to the default action");
+        assert.equal(f.travel().length, 2);
+        assert.ok(button.classes.includes("is-auto-pressed"));
+        assert.ok(button.classes.includes("ghost-cursor-pressed"));
+        assert.ok(cursor.children.some(child => child.className === "ghost-cursor-ripple"));
+        assert.equal(button.clicks, undefined, "the timer applies the action separately from its visual press");
+        await settle();
+        assert.equal(cursor.removed, true);
+    });
 }
 
 test("show moves the pointer along a path to a control and keeps it visible after positioning the comment", async () => {

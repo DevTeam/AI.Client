@@ -1,0 +1,12 @@
+@inherits FilePreviewViewer
+
+<div class="file-preview-body">
+    <div class="file-preview-directory">
+        @foreach (var entry in Context.File.Entries)
+        {
+            <button type="button" @onclick="() => Context.OnOpenPath.InvokeAsync(entry.Path)"><AppIcon Name="@(entry.IsDirectory ? "folder" : "file")" /><span>@entry.Name</span></button>
+        }
+        @if (Context.File.HasMoreEntries) { <p>Showing the first 1,000 entries.</p> }
+        else if (Context.File.Entries.Count == 0) { <p>No readable files in this directory.</p> }
+    </div>
+</div>

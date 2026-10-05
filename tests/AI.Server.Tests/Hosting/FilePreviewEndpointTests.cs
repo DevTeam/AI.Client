@@ -3,6 +3,7 @@ namespace AI.Server.Tests.Hosting;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.IO.Compression;
 using AI.Contracts.Projects;
 using AI.Contracts.Resources;
 using AI.Server.Hosting;
@@ -32,6 +33,25 @@ public sealed class FilePreviewEndpointTests
                 new UpdateProjectSecurityRequest(project.Revision, grants, [], []), token);
             granted.EnsureSuccessStatusCode();
             project = (await granted.Content.ReadFromJsonAsync<ProjectDetails>(token))!;
+            foreach (var (name, kind) in new[] { ("README.md", "markdown"), ("change.patch", "diff"), ("sample.zip", "archive") })
+            {
+                var samplePath = Path.Combine(root, name);
+                if (kind == "archive")
+                {
+                    using var archive = ZipFile.Open(samplePath, ZipArchiveMode.Create);
+                    archive.CreateEntry("src/file.txt");
+                }
+                else await File.WriteAllTextAsync(samplePath, "sample", token);
+                var sample = await http.GetFromJsonAsync<FilePreview>(
+                    $"api/projects/{project.Id}/resources/preview?path={Uri.EscapeDataString(samplePath)}", token);
+                sample!.Kind.ShouldBe(kind);
+                sample.ContentUrl.ShouldNotBeNull();
+            }
+            var invalidArchive = Path.Combine(root, "invalid.zip");
+            await File.WriteAllTextAsync(invalidArchive, "invalid", token);
+            using var invalid = await http.GetAsync(
+                $"api/projects/{project.Id}/resources/preview?path={Uri.EscapeDataString(invalidArchive)}", token);
+            invalid.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
             var preview = (await http.GetFromJsonAsync<FilePreview>($"api/projects/{project.Id}/resources/preview?path={Uri.EscapeDataString(path)}", token))!;
             using var request = new HttpRequestMessage(HttpMethod.Get, preview.ContentUrl);
             request.Headers.Range = new RangeHeaderValue(10, 19);

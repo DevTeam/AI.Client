@@ -1,0 +1,15 @@
+@inject AI.Web.Resources.IFileMarkdownRenderer Renderer
+
+<div class="markdown-content file-preview-markdown">@((MarkupString)_html)</div>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    private string? _rendered;
+    private string _html = "";
+    protected override void OnParametersSet()
+    {
+        if (_rendered == Text) return;
+        _rendered = Text;
+        _html = Renderer.Render(Text);
+    }
+}

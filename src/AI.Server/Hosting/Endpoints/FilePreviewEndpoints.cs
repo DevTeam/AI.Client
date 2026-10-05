@@ -42,6 +42,7 @@ public sealed class FilePreviewEndpoints : IEndpointModule
         catch (UnauthorizedAccessException) { return Results.Problem("The project cannot read this path.", statusCode: 403); }
         catch (FileNotFoundException) { return Results.NotFound(); }
         catch (DirectoryNotFoundException) { return Results.NotFound(); }
+        catch (InvalidDataException) { return Results.Problem("The archive is invalid or unsupported.", statusCode: 422); }
         catch (IOException) { return Results.Problem("The file is unavailable or busy. Try again.", statusCode: 409); }
     }
 }

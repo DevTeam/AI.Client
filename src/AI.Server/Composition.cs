@@ -101,7 +101,10 @@ internal sealed class Composition
                 SystemClock, ProjectService, ChatDocumentSerializer, ChatService, ChatSearchService, PinOrderKeys,
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ProtectedGlobalSecretStore,
                 ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,
-                MemoryService, ProjectInstructionsService>()
+                MemoryService, ProjectInstructionsService, FilePreviewFormats, FilePreviewTextReader,
+                TextFilePreviewFormat>()
+            .Transient<DirectoryFilePreviewFormat, ArchiveFilePreviewFormat, MediaFilePreviewFormat,
+                MarkupFilePreviewFormat>(Tag.Unique)
             // Instruction composition, context planning, credentials and usage accounting.
             .Transient<WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService,
                 OpenAiCompatibleConnectionModelsResolver, ChatContext, ChatAgent, ContextTokenEstimator,

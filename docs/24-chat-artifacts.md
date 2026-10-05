@@ -27,6 +27,18 @@ Paths in rendered messages become links however the model wrote them: a `file://
 
 The header shows the diff review name, source step, Add to message, and Close. The chat and queue show a diff review as a resource link, alongside file and directory links. The link opens the review workspace. Queueing a message does not freeze the review; it is resolved when the queued model request starts.
 
+## File preview formats
+
+The file drawer previews images, video, audio, PDF, paged source text, Markdown, unified diff/patch files, directories, and ZIP archive listings. Markdown and diff start in Preview mode; Source shows numbered, escaped text with syntax highlighting. A link with a source location starts in Source mode and retains inclusive line selection and scrolling. Text is bounded to 1 MB; a large document reports truncation and can be downloaded. Markdown supports tables and task lists, disables raw HTML and arbitrary attributes, and permits only HTTP, HTTPS, mail and fragment links. Relative links inside a document are not resolved against the app's routes.
+
+ZIP browsing shows explicit and implicit folders, uncompressed and compressed sizes, and up to 1,000 entries. It reads metadata without extracting files. Archive names are virtual paths and never go through the host path opener; absolute and traversal names are omitted. The original archive remains available through Download and Add to message. A damaged archive produces a visible error.
+
+`IFilePreviewService` owns authorization, path resolution and expiring content tickets. `IFilePreviewFormats` selects a specialized `IFilePreviewFormat` from the DI collection and then falls back to `ITextFilePreviewFormat` for text or binary files. Directory listing is an ordinary specialized format and checks read access for each child. `IFilePreviewTextReader` owns text detection and Unicode-safe paging. Access is checked again on every read and content-ticket request.
+
+`FilePreviewPanel` owns the shared drawer header, resizing, full screen, copying paths, attachment and download. It requests descriptors through `IFilePreviewApi` and resolves components through `IFilePreviewViewers`. Viewer registrations map descriptor kinds to components deriving from `FilePreviewViewer`; their shared context supplies the project, descriptor, content URL, source location and path-opening callback. Text loading, media controls, directory navigation and archive navigation belong to the corresponding viewers.
+
+To add a format, implement a specialized server format and a client viewer registration, then register both as transient collection entries with `Tag.Unique` in the respective compositions. The text/binary fallback stays outside the specialized collection. No drawer or endpoint switch needs updating. Viewer registrations must use distinct kinds; formats must claim disjoint inputs. Only the shared ticket service retains singleton state.
+
 ## Current model and storage
 
 ```text

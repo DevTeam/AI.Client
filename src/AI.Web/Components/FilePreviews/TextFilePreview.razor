@@ -1,0 +1,139 @@
+@inherits FilePreviewViewer
+@implements IAsyncDisposable
+@inject AI.Web.Resources.IFilePreviewApi Api
+@inject IJSRuntime Js
+
+@if (_error is not null) { <p class="review-error" role="alert">@_error</p> }
+@if (_loading) { <p class="file-preview-status" role="status">Loading text…</p> }
+<div class="file-preview-toolbar">
+    @if (SelectionStart is { } start)
+    {
+        <span class="file-preview-location">@(SelectionEnd == start ? $"Line {start}" : $"Lines {start}–{SelectionEnd}")</span>
+    }
+    @if (Context.File.Kind is "markdown" or "diff")
+    {
+        <button type="button" aria-pressed="@(!_source)" @onclick="() => ShowSource(false)">Preview</button>
+        <button type="button" aria-pressed="@_source" @onclick="() => ShowSource(true)">Source</button>
+    }
+    <button type="button" @onclick="CopyTextAsync">Copy loaded text</button>
+</div>
+<div class="file-preview-body">
+    @if (!_source && Context.File.Kind == "markdown")
+    {
+        <MarkdownFileContent Text="@_displayText" />
+    }
+    else if (!_source && Context.File.Kind == "diff")
+    {
+        <DiffFileContent Text="@_displayText" />
+    }
+    else
+    {
+        <div class="file-preview-code" data-start-line="@SelectionStart" data-end-line="@SelectionEnd">
+            @if (SelectionStart is { } first && first <= _lineCount)
+            {
+                <div class="file-preview-selection" aria-hidden="true" style="@($"--selection-offset:{first - 1};--selection-lines:{Math.Min(SelectionEnd!.Value, _lineCount) - first + 1}")"></div>
+            }
+            <pre class="file-preview-line-numbers" aria-hidden="true">@string.Join('\n', Enumerable.Range(1, _lineCount))</pre>
+            <pre><code class="hljs">@if (_highlighted is null) { @_displayText } else { @((MarkupString)_highlighted) }</code></pre>
+        </div>
+    }
+    @if ((_nextOffset is null || _atLimit)
+        && (SelectionEnd > _lineCount || SelectionEnd == _lineCount && _nextOffset is not null))
+    {
+        <p class="file-preview-status" role="status">@(_nextOffset is null ? "The requested location extends beyond the end of this file." : "The requested location extends beyond the 1 MB text preview limit. Download the file to read the rest.")</p>
+    }
+    @if (_nextOffset is not null && !_atLimit)
+    {
+        <button class="file-preview-load" type="button" disabled="@_loadingText" @onclick="LoadMoreAsync">@(_loadingText ? "Loading…" : "Load more text")</button>
+    }
+    else if (_nextOffset is not null)
+    {
+        <p class="file-preview-status">Showing the first 1 MB of text. Download the file to read the rest.</p>
+    }
+</div>
+
+@code {
+    private readonly CancellationTokenSource _cancel = new();
+    private IJSObjectReference? _module;
+    private string? _error, _highlighted;
+    private string _text = "", _displayText = "";
+    private const int TextLimit = 1_048_576;
+    private bool _loading = true, _loadingText, _highlightPending, _scrollPending, _source, _atLimit;
+    private int _lineCount = 1;
+    private int? _nextOffset;
+    private int? SelectionStart => Context.StartLine is > 0 && (Context.EndLine ?? Context.StartLine) >= Context.StartLine ? Context.StartLine : null;
+    private int? SelectionEnd => SelectionStart is not null ? Context.EndLine ?? Context.StartLine : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _source = Context.File.Kind == "text" || SelectionStart is not null;
+        try
+        {
+            await ReadTextAsync(0);
+            while (_nextOffset is { } offset && !_atLimit
+                && (!_source || SelectionEnd >= _lineCount))
+                await ReadTextAsync(offset);
+            _scrollPending = SelectionStart is not null;
+        }
+        catch (OperationCanceledException) when (_cancel.IsCancellationRequested) { }
+        catch (Exception error) { _error = error.Message; }
+        finally { _loading = false; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_cancel.IsCancellationRequested) return;
+        _module ??= await Js.InvokeAsync<IJSObjectReference>("import", "./js/filePreview.js");
+        if (_highlightPending && _source)
+        {
+            _highlightPending = false;
+            try { _highlighted = await _module.InvokeAsync<string?>("highlight", _displayText, Context.File.Name); }
+            catch (JSException) { }
+            if (!_cancel.IsCancellationRequested) StateHasChanged();
+        }
+        if (_cancel.IsCancellationRequested) return;
+        if (_scrollPending && !_loading && _source)
+        {
+            _scrollPending = false;
+            await _module.InvokeVoidAsync("scrollToLine", Context.PanelId, SelectionStart);
+        }
+    }
+
+    private async Task ReadTextAsync(int offset)
+    {
+        var chunk = await Api.ReadTextAsync(Context.ProjectId, Context.File.Path, offset, _cancel.Token);
+        var remaining = TextLimit - _text.Length;
+        var length = Math.Min(chunk.Text.Length, remaining);
+        if (length > 0 && length < chunk.Text.Length && char.IsHighSurrogate(chunk.Text[length - 1])) length--;
+        _text += chunk.Text[..length];
+        _nextOffset = length < chunk.Text.Length ? offset + length : chunk.NextOffset;
+        _atLimit = length < chunk.Text.Length || _text.Length >= TextLimit;
+        _displayText = _text.ReplaceLineEndings("\n");
+        _lineCount = _displayText.Count(character => character == '\n') + 1;
+        _highlighted = null;
+        _highlightPending = true;
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        if (_nextOffset is not { } offset || _loadingText) return;
+        _loadingText = true;
+        try { await ReadTextAsync(offset); }
+        catch (OperationCanceledException) when (_cancel.IsCancellationRequested) { }
+        catch (Exception error) { _error = error.Message; }
+        finally { _loadingText = false; }
+    }
+
+    private void ShowSource(bool source)
+    {
+        _source = source;
+        if (source) { _highlightPending = true; _scrollPending = SelectionStart is not null; }
+    }
+    private async Task CopyTextAsync() { if (_module is not null) await _module.InvokeVoidAsync("copy", _text); }
+    public async ValueTask DisposeAsync()
+    {
+        await _cancel.CancelAsync();
+        _cancel.Dispose();
+        if (_module is not null) await _module.DisposeAsync();
+    }
+}

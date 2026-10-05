@@ -5,6 +5,7 @@
 @using AI.Web.State
 @using AI.Web.FileSystem
 @using AI.Contracts.Resources
+@using Microsoft.AspNetCore.Components.Forms
 @inject IClientMetadata ClientMetadata
 @inject IClientMode ClientMode
 @inject IHostConnection HostConnection
@@ -444,6 +445,7 @@
             OnNavigateApp="OpenAppNavigationLinkAsync"
             OnFileLinkMenu="OpenFileLinkMenu"
             OnOpenFile="OpenFileLinkPreviewAsync"
+            OnOpenAsset="OpenAssetPreviewAsync"
             ReviewNames="@_reviews.ToDictionary(item => item.Id, item => item.Name)"
             MessageReviewIds="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).Select(item => item.Id).ToHashSet()"
             MessageReviews="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).GroupBy(item => item.SourceMessageId).ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.UpdatedAt).First())"
@@ -600,7 +602,7 @@
         <footer class="workspace-composer">
             @if (_draftResources.Any(item => item.Mention is null))
             {
-                <div class="composer-resource-list" aria-label="Attached workspace references">
+                <div class="composer-resource-list" aria-label="Attached resources">
                     @foreach (var skill in _draftResources.Where(item => item.Kind == ChatResourceKind.Skill))
                     {
                         <span class="resource-pill" @key="skill.Id" title="@SkillChipTitle(skill)">
@@ -612,7 +614,25 @@
                     {
                         @* The pill the reference keeps in the sent message and an "@" link has in the text. *@
                         <span class="resource-pill" @key="resource.Id" title="@DraftChipTitle(resource)">
-                            <span class="resource-pill-target mention-@resource.Kind.ToString().ToLowerInvariant()"><span class="resource-pill-label">@DraftChipLabel(resource)</span></span>
+                            @if (resource.Kind == ChatResourceKind.Image && _selectedProject is not null)
+                            {
+                                <button class="resource-pill-target mention-image chat-image-link" type="button"
+                                        title="@DraftChipTitle(resource)" aria-label="@DraftChipTitle(resource)"
+                                        @onclick="() => OpenAssetPreviewAsync(resource)">
+                                    <ChatImageThumbnail ProjectId="_selectedProject.Id" Resource="resource" />
+                                </button>
+                            }
+                            else if (resource.Kind == ChatResourceKind.File && resource.AssetId is not null)
+                            {
+                                <button class="resource-pill-target mention-file" type="button"
+                                        title="@DraftChipTitle(resource)" @onclick="() => OpenAssetPreviewAsync(resource)">
+                                    <span class="resource-pill-label">@DraftChipLabel(resource)</span>
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="resource-pill-target mention-@resource.Kind.ToString().ToLowerInvariant()"><span class="resource-pill-label">@DraftChipLabel(resource)</span></span>
+                            }
                             <button class="resource-pill-remove" type="button" aria-label="Remove @DraftChipTitle(resource)" title="Remove reference" @onclick="() => RemoveDraftResource(resource.Id)"><AppIcon Name="x" /></button>
                         </span>
                     }
@@ -635,6 +655,7 @@
                           aria-activedescendant="@(IsSkillListOpen() ? $"skill-command-{_skillSuggestionIndex}" : IsMentionListOpen() ? $"resource-mention-{_mentionIndex}" : null)"></textarea>
             </div>
             <div class="composer-footer">
+                <InputFile id="composer-file-picker" class="composer-file-picker-input" OnChange="OnFilesSelectedAsync" multiple="multiple" />
                 <div class="composer-resource-menu-anchor">
                     <button @attributes="@(ControlHints.Attributes("chat.context", "Add to chat"))" class="icon-action composer-add-resource" type="button" aria-label="Add to chat" aria-expanded="@_isResourceMenuOpen" @onclick="ToggleResourceMenu"><AppIcon Name="plus" /></button>
                     @if (_isResourceMenuOpen)
@@ -642,8 +663,9 @@
                         <div class="composer-resource-menu-backdrop" @onclick="CloseResourceMenu"></div>
                         <div class="composer-resource-menu" role="menu" aria-label="Add to chat">
                             <span class="composer-resource-menu-label">Add</span>
-                            <button type="button" role="menuitem" @onclick="() => OpenResourcePicker(DirectoryPickerMode.File)"><AppIcon Name="file" /> File</button>
-                            <button type="button" role="menuitem" @onclick="() => OpenResourcePicker(DirectoryPickerMode.Directory)"><AppIcon Name="folder" /> Directory</button>
+                            <button type="button" role="menuitem" @onclick="OpenFilePickerAsync"><AppIcon Name="file" /> File</button>
+                            <button type="button" role="menuitem" @onclick="() => OpenResourcePicker(DirectoryPickerMode.File)"><AppIcon Name="link" /> File path</button>
+                            <button type="button" role="menuitem" @onclick="() => OpenResourcePicker(DirectoryPickerMode.Directory)"><AppIcon Name="folder" /> Directory path</button>
                             @if (_selectedChat is not null)
                             {
                                 <button type="button" role="menuitem" aria-expanded="@_isReviewSubmenuOpen" @onclick="ToggleReviewSubmenuAsync"><AppIcon Name="diff" /> Review <AppIcon Name="chevron-right" /></button>
@@ -1012,11 +1034,12 @@
                          Reviews="@_reviews" StartReviewId="@_reviewStartId" StartPath="@_reviewStartPath"
                          OnChanged="OnReviewChangedAsync" OnDelete="@(id => DeleteReviewAsync(_selectedChat.Id, id))" OnClose="CloseReviewAsync" />
     }
-    @if (_previewPath is not null && _selectedProject?.Id == _previewProjectId)
+    @if ((_previewPath is not null || _previewAsset is not null) && _selectedProject?.Id == _previewProjectId)
     {
-        <FilePreviewPanel @key="_previewVersion" ProjectId="@_previewProjectId" Path="@_previewPath"
+        <FilePreviewPanel @key="_previewVersion" ProjectId="@_previewProjectId" Path="@(_previewPath ?? string.Empty)" AssetResource="@_previewAsset"
                           StartLine="@_previewStartLine" EndLine="@_previewEndLine"
-                          OnClose="CloseFilePreview" OnOpenPath="OpenFilePreviewAsync" OnAttach="AttachPreviewAsync" />
+                          OnClose="CloseFilePreview" OnOpenPath="OpenFilePreviewAsync" OnAttach="AttachPreviewAsync"
+                          OnAttachAsset="AttachPreviewAsset" />
     }
 </main>
 
@@ -1174,7 +1197,7 @@ else if (_guideInvitation is { } guideInvitation)
     private bool _isDirectoryPickerOpen;
     private bool _isResourceMenuOpen;
     private DirectoryPickerMode? _resourcePickerMode;
-    private readonly List<ChatResourceRef> _draftResources = [];
+    private readonly List<ChatResource> _draftResources = [];
     // The slash list: the effective skills of the project the composer last loaded them for, the
     // rows matching what is typed, and the skills picked this session, which rank first.
     private IReadOnlyList<AI.Contracts.Skills.SkillDefinition> _composerSkills = [];
@@ -1204,7 +1227,7 @@ else if (_guideInvitation is { } guideInvitation)
     private Guid? _mentionDiffsLoadedFor;
     private DateTimeOffset _mentionDiffsLoadedAt;
     private int? _pendingMentionAt;
-    private readonly Dictionary<string, ChatResourceRef[]> _resourceDrafts = [];
+    private readonly Dictionary<string, ChatResource[]> _resourceDrafts = [];
     private readonly List<ChatReview> _reviews = [];
     private readonly Dictionary<Guid, IReadOnlyList<ChatReview>> _menuReviews = [];
     private bool _isReviewSubmenuOpen;
@@ -2923,12 +2946,18 @@ else if (_guideInvitation is { } guideInvitation)
         && _selectedProject is not null
         && (!string.IsNullOrWhiteSpace(_chat.Message) || _draftResources.Count > 0)
         && !string.IsNullOrWhiteSpace(_chat.BaseUrl)
-        && !string.IsNullOrWhiteSpace(_chat.Model);
+        && !string.IsNullOrWhiteSpace(_chat.Model)
+        && !ImageInputBlocked();
+
+    private bool ImageInputBlocked() =>
+        _draftResources.Any(item => item.Kind == ChatResourceKind.Image)
+        && _connections.FirstOrDefault(item => item.Id == _chat.CredentialProfileId)?.ImageInput == ImageInputMode.Disabled;
 
     private string GetComposerHint()
     {
         if (_selectedProject is null) return "Select a project";
         if (string.IsNullOrWhiteSpace(_chat.BaseUrl) || string.IsNullOrWhiteSpace(_chat.Model)) return "Select or configure an endpoint";
+        if (ImageInputBlocked()) return "This endpoint has image input disabled; choose another endpoint or change its settings";
         var baseHint = _selectedChat is null ? "A new chat will be created on send" : "Continuing selected chat";
         // Mirror the modifier-to-action mapping in chatComposer.js so the hint above the
         // textarea and the Enter-key behaviour always agree on what will happen on press. The
@@ -4281,7 +4310,7 @@ else if (_guideInvitation is { } guideInvitation)
         catch (JSException) { }
     }
 
-    private Task MarkTipsUsedAsync(ComposerSubmitMode mode, IReadOnlyList<ChatResourceRef>? resources)
+    private Task MarkTipsUsedAsync(ComposerSubmitMode mode, IReadOnlyList<ChatResource>? resources)
     {
         var tips = new List<string>();
         if (mode is ComposerSubmitMode.Queue or ComposerSubmitMode.SendNow) tips.Add(AI.Web.Components.ChatTips.Send);
@@ -4861,7 +4890,7 @@ else if (_guideInvitation is { } guideInvitation)
         else if (_globalSection is not null) await RequestCloseGlobalSettingsAsync();
         else if (_isProjectSettingsOpen) await RequestCloseProjectSettingsAsync();
         else if (_reviewWorkspaceOpen) await CloseReviewAsync();
-        else if (_previewPath is not null) CloseFilePreview();
+        else if (_previewPath is not null || _previewAsset is not null) CloseFilePreview();
         else return;
         await InvokeAsync(StateHasChanged);
     }
@@ -4898,7 +4927,7 @@ else if (_guideInvitation is { } guideInvitation)
         {
             await CloseReviewAsync();
         }
-        else if (_previewPath is not null)
+        else if (_previewPath is not null || _previewAsset is not null)
         {
             CloseFilePreview();
         }
@@ -5352,7 +5381,7 @@ else if (_guideInvitation is { } guideInvitation)
             _chatError = "A message can reference at most 20 resources. Remove one to add a skill.";
             return _chat.Message;
         }
-        _draftResources.Insert(0, new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Skill, skill.Id, skill.Name));
+        _draftResources.Insert(0, new ChatResource(Guid.NewGuid(), ChatResourceKind.Skill, skill.Id, skill.Name));
         _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
         _recentSkillIds.Remove(skill.Id);
         _recentSkillIds.Insert(0, skill.Id);
@@ -5588,9 +5617,60 @@ else if (_guideInvitation is { } guideInvitation)
     /// The drafted references whose "@" link is still in the text, and every reference attached
     /// beside it: a link the user deleted takes its reference with it.
     /// </summary>
-    private ChatResourceRef[] SubmittedResources() => _draftResources
+    private ChatResource[] SubmittedResources() => _draftResources
         .Where(resource => resource.Mention is null || _chat.Message.Contains(resource.Mention, StringComparison.Ordinal))
         .ToArray();
+
+    private async Task OpenFilePickerAsync()
+    {
+        _isResourceMenuOpen = false;
+        if (_composerModule is not null) await _composerModule.InvokeVoidAsync("openFilePicker");
+    }
+
+    private async Task OnFilesSelectedAsync(InputFileChangeEventArgs args)
+    {
+        if (args.FileCount > 20)
+        {
+            Notifications.ShowError("Select at most 20 files at a time.");
+            return;
+        }
+        foreach (var file in args.GetMultipleFiles(20))
+        {
+            try
+            {
+                await using var stream = file.OpenReadStream(15 * 1024 * 1024);
+                using var buffer = new MemoryStream();
+                await stream.CopyToAsync(buffer);
+                await AttachFileAsync(buffer.ToArray(), file.Name, ChatResourceSource.Upload);
+            }
+            catch (Exception error) when (error is IOException or InvalidOperationException or HttpRequestException)
+            { Notifications.ShowError($"Could not attach the file: {error.Message}"); }
+        }
+    }
+
+    [JSInvokable]
+    public Task OnComposerImagePasted(byte[] data, string name) =>
+        AttachFileAsync(data, name, ChatResourceSource.Clipboard);
+
+    private async Task AttachFileAsync(byte[] data, string name, ChatResourceSource source)
+    {
+        if (_selectedProject is not { } project) return;
+        if (_draftResources.Count >= 20)
+        {
+            Notifications.ShowError("A message can reference at most 20 resources.");
+            return;
+        }
+        try
+        {
+            var resource = await ResourceApi.UploadFileAsync(project.Id, data, name, source, CancellationToken.None);
+            if (_selectedProject?.Id != project.Id) return;
+            _draftResources.Add(resource);
+            _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException or HttpRequestException)
+        { Notifications.ShowError($"Could not attach the file: {error.Message}"); }
+    }
 
     private void SetComposerText(string text)
     {
@@ -5610,13 +5690,13 @@ else if (_guideInvitation is { } guideInvitation)
             await AddDraftResourceAsync([item.Kind], item.Value, lines: item.Lines, mention: item.Token);
             return;
         }
-        ChatResourceRef reference;
+        ChatResource reference;
         if (item.Kind == ChatResourceKind.Review)
         {
             if (_reviews.FirstOrDefault(review => review.Id.ToString() == item.Value) is not { } review || IsEmptyReview(review)) return;
-            reference = new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty, review.Name, review.Kind, Mention: item.Token);
+            reference = new ChatResource(review.Id, ChatResourceKind.Review, string.Empty, review.Name, review.Kind, Mention: item.Token);
         }
-        else reference = new ChatResourceRef(Guid.NewGuid(), item.Kind, item.Value, item.Name, Mention: item.Token);
+        else reference = new ChatResource(Guid.NewGuid(), item.Kind, item.Value, item.Name, Mention: item.Token);
         var existing = _draftResources.FindIndex(resource => resource.Kind == item.Kind
             && (item.Kind == ChatResourceKind.Review ? resource.Id == reference.Id : resource.Path == item.Value));
         if (existing >= 0) _draftResources[existing] = _draftResources[existing] with { Mention = item.Token };
@@ -5630,8 +5710,10 @@ else if (_guideInvitation is { } guideInvitation)
         _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
     }
 
-    private string DraftChipLabel(ChatResourceRef resource) => resource.Kind switch
+    private string DraftChipLabel(ChatResource resource) => resource.Kind switch
     {
+        ChatResourceKind.Image => resource.Name ?? "Image",
+        ChatResourceKind.File when resource.AssetId is not null => resource.Name ?? "File",
         ChatResourceKind.Review => ReviewName(resource),
         ChatResourceKind.File when resource.Lines is { } lines => $"{ResourceDisplayName(resource.Path)}:{LineRangeText(lines)}",
         ChatResourceKind.Diff => resource.Name ?? ResourceDisplayName(resource.Path),
@@ -5639,8 +5721,11 @@ else if (_guideInvitation is { } guideInvitation)
         _ => ResourceDisplayName(resource.Path)
     };
 
-    private string DraftChipTitle(ChatResourceRef resource) => resource.Kind switch
+    private string DraftChipTitle(ChatResource resource) => resource.Kind switch
     {
+        ChatResourceKind.Image when resource.Source == ChatResourceSource.Clipboard => "Image from clipboard",
+        ChatResourceKind.Image => $"Image: {resource.Name ?? resource.Path}",
+        ChatResourceKind.File when resource.AssetId is not null => $"File: {resource.Name ?? resource.Path}",
         ChatResourceKind.Review => ReviewName(resource),
         ChatResourceKind.File when resource.Lines is { } lines => $"{resource.Path}, lines {LineRangeText(lines)}",
         ChatResourceKind.Diff => $"Uncommitted changes in {resource.Path}, captured when the message is sent",
@@ -5652,7 +5737,7 @@ else if (_guideInvitation is { } guideInvitation)
     private static string LineRangeText(ChatLineRange lines) =>
         lines.Start == lines.End ? $"{lines.Start}" : $"{lines.Start}-{lines.End}";
 
-    private string SkillChipTitle(ChatResourceRef skill) =>
+    private string SkillChipTitle(ChatResource skill) =>
         _composerSkills.FirstOrDefault(item => item.Id == skill.Path) is { } definition
             ? $"{definition.Name} · {SkillCommandMenu.SourceLabel(definition.Source)}\n{definition.Description}"
             : skill.Path;
@@ -5768,7 +5853,7 @@ else if (_guideInvitation is { } guideInvitation)
         }
     }
 
-    private async Task OpenAttachedReviewAsync(ChatResourceRef reference)
+    private async Task OpenAttachedReviewAsync(ChatResource reference)
     {
         if (reference.ReviewKind == ChatReviewKind.Message
             || _reviews.Any(item => item.Id == reference.Id && item.Kind == ChatReviewKind.Message))
@@ -5979,7 +6064,7 @@ else if (_guideInvitation is { } guideInvitation)
     private void AddReviewToDraft(ChatReview review)
     {
         if (IsEmptyReview(review)) { RemoveReviewFromDraft(review.Id); return; }
-        var reference = new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty, review.Name, review.Kind);
+        var reference = new ChatResource(review.Id, ChatResourceKind.Review, string.Empty, review.Name, review.Kind);
         var index = _draftResources.FindIndex(item => item.Id == review.Id);
         if (index >= 0) _draftResources[index] = reference;
         else if (_draftResources.Count < 20) _draftResources.Add(reference);
@@ -6019,7 +6104,7 @@ else if (_guideInvitation is { } guideInvitation)
         return false;
     }
 
-    private string ReviewName(ChatResourceRef reference) =>
+    private string ReviewName(ChatResource reference) =>
         reference.ReviewKind == ChatReviewKind.Message
             ? $"Message comments · {_reviews.FirstOrDefault(item => item.Id == reference.Id)?.MessageComments?.Count ?? 0}"
             : _reviews.FirstOrDefault(item => item.Id == reference.Id)?.Name ?? reference.Name ?? reference.Path;
@@ -6174,7 +6259,7 @@ else if (_guideInvitation is { } guideInvitation)
     public Task OnComposerFileDropUnavailable(string[] names)
     {
         var detail = names.Length == 0 ? string.Empty : $" ({string.Join(", ", names.Take(3))})";
-        Notifications.ShowError($"Could not read the dropped file path{detail}. Use + → File to select it from the project.");
+        Notifications.ShowError($"Could not read the dropped file path{detail}. Use + → File path to select it from the project.");
         return Task.CompletedTask;
     }
 
@@ -6272,7 +6357,7 @@ else if (_guideInvitation is { } guideInvitation)
         var draftKey = GetComposerDraftKey();
         try
         {
-            ChatResourceRef? created = null;
+            ChatResource? created = null;
             Exception? firstError = null;
             foreach (var candidate in kinds)
             {

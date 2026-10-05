@@ -19,7 +19,7 @@ public class ChatComposerServiceTests
         var runs = new Mock<IChatRunsApi>(MockBehavior.Strict);
         var chatId = Guid.NewGuid();
         var projectId = Guid.NewGuid();
-        var review = new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.Review, string.Empty,
+        var review = new ChatResource(Guid.NewGuid(), ChatResourceKind.Review, string.Empty,
             "Message review", ChatReviewKind.Message);
         var chat = new ChatDetails(chatId, projectId, "Chat", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
             1, null, [], [new ChatBranchView(chatId, null, "Main")]);

@@ -11,7 +11,7 @@ public class RunSnapshotComparerTests
     [Fact]
     public void ShouldRecognizeStreamingAppendWhenQueueResourcesAreRemapped()
     {
-        var resource = new ChatResourceRef(Guid.NewGuid(), ChatResourceKind.File, "C:\\work\\file.cs");
+        var resource = new ChatResource(Guid.NewGuid(), ChatResourceKind.File, "C:\\work\\file.cs");
         var queued = new QueuedChatMessage(Guid.NewGuid(), string.Empty, DateTimeOffset.UtcNow,
             Resources: [resource]);
         var projectId = Guid.NewGuid();

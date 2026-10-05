@@ -27,6 +27,7 @@ public sealed class ContextTokenEstimator : IContextTokenEstimator
             estimate = AddText(estimate, message.Role);
             estimate = AddText(estimate, message.ForModel);
             estimate = AddText(estimate, message.ToolCallId);
+            estimate = Add(estimate, (message.ImageAssetIds?.Count ?? 0) * 4096L);
             foreach (var call in message.ToolCalls ?? [])
             {
                 estimate = Add(estimate, 20); // call envelope and function/type keys

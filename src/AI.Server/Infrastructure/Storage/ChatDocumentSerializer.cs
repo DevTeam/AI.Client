@@ -236,5 +236,5 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         string? ToolCallId = null,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
         WorkspaceChangeDocument? WorkspaceChanges = null,
-        IReadOnlyList<AI.Contracts.Resources.ChatResourceRef>? Resources = null);
+        IReadOnlyList<AI.Contracts.Resources.ChatResource>? Resources = null);
 }

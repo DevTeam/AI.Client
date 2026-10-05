@@ -2,6 +2,7 @@ namespace AI.Infrastructure.Chat;
 
 using AI.Application.Chat;
 using AI.Application.Projects;
+using AI.Application.Resources;
 using AI.Application.Usage;
 using System.Collections.Concurrent;
 using System.Net;
@@ -16,7 +17,8 @@ public sealed class OpenAiCompatibleChatCompletionClient(
     IChatCompletionUsageReader usageReader,
     IRateLimitHeaderReader rateLimitReader,
     IConnectionRateLimits rateLimits,
-    IClock clock) : IChatCompletionClient
+    IClock clock,
+    IResourceAssetService images) : IChatCompletionClient
 {
     // Endpoints that refused stream_options. Usage is asked for by default because nearly every
     // OpenAI-compatible server accepts it; the few strict ones that reject unknown fields are
@@ -46,23 +48,14 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             throw new ArgumentException("Model cannot be empty.", nameof(request));
         }
 
-        if (string.IsNullOrWhiteSpace(request.Message))
+        if (string.IsNullOrWhiteSpace(request.Message) && request.ContextMessages is not { Count: > 0 })
         {
             throw new ArgumentException("Message cannot be empty.", nameof(request));
         }
 
         var endpoint = new Uri(baseUri.ToString().TrimEnd('/') + "/chat/completions");
         using var message = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        message.Content = JsonContent.Create(new
-        {
-            model = request.Model.Trim(),
-            messages = (request.ContextMessages is { Count: > 0 }
-                    ? request.ContextMessages
-                    : [new ChatCompletionMessage("user", request.Message.Trim())])
-                .Select(item => new { role = item.Role, content = item.ForModel })
-                .ToArray(),
-            stream = false
-        });
+        message.Content = JsonContent.Create(await CreateBodyAsync(request, false, false, cancellationToken));
         if (!string.IsNullOrWhiteSpace(request.ApiKey))
         {
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", request.ApiKey.Trim());
@@ -95,7 +88,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
     {
         var endpointKey = request.BaseUrl.Trim().TrimEnd('/');
         var askUsage = !_withoutStreamUsage.ContainsKey(endpointKey);
-        using var message = CreateRequest(request, true, askUsage);
+        using var message = await CreateRequestAsync(request, true, askUsage, cancellationToken);
         var response = await SendAsync(message, request.CredentialProfileId, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -107,7 +100,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
 
             response.Dispose();
             _withoutStreamUsage[endpointKey] = true;
-            using var retry = CreateRequest(request, true, false);
+            using var retry = await CreateRequestAsync(request, true, false, cancellationToken);
             response = await SendAsync(retry, request.CredentialProfileId, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
@@ -200,7 +193,8 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         && (body.Contains("stream_options", StringComparison.OrdinalIgnoreCase)
             || body.Contains("include_usage", StringComparison.OrdinalIgnoreCase));
 
-    private static HttpRequestMessage CreateRequest(ChatCompletionRequest request, bool stream, bool askUsage)
+    private async Task<HttpRequestMessage> CreateRequestAsync(ChatCompletionRequest request, bool stream, bool askUsage,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (!Uri.TryCreate(request.BaseUrl, UriKind.Absolute, out var baseUri)
@@ -209,7 +203,8 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             throw new ArgumentException("Base URL must be an absolute HTTP or HTTPS URL.", nameof(request));
         }
 
-        if (string.IsNullOrWhiteSpace(request.Model) || string.IsNullOrWhiteSpace(request.Message))
+        if (string.IsNullOrWhiteSpace(request.Model) ||
+            string.IsNullOrWhiteSpace(request.Message) && request.ContextMessages is not { Count: > 0 })
         {
             throw new ArgumentException("Model and message cannot be empty.", nameof(request));
         }
@@ -218,7 +213,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             HttpMethod.Post,
             new Uri(baseUri.ToString().TrimEnd('/') + "/chat/completions"))
         {
-            Content = JsonContent.Create(CreateBody(request, stream, askUsage))
+            Content = JsonContent.Create(await CreateBodyAsync(request, stream, askUsage, cancellationToken))
         };
         if (!string.IsNullOrWhiteSpace(request.ApiKey))
         {
@@ -257,19 +252,36 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         return $"{prefix} {preview}";
     }
 
-    private static Dictionary<string, object?> CreateBody(ChatCompletionRequest request, bool stream, bool askUsage)
+    private async Task<Dictionary<string, object?>> CreateBodyAsync(ChatCompletionRequest request, bool stream, bool askUsage,
+        CancellationToken cancellationToken)
     {
-        var messages = (request.ContextMessages is { Count: > 0 } ? request.ContextMessages
-            : [new ChatCompletionMessage("user", request.Message.Trim())]).Select(item =>
+        var messages = new List<Dictionary<string, object?>>();
+        foreach (var item in request.ContextMessages is { Count: > 0 } ? request.ContextMessages
+                     : [new ChatCompletionMessage("user", request.Message.Trim())])
         {
             var message = new Dictionary<string, object?> { ["role"] = item.Role, ["content"] = item.ForModel };
+            if (item.ImageAssetIds is { Count: > 0 })
+            {
+                if (request.ProjectId is not { } projectId)
+                    throw new InvalidOperationException("Project is required for image input.");
+                if (item.Role != "user") throw new InvalidOperationException("Only user messages may contain image input.");
+                var content = new List<object> { new { type = "text", text = item.ForModel } };
+                foreach (var assetId in item.ImageAssetIds)
+                {
+                    var image = await images.ReadAsync(projectId, assetId, cancellationToken)
+                        ?? throw new FileNotFoundException("An attached image is unavailable.");
+                    content.Add(new { type = "image_url", image_url = new { url =
+                        $"data:{image.MediaType};base64,{Convert.ToBase64String(image.Data)}" } });
+                }
+                message["content"] = content;
+            }
             if (item.ToolCallId is not null) message["tool_call_id"] = item.ToolCallId;
             if (item.ToolCalls is { Count: > 0 }) message["tool_calls"] = item.ToolCalls.Select(call => new
             {
                 id = call.Id, type = "function", function = new { name = call.Name, arguments = call.Arguments }
             }).ToArray();
-            return message;
-        }).ToArray();
+            messages.Add(message);
+        }
         var body = new Dictionary<string, object?> { ["model"] = request.Model.Trim(), ["messages"] = messages, ["stream"] = stream };
         // Without it a stream says nothing about what it used: the report is an extra final chunk
         // that endpoints send only when asked.

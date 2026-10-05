@@ -13,20 +13,22 @@ using AI.Contracts.Resources;
 /// </summary>
 public sealed class ResourceService(IProjectService projects, IDirectoryBrowser browser,
     IResourceRepository repository, IReviewService reviews, IProjectPathAccess access, ISkillCatalog skills,
-    IChatService chats, IWorkspaceDiffReader diffs, IFileExcerptReader excerpts) : IResourceService
+    IChatService chats, IWorkspaceDiffReader diffs, IFileExcerptReader excerpts,
+    IResourceAssetService assets) : IResourceService
 {
     /// <summary>Kinds a message names by id or path without a saved project resource behind them.</summary>
     private static readonly ChatResourceKind[] MessageOnlyKinds =
-        [ChatResourceKind.Review, ChatResourceKind.Skill, ChatResourceKind.Chat, ChatResourceKind.Project, ChatResourceKind.Diff];
+        [ChatResourceKind.Review, ChatResourceKind.Skill, ChatResourceKind.Chat, ChatResourceKind.Project,
+            ChatResourceKind.Diff, ChatResourceKind.Image];
 
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    public async Task<ChatResourceRef> CreateAsync(Guid projectId, ChatResourceKind kind, string path, CancellationToken cancellationToken)
+    public async Task<ChatResource> CreateAsync(Guid projectId, ChatResourceKind kind, string path, CancellationToken cancellationToken)
     {
         if (kind is not (ChatResourceKind.File or ChatResourceKind.Directory))
             throw new ArgumentException("Only files and directories can be created from a path.");
-        var reference = new ChatResourceRef(Guid.CreateVersion7(), kind, path);
+        var reference = new ChatResource(Guid.CreateVersion7(), kind, path);
         var prepared = (await ValidatePathsAsync(projectId, [reference], cancellationToken))[0];
         return (await repository.GetOrCreateAsync(projectId, prepared, cancellationToken)).Reference;
     }
@@ -37,8 +39,11 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
     public Task<ResourceDefinition?> RetireAsync(Guid projectId, Guid id, long expectedRevision,
         CancellationToken cancellationToken) => repository.RetireAsync(projectId, id, expectedRevision, cancellationToken);
 
-    public Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken) =>
-        repository.DeleteProjectAsync(projectId, cancellationToken);
+    public async Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken)
+    {
+        await repository.DeleteProjectAsync(projectId, cancellationToken);
+        await assets.DeleteProjectAsync(projectId, cancellationToken);
+    }
 
     public async Task<IReadOnlyList<WorkspaceDiffSource>> ListDiffSourcesAsync(Guid projectId, CancellationToken cancellationToken)
     {
@@ -80,9 +85,11 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
     private static string DirectoryName(string path) =>
         Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) is { Length: > 0 } name ? name : path;
 
-    public async Task<IReadOnlyList<ChatResourceRef>> ValidateAsync(Guid projectId,
-        IReadOnlyList<ChatResourceRef>? references, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ChatResource>> ValidateAsync(Guid projectId,
+        IReadOnlyList<ChatResource>? references, CancellationToken cancellationToken)
     {
+        if (references?.Any(item => item.AssetId is not null) == true)
+            throw new ArgumentException("Uploaded files belong to chat messages, not project path resources.");
         if (references?.Any(item => item.Kind == ChatResourceKind.Review) == true)
             throw new ArgumentException("Chat ID is required for review references.");
         if (references?.Any(item => item.Kind == ChatResourceKind.Skill) == true)
@@ -103,8 +110,8 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
         return validated;
     }
 
-    public async Task<IReadOnlyList<ChatResourceRef>> ValidateForChatAsync(Guid projectId, Guid chatId,
-        IReadOnlyList<ChatResourceRef>? references, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ChatResource>> ValidateForChatAsync(Guid projectId, Guid chatId,
+        IReadOnlyList<ChatResource>? references, CancellationToken cancellationToken)
     {
         if (references is null or { Count: 0 }) return [];
         if (references.Count > 20 || references.Select(item => item.Id).Distinct().Count() != references.Count)
@@ -112,7 +119,7 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
         if (references.Any(item => item.Mention is { } mention && (mention.Length is < 2 or > 400 || mention[0] != '@')))
             throw new ArgumentException("A resource mention is the \"@\" link as written in the message, at most 400 characters.");
         var files = await ValidateAsync(projectId,
-            references.Where(item => !MessageOnlyKinds.Contains(item.Kind)).ToArray(),
+            references.Where(item => !MessageOnlyKinds.Contains(item.Kind) && item.AssetId is null).ToArray(),
             cancellationToken);
         var reviewList = references.Any(item => item.Kind == ChatResourceKind.Review)
             ? (await reviews.ListAsync(projectId, chatId, cancellationToken)).ToDictionary(item => item.Id)
@@ -125,8 +132,25 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
             if (review.Kind == ChatReviewKind.Diff ? review.Comments.Count == 0
                 : review.MessageComments is not { Count: > 0 })
                 throw new InvalidOperationException("A review without comments cannot be attached to a message.");
-            byId.Add(reference.Id, new ChatResourceRef(review.Id, ChatResourceKind.Review, string.Empty,
+            byId.Add(reference.Id, new ChatResource(review.Id, ChatResourceKind.Review, string.Empty,
                 review.Name, review.Kind, Mention: reference.Mention));
+        }
+        foreach (var reference in references.Where(item => item.Kind == ChatResourceKind.Image
+                     || item.Kind == ChatResourceKind.File && item.AssetId is not null))
+        {
+            if (reference.Id == Guid.Empty || byId.ContainsKey(reference.Id) || reference.AssetId is not { } assetId)
+                throw new ArgumentException("Uploaded file reference is invalid or duplicated.");
+            var asset = await assets.ReadAsync(projectId, assetId, cancellationToken)
+                ?? throw new InvalidOperationException("The attached file is unavailable.");
+            var isImage = asset.MediaType is "image/png" or "image/jpeg" or "image/webp" or "image/gif";
+            byId.Add(reference.Id, reference with
+            {
+                Kind = isImage ? ChatResourceKind.Image : ChatResourceKind.File,
+                AssetId = assetId.ToLowerInvariant(),
+                MediaType = asset.MediaType,
+                Size = asset.Data.Length,
+                Name = Path.GetFileName(reference.Name ?? "File")
+            });
         }
         var invoked = references.Where(item => item.Kind == ChatResourceKind.Skill).ToArray();
         if (invoked.Length > 1) throw new ArgumentException("A message can invoke at most one skill.");
@@ -137,7 +161,7 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
             var skill = await skills.GetByIdAsync(reference.Path, projectId, cancellationToken);
             if (skill is not { Enabled: true })
                 throw new InvalidOperationException($"The skill {reference.Path} is not available in this project.");
-            byId.Add(reference.Id, new ChatResourceRef(reference.Id, ChatResourceKind.Skill, skill.Id, skill.Name));
+            byId.Add(reference.Id, new ChatResource(reference.Id, ChatResourceKind.Skill, skill.Id, skill.Name));
         }
         await AddNamedAsync(projectId, chatId, references, byId, cancellationToken);
         foreach (var file in files)
@@ -151,8 +175,8 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
     }
 
     /// <summary>Chats, projects and uncommitted changes: checked, named, and for changes, captured.</summary>
-    private async Task AddNamedAsync(Guid projectId, Guid chatId, IReadOnlyList<ChatResourceRef> references,
-        Dictionary<Guid, ChatResourceRef> byId, CancellationToken cancellationToken)
+    private async Task AddNamedAsync(Guid projectId, Guid chatId, IReadOnlyList<ChatResource> references,
+        Dictionary<Guid, ChatResource> byId, CancellationToken cancellationToken)
     {
         var named = references
             .Where(item => item.Kind is ChatResourceKind.Chat or ChatResourceKind.Project or ChatResourceKind.Diff)
@@ -171,14 +195,14 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
                     if (!Guid.TryParse(reference.Path, out var otherChatId) || !chatList.TryGetValue(otherChatId, out var chat))
                         throw new InvalidOperationException("The chat is not in this project.");
                     if (otherChatId == chatId) throw new ArgumentException("A chat cannot reference itself.");
-                    byId.Add(reference.Id, new ChatResourceRef(reference.Id, ChatResourceKind.Chat, chat.Id.ToString(), chat.Title,
+                    byId.Add(reference.Id, new ChatResource(reference.Id, ChatResourceKind.Chat, chat.Id.ToString(), chat.Title,
                         Mention: reference.Mention));
                     break;
                 case ChatResourceKind.Project:
                     var project = Guid.TryParse(reference.Path, out var otherProjectId)
                         ? await projects.GetAsync(otherProjectId, cancellationToken) : null;
                     if (project is null) throw new InvalidOperationException("The project does not exist.");
-                    byId.Add(reference.Id, new ChatResourceRef(reference.Id, ChatResourceKind.Project, project.Id.ToString(), project.Name,
+                    byId.Add(reference.Id, new ChatResource(reference.Id, ChatResourceKind.Project, project.Id.ToString(), project.Name,
                         Mention: reference.Mention));
                     break;
                 default:
@@ -188,7 +212,7 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
         }
     }
 
-    private async Task<ChatResourceRef> CaptureDiffAsync(Guid projectId, ChatResourceRef reference, CancellationToken cancellationToken)
+    private async Task<ChatResource> CaptureDiffAsync(Guid projectId, ChatResource reference, CancellationToken cancellationToken)
     {
         var project = await projects.GetAsync(projectId, cancellationToken)
             ?? throw new InvalidOperationException("Project not found.");
@@ -202,7 +226,7 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
         if (diffs.FindRepository(path) is null) throw new InvalidOperationException($"{reference.Path} is not in a git repository.");
         var name = reference.Name is { Length: > 0 and <= 200 } given
             ? given : Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar));
-        return new ChatResourceRef(reference.Id, ChatResourceKind.Diff, path, name, Excerpt: diffs.ReadDiff(path),
+        return new ChatResource(reference.Id, ChatResourceKind.Diff, path, name, Excerpt: diffs.ReadDiff(path),
             Mention: reference.Mention);
     }
 
@@ -220,15 +244,15 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
         }
     }
 
-    private async Task<IReadOnlyList<ChatResourceRef>> ValidatePathsAsync(Guid projectId,
-        IReadOnlyList<ChatResourceRef>? references, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ChatResource>> ValidatePathsAsync(Guid projectId,
+        IReadOnlyList<ChatResource>? references, CancellationToken cancellationToken)
     {
         if (references is null or { Count: 0 }) return [];
         if (references.Count > 20) throw new ArgumentException("A message can reference at most 20 resources.");
         var project = await projects.GetAsync(projectId, cancellationToken)
             ?? throw new InvalidOperationException("Project not found.");
         var ids = new HashSet<Guid>();
-        var result = new List<ChatResourceRef>(references.Count);
+        var result = new List<ChatResource>(references.Count);
         foreach (var reference in references)
         {
             if (reference.Id == Guid.Empty || !ids.Add(reference.Id) || !Enum.IsDefined(reference.Kind))
@@ -241,7 +265,8 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
                 throw new ArgumentException($"The {reference.Kind.ToString().ToLowerInvariant()} does not exist: {reference.Path}");
             var path = access.ResolveLinks(probe.CanonicalPath);
             if (!access.CanRead(project, path)) throw new InvalidOperationException($"No project read grant covers {reference.Path}.");
-            result.Add(reference with { Path = path, Name = null });
+            result.Add(reference with { Path = path, Name = null, Source = ChatResourceSource.Workspace,
+                AssetId = null, MediaType = null, Size = null });
         }
         return result;
     }

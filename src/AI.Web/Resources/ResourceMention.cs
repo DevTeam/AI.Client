@@ -53,7 +53,7 @@ public sealed record ResourceMentionSources(
     IReadOnlyList<ChatSummary> Chats,
     IReadOnlyList<ChatReview> Reviews,
     IReadOnlyList<ProjectSummary> Projects,
-    IReadOnlyList<ChatResourceRef> Attached,
+    IReadOnlyList<ChatResource> Attached,
     Guid? CurrentChatId,
     Guid? CurrentProjectId,
     IReadOnlyList<ProjectDirectory>? Directories = null);

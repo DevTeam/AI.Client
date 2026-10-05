@@ -9,23 +9,29 @@ public sealed class ResourcePresenter(IDiffSnapshotReader snapshots) : IResource
     /// <summary>A tooltip is 18rem wide: past this many rows the list stops helping.</summary>
     private const int HintFileLimit = 8;
 
-    public string Label(ChatResourceRef reference) => reference.Kind switch
+    public string Label(ChatResource reference) => reference.Kind switch
     {
+        ChatResourceKind.File when reference.AssetId is not null => reference.Name ?? "File",
         ChatResourceKind.File => Name(reference.Path) + (reference.Lines is { } lines ? ":" + Range(lines) : string.Empty),
         ChatResourceKind.Directory => Name(reference.Path),
         ChatResourceKind.Diff => reference.Name ?? Name(reference.Path),
         _ => reference.Name ?? reference.Mention ?? reference.Path
     };
 
-    public string Hint(ChatResourceRef reference)
+    public string Hint(ChatResource reference)
     {
         var hint = new StringBuilder();
         if (reference.Mention is { } mention) hint.Append(mention).Append('\n');
         switch (reference.Kind)
         {
             case ChatResourceKind.File:
-                hint.Append(reference.Path);
-                if (reference.Lines is { } lines) hint.Append("\nLines ").Append(Range(lines)).Append(", as they were when the message was sent");
+                if (reference.AssetId is not null)
+                    hint.Append(reference.Name ?? "File").Append(" · click to preview");
+                else
+                {
+                    hint.Append(reference.Path);
+                    if (reference.Lines is { } lines) hint.Append("\nLines ").Append(Range(lines)).Append(", as they were when the message was sent");
+                }
                 break;
             case ChatResourceKind.Directory:
                 hint.Append(reference.Path);
@@ -39,6 +45,11 @@ public sealed class ResourcePresenter(IDiffSnapshotReader snapshots) : IResource
             case ChatResourceKind.Project:
                 hint.Append("Project");
                 break;
+            case ChatResourceKind.Image:
+                hint.Append(reference.Source == ChatResourceSource.Clipboard
+                    ? "Image from clipboard"
+                    : reference.Name ?? "Image").Append(" · click to open");
+                break;
             case ChatResourceKind.Diff:
                 DiffHint(reference, hint);
                 break;
@@ -49,7 +60,7 @@ public sealed class ResourcePresenter(IDiffSnapshotReader snapshots) : IResource
         return hint.ToString();
     }
 
-    public string? Summary(ChatResourceRef reference)
+    public string? Summary(ChatResource reference)
     {
         if (Changes(reference) is not { } snapshot) return null;
         var changes = snapshot.Changes;
@@ -58,10 +69,10 @@ public sealed class ResourcePresenter(IDiffSnapshotReader snapshots) : IResource
         return $"+{changes.Additions} −{changes.Deletions}";
     }
 
-    public DiffSnapshot? Changes(ChatResourceRef reference) =>
+    public DiffSnapshot? Changes(ChatResource reference) =>
         reference.Kind == ChatResourceKind.Diff ? snapshots.Read(reference.Excerpt, reference.Path) : null;
 
-    public string Target(ChatResourceRef reference) => reference.Kind is ChatResourceKind.File or ChatResourceKind.Directory
+    public string Target(ChatResource reference) => reference.Kind is ChatResourceKind.File or ChatResourceKind.Directory
         ? FileUri(reference.Path) + (reference.Lines is { } lines ? $"#L{lines.Start}-L{lines.End}" : string.Empty)
         : reference.Kind == ChatResourceKind.Skill
             ? $"aiclient://navigate/settings.skills?skillId={Uri.EscapeDataString(reference.Path)}"
@@ -77,7 +88,7 @@ public sealed class ResourcePresenter(IDiffSnapshotReader snapshots) : IResource
         return "file://" + encoded;
     }
 
-    private void DiffHint(ChatResourceRef reference, StringBuilder hint)
+    private void DiffHint(ChatResource reference, StringBuilder hint)
     {
         hint.Append(reference.Path);
         if (Changes(reference) is not { } snapshot)

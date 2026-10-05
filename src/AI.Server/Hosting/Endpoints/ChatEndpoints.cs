@@ -14,6 +14,48 @@ public sealed class ChatEndpoints : IEndpointModule
 {
     public void Map(IEndpointRouteBuilder routes)
     {
+        routes.MapPost("/api/projects/{projectId:guid}/assets", async (Guid projectId, HttpRequest request,
+            IResourceAssetService assets, CancellationToken token) =>
+        {
+            const int maximumBytes = 15 * 1024 * 1024;
+            if (request.ContentLength is > maximumBytes) return Results.Problem("File exceeds 15 MB.", statusCode: 413);
+            using var buffer = new MemoryStream();
+            var chunk = new byte[64 * 1024];
+            while (true)
+            {
+                var read = await request.Body.ReadAsync(chunk, token);
+                if (read == 0) break;
+                if (buffer.Length + read > maximumBytes) return Results.Problem("File exceeds 15 MB.", statusCode: 413);
+                buffer.Write(chunk, 0, read);
+            }
+            var source = request.Query["source"] == "clipboard" ? ChatResourceSource.Clipboard : ChatResourceSource.Upload;
+            try
+            {
+                return Results.Ok(await assets.StoreAsync(projectId, buffer.ToArray(),
+                    request.Query["name"].ToString(), source, request.Query["name"].ToString(), token));
+            }
+            catch (InvalidDataException error) { return Results.Problem(error.Message, statusCode: 422); }
+            catch (FileNotFoundException) { return Results.NotFound(); }
+        });
+        routes.MapGet("/api/projects/{projectId:guid}/assets/{assetId}/ticket", async (Guid projectId,
+            string assetId, IResourceAssetService assets, CancellationToken token) =>
+            await assets.CreateTicketAsync(projectId, assetId, token) is { } ticket
+                ? Results.Ok(ticket) : Results.NotFound());
+        routes.MapGet("/api/projects/{projectId:guid}/assets/{assetId}/text", async (Guid projectId,
+            string assetId, IResourceAssetService assets, CancellationToken token) =>
+            await assets.ReadTextAsync(projectId, assetId, token) is { } text
+                ? Results.Ok(text) : Results.NoContent());
+        routes.MapGet("/asset-content/{ticket}", async (string ticket, IResourceAssetService assets,
+            HttpContext context, CancellationToken token) =>
+        {
+            var asset = await assets.ReadTicketAsync(ticket, token);
+            if (asset is null) return Results.NotFound();
+            context.Response.Headers.CacheControl = "no-store";
+            context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            var image = asset.MediaType is "image/png" or "image/jpeg" or "image/webp" or "image/gif";
+            if (!image) context.Response.Headers.ContentDisposition = "attachment";
+            return Results.File(asset.Data, image ? asset.MediaType : "application/octet-stream");
+        });
         routes.MapPost("/api/projects/{projectId:guid}/resources",
             async (Guid projectId, CreateResourceRequest request, IResourceService service, CancellationToken token) =>
                 Results.Ok(await service.CreateAsync(projectId, request.Kind, request.Path, token)));

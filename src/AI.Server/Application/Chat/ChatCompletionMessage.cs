@@ -20,7 +20,7 @@ using AI.Contracts.Chat;
 /// </param>
 public sealed record ChatCompletionMessage(string Role, string Content,
     IReadOnlyList<ChatToolCall>? ToolCalls = null, string? ToolCallId = null, string? ModelContent = null,
-    Guid? MessageId = null, bool IsContextSummary = false)
+    Guid? MessageId = null, bool IsContextSummary = false, IReadOnlyList<string>? ImageAssetIds = null)
 {
     /// <summary>The text to put on the wire for this message.</summary>
     public string ForModel => ModelContent ?? Content;

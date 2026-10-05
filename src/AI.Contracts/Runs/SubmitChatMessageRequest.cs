@@ -11,4 +11,4 @@ public sealed record SubmitChatMessageRequest(Guid OperationId, Guid MessageId, 
     ChatSubmitMode Mode = ChatSubmitMode.Send, Guid? BranchId = null,
     MessageParentMode ParentMode = MessageParentMode.BranchHead, Guid? ParentMessageId = null,
     Guid? ReplaceSourceId = null, long? ExpectedBranchRevision = null,
-    IReadOnlyList<Resources.ChatResourceRef>? Resources = null);
+    IReadOnlyList<Resources.ChatResource>? Resources = null);

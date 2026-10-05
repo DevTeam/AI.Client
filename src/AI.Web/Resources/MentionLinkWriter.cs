@@ -7,7 +7,7 @@ public sealed class MentionLinkWriter(IResourcePresenter presenter) : IMentionLi
 {
     private const string MarkdownPunctuation = "\\`*_{}[]()#+-.!<>|~";
 
-    public string Link(string markdown, IReadOnlyList<ChatResourceRef>? resources)
+    public string Link(string markdown, IReadOnlyList<ChatResource>? resources)
     {
         var mentioned = resources?
             .Where(item => item.Mention is { Length: > 1 })

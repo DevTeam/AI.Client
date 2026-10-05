@@ -7,3 +7,4 @@ public sealed record FilePreviewEntry(string Path, string Name, bool IsDirectory
     long? CompressedSize = null);
 
 public sealed record FilePreviewText(string Text, int? NextOffset);
+public sealed record ResourceAssetText(string Text, bool Truncated);

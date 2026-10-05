@@ -13,6 +13,23 @@ public class ToolResultCodecTests
     private static JsonElement Json(string raw) => JsonDocument.Parse(raw).RootElement.Clone();
 
     [Fact]
+    public void ShouldPersistResourceAssetReferenceWithoutInlineBytes()
+    {
+        var assetId = new string('a', 64);
+        var result = new ToolCallResult(
+            [new ToolContent(ToolContentKind.Image, null, "image/png", null, "Tool image", assetId, [1, 2, 3])],
+            null, null, false, string.Empty);
+
+        var stored = Codec.Write(result);
+        var restored = Codec.Read(stored);
+
+        stored.ShouldContain(assetId);
+        stored.ShouldNotContain("AQID");
+        restored.Content.Single().AssetId.ShouldBe(assetId);
+        restored.Content.Single().Data.ShouldBeNull();
+    }
+
+    [Fact]
     public void ShouldRoundTripContentStructuredContentAndMetadata()
     {
         var original = new ToolCallResult(

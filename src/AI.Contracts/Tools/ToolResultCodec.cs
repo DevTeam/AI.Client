@@ -8,11 +8,9 @@ using System.Text.Json.Nodes;
 /// Reads and writes the tool-result JSON persisted as a tool message's content.
 /// </summary>
 /// <remarks>
-/// The stored shape is the MCP <c>CallToolResult</c> wire shape — <c>content</c>,
-/// <c>structuredContent</c>, <c>isError</c>, <c>_meta</c> — which is exactly what earlier builds
-/// already wrote by serializing the protocol object wholesale. Keeping that shape means every
-/// existing chat reads back through this codec with no migration, and the result is stored once
-/// rather than duplicated into parallel typed columns.
+/// The stored shape follows the MCP <c>CallToolResult</c> wire shape — <c>content</c>,
+/// <c>structuredContent</c>, <c>isError</c>, <c>_meta</c> — with an asset identifier for stored
+/// image blocks. The result is stored once rather than duplicated into parallel typed columns.
 ///
 /// Nothing here trusts its input: a result can come from a third-party server, and a chat file can
 /// be hand-edited. Anything unparseable degrades to a single text block instead of throwing, so a
@@ -112,6 +110,7 @@ public sealed class ToolResultCodec(IToolResultModelProjector modelProjector) : 
         if (block.MimeType is not null) node["mimeType"] = block.MimeType;
         if (block.Uri is not null) node["uri"] = block.Uri;
         if (block.Name is not null) node["name"] = block.Name;
+        if (block.AssetId is not null) node["assetId"] = block.AssetId;
         return node;
     }
 
@@ -123,7 +122,8 @@ public sealed class ToolResultCodec(IToolResultModelProjector modelProjector) : 
         var resource = block.TryGetProperty("resource", out var nested) && nested.ValueKind == JsonValueKind.Object
             ? nested
             : block;
-        return new ToolContent(kind, Text(resource, "text"), Text(resource, "mimeType"), Text(resource, "uri"), Text(block, "name"));
+        return new ToolContent(kind, Text(resource, "text"), Text(resource, "mimeType"), Text(resource, "uri"), Text(block, "name"),
+            Text(block, "assetId"));
     }
 
     private static string? Text(JsonElement element, string property) =>

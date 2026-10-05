@@ -2,7 +2,9 @@ namespace AI.Infrastructure.Tools;
 
 using Application.Tools;
 using Application.Settings;
+using Application.Resources;
 using Contracts.Tools;
+using Contracts.Resources;
 
 /// <summary>
 /// Presents every MCP server the Host connects to as one set of tools. Each server keeps its own
@@ -12,7 +14,9 @@ using Contracts.Tools;
 public sealed class CompositeToolSessionFactory(
     IEnumerable<IMcpServerConnection> connections,
     IGlobalSettingsRepository settings,
-    IExternalToolSessionFactory external) : IToolSessionFactory
+    IExternalToolSessionFactory external,
+    IResourceAssetService images,
+    IToolResultModelProjector projector) : IToolSessionFactory
 {
     public async Task<IToolSession> OpenAsync(
         IReadOnlyList<ToolDirectoryGrant> directoryGrants,
@@ -47,10 +51,11 @@ public sealed class CompositeToolSessionFactory(
             throw;
         }
 
-        return new Composite(sessions);
+        return new Composite(sessions, run.ProjectId, images, projector);
     }
 
-    private sealed class Composite(IReadOnlyList<IToolSession> sessions) : IToolSession
+    private sealed class Composite(IReadOnlyList<IToolSession> sessions, Guid projectId,
+        IResourceAssetService images, IToolResultModelProjector projector) : IToolSession
     {
         private readonly Dictionary<string, IToolSession> _owners = sessions
             .SelectMany(session => session.Tools.Select(tool => (tool.ModelDefinition.Name, session)))
@@ -60,8 +65,27 @@ public sealed class CompositeToolSessionFactory(
 
         public string ValidateArguments(AgentTool tool, string arguments) => Owner(tool).ValidateArguments(tool, arguments);
 
-        public Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress,
-            CancellationToken cancellationToken) => Owner(tool).CallAsync(tool, arguments, progress, cancellationToken);
+        public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            var result = await Owner(tool).CallAsync(tool, arguments, progress, cancellationToken);
+            if (result.Content.All(item => item.Data is null)) return result;
+            var blocks = new List<ToolContent>(result.Content.Count);
+            foreach (var block in result.Content)
+            {
+                if (block.Kind != ToolContentKind.Image || block.Data is null || projectId == Guid.Empty)
+                {
+                    blocks.Add(block with { Data = null });
+                    continue;
+                }
+                var resource = await images.StoreAsync(projectId, block.Data,
+                    "Tool image", ChatResourceSource.Tool, tool.ModelDefinition.Name, cancellationToken);
+                blocks.Add(block with { AssetId = resource.AssetId, MimeType = resource.MediaType,
+                    Name = block.Name ?? tool.ModelDefinition.Name, Data = null });
+            }
+            return result with { Content = blocks,
+                ModelContent = projector.Project(blocks, result.StructuredContent, result.IsError) };
+        }
 
         private IToolSession Owner(AgentTool tool)
         {

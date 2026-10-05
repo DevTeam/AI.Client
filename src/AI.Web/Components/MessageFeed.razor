@@ -222,7 +222,8 @@
                        the same component and visual position meanwhile; once persistence catches up,
                        the matching call moves into the durable group instead of changing UI shape. *@
                     <article @key="activeToolsKey" class="workspace-message tool-group" role="status" aria-live="polite">
-                        <ToolActivityGroup Group="@(Array.Empty<ChatMessageView>())" ActiveTools="activeTools" IsLive="true" />
+                        <ToolActivityGroup Group="@(Array.Empty<ChatMessageView>())" ActiveTools="activeTools"
+                                           ProjectId="@SelectedChat.ProjectId" OnOpenAsset="OnOpenAsset" IsLive="true" />
                     </article>
                 }
                 else if (entry.CollapseTurnId is { } collapseTurnId)
@@ -329,10 +330,25 @@
                                 {
                                     var kind = $"mention-{resource.Kind.ToString().ToLowerInvariant()}";
                                     <span class="resource-pill" @key="resource.Id">
-                                        @if (resource.Kind is ChatResourceKind.File or ChatResourceKind.Directory)
+                                        @if (resource.Kind == ChatResourceKind.File && resource.AssetId is not null)
+                                        {
+                                            <button class="resource-pill-target @kind" type="button"
+                                                    title="@ResourcePresenter.Hint(resource)" @onclick="() => OnOpenAsset.InvokeAsync(resource)">
+                                                <span class="resource-pill-label">@ResourceLabel(resource)</span>
+                                            </button>
+                                        }
+                                        else if (resource.Kind is ChatResourceKind.File or ChatResourceKind.Directory)
                                         {
                                             @* A local path like any "@" link: fileLinks.js adds its access, menu and drag. *@
                                             <a class="resource-pill-target mention-link @kind" href="@ResourcePresenter.Target(resource)" title="@ResourcePresenter.Hint(resource)"><span class="resource-pill-label">@ResourceLabel(resource)</span></a>
+                                        }
+                                        else if (resource.Kind == ChatResourceKind.Image)
+                                        {
+                                            <button class="resource-pill-target @kind chat-image-link" type="button"
+                                                    title="@ResourcePresenter.Hint(resource)" aria-label="@ResourcePresenter.Hint(resource)"
+                                                    @onclick="() => OnOpenAsset.InvokeAsync(resource)">
+                                                <ChatImageThumbnail ProjectId="SelectedChat.ProjectId" Resource="resource" />
+                                            </button>
                                         }
                                         else if (resource.Kind == ChatResourceKind.Review)
                                         {
@@ -429,6 +445,7 @@
                         }
                         <ToolActivityGroup Group="group"
                                            ProjectId="@SelectedChat.ProjectId"
+                                           OnOpenAsset="OnOpenAsset"
                                            ChatId="@SelectedChat.Id"
                                            ChatRevision="@SelectedChat.Revision"
                                            ActiveTools="@GetActiveToolsForGroup(group)"
@@ -594,11 +611,12 @@
     [Parameter] public EventCallback<string> OnCopyMessage { get; set; }
     [Parameter] public EventCallback<Guid> OnReviewChanges { get; set; }
     [Parameter] public EventCallback<ChatReview> OnDiffReviewChanged { get; set; }
-    [Parameter] public EventCallback<ChatResourceRef> OnOpenReview { get; set; }
+    [Parameter] public EventCallback<ChatResource> OnOpenReview { get; set; }
     [Parameter] public EventCallback<Guid> OnOpenChat { get; set; }
     [Parameter] public EventCallback<string> OnNavigateApp { get; set; }
     [Parameter] public EventCallback<FileLinkMenuRequest> OnFileLinkMenu { get; set; }
     [Parameter] public EventCallback<FilePreviewTarget> OnOpenFile { get; set; }
+    [Parameter] public EventCallback<ChatResource> OnOpenAsset { get; set; }
     [Parameter] public IReadOnlyDictionary<Guid, string>? ReviewNames { get; set; }
     [Parameter] public IReadOnlySet<Guid>? MessageReviewIds { get; set; }
     [Parameter] public IReadOnlyDictionary<Guid, ChatReview>? MessageReviews { get; set; }
@@ -2119,10 +2137,12 @@
         return text[..Math.Min(text.Length, 36)] + (text.Length > 36 ? "…" : string.Empty);
     }
 
-    private string ResourceLabel(ChatResourceRef resource)
+    private string ResourceLabel(ChatResource resource)
     {
         switch (resource.Kind)
         {
+            case ChatResourceKind.Image:
+                return resource.Source == ChatResourceSource.Clipboard ? "Image" : resource.Name ?? "Image";
             case ChatResourceKind.File or ChatResourceKind.Directory or ChatResourceKind.Diff:
                 return ResourcePresenter.Label(resource);
             case ChatResourceKind.Chat or ChatResourceKind.Project:

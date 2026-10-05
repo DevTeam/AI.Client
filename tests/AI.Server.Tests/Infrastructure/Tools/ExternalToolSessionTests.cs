@@ -30,7 +30,9 @@ public sealed class ExternalToolSessionTests
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton<IGlobalSettingsService>(Mock.Of<IGlobalSettingsService>());
-        builder.Services.AddSingleton<IToolSessionFactory>(new CompositeToolSessionFactory([], repository.Object, external));
+        builder.Services.AddSingleton<AI.Application.Settings.IConnectionImageProbe>(Mock.Of<AI.Application.Settings.IConnectionImageProbe>());
+        builder.Services.AddSingleton<IToolSessionFactory>(new CompositeToolSessionFactory([], repository.Object, external,
+            Mock.Of<AI.Application.Resources.IResourceAssetService>(), new ToolResultModelProjector()));
         builder.Services.AddSingleton<IExternalToolSessionFactory>(external);
         await using var app = builder.Build();
         new SettingsEndpoints().Map(app);
@@ -74,7 +76,8 @@ public sealed class ExternalToolSessionTests
         repository.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GlobalSettings([], [first, second], []));
         var factory = new CompositeToolSessionFactory([], repository.Object,
-            new ExternalToolSessionFactory(secrets.Object, new ToolResultModelProjector()));
+            new ExternalToolSessionFactory(secrets.Object, new ToolResultModelProjector()),
+            Mock.Of<AI.Application.Resources.IResourceAssetService>(), new ToolResultModelProjector());
 
         await using var session = await factory.OpenAsync([], new HashSet<Guid> { first.Id, second.Id },
             ToolRunContext.None, Token);

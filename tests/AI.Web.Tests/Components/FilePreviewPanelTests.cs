@@ -38,6 +38,32 @@ public sealed class FilePreviewPanelTests
     }
 
     [Fact]
+    public async Task OpensClipboardImageInTheSharedDrawerWithoutItsFileName()
+    {
+        var image = new ChatResource(Guid.NewGuid(), ChatResourceKind.Image, "clipboard.png", "clipboard.png",
+            Source: ChatResourceSource.Clipboard, AssetId: "asset", MediaType: "image/png", Size: 42);
+        var html = await RenderAsync(new FilePreview("unused", "unused", "image", "image/png", 0, null, []), image: image);
+        html.ShouldContain("review-workspace file-preview-panel");
+        html.ShouldContain("https://host.test/asset-content/ticket");
+        html.ShouldContain("From clipboard");
+        html.ShouldNotContain("clipboard.png");
+        html.ShouldNotContain("Copy path");
+    }
+
+    [Fact]
+    public async Task PreviewsUploadedTextWithoutTreatingItsNameAsAWorkspacePath()
+    {
+        var file = new ChatResource(Guid.NewGuid(), ChatResourceKind.File, "report.txt", "report.txt",
+            Source: ChatResourceSource.Upload, AssetId: "asset", MediaType: "text/plain", Size: 12);
+        var html = await RenderAsync(new FilePreview("unused", "unused", "binary", "application/octet-stream", 0, null, []),
+            image: file, assetText: new ResourceAssetText("Local report", false));
+        html.ShouldContain("Local report");
+        html.ShouldContain("report.txt");
+        html.ShouldContain("Download");
+        html.ShouldNotContain("Copy path");
+    }
+
+    [Fact]
     public async Task EscapesTextAndShowsLineNumbersAndPaging()
     {
         var file = new FilePreview("/workspace/sample.html", "sample.html", "text", "text/html", 100000,
@@ -166,7 +192,8 @@ public sealed class FilePreviewPanelTests
     }
 
     private static async Task<string> RenderAsync(FilePreview file, FilePreviewText? text = null, HttpStatusCode status = HttpStatusCode.OK,
-        int? startLine = null, int? endLine = null, Func<int, FilePreviewText>? readText = null)
+        int? startLine = null, int? endLine = null, Func<int, FilePreviewText>? readText = null,
+        ChatResource? image = null, ResourceAssetText? assetText = null)
     {
         var registrations = new ServiceCollection();
         registrations.AddSingleton(new HttpClient(new Handler(file, text, status, readText)) { BaseAddress = new Uri("https://host.test/") });
@@ -175,6 +202,12 @@ public sealed class FilePreviewPanelTests
         registrations.AddSingleton(url.Object);
         registrations.AddSingleton(Mock.Of<IJSRuntime>());
         registrations.AddTransient<IFilePreviewApi, FilePreviewApi>();
+        var resources = new Mock<IResourceApi>();
+        resources.Setup(api => api.GetAssetUrlAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("https://host.test/asset-content/ticket");
+        resources.Setup(api => api.GetAssetTextAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(assetText);
+        registrations.AddSingleton(resources.Object);
         registrations.AddSingleton<IFilePreviewViewers>(new FilePreviewViewers([new MediaFilePreviewRegistration(),
             new TextFilePreviewRegistration(), new DirectoryFilePreviewRegistration(), new ArchiveFilePreviewRegistration()]));
         registrations.AddTransient<IFileMarkdownRenderer, FileMarkdownRenderer>();
@@ -186,7 +219,8 @@ public sealed class FilePreviewPanelTests
             var component = await renderer.RenderComponentAsync<FilePreviewPanel>(ParameterView.FromDictionary(new Dictionary<string, object?>
             {
                 [nameof(FilePreviewPanel.ProjectId)] = Guid.NewGuid(), [nameof(FilePreviewPanel.Path)] = file.Path,
-                [nameof(FilePreviewPanel.StartLine)] = startLine, [nameof(FilePreviewPanel.EndLine)] = endLine
+                [nameof(FilePreviewPanel.StartLine)] = startLine, [nameof(FilePreviewPanel.EndLine)] = endLine,
+                [nameof(FilePreviewPanel.AssetResource)] = image
             }));
             return component.ToHtmlString();
         });

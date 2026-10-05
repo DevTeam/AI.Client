@@ -20,7 +20,7 @@ public sealed class JsonResourceRepository(IProjectStorageLocation location, ITe
         return await LoadAsync(projectId, cancellationToken);
     }
 
-    public async Task<ResourceDefinition> GetOrCreateAsync(Guid projectId, ChatResourceRef reference,
+    public async Task<ResourceDefinition> GetOrCreateAsync(Guid projectId, ChatResource reference,
         CancellationToken cancellationToken)
     {
         using var lease = await _gate.EnterAsync(cancellationToken);

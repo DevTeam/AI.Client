@@ -42,7 +42,10 @@ To add a format, implement a specialized server format and a client viewer regis
 ## Current model and storage
 
 ```text
-ChatResourceRef: Id, Kind = File | Directory | Review, Path, Name?, ReviewKind?
+ChatResource: Id, Kind = File | Directory | Review | Skill | Chat | Project | Diff | Image,
+              Path, Name?, ReviewKind?, Lines?, Excerpt?, Mention?,
+              Source = Workspace | Url | Clipboard | Tool | Application | Upload,
+              AssetId?, MediaType?, Size?
 ChatReview: Id, ProjectId, ChatId, Name, SourceMessageId,
             SourceCreatedAt, Files[], Comments[], CreatedAt, UpdatedAt, Revision,
             Kind = Diff | Message, MessageComments[]?
@@ -50,7 +53,9 @@ ReviewComment: Id, Path, OldStart/OldEnd?, NewStart/NewEnd?, Body
 MessageReviewComment: Id, Start, End, Quote, Body
 ```
 
-For a file or directory, `Path` is the canonical live workspace path and `Name` is absent. For a review, `Path` is empty and `Name` is its display label. The authoritative review and its comments are stored in the chat's project catalog, separate from chat messages. A diff review reads its source from the existing saved `WorkspaceChanges` on the assistant message; it does not duplicate the diff. Its comments target a file, an old-side line range, or a new-side line range. A message review stores text offsets and the selected quote for each comment. The Host checks that the source belongs to the chat, validates diff anchors against the saved diff, and bounds message text anchors and comment bodies. The browser checks message quotes against the current rendered text before highlighting.
+For a workspace file or directory, `Path` is the canonical live path and `Name` is absent. An uploaded file has `Source = Upload`, the original filename in `Path` and `Name`, and immutable bytes addressed by `AssetId`. For a review, `Path` is empty and `Name` is its display label. The authoritative review and its comments are stored in the chat's project catalog, separate from chat messages. A diff review reads its source from the existing saved `WorkspaceChanges` on the assistant message; it does not duplicate the diff. Its comments target a file, an old-side line range, or a new-side line range. A message review stores text offsets and the selected quote for each comment. The Host checks that the source belongs to the chat, validates diff anchors against the saved diff, and bounds message text anchors and comment bodies. The browser checks message quotes against the current rendered text before highlighting.
+
+The composer menu offers `File` for a local upload, `File path` for a workspace file, and `Directory path` for a workspace directory. A local PNG, JPEG, WebP, or GIF is detected from its bytes and becomes an image resource; other uploads become file resources. There is no image URL import action. Pasting an image from the clipboard still uploads it directly. `IResourceAssetService` stores both kinds in the project's asset directory, and the Host checks the asset under the selected project when a message is sent. Readable UTF-8 uploads contribute at most 64 KiB of text to model context; binary uploads remain available for preview or download, with their content marked unavailable as text. The OpenAI-compatible adapter sends image bytes as an `image_url` data URL only while building the model request; Base64 is not stored in chat JSON. Asset tickets provide browser previews without exposing the asset directory. Images show only a thumbnail, with a name in the hover hint except for clipboard filenames; clicking them opens the shared right-side preview. MCP image blocks use the same asset store and are projected into a synthetic user image message after the complete tool batch. The connection editor can test image acceptance and set the image input mode.
 
 `IReviewService` owns creation, listing, updates, and chat/project cleanup. `IReviewRepository` writes the per-project review catalog atomically and checks expected revisions. `IResourceService.ValidateForChatAsync` validates attached file/directory refs against project read grants and review refs against the target chat. `IResourceModelProjection.ProjectAsync` reads the current mutable review and produces a bounded model manifest with selected paths, anchors, and user comments, without full file contents or diffs. Earlier user messages containing the same review ID also resolve to its current state when building a new model context.
 

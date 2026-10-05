@@ -75,7 +75,7 @@ public class ChatDocumentSerializerTests
     public void ShouldKeepResourceOnlyUserMessageAsReferences()
     {
         var now = DateTimeOffset.UnixEpoch;
-        var reference = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.Directory, "C:\\work\\src");
+        var reference = new ChatResource(Guid.CreateVersion7(), ChatResourceKind.Directory, "C:\\work\\src");
         var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", now);
         chat.AddMessage(new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null,
             ChatMessageRole.User, string.Empty, now, resources: [reference]), now);
@@ -115,8 +115,8 @@ public class ChatDocumentSerializerTests
     public void RemovingAReviewLinkShouldKeepTheMessageAndOtherReferencesAfterReload()
     {
         var now = DateTimeOffset.UnixEpoch;
-        var review = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.Review, string.Empty, "API review");
-        var file = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.File, "C:\\work\\api.cs");
+        var review = new ChatResource(Guid.CreateVersion7(), ChatResourceKind.Review, string.Empty, "API review");
+        var file = new ChatResource(Guid.CreateVersion7(), ChatResourceKind.File, "C:\\work\\api.cs");
         var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", now);
         var messageId = new ChatMessageId(Guid.CreateVersion7());
         chat.AddMessage(new ChatMessage(messageId, null, ChatMessageRole.User, string.Empty, now,
@@ -134,8 +134,8 @@ public class ChatDocumentSerializerTests
     public void RemovingAReviewShouldClearItsLinksFromEveryMessage()
     {
         var now = DateTimeOffset.UnixEpoch;
-        var review = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.Review, string.Empty, "Review");
-        var file = new ChatResourceRef(Guid.CreateVersion7(), ChatResourceKind.File, "C:\\work\\api.cs");
+        var review = new ChatResource(Guid.CreateVersion7(), ChatResourceKind.Review, string.Empty, "Review");
+        var file = new ChatResource(Guid.CreateVersion7(), ChatResourceKind.File, "C:\\work\\api.cs");
         var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", now);
         var first = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User,
             string.Empty, now, resources: [review]);

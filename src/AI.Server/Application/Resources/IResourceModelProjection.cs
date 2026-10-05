@@ -4,7 +4,7 @@ using AI.Contracts.Resources;
 
 public interface IResourceModelProjection
 {
-    string Project(string content, IReadOnlyList<ChatResourceRef>? references);
+    string Project(string content, IReadOnlyList<ChatResource>? references);
     Task<string> ProjectAsync(Guid projectId, Guid chatId, string content,
-        IReadOnlyList<ChatResourceRef>? references, CancellationToken cancellationToken);
+        IReadOnlyList<ChatResource>? references, CancellationToken cancellationToken);
 }

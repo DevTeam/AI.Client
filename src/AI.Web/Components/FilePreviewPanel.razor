@@ -3,6 +3,7 @@
 @using AI.Contracts.Resources
 @implements IAsyncDisposable
 @inject IFilePreviewApi Api
+@inject IResourceApi Resources
 @inject IFilePreviewViewers Viewers
 @inject IApiBaseUrl ApiBaseUrl
 @inject IJSRuntime Js
@@ -10,15 +11,18 @@
 <section class="review-workspace file-preview-panel" id="@_id" aria-label="File preview" aria-busy="@_loading">
     <div class="file-preview-resizer" role="separator" tabindex="0" aria-label="Resize file preview" aria-orientation="vertical" aria-valuemin="320" aria-valuemax="1600" aria-valuenow="720"></div>
     <header class="review-workspace-header">
-        <AppIcon Name="file" />
+        <AppIcon Name="@(AssetResource?.Kind == ChatResourceKind.Image ? "image" : "file")" />
         <div class="review-workspace-identity">
             <strong>@(_file?.Name ?? Path)</strong>
             <span title="@(_file?.Path ?? Path)">@(_file?.Path ?? Path)</span>
         </div>
-        <button class="icon-action" type="button" title="Copy path" aria-label="Copy path" @onclick="CopyPathAsync"><AppIcon Name="copy" /></button>
+        @if (AssetResource is null)
+        {
+            <button class="icon-action" type="button" title="Copy path" aria-label="Copy path" @onclick="CopyPathAsync"><AppIcon Name="copy" /></button>
+        }
         @if (_file is not null)
         {
-            <button class="icon-action" type="button" title="Add to message" aria-label="Add to message" @onclick="() => OnAttach.InvokeAsync(_file)"><AppIcon Name="plus" /></button>
+            <button class="icon-action" type="button" title="Add to message" aria-label="Add to message" @onclick="AttachAsync"><AppIcon Name="plus" /></button>
             @if (_file.ContentUrl is not null)
             {
                 <button class="icon-action" type="button" title="Download" aria-label="Download" @onclick="DownloadAsync"><AppIcon Name="download" /></button>
@@ -34,21 +38,33 @@
         <div class="file-preview-toolbar">
             <span>@(_file.Kind is "directory" or "archive" ? $"{_file.Entries.Count} entries" : $"{_file.Size:N0} bytes · {_file.ContentType}")</span>
         </div>
-        <DynamicComponent Type="@Viewers.Resolve(_file.Kind)" Parameters="@ViewerParameters" />
+        @if (AssetResource is { Kind: ChatResourceKind.File })
+        {
+            @if (_assetText is { } assetText)
+            {
+                <div class="file-preview-body"><pre class="file-preview-asset-text">@assetText.Text</pre></div>
+                @if (assetText.Truncated) { <p class="file-preview-status">Showing the first 64 KiB. Download the file to read the rest.</p> }
+            }
+            else { <p class="file-preview-status">This file cannot be previewed as text. Download it to open it.</p> }
+        }
+        else { <DynamicComponent Type="@Viewers.Resolve(_file.Kind)" Parameters="@ViewerParameters" /> }
     }
 </section>
 
 @code {
     [Parameter, EditorRequired] public Guid ProjectId { get; set; }
     [Parameter, EditorRequired] public string Path { get; set; } = "";
+    [Parameter] public ChatResource? AssetResource { get; set; }
     [Parameter] public int? StartLine { get; set; }
     [Parameter] public int? EndLine { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<string> OnOpenPath { get; set; }
     [Parameter] public EventCallback<FilePreview> OnAttach { get; set; }
+    [Parameter] public EventCallback<ChatResource> OnAttachAsset { get; set; }
     private readonly string _id = $"file-preview-{Guid.NewGuid():N}";
     private readonly CancellationTokenSource _cancel = new();
     private FilePreview? _file;
+    private ResourceAssetText? _assetText;
     private IJSObjectReference? _module, _handle;
     private string? _error;
     private bool _loading = true;
@@ -62,7 +78,18 @@
     {
         try
         {
-            _file = await Api.DescribeAsync(ProjectId, Path, _cancel.Token);
+            if (AssetResource is { AssetId: { } assetId } resource)
+            {
+                var url = await Resources.GetAssetUrlAsync(ProjectId, assetId, _cancel.Token);
+                var source = resource.Source == ChatResourceSource.Clipboard ? "From clipboard" : resource.Path;
+                var name = resource.Source == ChatResourceSource.Clipboard ? "Image" : resource.Name ?? "File";
+                _file = new FilePreview(source, name,
+                    resource.Kind == ChatResourceKind.Image ? "image" : "asset",
+                    resource.MediaType ?? "application/octet-stream", resource.Size ?? 0, url, []);
+                if (resource.Kind == ChatResourceKind.File)
+                    _assetText = await Resources.GetAssetTextAsync(ProjectId, assetId, _cancel.Token);
+            }
+            else _file = await Api.DescribeAsync(ProjectId, Path, _cancel.Token);
         }
         catch (OperationCanceledException) when (_cancel.IsCancellationRequested) { }
         catch (Exception error) { _error = error.Message; }
@@ -80,6 +107,10 @@
     }
 
     private async Task CopyPathAsync() { if (_module is not null) await _module.InvokeVoidAsync("copy", _file?.Path ?? Path); }
+
+    private Task AttachAsync() => AssetResource is { } image
+        ? OnAttachAsset.InvokeAsync(image)
+        : OnAttach.InvokeAsync(_file!);
 
     private async Task FullScreenAsync() { if (_module is not null) await _module.InvokeVoidAsync("fullscreen", _id); }
     private async Task DownloadAsync()

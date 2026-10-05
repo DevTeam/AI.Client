@@ -8,7 +8,11 @@ public interface IGlobalSettingsApi
     Task<IReadOnlyList<McpToolInfo>> DiscoverMcpToolsAsync(DiscoverMcpToolsRequest request, CancellationToken cancellationToken);
     Task<GlobalSettings> GetAsync(CancellationToken cancellationToken);
 
-    Task<GlobalSettings> SaveAsync(SaveGlobalSettingsRequest request, CancellationToken cancellationToken);
+    Task<GlobalSettings> UpsertConnectionAsync(ConnectionSettings item, ConnectionSettings? expected, CancellationToken cancellationToken);
+    Task<GlobalSettings> RemoveConnectionAsync(Guid id, ConnectionSettings expected, CancellationToken cancellationToken);
+    Task<GlobalSettings> UpsertMcpServerAsync(McpServerSettings item, McpServerSettings? expected, CancellationToken cancellationToken);
+    Task<GlobalSettings> RemoveMcpServerAsync(Guid id, McpServerSettings expected, CancellationToken cancellationToken);
+    Task<GlobalSettings> SetToolPolicyAsync(McpToolPolicySettings policy, CancellationToken cancellationToken);
 
     Task SetConnectionCredentialAsync(Guid id, string? value, CancellationToken cancellationToken);
 

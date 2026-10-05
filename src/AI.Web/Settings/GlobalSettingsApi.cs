@@ -21,12 +21,43 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
         await httpClient.GetFromJsonAsync<GlobalSettings>("api/settings", cancellationToken)
         ?? new GlobalSettings([], [], []);
 
-    public async Task<GlobalSettings> SaveAsync(SaveGlobalSettingsRequest request, CancellationToken cancellationToken)
+    public Task<GlobalSettings> UpsertConnectionAsync(ConnectionSettings item, ConnectionSettings? expected,
+        CancellationToken cancellationToken) => PutSettingsItemAsync($"api/settings/connections/{item.Id}",
+        new SettingsItemChange<ConnectionSettings>(item, expected), cancellationToken);
+
+    public Task<GlobalSettings> RemoveConnectionAsync(Guid id, ConnectionSettings expected,
+        CancellationToken cancellationToken) => PostSettingsItemAsync($"api/settings/connections/{id}/remove",
+        new SettingsItemRemoval<ConnectionSettings>(expected), cancellationToken);
+
+    public Task<GlobalSettings> UpsertMcpServerAsync(McpServerSettings item, McpServerSettings? expected,
+        CancellationToken cancellationToken) => PutSettingsItemAsync($"api/settings/mcp/{item.Id}",
+        new SettingsItemChange<McpServerSettings>(item, expected), cancellationToken);
+
+    public Task<GlobalSettings> RemoveMcpServerAsync(Guid id, McpServerSettings expected,
+        CancellationToken cancellationToken) => PostSettingsItemAsync($"api/settings/mcp/{id}/remove",
+        new SettingsItemRemoval<McpServerSettings>(expected), cancellationToken);
+
+    public Task<GlobalSettings> SetToolPolicyAsync(McpToolPolicySettings policy, CancellationToken cancellationToken) =>
+        PutSettingsItemAsync($"api/settings/mcp/{policy.ServerId}/tool-policies", policy, cancellationToken);
+
+    private async Task<GlobalSettings> PutSettingsItemAsync<T>(string url, T request, CancellationToken token)
     {
-        using var response = await httpClient.PutAsJsonAsync("api/settings", request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<GlobalSettings>(cancellationToken)
-               ?? throw new InvalidOperationException("Global settings response is empty.");
+        using var response = await httpClient.PutAsJsonAsync(url, request, token);
+        return await ReadSettingsItemResponseAsync(response, token);
+    }
+
+    private async Task<GlobalSettings> PostSettingsItemAsync<T>(string url, T request, CancellationToken token)
+    {
+        using var response = await httpClient.PostAsJsonAsync(url, request, token);
+        return await ReadSettingsItemResponseAsync(response, token);
+    }
+
+    private static async Task<GlobalSettings> ReadSettingsItemResponseAsync(HttpResponseMessage response, CancellationToken token)
+    {
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(await ReadProblemDetailAsync(response, token));
+        return await response.Content.ReadFromJsonAsync<GlobalSettings>(token)
+            ?? throw new InvalidOperationException("Global settings response is empty.");
     }
 
     public async Task<GlobalSettings> SetChatAutomationAsync(ChatAutomationSettings automation, CancellationToken cancellationToken)

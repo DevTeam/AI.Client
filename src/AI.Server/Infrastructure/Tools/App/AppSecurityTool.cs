@@ -36,6 +36,18 @@ public enum SecurityOperation
     /// <summary>Replace global connections and MCP servers at once. Needs 'settings'.</summary>
     SaveGlobalSettings,
 
+    /// <summary>Add or update one global connection. Needs 'connection'; updates also need 'expectedConnection'.</summary>
+    UpsertConnection,
+
+    /// <summary>Remove one global connection. Needs 'serverId' and 'expectedConnection'.</summary>
+    RemoveConnection,
+
+    /// <summary>Add or update one global MCP server. Needs 'mcpServer'; updates also need 'expectedMcpServer'.</summary>
+    UpsertMcpServer,
+
+    /// <summary>Remove one global MCP server. Needs 'serverId' and 'expectedMcpServer'.</summary>
+    RemoveMcpServer,
+
     /// <summary>Set one tool's global policy. Needs 'toolPolicy'.</summary>
     SetGlobalToolPolicy,
 
@@ -66,6 +78,9 @@ public sealed class AppSecurityTool(
                           + "connection credentials. Use 'AddDirectoryGrant' with 'projectId', 'revision' and 'directoryGrant' "
                           + "to add one directory without changing server bindings or policies, and 'RemoveDirectoryGrant' with "
                           + "'projectId', 'revision' and 'grantId' (the grant's id from app_read) to revoke one. "
+                          + "Use UpsertConnection or UpsertMcpServer to change one global item and RemoveConnection or "
+                          + "RemoveMcpServer to delete one. Supply the previously read item as 'expectedConnection' or "
+                          + "'expectedMcpServer' when changing an existing item. A new id needs no expected item. "
                           + "'SetProjectSecurity' and 'SaveGlobalSettings' replace the whole state they cover, so "
                           + "read it with 'app_read' first and send it back with your change applied — anything you leave out is removed. "
                           + "Secrets are write-only: a key can be stored and never read back, and passing null clears it. 'operationId' "
@@ -86,6 +101,10 @@ public sealed class AppSecurityTool(
         ProjectSecurityPayload? security = null,
         ToolPolicyPayload? toolPolicy = null,
         GlobalSettingsPayload? settings = null,
+        ConnectionPayload? connection = null,
+        ConnectionPayload? expectedConnection = null,
+        McpServerPayload? mcpServer = null,
+        McpServerPayload? expectedMcpServer = null,
         Guid? serverId = null,
         string? name = null,
         string? schemaHash = null,
@@ -101,6 +120,10 @@ public sealed class AppSecurityTool(
             SecurityOperation.SetChatToolPolicy => SetChatToolPolicyAsync(builder, projectId, chatId, toolPolicy, cancellationToken),
             SecurityOperation.RemoveChatToolPolicy => RemoveChatToolPolicyAsync(builder, projectId, chatId, serverId, name, schemaHash, cancellationToken),
             SecurityOperation.SaveGlobalSettings => SaveGlobalSettingsAsync(builder, settings, cancellationToken),
+            SecurityOperation.UpsertConnection => UpsertConnectionAsync(builder, connection, expectedConnection, cancellationToken),
+            SecurityOperation.RemoveConnection => RemoveConnectionAsync(builder, serverId, expectedConnection, cancellationToken),
+            SecurityOperation.UpsertMcpServer => UpsertMcpServerAsync(builder, mcpServer, expectedMcpServer, cancellationToken),
+            SecurityOperation.RemoveMcpServer => RemoveMcpServerAsync(builder, serverId, expectedMcpServer, cancellationToken),
             SecurityOperation.SetGlobalToolPolicy => SetGlobalToolPolicyAsync(builder, toolPolicy, cancellationToken),
             SecurityOperation.RemoveGlobalToolPolicy => RemoveGlobalToolPolicyAsync(builder, serverId, name, schemaHash, cancellationToken),
             SecurityOperation.SetConnectionCredential => SetCredentialAsync(builder, serverId, secret, true, cancellationToken),
@@ -229,6 +252,48 @@ public sealed class AppSecurityTool(
             $"Replaced global settings: {saved.Connections.Count} connection(s), {saved.McpServers.Count} MCP server(s), "
             + $"{saved.ToolPolicies.Count} tool policy(ies).", current: Element(saved, reply.Json));
     }
+
+    private async Task<AppWriteResult> UpsertConnectionAsync(AppWriteBuilder builder, ConnectionPayload? payload,
+        ConnectionPayload? expected, CancellationToken cancellationToken)
+    {
+        var item = Connection(Required(payload, nameof(payload)));
+        var saved = await settings.UpsertConnectionAsync(item, expected is null ? null : Connection(expected), cancellationToken);
+        return builder.Applied($"Saved connection '{item.Name}'.", current: Element(saved, reply.Json));
+    }
+
+    private async Task<AppWriteResult> RemoveConnectionAsync(AppWriteBuilder builder, Guid? id,
+        ConnectionPayload? expected, CancellationToken cancellationToken)
+    {
+        var saved = await settings.RemoveConnectionAsync(Required(id, nameof(id)),
+            Connection(Required(expected, nameof(expected))), cancellationToken);
+        return builder.Applied("Removed one connection.", current: Element(saved, reply.Json));
+    }
+
+    private async Task<AppWriteResult> UpsertMcpServerAsync(AppWriteBuilder builder, McpServerPayload? payload,
+        McpServerPayload? expected, CancellationToken cancellationToken)
+    {
+        var item = McpServer(Required(payload, nameof(payload)));
+        var saved = await settings.UpsertMcpServerAsync(item, expected is null ? null : McpServer(expected), cancellationToken);
+        return builder.Applied($"Saved MCP server '{item.Name}'.", current: Element(saved, reply.Json));
+    }
+
+    private async Task<AppWriteResult> RemoveMcpServerAsync(AppWriteBuilder builder, Guid? id,
+        McpServerPayload? expected, CancellationToken cancellationToken)
+    {
+        var saved = await settings.RemoveMcpServerAsync(Required(id, nameof(id)),
+            McpServer(Required(expected, nameof(expected))), cancellationToken);
+        return builder.Applied("Removed one MCP server and its global tool policies.", current: Element(saved, reply.Json));
+    }
+
+    private static ConnectionSettings Connection(ConnectionPayload item) => new(
+        item.Id, item.Name, item.BaseUrl, item.Model, item.Enabled, item.IsDefault, false,
+        item.ForSubtasks, item.Capability, item.GoodFor, item.ContextWindowTokens, item.ReservedOutputTokens, item.Prices);
+
+    private static AI.Contracts.Settings.McpServerSettings McpServer(McpServerPayload item) => new(
+        item.Id, item.Name, item.Transport, item.Enabled, item.Policy, item.Url, item.Command,
+        item.Arguments, item.WorkingDirectory,
+        item.EnvironmentVariables.Select(variable => new McpEnvironmentVariableSettings(
+            variable.Name, variable.Value, variable.IsSecret, false)).ToArray(), false);
 
     private async Task<AppWriteResult> SetGlobalToolPolicyAsync(
         AppWriteBuilder builder, ToolPolicyPayload? toolPolicy, CancellationToken cancellationToken)

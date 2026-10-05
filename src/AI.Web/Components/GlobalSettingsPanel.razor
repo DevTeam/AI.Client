@@ -258,7 +258,7 @@
                 {
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
-                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectMcpServer(serverItem.Id)"><span>@serverItem.Name</span><small>@McpServerStatus(serverItem)</small></button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without secrets)" aria-label="Copy MCP server as JSON" @onclick="() => CopyMcpServerAsync(serverItem)"><AppIcon Name="copy" /></button><button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button></span> }</div> }</nav>
+                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectMcpServer(serverItem.Id)"><span>@serverItem.Name</span><small>@McpServerStatus(serverItem)</small></button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without secrets)" aria-label="Copy MCP server as JSON" @onclick="() => CopyMcpServerAsync(serverItem)"><AppIcon Name="copy" /></button>@if (serverItem.Id != CSharpMcpServer.Id) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</span> }</div> }</nav>
                             <button class="icon-action settings-list-add" type="button" title="Add MCP server" aria-label="Add MCP server" @onclick="AddGlobalMcpServer"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedMcpServer() is { } server)
@@ -443,9 +443,12 @@
     private bool _saving;
     private bool _disconnectingHost;
     private bool _saveFailed;
-    // What was loaded, in the shape that is sent back; closing without edits must not write
+    // What was loaded, in the editor's shape; closing without edits must not write
     // (and toast) anything, and secrets never appear here, so they are checked separately.
     private string? _loadedSnapshot;
+    private Dictionary<Guid, ConnectionSettings> _loadedConnections = [];
+    private Dictionary<Guid, AI.Contracts.Settings.McpServerSettings> _loadedMcpServers = [];
+    private Dictionary<(Guid ServerId, string Name, string SchemaHash), McpToolPolicySettings> _loadedToolPolicies = [];
     private HashSet<Guid> _loadedConnectionIds = [];
     private HashSet<Guid> _loadedMcpServerIds = [];
     // Catalogs loaded from the endpoint on demand, keyed by connection id so switching between
@@ -577,8 +580,7 @@
         if (_selectedConnectionId is { } autoLoadId) _ = LoadModelsIfStaleAsync(autoLoadId);
         if (_globalMcpServers.All(item => item.Id != _selectedMcpServerId)) _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
         _loadedSnapshot = Snapshot();
-        _loadedConnectionIds = _connections.Select(item => item.Id).ToHashSet();
-        _loadedMcpServerIds = _globalMcpServers.Select(item => item.Id).ToHashSet();
+        CaptureLoadedItems(settings);
         _saveFailed = false;
         _loaded = true;
         SelectLinkedTool();
@@ -685,13 +687,69 @@
 
     private static string Plural(int count, string word) => $"{count} {word}{(count == 1 ? string.Empty : "s")}";
 
-    private SaveGlobalSettingsRequest BuildRequest() => new(
-        // ReSharper disable once UseCollectionExpression
-        _connections.Select(item => item.ToSettings()).ToArray(),
-        [.. _globalMcpServers.Select(item => item.ToSettings())],
-        [.. _toolPolicies.Select(item => item.ToSettings())]);
+    private void CaptureLoadedItems(GlobalSettings settings)
+    {
+        _loadedConnections = settings.Connections.ToDictionary(item => item.Id);
+        _loadedMcpServers = settings.McpServers.ToDictionary(item => item.Id);
+        _loadedToolPolicies = settings.ToolPolicies.ToDictionary(PolicyKey);
+        _loadedConnectionIds = _loadedConnections.Keys.ToHashSet();
+        _loadedMcpServerIds = _loadedMcpServers.Keys.ToHashSet();
+    }
 
-    private string Snapshot() => JsonSerializer.Serialize(BuildRequest());
+    private static (Guid ServerId, string Name, string SchemaHash) PolicyKey(McpToolPolicySettings policy) =>
+        (policy.ServerId, policy.Name, policy.SchemaHash);
+
+    private static string McpSnapshot(AI.Contracts.Settings.McpServerSettings server) => JsonSerializer.Serialize(server with
+    {
+        EnvironmentVariables = server.EnvironmentVariables.Select(variable =>
+            string.IsNullOrEmpty(variable.Value) ? variable with { Value = null } : variable).ToArray()
+    });
+
+    private async Task SaveChangedItemsAsync()
+    {
+        foreach (var id in _loadedConnections.Keys.Where(id => _connections.All(item => item.Id != id)).ToArray())
+            CaptureLoadedItems(await GlobalSettingsApi.RemoveConnectionAsync(id, _loadedConnections[id], CancellationToken.None));
+
+        foreach (var editor in _connections)
+        {
+            var item = editor.ToSettings();
+            _loadedConnections.TryGetValue(item.Id, out var expected);
+            if (expected is not null && JsonSerializer.Serialize(item) == JsonSerializer.Serialize(expected)) continue;
+            CaptureLoadedItems(await GlobalSettingsApi.UpsertConnectionAsync(item, expected, CancellationToken.None));
+        }
+
+        foreach (var id in _loadedMcpServers.Keys.Where(id => _globalMcpServers.All(item => item.Id != id)).ToArray())
+            CaptureLoadedItems(await GlobalSettingsApi.RemoveMcpServerAsync(id, _loadedMcpServers[id], CancellationToken.None));
+
+        foreach (var editor in _globalMcpServers)
+        {
+            var item = editor.ToSettings();
+            _loadedMcpServers.TryGetValue(item.Id, out var expected);
+            if (expected is not null && McpSnapshot(item) == McpSnapshot(expected)) continue;
+            CaptureLoadedItems(await GlobalSettingsApi.UpsertMcpServerAsync(item, expected, CancellationToken.None));
+        }
+
+        foreach (var key in _loadedToolPolicies.Keys.Where(key => _toolPolicies.All(item =>
+                     item.ServerId != key.ServerId || item.Name != key.Name || item.SchemaHash != key.SchemaHash)).ToArray())
+        {
+            CaptureLoadedItems(await GlobalSettingsApi.RemoveToolPolicyAsync(
+                key.ServerId, key.Name, key.SchemaHash, CancellationToken.None));
+        }
+
+        foreach (var editor in _toolPolicies)
+        {
+            var item = editor.ToSettings();
+            if (_loadedToolPolicies.TryGetValue(PolicyKey(item), out var expected) && expected == item) continue;
+            CaptureLoadedItems(await GlobalSettingsApi.SetToolPolicyAsync(item, CancellationToken.None));
+        }
+    }
+
+    private string Snapshot() => JsonSerializer.Serialize(new
+    {
+        Connections = _connections.Select(item => item.ToSettings()).ToArray(),
+        McpServers = _globalMcpServers.Select(item => item.ToSettings()).ToArray(),
+        ToolPolicies = _toolPolicies.Select(item => item.ToSettings()).ToArray()
+    });
 
     private bool HasChanges() => Snapshot() != _loadedSnapshot
         || _connections.Any(item => !string.IsNullOrWhiteSpace(item.Secret))
@@ -1299,7 +1357,7 @@
         try
         {
             var successMessage = SavedSettingsMessage();
-            await GlobalSettingsApi.SaveAsync(BuildRequest(), CancellationToken.None);
+            await SaveChangedItemsAsync();
             foreach (var connection in _connections.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))
                 await GlobalSettingsApi.SetConnectionCredentialAsync(connection.Id, connection.Secret, CancellationToken.None);
             foreach (var server in _globalMcpServers.Where(item => !string.IsNullOrWhiteSpace(item.Secret)))

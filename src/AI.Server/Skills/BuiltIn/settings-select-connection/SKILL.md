@@ -27,10 +27,11 @@ tools: ["app_read","app_security","app_projects","app_chats","ask_user"]
      null to restore project/global inheritance.
    - Project: `app_projects` Update with projectId, revision, and connectionId; to inherit
      use useDefaultConnection true instead.
-   - Global: `app_security` SaveGlobalSettings with the complete current settings, setting
-     IsDefault true only on the selected enabled entry.
-   - Subtasks: the same save, changing only ForSubtasks to the approved enabled pool.
-   Preserve all unrelated fields, Connections, MCP servers, environment metadata and policies.
-   On a revision conflict re-read, check the approved change still applies, and retry once.
+   - Global: `app_security` UpsertConnection for the selected enabled entry with IsDefault true;
+     send its current definition as expectedConnection. The Host clears the previous default.
+   - Subtasks: call UpsertConnection for each entry whose ForSubtasks flag changes, sending
+     its current definition as expectedConnection. Use a fresh operationId for each entry.
+   Leave all unrelated fields, Connections, MCP servers, environment metadata and policies untouched.
+   On a conflict re-read, check the approved change still applies, and retry once.
 5. Verify the saved scope with `app_read`. Answer with one line naming the selected connection
    or inheritance, scope and effective connection; no ids, revisions or credentials.

@@ -129,6 +129,133 @@ public sealed class GlobalSettingsService(
         return await GetAsync(cancellationToken);
     }
 
+    public async Task<GlobalSettings> UpsertConnectionAsync(ConnectionSettings connection, ConnectionSettings? expected,
+        CancellationToken cancellationToken)
+    {
+        connection = Normalize(connection);
+        await repository.UpdateAsync((stored, _) =>
+        {
+            var current = stored.Connections.SingleOrDefault(item => item.Id == connection.Id);
+            CheckExpected(current, expected, SameConnection);
+            if (stored.Connections.Any(item => item.Id != connection.Id
+                && string.Equals(item.Name, connection.Name, StringComparison.OrdinalIgnoreCase)))
+                throw new ArgumentException("Connection names must be unique.");
+
+            var connections = stored.Connections.Where(item => item.Id != connection.Id)
+                .Select(item => connection.IsDefault ? item with { IsDefault = false } : item).ToList();
+            var index = current is null ? connections.Count : stored.Connections.ToList().FindIndex(item => item.Id == connection.Id);
+            connections.Insert(index, connection with { HasCredential = current?.HasCredential ?? false });
+            return Task.FromResult(stored with { Connections = NormalizeConnectionDefaults(connections) });
+        }, cancellationToken);
+        return await GetAsync(cancellationToken);
+    }
+
+    public async Task<GlobalSettings> RemoveConnectionAsync(Guid id, ConnectionSettings expected,
+        CancellationToken cancellationToken)
+    {
+        await repository.UpdateAsync((stored, _) =>
+        {
+            CheckExpected(stored.Connections.SingleOrDefault(item => item.Id == id), expected, SameConnection);
+            return Task.FromResult(stored with
+            {
+                Connections = NormalizeConnectionDefaults(stored.Connections.Where(item => item.Id != id).ToArray())
+            });
+        }, cancellationToken);
+        return await GetAsync(cancellationToken);
+    }
+
+    public async Task<GlobalSettings> UpsertMcpServerAsync(McpServerSettings server, McpServerSettings? expected,
+        CancellationToken cancellationToken)
+    {
+        server = Normalize(server);
+        await repository.UpdateAsync(async (stored, token) =>
+        {
+            var current = stored.McpServers.SingleOrDefault(item => item.Id == server.Id);
+            CheckExpected(current, expected, SameMcpServer);
+            if ((current is null || !string.Equals(current.Name, server.Name, StringComparison.OrdinalIgnoreCase))
+                && stored.McpServers.Any(item => item.Id != server.Id
+                    && string.Equals(item.Name, server.Name, StringComparison.OrdinalIgnoreCase)))
+                throw new ArgumentException("MCP server names must be unique.");
+
+            var secrets = await LoadEnvironmentSecretsAsync(server.Id, token);
+            var secretNames = server.EnvironmentVariables.Where(variable => variable.IsSecret)
+                .Select(variable => variable.Name).ToHashSet(StringComparer.Ordinal);
+            foreach (var variable in server.EnvironmentVariables.Where(variable => variable.IsSecret && !string.IsNullOrEmpty(variable.Value)))
+                secrets[variable.Name] = variable.Value!;
+            foreach (var staleName in secrets.Keys.Where(name => !secretNames.Contains(name)).ToArray()) secrets.Remove(staleName);
+            await secretStore.SetAsync("mcp-env", server.Id,
+                secrets.Count == 0 ? null : JsonSerializer.Serialize(secrets), token);
+            var updated = server with
+            {
+                HasCredential = current?.HasCredential ?? false,
+                EnvironmentVariables = server.EnvironmentVariables.Select(variable => variable.IsSecret
+                    ? variable with { Value = null, HasSecret = secrets.ContainsKey(variable.Name) }
+                    : variable).ToArray()
+            };
+            var servers = stored.McpServers.Where(item => item.Id != server.Id).ToList();
+            var index = current is null ? servers.Count : stored.McpServers.ToList().FindIndex(item => item.Id == server.Id);
+            servers.Insert(index, updated);
+            return stored with { McpServers = servers };
+        }, cancellationToken);
+        return await GetAsync(cancellationToken);
+    }
+
+    public async Task<GlobalSettings> RemoveMcpServerAsync(Guid id, McpServerSettings expected,
+        CancellationToken cancellationToken)
+    {
+        if (id == DefaultMcpServer.Id || id == AppMcpServer.Id || id == CSharpMcpServer.Id)
+            throw new InvalidOperationException("Host-provided MCP servers cannot be removed. Disable the server instead.");
+        await repository.UpdateAsync((stored, _) =>
+        {
+            CheckExpected(stored.McpServers.SingleOrDefault(item => item.Id == id), expected, SameMcpServer);
+            return Task.FromResult(stored with
+            {
+                McpServers = stored.McpServers.Where(item => item.Id != id).ToArray(),
+                ToolPolicies = stored.ToolPolicies.Where(item => item.ServerId != id).ToArray()
+            });
+        }, cancellationToken);
+        return await GetAsync(cancellationToken);
+    }
+
+    private static void CheckExpected<T>(T? current, T? expected, Func<T, T, bool> same) where T : class
+    {
+        if (current is null && expected is null) return;
+        if (current is null || expected is null || !same(current, expected))
+            throw new SettingsConflictException("Settings changed since they were read. Reload and review this item before saving.");
+    }
+
+    private static bool SameConnection(ConnectionSettings left, ConnectionSettings right) =>
+        left with { HasCredential = false } == right with { HasCredential = false };
+
+    private static bool SameMcpServer(McpServerSettings left, McpServerSettings right) =>
+        JsonSerializer.Serialize(ComparableMcpServer(left)) == JsonSerializer.Serialize(ComparableMcpServer(right));
+
+    private static McpServerSettings ComparableMcpServer(McpServerSettings server) => server with
+    {
+        HasCredential = false,
+        EnvironmentVariables = server.EnvironmentVariables.Select(variable => variable with
+        {
+            Value = variable.IsSecret ? null : variable.Value,
+            HasSecret = false
+        }).ToArray()
+    };
+
+    private static ConnectionSettings[] NormalizeConnectionDefaults(IEnumerable<ConnectionSettings> source)
+    {
+        var connections = source.Select(item => item.Enabled ? item : item with { IsDefault = false, ForSubtasks = false }).ToArray();
+        if (connections.Count(item => item.IsDefault) > 1)
+        {
+            var chosen = connections.Last(item => item.IsDefault).Id;
+            connections = connections.Select(item => item with { IsDefault = item.Id == chosen }).ToArray();
+        }
+        if (connections.Length > 0 && connections.All(item => !item.IsDefault) && connections.Any(item => item.Enabled))
+        {
+            var chosen = connections.First(item => item.Enabled).Id;
+            connections = connections.Select(item => item with { IsDefault = item.Id == chosen }).ToArray();
+        }
+        return connections;
+    }
+
     public async Task<bool> SetConnectionCredentialAsync(Guid id, string? value, CancellationToken cancellationToken)
     {
         if ((await repository.LoadAsync(cancellationToken)).Connections.All(item => item.Id != id)) return false;
@@ -146,19 +273,23 @@ public sealed class GlobalSettingsService(
     public async Task<GlobalSettings> SetToolPolicyAsync(McpToolPolicySettings policy, CancellationToken cancellationToken)
     {
         policy = Normalize(policy);
-        var settings = await repository.LoadAsync(cancellationToken);
-        var policies = settings.ToolPolicies.Where(item => item.ServerId != policy.ServerId
-            || item.Name != policy.Name).Append(policy).ToArray();
-        await repository.SaveAsync(settings with { ToolPolicies = policies }, cancellationToken);
+        await repository.UpdateAsync((settings, _) =>
+        {
+            var policies = settings.ToolPolicies.Where(item => item.ServerId != policy.ServerId
+                || item.Name != policy.Name).Append(policy).ToArray();
+            return Task.FromResult(settings with { ToolPolicies = policies });
+        }, cancellationToken);
         return await GetAsync(cancellationToken);
     }
 
     public async Task<GlobalSettings> RemoveToolPolicyAsync(Guid serverId, string name, string schemaHash,
         CancellationToken cancellationToken)
     {
-        var settings = await repository.LoadAsync(cancellationToken);
-        await repository.SaveAsync(settings with { ToolPolicies = settings.ToolPolicies.Where(item =>
-            item.ServerId != serverId || item.Name != name || item.SchemaHash != schemaHash).ToArray() }, cancellationToken);
+        await repository.UpdateAsync((settings, _) => Task.FromResult(settings with
+        {
+            ToolPolicies = settings.ToolPolicies.Where(item => item.ServerId != serverId
+                || item.Name != name || item.SchemaHash != schemaHash).ToArray()
+        }), cancellationToken);
         return await GetAsync(cancellationToken);
     }
 
@@ -166,8 +297,7 @@ public sealed class GlobalSettingsService(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(automation);
-        var settings = await repository.LoadAsync(cancellationToken);
-        await repository.SaveAsync(settings with { ChatAutomation = automation }, cancellationToken);
+        await repository.UpdateAsync((settings, _) => Task.FromResult(settings with { ChatAutomation = automation }), cancellationToken);
         return await GetAsync(cancellationToken);
     }
 

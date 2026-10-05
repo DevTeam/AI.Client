@@ -29,6 +29,21 @@ public sealed class JsonGlobalSettingsRepository(ITextFileSystem fileSystem, IGl
     public async Task SaveAsync(GlobalSettings settings, CancellationToken cancellationToken)
     {
         using var lease = await _writes.EnterAsync(cancellationToken);
+        await WriteAsync(settings, cancellationToken);
+    }
+
+    public async Task<GlobalSettings> UpdateAsync(
+        Func<GlobalSettings, CancellationToken, Task<GlobalSettings>> update,
+        CancellationToken cancellationToken)
+    {
+        using var lease = await _writes.EnterAsync(cancellationToken);
+        var settings = await update(await LoadAsync(cancellationToken), cancellationToken);
+        await WriteAsync(settings, cancellationToken);
+        return settings;
+    }
+
+    private async Task WriteAsync(GlobalSettings settings, CancellationToken cancellationToken)
+    {
         await fileSystem.WriteTextAsync(paths.SettingsPath + ".tmp", JsonSerializer.Serialize(settings, Options), cancellationToken);
         await fileSystem.MoveAsync(paths.SettingsPath + ".tmp", paths.SettingsPath, true, cancellationToken);
     }

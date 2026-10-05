@@ -13,3 +13,7 @@ public sealed record SaveGlobalSettingsRequest(
     IReadOnlyList<McpToolPolicySettings> ToolPolicies);
 
 public sealed record UpdateSecretRequest(string? Value);
+
+public sealed record SettingsItemChange<T>(T Item, T? Expected);
+
+public sealed record SettingsItemRemoval<T>(T Expected);

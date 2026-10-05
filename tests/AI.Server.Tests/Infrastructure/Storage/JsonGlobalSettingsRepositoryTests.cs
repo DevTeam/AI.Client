@@ -3,12 +3,40 @@ using Moq;
 
 namespace AI.Infrastructure.Tests.Storage;
 
+using AI.Contracts.Settings;
 using AI.Infrastructure.Settings;
 using Shouldly;
 using Xunit;
 
 public sealed class JsonGlobalSettingsRepositoryTests
 {
+    [Fact]
+    public async Task ShouldKeepBothConcurrentItemUpdates()
+    {
+        var fileSystem = new MemoryFileSystem();
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(item => item.RootDirectory).Returns("data");
+        using var repository = new JsonGlobalSettingsRepository(fileSystem, new GlobalSettingsPaths(location.Object));
+        var connection = new ConnectionSettings(Guid.NewGuid(), "Model", "https://example.test/v1", "model", true, true, false);
+        var server = new McpServerSettings(Guid.NewGuid(), "Server", "StreamableHttp", true, "Ask",
+            "https://example.test/mcp", null, [], null, [], false);
+
+        var first = repository.UpdateAsync(async (settings, token) =>
+        {
+            await Task.Delay(20, token);
+            return settings with { Connections = [.. settings.Connections, connection] };
+        }, CancellationToken.None);
+        var second = repository.UpdateAsync((settings, _) => Task.FromResult(settings with
+        {
+            McpServers = [.. settings.McpServers, server]
+        }), CancellationToken.None);
+        await Task.WhenAll(first, second);
+
+        var saved = await repository.LoadAsync(CancellationToken.None);
+        saved.Connections.ShouldHaveSingleItem().ShouldBe(connection);
+        saved.McpServers.ShouldContain(item => item.Id == server.Id);
+    }
+
     [Fact]
     public async Task ShouldDropLegacyCostRatingWhenSavingWithoutLosingPrices()
     {

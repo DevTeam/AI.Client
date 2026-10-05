@@ -40,6 +40,64 @@ using Xunit;
 public sealed class AppToolTests
 {
     [Fact]
+    public async Task UpsertingOneMcpServerThroughAppSecurityPreservesOtherGlobalSettings()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var before = await fixture.GlobalSettings.GetAsync(CancellationToken.None);
+        var id = Guid.NewGuid();
+        var server = new
+        {
+            id, name = "Imported", transport = "StreamableHttp", enabled = true, policy = "Ask",
+            url = "https://example.test/mcp", command = (string?)null, arguments = Array.Empty<string>(),
+            workingDirectory = (string?)null, environmentVariables = Array.Empty<object>()
+        };
+
+        var result = await AppFixture.CallAsync(session, "app_security", new
+        {
+            operation = "UpsertMcpServer", operationId = Guid.NewGuid(), mcpServer = server
+        });
+
+        result.GetProperty("applied").GetBoolean().ShouldBeTrue();
+        var after = await fixture.GlobalSettings.GetAsync(CancellationToken.None);
+        after.McpServers.Single(item => item.Id == id).Name.ShouldBe("Imported");
+        after.Connections.Select(item => item.Id).ShouldBe(before.Connections.Select(item => item.Id));
+        after.McpServers.Where(item => item.Id != id).Select(item => item.Id)
+            .ShouldBe(before.McpServers.Select(item => item.Id));
+
+        var conflict = await AppFixture.CallAsync(session, "app_security", new
+        {
+            operation = "UpsertMcpServer", operationId = Guid.NewGuid(), mcpServer = server
+        }, expectError: true);
+        conflict.GetProperty("error").GetString()!.ShouldContain("Reload and review");
+    }
+
+    [Fact]
+    public async Task UpsertingOneConnectionThroughAppSecurityPreservesMcpServers()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var before = await fixture.GlobalSettings.GetAsync(CancellationToken.None);
+        var id = Guid.NewGuid();
+        var connection = new
+        {
+            id, name = "Imported model", baseUrl = "https://provider.test/v1", model = "model",
+            enabled = true, isDefault = false
+        };
+
+        var result = await AppFixture.CallAsync(session, "app_security", new
+        {
+            operation = "UpsertConnection", operationId = Guid.NewGuid(), connection
+        });
+
+        result.GetProperty("applied").GetBoolean().ShouldBeTrue();
+        var after = await fixture.GlobalSettings.GetAsync(CancellationToken.None);
+        after.Connections.Single(item => item.Id == id).IsDefault.ShouldBeFalse();
+        after.Connections.Single(item => item.IsDefault).Id.ShouldBe(before.Connections.Single(item => item.IsDefault).Id);
+        after.McpServers.Select(item => item.Id).ShouldBe(before.McpServers.Select(item => item.Id));
+    }
+
+    [Fact]
     public async Task ShouldDiscoverExactToolPolicyIdentitiesWithoutCallingTools()
     {
         await using var fixture = await AppFixture.CreateAsync();

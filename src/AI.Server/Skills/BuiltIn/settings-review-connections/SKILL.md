@@ -58,11 +58,14 @@ tools: ["app_read","spawn_subtask","app_security","app_projects","app_chats","as
    conflict re-read and retry once only if the approval still applies. Verify all references
    were replaced. If one fails, report partial changes and leave that connection present and
    enabled; do not claim the cleanup completed.
-   Re-read Settings, retain unrelated entries, MCP servers, environment metadata, policies and
-   fields. Apply only approved changes with `app_security` SaveGlobalSettings and a fresh
-   operationId. Exactly one enabled connection may be IsDefault; disabled connections cannot
-   remain default or ForSubtasks. Preserve usable existing defaults when no replacement was
-   approved. Verify by reading Settings after saving.
+   Re-read Settings and apply only approved changes with `app_security` UpsertConnection for
+   each changed entry, passing its current definition as expectedConnection. Use RemoveConnection
+   with serverId and expectedConnection only for entries explicitly approved for deletion.
+   Use a fresh operationId for each entry and re-read between dependent default changes.
+   The Host keeps exactly one enabled default and clears IsDefault and ForSubtasks on disabled
+   entries. Preserve a usable existing default when no replacement was approved. Leave all
+   unrelated entries, MCP servers, environment metadata and policies untouched. On a conflict
+   re-read and review the affected entry before retrying. Verify by reading Settings after saving.
 8. The final answer contains the comparison table and recommendation, plus a short statement
    of the changes actually applied or that settings were kept. Never report a test not run as
    passed or expose ids, revisions or credentials.

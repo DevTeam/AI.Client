@@ -7,4 +7,8 @@ public interface IGlobalSettingsRepository
     Task<GlobalSettings> LoadAsync(CancellationToken cancellationToken);
 
     Task SaveAsync(GlobalSettings settings, CancellationToken cancellationToken);
+
+    Task<GlobalSettings> UpdateAsync(
+        Func<GlobalSettings, CancellationToken, Task<GlobalSettings>> update,
+        CancellationToken cancellationToken);
 }

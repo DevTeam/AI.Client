@@ -98,6 +98,7 @@
             _headerTop = await _summaryModule.InvokeAsync<double?>("captureHeader", _header);
         }
         _showDetails = !_showDetails;
+        if (!_showDetails) _expanded.Clear();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

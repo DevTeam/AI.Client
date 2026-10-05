@@ -98,10 +98,71 @@ function fixture(reduced = false) {
         innerWidth: 800, innerHeight: 600, AbortController, DOMException, Event, PointerEvent: Event, MouseEvent: Event,
         setTimeout: callback => setTimeout(callback, 5), clearTimeout });
     runInContext(cursorSource + "\n" + source, context);
-    return { context, target, card, buttons, created, animations,
+    return { context, document, element, target, card, buttons, created, animations,
         travel: () => animations.filter(item => item.frames[0].transform && item.element.className?.includes("app-guide-cursor")),
         cursor: () => created.filter(item => item.className?.includes("app-guide-cursor")).at(-1) };
 }
+
+test("discovery reads current help, labels and state again after a UI change", () => {
+    const f = fixture();
+    f.target.matches = selector => selector === "button,input,textarea,select,[contenteditable=true],a"
+        || selector === "button,summary,a";
+    f.target.setAttribute("data-app-hint", "Shared explanation.");
+    f.target.setAttribute("title", "Queue for later\n\nShared explanation.");
+    f.target.setAttribute("aria-label", "Queue for later");
+    f.target.setAttribute("aria-pressed", "false");
+    const definitions = [{ id: "chat.send", hint: "Fallback explanation." }];
+    let [result] = f.context.describeTargets({}, definitions);
+    assert.equal(result.hint, "Shared explanation.");
+    assert.equal(result.uiLabel, "Queue for later");
+    assert.equal(result.uiHint, "Queue for later");
+    assert.equal(result.enabled, true);
+    assert.equal(result.state, "aria-pressed=false");
+    f.target.setAttribute("title", "Interrupt and send now");
+    f.target.setAttribute("aria-label", "Interrupt and send now");
+    f.target.disabled = true;
+    [result] = f.context.describeTargets({}, definitions);
+    assert.equal(result.uiLabel, "Interrupt and send now");
+    assert.equal(result.uiHint, "Interrupt and send now");
+    assert.equal(result.enabled, false);
+});
+
+test("closed panels retain shared help without pretending that a control is rendered", () => {
+    const f = fixture();
+    f.document.querySelector = () => null;
+    const [result] = f.context.describeTargets({}, [{ id: "settings.connection.model", hint: "Choose a model.", section: "Connections" }]);
+    assert.equal(result.hint, "Choose a model.");
+    assert.equal(result.section, "Connections");
+    assert.equal(result.visible, false);
+    assert.equal(result.uiLabel, null);
+    assert.equal(result.enabled, null);
+});
+
+test("discovery collects associated complex tooltip hints without exposing fields or panel contents", () => {
+    const f = fixture(), input = f.element(true), hint = f.element(), nestedHint = f.element(), tooltip = f.element();
+    f.target.matches = () => false;
+    f.target.setAttribute("data-app-hint", "Credential help.");
+    f.target.setAttribute("aria-describedby", "credential-tooltip");
+    input.matches = () => false;
+    input.setAttribute("title", "Updated field tooltip.");
+    input.closest = () => f.target;
+    Object.defineProperty(input, "value", { get() { throw new Error("Field values must not be inspected"); } });
+    Object.defineProperty(f.target, "textContent", { get() { throw new Error("Panel contents must not be inspected"); } });
+    f.target.querySelector = selector => selector === "textarea,input,select,[contenteditable=true]" ? input : null;
+    hint.textContent = "A current hint.";
+    hint.closest = () => f.target;
+    hint.matches = () => true;
+    nestedHint.textContent = "Unrelated nested control help.";
+    nestedHint.closest = () => input;
+    f.target.querySelectorAll = () => [input, hint, nestedHint];
+    tooltip.matches = selector => selector === '[role="tooltip"]';
+    tooltip.querySelectorAll = () => [{ textContent: "A complex tooltip explanation." }];
+    f.document.getElementById = () => tooltip;
+    const [result] = f.context.describeTargets({}, [{ id: "settings.connection.credential" }]);
+    assert.equal(result.hint, "Credential help.");
+    assert.equal(result.uiHint, "Updated field tooltip.\nA current hint.\nA complex tooltip explanation.");
+    assert.equal(result.uiLabel, null);
+});
 
 for (const action of ["Continue", "Stop"]) {
     test(`the guide timeout pointer reaches and presses the rendered ${action} button`, async () => {

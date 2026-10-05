@@ -1,3 +1,4 @@
+@inject AI.Web.Navigation.IAppControlHints ControlHints
 @implements IDisposable
 @inject INotificationService Notifications
 
@@ -8,7 +9,7 @@
 <div class="toast-region" @onmouseenter="Notifications.PauseAutoDismiss" @onmouseleave="Notifications.ResumeAutoDismiss">
     @if (_current is not null)
     {
-        <div class="toast @KindClass(_current.Kind) @(_current.RequiresAction ? "attention" : string.Empty)" data-app-target="notifications.toast" role="status" aria-live="polite" aria-atomic="true">
+        <div @attributes="@(ControlHints.Attributes("notifications.toast"))" class="toast @KindClass(_current.Kind) @(_current.RequiresAction ? "attention" : string.Empty)" role="status" aria-live="polite" aria-atomic="true">
             <AppIcon Name="@(_current.Kind == NotificationKind.Error ? "error" : _current.Kind == NotificationKind.Success ? "check" : "info")" />
             @if (_current.ChatId is not null || _current.OpenUpdates)
             {

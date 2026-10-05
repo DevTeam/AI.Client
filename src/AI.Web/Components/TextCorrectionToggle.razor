@@ -1,7 +1,8 @@
+@inject AI.Web.Navigation.IAppControlHints ControlHints
 @* Without selected languages, the shortcut opens their settings. Otherwise it pauses or resumes correction. *@
-<button type="button" class="composer-correction-toggle @(State.Languages.Count == 0 ? "is-unconfigured" : State.IsActive ? "is-on" : "is-off")" data-app-target="chat.text_correction"
+<button @attributes="@(ControlHints.Attributes("chat.text_correction", Title()))" type="button" class="composer-correction-toggle @(State.Languages.Count == 0 ? "is-unconfigured" : State.IsActive ? "is-on" : "is-off")"
         role="@(State.Languages.Count == 0 ? null : "switch")" aria-checked="@(State.Languages.Count == 0 ? null : State.IsActive ? "true" : "false")" aria-label="@Title()"
-        title="@Title()" @onclick="OnToggle">
+        @onclick="OnToggle">
     <svg class="app-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="m7 18 5-13 5 13M9 13.5h6" transform="@(State.IsActive ? "translate(-5 0)" : "rotate(180 12 11.5)")" />
         @if (State.IsActive)

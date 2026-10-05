@@ -21,6 +21,8 @@ public sealed class AppGuideWidgetRenderingTests
     {
         var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
         var registrations = new ServiceCollection();
+        registrations.AddTransient<AI.Contracts.Navigation.IAppNavigationTargets, AI.Contracts.Navigation.AppNavigationTargets>();
+        registrations.AddTransient<AI.Web.Navigation.IAppControlHints, AI.Web.Navigation.AppControlHints>();
         registrations.AddSingleton(Mock.Of<IJSRuntime>());
         await using var services = (ServiceProvider)composition.CreateServiceProvider(composition.CreateBuilder(registrations));
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
@@ -90,6 +92,8 @@ public sealed class AppGuideWidgetRenderingTests
     {
         var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
         var registrations = new ServiceCollection();
+        registrations.AddTransient<AI.Contracts.Navigation.IAppNavigationTargets, AI.Contracts.Navigation.AppNavigationTargets>();
+        registrations.AddTransient<AI.Web.Navigation.IAppControlHints, AI.Web.Navigation.AppControlHints>();
         registrations.AddSingleton(Mock.Of<IJSRuntime>());
         await using var services = (ServiceProvider)composition.CreateServiceProvider(composition.CreateBuilder(registrations));
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
@@ -127,7 +131,7 @@ public sealed class AppGuideWidgetRenderingTests
     [Fact]
     public void ShouldKeepTheSavedWidgetOrderAndStatesWhenAddingTheGuide()
     {
-        var catalog = new ChatWidgetCatalog();
+        var catalog = new ChatWidgetCatalog(new AI.Contracts.Navigation.AppNavigationTargets());
         var layout = new ChatWidgetLayout(catalog);
         var saved = catalog.Widgets.Where(widget => widget.Id != ChatWidgetCatalog.AppGuide).Reverse()
             .Select(widget => new ChatWidgetPreference(widget.Id, Hidden: true, Collapsed: true)).ToArray();

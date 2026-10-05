@@ -1,3 +1,4 @@
+@inject AI.Web.Navigation.IAppControlHints ControlHints
 @inject IChatRunsApi RunsApi
 @inject INotificationService Notifications
 @inject IToolPresentations Presentations
@@ -6,7 +7,7 @@
 @using AI.Contracts.Tools
 
 @{ var presentation = Presentations.DescribeCall(Approval.Name, Approval.Arguments); }
-<section class="tool-approval-bar opens-upward @(_detailsOpen ? "is-expanded" : "is-collapsed")" data-app-target="chat.approval" role="region" aria-label="Tool approval" aria-busy="@(_decidingApproval ? "true" : "false")">
+<section @attributes="@(ControlHints.Attributes("chat.approval"))" class="tool-approval-bar opens-upward @(_detailsOpen ? "is-expanded" : "is-collapsed")" role="region" aria-label="Tool approval" aria-busy="@(_decidingApproval ? "true" : "false")">
     <div class="tool-approval-main chat-card-header">
         <button class="tool-approval-header" type="button" aria-expanded="@_detailsOpen" aria-controls="@_detailsId" @ref="_header" title="@(_detailsOpen ? "Collapse tool details" : "Expand tool details")" @onclick="ToggleDetails">
             <span class="tool-approval-mark chat-card-mark" aria-hidden="true"><AppIcon Name="shield" /></span>
@@ -32,9 +33,9 @@
         </button>
         <div class="chat-card-header-actions tool-approval-controls">
             <div class="tool-approval-actions">
-                <button class="secondary-action tool-approval-deny chat-card-action" data-app-target="chat.approval.deny" type="button" title="Refuse this call without saving a permission rule" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Deny)">Deny</button>
+                <button @attributes="@(ControlHints.Attributes("chat.approval.deny", "Refuse this call without saving a permission rule"))" class="secondary-action tool-approval-deny chat-card-action" type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Deny)">Deny</button>
                 <div class="tool-approval-allow">
-                    <button class="tool-approval-once chat-card-action chat-card-action-primary" data-app-target="chat.approval.once" type="button" title="Run this call once without saving a permission rule" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Allow)">Allow once</button>
+                    <button @attributes="@(ControlHints.Attributes("chat.approval.once", "Run this call once without saving a permission rule"))" class="tool-approval-once chat-card-action chat-card-action-primary" type="button" disabled="@_decidingApproval" @onclick="() => DecideAsync(ToolApprovalAction.Allow)">Allow once</button>
                     <div class="tool-approval-more @(_allowMenuOpen ? "is-open" : null)">
                         <button class="chat-card-action chat-card-action-icon" type="button" title="More allow options" aria-label="More allow options" aria-expanded="@_allowMenuOpen" aria-controls="@_menuId" @onclick="ToggleAllowMenu"><AppIcon Name="chevron-down" /></button>
                         @if (_allowMenuOpen)

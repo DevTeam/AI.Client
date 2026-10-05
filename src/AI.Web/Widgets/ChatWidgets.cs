@@ -1,5 +1,7 @@
 namespace AI.Web.Widgets;
 
+using AI.Contracts.Navigation;
+
 /// <summary>How one widget sits in the chat's widget column, as the person left it.</summary>
 public sealed record ChatWidgetPreference(string Id, bool Hidden = false, bool Collapsed = false);
 
@@ -22,7 +24,7 @@ public interface IChatWidgetCatalog
     ChatWidgetDefinition? Find(string id);
 }
 
-public sealed class ChatWidgetCatalog : IChatWidgetCatalog
+public sealed class ChatWidgetCatalog(IAppNavigationTargets targets) : IChatWidgetCatalog
 {
     public const string ChatUsage = "chat-usage";
     public const string ChatFiles = "chat-files";
@@ -36,15 +38,15 @@ public sealed class ChatWidgetCatalog : IChatWidgetCatalog
 
     public IReadOnlyList<ChatWidgetDefinition> Widgets { get; } =
     [
-        new(ChatUsage, "Usage", "gauge", "Context window, tokens and cost of the whole chat or the last turn"),
-        new(ChatFiles, "Files", "diff", "Files the open chat changed, with lines added and removed"),
-        new(ChatTools, "Tools", "tool", "Tool calls, results and most used tools in the whole chat or the last turn"),
-        new(ChatPerformance, "Performance", "timer", "Wall-clock, throughput and how request time was spent in the whole chat or the last turn"),
-        new(ChatSubtasks, "Subtasks", "fork", "Delegated work the chat ran on another model: requests, tokens and share of the whole chat or the last turn"),
-        new(ChatKnowledge, "Knowledge", "book", "Files and pages the assistant read on the visible branch, by tool and most recent paths"),
-        new(ChatTimeline, "Timeline", "history", "One row per turn on the visible branch: when it started, how long it ran, its requests and tokens, and the tools and files it touched"),
-        new(ChatBranches, "Branches", "git-branch", "Every stored branch of the chat: title, depth, message count, child branches and head timestamp, with a click that switches the visible branch"),
-        new(AppGuide, "Application guide", "book", "Learn projects, chats, branches and settings step by step")
+        new(ChatUsage, "Usage", "gauge", targets.Find("widgets." + ChatUsage)!.Hint!),
+        new(ChatFiles, "Files", "diff", targets.Find("widgets." + ChatFiles)!.Hint!),
+        new(ChatTools, "Tools", "tool", targets.Find("widgets." + ChatTools)!.Hint!),
+        new(ChatPerformance, "Performance", "timer", targets.Find("widgets." + ChatPerformance)!.Hint!),
+        new(ChatSubtasks, "Subtasks", "fork", targets.Find("widgets." + ChatSubtasks)!.Hint!),
+        new(ChatKnowledge, "Knowledge", "book", targets.Find("widgets." + ChatKnowledge)!.Hint!),
+        new(ChatTimeline, "Timeline", "history", targets.Find("widgets." + ChatTimeline)!.Hint!),
+        new(ChatBranches, "Branches", "git-branch", targets.Find("widgets." + ChatBranches)!.Hint!),
+        new(AppGuide, "Application guide", "book", targets.Find("widgets." + AppGuide)!.Hint!)
     ];
 
     public ChatWidgetDefinition? Find(string id) => Widgets.FirstOrDefault(widget => widget.Id == id);

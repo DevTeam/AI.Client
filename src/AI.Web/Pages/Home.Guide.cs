@@ -135,28 +135,24 @@ public partial class Home
         var steps = new List<AppNavigation>
         {
             hasConnection
-                ? Offline("settings.connections", "show", "The guide and every chat are answered by a model, and none is enabled yet. "
-                    + "Pick a connection in this list, or add a new one with +. The next steps show what to fill in.")
-                : Offline("settings.connections.add", "click", "The guide and every chat are answered by a model, so connect one first. "
-                    + "Continue adds a new connection."),
-            Offline("settings.connection.url", "show", "Base URL: the address of your provider's OpenAI-compatible API, "
-                + "for example https://api.openai.com/v1, https://openrouter.ai/api/v1, or a local server such as http://localhost:11434/v1."),
-            Offline("settings.connection.credential", "show", "API key: create one in your provider's account and paste it here. "
-                + "It is stored encrypted on this computer. Local servers usually need none."),
-            Offline("settings.connection.model", "show", "Model: once the URL and key are in, the list loads from the provider. Pick the model to use, or type its name."),
-            Offline("settings.connection.enabled", "show", "Enabled: only enabled connections answer chats. Keep this on."),
-            Offline("settings.connection.default", "show", "Default: new chats and the guide use the default connection unless a chat or project names another."),
-            Offline("settings.connections.close", "show", "Changes are saved when you close this panel. Then start the guide again from the Guide widget or Help.")
+                ? Offline("settings.connections", "show")
+                : Offline("settings.connections.add", "click"),
+            Offline("settings.connection.url", "show"),
+            Offline("settings.connection.credential", "show"),
+            Offline("settings.connection.model", "show"),
+            Offline("settings.connection.enabled", "show"),
+            Offline("settings.connection.default", "show"),
+            Offline("settings.connections.close", "show")
         };
         if (needsProject)
-            steps.Add(Offline("projects.create", "show", "Last, create a project here: it holds your chats together with folder access, memory and skills."));
+            steps.Add(Offline("projects.create", "show"));
         _offlineSteps = steps;
         _offlineCompletesBasic = needsProject;
         return ShowOfflineStepAsync(1);
     }
 
-    private static AppNavigation Offline(string target, string action, string comment) =>
-        new(Guid.Empty, Target: target, Action: action, Comment: comment, WaitForContinue: true);
+    private AppNavigation Offline(string target, string action) =>
+        new(Guid.Empty, Target: target, Action: action, Comment: GuideTargets.Find(target)?.Hint, WaitForContinue: true);
 
     private Task ShowOfflineStepAsync(int number)
     {
@@ -194,9 +190,7 @@ public partial class Home
         if (target.Action == "targets")
         {
             var catalogModule = _guideModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/appGuide.js");
-            var available = new List<AppNavigationTarget>();
-            foreach (var item in GuideTargets.All)
-                available.Add(item with { Visible = await catalogModule.InvokeAsync<bool>("available", target with { Target = item.Id, Action = "show" }) });
+            var available = await catalogModule.InvokeAsync<AppNavigationTarget[]>("describeTargets", target, GuideTargets.All);
             await GuideApi.CompleteAsync(target.RequestId, new AppNavigationDecision(_guideClientId, "applied", Targets: available), CancellationToken.None);
             return;
         }

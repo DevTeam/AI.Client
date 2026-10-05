@@ -58,6 +58,20 @@ public class BuiltInSkillCatalogTests
     }
 
     [Fact]
+    public void EveryGuideShouldDiscoverControlHelpInsteadOfKeepingItsOwnApplicationFacts()
+    {
+        foreach (var guide in new BuiltInSkillCatalog().List().Where(skill => skill.Id.StartsWith("app-guide-", StringComparison.Ordinal)))
+        {
+            guide.Content.ShouldContain("## Current control help");
+            guide.Content.ShouldContain("`Hint`");
+            guide.Content.ShouldContain("`UiHint`");
+            guide.Content.ShouldContain("Refresh discovery after revealing a panel");
+            guide.Content.ShouldContain("## Learning routes");
+            guide.Content.ShouldNotContain("## Routes and application facts");
+        }
+    }
+
+    [Fact]
     public void ShouldGiveEveryGuideTheSameLanguagePriorityForHiddenAndRegularChats()
     {
         var guides = new BuiltInSkillCatalog().List().Where(skill => skill.Id.StartsWith("app-guide-", StringComparison.Ordinal)).ToArray();
@@ -83,7 +97,8 @@ public class BuiltInSkillCatalogTests
             guide.Content.ShouldContain("every substantive explanation belongs in the comment");
             guide.Content.ShouldContain("only brief progress markers");
         }
-        catalog.GetById("app-guide-models").ShouldNotBeNull().Content.ShouldContain("provider's real model limits");
+        new AI.Contracts.Navigation.AppNavigationTargets().Find("settings.connection.context_window")
+            .ShouldNotBeNull().Hint.ShouldNotBeNull().ShouldContain("endpoint's real model limit");
     }
 
     [Fact]

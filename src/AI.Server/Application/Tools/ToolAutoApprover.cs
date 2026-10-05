@@ -36,12 +36,10 @@ public sealed class ToolAutoApprover(IChatService chats, ISkillRunner skills) : 
         string arguments, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(tool);
-        return await ModeAsync(projectId, chatId, cancellationToken) switch
-        {
-            ToolApprovalMode.FullAccess => new ToolAutoApproval(true),
-            ToolApprovalMode.Auto => await AssessAsync(projectId, chatId, branchId, tool, arguments, cancellationToken),
-            _ => ToolAutoApproval.Ask
-        };
+        var mode = await ModeAsync(projectId, chatId, cancellationToken);
+        if (mode == ToolApprovalMode.FullAccess) return new ToolAutoApproval(true);
+        var assessment = await AssessAsync(projectId, chatId, branchId, tool, arguments, cancellationToken);
+        return mode == ToolApprovalMode.Auto ? assessment : assessment with { Allowed = false };
     }
 
     private async Task<ToolAutoApproval> AssessAsync(Guid projectId, Guid chatId, Guid branchId, AgentTool tool,

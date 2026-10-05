@@ -50,7 +50,7 @@
     {
         ToolApprovalMode.Auto => "Only ask for calls a risk check finds potentially unsafe",
         ToolApprovalMode.FullAccess => "Run every tool call without asking",
-        _ => "Ask before every tool call that is not allowed yet"
+        _ => "Show a risk recommendation and ask before every tool call that is not allowed yet"
     };
 
     private static string Icon(ToolApprovalMode mode) => mode switch

@@ -7,8 +7,8 @@ namespace AI.Contracts.Runs;
 /// to know that before deciding.
 /// </param>
 /// <param name="Assessment">
-/// What the chat's risk assessment said about this call, when "Approve for me" judged it and still
-/// wanted the person to decide; null when no assessment ran.
+/// What the chat's risk assessment recommends about this call in manual or automatic approval
+/// mode; null when no usable assessment is available. The person decides while this card is shown.
 /// </param>
 public sealed record ToolApproval(
     Guid Id,

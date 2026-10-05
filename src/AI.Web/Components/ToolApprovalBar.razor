@@ -24,7 +24,7 @@
                         <span class="tool-approval-count" title="Position in this batch of tool calls; each call is confirmed separately">Call @Approval.CallIndex of @Approval.BatchSize</span>
                     }
                 </span>
-                @* "Approve for me" judged this call and left it to the person; its reason is what to check. *@
+                @* The assessment is advice; the person answers the pending call. *@
                 @if (Approval.Assessment is { Length: > 0 } assessment)
                 {
                     <span class="tool-approval-assessment" title="@assessment"><AppIcon Name="shield-alert" /><span>@assessment</span></span>

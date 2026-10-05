@@ -273,7 +273,8 @@ public sealed partial class AdaptiveContextPolicy(
         + "Granted project directories are the access boundary: never bypass it through shell, processes, URLs or other tools. "
         + "Read narrow results, batch independent calls and avoid repeating work. Answers use Markdown, with language labels on code fences. "
         + "Diagrams can be written directly in mermaid or complete svg fences; there is no drawing tool. "
-        + "Link read files with absolute file:/// paths. Link application targets with aiclient://navigate/target using real ids.";
+        + "Link read files with absolute file:/// paths; append #L42 or #L42-L48 for verified lines. "
+        + "Link application targets with aiclient://navigate/target using real ids.";
     private const string CompactAppGuide =
         " Discover omitted capabilities with mcp_app__tool_search only when its schema is offered; matching schemas are prioritized within the next step's budget. "
         + "Use mcp_app__skill_search to find a matching skill and mcp_app__run_skill to follow its playbook. "

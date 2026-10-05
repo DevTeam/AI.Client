@@ -104,9 +104,9 @@ test('local paths, malformed URLs and unknown schemes never navigate or launch a
     assert.equal(f.messages.length, 0);
     assert.equal(f.opened.length, 0);
     assert.deepEqual(f.mentions, [
-        ['OnFileLinkClicked', 'C:\\repo\\app.cs'], ['OnFileLinkClicked', 'C:\\repo\\app.cs'],
-        ['OnFileLinkClicked', 'src/app.cs'], ['OnFileLinkClicked', '/repo/app.cs'],
-        ['OnFileLinkClicked', '../docs']
+        ['OnFileLinkClicked', 'C:\\repo\\app.cs', null, null], ['OnFileLinkClicked', 'C:\\repo\\app.cs', null, null],
+        ['OnFileLinkClicked', 'src/app.cs', null, null], ['OnFileLinkClicked', '/repo/app.cs', null, null],
+        ['OnFileLinkClicked', '../docs', null, null]
     ]);
 });
 
@@ -120,7 +120,44 @@ test('decorated file spans open the viewer by click and keyboard', () => {
     target.tagName = 'SPAN';
     f.click(null, { target });
     f.click(null, { target, type: 'keydown', key: 'Enter' });
-    assert.deepEqual(f.mentions, Array.from({ length: 2 }, () => ['OnFileLinkClicked', 'D:\\Sandbox\\picture.png']));
+    assert.deepEqual(f.mentions, Array.from({ length: 2 }, () => ['OnFileLinkClicked', 'D:\\Sandbox\\picture.png', null, null]));
+});
+
+test('source links keep lines separate from file paths before and after canonical resolution', () => {
+    const f = fixture();
+    for (const href of ['file:///C:/repo/app.cs#L12-L18', 'C:\\repo\\app.cs:12-18', 'src/app.cs#L12-18',
+        'src/app.cs:12-18', 'file://server/share/app.cs#L12-L18', 'file:///home/me/app.cs#L12-L18']) {
+        const event = f.click(href);
+        const expected = href.startsWith('file://server') ? '\\\\server\\share\\app.cs'
+            : href.startsWith('file:///home') ? '/home/me/app.cs'
+            : href.startsWith('src') ? 'src/app.cs' : 'C:\\repo\\app.cs';
+        assert.deepEqual(f.mentions.at(-1), ['OnFileLinkClicked', expected, 12, 18]);
+        event.target.dataset.filePath = 'C:\\canonical\\app.cs';
+        event.target.dataset.pathInput = expected;
+        f.click(href, { target: event.target });
+        assert.deepEqual(f.mentions.at(-1), ['OnFileLinkClicked', 'C:\\canonical\\app.cs', 12, 18]);
+    }
+    for (const href of ['src/app.cs#L12', 'src/app.cs:12', 'src/app.cs:12:7']) {
+        f.click(href);
+        assert.deepEqual(f.mentions.at(-1), ['OnFileLinkClicked', 'src/app.cs', 12, 12]);
+    }
+    for (const suffix of ['#L0', '#L18-L12', ':18-12', '#L2147483648', '#L1-L99999999999999999999']) {
+        f.click('src/app.cs' + suffix);
+        assert.deepEqual(f.mentions.at(-1), ['OnFileLinkClicked', 'src/app.cs', null, null]);
+    }
+    f.click('file:///C:/repo/My%20File%23L12.txt#L3');
+    assert.deepEqual(f.mentions.at(-1), ['OnFileLinkClicked', 'C:\\repo\\My File#L12.txt', 3, 3]);
+    f.click('file:///C:/repo/File%23L12');
+    assert.deepEqual(f.mentions.at(-1), ['OnFileLinkClicked', 'C:\\repo\\File#L12', null, null]);
+    const target = f.click('ignored').target;
+    target.href = null;
+    target.dataset.filePath = 'C:\\canonical\\app.cs';
+    target.dataset.pathInput = 'src/app.cs:12-18';
+    target.tagName = 'CODE';
+    f.click(null, { target, type: 'keydown', key: 'Enter' });
+    assert.deepEqual(f.mentions.at(-1), ['OnFileLinkClicked', 'C:\\canonical\\app.cs', 12, 18]);
+    f.click('https://example.com/app.cs#L12-L18');
+    assert.equal(f.opened.at(-1)[0], 'https://example.com/app.cs#L12-L18');
 });
 
 test('mentions and fragment scrolling work without changing the current page', () => {

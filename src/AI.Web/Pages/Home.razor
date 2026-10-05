@@ -442,7 +442,7 @@
             OnOpenChat="SelectChatAsync"
             OnNavigateApp="OpenAppNavigationLinkAsync"
             OnFileLinkMenu="OpenFileLinkMenu"
-            OnOpenFile="OpenFilePreviewAsync"
+            OnOpenFile="OpenFileLinkPreviewAsync"
             ReviewNames="@_reviews.ToDictionary(item => item.Id, item => item.Name)"
             MessageReviewIds="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).Select(item => item.Id).ToHashSet()"
             MessageReviews="@_reviews.Where(item => item.Kind == ChatReviewKind.Message).GroupBy(item => item.SourceMessageId).ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.UpdatedAt).First())"
@@ -1013,7 +1013,8 @@
     }
     @if (_previewPath is not null && _selectedProject?.Id == _previewProjectId)
     {
-        <FilePreviewPanel @key="(_previewProjectId, _previewPath)" ProjectId="@_previewProjectId" Path="@_previewPath"
+        <FilePreviewPanel @key="_previewVersion" ProjectId="@_previewProjectId" Path="@_previewPath"
+                          StartLine="@_previewStartLine" EndLine="@_previewEndLine"
                           OnClose="CloseFilePreview" OnOpenPath="OpenFilePreviewAsync" OnAttach="AttachPreviewAsync" />
     }
 </main>

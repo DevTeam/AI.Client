@@ -54,7 +54,8 @@ data or repository files. Report any unavailable evidence instead of treating it
    from questions needing evidence. Read-only inspection is the default; do not execute
    untrusted reviewed code or run a check that mutates application data.
 6. Prioritize findings by impact. Give each actionable finding a verified file/line at the
-   reviewed revision, the failing scenario, consequence and focused correction. Omit cosmetic
+   reviewed revision, the failing scenario, consequence and focused correction. Link verified
+   source locations with absolute file URIs ending in `#L42` or `#L42-L48`. Omit cosmetic
    preferences unless the user requested style review. This is a correctness review;
    pre-commit housekeeping belongs to `code-changes-review`.
 7. The final answer contains findings first, with severity and source references, followed by

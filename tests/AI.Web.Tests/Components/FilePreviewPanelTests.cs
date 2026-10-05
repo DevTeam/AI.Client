@@ -55,10 +55,58 @@ public sealed class FilePreviewPanelTests
         html.ShouldContain("role=\"alert\"");
     }
 
-    private static async Task<string> RenderAsync(FilePreview file, FilePreviewText? text = null, HttpStatusCode status = HttpStatusCode.OK)
+    [Fact]
+    public async Task HighlightsInclusiveLinesAndLoadsTheirRemainingText()
+    {
+        var file = new FilePreview("/workspace/sample.txt", "sample.txt", "text", "text/plain", 100, null, []);
+        var offsets = new List<int>();
+        var html = await RenderAsync(file, startLine: 2, endLine: 3, readText: offset =>
+        {
+            offsets.Add(offset);
+            return offset == 0 ? new FilePreviewText("first\r\nse", 9) : new FilePreviewText("cond\r\nthird\r\nfourth", null);
+        });
+        offsets.ShouldBe([0, 9]);
+        WebUtility.HtmlDecode(html).ShouldContain("Lines 2–3");
+        html.ShouldContain("data-start-line=\"2\"");
+        html.ShouldContain("--selection-offset:1;--selection-lines:2");
+        WebUtility.HtmlDecode(html).ShouldContain("second\nthird");
+        html.ShouldNotContain("beyond");
+    }
+
+    [Theory]
+    [InlineData(3, 5, true, true)]
+    [InlineData(9, 9, false, true)]
+    [InlineData(0, 2, false, false)]
+    [InlineData(3, 2, false, false)]
+    public async Task HandlesMissingAndInvalidLocations(int start, int end, bool highlighted, bool missing)
+    {
+        var file = new FilePreview("/workspace/sample.txt", "sample.txt", "text", "text/plain", 100, null, []);
+        var html = await RenderAsync(file, new FilePreviewText("first\nsecond\nthird", null), startLine: start, endLine: end);
+        html.Contains("class=\"file-preview-selection\"", StringComparison.Ordinal).ShouldBe(highlighted);
+        html.Contains("beyond the end", StringComparison.Ordinal).ShouldBe(missing);
+        if (highlighted) html.ShouldContain("--selection-lines:1");
+    }
+
+    [Fact]
+    public async Task StopsLoadingAtThePreviewLimitWhenRequestedLinesAreMissing()
+    {
+        var file = new FilePreview("/workspace/sample.txt", "sample.txt", "text", "text/plain", 2_000_000, null, []);
+        var pages = 0;
+        var html = await RenderAsync(file, startLine: 100, readText: offset =>
+        {
+            pages++;
+            return new FilePreviewText(new string('x', 32768), offset + 32768);
+        });
+        pages.ShouldBe(32);
+        html.ShouldContain("requested location extends beyond the 1 MB");
+        html.ShouldNotContain("Load more text");
+    }
+
+    private static async Task<string> RenderAsync(FilePreview file, FilePreviewText? text = null, HttpStatusCode status = HttpStatusCode.OK,
+        int? startLine = null, int? endLine = null, Func<int, FilePreviewText>? readText = null)
     {
         var registrations = new ServiceCollection();
-        registrations.AddSingleton(new HttpClient(new Handler(file, text, status)) { BaseAddress = new Uri("https://host.test/") });
+        registrations.AddSingleton(new HttpClient(new Handler(file, text, status, readText)) { BaseAddress = new Uri("https://host.test/") });
         var url = new Mock<IApiBaseUrl>();
         url.SetupGet(value => value.Value).Returns(new Uri("https://host.test/"));
         registrations.AddSingleton(url.Object);
@@ -69,19 +117,22 @@ public sealed class FilePreviewPanelTests
         {
             var component = await renderer.RenderComponentAsync<FilePreviewPanel>(ParameterView.FromDictionary(new Dictionary<string, object?>
             {
-                [nameof(FilePreviewPanel.ProjectId)] = Guid.NewGuid(), [nameof(FilePreviewPanel.Path)] = file.Path
+                [nameof(FilePreviewPanel.ProjectId)] = Guid.NewGuid(), [nameof(FilePreviewPanel.Path)] = file.Path,
+                [nameof(FilePreviewPanel.StartLine)] = startLine, [nameof(FilePreviewPanel.EndLine)] = endLine
             }));
             return component.ToHtmlString();
         });
     }
 
-    private sealed class Handler(FilePreview file, FilePreviewText? text, HttpStatusCode status) : HttpMessageHandler
+    private sealed class Handler(FilePreview file, FilePreviewText? text, HttpStatusCode status,
+        Func<int, FilePreviewText>? readText) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage(status)
             {
                 Content = request.RequestUri!.AbsolutePath.EndsWith("preview-text", StringComparison.Ordinal)
-                    ? JsonContent.Create(text) : JsonContent.Create(file)
+                    ? JsonContent.Create(readText?.Invoke(int.Parse(request.RequestUri.Query.Split("&offset=", StringSplitOptions.None)[1],
+                        System.Globalization.CultureInfo.InvariantCulture)) ?? text) : JsonContent.Create(file)
             });
     }
 }

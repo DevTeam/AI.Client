@@ -1,18 +1,26 @@
 namespace AI.Web.Pages;
 
 using AI.Contracts.Resources;
+using AI.Web.Components;
 
 public partial class Home
 {
     private string? _previewPath;
     private Guid _previewProjectId;
+    private int? _previewStartLine, _previewEndLine;
+    private long _previewVersion;
 
-    private async Task OpenFilePreviewAsync(string path)
+    private Task OpenFilePreviewAsync(string path) => OpenFileLinkPreviewAsync(new FilePreviewTarget(path));
+
+    private async Task OpenFileLinkPreviewAsync(FilePreviewTarget target)
     {
         if (_selectedProject is null || !await CloseDrawersExceptAsync(Drawer.FilePreview)) return;
         CloseContextMenus();
         _previewProjectId = _selectedProject.Id;
-        _previewPath = path;
+        _previewPath = target.Path;
+        _previewStartLine = target.StartLine;
+        _previewEndLine = target.EndLine;
+        _previewVersion++;
     }
 
     private void CloseFilePreview() => _previewPath = null;

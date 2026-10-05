@@ -1252,7 +1252,6 @@ else if (_guideInvitation is { } guideInvitation)
     private Guid? _forkSourceId;
     private bool _isForking;
     private Guid? _replaceSourceId;
-    private Guid? _pendingBranchAnchorId;
     // Opening a chat is cancellable and last-click-wins. Two quick clicks used to race to assign
     // _selectedChat in whatever order their responses happened to arrive, so the slower one could
     // land last and leave the wrong transcript open.
@@ -2132,11 +2131,9 @@ else if (_guideInvitation is { } guideInvitation)
             StoreRun(snapshot);
             if (snapshot.ChatId == _selectedChat?.Id)
             {
-                var isSelectedRun = snapshot.BranchId == GetSelectedRunBranchId();
-                var isPendingBranchRun = _pendingBranchAnchorId is { } pendingId && snapshot.BranchId == pendingId;
                 // Not a scroll-to-bottom: the run producing output is not a reason to yank the
                 // user away from whatever they scrolled up to read.
-                if (isSelectedRun || isPendingBranchRun) _followNewMessages = true;
+                if (IsCurrentRun(snapshot.ChatId, snapshot.BranchId)) _followNewMessages = true;
                 if (snapshot.ChatRevision > _selectedChat.Revision && _selectedProject is not null)
                 {
                     if (ChatMessageDeltaMerger.TryApply(_selectedChat, snapshot, out var updatedChat))
@@ -2151,9 +2148,11 @@ else if (_guideInvitation is { } guideInvitation)
                         await LoadChatsAsync(_selectedProject.Id, refreshSelected: false);
                     }
                 }
-                if ((isSelectedRun || isPendingBranchRun) && _selectedChat?.Branches?.SingleOrDefault(branch => branch.Id == snapshot.BranchId)?.HeadMessageId is { } head)
+                // Selection can change while the transcript reload is awaiting its response.
+                // Only the branch still selected may advance the visible transcript.
+                if (IsCurrentRun(snapshot.ChatId, snapshot.BranchId) && _selectedChat?.Branches?.SingleOrDefault(branch => branch.Id == snapshot.BranchId)?.HeadMessageId is { } head)
                     _branchLeafId = head;
-                if ((isSelectedRun || isPendingBranchRun) && _applicationFocused && snapshot.HasUnreadResponse) await MarkSelectedChatReadAsync();
+                if (IsCurrentRun(snapshot.ChatId, snapshot.BranchId) && _applicationFocused && snapshot.HasUnreadResponse) await MarkSelectedChatReadAsync();
             }
 
             // Mark the just-arrived leaf for the transient accent line. We only animate when a run
@@ -2864,14 +2863,9 @@ else if (_guideInvitation is { } guideInvitation)
         if (_selectedChat?.Id != accepted.Chat.Id || _selectedChat.Revision < accepted.Chat.Revision) _selectedChat = accepted.Chat;
         _selectedBranchId = accepted.RunBranchId;
         StoreRun(accepted.Snapshot);
-        _pendingBranchAnchorId = accepted.RunBranchId;
         if (accepted.UpdatedBranchLeafId is { } updatedLeaf)
         {
             _branchLeafId = updatedLeaf;
-            // For a fresh message we anchor the pending branch on it so OnRunSnapshot can
-            // advance to the new leaf once the assistant finishes. The service doesn't set
-            // this because it's purely a UI bookkeeping signal.
-            _pendingBranchAnchorId = accepted.RunBranchId == accepted.Snapshot.ChatId ? null : accepted.RunBranchId;
         }
         _messageBranchMenuId = null;
         _forkSourceId = null;

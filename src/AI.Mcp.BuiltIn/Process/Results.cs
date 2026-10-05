@@ -4,7 +4,7 @@ public sealed record ProcessRequest(
     string Executable,
     string[] Arguments,
     string WorkingDirectory,
-    int TimeoutMs = 120000);
+    int TimeoutMs = ProcessRunner.MaxTimeoutMs);
 
 public sealed record ProcessResult(
     int? ExitCode,

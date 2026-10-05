@@ -6,4 +6,8 @@ public sealed record McpToolPolicySettings(
     string SchemaHash,
     string Decision,
     int MaxCallsPerRun,
-    long TimeoutSeconds);
+    long TimeoutSeconds)
+{
+    public const int DefaultTimeoutSeconds = 600;
+    public const int MaxTimeoutSeconds = 600;
+}

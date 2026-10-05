@@ -65,7 +65,8 @@ or scripts, and a dedicated tool when it better serves the task.
    unresolved approval does not authorize it. Process termination does not undo partial changes.
 6. Estimate duration: builds, data processing and automation may take hours. Check tool/client
    limits and whether a genuine managed long-running execution mechanism exists. The known
-   `timeoutMs` range is 1–120000, default 120000; timeout/cancellation terminates the process tree.
+   `timeoutMs` range is 1–600000, default 600000. Omit it to use the effective tool policy;
+   set a smaller value only for an intentionally shorter deadline. Timeout/cancellation terminates the process tree.
    Do not exceed the schema. If insufficient, use safely separable batches/stages with checkpoints,
    or an available managed job/session/queue with identifier, status, logs, cancellation and final
    result. Do not split atomic operations in ways that damage integrity. Change a timeout setting

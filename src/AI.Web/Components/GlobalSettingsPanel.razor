@@ -345,7 +345,7 @@
                                                 {
                                                     <div class="settings-row mcp-tool-limits">
                                                         <label>Calls per run<input type="number" min="1" max="2147483647" title="Maximum invocations of this tool in one run; empty leaves this limit unset" @bind="policy.MaxCallsPerRun" /></label>
-                                                        <label>Timeout, sec<input type="number" min="1" max="600" title="Maximum execution time for one call, in seconds; empty uses the default timeout" @bind="policy.TimeoutSeconds" /></label>
+                                                        <label>Timeout, sec<input type="number" min="1" max="@McpToolPolicySettings.MaxTimeoutSeconds" title="Timeout for one call, in seconds; progress renews the wait, and execution tools also apply it to their run" @bind="policy.TimeoutSeconds" /></label>
                                                     </div>
                                                 }
                                             }
@@ -1479,7 +1479,7 @@
         public string SchemaHash { get; set; } = string.Empty;
         public string Decision { get; set; } = "Ask";
         public int MaxCallsPerRun { get; set; } = 65535;
-        public long TimeoutSeconds { get; set; } = 120;
+        public long TimeoutSeconds { get; set; } = McpToolPolicySettings.DefaultTimeoutSeconds;
 
         public static McpToolPolicyEditor From(McpToolInfo item) => new()
         {

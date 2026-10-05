@@ -235,7 +235,7 @@ public sealed class GlobalSettingsService(
             || string.IsNullOrWhiteSpace(item.SchemaHash)
             || item.Decision is not ("Allow" or "Ask" or "Deny")
             || item.MaxCallsPerRun is < 1 or > int.MaxValue
-            || item.TimeoutSeconds is < 1 or > 600)
+            || item.TimeoutSeconds is < 1 or > McpToolPolicySettings.MaxTimeoutSeconds)
         {
             throw new ArgumentException("Tool name, schema, policy, call limit, and timeout are invalid.");
         }

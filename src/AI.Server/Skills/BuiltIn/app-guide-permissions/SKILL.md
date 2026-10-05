@@ -174,7 +174,7 @@ allowOther=true; timed completion choices are appropriate only after this topic 
 7. If asked about execution limits, show settings.tools and explain the selected tool's
    Limits disclosure: Calls per run limits invocations during one run, Timeout limits the
    execution waiting period for a call. Both inherit chat -> project -> global when supplied;
-   defaults are 65535 calls and 120 seconds, with timeout clamped to 1..600 seconds.
+   defaults are 65535 calls and 600 seconds, with timeout clamped to 1..600 seconds.
    These are not token or monetary budgets. A working directory is not a sandbox: a process
    runs with the user's account permissions. Folder grants and execution policies are separate;
    an Allow rule does not itself give file access or confine a command to a folder.

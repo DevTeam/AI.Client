@@ -63,7 +63,13 @@ public sealed class BuiltInToolTests
         ], ignoreOrder: true);
         var tool = session.Tools.Single(item => item.OriginalName == "process_run");
         tool.SchemaHash.Length.ShouldBe(64);
-        var arguments = JsonSerializer.Serialize(new { executable = "dotnet", arguments = (string[])["--info"], workingDirectory = AppContext.BaseDirectory });
+        var timeoutSchema = tool.ModelDefinition.InputSchema.GetProperty("properties").GetProperty("timeoutMs");
+        timeoutSchema.GetProperty("default").GetInt32().ShouldBe(600000);
+        timeoutSchema.GetProperty("maximum").GetInt32().ShouldBe(600000);
+        var arguments = JsonSerializer.Serialize(new { executable = "dotnet", arguments = (string[])["--info"], workingDirectory = AppContext.BaseDirectory, timeoutMs = 600000 });
+        session.ValidateArguments(tool, arguments).ShouldNotBeNullOrWhiteSpace();
+        Should.Throw<ArgumentException>(() => session.ValidateArguments(tool,
+            JsonSerializer.Serialize(new { executable = "dotnet", timeoutMs = 600001 })));
         var result = await session.CallAsync(tool, arguments, null, timeout.Token);
         result.IsError.ShouldBeFalse();
         result.StructuredContent.ShouldNotBeNull();
@@ -103,7 +109,16 @@ public sealed class BuiltInToolTests
         var result = await new ProcessRunner().RunAsync(request, CancellationToken.None);
         result.TimedOut.ShouldBeTrue();
         using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
-        await Should.ThrowAsync<OperationCanceledException>(() => new ProcessRunner().RunAsync(request with { TimeoutMs = 120000 }, cancel.Token));
+        await Should.ThrowAsync<OperationCanceledException>(() => new ProcessRunner().RunAsync(request with { TimeoutMs = 600000 }, cancel.Token));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(600001)]
+    public async Task ShouldRejectProcessTimeoutOutsideSupportedRange(int timeoutMs)
+    {
+        await Should.ThrowAsync<ArgumentException>(() => new ProcessRunner().RunAsync(
+            new ProcessRequest("dotnet", [], AppContext.BaseDirectory, timeoutMs), TestContext.Current.CancellationToken));
     }
 
     [Fact]

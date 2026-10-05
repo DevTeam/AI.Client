@@ -47,6 +47,9 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
         // schema to the model, so both have to survive the round trip.
         tool.ProtocolTool.OutputSchema.ShouldNotBeNull();
         tool.ProtocolTool.InputSchema.GetProperty("properties").TryGetProperty("code", out _).ShouldBeTrue();
+        var timeoutSchema = tool.ProtocolTool.InputSchema.GetProperty("properties").GetProperty("timeoutMs");
+        timeoutSchema.GetProperty("default").GetInt32().ShouldBe(600000);
+        timeoutSchema.GetProperty("maximum").GetInt32().ShouldBe(600000);
         tool.Description.ShouldNotBeNullOrWhiteSpace();
     }
 
@@ -140,12 +143,30 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AcceptsTenMinuteScriptTimeout()
+    {
+        var result = await CallAsync(new { code = "42", timeoutMs = 600000 });
+        result.GetProperty("success").GetBoolean().ShouldBeTrue();
+        result.GetProperty("returnValue").GetString().ShouldBe("42");
+    }
+
+    [Fact]
     public async Task ReportsTimeoutInsteadOfHanging()
     {
         var result = await CallAsync(new { code = "System.Threading.Thread.Sleep(10000); 1", timeoutMs = 500 });
 
         result.GetProperty("timedOut").GetBoolean().ShouldBeTrue();
         result.GetProperty("success").GetBoolean().ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(600001)]
+    public async Task RejectsScriptTimeoutOutsideSupportedRange(int timeoutMs)
+    {
+        var result = await CallAsync(new { code = "42", timeoutMs });
+        result.GetProperty("success").GetBoolean().ShouldBeFalse();
+        result.GetProperty("error").GetString().ShouldNotBeNull().ShouldContain("Timeout");
     }
 
     [Fact]

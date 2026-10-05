@@ -32,13 +32,14 @@ public sealed class ProcessRunner : IProcessRunner
     ];
 
     public const int OutputLimit = 32768;
+    public const int MaxTimeoutMs = 600000;
 
     public async Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Executable);
 
-        if (request.TimeoutMs is < 1 or > 120000 || request.Arguments is null || request.Arguments.Length > 256)
+        if (request.TimeoutMs is < 1 or > MaxTimeoutMs || request.Arguments is null || request.Arguments.Length > 256)
         {
             throw new ArgumentException("Invalid timeout or arguments.", nameof(request));
         }

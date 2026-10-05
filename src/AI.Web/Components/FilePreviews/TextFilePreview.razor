@@ -12,8 +12,10 @@
     }
     @if (Context.File.Kind is "markdown" or "diff")
     {
-        <button type="button" aria-pressed="@(!_source)" @onclick="() => ShowSource(false)">Preview</button>
-        <button type="button" aria-pressed="@_source" @onclick="() => ShowSource(true)">Source</button>
+        <div class="file-preview-modes" role="group" aria-label="View mode">
+            <button class="file-preview-mode @(!_source ? "is-active" : null)" type="button" aria-pressed="@(!_source ? "true" : "false")" @onclick="() => ShowSource(false)"><AppIcon Name="check" Class="file-preview-mode-check" /><span>Preview</span></button>
+            <button class="file-preview-mode @(_source ? "is-active" : null)" type="button" aria-pressed="@(_source ? "true" : "false")" @onclick="() => ShowSource(true)"><AppIcon Name="check" Class="file-preview-mode-check" /><span>Source</span></button>
+        </div>
     }
     <button type="button" @onclick="CopyTextAsync">Copy loaded text</button>
 </div>

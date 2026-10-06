@@ -214,6 +214,59 @@ public sealed class ResourceServiceTests
     }
 
     [Fact]
+    public async Task ShouldCaptureTheWholeFileWhenTheMessageSendsItsContent()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ai-client-resources-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var token = TestContext.Current.CancellationToken;
+            var source = Path.Combine(root, "source.cs");
+            var empty = Path.Combine(root, "empty.cs");
+            await File.WriteAllTextAsync(source, "class A { }\n", token);
+            await File.WriteAllTextAsync(empty, string.Empty, token);
+            var projectId = Guid.CreateVersion7();
+            var projects = ProjectsWith(projectId, root);
+            var location = new Mock<IProjectStorageLocation>();
+            location.SetupGet(item => item.RootDirectory).Returns(root);
+            using var repository = new JsonResourceRepository(location.Object, new PhysicalTextFileSystem());
+            var assets = new ResourceAssetService(location.Object, projects.Object);
+            var service = new ResourceService(projects.Object, new PhysicalDirectoryBrowser(), repository,
+                new Mock<IReviewService>().Object, new ProjectPathAccess(), new Mock<ISkillCatalog>().Object,
+                new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(), assets);
+            var created = await service.CreateAsync(projectId, ChatResourceKind.File, source, token);
+            var createdEmpty = await service.CreateAsync(projectId, ChatResourceKind.File, empty, token);
+
+            var validated = await service.ValidateForChatAsync(projectId, Guid.NewGuid(), [
+                created with { IncludeContent = true, Mention = "@source.cs" },
+                createdEmpty with { IncludeContent = true }], token);
+
+            // The file as it was when sent, kept with its path; the request itself is not stored.
+            var file = validated[0];
+            file.IsContentSnapshot.ShouldBeTrue();
+            file.Path.ShouldBe(created.Path);
+            file.Name.ShouldBe("source.cs");
+            file.Size.ShouldBe(12);
+            file.Mention.ShouldBe("@source.cs");
+            file.IncludeContent.ShouldBeFalse();
+            (await assets.ReadTextAsync(projectId, file.AssetId!, token))!.Text.ShouldBe("class A { }\n");
+            // An empty file has nothing to send but its path.
+            validated[1].AssetId.ShouldBeNull();
+            validated[1].IncludeContent.ShouldBeFalse();
+
+            var projected = await new ResourceModelProjection(new Mock<IReviewService>().Object, assets)
+                .ProjectAsync(projectId, Guid.NewGuid(), "Look at @source.cs", [file], token);
+            projected.ShouldContain($"- file: {System.Text.Json.JsonSerializer.Serialize(created.Path)} (linked in the message as \"@source.cs\")");
+            projected.ShouldContain("  ```\n  class A { }\n  ```");
+        }
+        finally
+        {
+            // The target is generated below the explicitly chosen temporary test root.
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ShouldNameLinkedChatsAndProjectsAndCaptureUncommittedChanges()
     {
         var root = Path.Combine(Path.GetTempPath(), "ai-client-resources-" + Guid.NewGuid().ToString("N"));

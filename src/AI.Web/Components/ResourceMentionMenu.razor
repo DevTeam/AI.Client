@@ -20,6 +20,26 @@
             <span class="skill-command-name">@foreach (var part in Parts(item)) { if (part.Matched) { <mark>@part.Text</mark> } else { @part.Text } }</span>
             <span class="skill-command-description" title="@item.Detail">@item.Detail</span>
             <span class="skill-command-source">@(item.Attached ? "Attached" : item.Kind == ChatResourceKind.Directory && item.Action == ResourceMentionAction.Attach ? "Tab to open" : null)</span>
+            @if (CanSendContent(item))
+            {
+                @* The second way to take the row, for the pointer: Shift+Enter is the keyboard's. *@
+                <button class="resource-mention-content" type="button" tabindex="-1"
+                        title="Add with its content (Shift+Enter)" aria-label="Add @item.Name with its content"
+                        @onmousedown="() => OnPickContent.InvokeAsync(row)" @onmousedown:preventDefault @onmousedown:stopPropagation>
+                    <AppIcon Name="file-text" />
+                </button>
+            }
+        </div>
+    }
+    @if (Items.Any(CanSendContent))
+    {
+        <div class="resource-mention-keys" role="presentation">
+            <span><kbd>Enter</kbd> path</span>
+            <span><kbd>Shift+Enter</kbd> with content</span>
+            @if (Items.Any(item => item is { Kind: ChatResourceKind.Directory, Action: ResourceMentionAction.Attach }))
+            {
+                <span><kbd>Tab</kbd> open folder</span>
+            }
         </div>
     }
 </div>
@@ -32,6 +52,16 @@
     [Parameter] public EventCallback<int> OnPick { get; set; }
 
     [Parameter] public EventCallback<int> OnHover { get; set; }
+
+    /// <summary>A row taken with the file's content rather than only its path.</summary>
+    [Parameter] public EventCallback<int> OnPickContent { get; set; }
+
+    /// <summary>
+    /// A whole workspace file can go with its content. A directory is only ever a path, and a line
+    /// range already carries the lines it names.
+    /// </summary>
+    public static bool CanSendContent(ResourceMentionItem item) =>
+        item is { Kind: ChatResourceKind.File, Action: ResourceMentionAction.Attach, Lines: null };
 
     /// <summary>The icon a reference of this kind has everywhere: its chip in the composer and in the transcript.</summary>
     public static string IconOf(ChatResourceKind kind) => kind switch

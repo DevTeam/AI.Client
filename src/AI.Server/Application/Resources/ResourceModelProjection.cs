@@ -91,7 +91,8 @@ public sealed class ResourceModelProjection(IReviewService? reviews, IResourceAs
 
     /// <summary>
     /// Everything but a review, which needs the live review state. Files and directories stay live
-    /// paths; a line range and uncommitted changes carry the text captured when the message was sent.
+    /// paths; a line range, a file sent with its content and uncommitted changes carry what was
+    /// captured when the message was sent.
     /// </summary>
     private static IEnumerable<string> Describe(ChatResource reference)
     {
@@ -101,6 +102,10 @@ public sealed class ResourceModelProjection(IReviewService? reviews, IResourceAs
             case ChatResourceKind.Image:
                 yield return $"- image: {name}{Linked(reference)} [resource {reference.Id}; attached image; "
                              + $"source {reference.Source}: {JsonSerializer.Serialize(reference.Path)}]";
+                yield break;
+            case ChatResourceKind.File when reference.AssetId is not null && reference.Source == ChatResourceSource.Workspace:
+                yield return $"- file: {JsonSerializer.Serialize(reference.Path)}{Linked(reference)} [resource {reference.Id}; "
+                             + $"{reference.Size} bytes; its content as it was when the message was sent follows when readable]";
                 yield break;
             case ChatResourceKind.File when reference.AssetId is not null:
                 yield return $"- uploaded file: {name}{Linked(reference)} [resource {reference.Id}; "

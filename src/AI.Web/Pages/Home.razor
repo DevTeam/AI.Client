@@ -636,7 +636,14 @@
                             }
                             else
                             {
-                                <span class="resource-pill-target mention-@resource.Kind.ToString().ToLowerInvariant()"><span class="resource-pill-label">@DraftChipLabel(resource)</span></span>
+                                <span class="resource-pill-target mention-@resource.Kind.ToString().ToLowerInvariant() @(resource.IncludeContent ? "has-content" : null)"><span class="resource-pill-label">@DraftChipLabel(resource)</span></span>
+                            }
+                            @if (CanSendContent(resource))
+                            {
+                                <button class="resource-pill-content" type="button" aria-pressed="@(resource.IncludeContent ? "true" : "false")"
+                                        aria-label="Send the content of @DraftChipLabel(resource)"
+                                        title="@(resource.IncludeContent ? "Sends its content as it is when you send · click to send only the path" : "Sends only the path · click to send its content as well")"
+                                        @onclick="() => SetDraftIncludeContent(resource.Id, !resource.IncludeContent)"><AppIcon Name="file-text" /></button>
                             }
                             <button class="resource-pill-remove" type="button" aria-label="Remove @DraftChipTitle(resource)" title="Remove reference" @onclick="() => RemoveDraftResource(resource.Id)"><AppIcon Name="x" /></button>
                         </span>
@@ -649,11 +656,24 @@
             }
             else if (IsMentionListOpen())
             {
-                <ResourceMentionMenu Items="_mentionItems" SelectedIndex="_mentionIndex" OnPick="PickMentionSuggestionAsync" OnHover="HoverMentionSuggestion" />
+                <ResourceMentionMenu Items="_mentionItems" SelectedIndex="_mentionIndex" OnPick="PickMentionSuggestionAsync" OnPickContent="PickMentionContentAsync" OnHover="HoverMentionSuggestion" />
             }
             @* chatComposer.js draws the draft's "@" links as pills under the text; nothing here renders into it. *@
             <div @attributes="@(ControlHints.Attributes("chat.composer"))" class="composer-input">
                 <div class="composer-mention-highlight" aria-hidden="true" hidden></div>
+                @if (GetMentionBubbleResource() is { } bubbled)
+                {
+                    @* Placed over the link by chatComposer.js; pressed on mousedown so the caret stays in the text. *@
+                    <div class="composer-mention-bubble" role="group" aria-label="How @ResourceDisplayName(bubbled.Path) is sent">
+                        <span class="composer-mention-bubble-modes">
+                            <button type="button" aria-pressed="@(bubbled.IncludeContent ? "false" : "true")" title="Send the path; the model reads the file when it needs it"
+                                    @onmousedown="() => SetDraftIncludeContent(bubbled.Id, false)" @onmousedown:preventDefault><AppIcon Name="link" />Path</button>
+                            <button type="button" aria-pressed="@(bubbled.IncludeContent ? "true" : "false")" title="Send the file's content as it is when you send the message"
+                                    @onmousedown="() => SetDraftIncludeContent(bubbled.Id, true)" @onmousedown:preventDefault><AppIcon Name="file-text" />Content</button>
+                        </span>
+                        <span class="composer-mention-bubble-hint">@(bubbled.IncludeContent ? "Sent as it is when you send" : "Read by the model when needed")</span>
+                    </div>
+                }
                 <div class="composer-suggestion" hidden><span class="composer-suggestion-text"></span><button class="composer-suggestion-accept" type="button" tabindex="-1" title="Use this reply (Tab) · Esc hides it">Tab</button></div>
                 <textarea @ref="_composer" value="@_chat.Message" @oninput="OnComposerInput" @onkeydown="HandleComposerKeyDown" placeholder="@GetComposerPlaceholder()" aria-label="Message"
                           aria-controls="@(IsSkillListOpen() ? "skill-command-menu" : IsMentionListOpen() ? "resource-mention-menu" : null)"
@@ -1247,6 +1267,8 @@ else if (_guideInvitation is { } guideInvitation)
     private bool? _mentionListPushed;
     private string? _mentionTokensPushed;
     private bool _scrollMention;
+    // The draft's file link the caret is in, whose path-or-content switch shows over it.
+    private Guid? _mentionBubbleId;
     // The draft reply last handed to chatComposer.js; null until the current handle has one.
     private string? _replySuggestionPushed;
     private IReadOnlyList<ResourceSuggestion> _mentionFiles = [];
@@ -1839,13 +1861,14 @@ else if (_guideInvitation is { } guideInvitation)
 
         // The "@" links the draft holds, for the composer to draw under its text.
         var mentionTokens = _draftResources.Select(item => item.Mention).OfType<string>().ToArray();
-        var mentionTokensKey = string.Join('\n', mentionTokens);
+        var contentTokens = _draftResources.Where(item => item.IncludeContent).Select(item => item.Mention).OfType<string>().ToArray();
+        var mentionTokensKey = string.Join('\n', mentionTokens) + "\0" + string.Join('\n', contentTokens);
         if (_composerHandle is not null && mentionTokensKey != _mentionTokensPushed)
         {
             var handle = _composerHandle;
             try
             {
-                await handle.InvokeVoidAsync("setMentionTokens", [mentionTokens]);
+                await handle.InvokeVoidAsync("setMentionTokens", mentionTokens, contentTokens);
                 _mentionTokensPushed = mentionTokensKey;
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException)
@@ -5500,9 +5523,18 @@ else if (_guideInvitation is { } guideInvitation)
     public async Task OnComposerCaret(string text, int caret)
     {
         var mention = _selectedProject is null ? null : MentionMatcher.GetMention(text, caret);
+        // The caret in a link already made shows how its file is sent, not the list it came from.
+        var bubble = mention is null ? null : MentionBubbleTarget(text, mention);
+        var bubbleChanged = bubble?.Id != _mentionBubbleId;
+        _mentionBubbleId = bubble?.Id;
+        if (bubble is not null) mention = null;
         if (mention is null)
         {
-            if (_mention is null && _mentionDismissedAt is null) return;
+            if (_mention is null && _mentionDismissedAt is null)
+            {
+                if (bubbleChanged) await InvokeAsync(StateHasChanged);
+                return;
+            }
             CloseMention();
             await InvokeAsync(StateHasChanged);
             return;
@@ -5514,6 +5546,30 @@ else if (_guideInvitation is { } guideInvitation)
         RecomputeMentionItems();
         if (NeedsFileSearch(mention) && _mentionFilesQuery != mention.Filter) _ = SearchMentionFilesAsync(mention.Filter);
         await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>The draft's file link the "@" word is, whole: a file whose path or content the switch chooses.</summary>
+    private ChatResource? MentionBubbleTarget(string text, AI.Web.Resources.ResourceMention mention)
+    {
+        var word = text[mention.Start..Math.Min(mention.End, text.Length)];
+        return _draftResources.FirstOrDefault(item => item.Mention == word && CanSendContent(item));
+    }
+
+    private static bool CanSendContent(ChatResource resource) =>
+        resource is { Kind: ChatResourceKind.File, Lines: null, AssetId: null };
+
+    private ChatResource? GetMentionBubbleResource() => _mentionBubbleId is { } id && !IsMentionListOpen() && !IsSkillListOpen()
+        ? _draftResources.FirstOrDefault(item => item.Id == id && item.Mention is not null
+            && _chat.Message.Contains(item.Mention, StringComparison.Ordinal))
+        : null;
+
+    /// <summary>Path only, or the file's content as well: switched on a draft's link or pill.</summary>
+    private void SetDraftIncludeContent(Guid id, bool includeContent)
+    {
+        var index = _draftResources.FindIndex(item => item.Id == id);
+        if (index < 0 || !CanSendContent(_draftResources[index])) return;
+        _draftResources[index] = _draftResources[index] with { IncludeContent = includeContent };
+        _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
     }
 
     private bool IsMentionListOpen() => _mention is { } mention && _mentionItems.Count > 0
@@ -5647,26 +5703,31 @@ else if (_guideInvitation is { } guideInvitation)
     /// takes the typed word out of the message. Returns the composer's new text and caret.
     /// </summary>
     [JSInvokable]
-    public async Task<AI.Web.Composer.ComposerTextEdit?> AcceptMentionSuggestion(string text, int caret, bool openDirectory)
+    public async Task<AI.Web.Composer.ComposerTextEdit?> AcceptMentionSuggestion(string text, int caret, bool openDirectory,
+        bool includeContent)
     {
         if (!IsMentionListOpen()) return null;
         var item = _mentionItems[Math.Clamp(_mentionIndex, 0, _mentionItems.Count - 1)];
-        var edit = await AcceptMentionAsync(item, text, caret, openDirectory);
+        var edit = await AcceptMentionAsync(item, text, caret, openDirectory, includeContent);
         await InvokeAsync(StateHasChanged);
         return edit;
     }
 
-    private async Task PickMentionSuggestionAsync(int index)
+    private Task PickMentionSuggestionAsync(int index) => PickMentionAsync(index, includeContent: false);
+
+    private Task PickMentionContentAsync(int index) => PickMentionAsync(index, includeContent: true);
+
+    private async Task PickMentionAsync(int index, bool includeContent)
     {
         if (index < 0 || index >= _mentionItems.Count || _mention is not { } mention) return;
-        var edit = await AcceptMentionAsync(_mentionItems[index], _chat.Message, mention.End, openDirectory: false);
+        var edit = await AcceptMentionAsync(_mentionItems[index], _chat.Message, mention.End, openDirectory: false, includeContent);
         if (_composerHandle is not null && edit is not null) await _composerHandle.InvokeVoidAsync("setText", edit.Text, edit.Caret);
     }
 
     private void HoverMentionSuggestion(int index) => _mentionIndex = index;
 
     private async Task<AI.Web.Composer.ComposerTextEdit?> AcceptMentionAsync(AI.Web.Resources.ResourceMentionItem item,
-        string text, int caret, bool openDirectory)
+        string text, int caret, bool openDirectory, bool includeContent)
     {
         if (MentionMatcher.GetMention(text, caret) is not { } mention) return null;
         if (openDirectory && item is { Kind: ChatResourceKind.Directory, Action: AI.Web.Resources.ResourceMentionAction.Attach })
@@ -5696,7 +5757,8 @@ else if (_guideInvitation is { } guideInvitation)
             return removed;
         }
         var result = InsertMention(before, after, item.Token);
-        await AttachMentionAsync(item);
+        // Shift+Enter on a row that is only ever a path, a directory or lines, adds it as Enter does.
+        await AttachMentionAsync(item, includeContent && ResourceMentionMenu.CanSendContent(item));
         return result;
     }
 
@@ -5782,11 +5844,11 @@ else if (_guideInvitation is { } guideInvitation)
     /// The reference behind an "@" link: what the "+" menu would add for the row, remembered with
     /// the link's text. A second link to the same thing takes the reference over.
     /// </summary>
-    private async Task AttachMentionAsync(AI.Web.Resources.ResourceMentionItem item)
+    private async Task AttachMentionAsync(AI.Web.Resources.ResourceMentionItem item, bool includeContent)
     {
         if (item.Kind is ChatResourceKind.File or ChatResourceKind.Directory)
         {
-            await AddDraftResourceAsync([item.Kind], item.Value, lines: item.Lines, mention: item.Token);
+            await AddDraftResourceAsync([item.Kind], item.Value, lines: item.Lines, mention: item.Token, includeContent: includeContent);
             return;
         }
         ChatResource reference;
@@ -5827,6 +5889,7 @@ else if (_guideInvitation is { } guideInvitation)
         ChatResourceKind.File when resource.AssetId is not null => $"File: {resource.Name ?? resource.Path}",
         ChatResourceKind.Review => ReviewName(resource),
         ChatResourceKind.File when resource.Lines is { } lines => $"{resource.Path}, lines {LineRangeText(lines)}",
+        ChatResourceKind.File when resource.IncludeContent => $"{resource.Path}\nWith its content, captured when the message is sent",
         ChatResourceKind.Diff => $"Uncommitted changes in {resource.Path}, captured when the message is sent",
         ChatResourceKind.Chat => $"Chat “{resource.Name ?? resource.Path}”",
         ChatResourceKind.Project => $"Project “{resource.Name ?? resource.Path}”",
@@ -6431,7 +6494,7 @@ else if (_guideInvitation is { } guideInvitation)
     /// tried in turn and the first the Host accepts wins; when none is, the first refusal is shown.
     /// </summary>
     private async Task AddDraftResourceAsync(IReadOnlyList<ChatResourceKind> kinds, string path, bool notifyErrors = true,
-        ChatLineRange? lines = null, string? mention = null)
+        ChatLineRange? lines = null, string? mention = null, bool includeContent = false)
     {
         if (_selectedProject is null) return;
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -6441,7 +6504,11 @@ else if (_guideInvitation is { } guideInvitation)
             // One reference per path: a newer link to it, or to other lines of it, takes it over.
             if (mention is not null)
             {
-                _draftResources[existing] = _draftResources[existing] with { Lines = lines, Mention = mention };
+                _draftResources[existing] = _draftResources[existing] with
+                {
+                    Lines = lines, Mention = mention,
+                    IncludeContent = includeContent && lines is null && _draftResources[existing].Kind == ChatResourceKind.File
+                };
                 _resourceDrafts[GetComposerDraftKey()] = _draftResources.ToArray();
             }
             return;
@@ -6474,7 +6541,11 @@ else if (_guideInvitation is { } guideInvitation)
             if (_selectedProject?.Id != projectId || GetComposerDraftKey() != draftKey) return;
             if (_draftResources.Any(item => item.Kind == resource.Kind && string.Equals(item.Path, resource.Path,
                     OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))) return;
-            _draftResources.Add(resource with { Lines = resource.Kind == ChatResourceKind.File ? lines : null, Mention = mention });
+            _draftResources.Add(resource with
+            {
+                Lines = resource.Kind == ChatResourceKind.File ? lines : null, Mention = mention,
+                IncludeContent = includeContent && lines is null && resource.Kind == ChatResourceKind.File
+            });
             _resourceDrafts[draftKey] = _draftResources.ToArray();
             await WorkspaceStateService.SetLastBrowsedDirectoryAsync(resource.Kind == ChatResourceKind.Directory
                 ? resource.Path : Path.GetDirectoryName(resource.Path) ?? resource.Path);

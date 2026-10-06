@@ -21,6 +21,9 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
         [ChatResourceKind.Review, ChatResourceKind.Skill, ChatResourceKind.Chat, ChatResourceKind.Project,
             ChatResourceKind.Diff, ChatResourceKind.Image];
 
+    /// <summary>The most a workspace file sent with its content may hold: as much as an uploaded one.</summary>
+    private const int ContentLimit = 15 * 1024 * 1024;
+
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
@@ -168,8 +171,10 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
         {
             // What the client sent is never kept: the excerpt is read here, from the file as it is now.
             byId[file.Id] = file.Lines is { } lines && file.Kind == ChatResourceKind.File
-                ? file with { Excerpt = await ReadExcerptAsync(file.Path, lines, cancellationToken) }
-                : file with { Lines = null, Excerpt = null };
+                ? file with { Excerpt = await ReadExcerptAsync(file.Path, lines, cancellationToken), IncludeContent = false }
+                : file is { IncludeContent: true, Kind: ChatResourceKind.File }
+                    ? await CaptureContentAsync(projectId, file, cancellationToken)
+                    : file with { Lines = null, Excerpt = null, IncludeContent = false };
         }
         return references.Select(item => byId[item.Id]).ToArray();
     }
@@ -228,6 +233,35 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
             ? given : Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar));
         return new ChatResource(reference.Id, ChatResourceKind.Diff, path, name, Excerpt: diffs.ReadDiff(path),
             Mention: reference.Mention);
+    }
+
+    /// <summary>
+    /// A workspace file sent with its content: the file as it is now, kept as an asset of the
+    /// message like an uploaded one, with its path. An empty file has nothing to send but its path.
+    /// </summary>
+    private async Task<ChatResource> CaptureContentAsync(Guid projectId, ChatResource file, CancellationToken cancellationToken)
+    {
+        byte[] data;
+        try
+        {
+            data = await excerpts.ReadAllAsync(file.Path, ContentLimit, cancellationToken);
+        }
+        catch (InvalidDataException error)
+        {
+            throw new InvalidOperationException($"{error.Message} Send it as a path instead.");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"Could not read {file.Path}: {error.Message}");
+        }
+        if (data.Length == 0) return file with { Lines = null, Excerpt = null, IncludeContent = false };
+        var stored = await assets.StoreAsync(projectId, data, Path.GetFileName(file.Path), ChatResourceSource.Workspace,
+            file.Path, cancellationToken);
+        return file with
+        {
+            Kind = stored.Kind, Name = stored.Name, Lines = null, Excerpt = null, Source = ChatResourceSource.Workspace,
+            AssetId = stored.AssetId, MediaType = stored.MediaType, Size = stored.Size, IncludeContent = false
+        };
     }
 
     private async Task<string> ReadExcerptAsync(string path, ChatLineRange lines, CancellationToken cancellationToken)

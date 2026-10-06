@@ -80,12 +80,13 @@ public sealed class ChatToolRiskAssessSkill(
         if (connection is null) return new("Failed", "No enabled model connection is available.", chatId);
 
         var parameters = invocation.Parameters;
+        var userRequest = LatestUserRequest(chat, branchId);
         var conversation = new List<ChatCompletionMessage>
         {
             new("system", SkillMarkdown.Body(skill.Content)),
             new("user", JsonSerializer.Serialize(new
             {
-                user_request = LatestUserRequest(chat, branchId) is { } intent ? Clip(intent, 4_000) : null,
+                user_request = userRequest is { } intent ? Clip(intent, 4_000) : null,
                 project_directories = project?.DirectoryGrants.Select(grant => new
                 {
                     path = grant.CanonicalRoot,
@@ -108,8 +109,11 @@ public sealed class ChatToolRiskAssessSkill(
         await foreach (var chunk in completion.StreamAsync(request, token)) content.Append(chunk.Content);
         if (Parse(content.ToString()) is not { } verdict)
             return new("Failed", "The model returned no usable assessment.", chatId);
+        var reason = verdict.Reason;
+        if (reason is not null && ContainsHan(reason) && (userRequest is null || !ContainsHan(userRequest)))
+            reason = "Review this tool call and its arguments before allowing it.";
         return new("Completed", $"Assessed the call: {verdict.Decision}.", chatId,
-            Output: JsonSerializer.SerializeToElement(new { decision = verdict.Decision, risk = verdict.Risk, reason = verdict.Reason }));
+            Output: JsonSerializer.SerializeToElement(new { decision = verdict.Decision, risk = verdict.Risk, reason }));
     }
 
     /// <summary>What the person asked for last on this branch: the intent a call has to serve to be "plainly asked for".</summary>
@@ -170,4 +174,11 @@ public sealed class ChatToolRiskAssessSkill(
     }
 
     private static string Clip(string text, int length) => text.Length <= length ? text : text[..length] + "…";
+
+    private static bool ContainsHan(string text)
+    {
+        foreach (var rune in text.EnumerateRunes())
+            if (rune.Value is >= 0x3400 and <= 0x9FFF or >= 0x20000 and <= 0x2EBEF) return true;
+        return false;
+    }
 }

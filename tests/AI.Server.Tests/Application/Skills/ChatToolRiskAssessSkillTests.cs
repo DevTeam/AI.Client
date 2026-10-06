@@ -66,6 +66,26 @@ public class ChatToolRiskAssessSkillTests
         result.ShouldBe(ToolAutoApproval.Ask);
     }
 
+    [Fact]
+    public async Task ShouldReplaceAChineseReasonForARussianRequest()
+    {
+        var result = await CreateApprover("""{"decision":"ask","risk":"medium","reason":"请检查脚本参数。"}""",
+                "Исправь ошибку в приложении.")
+            .DecideAsync(_projectId, _chatId, _chatId, Tool(), "{}", TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new ToolAutoApproval(false, "Review this tool call and its arguments before allowing it."));
+    }
+
+    [Fact]
+    public async Task ShouldPreserveAChineseReasonForAChineseRequest()
+    {
+        var result = await CreateApprover("""{"decision":"ask","risk":"medium","reason":"请检查脚本参数。"}""",
+                "请检查这个脚本。")
+            .DecideAsync(_projectId, _chatId, _chatId, Tool(), "{}", TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new ToolAutoApproval(false, "请检查脚本参数。"));
+    }
+
     [Theory]
     [InlineData(ToolApprovalMode.Ask)]
     [InlineData(ToolApprovalMode.Auto)]
@@ -116,13 +136,13 @@ public class ChatToolRiskAssessSkillTests
             Guid.CreateVersion7(), "read_file", "hash");
     }
 
-    private ToolAutoApprover CreateApprover(string answer)
+    private ToolAutoApprover CreateApprover(string answer, string userRequest = "Fix the empty list case")
     {
         var now = DateTimeOffset.UtcNow;
         var chats = new Mock<IChatService>(MockBehavior.Strict);
         chats.Setup(item => item.GetAsync(_projectId, _chatId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new ChatDetails(_chatId, _projectId, "Fix", now, now, 3, _connectionId,
-                [new ChatMessageView(_questionId, null, "User", "Fix the empty list case", now)],
+                [new ChatMessageView(_questionId, null, "User", userRequest, now)],
                 [new ChatBranchView(_chatId, _questionId, "Main")], ApprovalMode: _mode));
         var projects = new Mock<IProjectService>(MockBehavior.Strict);
         projects.Setup(item => item.GetAsync(_projectId, It.IsAny<CancellationToken>()))

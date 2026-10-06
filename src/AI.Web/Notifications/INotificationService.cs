@@ -21,6 +21,8 @@ public interface INotificationService
 
     void MarkSeen(Guid id);
 
+    void MarkChatBranchSeen(Guid chatId, Guid branchId);
+
     void ResolveChatAttention(Guid chatId, Guid branchId);
 
     /// <summary>Raised when the visible notification changes. Subscribers re-render in response.</summary>

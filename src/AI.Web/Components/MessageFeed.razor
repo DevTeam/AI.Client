@@ -627,6 +627,7 @@
     [Parameter] public EventCallback OnRebaseRun { get; set; }
     [Parameter] public EventCallback OnDiscardRun { get; set; }
     [Parameter] public EventCallback<bool> OnCurrentTurnSummaryVisibilityChanged { get; set; }
+    [Parameter] public EventCallback OnReachedBottom { get; set; }
 
     private readonly record struct TurnState(string Kind, string Icon, string Text, bool CanResume, bool CanRebase);
 
@@ -1127,6 +1128,13 @@
         StateHasChanged();
     }
 
+    public async Task<bool> IsAtBottomAsync()
+    {
+        if (_disposed || _messageScrollHandle is not { } handle) return false;
+        try { return await handle.InvokeAsync<bool>("isAtBottom"); }
+        catch (Exception error) when (error is JSException or ObjectDisposedException) { return false; }
+    }
+
     private async Task JumpToBottomAsync()
     {
         if (_disposed || _messageScrollHandle is not { } handle) return;
@@ -1137,13 +1145,14 @@
 
     /// <summary>Called from messageScroll.js whenever the user enters or leaves the bottom.</summary>
     [JSInvokable]
-    public void OnPinnedChanged(bool pinned)
+    public async Task OnPinnedChanged(bool pinned)
     {
         if (_pinned == pinned) return;
         _pinned = pinned;
         // Back at the bottom means everything below has been seen, whatever put them there.
         if (pinned) _newBelow = false;
         StateHasChanged();
+        if (pinned) await OnReachedBottom.InvokeAsync();
     }
 
     private void ClearNewBelow()

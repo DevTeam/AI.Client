@@ -138,6 +138,37 @@ public class NotificationServiceTests
     }
 
     [Fact]
+    public async Task ReadingBranchMarksOnlyItsNotificationsAndPersists()
+    {
+        var js = new StorageJsRuntime();
+        var projectId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var branchId = Guid.NewGuid();
+        var otherBranchId = Guid.NewGuid();
+        using (var service = CreateService(js))
+        {
+            await service.InitializeAsync();
+            service.ShowChatEvent("Reply ready", NotificationKind.Success, projectId, chatId, branchId);
+            service.ShowChatEvent("Tool approval needed", NotificationKind.Info, projectId, chatId, branchId, requiresAction: true);
+            service.ShowChatEvent("Other branch", NotificationKind.Info, projectId, chatId, otherBranchId);
+            service.ShowChatEvent("Other chat", NotificationKind.Info, projectId, Guid.NewGuid(), branchId);
+
+            service.MarkChatBranchSeen(chatId, branchId);
+
+            service.UnreadCount.ShouldBe(2);
+            service.History.Where(item => item.ChatId == chatId && item.BranchId == branchId)
+                .ShouldAllBe(item => item.IsSeen && !item.IsResolved);
+            service.MarkChatBranchSeen(chatId, branchId);
+            service.UnreadCount.ShouldBe(2);
+        }
+
+        using var restored = CreateService(js);
+        await restored.InitializeAsync();
+        restored.UnreadCount.ShouldBe(2);
+        restored.History.Count(item => item.IsSeen).ShouldBe(2);
+    }
+
+    [Fact]
     public async Task DesktopBadgeFollowsUnreadChangesWithoutCountingGenericToasts()
     {
         var js = new StorageJsRuntime();

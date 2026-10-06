@@ -8,11 +8,11 @@ public sealed class WorkspaceLayoutService(IJSRuntime jsRuntime) : IWorkspaceLay
     private IJSObjectReference? _module;
     private IJSObjectReference? _handle;
 
-    public async Task AttachAsync<TCallbacks>(ElementReference workspace, DotNetObjectReference<TCallbacks> callbacks)
+    public async Task AttachAsync<TCallbacks>(ElementReference workspace, DotNetObjectReference<TCallbacks> callbacks, WorkspacePanels? panels)
         where TCallbacks : class
     {
         _module = await jsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/workspaceLayout.js");
-        _handle = await _module.InvokeAsync<IJSObjectReference>("attach", workspace, callbacks);
+        _handle = await _module.InvokeAsync<IJSObjectReference>("attach", workspace, callbacks, panels);
     }
 
     public Task ForwardContextMenuAsync(double clientX, double clientY, string backdropSelector) =>

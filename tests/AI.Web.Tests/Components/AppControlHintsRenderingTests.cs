@@ -98,6 +98,7 @@ public sealed class AppControlHintsRenderingTests
             .AddSingleton(Mock.Of<AI.Web.IHostConnection>())
             .AddSingleton(Mock.Of<ISettingsTransferCodec>())
             .AddSingleton(Mock.Of<ISettingsImportPlanner>())
+            .AddSingleton<ISettingsListFilter, SettingsListFilter>()
             .AddSingleton(Mock.Of<IJSRuntime>())
             .AddSingleton(Mock.Of<IUpdateClient>())
             .AddSingleton(Mock.Of<IComposerContextPresentation>())

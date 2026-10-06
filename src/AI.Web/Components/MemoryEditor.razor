@@ -2,27 +2,33 @@
 @using AI.Web.Memory
 @inject IMemoryApi MemoryApi
 @inject INotificationService Notifications
+@inject ISettingsListFilter ListFilter
 
 @* One editor for both catalogs: the person's own and one project's. Like Connections and MCP it
    keeps every edit locally and writes them all when the drawer closes. *@
 <div class="global-editor-layout memory-editor">
     <div class="settings-list-column">
+        <SettingsFilterField @bind-Value="_filter" Placeholder="Filter memory" Shown="@Shown.Count" Total="@_items.Count" Submitted="SelectFirstShown" />
         <nav class="settings-list" aria-label="Memory entries">
             @if (_loaded && _items.Count == 0)
             {
                 <p class="empty-hint">@(ProjectId is null ? "Nothing about you yet." : "Nothing about this project yet.")</p>
             }
+            else if (_items.Count > 0 && Shown.Count == 0)
+            {
+                <p class="empty-hint">No entries match “@_filter.Trim()”.</p>
+            }
             @foreach (var kind in Kinds)
             {
-                var group = Group(kind.Value);
-                if (group.Count == 0) continue;
+                var group = Group(kind.Value).Where(IsShown).ToArray();
+                if (group.Length == 0) continue;
                 <div class="memory-group-label">@kind.Group</div>
                 @foreach (var item in group)
                 {
                     <div class="settings-list-item @(item.Key == _selectedKey ? "selected" : string.Empty) @(item.Enabled ? string.Empty : "memory-disabled")">
                         <button class="settings-list-select" type="button" @onclick="() => _selectedKey = item.Key">
-                            <span>@if (item.Pinned) { <AppIcon Name="pin" /> }@(string.IsNullOrWhiteSpace(item.Title) ? "New entry" : item.Title)</span>
-                            <small>@Summary(item)</small>
+                            <span>@if (item.Pinned) { <AppIcon Name="pin" /> }<SettingsFilterText Text="@(string.IsNullOrWhiteSpace(item.Title) ? "New entry" : item.Title)" Query="@_filter" /></span>
+                            <small><SettingsFilterText Text="@Summary(item)" Query="@_filter" /></small>
                         </button>
                         @if (item.Key == _selectedKey)
                         {
@@ -102,6 +108,7 @@
     private Guid? _selectedKey;
     private bool _loaded;
     private string? _error;
+    private string _filter = string.Empty;
 
     private Item? Selected => _items.FirstOrDefault(item => item.Key == _selectedKey);
 
@@ -193,8 +200,17 @@
         .OrderByDescending(item => item.Pinned).ThenBy(item => item.Stored is null)
         .ThenBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase).ToArray();
 
+    /// <summary>The rows the filter keeps, in the order the list shows them.</summary>
+    private IReadOnlyList<Item> Shown => Kinds.SelectMany(kind => Group(kind.Value)).Where(IsShown).ToArray();
+
+    private bool IsShown(Item item) => ListFilter.Matches(_filter, item.Title, item.Body);
+
+    private void SelectFirstShown() => _selectedKey = Shown.FirstOrDefault()?.Key ?? _selectedKey;
+
     private async Task Add()
     {
+        // A new entry has no title yet, so no filter would keep it.
+        _filter = string.Empty;
         var kind = Selected?.Kind ?? (ProjectId is null ? MemoryKind.Profile : MemoryKind.Fact);
         var item = new Item(null) { Kind = kind };
         _items.Add(item);

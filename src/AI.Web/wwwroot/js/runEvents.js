@@ -119,8 +119,16 @@ export function watchFocus(dotNetReference) {
 
 export function watchEscape(dotNetReference) {
     const locallyHandled = ".search-drawer-input, .sidebar-inline-editor, .queue-item input, .message-branch-indicator, .message-review-editor, .message-review-toggle, .message-review-comments, .review-comment-editor, .settings-transfer-modal";
+    // A settings list filter with a query spends Escape on clearing it. Blazor WebAssembly clears it
+    // inside the same key event, before this document listener runs, so whether it had a query is
+    // read in the capture phase, ahead of every handler.
+    let clearsFilter = false;
+    const capture = event => {
+        clearsFilter = event.key === "Escape" && event.target instanceof HTMLInputElement
+            && event.target.matches(".settings-filter-input") && event.target.value !== "";
+    };
     const handler = event => {
-        if (event.key !== "Escape" || event.repeat || event.defaultPrevented) return;
+        if (event.key !== "Escape" || event.repeat || event.defaultPrevented || clearsFilter) return;
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest(locallyHandled)) return;
         // Settings drawers save on close, and a field commits its value on change, which only
@@ -128,8 +136,14 @@ export function watchEscape(dotNetReference) {
         if (target?.closest(".permissions-drawer") && document.activeElement instanceof HTMLElement) document.activeElement.blur();
         void dotNetReference.invokeMethodAsync("OnEscapePressed");
     };
+    window.addEventListener("keydown", capture, true);
     document.addEventListener("keydown", handler);
-    return { dispose: () => document.removeEventListener("keydown", handler) };
+    return {
+        dispose: () => {
+            window.removeEventListener("keydown", capture, true);
+            document.removeEventListener("keydown", handler);
+        }
+    };
 }
 
 export function showReviewSubmenu(triggerId, popupId) {

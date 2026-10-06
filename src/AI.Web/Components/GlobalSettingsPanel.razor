@@ -13,6 +13,7 @@
 @inject ISettingsTransferCodec TransferCodec
 @inject ISettingsImportPlanner ImportPlanner
 @inject IJSRuntime JsRuntime
+@inject ISettingsListFilter ListFilter
 @implements IAsyncDisposable
 
 <div class="permissions-drawer-backdrop"></div>
@@ -181,7 +182,8 @@
                 {
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
-                            <nav class="settings-list">@foreach (var connectionItem in _connections) { <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span>@connectionItem.Name</span><small>@ConnectionStatus(connectionItem)</small></button>@if (connectionItem.Id == _selectedConnectionId) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without the key)" aria-label="Copy connection as JSON" @onclick="() => CopyConnectionAsync(connectionItem)"><AppIcon Name="copy" /></button><button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button></span> }</div> }</nav>
+                            <SettingsFilterField @bind-Value="_connectionFilter" Placeholder="Filter connections" Shown="@ShownConnections.Count" Total="@_connections.Count" Submitted="() => SelectFirst(ShownConnections.Select(item => item.Id), SelectConnection)" />
+                            <nav class="settings-list">@if (_connections.Count > 0 && ShownConnections.Count == 0) { <p class="empty-hint">No connections match “@_connectionFilter.Trim()”.</p> }@foreach (var connectionItem in ShownConnections) { <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span><SettingsFilterText Text="@connectionItem.Name" Query="@_connectionFilter" /></span><small><SettingsFilterText Text="@ConnectionStatus(connectionItem)" Query="@_connectionFilter" /></small></button>@if (connectionItem.Id == _selectedConnectionId) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without the key)" aria-label="Copy connection as JSON" @onclick="() => CopyConnectionAsync(connectionItem)"><AppIcon Name="copy" /></button><button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button></span> }</div> }</nav>
                             <button @attributes="@(ControlHints.Attributes("settings.connections.add", "Add connection"))" class="icon-action settings-list-add" type="button" aria-label="Add connection" @onclick="AddConnection"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedConnection() is { } connection)
@@ -267,7 +269,8 @@
                 {
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
-                            <nav class="settings-list">@foreach (var serverItem in _globalMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectMcpServer(serverItem.Id)"><span>@serverItem.Name</span><small>@McpServerStatus(serverItem)</small></button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without secrets)" aria-label="Copy MCP server as JSON" @onclick="() => CopyMcpServerAsync(serverItem)"><AppIcon Name="copy" /></button>@if (serverItem.Id != CSharpMcpServer.Id) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</span> }</div> }</nav>
+                            <SettingsFilterField @bind-Value="_mcpFilter" Placeholder="Filter servers and tools" Shown="@ShownMcpServers.Count" Total="@_globalMcpServers.Count" Hotkey="@(_mcpTab != McpTab.Tools || GetSelectedMcpServer() is null)" Submitted="() => SelectFirst(ShownMcpServers.Select(item => item.Id), SelectFilteredMcpServer)" />
+                            <nav class="settings-list">@if (_globalMcpServers.Count > 0 && ShownMcpServers.Count == 0) { <p class="empty-hint">No servers or tools match “@_mcpFilter.Trim()”.</p> }@foreach (var serverItem in ShownMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectFilteredMcpServer(serverItem.Id)"><span><SettingsFilterText Text="@serverItem.Name" Query="@_mcpFilter" /></span><small>@if (MatchingToolCount(serverItem) is > 0 and var toolMatches) { <span class="settings-filter-tools">@Plural(toolMatches, "matching tool")</span> } else { <SettingsFilterText Text="@McpServerStatus(serverItem)" Query="@_mcpFilter" /> }</small></button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without secrets)" aria-label="Copy MCP server as JSON" @onclick="() => CopyMcpServerAsync(serverItem)"><AppIcon Name="copy" /></button>@if (serverItem.Id != CSharpMcpServer.Id) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</span> }</div> }</nav>
                             <button class="icon-action settings-list-add" type="button" title="Add MCP server" aria-label="Add MCP server" @onclick="AddGlobalMcpServer"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedMcpServer() is { } server)
@@ -319,10 +322,9 @@
                                 }
                                 else
                                 {
-                                    var shown = string.IsNullOrWhiteSpace(_toolFilter) ? tools
-                                        : tools.Where(item => item.Name.Contains(_toolFilter.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+                                    var shown = tools.Where(item => ListFilter.Matches(_toolFilter, item.Name)).ToList();
                                     <div class="settings-toolbar">
-                                        <input class="settings-search" type="search" placeholder="Filter tools" aria-label="Filter tools" value="@_toolFilter" @oninput="args => _toolFilter = args.Value?.ToString() ?? string.Empty" />
+                                        <SettingsFilterField @bind-Value="_toolFilter" Placeholder="Filter tools" Shown="@shown.Count" Total="@tools.Count" Submitted="() => _expandedTool = shown[0].Name" />
                                         <select class="settings-bulk" title="Change the global default for every tool currently shown by the filter" aria-label="Set every shown tool" value="" disabled="@(shown.Count == 0)" @key="_bulkKey" @onchange="args => SetToolDecisions(shown, args.Value?.ToString())">
                                             <option value="">Set all…</option><option>Ask</option><option>Allow</option><option>Deny</option>
                                         </select>
@@ -345,7 +347,7 @@
                                                 var expanded = _expandedTool == policy.Name;
                                                 <div class="settings-row mcp-tool-row">
                                                     <span class="settings-row-text">
-                                                        <span class="settings-row-label mcp-tool-title" title="@policy.SchemaHash">@policy.Name</span>
+                                                        <span class="settings-row-label mcp-tool-title" title="@policy.SchemaHash"><SettingsFilterText Text="@policy.Name" Query="@_toolFilter" /></span>
                                                         @if (ToolLimitsSummary(policy) is { } limitsSummary) { <span class="settings-row-hint">@limitsSummary</span> }
                                                     </span>
                                                     <select @attributes="@(ControlHints.Attributes("settings.tools.decision"))" class="mcp-tool-decision is-@policy.Decision.ToLowerInvariant()" @bind="policy.Decision" aria-label="Policy for @policy.Name"><option>Ask</option><option>Allow</option><option>Deny</option></select>
@@ -780,6 +782,7 @@
 
     private void AddConnection()
     {
+        _connectionFilter = string.Empty;
         var connection = new ConnectionEditor();
         _connections.Add(connection);
         _selectedConnectionId = connection.Id;
@@ -1083,6 +1086,41 @@
     private string? _expandedTool;
     private int _bulkKey;
 
+    // The list filters of Connections and MCP; Memory and Skills keep theirs in their editors.
+    private string _connectionFilter = string.Empty;
+    private string _mcpFilter = string.Empty;
+
+    private IReadOnlyList<ConnectionEditor> ShownConnections => _connections
+        .Where(item => ListFilter.Matches(_connectionFilter, item.Name, item.BaseUrl, item.Model, item.GoodFor, ConnectionStatus(item)))
+        .ToArray();
+
+    /// <summary>A server is kept by its own fields or, for "which server has read_file", by one of its tools.</summary>
+    private IReadOnlyList<GlobalMcpServerEditor> ShownMcpServers => _globalMcpServers
+        .Where(item => MatchesMcpServer(item) || MatchingToolCount(item) > 0)
+        .ToArray();
+
+    private bool MatchesMcpServer(GlobalMcpServerEditor server) =>
+        ListFilter.Matches(_mcpFilter, server.Name, server.Url, server.Command, McpServerStatus(server));
+
+    /// <summary>Tools that keep a server the filter would otherwise drop; zero when the server matches itself.</summary>
+    private int MatchingToolCount(GlobalMcpServerEditor server) =>
+        ListFilter.Words(_mcpFilter).Count == 0 || MatchesMcpServer(server) ? 0
+            : _toolPolicies.Count(item => item.ServerId == server.Id && ListFilter.Matches(_mcpFilter, item.Name));
+
+    private static void SelectFirst(IEnumerable<Guid> shown, Action<Guid> select)
+    {
+        foreach (var id in shown.Take(1)) select(id);
+    }
+
+    /// <summary>A server found by its tools opens on them, narrowed by the same words.</summary>
+    private void SelectFilteredMcpServer(Guid id)
+    {
+        SelectMcpServer(id);
+        if (_globalMcpServers.FirstOrDefault(item => item.Id == id) is not { } server || MatchingToolCount(server) == 0) return;
+        _mcpTab = McpTab.Tools;
+        _toolFilter = _mcpFilter.Trim();
+    }
+
     private void SelectMcpServer(Guid id)
     {
         if (_selectedMcpServerId == id) return;
@@ -1139,6 +1177,7 @@
 
     private void AddGlobalMcpServer()
     {
+        _mcpFilter = string.Empty;
         var server = new GlobalMcpServerEditor();
         _globalMcpServers.Add(server);
         _selectedMcpServerId = server.Id;

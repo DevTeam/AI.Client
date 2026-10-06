@@ -4,6 +4,7 @@ using System.Text.Json;
 using AI.Contracts.Skills;
 using AI.Web.Components;
 using AI.Web.Notifications;
+using AI.Web.Settings;
 using AI.Web.Skills;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -33,6 +34,7 @@ public sealed class SkillNavigationRenderingTests
         var notifications = new Mock<INotificationService>();
         await using var services = new ServiceCollection()
             .AddSingleton(api.Object).AddSingleton(notifications.Object)
+            .AddSingleton<ISettingsListFilter, SettingsListFilter>()
             .AddSingleton(Mock.Of<IJSRuntime>()).BuildServiceProvider();
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
         await renderer.Dispatcher.InvokeAsync(async () =>

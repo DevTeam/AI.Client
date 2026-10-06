@@ -99,28 +99,32 @@
     }
     else
     {
-        RenderFragment<ChatMessageView> renderBranchPicker = pickerMessage =>
+        // Folded: the fork point is a step of a collapsed turn, so the picker stands in for it
+        // under the turn's summary line.
+        RenderFragment<(ChatMessageView Message, bool Folded)> renderBranchPicker = picker =>
         @<text>
-                @if (GetBranchOptions(pickerMessage).Count > 1 || ForkSourceId == pickerMessage.Id)
+                @if (HasBranchPicker(picker.Message))
                 {
+                    var pickerMessage = picker.Message;
                     <div class="message-branch-indicator" @onkeydown="args => OnBranchPickerKeyDown.InvokeAsync(args)">
                         <span class="branch-connector" aria-hidden="true"></span>
                         @if (ForkSourceId == pickerMessage.Id)
                         {
-                            <span class="branch-pending" title="The branch will be created after you send its first message"><AppIcon Name="git-branch" /><span>New branch</span></span>
+                            <span class="branch-pending" title="@(picker.Folded ? "The branch starts inside this turn and will be created after you send its first message" : "The branch will be created after you send its first message")"><AppIcon Name="git-branch" /><span>New branch</span></span>
                         }
                         else
                         {
                             var options = GetBranchOptions(pickerMessage);
-                            <button @attributes="@(ControlHints.Attributes("chat.branches", "Choose branch"))" class="branch-picker-trigger" type="button" aria-label="Choose branch" aria-expanded="@(MessageBranchMenuId == pickerMessage.Id ? "true" : "false")" @onclick="() => OnToggleBranchMenu.InvokeAsync(pickerMessage.Id)"><AppIcon Name="git-branch" /><span>Branch @GetActiveBranchPosition(options) of @options.Count</span></button>
+                            <button @attributes="@(ControlHints.Attributes("chat.branches", picker.Folded ? "Branches start inside this turn · expand it to see where" : "Choose branch"))" class="branch-picker-trigger" type="button" aria-label="Choose branch" aria-expanded="@(MessageBranchMenuId == pickerMessage.Id ? "true" : "false")" @onclick="() => OnToggleBranchMenu.InvokeAsync(pickerMessage.Id)"><AppIcon Name="git-branch" /><span>Branch @GetActiveBranchPosition(options) of @options.Count</span></button>
                             @if (MessageBranchMenuId == pickerMessage.Id)
                             {
                                 <span class="branch-picker-menu" role="menu">
                                     @foreach (var option in options)
                                     {
-                                        var selected = IsMessageInActiveBranch(option.Id);
+                                        var selected = IsOptionActive(option);
+                                        var optionTitle = GetBranchOptionHint(option) ?? GetBranchOptionTitle(option);
                                         var optionStatusTooltip = GetOptionStatusTooltip(option);
-                                        <button class="@(selected ? "selected" : string.Empty)" type="button" role="menuitem" title="@(optionStatusTooltip is null ? GetBranchOptionTitle(option) : $"{GetBranchOptionTitle(option)} · {optionStatusTooltip}")" @onclick="() => OnSelectBranch.InvokeAsync(option.Id)">@if (selected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }<span class="status-dot @GetOptionStatusClass(option)"></span><span class="branch-option-label">@GetBranchOptionTitle(option)</span></button>
+                                        <button class="@(selected ? "selected" : string.Empty)" type="button" role="menuitemradio" aria-checked="@(selected ? "true" : "false")" title="@(optionStatusTooltip is null ? optionTitle : $"{optionTitle} · {optionStatusTooltip}")" @onclick="() => SelectBranchOptionAsync(option)">@if (selected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }<AppIcon Name="@GetBranchOptionIcon(option)" Class="@($"branch-option-icon {GetOptionStatusClass(option)}")" /><span class="branch-option-label">@GetBranchOptionTitle(option)</span>@if (option.EndsHere) { <span class="branch-option-tag">ends here</span> }</button>
                                     }
                                 </span>
                             }
@@ -204,6 +208,19 @@
                     @if (expanded && GetTurnUsage(turnId) is { } expandedUsage)
                     {
                         <TurnUsageDetails @key="usageKey" Turn="@expandedUsage" />
+                    }
+                    @* A branch leaving a folded step would vanish with it. Its picker stands in under
+                       the summary line, which is where the lines part: on the branch that left, the
+                       step is the last of the turn. Expanding puts it back under its own step. *@
+                    @if (!expanded && summary.IntermediateMessages.Where(HasBranchPicker).ToArray() is { Length: > 0 } foldedForks)
+                    {
+                        var forksKey = (turnId, "turn-forks");
+                        <div @key="forksKey" class="turn-forks">
+                            @foreach (var fork in foldedForks)
+                            {
+                                @renderBranchPicker((fork, true))
+                            }
+                        </div>
                     }
                 }
                 else if (entry.ChangesMessage is { WorkspaceChanges: { IsEmpty: false } collapsedChanges })
@@ -392,15 +409,15 @@
                             @if (message.Role == "User")
                             {
                                 <button class="icon-action" type="button" @attributes="@(ControlHints.Attributes("chat.edit_branch", "Edit and branch"))" aria-label="Edit and branch" @onclick="() => OnEditAndBranch.InvokeAsync(message)"><AppIcon Name="edit" /></button>
-                                <button class="icon-action" type="button" @attributes="@(ControlHints.Attributes("chat.fork", IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here"))" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
+                                <button class="icon-action" type="button" @attributes="@(ControlHints.Attributes("chat.fork", GetForkHint(message)))" aria-label="Fork from here" disabled="@IsForkSource(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
                                 <button class="icon-action destructive-action" type="button" title="Edit and replace branch…" aria-label="Edit and replace branch" @onclick="() => OnEditAndReplaceBranch.InvokeAsync(message)"><AppIcon Name="edit-replace" /></button>
                             }
                             else
                             {
-                                <button class="icon-action" type="button" @attributes="@(ControlHints.Attributes("chat.fork", IsActiveBranchLeaf(message) ? "This is already the end of the current branch" : "Fork from here"))" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
+                                <button class="icon-action" type="button" @attributes="@(ControlHints.Attributes("chat.fork", GetForkHint(message)))" aria-label="Fork from here" disabled="@IsForkSource(message)" @onclick="() => OnForkFromMessage.InvokeAsync(message)"><AppIcon Name="fork" /></button>
                             }
                         </div>
-                        @renderBranchPicker(message)
+                        @renderBranchPicker((message, false))
                     </article>
                     @* What a "@diff" captured, shown by a click on its link or its chip. *@
                     @foreach (var diff in (message.Resources ?? []).Where(resource => resource.Kind == ChatResourceKind.Diff && _shownSnapshots.Contains(resource.Id)))
@@ -453,9 +470,9 @@
                                            IsLive="@(IsBranchGenerating() && anchor.Id == BranchLeafId)" />
                         <div class="message-actions">
                             <button class="icon-action" type="button" title="Copy" aria-label="Copy" @onclick="() => OnCopyMessage.InvokeAsync(BuildToolGroupSummaryText(group))"><AppIcon Name="copy" /></button>
-                            <button class="icon-action" type="button" @attributes="@(ControlHints.Attributes("chat.fork", IsActiveBranchLeaf(anchor) ? "This is already the end of the current branch" : "Fork from here"))" aria-label="Fork from here" disabled="@IsActiveBranchLeaf(anchor)" @onclick="() => OnForkFromMessage.InvokeAsync(anchor)"><AppIcon Name="fork" /></button>
+                            <button class="icon-action" type="button" @attributes="@(ControlHints.Attributes("chat.fork", GetForkHint(anchor)))" aria-label="Fork from here" disabled="@IsForkSource(anchor)" @onclick="() => OnForkFromMessage.InvokeAsync(anchor)"><AppIcon Name="fork" /></button>
                         </div>
-                        @renderBranchPicker(anchor)
+                        @renderBranchPicker((anchor, false))
                     </article>
                     @if (entry.IsExpandedIntermediate)
                     {
@@ -633,6 +650,8 @@
     [Parameter] public EventCallback<ChatMessageView> OnEditAndReplaceBranch { get; set; }
     [Parameter] public EventCallback<Guid> OnToggleBranchMenu { get; set; }
     [Parameter] public EventCallback<Guid> OnSelectBranch { get; set; }
+    /// <summary>Shows the branch whose leaf is the given message.</summary>
+    [Parameter] public EventCallback<Guid> OnSelectBranchLeaf { get; set; }
     [Parameter] public EventCallback<KeyboardEventArgs> OnBranchPickerKeyDown { get; set; }
     [Parameter] public EventCallback OnResumeRun { get; set; }
     [Parameter] public EventCallback OnRebaseRun { get; set; }
@@ -1341,7 +1360,15 @@
     private IReadOnlyList<ChatMessageView> _branchCacheMessages = [];
     private HashSet<Guid> _branchCacheMessageIds = [];
     private Dictionary<Guid, List<ChatMessageView>> _branchCacheChildrenByParent = [];
+    private Dictionary<Guid, List<BranchOption>> _branchCacheOptions = [];
     private HashSet<Guid> _branchCacheForkPoints = [];
+
+    /// <summary>
+    /// One way on from a fork point: a message that continues the transcript, or, when a stored
+    /// branch stops at the fork point itself while another one goes on, that stopping branch.
+    /// <paramref name="Branch"/> is the stored branch the option shows, when the chat has one.
+    /// </summary>
+    private sealed record BranchOption(ChatMessageView Message, ChatBranchView? Branch, bool EndsHere = false);
 
     // The last query that has been pushed to JS. The transcript re-renders on a stream token or a
     // branch switch and our <mark> wrappers die with it; remembering what is already in the DOM
@@ -1955,11 +1982,13 @@
             : _branchCacheMessages.Select(message => message.Id).ToHashSet();
 
         var childrenByParent = new Dictionary<Guid, List<ChatMessageView>>();
+        var messagesById = new Dictionary<Guid, ChatMessageView>();
         if (SelectedChat is not null)
         {
             foreach (var stored in SelectedChat.Messages)
             {
                 var item = _activityMessages.GetValueOrDefault(stored.Id, stored);
+                messagesById[item.Id] = item;
                 if (item.ParentId is not { } parentId) continue;
                 if (!childrenByParent.TryGetValue(parentId, out var siblings))
                 {
@@ -1974,11 +2003,81 @@
             }
         }
         _branchCacheChildrenByParent = childrenByParent;
-        _branchCacheForkPoints = childrenByParent
+
+        // A branch can stop exactly where another goes on: Ctrl+Alt+Enter, or a fork from the
+        // last message, starts a branch at the head of the one on screen. That message then has a
+        // single child, yet two lines meet there, so the line that stops is an option of its own.
+        var endingBranches = new Dictionary<Guid, ChatBranchView>();
+        foreach (var branch in SelectedChat?.Branches ?? [])
+        {
+            if (branch.HeadMessageId is { } headId) endingBranches.TryAdd(headId, branch);
+        }
+        // Each branch's messages, by their distance from its head, so a continuation can be named
+        // after the branch it leads into.
+        var branchPaths = (SelectedChat?.Branches ?? [])
+            .Select(branch => (Branch: branch, Path: GetBranchPath(branch.HeadMessageId, messagesById)))
+            .ToArray();
+        // The sidebar's order: the chat's main line first, then its branches as the chat stores them.
+        var sidebarOrder = new Dictionary<Guid, int>();
+        foreach (var branch in SelectedChat?.Branches ?? [])
+        {
+            sidebarOrder.TryAdd(branch.Id, branch.Id == SelectedChat?.Id ? -1 : sidebarOrder.Count);
+        }
+        var optionsByMessage = new Dictionary<Guid, List<BranchOption>>(childrenByParent.Count);
+        foreach (var (parentId, children) in childrenByParent)
+        {
+            var options = new List<BranchOption>(children.Count + 1);
+            if (endingBranches.TryGetValue(parentId, out var ending) && messagesById.TryGetValue(parentId, out var head))
+            {
+                options.Add(new BranchOption(head, ending, EndsHere: true));
+            }
+            var isForkPoint = options.Count + children.Count > 1;
+            options.AddRange(children.Select(child =>
+                new BranchOption(child, isForkPoint ? FindOwningBranch(child.Id, branchPaths) : null)));
+            // Stable, so lines the chat stores no branch for keep their order by time, after the rest.
+            optionsByMessage[parentId] = options
+                .OrderBy(option => option.Branch is { } branch && sidebarOrder.TryGetValue(branch.Id, out var rank) ? rank : int.MaxValue)
+                .ToList();
+        }
+        _branchCacheOptions = optionsByMessage;
+        _branchCacheForkPoints = optionsByMessage
             .Where(pair => pair.Value.Count > 1)
             .Select(pair => pair.Key)
             // ReSharper disable once UseCollectionExpression
             .ToHashSet();
+    }
+
+    private static Dictionary<Guid, int> GetBranchPath(Guid? headId, Dictionary<Guid, ChatMessageView> messagesById)
+    {
+        var path = new Dictionary<Guid, int>();
+        for (var id = headId; id is { } current && messagesById.TryGetValue(current, out var message) && path.TryAdd(current, path.Count);)
+        {
+            id = message.ParentId;
+        }
+        return path;
+    }
+
+    /// <summary>
+    /// The branch a message belongs to: of the branches running through it, the one whose root is
+    /// the nearest at or above it. The main line has no root, so any other branch through the
+    /// message has started nearer to it. Null for a chat that stores no branches.
+    /// </summary>
+    private static ChatBranchView? FindOwningBranch(Guid messageId,
+        IReadOnlyList<(ChatBranchView Branch, Dictionary<Guid, int> Path)> branchPaths)
+    {
+        ChatBranchView? owner = null;
+        var ownerRoot = int.MaxValue;
+        foreach (var (branch, path) in branchPaths)
+        {
+            if (!path.TryGetValue(messageId, out var position)) continue;
+            var root = branch.RootMessageId is { } rootId && path.TryGetValue(rootId, out var rootPosition)
+                ? rootPosition
+                : int.MaxValue;
+            if (root < position || (owner is not null && root >= ownerRoot)) continue;
+            owner = branch;
+            ownerRoot = root;
+        }
+        return owner;
     }
 
     private IReadOnlyList<ChatMessageView> GetVisibleBranchMessages()
@@ -2002,11 +2101,14 @@
         return _branchCacheForkPoints;
     }
 
-    private List<ChatMessageView> GetBranchOptions(ChatMessageView message)
+    private List<BranchOption> GetBranchOptions(ChatMessageView message)
     {
         EnsureBranchCache();
-        return _branchCacheChildrenByParent.TryGetValue(message.Id, out var options) ? options : [];
+        return _branchCacheOptions.TryGetValue(message.Id, out var options) ? options : [];
     }
+
+    private bool HasBranchPicker(ChatMessageView message) =>
+        GetBranchOptions(message).Count > 1 || ForkSourceId == message.Id;
 
     // The strip only shows the user's own questions (see BuildHistoryEntries), so every marker in
     // the loop is "history-marker-user" — brightness-by-role no longer distinguishes anything
@@ -2069,7 +2171,12 @@
         return string.Join(' ', classes);
     }
 
-    private bool IsActiveBranchLeaf(ChatMessageView message) => message.Id == BranchLeafId;
+    // The last message forks too, as Ctrl+Alt+Enter does: the new branch goes on from it while the
+    // current one stops there, and the picker under it then switches between the two.
+    private bool IsForkSource(ChatMessageView message) => message.Id == ForkSourceId;
+
+    private string GetForkHint(ChatMessageView message) =>
+        IsForkSource(message) ? "The new branch starts here" : "Fork from here";
 
     // Every message rendered here is an ancestor of BranchLeafId, i.e. part of the same branch
     // SelectedRun tracks — so "is this branch generating" is a single check, not per-message.
@@ -2180,46 +2287,60 @@
         }
     }
 
-    private string GetBranchOptionTitle(ChatMessageView sibling)
+    private string GetBranchOptionTitle(BranchOption option)
     {
-        EnsureBranchCache();
-        var siblings = sibling.ParentId is { } parentId
-            && _branchCacheChildrenByParent.TryGetValue(parentId, out var options)
+        // Named as the sidebar names it: the main line by its chat, any other line by its branch.
+        if (option.Branch is { } branch)
+        {
+            return branch.Id == SelectedChat?.Id || string.IsNullOrWhiteSpace(branch.Title)
+                ? SelectedChat?.Title ?? branch.Title
+                : branch.Title;
+        }
+        var siblings = option.Message.ParentId is { } parentId
+            && _branchCacheOptions.TryGetValue(parentId, out var options)
                 ? options
                 : [];
-        if (siblings.Count > 0 && siblings[0].Id == sibling.Id)
+        // A chat that stores no branch for this line falls back to the messages themselves.
+        if (siblings.Count > 0 && ReferenceEquals(siblings[0], option))
         {
-            return sibling.Role == "Assistant" ? "Original response" : "Original message";
+            return option.Message.Role == "Assistant" ? "Original response" : "Original message";
         }
 
-        return GetMessagePreview(sibling.Content);
+        return GetMessagePreview(option.Message.Content);
     }
 
+    // The sidebar's icons: the chat for its main line, a branch for every other line.
+    private string GetBranchOptionIcon(BranchOption option) =>
+        option.Branch is { } branch && branch.Id == SelectedChat?.Id ? "message-circle" : "git-branch";
+
+    private string? GetBranchOptionHint(BranchOption option) =>
+        option.EndsHere ? $"{GetBranchOptionTitle(option)} · ends at this message" : null;
+
     // GetRunForBranch resolves any option's message id to its actual governing run branch
-    // (walking up to the nearest fork-root ancestor, or the chat's own id — see
-    // BranchLeafHelpers.RunBranchIdFor). For the currently active option specifically,
-    // SelectedRun already IS that exact run, so we use it directly rather than resolving from
-    // scratch — same result, cheaper.
-    private ChatRunSnapshot? GetOptionRun(ChatMessageView option) =>
-        IsMessageInActiveBranch(option.Id) ? SelectedRun : GetRunForBranch?.Invoke(option.Id);
+    // (the branch whose head or root it is, or the chat's own id — see
+    // BranchLeafHelpers.RunBranchIdFor); an option that ends here is its branch's head. For the
+    // currently active option specifically, SelectedRun already IS that exact run, so we use it
+    // directly rather than resolving from scratch — same result, cheaper.
+    private ChatRunSnapshot? GetOptionRun(BranchOption option) =>
+        IsOptionActive(option) ? SelectedRun : GetRunForBranch?.Invoke(option.Message.Id);
 
     // The active option's own content is the transcript rendered right below this picker, so its
     // status is already visible there — showing it again here too would be the same redundant
     // echo the sidebar avoids. Generating is kept even for the active option since it's live
     // progress rather than a state the user has already seen.
-    private string GetOptionStatusClass(ChatMessageView option)
+    private string GetOptionStatusClass(BranchOption option)
     {
         var run = GetOptionRun(option);
-        return IsMessageInActiveBranch(option.Id) && run?.Status != ChatRunStatus.Generating
+        return IsOptionActive(option) && run?.Status != ChatRunStatus.Generating
             ? string.Empty
             : StatusPresentation.GetStatusClass(run);
     }
 
-    private string? GetOptionStatusTooltip(ChatMessageView option)
+    private string? GetOptionStatusTooltip(BranchOption option)
     {
         var run = GetOptionRun(option);
         if (run is null) return null;
-        if (IsMessageInActiveBranch(option.Id) && run.Status != ChatRunStatus.Generating) return null;
+        if (IsOptionActive(option) && run.Status != ChatRunStatus.Generating) return null;
         return StatusPresentation.GetStatusTooltip(run);
     }
 
@@ -2229,14 +2350,25 @@
         return _branchCacheMessageIds.Contains(messageId);
     }
 
-    private int GetActiveBranchPosition(IReadOnlyList<ChatMessageView> options)
+    // The fork point itself is on screen either way; only the line that stops there makes it the leaf.
+    private bool IsOptionActive(BranchOption option) =>
+        option.EndsHere ? option.Message.Id == BranchLeafId : IsMessageInActiveBranch(option.Message.Id);
+
+    private int GetActiveBranchPosition(IReadOnlyList<BranchOption> options)
     {
         for (var index = 0; index < options.Count; index++)
         {
-            if (IsMessageInActiveBranch(options[index].Id)) return index + 1;
+            if (IsOptionActive(options[index])) return index + 1;
         }
         return 1;
     }
+
+    // An option named after a stored branch opens that branch where it ends. Walking down from the
+    // option's message would follow the first child at every step and could end on another line,
+    // such as a branch that goes on from where this one stops.
+    private Task SelectBranchOptionAsync(BranchOption option) => option.Branch?.HeadMessageId is { } head
+        ? OnSelectBranchLeaf.InvokeAsync(head)
+        : OnSelectBranch.InvokeAsync(option.Message.Id);
 
     public async ValueTask DisposeAsync()
     {

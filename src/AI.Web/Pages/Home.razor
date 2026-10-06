@@ -464,6 +464,7 @@
             OnEditAndReplaceBranch="EditAndReplaceBranchAsync"
             OnToggleBranchMenu="ToggleMessageBranchMenu"
             OnSelectBranch="SelectMessageBranch"
+            OnSelectBranchLeaf="SelectMessageBranchLeaf"
             OnBranchPickerKeyDown="HandleBranchPickerKeyDown"
             OnCurrentTurnSummaryVisibilityChanged="SetCurrentTurnSummaryVisibility"
             OnReachedBottom="MarkSelectedConversationReadAsync"
@@ -1371,6 +1372,7 @@ else if (_guideInvitation is { } guideInvitation)
     private IJSObjectReference? _focusSubscription;
     private IJSObjectReference? _escapeSubscription;
     private IJSObjectReference? _drawerDismissSubscription;
+    private IJSObjectReference? _branchPickerDismissSubscription;
     private IJSObjectReference? _queueDragSubscription;
 
     private bool _composerCtrlDown;
@@ -1685,6 +1687,7 @@ else if (_guideInvitation is { } guideInvitation)
                 _focusSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchFocus", _dotNetReference);
                 _escapeSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchEscape", _dotNetReference);
                 _drawerDismissSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchDrawerDismiss", _dotNetReference);
+                _branchPickerDismissSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchBranchPickerDismiss", _dotNetReference);
                 _queueDragSubscription = await _runEventsModule.InvokeAsync<IJSObjectReference>("watchQueueDrag", _dotNetReference);
                 _applicationFocused = await _runEventsModule.InvokeAsync<bool>("isFocused");
                 await AttachGuideAsync();
@@ -4176,7 +4179,7 @@ else if (_guideInvitation is { } guideInvitation)
 
     private async Task ForkFromMessageAsync(ChatMessageView message)
     {
-        if (message.Id == _branchLeafId) return;
+        if (message.Id == _forkSourceId) return;
         _ = ChatTips.MarkUsedAsync(AI.Web.Components.ChatTips.Branches);
         _messageBranchMenuId = null;
         _branchLeafId = message.Id;
@@ -4251,6 +4254,23 @@ else if (_guideInvitation is { } guideInvitation)
     {
         await SaveCurrentScrollPositionAsync();
         SwitchBranch(siblingId);
+        await ApplyMessageBranchSelectionAsync();
+    }
+
+    /// <summary>
+    /// Shows a stored branch at its head. SwitchBranch walks down by first children, which can
+    /// pass a branch's end into the one that goes on from there, so the leaf is set as given.
+    /// </summary>
+    private async Task SelectMessageBranchLeaf(Guid leafId)
+    {
+        await SaveCurrentScrollPositionAsync();
+        ResetBranchOperationState();
+        _branchLeafId = leafId;
+        await ApplyMessageBranchSelectionAsync();
+    }
+
+    private async Task ApplyMessageBranchSelectionAsync()
+    {
         if (_selectedChat is not null)
         {
             _selectedBranchId = BranchLeafHelpers.RunBranchIdFor(_branchLeafId, _selectedChat);
@@ -4949,6 +4969,15 @@ else if (_guideInvitation is { } guideInvitation)
         _confirmingBranchDeleteId = null;
         _directoryMenuId = null;
         _isConfirmingDirectoryDelete = false;
+    }
+
+    /// <summary>A press outside the open branch picker; the press itself still reaches its target.</summary>
+    [JSInvokable]
+    public Task OnBranchPickerDismissed()
+    {
+        if (_messageBranchMenuId is null) return Task.CompletedTask;
+        _messageBranchMenuId = null;
+        return InvokeAsync(StateHasChanged);
     }
 
     /// <summary>A press outside the open drawer; the press itself still reaches its target.</summary>
@@ -6838,6 +6867,7 @@ else if (_guideInvitation is { } guideInvitation)
         if (_focusSubscription is not null) { await _focusSubscription.InvokeVoidAsync("dispose"); await _focusSubscription.DisposeAsync(); }
         if (_escapeSubscription is not null) { await _escapeSubscription.InvokeVoidAsync("dispose"); await _escapeSubscription.DisposeAsync(); }
         if (_drawerDismissSubscription is not null) { await _drawerDismissSubscription.InvokeVoidAsync("dispose"); await _drawerDismissSubscription.DisposeAsync(); }
+        if (_branchPickerDismissSubscription is not null) { await _branchPickerDismissSubscription.InvokeVoidAsync("dispose"); await _branchPickerDismissSubscription.DisposeAsync(); }
         if (_queueDragSubscription is not null) { await _queueDragSubscription.InvokeVoidAsync("dispose"); await _queueDragSubscription.DisposeAsync(); }
         CancelNavigationCountdown();
         if (_navigationCueModule is not null) await _navigationCueModule.DisposeAsync();

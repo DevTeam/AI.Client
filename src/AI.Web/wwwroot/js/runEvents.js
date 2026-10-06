@@ -187,6 +187,22 @@ export function watchDrawerDismiss(dotNetReference) {
     return { dispose: () => document.removeEventListener("pointerdown", handler, true) };
 }
 
+// The branch picker's menu sits inside the transcript's stacking context, where a full-screen
+// backdrop would cover the menu too; a press anywhere outside the picker closes it instead, and
+// still reaches its target.
+export function watchBranchPickerDismiss(dotNetReference) {
+    const handler = event => {
+        if (event.button !== 0 || !document.querySelector(".branch-picker-menu")) return;
+        const target = event.target instanceof Element ? event.target : null;
+        // Only the button and the menu: the indicator row spans the column, and a press beside the
+        // button is a press outside. A picker's own button toggles it, another's opens that one.
+        if (!target || target.closest(".branch-picker-trigger, .branch-picker-menu")) return;
+        void dotNetReference.invokeMethodAsync("OnBranchPickerDismissed");
+    };
+    document.addEventListener("pointerdown", handler, true);
+    return { dispose: () => document.removeEventListener("pointerdown", handler, true) };
+}
+
 export function watchQueueDrag(dotNetReference) {
     let source = null;
     let target = null;

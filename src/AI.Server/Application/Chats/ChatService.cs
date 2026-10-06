@@ -495,10 +495,12 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             .Where(message => message.Role == ChatMessageRole.User && message.ParentId is not null)
             .Select(message => message.ParentId!.Value)
             .ToHashSet();
+        var unansweredNotes = GetUnansweredTurnNotes(messages, branchHeads);
 
         var projected = messages.Select(message =>
         {
             var keepContent = message.Role == ChatMessageRole.User
+                || unansweredNotes.Contains(message.Id)
                 || IsPlainAssistant(message)
                 && (branchHeads.Contains(message.Id) || followedByUser.Contains(message.Id));
             // The feed renders each completed turn's file-change receipt from the transcript.
@@ -524,6 +526,28 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             chat.Kind.Value, chat.KindState, kindPolicies.TryResolve(chat.Kind)?.Behavior.InteractionSurface ?? "unsupported",
             kindPolicies.TryResolve(chat.Kind)?.Behavior.AllowChatNavigation ?? false,
             kindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion);
+    }
+
+    // The model's notes in a branch's last turn while it has no answer yet. A running turn shows
+    // its latest note under the turn row; folded away, a chat opened mid-run had nothing to show
+    // there until the run wrote its next step. Tool arguments and results stay omitted.
+    private static HashSet<ChatMessageId> GetUnansweredTurnNotes(
+        IReadOnlyList<ChatMessage> messages,
+        IReadOnlySet<ChatMessageId> branchHeads)
+    {
+        var byId = messages.ToDictionary(message => message.Id);
+        var notes = new HashSet<ChatMessageId>();
+        foreach (var head in branchHeads)
+        {
+            var current = byId.GetValueOrDefault(head);
+            if (current is null || IsPlainAssistant(current)) continue;
+            while (current is not null && current.Role != ChatMessageRole.User)
+            {
+                if (current.Role == ChatMessageRole.Assistant) notes.Add(current.Id);
+                current = current.ParentId is { } parent ? byId.GetValueOrDefault(parent) : null;
+            }
+        }
+        return notes;
     }
 
     private static bool IsPlainAssistant(ChatMessage message) =>

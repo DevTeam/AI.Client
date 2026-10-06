@@ -240,15 +240,21 @@
                 }
                 else if (entry.LiveText is { } liveText)
                 {
-                    @* What the running turn is saying right now, in full. Keyed by the text's version,
-                       not the turn: a replacement mounts a fresh element, which is what plays the
-                       entry animation, while growth of the same text only patches it. *@
+                    @* What the running turn is saying right now, in full, under the few notes before
+                       it. Keyed by the note, not the turn: a new note mounts a fresh element, which
+                       is what plays the entry animation, while growth of the same text only patches
+                       it, and a note that ages or is pushed out keeps its element, so the class
+                       change is what fades it and folds it away. *@
                     var liveKey = (entry.TurnId, "live-text", entry.LiveVersion);
-                    <article @key="liveKey" id="message-live"
-                             class="workspace-message assistant live-text streaming @(entry.LivePreamble ? "is-preamble" : string.Empty)"
+                    var current = entry.LiveAge == 0 && !entry.LiveLeaving;
+                    <article @key="liveKey" id="@(current ? "message-live" : null)"
+                             class="workspace-message assistant live-text streaming @(entry.LivePreamble ? "is-preamble" : string.Empty) @(entry.LiveAge switch { 0 => string.Empty, 1 => "is-previous", _ => "is-older" }) @(entry.LiveLeaving ? "is-leaving" : string.Empty)"
+                             aria-hidden="@(entry.LiveLeaving ? "true" : null)"
                              @onmouseenter="() => SetLiveTextHeld(true)"
                              @onmouseleave="() => SetLiveTextHeld(false)">
-                        <StreamingMarkdown Html="@RenderLiveMarkdown(liveText)" />
+                        <div class="live-text-body">
+                            <StreamingMarkdown Html="@RenderLiveMarkdown(liveText)" />
+                        </div>
                     </article>
                 }
                 else if (entry.Activity is { } activity)
@@ -591,6 +597,8 @@
     /// <summary>What the chat's finished turns used, by the Host's ledger; the running turn comes with <see cref="SelectedRun"/>.</summary>
     [Parameter] public ChatTokenUsage? ChatUsage { get; set; }
     [Parameter] public bool ShowTurnTokens { get; set; }
+    /// <summary>How many of the running turn's latest notes stand under its row.</summary>
+    [Parameter] public int LiveNoteCount { get; set; } = AI.Web.Settings.ClientSettings.DefaultLiveNoteCount;
     /// <summary>The summary the model's view of this branch starts from, marked where the history it covers ends.</summary>
     [Parameter] public HistoryCheckpoint? ActiveCheckpoint { get; set; }
     [Parameter] public EventCallback<HistoryCheckpoint> OnUndoCheckpoint { get; set; }
@@ -725,6 +733,7 @@
     private string? _renderedSearchQuery;
     private bool _renderedNewBelow;
     private int _renderedLiveTextTick;
+    private int _renderedLiveNoteCount;
 
     protected override bool ShouldRender()
     {
@@ -754,7 +763,8 @@
             // is what decides whether its StateHasChanged reaches the DOM at all.
             || _renderedPinned != _pinned
             || _renderedNewBelow != _newBelow
-            || _renderedLiveTextTick != _liveTextTick;
+            || _renderedLiveTextTick != _liveTextTick
+            || _renderedLiveNoteCount != LiveNoteCount;
 
         _renderedSelectedChat = SelectedChat;
         _renderedTranscriptId = TranscriptId;
@@ -779,6 +789,7 @@
         _renderedPinned = _pinned;
         _renderedNewBelow = _newBelow;
         _renderedLiveTextTick = _liveTextTick;
+        _renderedLiveNoteCount = LiveNoteCount;
 
         return changed;
     }
@@ -1363,6 +1374,8 @@
         string? LiveText = null,
         int LiveVersion = 0,
         bool LivePreamble = false,
+        int LiveAge = 0,
+        bool LiveLeaving = false,
         TurnActivity? Activity = null);
 
     private sealed record TurnActivity(string Title, string? Detail)
@@ -1449,22 +1462,23 @@
                 }
 
                 // The final answer arriving as StreamingContent is shown below as it is; the live
-                // text steps aside at once rather than making the reader wait for it.
-                if (IsRunningTurn(turn) && string.IsNullOrWhiteSpace(SelectedRun?.StreamingContent))
+                // notes step aside at once rather than making the reader wait for it, folding away
+                // the way each of them left the stack before.
+                var answerStreaming = !string.IsNullOrWhiteSpace(SelectedRun?.StreamingContent);
+                if (IsRunningTurn(turn))
                 {
                     liveTurnPresented = true;
-                    _liveFrame = LiveText.Present(turn.Id, GetLiveTextCandidate(turn), _liveTextHeld, DateTimeOffset.UtcNow);
+                    _liveFrame = LiveText.Present(turn.Id, GetLiveTexts(turn), _liveTextHeld, DateTimeOffset.UtcNow);
                     ScheduleLiveTextCheck(_liveFrame.NextCheck);
                     if (!IsTurnExpanded(turn))
                     {
-                        if (_liveFrame.Text is { } liveText)
-                            entries.Add(new RenderedFeedEntry(LiveText: liveText, LiveVersion: _liveFrame.Version, TurnId: turn.Id,
-                                LivePreamble: IsPreamble(turn, liveText)));
-                        entries.Add(new RenderedFeedEntry(Activity: GetTurnActivity() ?? TurnActivity.None, TurnId: turn.Id));
+                        AddLiveNotes(entries, turn, answerStreaming);
+                        if (!answerStreaming)
+                            entries.Add(new RenderedFeedEntry(Activity: GetTurnActivity() ?? TurnActivity.None, TurnId: turn.Id));
                     }
                     // Expanded, the notes are already there as themselves; only the step still in
                     // flight has nowhere else to appear.
-                    else if (SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft))
+                    else if (!answerStreaming && SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft))
                     {
                         entries.Add(new RenderedFeedEntry(LiveText: draft, LiveVersion: -1, TurnId: turn.Id,
                             LivePreamble: SelectedRun.DraftToolCall is not null));
@@ -1512,7 +1526,7 @@
 
         if (!liveTurnPresented)
         {
-            _liveFrame = LiveText.Present(null, null, false, DateTimeOffset.UtcNow);
+            _liveFrame = LiveText.Present(null, [], false, DateTimeOffset.UtcNow);
             // The element under the pointer can go without a mouseleave; the next turn must not
             // inherit a hold nobody is exerting.
             _liveTextHeld = false;
@@ -1551,19 +1565,41 @@
         return new TranscriptTurnStamp(shared, marks, runs, pickers.ToHashCode(), usage, checkpoint, live, modelSwitchHash.ToHashCode());
     }
 
-    private LiveTextFrame _liveFrame;
+    private LiveTextFrame _liveFrame = new([], null);
     private bool _liveTextHeld;
     private int _liveTextTick;
     private CancellationTokenSource? _liveTextTimer;
     private DateTimeOffset? _liveTextTimerDue;
 
-    /// <summary>The step in flight when the model is writing, else the turn's latest note.</summary>
-    private string? GetLiveTextCandidate(FeedTurn turn) =>
-        SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft)
-            ? draft
-            : turn.IntermediateMessages
-                .LastOrDefault(message => message.Role == "Assistant" && !string.IsNullOrWhiteSpace(message.Content))
-                ?.Content;
+    /// <summary>The turn's notes, oldest first, then the step in flight when the model is writing.</summary>
+    private List<string> GetLiveTexts(FeedTurn turn)
+    {
+        var texts = turn.IntermediateMessages
+            .Where(message => message.Role == "Assistant" && !string.IsNullOrWhiteSpace(message.Content))
+            .Select(message => message.Content)
+            .ToList();
+        if (SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft)) texts.Add(draft);
+        return texts;
+    }
+
+    /// <summary>
+    /// The newest notes as a stack: up to <see cref="LiveNoteCount"/> of them, plus the one that
+    /// has just been pushed out, kept mounted so it can fold away instead of vanishing. Older ones
+    /// fade by age; while the answer streams, every note folds away under it.
+    /// </summary>
+    private void AddLiveNotes(List<RenderedFeedEntry> entries, FeedTurn turn, bool answerStreaming)
+    {
+        var notes = _liveFrame.Notes;
+        var count = Math.Clamp(LiveNoteCount, AI.Web.Settings.ClientSettings.MinLiveNoteCount, AI.Web.Settings.ClientSettings.MaxLiveNoteCount);
+        for (var index = Math.Max(0, notes.Count - count - 1); index < notes.Count; index++)
+        {
+            var note = notes[index];
+            var age = notes.Count - 1 - index;
+            entries.Add(new RenderedFeedEntry(LiveText: note.Text, LiveVersion: note.Id, TurnId: turn.Id,
+                LivePreamble: IsPreamble(turn, note.Text), LiveAge: age,
+                LiveLeaving: answerStreaming || age >= count));
+        }
+    }
 
     /// <summary>
     /// Whether the shown text is known to lead into tool calls rather than being a possible answer:
@@ -1606,7 +1642,8 @@
         SelectedRun?.Wait is null,
         string.IsNullOrEmpty(SelectedRun?.StreamingContent),
         _liveTextTick,
-        _liveTextHeld,
+        // The hold, and how many notes the stack keeps.
+        HashCode.Combine(_liveTextHeld, LiveNoteCount),
         // The changes chip in the running turn's summary line.
         HashCode.Combine(SelectedRun?.WorkspaceChanges?.Files.Count, SelectedRun?.WorkspaceChanges?.Additions, SelectedRun?.WorkspaceChanges?.Deletions));
 
@@ -2057,19 +2094,17 @@
     // Markdig is not cheap; caching by message id means a re-render only
     // re-parses messages whose content actually changed (in practice, just the one being edited).
     // The running turn's text has no message id yet, and the turn is drawn again on every tick of
-    // its timer and every tool progress report while the text itself stays put. Only the last text
-    // is kept: it is replaced as it grows.
-    private string? _liveMarkdownSource;
-    private string _liveMarkdownHtml = string.Empty;
+    // its timer and every tool progress report while the texts themselves stay put. The cache is
+    // keyed by text and dropped whole when it fills: a growing text leaves a trail of stale keys,
+    // and the stack has only a few texts to parse again.
+    private const int LiveMarkdownCacheSize = 16;
+    private readonly Dictionary<string, string> _liveMarkdown = new(StringComparer.Ordinal);
 
     private string RenderLiveMarkdown(string content)
     {
-        if (!string.Equals(_liveMarkdownSource, content, StringComparison.Ordinal))
-        {
-            _liveMarkdownHtml = MarkdownRenderer.Render(content);
-            _liveMarkdownSource = content;
-        }
-        return _liveMarkdownHtml;
+        if (_liveMarkdown.TryGetValue(content, out var html)) return html;
+        if (_liveMarkdown.Count >= LiveMarkdownCacheSize) _liveMarkdown.Clear();
+        return _liveMarkdown[content] = MarkdownRenderer.Render(content);
     }
 
     private string RenderMarkdownCached(Guid messageId, string content)

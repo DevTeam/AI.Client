@@ -1,0 +1,179 @@
+@using AI.Contracts.Resources
+@inject IChatReferenceStatisticsCalculator Calculator
+@inject AI.Web.Resources.IResourcePresenter Presenter
+@* What the chat was given and received: the references the messages of the visible branch carry,
+   added up over the turns in scope. Every entry comes from the resources the transcript stores
+   beside the message that named them, so a path written in prose is not counted. A click scrolls
+   the transcript to the earliest message in scope that used the reference. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-references-widget">
+    @if (_hasAny) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
+
+    @if (_stats.References.Count == 0)
+    {
+        <p class="chat-usage-empty">@(_scope == ChatWidgetScope.LastTurn && _hasAny
+            ? "The last turn named no references."
+            : "Files, directories, images, uploads, skills, diffs and chats the conversation refers to appear here.")</p>
+    }
+    else
+    {
+        <div class="chat-usage-section">
+            <div class="chat-widget-headline">
+                <span class="chat-widget-count" title="Distinct targets named in the selected scope; the same file or chat named in several messages counts once">@_stats.References.Count</span>
+                <span class="chat-usage-muted">@(_stats.References.Count == 1 ? "reference" : "references")@(_stats.IsRunning ? " so far" : null)</span>
+                <span class="chat-widget-headline-aside chat-usage-muted" title="Messages in the selected scope that carry at least one reference">@_stats.MessagesWithReferences @(_stats.MessagesWithReferences == 1 ? "message" : "messages")</span>
+            </div>
+            <div class="chat-usage-legend">
+                @foreach (var (kind, label) in Kinds)
+                {
+                    if (_stats.Count(kind) is > 0 and var count)
+                    {
+                        <span @key="kind" title="@KindTitle(kind)"><span class="chat-references-kind" aria-hidden="true"><AppIcon Name="@IconFor(kind)" /></span>@count @label</span>
+                    }
+                }
+            </div>
+        </div>
+
+        <div class="chat-usage-section">
+            <ul class="chat-references-list">
+                @foreach (var entry in _showAll ? _stats.References : _stats.References.Take(VisibleReferences))
+                {
+                    <li @key="entry.Reference.Id">
+                        <button class="chat-references-row" type="button" title="@RowTitle(entry)" @onclick="() => ShowInTranscriptAsync(entry)">
+                            <span class="chat-references-mark" aria-hidden="true"><AppIcon Name="@IconFor(entry.Reference.Kind)" /></span>
+                            <span class="chat-references-body">
+                                <span class="chat-references-title">@Presenter.Label(entry.Reference)</span>
+                                <span class="chat-references-meta chat-usage-muted">
+                                    <span>@KindTitle(entry.Reference.Kind)</span>
+                                    @if (Presenter.Summary(entry.Reference) is { } summary)
+                                    {
+                                        <span title="Totals the reference captured when the message was sent">@summary</span>
+                                    }
+                                    @if (entry.Mentions > 1)
+                                    {
+                                        <span title="Messages in the selected scope that name this same target">@entry.Mentions mentions</span>
+                                    }
+                                </span>
+                            </span>
+                        </button>
+                    </li>
+                }
+            </ul>
+            @if (_stats.References.Count > VisibleReferences)
+            {
+                <button class="chat-usage-link chat-references-more" type="button" @onclick="() => _showAll = !_showAll">
+                    @(_showAll ? "Show fewer" : $"Show {_stats.References.Count - VisibleReferences} more")
+                </button>
+            }
+        </div>
+
+        <div class="chat-usage-section chat-usage-footnote">
+            <span title="Turns with at least one message naming a reference, out of all turns in the selected scope">In @_stats.TurnsWithReferences of @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns") references were named</span>
+        </div>
+    }
+</ChatWidget>
+
+@code {
+    private const int VisibleReferences = 6;
+
+    private static readonly (ChatResourceKind Kind, string Label)[] Kinds =
+    [
+        (ChatResourceKind.File, "files"), (ChatResourceKind.Directory, "directories"),
+        (ChatResourceKind.Image, "images"), (ChatResourceKind.Diff, "diffs"),
+        (ChatResourceKind.Skill, "skills"), (ChatResourceKind.Chat, "chats"),
+        (ChatResourceKind.Project, "projects"), (ChatResourceKind.Review, "reviews")
+    ];
+
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>The visible branch, root to leaf.</summary>
+    [Parameter]
+    public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+
+    /// <summary>True while the last turn is still going; the widget says so far.</summary>
+    [Parameter]
+    public bool IsGenerating { get; set; }
+
+    /// <summary>Asks the page to scroll the transcript to the message that named the reference.</summary>
+    [Parameter]
+    public EventCallback<Guid> OnSelectMessage { get; set; }
+
+    private ChatWidgetScope _scope = ChatWidgetScope.Chat;
+    private bool _showAll;
+
+    private ChatReferenceStatistics _stats = ChatReferenceStatistics.Empty;
+    private bool _hasAny;
+
+    private bool _statisticsInitialized;
+    private IReadOnlyList<ChatMessageView> _statisticsMessages = [];
+    private bool _statisticsIsGenerating;
+
+    protected override void OnParametersSet()
+    {
+        // Parent renders also follow typing and modifier keys; only changed data needs statistics.
+        if (_statisticsInitialized
+            && ReferenceEquals(_statisticsMessages, Messages)
+            && _statisticsIsGenerating == IsGenerating) return;
+
+        Refresh();
+        _statisticsInitialized = true;
+        _statisticsMessages = Messages;
+        _statisticsIsGenerating = IsGenerating;
+    }
+
+    private void SetScope(ChatWidgetScope scope)
+    {
+        _scope = scope;
+        _showAll = false;
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        _stats = Calculator.Calculate(Messages, IsGenerating, _scope);
+        _hasAny = _scope == ChatWidgetScope.Chat
+            ? _stats.References.Count > 0
+            : Calculator.Calculate(Messages, IsGenerating, ChatWidgetScope.Chat).References.Count > 0;
+    }
+
+    private string? GetSummary() =>
+        _stats.References.Count == 0 ? null : $"{_stats.References.Count} · {_stats.MessagesWithReferences}";
+
+    private Task ShowInTranscriptAsync(ChatReferenceEntry entry) =>
+        OnSelectMessage.InvokeAsync(entry.FirstMessageId);
+
+    private string RowTitle(ChatReferenceEntry entry)
+    {
+        var when = entry.FirstAt.LocalDateTime.ToString("g");
+        var mentions = entry.Mentions == 1
+            ? "Named once in the selected scope"
+            : $"Named in {entry.Mentions} messages of the selected scope";
+        return $"{Presenter.Hint(entry.Reference)}\n{mentions}. First used {when} — click to show it in the transcript.";
+    }
+
+    private static string IconFor(ChatResourceKind kind) => kind switch
+    {
+        ChatResourceKind.File => "file",
+        ChatResourceKind.Directory => "folder",
+        ChatResourceKind.Image => "image",
+        ChatResourceKind.Diff => "diff",
+        ChatResourceKind.Skill => "skill",
+        ChatResourceKind.Chat => "message-circle",
+        ChatResourceKind.Project => "project",
+        ChatResourceKind.Review => "diff",
+        _ => "link"
+    };
+
+    private static string KindTitle(ChatResourceKind kind) => kind switch
+    {
+        ChatResourceKind.File => "File",
+        ChatResourceKind.Directory => "Directory",
+        ChatResourceKind.Image => "Image",
+        ChatResourceKind.Diff => "Uncommitted changes",
+        ChatResourceKind.Skill => "Skill",
+        ChatResourceKind.Chat => "Chat",
+        ChatResourceKind.Project => "Project",
+        ChatResourceKind.Review => "Review",
+        _ => "Reference"
+    };
+}

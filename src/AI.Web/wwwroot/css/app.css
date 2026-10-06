@@ -3652,8 +3652,9 @@ div.chat-tip-head { cursor: default; }
 }
 
 /* Context ring. The halo around the send button is grey at rest, so the composer stays calm, and
-   takes the layer colours while the tooltip is open to explain them. A window that is filling up
-   colours it on its own: amber from 75%, red and a slow breath from 90%. */
+   takes the layer colours while the pointer rests on the button. A window that is filling up
+   colours it on its own: amber from 75%, red and a slow breath from 90%. The figures behind it are
+   in the Context widget; the legend swatches are shared with it. */
 .context-ring { display: block; overflow: visible; }
 .context-ring circle { fill: none; }
 .context-ring-track { stroke: var(--color-border-subtle); }
@@ -3691,30 +3692,9 @@ div.chat-tip-head { cursor: default; }
 .composer-send-wrapper:has(.composer-send:hover:not(:disabled)) .composer-send-ring { transform: translateY(-1px); }
 @keyframes context-ring-breathe { 50% { opacity: 0.55; } }
 
-.composer-send-context { display: flex; align-items: center; gap: 0.9rem; padding: 0.15rem 0.1rem 0.1rem; }
-.composer-send-context-chart { position: relative; flex: none; }
-.composer-send-context-center {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-content: center;
-    justify-items: center;
-    gap: 0.25rem;
-}
-.composer-send-context-percent { color: var(--color-text-strong); font-size: var(--font-size-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
-.composer-send-context-total { color: var(--color-text-subtle); font-size: var(--font-size-2xs); font-variant-numeric: tabular-nums; }
-.composer-send-context-legend { display: grid; gap: 0.38rem; min-width: 10.5rem; }
-.composer-send-context-row { display: flex; align-items: center; gap: 0.45rem; color: var(--color-text-muted); }
-.composer-send-context-label { flex: 1; }
-.composer-send-context-value { color: var(--color-text); font-variant-numeric: tabular-nums; }
-.composer-send-context-row.free .composer-send-context-value { color: var(--color-text-subtle); }
 .context-swatch { flex: none; width: 0.55rem; height: 0.55rem; border-radius: var(--radius-2xs); background: var(--context-color); }
-.composer-send-context-row.reserved .context-swatch { opacity: 0.45; }
-.composer-send-context-row.free .context-swatch { background: none; box-shadow: inset 0 0 0 1px var(--color-border-strong); }
-.composer-send-context-note { padding: 0.1rem 0.1rem 0; color: var(--color-text-subtle); font-size: var(--font-size-xs); }
-.composer-send-context-note.context-note-warning { color: var(--color-warning-text); }
-.composer-send-context-note.context-note-critical { color: var(--color-danger-text); }
-.composer-send-tooltip-divider { height: 1px; margin: 0.25rem 0 0.15rem; background: var(--color-border-subtle); }
+.context-widget-row.reserved .context-swatch { opacity: 0.45; }
+.context-widget-row.free .context-swatch { background: none; box-shadow: inset 0 0 0 1px var(--color-border-strong); }
 
 @media (prefers-reduced-motion: reduce) {
     .context-ring-segment { transition: none; }
@@ -7579,6 +7559,28 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-widget-secondary { color: var(--color-text); font-size: var(--font-size-lg); font-weight: 500; font-variant-numeric: tabular-nums; }
 .chat-usage-footnote, .chat-usage-empty { margin: .2rem 0 0; color: var(--color-text-subtle); font-size: var(--font-size-xs); line-height: 1.45; }
 
+/* The Context widget: the composer's ring shown large, with the layers it is made of beside it. */
+.context-widget { display: flex; align-items: center; gap: .9rem; }
+.context-widget-chart { position: relative; flex: none; }
+.context-widget-center {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: .25rem;
+}
+.context-widget-percent { color: var(--color-text-strong); font-size: var(--font-size-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
+.context-widget-total { color: var(--color-text-subtle); font-size: var(--font-size-2xs); font-variant-numeric: tabular-nums; }
+.context-widget-legend { display: grid; gap: .38rem; min-width: 10.5rem; flex: 1; }
+.context-widget-row { display: flex; align-items: center; gap: .45rem; color: var(--color-text-muted); font-size: var(--font-size-sm); }
+.context-widget-label { flex: 1; }
+.context-widget-value { color: var(--color-text); font-variant-numeric: tabular-nums; }
+.context-widget-row.free .context-widget-value { color: var(--color-text-subtle); }
+.context-widget-note { margin: .5rem 0 0; color: var(--color-text-subtle); font-size: var(--font-size-xs); line-height: 1.45; }
+.context-widget-note.context-note-warning { color: var(--color-warning-text); }
+.context-widget-note.context-note-critical { color: var(--color-danger-text); }
+
 /* What a turn used: after its time in the turn line, and in full under an opened turn. */
 .turn-summary-tokens { flex: none; color: var(--color-text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .turn-usage {
@@ -7593,21 +7595,8 @@ button.is-auto-pressed { filter: brightness(1.15); }
 }
 .turn-usage small { font-size: inherit; }
 
-/* The ring around Send opens the usage widget; the button in its middle still sends. */
-.composer-send-context-open {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    /* A little wider than the ring it answers for: the halo itself is a 5px band. */
-    width: 60px;
-    height: 60px;
-    padding: 0;
-    translate: -50% -50%;
-    border: 0;
-    border-radius: 50%;
-    background: none;
-    cursor: pointer;
-}
+/* The ring around Send shows how full the window is; the button in its middle sends. The halo paints
+   itself, so the button only has to sit above it. */
 .composer-send-wrapper .composer-send { position: relative; z-index: 1; }
 
 .chat-usage-note-actions { display: inline-flex; flex-wrap: wrap; gap: .3rem; }

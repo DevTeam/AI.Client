@@ -26,6 +26,7 @@ public interface IChatWidgetCatalog
 
 public sealed class ChatWidgetCatalog(IAppNavigationTargets targets) : IChatWidgetCatalog
 {
+    public const string ChatContext = "chat-context";
     public const string ChatUsage = "chat-usage";
     public const string ChatFiles = "chat-files";
     public const string ChatTools = "chat-tools";
@@ -38,6 +39,7 @@ public sealed class ChatWidgetCatalog(IAppNavigationTargets targets) : IChatWidg
 
     public IReadOnlyList<ChatWidgetDefinition> Widgets { get; } =
     [
+        new(ChatContext, "Context", "chart-pie", targets.Find("widgets." + ChatContext)!.Hint!),
         new(ChatUsage, "Usage", "gauge", targets.Find("widgets." + ChatUsage)!.Hint!),
         new(ChatFiles, "Files", "diff", targets.Find("widgets." + ChatFiles)!.Hint!),
         new(ChatTools, "Tools", "tool", targets.Find("widgets." + ChatTools)!.Hint!),

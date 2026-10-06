@@ -101,10 +101,6 @@
                         <section class="settings-group" aria-labelledby="settings-chat">
                             <h3 id="settings-chat">Chat</h3>
                             <div class="settings-card">
-                                <label @attributes="@(ControlHints.Attributes("settings.chat.context_usage"))" class="settings-row">
-                                    <span class="settings-row-label">Context window usage</span>
-                                    <input class="settings-switch" type="checkbox" role="switch" checked="@_showContextWindowUsage" @onchange="SetShowContextWindowUsageAsync" />
-                                </label>
                                 <label @attributes="@(ControlHints.Attributes("settings.chat.turn_tokens"))" class="settings-row">
                                     <span class="settings-row-text"><span class="settings-row-label">Tokens per turn</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.chat.turn_tokens")</span></span>
                                     <input class="settings-switch" type="checkbox" role="switch" checked="@_showTurnTokens" @onchange="SetShowTurnTokensAsync" />
@@ -452,7 +448,6 @@
     [Parameter] public Guid? ConnectionToEdit { get; set; }
     private Guid? _appliedConnectionToEdit;
     [Parameter] public EventCallback Saved { get; set; }
-    [Parameter] public EventCallback<bool> ContextWindowUsageChanged { get; set; }
     [Parameter] public EventCallback<bool> TurnTokensChanged { get; set; }
     [Parameter] public EventCallback<int> LiveNoteCountChanged { get; set; }
     /// <summary>The project whose memory and skills the ProjectMemory and ProjectSkills sections edit.</summary>
@@ -518,7 +513,6 @@
     private int _cornerRoundnessPercent = 100;
     private bool _notificationSoundEnabled = true;
     private bool _otherSoundsEnabled = true;
-    private bool _showContextWindowUsage = true;
     private bool _showTurnTokens;
     private int _liveNoteCount = AI.Web.Settings.ClientSettings.DefaultLiveNoteCount;
     private bool _guideSuggestionsEnabled = true;
@@ -569,7 +563,6 @@
         var clientSettings = await ClientSettings.GetAsync();
         _notificationSoundEnabled = clientSettings.NotificationSoundEnabled;
         _otherSoundsEnabled = clientSettings.OtherSoundsEnabled;
-        _showContextWindowUsage = clientSettings.ShowContextWindowUsage;
         _showTurnTokens = clientSettings.ShowTurnTokens;
         _liveNoteCount = clientSettings.LiveNoteCount;
         _guideSuggestionsEnabled = clientSettings.GuideSuggestionsEnabled;
@@ -677,13 +670,6 @@
     {
         _otherSoundsEnabled = args.Value is true;
         await ClientSettings.UpdateAsync(current => current with { OtherSoundsEnabled = _otherSoundsEnabled });
-    }
-
-    private async Task SetShowContextWindowUsageAsync(ChangeEventArgs args)
-    {
-        _showContextWindowUsage = args.Value is true;
-        await ClientSettings.UpdateAsync(current => current with { ShowContextWindowUsage = _showContextWindowUsage });
-        await ContextWindowUsageChanged.InvokeAsync(_showContextWindowUsage);
     }
 
     private async Task SetLiveNoteCountAsync(ChangeEventArgs args)

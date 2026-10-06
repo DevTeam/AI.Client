@@ -46,7 +46,6 @@ public class ClientSettingsServiceTests
         (await service.GetAsync()).CornerRoundnessPercent.ShouldBe(100);
         (await service.GetAsync()).NotificationSoundEnabled.ShouldBeTrue();
         (await service.GetAsync()).OtherSoundsEnabled.ShouldBeTrue();
-        (await service.GetAsync()).ShowContextWindowUsage.ShouldBeTrue();
     }
 
     [Theory]
@@ -64,7 +63,6 @@ public class ClientSettingsServiceTests
         settings.CornerRoundnessPercent.ShouldBe(100);
         settings.NotificationSoundEnabled.ShouldBeTrue();
         settings.OtherSoundsEnabled.ShouldBeTrue();
-        settings.ShowContextWindowUsage.ShouldBeTrue();
     }
 
     [Theory]
@@ -88,18 +86,15 @@ public class ClientSettingsServiceTests
         {
             Theme = ThemePreference.Light,
             Accent = AccentColor.Teal,
-            OtherSoundsEnabled = false,
-            ShowContextWindowUsage = false
+            OtherSoundsEnabled = false
         });
 
         using var saved = System.Text.Json.JsonDocument.Parse(js.Entries[StorageKey]);
         saved.RootElement.GetProperty("theme").GetString().ShouldBe("light");
         saved.RootElement.GetProperty("accent").GetString().ShouldBe("teal");
         saved.RootElement.GetProperty("otherSoundsEnabled").GetBoolean().ShouldBeFalse();
-        saved.RootElement.GetProperty("showContextWindowUsage").GetBoolean().ShouldBeFalse();
         js.Calls.ShouldContain(call => call.Identifier == "aiClientTheme.saveClientSettings");
         (await new ClientSettingsService(js).GetAsync()).Theme.ShouldBe(ThemePreference.Light);
-        (await new ClientSettingsService(js).GetAsync()).ShowContextWindowUsage.ShouldBeFalse();
         (await new ClientSettingsService(js).GetAsync()).OtherSoundsEnabled.ShouldBeFalse();
     }
 

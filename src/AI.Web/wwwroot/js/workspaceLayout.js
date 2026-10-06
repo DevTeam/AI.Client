@@ -376,7 +376,8 @@ export function attach(workspace, callbacks) {
         // Nothing behind a modal dialog is reachable by pointer, so it is not by keyboard either.
         if (document.querySelector('[aria-modal="true"], dialog[open]')) return;
         const combo = comboOf(event);
-        const control = [...workspace.querySelectorAll("[data-hotkey]")]
+        // Side panels (settings, permissions) render beside the shell, not inside it.
+        const control = [...workspace.querySelectorAll("[data-hotkey]"), ...document.querySelectorAll(".permissions-drawer [data-hotkey]")]
             .find(element => element.dataset.hotkey.split(" ").includes(combo));
         if (!control || control.disabled) return;
         event.preventDefault();

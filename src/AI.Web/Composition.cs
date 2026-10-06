@@ -97,6 +97,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<AI.Contracts.Navigation.IAppGuideTopics>()
             .Root<IChatTipsState>()
             .Root<ISkillCommandMatcher>()
+            .Root<ISettingsListFilter>()
             .Root<IResourceMentionMatcher>()
             .Root<ISearchResultPresentation>()
             .Root<IMentionLinkWriter>()
@@ -125,7 +126,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 SettingsTransferCodec, SettingsImportPlanner, RunStatusPresentation, ComposerHistoryNavigator,
                 ReplySuggestionState, NavigationCues, AppNavigationLinks, AppGuideApi, AppControlHints,
                 AI.Contracts.Navigation.AppNavigationTargets, AI.Contracts.Navigation.AppGuideTopics,
-                SkillCommandMatcher, ResourceMentionMatcher, SearchResultPresentation, MentionLinkWriter,
+                SkillCommandMatcher, SettingsListFilter, ResourceMentionMatcher, SearchResultPresentation, MentionLinkWriter,
                 ResourcePresenter, DiffSnapshotReader, ComposerContextPresentation, UsagePresentation,
                 ChatWidgetCatalog, ChatWidgetLayout, ChatFileStatisticsCalculator, ChatToolStatisticsCalculator,
                 ChatPerformanceCalculator, ChatKnowledgeStatisticsCalculator, ChatSubtaskStatisticsCalculator,

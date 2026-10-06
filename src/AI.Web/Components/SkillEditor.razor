@@ -2,27 +2,33 @@
 @using AI.Web.Skills
 @inject ISkillApi SkillApi
 @inject INotificationService Notifications
+@inject ISettingsListFilter ListFilter
 
 @* One editor for both catalogs, like Memory: the person's own skills beside the built-in ones, or
    one project's. It keeps every edit locally and writes them all when the drawer closes. *@
 <div class="global-editor-layout skill-editor">
     <div class="settings-list-column">
+        <SettingsFilterField @bind-Value="_filter" Placeholder="Filter skills" Shown="@Shown.Count" Total="@_items.Count" Submitted="SelectFirstShown" />
         <nav class="settings-list" aria-label="Skills">
             @if (_loaded && _items.Count == 0)
             {
                 <p class="empty-hint">@(ProjectId is null ? "No skills are available." : "No skills in this project yet.")</p>
             }
+            else if (_items.Count > 0 && Shown.Count == 0)
+            {
+                <p class="empty-hint">No skills match “@_filter.Trim()”.</p>
+            }
             @foreach (var source in Sources)
             {
-                var group = Group(source);
-                if (group.Count == 0) continue;
+                var group = Group(source).Where(IsShown).ToArray();
+                if (group.Length == 0) continue;
                 @if (ProjectId is null) { <div class="memory-group-label">@source</div> }
                 @foreach (var item in group)
                 {
                     <div class="settings-list-item @(item.Key == _selectedKey ? "selected" : string.Empty) @(item.Enabled ? string.Empty : "memory-disabled")">
                         <button class="settings-list-select" type="button" @onclick="() => _selectedKey = item.Key">
-                            <span><SkillIcon Icon="@item.Icon" />@item.Name</span>
-                            <small>@Summary(item)</small>
+                            <span><SkillIcon Icon="@item.Icon" /><SettingsFilterText Text="@item.Name" Query="@_filter" /></span>
+                            <small><SettingsFilterText Text="@Summary(item)" Query="@_filter" /></small>
                         </button>
                         @if (item.Key == _selectedKey && !item.ReadOnly)
                         {
@@ -173,6 +179,7 @@
     private Guid? _selectedKey;
     private bool _loaded;
     private string? _error;
+    private string _filter = string.Empty;
 
     private string Scope => ProjectId is null ? "User" : "Project";
     private string[] Sources => ProjectId is null ? ["Built-in", "User"] : ["Project"];
@@ -257,8 +264,18 @@
     private IReadOnlyList<Item> Group(string source) => _items.Where(item => item.Source == source)
         .OrderBy(item => item.Stored is null).ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
 
+    /// <summary>The rows the filter keeps, in the order the list shows them.</summary>
+    private IReadOnlyList<Item> Shown => Sources.SelectMany(Group).Where(IsShown).ToArray();
+
+    private bool IsShown(Item item) => ListFilter.Matches(_filter, item.Name, item.Id, item.Stored?.Description,
+        item.Source, item.Stored is { Aliases: { } aliases } ? string.Join(' ', aliases) : null);
+
+    private void SelectFirstShown() => _selectedKey = Shown.FirstOrDefault()?.Key ?? _selectedKey;
+
     private async Task Add()
     {
+        // A new skill is named "My skill" until edited, which the filter could hide.
+        _filter = string.Empty;
         var item = new Item(null) { Source = Scope, Content = Template };
         _items.Add(item);
         _selectedKey = item.Key;

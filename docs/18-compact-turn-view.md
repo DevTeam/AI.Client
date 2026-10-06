@@ -109,6 +109,19 @@ If the turn ends with an error, the row keeps `Failed after …` and shows no ba
 
 The row is the click target. Hover highlights the row and shows a chevron; keyboard focus adds a frame. Click or Enter/Space toggles the section.
 
+An expanded turn ends with a **Hide steps** control (`.turn-collapse-footer`), so a long turn can be folded from where the reader is. It mirrors the row it closes: it starts at the left edge of the column, uses the row's muted type, a `chevron-up` and the visible label, and a hairline after the label marks where the intermediate steps end. It stays in the flow and has no fill, border or shadow at rest. Collapsing from it keeps the content below in place.
+
+It must not be confused with the jump to the latest message (`.messages-jump`, see [UX decisions](12-ux-decisions.md)), which is the opposite in every cue:
+
+| | Hide steps | Jump to latest |
+| --- | --- | --- |
+| Belongs to | the transcript, one turn | the window |
+| Position | in the flow, left edge of the column | floating, centred at the bottom of the feed |
+| Look | muted text, no fill, hairline | accent tint, border, shadow, pill |
+| Icon | `chevron-up`: folds content | `arrow-down`: moves the view |
+| Label | `Hide steps` | `New message` or `Writing…` with a pulsing dot |
+| Shown | whenever a turn is expanded | only when something new is below and the feed is not at the bottom |
+
 ### Animation
 
 The collapse is animated as an instant change without slide or fade, so a conversation does not appear to "twitch". Expanding today is a layout change that is rendered synchronously.

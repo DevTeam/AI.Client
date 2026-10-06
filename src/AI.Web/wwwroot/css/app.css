@@ -1196,7 +1196,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .settings-page-tabs > .theme-option { border: 0; font: inherit; font-size: var(--font-size-base); }
 .settings-tab-count { margin-left: .3rem; color: var(--color-text-subtle); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
 .settings-toolbar { display: flex; align-items: center; gap: .5rem; }
-.settings-toolbar > .settings-search { flex: 1; min-width: 0; min-height: 2.15rem; padding: .35rem .6rem; font-size: var(--font-size-base); }
+.settings-toolbar > .settings-filter { flex: 1; }
 .settings-toolbar > select { width: auto; flex: none; min-height: 2.15rem; padding: .3rem .5rem; font-size: var(--font-size-md); }
 .settings-toolbar > button { flex: none; }
 .mcp-tool-row { min-height: 2.4rem; padding-block: .3rem; }
@@ -1275,8 +1275,9 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 
     /* When the two columns stack, the list must not claim all remaining height — that would
        push the form out of the drawer. Falls back to the original "size to content". */
-    .settings-list-column {
-        grid-template-rows: auto auto;
+    .settings-list-column,
+    .settings-list-column:has(> .settings-filter) {
+        grid-template-rows: none;
     }
 
     .settings-list {
@@ -1299,6 +1300,29 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .settings-list-add {
     justify-self: start;
 }
+
+/* The filter above a long settings list (and over the MCP tools): the label is the field, so the
+   icon, the count and the clear button sit inside one box that lights up as a whole on focus. */
+.settings-list-column:has(> .settings-filter) { grid-template-rows: auto minmax(0, 1fr) auto; }
+.settings-filter { display: flex; align-items: center; gap: .4rem; min-width: 0; min-height: 2.15rem; padding: 0 .3rem 0 .6rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-input-bg); box-sizing: border-box; cursor: text; transition: border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease; }
+.settings-filter:hover { border-color: var(--color-border-strong); }
+.settings-filter:focus-within { border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent); }
+.settings-filter > .app-icon { flex: none; width: .9rem; height: .9rem; color: var(--color-text-faint); transition: color var(--duration-fast) ease; }
+.settings-filter:focus-within > .app-icon, .settings-filter.is-active > .app-icon { color: var(--color-accent); }
+.settings-filter > .settings-filter-input { flex: 1; min-width: 0; min-height: 0; padding: .35rem 0; border: 0; border-radius: 0; background: transparent; font-size: var(--font-size-base); outline: none; }
+.settings-filter-input::placeholder { color: var(--color-text-disabled); }
+.settings-filter-input::-webkit-search-cancel-button { display: none; }
+.settings-filter-count { flex: none; color: var(--color-text-subtle); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.settings-filter-count > [aria-hidden] { margin: 0 .1rem; color: var(--color-text-faint); }
+.settings-filter > .settings-filter-clear { flex: none; display: grid; place-items: center; width: 1.5rem; height: 1.5rem; min-height: 0; padding: 0; border-color: transparent; border-radius: var(--radius-sm); background: transparent; color: var(--color-text-muted); }
+.settings-filter > .settings-filter-clear:hover { background: var(--color-fill-hover); color: var(--color-text); }
+.settings-filter-clear .app-icon { width: .8rem; height: .8rem; }
+.settings-filter-shortcut { flex: none; padding: 0 .3rem; border: 1px solid var(--color-border); border-radius: var(--radius-xs); color: var(--color-text-faint); font-family: inherit; font-size: var(--font-size-xs); line-height: 1.4; transition: opacity var(--duration-fast) ease; }
+.settings-filter:focus-within > .settings-filter-shortcut { opacity: 0; }
+@media (hover: none), (pointer: coarse) { .settings-filter-shortcut { display: none; } }
+/* The filter's words inside the rows it kept, in the accent tint search results use. */
+.settings-filter-match { padding: 0; border-radius: var(--radius-2xs); background: var(--color-highlight-bg); color: var(--color-highlight-fg); box-shadow: 0 0 0 1px var(--color-highlight-bg); }
+.settings-filter-tools { color: var(--color-accent-text); }
 
 .settings-list,
 .global-form {

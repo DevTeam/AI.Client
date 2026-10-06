@@ -1,0 +1,11 @@
+@inject ISettingsListFilter ListFilter
+@* A row's text with the words of the list filter marked, the way search results mark the query. *@
+@foreach (var part in ListFilter.Highlight(Text, Query))
+{
+    if (part.IsMatch) { <mark class="settings-filter-match">@part.Text</mark> } else { @part.Text }
+}
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = string.Empty;
+    [Parameter] public string Query { get; set; } = string.Empty;
+}

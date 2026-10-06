@@ -1,0 +1,50 @@
+@* The filter above a settings list: always in the same place, so it is never looked for. Only an
+   empty list goes without it, unless it still holds a query. *@
+@if (Total > 0 || Value.Length > 0)
+{
+    @* A label, so Ctrl+F (pressed through data-hotkey as a click) focuses the input. *@
+    <label class="settings-filter @(Value.Length > 0 ? "is-active" : null)" data-hotkey="@(Hotkey ? "Ctrl+KeyF" : null)" title="@(Hotkey ? $"{Placeholder} (Ctrl+F)" : Placeholder)">
+        <AppIcon Name="search" />
+        <input class="settings-filter-input" type="search" placeholder="@Placeholder" aria-label="@Placeholder"
+               aria-keyshortcuts="@(Hotkey ? "Control+F" : null)" autocomplete="off" spellcheck="false"
+               value="@Value" @oninput="OnInput" @onkeydown="OnKeyDown" />
+        @if (Value.Length > 0)
+        {
+            <span class="settings-filter-count" role="status" title="@($"{Shown} of {Total} shown")">@Shown<span aria-hidden="true">/</span><span class="visually-hidden"> of </span>@Total</span>
+            <button class="icon-action settings-filter-clear" type="button" title="Clear filter (Esc)" aria-label="Clear filter" @onclick="ClearAsync"><AppIcon Name="x" /></button>
+        }
+        else if (Hotkey)
+        {
+            <kbd class="settings-filter-shortcut" aria-hidden="true">Ctrl+F</kbd>
+        }
+    </label>
+}
+
+@code {
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Filter";
+    /// <summary>Rows the query keeps.</summary>
+    [Parameter] public int Shown { get; set; }
+    /// <summary>Rows in the whole list.</summary>
+    [Parameter] public int Total { get; set; }
+    /// <summary>
+    /// Whether Ctrl+F focuses this field; off for a list filter while another filter on the same
+    /// page is the one the person is working with.
+    /// </summary>
+    [Parameter] public bool Hotkey { get; set; } = true;
+    /// <summary>Enter: open the first row the filter kept.</summary>
+    [Parameter] public EventCallback Submitted { get; set; }
+
+    private Task OnInput(ChangeEventArgs args) => ValueChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty);
+
+    private Task ClearAsync() => ValueChanged.InvokeAsync(string.Empty);
+
+    // Escape with a query only clears it (runEvents.js leaves a filled filter's Escape alone);
+    // an empty filter lets Escape close the drawer as anywhere else in it.
+    private Task OnKeyDown(KeyboardEventArgs args) => args.Key switch
+    {
+        "Escape" when Value.Length > 0 => ClearAsync(),
+        "Enter" when Value.Length > 0 && Shown > 0 => Submitted.InvokeAsync(),
+        _ => Task.CompletedTask
+    };}

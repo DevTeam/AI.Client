@@ -56,7 +56,9 @@
 
 <PageTitle>@ClientMetadata.ProductName</PageTitle>
 
-<main class="workspace-shell @(IsChatWidgetsVisible() ? "widgets-open" : null)" @ref="_workspace">
+@* The shell's classes belong to workspaceLayout.js; the widget column's state is passed as data
+   instead, since a re-rendered class attribute would wipe the classes the script has set. *@
+<main class="workspace-shell" data-widgets="@GetChatWidgetsState()" @ref="_workspace">
     <aside @attributes="@(ControlHints.Attributes("workspace.sidebar"))" class="workspace-sidebar" id="workspace-sidebar">
         <div class="sidebar-projects">
         @* The projects list is the sidebar's top level now, so it has no heading of its own and
@@ -357,7 +359,7 @@
     </aside>
 
     <div class="workspace-resizer" data-side="left" role="separator" tabindex="0" aria-orientation="vertical"
-         aria-label="Resize project sidebar" aria-controls="workspace-sidebar" aria-valuemin="0" aria-valuemax="420"
+         aria-label="Resize project sidebar" aria-controls="workspace-sidebar" aria-valuemin="0"
          title="Drag to resize, drag to the edge to hide · Double-click to hide or show"></div>
 
     <section class="workspace-conversation" aria-label="Chat">
@@ -715,6 +717,14 @@
         </footer>
     </section>
 
+    @if (_selectedProject is not null)
+    {
+        <div class="workspace-resizer" data-side="right" role="separator" tabindex="0" aria-orientation="vertical"
+             aria-label="Resize chat widgets" aria-controls="chat-widgets" aria-valuemin="0"
+             title="Drag to resize, drag to the edge to hide · Double-click to hide or show"></div>
+    }
+    @* Phone width only: the shade behind an open drawer, which closes it when tapped. *@
+    <div class="workspace-phone-scrim" aria-hidden="true"></div>
     @if (IsChatWidgetsVisible())
     {
         // A new chat has no stored chat yet: its widgets show their empty state until the first message.
@@ -1641,7 +1651,7 @@ else if (_guideInvitation is { } guideInvitation)
         if (firstRender)
         {
             _dotNetReference = DotNetObjectReference.Create(this);
-            await WorkspaceLayoutService.AttachAsync(_workspace);
+            await WorkspaceLayoutService.AttachAsync(_workspace, _dotNetReference);
             try
             {
                 _composerModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
@@ -3016,11 +3026,23 @@ else if (_guideInvitation is { } guideInvitation)
 
     private bool IsChatWidgetsVisible() => _chatWidgetsOpen && _selectedProject is not null;
 
-    private async Task ToggleChatWidgetsAsync()
+    private string GetChatWidgetsState() => _selectedProject is null ? "unavailable" : _chatWidgetsOpen ? "open" : "closed";
+
+    private Task ToggleChatWidgetsAsync() => SetChatWidgetsOpen(!_chatWidgetsOpen);
+
+    /// <summary>
+    /// Opens or closes the widget column. Besides the header button, workspaceLayout.js calls it
+    /// when the column's divider is dragged, clicked or swiped, so the column follows the pointer
+    /// before the preference is saved.
+    /// </summary>
+    [JSInvokable]
+    public async Task SetChatWidgetsOpen(bool open)
     {
-        _chatWidgetsOpen = !_chatWidgetsOpen;
-        await ClientSettings.UpdateAsync(current => current with { ChatWidgetsOpen = _chatWidgetsOpen });
-        if (_chatWidgetsOpen) await RefreshChatUsageAsync();
+        if (open == _chatWidgetsOpen) return;
+        _chatWidgetsOpen = open;
+        StateHasChanged();
+        await ClientSettings.UpdateAsync(current => current with { ChatWidgetsOpen = open });
+        if (open) await RefreshChatUsageAsync();
     }
 
     // The Timeline widget rows are also a table of contents: a click scrolls the transcript to

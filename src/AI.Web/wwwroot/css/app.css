@@ -585,13 +585,25 @@ body {
 .workspace-shell.sidebar-collapsed .workspace-resizer::after { inset: 0 auto 0 0; }
 .workspace-shell.sidebar-collapsed .workspace-resizer:hover::after { transition-delay: 250ms; }
 
-.workspace-shell.sidebar-animating { transition: grid-template-columns 150ms ease; }
-.workspace-shell.sidebar-animating .workspace-sidebar { transition: visibility 0s linear 150ms; }
-.workspace-shell.sidebar-animating:not(.sidebar-collapsed) .workspace-sidebar { transition: none; }
+/* The widget column's divider mirrors the sidebar's: it straddles the column's left border and,
+   while the column is closed, leaves a narrower strip at the right edge, kept thin because the
+   transcript's scrollbar runs along that edge too. The selectors above still match the right
+   divider, so it states its own geometry in both states. */
+.workspace-resizer[data-side="right"] { grid-column: 4; width: 9px; margin-left: -5px; }
+.workspace-resizer[data-side="right"]::after { inset: 0 auto 0 3px; }
+.workspace-shell:not([data-widgets="open"]) .workspace-resizer[data-side="right"] { width: 4px; margin-left: -4px; }
+.workspace-shell:not([data-widgets="open"]) .workspace-resizer[data-side="right"]::after { inset: 0 0 0 auto; }
+.workspace-shell:not([data-widgets="open"]) .workspace-resizer[data-side="right"]:hover::after { transition-delay: 250ms; }
+
+.workspace-shell.panels-animating { transition: grid-template-columns 150ms ease; }
+.workspace-shell.panels-animating .workspace-sidebar { transition: visibility 0s linear 150ms; }
+.workspace-shell.panels-animating:not(.sidebar-collapsed) .workspace-sidebar { transition: none; }
 
 @media (prefers-reduced-motion: reduce) {
-    .workspace-shell.sidebar-animating { transition: none; }
+    .workspace-shell.panels-animating { transition: none; }
 }
+
+.workspace-phone-scrim { display: none; }
 
 .workspace-sidebar {
     grid-column: 1;
@@ -4285,29 +4297,67 @@ textarea {
 }
 
 @media (width <= 1100px) {
-    .workspace-shell { --sidebar-width: 15rem; grid-template-columns: var(--sidebar-track) var(--left-divider) minmax(0, 1fr); }
+    .workspace-shell { --sidebar-width: 15rem; }
 }
 
+/* Phone width: the conversation takes the whole screen and both panels are drawers over it,
+   folded until a swipe (or Ctrl+B) brings one out; workspaceLayout.js owns the phone-*-open classes.
+   The wide-screen collapse state and widths are left alone and come back with a wider window. */
 @media (width <= 720px) {
-    .workspace-shell {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto 1fr;
-    }
-
-    .workspace-sidebar { grid-row: 1; }
-    /* The stacked layout has no divider to bring a hidden sidebar back, so it always shows. */
-    .workspace-shell.sidebar-collapsed .workspace-sidebar { visibility: visible; }
-    .workspace-conversation { --chat-content-inset: 1rem; grid-column: 1; grid-row: 2; }
+    .workspace-shell { grid-template-columns: minmax(0, 1fr); }
+    .workspace-conversation { --chat-content-inset: 1rem; grid-column: 1; grid-row: 1; }
 
     .workspace-resizer,
-    .sidebar-toggle-button {
+    .sidebar-toggle-button,
+    .workspace-widgets-toggle {
         display: none;
     }
 
-    .workspace-sidebar {
-        max-height: 13rem;
-        border-right: 0;
-        border-bottom: 1px solid var(--color-border-subtle);
+    .workspace-sidebar,
+    .workspace-shell.sidebar-collapsed .workspace-sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 40;
+        width: min(20rem, 85vw);
+        border-right: 1px solid var(--color-border-subtle);
+        box-shadow: 1rem 0 2.5rem rgb(0 0 0 / calc(38% * var(--shadow-scale)));
+        transform: translateX(-100%);
+        visibility: hidden;
+        transition: transform 200ms ease, visibility 0s linear 200ms;
+    }
+    .workspace-shell.phone-left-open .workspace-sidebar {
+        transform: none;
+        visibility: visible;
+        transition: transform 200ms ease;
+    }
+
+    .workspace-shell .chat-widgets {
+        width: min(var(--widgets-width), 85vw);
+        transform: translateX(100%);
+        visibility: hidden;
+        transition: transform 200ms ease, visibility 0s linear 200ms;
+    }
+    .workspace-shell.phone-right-open .chat-widgets {
+        transform: none;
+        visibility: visible;
+        transition: transform 200ms ease;
+    }
+
+    .workspace-phone-scrim {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 39;
+        background: rgb(0 0 0 / calc(30% * var(--scrim-scale)));
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 200ms ease;
+    }
+    .workspace-shell:is(.phone-left-open, .phone-right-open) .workspace-phone-scrim {
+        opacity: 1;
+        pointer-events: auto;
     }
 
     .workspace-messages {
@@ -4316,6 +4366,14 @@ textarea {
 
     .history-markers {
         display: none;
+    }
+}
+
+@media (width <= 720px) and (prefers-reduced-motion: reduce) {
+    .workspace-sidebar,
+    .workspace-shell .chat-widgets,
+    .workspace-phone-scrim {
+        transition: none !important;
     }
 }
 
@@ -7220,7 +7278,7 @@ button.is-auto-pressed { filter: brightness(1.15); }
    with a drag handle, a title that folds the widget, the widget's own actions and a hide button,
    then the body. Every widget uses these classes and adds only what its content needs, so new
    widgets look like they belong to the set without styling a frame of their own. */
-.workspace-shell.widgets-open { --widgets-track: var(--widgets-width); }
+.workspace-shell[data-widgets="open"] { --widgets-track: var(--widgets-width); }
 .workspace-widgets-toggle { flex: none; margin-left: auto; pointer-events: auto; }
 
 .chat-widgets {
@@ -7369,7 +7427,18 @@ button.is-auto-pressed { filter: brightness(1.15); }
 
 @media (width <= 900px) {
     /* Too narrow to share: the column floats over the conversation like a drawer, below the drawers. */
-    .workspace-shell.widgets-open { --widgets-track: 0px; }
+    .workspace-shell[data-widgets="open"] { --widgets-track: 0px; }
+    /* Its divider floats with it, on the column's left edge or, while it is closed, the window's. */
+    .workspace-resizer[data-side="right"],
+    .workspace-shell:not([data-widgets="open"]) .workspace-resizer[data-side="right"] {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        right: calc(min(var(--widgets-width), 100vw) - 5px);
+        z-index: 41;
+        margin-left: 0;
+    }
+    .workspace-shell:not([data-widgets="open"]) .workspace-resizer[data-side="right"] { right: 0; }
     .chat-widgets {
         position: fixed;
         top: 0;

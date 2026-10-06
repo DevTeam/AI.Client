@@ -1,6 +1,6 @@
 ---
 id: svg-create-animation
-name: Svg create animation
+name: SVG create animation
 icon: svg-create-animation
 kind: playbook
 description: Create a script-free SVG animation with a usable static fallback and target-aware motion verification.

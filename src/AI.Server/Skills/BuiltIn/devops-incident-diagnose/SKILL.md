@@ -1,6 +1,6 @@
 ---
 id: devops-incident-diagnose
-name: Devops incident diagnose
+name: DevOps incident diagnose
 icon: devops-incident-diagnose
 kind: playbook
 description: Investigate an operational incident using logs, metrics, configuration and recent changes, report supported causes and a concrete recovery plan; changes nothing.

@@ -1,6 +1,6 @@
 ---
 id: qa-exploratory-test
-name: Qa exploratory test
+name: QA exploratory test
 icon: qa-exploratory-test
 kind: playbook
 description: Execute a focused exploratory test session in an authorized environment, record observed behavior and defects, and clean up task-owned data.

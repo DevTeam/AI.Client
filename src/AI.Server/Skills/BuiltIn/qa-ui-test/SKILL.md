@@ -1,6 +1,6 @@
 ---
 id: qa-ui-test
-name: Qa ui test
+name: QA UI test
 icon: qa-ui-test
 kind: playbook
 description: Exercise selected UI workflows, validation and error recovery in an authorized environment, record results and clean up task-owned data.

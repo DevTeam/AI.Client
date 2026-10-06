@@ -1,6 +1,6 @@
 ---
 id: svg-create-logo
-name: Svg create logo
+name: SVG create logo
 icon: svg-create-logo
 kind: playbook
 description: Draw an original SVG logo or wordmark with a recognizable silhouette, coherent lettering and usable monochrome variants.

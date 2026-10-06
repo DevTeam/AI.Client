@@ -1,6 +1,6 @@
 ---
 id: qa-acceptance-define
-name: Qa acceptance define
+name: QA acceptance define
 icon: qa-acceptance-define
 kind: playbook
 description: Turn requirements into testable acceptance criteria and identify ambiguity, contradictions and missing behavior; changes nothing.

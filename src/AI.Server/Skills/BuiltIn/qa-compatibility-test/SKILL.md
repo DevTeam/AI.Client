@@ -1,6 +1,6 @@
 ---
 id: qa-compatibility-test
-name: Qa compatibility test
+name: QA compatibility test
 icon: qa-compatibility-test
 kind: playbook
 description: Run a selected browser, viewport or platform compatibility matrix using available test targets, report actual results and blocked combinations.

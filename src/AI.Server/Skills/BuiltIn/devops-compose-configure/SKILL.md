@@ -1,6 +1,6 @@
 ---
 id: devops-compose-configure
-name: Devops compose configure
+name: DevOps compose configure
 icon: devops-compose-configure
 kind: playbook
 description: Configure a local multi-service Compose stack with dependencies, networks, volumes, secret references and health checks, then validate it; never deploys to production.

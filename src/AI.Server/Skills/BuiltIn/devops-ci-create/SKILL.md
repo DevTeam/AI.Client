@@ -1,6 +1,6 @@
 ---
 id: devops-ci-create
-name: Devops ci create
+name: DevOps CI create
 icon: devops-ci-create
 kind: playbook
 description: Create a CI pipeline using the project's existing platform, build and test commands, caches and artifacts, then validate its configuration; does not trigger remote jobs.

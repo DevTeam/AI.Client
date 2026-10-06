@@ -1,6 +1,6 @@
 ---
 id: svg-create-diagram
-name: Svg create diagram
+name: SVG create diagram
 icon: svg-create-diagram
 kind: playbook
 description: Draw a precise SVG diagram of relationships, flows or structure with source-based meaning, readable labels and clear connectors.

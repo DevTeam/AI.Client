@@ -1,6 +1,6 @@
 ---
 id: devops-rollback
-name: Devops rollback
+name: DevOps rollback
 icon: devops-rollback
 kind: playbook
 description: Prepare and perform an authorized rollback to a selected previous release after checking data and configuration compatibility, then verify service recovery.

@@ -1,6 +1,6 @@
 ---
 id: devops-container-create
-name: Devops container create
+name: DevOps container create
 icon: devops-container-create
 kind: playbook
 description: Create a Dockerfile and ignore rules for the selected service, build a local image and verify startup when available; never pushes images or deploys.

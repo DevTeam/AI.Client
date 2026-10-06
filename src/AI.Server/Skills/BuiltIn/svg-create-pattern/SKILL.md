@@ -1,6 +1,6 @@
 ---
 id: svg-create-pattern
-name: Svg create pattern
+name: SVG create pattern
 icon: svg-create-pattern
 kind: playbook
 description: Draw a reusable SVG pattern or ornament with deliberate tile geometry, palette and verified seamless repetition.

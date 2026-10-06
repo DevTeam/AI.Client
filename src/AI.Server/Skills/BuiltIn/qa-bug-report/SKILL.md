@@ -1,6 +1,6 @@
 ---
 id: qa-bug-report
-name: Qa bug report
+name: QA bug report
 icon: qa-bug-report
 kind: playbook
 description: Draft a reproducible defect report with expected and actual behavior, environment, minimal steps and redacted evidence; changes nothing and does not submit issues.

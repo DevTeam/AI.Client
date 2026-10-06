@@ -1,6 +1,6 @@
 ---
 id: devops-config-review
-name: Devops config review
+name: DevOps config review
 icon: devops-config-review
 kind: playbook
 description: Review deployment and environment configuration for missing settings, conflicting values, secret exposure and unsafe defaults, reporting findings; changes nothing.

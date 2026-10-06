@@ -1,6 +1,6 @@
 ---
 id: devops-backup-verify
-name: Devops backup verify
+name: DevOps backup verify
 icon: devops-backup-verify
 kind: playbook
 description: Check backup freshness, integrity and restoration of selected data in an explicitly isolated test destination, report recoverability; never overwrites live data.

@@ -1,6 +1,6 @@
 ---
 id: svg-create-chart
-name: Svg create chart
+name: SVG create chart
 icon: svg-create-chart
 kind: playbook
 description: Draw an SVG data chart from supplied values with honest scales, units, labels and a readable visual encoding.

@@ -1,6 +1,6 @@
 ---
 id: svg-edit
-name: Svg edit
+name: SVG edit
 icon: svg-edit
 kind: playbook
 description: Edit an existing SVG image for requested visual changes while preserving unrelated geometry, references and consumers.

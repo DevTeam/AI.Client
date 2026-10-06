@@ -1,6 +1,6 @@
 ---
 id: qa-accessibility-review
-name: Qa accessibility review
+name: QA accessibility review
 icon: qa-accessibility-review
 kind: playbook
 description: Review selected UI accessibility using available semantic, keyboard, focus and contrast checks, reporting supported findings and unverified areas; does not edit code.

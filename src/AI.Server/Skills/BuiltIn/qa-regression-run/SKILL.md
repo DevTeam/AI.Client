@@ -1,6 +1,6 @@
 ---
 id: qa-regression-run
-name: Qa regression run
+name: QA regression run
 icon: qa-regression-run
 kind: playbook
 description: Select regression checks from changed files, branches or commits, execute them in the authorized test environment and report coverage gaps and defects.

@@ -1,6 +1,6 @@
 ---
 id: svg-export
-name: Svg export
+name: SVG export
 icon: svg-export
 kind: playbook
 description: Export an SVG image to requested PNG, WebP, JPEG or PDF with an available renderer, explicit dimensions/background and verified output.

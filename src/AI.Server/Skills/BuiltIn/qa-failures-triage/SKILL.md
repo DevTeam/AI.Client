@@ -1,6 +1,6 @@
 ---
 id: qa-failures-triage
-name: Qa failures triage
+name: QA failures triage
 icon: qa-failures-triage
 kind: playbook
 description: Investigate test failures and flakiness with bounded isolated reruns, distinguish product, test and environment causes and report evidence; never disables tests.

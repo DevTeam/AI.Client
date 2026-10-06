@@ -1,6 +1,6 @@
 ---
 id: svg-create-schematic
-name: Svg create schematic
+name: SVG create schematic
 icon: svg-create-schematic
 kind: playbook
 description: Draw an SVG schematic with verified components, labeled connections and precise layout without inventing system or engineering facts.

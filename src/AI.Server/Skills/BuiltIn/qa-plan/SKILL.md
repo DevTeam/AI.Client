@@ -1,6 +1,6 @@
 ---
 id: qa-plan
-name: Qa plan
+name: QA plan
 icon: qa-plan
 kind: playbook
 description: Create a risk-based QA plan with scope, environments, test layers, dependencies and exit criteria; changes nothing.

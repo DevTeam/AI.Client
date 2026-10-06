@@ -1,6 +1,6 @@
 ---
 id: svg-create-illustration
-name: Svg create illustration
+name: SVG create illustration
 icon: svg-create-illustration
 kind: playbook
 description: Draw an original SVG illustration or vector painting with deliberate composition, layered shapes, color and editable detail.

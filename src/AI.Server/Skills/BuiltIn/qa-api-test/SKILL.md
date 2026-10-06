@@ -1,6 +1,6 @@
 ---
 id: qa-api-test
-name: Qa api test
+name: QA API test
 icon: qa-api-test
 kind: playbook
 description: Test selected API contracts and permission/error scenarios against an authorized target, verify responses and side effects, and clean up task-owned data.

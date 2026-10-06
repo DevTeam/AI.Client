@@ -13,7 +13,9 @@ Skill conventions:
   skill, instructions, code, git, devops, qa, mermaid, svg, settings; start a new domain only for a new area such as `doc`. The action
   is a verb: create, rename, compact, fork, add, remove, review, save, edit, implement, fix, run.
 - `name` is the id in words with the first letter capitalized: `project-directory-add` becomes
-  "Project directory add".
+  "Project directory add". An abbreviation keeps its official spelling: `qa-plan` becomes "QA plan",
+  `svg-create` becomes "SVG create", `devops-ci-fix` becomes "DevOps CI fix", `settings-import-mcp`
+  becomes "Settings import MCP", `code-run-csharp` becomes "Code run C#".
 - `icon` names the picture in the `/` list, chosen for what the skill does. One of: skill, sparkles,
   wand, zap, lightbulb, target, rocket, play, tool, code, terminal, bug, flask, shield, lock,
   search, eye, diff, git-branch, fork, message-circle, minimize, list-checks, edit, file, file-text,

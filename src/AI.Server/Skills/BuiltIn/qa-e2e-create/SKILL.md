@@ -1,6 +1,6 @@
 ---
 id: qa-e2e-create
-name: Qa e2e create
+name: QA E2E create
 icon: qa-e2e-create
 kind: playbook
 description: Add deterministic end-to-end tests for complete user journeys using the existing framework and isolated fixtures, then execute and report them.

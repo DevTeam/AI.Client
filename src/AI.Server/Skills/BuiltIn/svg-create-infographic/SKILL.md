@@ -1,6 +1,6 @@
 ---
 id: svg-create-infographic
-name: Svg create infographic
+name: SVG create infographic
 icon: svg-create-infographic
 kind: playbook
 description: Draw an SVG infographic with a clear information hierarchy, accurate supplied facts and readable typography.

@@ -1,5 +1,7 @@
 namespace AI.Contracts.Resources;
 
+using System.Text.Json.Serialization;
+
 /// <summary>
 /// A resource named by a chat turn. Workspace paths and captured excerpts share this shape with
 /// uploaded files. Their bytes live in the project asset store and are addressed by AssetId.
@@ -15,10 +17,22 @@ namespace AI.Contracts.Resources;
 /// The "@" link in the message text that names this reference, such as "@src/app.cs:12-40", or
 /// null for one attached beside the text. The transcript draws the link in place of that text.
 /// </param>
+/// <param name="IncludeContent">
+/// A draft's request for a workspace file: send its content, not only its path. The Host reads the
+/// file when the message is sent and keeps that copy as an asset, so a sent reference has an
+/// <see cref="AssetId"/> with <see cref="ChatResourceSource.Workspace"/> instead of this flag.
+/// </param>
 public sealed record ChatResource(Guid Id, ChatResourceKind Kind, string Path, string? Name = null,
     ChatReviewKind? ReviewKind = null, ChatLineRange? Lines = null, string? Excerpt = null, string? Mention = null,
     ChatResourceSource Source = ChatResourceSource.Workspace, string? AssetId = null,
-    string? MediaType = null, long? Size = null);
+    string? MediaType = null, long? Size = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool IncludeContent = false)
+{
+    /// <summary>A workspace file sent with its content as it was then.</summary>
+    [JsonIgnore]
+    public bool IsContentSnapshot => Kind is ChatResourceKind.File or ChatResourceKind.Image
+        && AssetId is not null && Source == ChatResourceSource.Workspace;
+}
 
 /// <summary>New kinds go at the end: the numbers are stored in chat history.</summary>
 public enum ChatResourceKind { File, Directory, Review, Skill, Chat, Project, Diff, Image }

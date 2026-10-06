@@ -83,8 +83,9 @@ export function attach(textarea, dotNetReference) {
         return false;
     };
 
-    // The "@" list works like the slash list, with one difference: Tab on a directory opens it
-    // instead of attaching it. The page answers each accept with the new text and caret.
+    // The "@" list works like the slash list, with two differences: Tab on a directory opens it
+    // instead of attaching it, and Shift+Enter adds a file with its content rather than its path
+    // alone. The page answers each accept with the new text and caret.
     let mentionListOpen = false;
 
     const applyTextEdit = edit => {
@@ -101,11 +102,12 @@ export function attach(textarea, dotNetReference) {
             dotNetReference.invokeMethodAsync("MoveMentionSuggestion", event.key === "ArrowUp" ? -1 : 1);
             return true;
         }
-        if ((event.key === "Enter" || event.key === "Tab") && plain) {
+        const withContent = event.key === "Enter" && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;
+        if ((event.key === "Enter" || event.key === "Tab") && plain || withContent) {
             event.preventDefault();
             mentionListOpen = false;
             dotNetReference
-                .invokeMethodAsync("AcceptMentionSuggestion", textarea.value, textarea.selectionStart, event.key === "Tab")
+                .invokeMethodAsync("AcceptMentionSuggestion", textarea.value, textarea.selectionStart, event.key === "Tab", withContent)
                 .then(applyTextEdit);
             return true;
         }
@@ -123,6 +125,7 @@ export function attach(textarea, dotNetReference) {
     // the word the caret is in. Without an "@" there is nothing to follow, only a list to close.
     let caretReported = false;
     const reportCaret = () => {
+        placeMentionBubble();
         const mentioned = textarea.value.includes("@");
         if (!mentioned && !caretReported) return;
         caretReported = mentioned;
@@ -281,6 +284,8 @@ export function attach(textarea, dotNetReference) {
     // textarea's. A mark cannot be wider than its text, so it gets no padding and no icon.
     const highlight = textarea.parentElement?.querySelector(":scope > .composer-mention-highlight") ?? null;
     let mentionTokens = [];
+    // The links that send their file's content: the same mark, told apart by its class.
+    let contentTokens = new Set();
     const MIRRORED = ["fontFamily", "fontSize", "fontWeight", "fontStyle", "letterSpacing", "wordSpacing", "lineHeight",
         "tabSize", "textIndent", "textTransform", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"];
     // The same word boundaries as MentionLinkWriter, which makes these links of the sent text.
@@ -298,8 +303,9 @@ export function attach(textarea, dotNetReference) {
                 if (!token) continue;
                 fragment.append(text.slice(offset, index));
                 const mark = document.createElement("mark");
-                mark.className = "composer-mention";
+                mark.className = contentTokens.has(token) ? "composer-mention has-content" : "composer-mention";
                 mark.textContent = token;
+                mark.dataset.start = String(index);
                 fragment.append(mark);
                 offset = index + token.length;
             }
@@ -307,6 +313,7 @@ export function attach(textarea, dotNetReference) {
         if (offset === 0) {
             highlight.replaceChildren();
             highlight.hidden = true;
+            placeMentionBubble();
             return;
         }
         // A trailing line break takes a line in the textarea and none in a block without it.
@@ -318,8 +325,29 @@ export function attach(textarea, dotNetReference) {
         highlight.replaceChildren(fragment);
         highlight.hidden = false;
         highlight.scrollTop = textarea.scrollTop;
+        placeMentionBubble();
     };
-    const syncScroll = () => { if (highlight && !highlight.hidden) highlight.scrollTop = textarea.scrollTop; };
+    // The page shows a link's path-or-content switch while the caret is in the link; where it
+    // goes is the mark's place, given to the page's CSS as two custom properties of the box.
+    const placeMentionBubble = () => {
+        const box = textarea.parentElement;
+        if (!box || !highlight) return;
+        const caret = textarea.selectionStart ?? 0;
+        const mark = highlight.hidden || textarea.selectionStart !== textarea.selectionEnd ? null
+            : [...highlight.querySelectorAll(":scope > mark")].find(item => {
+                const start = Number(item.dataset.start);
+                return caret > start && caret <= start + item.textContent.length;
+            });
+        if (!mark) return;
+        const outer = box.getBoundingClientRect();
+        const rect = mark.getClientRects()[0] ?? mark.getBoundingClientRect();
+        box.style.setProperty("--mention-bubble-x", `${Math.max(0, rect.left - outer.left)}px`);
+        box.style.setProperty("--mention-bubble-y", `${rect.top - outer.top}px`);
+    };
+    const syncScroll = () => {
+        if (highlight && !highlight.hidden) highlight.scrollTop = textarea.scrollTop;
+        placeMentionBubble();
+    };
     textarea.addEventListener("scroll", syncScroll);
     // A narrower composer wraps the text again.
     const resizeObserver = highlight ? new ResizeObserver(() => paintMentions()) : null;
@@ -388,9 +416,10 @@ export function attach(textarea, dotNetReference) {
             suggestion = text ?? "";
             resize();
         },
-        setMentionTokens: tokens => {
+        setMentionTokens: (tokens, withContent) => {
             // The longer link first: "@src/app/" must not be taken for the start of "@src/app/x.cs".
             mentionTokens = [...(tokens ?? [])].filter(token => token.length > 1).sort((left, right) => right.length - left.length);
+            contentTokens = new Set(withContent ?? []);
             paintMentions();
         },
         setText: (text, caret) => {

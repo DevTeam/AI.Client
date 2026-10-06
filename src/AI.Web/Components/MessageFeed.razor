@@ -350,9 +350,10 @@
                                     <span class="resource-pill" @key="resource.Id">
                                         @if (resource.Kind == ChatResourceKind.File && resource.AssetId is not null)
                                         {
-                                            <button class="resource-pill-target @kind" type="button"
+                                            <button class="resource-pill-target @kind @(resource.IsContentSnapshot ? "has-content" : null)" type="button"
                                                     title="@ResourcePresenter.Hint(resource)" @onclick="() => OnOpenAsset.InvokeAsync(resource)">
                                                 <span class="resource-pill-label">@ResourceLabel(resource)</span>
+                                                @if (ResourcePresenter.Summary(resource) is { } size) { <span class="resource-pill-detail">@size</span> }
                                             </button>
                                         }
                                         else if (resource.Kind is ChatResourceKind.File or ChatResourceKind.Directory)

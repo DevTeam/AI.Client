@@ -2459,7 +2459,8 @@ div.chat-tip-head { cursor: default; }
 .chat-tip-keys > span:nth-child(even) { display: inline-flex; gap: 0.2rem; justify-content: flex-end; }
 
 .chat-tips kbd,
-.chat-tips-strip kbd {
+.chat-tips-strip kbd,
+.resource-mention-keys kbd {
     display: inline-block;
     min-width: 1.15rem;
     padding: 0.08rem 0.32rem;
@@ -3251,6 +3252,58 @@ div.chat-tip-head { cursor: default; }
     border-radius: var(--radius-xs);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent);
 }
+/* A link that sends its file's content: a mark has no room for the icon a pill changes, so a
+   deeper tint and a solid accent edge along its foot tell it apart. */
+.composer-mention.has-content {
+    background: color-mix(in srgb, var(--color-accent) 26%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent), inset 0 -2px 0 var(--color-accent);
+}
+/* Path or content for the file link the caret is in, just above the link (chatComposer.js gives
+   its place). It never takes the focus: the caret stays in the text. */
+.composer-mention-bubble {
+    position: absolute;
+    top: var(--mention-bubble-y, 0);
+    left: var(--mention-bubble-x, 0);
+    z-index: var(--z-menu);
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    max-width: calc(100% - var(--mention-bubble-x, 0px));
+    padding: .25rem .5rem .25rem .25rem;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    background: var(--color-fill-hover);
+    box-shadow: var(--shadow-md);
+    transform: translateY(calc(-100% - .35rem));
+    white-space: nowrap;
+}
+.composer-mention-bubble-modes {
+    display: inline-flex;
+    padding: .1rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-inset);
+}
+.composer-mention-bubble-modes button {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .2rem .5rem;
+    border: 0;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--color-text-muted);
+    font: inherit;
+    font-size: var(--font-size-md);
+    cursor: pointer;
+}
+.composer-mention-bubble-modes button:hover { color: var(--color-text-strong); }
+.composer-mention-bubble-modes button[aria-pressed="true"] {
+    background: var(--color-surface-raised);
+    box-shadow: var(--shadow-xs);
+    color: var(--color-accent);
+}
+.composer-mention-bubble-modes .app-icon { width: .85rem; height: .85rem; }
+.workspace-composer .composer-mention-bubble-hint { overflow: hidden; color: var(--color-text-subtle); font-size: var(--font-size-sm); text-overflow: ellipsis; }
 
 .workspace-composer textarea {
     min-height: 4.5rem;
@@ -3415,6 +3468,39 @@ div.chat-tip-head { cursor: default; }
 .workspace-composer .skill-command-description { overflow: hidden; color: var(--color-text-subtle); text-overflow: ellipsis; white-space: nowrap; }
 .workspace-composer .skill-command-source { color: var(--color-text-subtle); font-size: var(--font-size-md); }
 .workspace-composer .skill-command-item .skill-command-skill-name { margin-left: .5rem; color: var(--color-text-subtle); font-size: var(--font-size-md); }
+/* The "@" list keeps a last column for a file row's "with content" button, so every row lines up.
+   The button shows on the row under the pointer or the keyboard, as a second way to take it. */
+.resource-mention-menu .skill-command-item { grid-template-columns: auto auto minmax(0, 1fr) auto 1.5rem; }
+.resource-mention-content {
+    display: inline-grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    visibility: hidden;
+}
+.skill-command-item:is(.selected, :hover) .resource-mention-content { visibility: visible; }
+.resource-mention-content:hover { border-color: var(--color-border-strong); background: var(--color-fill-hover); color: var(--color-accent); }
+.resource-mention-menu .resource-mention-content .app-icon { width: .9rem; height: .9rem; color: inherit; }
+/* What the keys do, pinned under the rows while they scroll. */
+.resource-mention-keys {
+    position: sticky;
+    bottom: -.35rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem 1rem;
+    margin: .3rem -.35rem -.35rem;
+    padding: .4rem .9rem;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-fill-hover);
+}
+.workspace-composer .resource-mention-keys span { color: var(--color-text-subtle); font-size: var(--font-size-sm); }
+.resource-mention-keys kbd { margin-right: .3rem; }
 .composer-resource-menu button { display: flex; align-items: center; gap: .6rem; padding: .5rem .55rem; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-text); text-align: left; }
 .composer-resource-menu button:hover,
 .composer-resource-menu button:focus-visible { background: var(--color-fill-stronger); }
@@ -6621,6 +6707,20 @@ a.resource-pill-target.file-link { cursor: context-menu; }
     cursor: pointer;
 }
 .resource-pill-remove:hover { color: var(--color-text-strong); }
+/* A draft's file pill: send its content as well, or only its path. Pressed, it takes the accent. */
+.resource-pill-content {
+    display: inline-flex;
+    flex: none;
+    padding: .05rem;
+    border: 0;
+    border-radius: var(--radius-2xs);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+}
+.resource-pill-content:hover { color: var(--color-text-strong); }
+.resource-pill-content[aria-pressed="true"] { background: color-mix(in srgb, var(--color-accent) 22%, transparent); color: var(--color-accent); }
+.resource-pill-content .app-icon { width: .8rem; height: .8rem; }
 .resource-pill-remove .app-icon { width: .75rem; height: .75rem; }
 
 /* The icon of what the pill or the path names, inside its frame and before the name. A badge sits
@@ -6670,6 +6770,10 @@ a.resource-pill-target.file-link { cursor: context-menu; }
 /* A file and a directory are drawn the same as an "@" link and as a plain path. */
 :root { --file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z'/%3E%3Cpath d='M14 3v5h5'/%3E%3C/svg%3E"); --directory-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'/%3E%3C/svg%3E"); }
 .mention-file { --mention-icon: var(--file-icon); }
+/* A file sent with its content: lines in the page, and a solid edge along the foot of its frame. */
+.mention-file.has-content { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z'/%3E%3Cpath d='M14 3v5h5M9 13h6M9 17h4'/%3E%3C/svg%3E"); }
+.markdown-content a.mention-link.has-content,
+.resource-pill:has(> .resource-pill-target.has-content) { box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--color-accent) 70%, transparent); }
 .mention-directory { --mention-icon: var(--directory-icon); }
 .mention-chat { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-3.9-.94L3 20l1.06-3.98A8.5 8.5 0 1 1 21 11.5Z'/%3E%3C/svg%3E"); }
 .mention-project { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 3 9 5-9 5-9-5Z'/%3E%3Cpath d='m3 13 9 5 9-5'/%3E%3C/svg%3E"); }

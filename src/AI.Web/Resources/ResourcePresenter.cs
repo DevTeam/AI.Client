@@ -25,7 +25,9 @@ public sealed class ResourcePresenter(IDiffSnapshotReader snapshots) : IResource
         switch (reference.Kind)
         {
             case ChatResourceKind.File:
-                if (reference.AssetId is not null)
+                if (reference.IsContentSnapshot)
+                    hint.Append(reference.Path).Append("\nSent with its content, as it was then");
+                else if (reference.AssetId is not null)
                     hint.Append(reference.Name ?? "File").Append(" · click to preview");
                 else
                 {
@@ -62,6 +64,7 @@ public sealed class ResourcePresenter(IDiffSnapshotReader snapshots) : IResource
 
     public string? Summary(ChatResource reference)
     {
+        if (reference is { IsContentSnapshot: true, Kind: ChatResourceKind.File, Size: { } size }) return Bytes(size);
         if (Changes(reference) is not { } snapshot) return null;
         var changes = snapshot.Changes;
         if (changes.IsEmpty) return "no changes";
@@ -119,6 +122,14 @@ public sealed class ResourcePresenter(IDiffSnapshotReader snapshots) : IResource
 
     /// <summary>"7+ files" when the Host cut the list short.</summary>
     private static string Files(int count, bool more) => more ? $"{count}+ files" : count == 1 ? "1 file" : $"{count} files";
+
+    /// <summary>How much a file sent with its content carried: whole kilobytes, a megabyte to one place.</summary>
+    private static string Bytes(long size) => size switch
+    {
+        < 1024 => $"{size} B",
+        < 1024 * 1024 => $"{Math.Max(1, (int)Math.Round(size / 1024d))} KB",
+        _ => (size / (1024d * 1024)).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " MB"
+    };
 
     private static string Name(string path)
     {

@@ -33,6 +33,7 @@ public sealed class MentionLinkWriter(IResourcePresenter presenter) : IMentionLi
             result.Append('[').Append(Escape(presenter.Label(match))).Append("](<").Append(presenter.Target(match)).Append("> \"")
                 .Append(Title(presenter.Hint(match))).Append("\"){.mention-link .mention-")
                 .Append(match.Kind.ToString().ToLowerInvariant());
+            if (match.IsContentSnapshot) result.Append(" .has-content");
             if (presenter.Summary(match) is { } summary) result.Append(" data-summary=\"").Append(summary).Append('"');
             result.Append('}');
             index += match.Mention!.Length;

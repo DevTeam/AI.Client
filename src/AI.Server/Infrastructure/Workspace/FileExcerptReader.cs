@@ -34,4 +34,22 @@ public sealed class FileExcerptReader : IFileExcerptReader
         if (number < first) throw new ArgumentException($"The file has {number} lines; line {first} is past its end.");
         return text.ToString();
     }
+
+    public async Task<byte[]> ReadAllAsync(string path, int maximumBytes, CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        if (stream.Length > maximumBytes)
+            throw new InvalidDataException($"{Path.GetFileName(path)} is larger than {maximumBytes / (1024 * 1024)} MB.");
+        // Read to the end rather than to the length: a file still being written may have grown.
+        using var buffer = new MemoryStream((int)stream.Length);
+        var chunk = new byte[64 * 1024];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            if (buffer.Length + read > maximumBytes)
+                throw new InvalidDataException($"{Path.GetFileName(path)} is larger than {maximumBytes / (1024 * 1024)} MB.");
+            buffer.Write(chunk, 0, read);
+        }
+        return buffer.ToArray();
+    }
 }

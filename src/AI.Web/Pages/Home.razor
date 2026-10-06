@@ -809,6 +809,19 @@
                                             SelectedBranchId="@GetSelectedBranchId()"
                                             OnSelectBranch="OnWidgetBranchSelectedAsync" />
                         break;
+                    case ChatWidgetCatalog.ChatReferences:
+                        <ChatReferencesWidget Widget="@widget"
+                                              Messages="@widgetMessages"
+                                              IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
+                                              OnSelectMessage="ScrollToTurnAsync" />
+                        break;
+                    case ChatWidgetCatalog.ChatModels:
+                        <ChatModelsWidget Widget="@widget"
+                                          ChatUsage="@widgetUsage"
+                                          LiveTurn="@widgetRun?.TurnUsage"
+                                          Messages="@widgetMessages"
+                                          IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)" />
+                        break;
                 }
             </WidgetTemplate>
         </ChatWidgetRail>

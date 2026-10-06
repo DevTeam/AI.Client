@@ -1,0 +1,132 @@
+@inject IChatModelStatisticsCalculator Calculator
+@* Which models answered the chat, and how much of the answering each one did. The only per-model
+   figure the client receives is the list of answer requests (TurnTokenUsage.AnswerModels), so the
+   widget shows request counts and request share. Token totals are grouped by purpose, not by model,
+   and the widget says so instead of inventing a per-model token share. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-models-widget">
+    @if (_hasAny) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
+
+    @if (!_stats.HasModels)
+    {
+        <p class="chat-usage-empty">@(_scope == ChatWidgetScope.LastTurn && _hasAny
+            ? "The last turn has no recorded answer yet."
+            : "Models that answer the chat appear here once it sends its first request.")</p>
+    }
+    else
+    {
+        <div class="chat-usage-section">
+            <div class="chat-widget-headline">
+                <span class="chat-widget-count" title="Distinct models the endpoint reported for answer requests in the selected scope">@_stats.Models.Count</span>
+                <span class="chat-usage-muted">@(_stats.Models.Count == 1 ? "model" : "models")@(_stats.IsRunning ? " so far" : null)</span>
+                <span class="chat-widget-headline-aside chat-usage-muted" title="Answer requests in the selected scope, interrupted streams included; requests for titles, routing, tool risk and subtasks are not answers and are not counted">@_stats.Requests @(_stats.Requests == 1 ? "answer" : "answers")</span>
+            </div>
+        </div>
+
+        <div class="chat-usage-section">
+            <ul class="chat-models-list">
+                @foreach (var model in _stats.Models)
+                {
+                    <li @key="model.Model" title="@ModelTitle(model)">
+                        <span class="chat-models-name">@model.Model</span>
+                        <span class="chat-usage-share-track" aria-hidden="true"><span style="width: @Percent(model.Share)%"></span></span>
+                        <span class="chat-models-value">@FormatPercent(model.Share)</span>
+                        <span class="chat-models-meta chat-usage-muted">@model.Requests @(model.Requests == 1 ? "request" : "requests")</span>
+                    </li>
+                }
+            </ul>
+        </div>
+
+        <div class="chat-usage-section chat-usage-footnote">
+            <span title="Turns in which at least one answer request was recorded, out of all turns in the selected scope">In @_stats.TurnsWithAnswers of @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns") models answered</span>
+            <span class="chat-models-note chat-usage-muted" title="The chat ledger groups tokens by purpose, not by model, so how many tokens belonged to each model is not recorded and is not shown.">tokens are not recorded per model</span>
+        </div>
+    }
+</ChatWidget>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>Whole-chat usage; null when nothing has been measured yet.</summary>
+    [Parameter]
+    public ChatTokenUsage? ChatUsage { get; set; }
+
+    /// <summary>The turn the run is on, as the run snapshot reports it while it happens.</summary>
+    [Parameter]
+    public TurnTokenUsage? LiveTurn { get; set; }
+
+    /// <summary>The visible branch, root to leaf.</summary>
+    [Parameter]
+    public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+
+    /// <summary>True while the last turn is still going; the widget says so far.</summary>
+    [Parameter]
+    public bool IsGenerating { get; set; }
+
+    private ChatWidgetScope _scope = ChatWidgetScope.Chat;
+
+    private ChatModelStatistics _stats = ChatModelStatistics.Empty;
+    private bool _hasAny;
+
+    private bool _statisticsInitialized;
+    private IReadOnlyList<ChatMessageView> _statisticsMessages = [];
+    private ChatTokenUsage? _statisticsChatUsage;
+    private TurnTokenUsage? _statisticsLiveTurn;
+    private bool _statisticsIsGenerating;
+
+    protected override void OnParametersSet()
+    {
+        // Parent renders also follow typing and modifier keys; only changed data needs statistics.
+        if (_statisticsInitialized
+            && ReferenceEquals(_statisticsMessages, Messages)
+            && ReferenceEquals(_statisticsChatUsage, ChatUsage)
+            && ReferenceEquals(_statisticsLiveTurn, LiveTurn)
+            && _statisticsIsGenerating == IsGenerating) return;
+
+        Refresh();
+        _statisticsInitialized = true;
+        _statisticsMessages = Messages;
+        _statisticsChatUsage = ChatUsage;
+        _statisticsLiveTurn = LiveTurn;
+        _statisticsIsGenerating = IsGenerating;
+    }
+
+    private void SetScope(ChatWidgetScope scope)
+    {
+        _scope = scope;
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        _stats = Calculator.Calculate(ChatUsage, LiveTurn, Messages, IsGenerating, _scope);
+        _hasAny = _scope == ChatWidgetScope.Chat
+            ? _stats.HasModels
+            : Calculator.Calculate(ChatUsage, LiveTurn, Messages, IsGenerating, ChatWidgetScope.Chat).HasModels;
+    }
+
+    private string? GetSummary()
+    {
+        if (!_stats.HasModels) return null;
+        var top = _stats.Models[0];
+        return _stats.Models.Count == 1
+            ? $"{top.Model} · {top.Requests}"
+            : $"{_stats.Models.Count} · {top.Model} {FormatPercent(top.Share)}";
+    }
+
+    private static string ModelTitle(ChatModelEntry model)
+    {
+        var first = model.FirstAt.LocalDateTime.ToString("g");
+        var last = model.LastAt.LocalDateTime.ToString("g");
+        var span = model.FirstAt == model.LastAt ? $"Recorded at {first}" : $"Recorded from {first} to {last}";
+        return $"{model.Model} — {model.Requests} answer {(model.Requests == 1 ? "request" : "requests")} "
+            + $"({FormatPercent(model.Share)} of the answers in the selected scope). {span}. "
+            + "Model names are quoted as the endpoint reported them; two spellings stay two rows.";
+    }
+
+    private static string FormatPercent(double share) =>
+        $"{(int)Math.Round(Math.Clamp(share, 0d, 1d) * 100)}%";
+
+    private static string Percent(double share) =>
+        Math.Round(Math.Clamp(share, 0d, 1d) * 100, 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+}

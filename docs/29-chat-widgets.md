@@ -20,6 +20,8 @@ Current widgets:
 | `chat-knowledge` | Knowledge | `book` | `ChatKnowledgeWidget` | Files and pages the assistant read on the visible branch, grouped by tool, with the most recent paths |
 | `chat-timeline` | Timeline | `history` | `ChatTimelineWidget` | One row per turn on the visible branch: when it started, how long it ran, its requests and tokens, and the tools and files it touched |
 | `chat-branches` | Branches | `git-branch` | `ChatBranchesWidget` | Every stored branch of the chat: title, depth, message count, child branches and head timestamp, with a click that switches the visible branch |
+| `chat-references` | References | `link` | `ChatReferencesWidget` | The files, directories, images, uploads, skills, diffs, chats and projects the messages named, added up over the whole chat or the last turn, each with a click that shows its earliest message |
+| `chat-models` | Models | `cpu` | `ChatModelsWidget` | Which models answered the chat and how many answer requests each served, for the whole chat or the last turn |
 
 ## UX
 
@@ -613,3 +615,89 @@ while the transcript is being read.
   branch row in the sidebar read as the same shape. The row is a two-column grid (icon, body); the
   guide is absolutely positioned and so takes no grid column. Meta items never wrap inside
   themselves and are separated by a CSS `·`, so a narrow panel moves whole items to the next line.
+
+## References widget
+
+What the chat was given and received (`ChatReferencesWidget`,
+`IChatReferenceStatisticsCalculator`).
+
+- **Scope.** Whole chat or last turn, with the same switch as the other widgets; the running turn
+  says "so far". A turn starts at a person's message, the same split Performance, Files and Tools
+  use, so the widgets agree on what "the last turn" is.
+- **Source of truth.** `ChatMessageView.Resources` — the references the transcript stores beside
+  the message that named them, on the visible branch. Nothing is parsed out of the message text:
+  a path written in prose is not a reference and is not counted. The widget says so in its tooltip.
+- **What counts as one reference.** Two resources are the same target when a person would call
+  them so: the same path; for a file, the same line range, since a message about lines 12-40 is
+  about a different part of the file than a message about the whole of it; uploaded files by their
+  `AssetId`, which is what actually holds their bytes; a review by path and kind. A target named in
+  three messages is one row with three mentions, not three rows — the person referred to one thing.
+- **What it shows.**
+  - **Headline.** Number of distinct references in the scope, and how many messages carried at
+    least one. Then a legend with counts per kind — files, directories, images, diffs, skills,
+    chats, projects, reviews — each with its icon, and only the kinds the scope actually has.
+  - **Rows.** Most mentioned first, then by kind and path. Each row is the same label and tooltip
+    the transcript draws for that reference, through `IResourcePresenter` (`Label`, `Hint`,
+    `Summary`), so a reference reads identically in the widget and in the feed. A `@diff` row
+    shows its captured totals (`+120 −34` or "no changes"). Six rows are shown, with "Show N more".
+  - **A click** on a row asks `Home` to scroll the transcript to the earliest message in scope
+    that named the target (`OnSelectMessage` → `ScrollToTurnAsync`), the same path Timeline rows use.
+  - **Footer.** "In X of Y turns references were named".
+- **Honesty about numbers.**
+  - Every figure is a count of stored references; none of it is inferred from timestamps, so
+    nothing carries "≈".
+  - Mentions beyond the first are a count of messages, not of how many times the reference was
+    actually sent to a model: a message that was never answered still counts.
+  - References inside subtask transcripts are not in this branch's messages and are not counted.
+- **Empty state.** "Files, directories, images, uploads, skills, diffs and chats the conversation
+  refers to appear here."; in the last-turn scope with data elsewhere, "The last turn named no
+  references."
+- **Folded summary.** `N references · M messages`; null when nothing was named.
+- **Data.** The visible branch's `ChatMessageView.Resources`; labels and tooltips by
+  `IResourcePresenter`. No scope switch state is stored, and no provider figure is involved.
+- **Architecture.** `IChatReferenceStatisticsCalculator` in `src/AI.Web/Widgets` returns a
+  `ChatReferenceStatistics` record holding one `ChatReferenceEntry` per distinct target; a pure
+  function over the branch with no DI. Bound in `Composition.cs` and tested in
+  `tests/AI.Web.Tests/Widgets`. The widget is a `ChatWidget` with `Summary`, the scope switch and
+  the shared `chat-usage-*` building blocks (`chat-usage-section`, `chat-usage-legend`,
+  `chat-usage-empty`, `chat-usage-footnote`, `chat-usage-link`); the rows use `chat-references-*`.
+
+## Models widget
+
+Which models answered the chat (`ChatModelsWidget`, `IChatModelStatisticsCalculator`).
+
+- **Scope.** Whole chat or last turn, with the same switch as the other widgets. The turn in the
+  last-turn scope is chosen with the same rule Performance and Subtasks use (`ChooseTurn`), so the
+  three widgets agree on which turn that is; the headline says "so far" while it runs.
+- **Source of truth.** `TurnTokenUsage.AnswerModels` — one entry per answer request, as the Host
+  recorded it, interrupted streams included. A model that only drafted a chat title, judged a tool
+  risk, routed a skill or wrote a summary is not an answering model and does not appear. The names
+  are quoted exactly as the endpoint reported them, so two spellings of one model stay two rows.
+- **What it shows.**
+  - **Headline.** Number of distinct answering models, and the scope's answer requests on the right.
+  - **Rows.** Most requests first, then by name. Each row: the model name, a bar with its share of
+    the scope's answer requests, that share as a percentage and its request count. The tooltip
+    names the request count, the share and when its first and latest request were recorded.
+  - **Footer.** "In X of Y turns models answered", and a note that tokens are not recorded per
+    model.
+- **What is *not* implemented, and why.** The per-model **token** share does not exist client-side.
+  The chat ledger groups tokens by purpose (`ChatTokenUsage.ByPurpose`), not by model. The Host's
+  `TokenUsageReport.ByModel` does group usage by model, but no client endpoint serves it, so the
+  widget has nothing to read. Rather than divide the scope's tokens among models by request count — which
+  would be a guess dressed as a figure — the widget shows request counts and request share and says
+  in the footer that tokens are not recorded per model. If a per-model usage endpoint is added to
+  the Host later, the calculator gains a field and the widget a row; the contract stays the same.
+  Likewise nothing is inferred from message timestamps: how long a model took to answer is not in
+  these records, and the widget does not invent it.
+- **Empty state.** "Models that answer the chat appear here once it sends its first request."; in
+  the last-turn scope with data elsewhere, "The last turn has no recorded answer yet."
+- **Folded summary.** One model: `model · N`; several: `N · top-model P%`.
+- **Data.** `ChatTokenUsage` (whole chat) and `TurnTokenUsage` (the run snapshot's live turn),
+  the visible branch for the turn count, and the running flag. No presentation service is injected:
+  the only formatted figure is a percentage, which the widget rounds itself.
+- **Architecture.** `IChatModelStatisticsCalculator` in `src/AI.Web/Widgets` returns a
+  `ChatModelStatistics` record holding one `ChatModelEntry` per model; a pure function over the
+  usage pair and the branch. Bound in `Composition.cs` and tested in `tests/AI.Web.Tests/Widgets`.
+  The widget is a `ChatWidget` with `Summary`, `ChatWidgetScopeSwitch`, the shared count headline
+  and `chat-usage-*` building blocks; the rows use `chat-models-*` and reuse
+  `chat-usage-share-track` for the bar.

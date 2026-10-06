@@ -4823,22 +4823,52 @@ textarea {
     }
 }
 
-/* The running turn's current text under its row. Written like an answer, because it may turn out
-   to be one; a replacement rises out of the row instead of snapping in. */
+/* The running turn's latest notes under its row, newest at the bottom. Each is written like an
+   answer, because the newest may turn out to be one; a new note rises out of the row instead of
+   snapping in. The fill mode is `backwards` so that, once arrived, the note's own opacity and
+   transform are free to carry it away again. */
 .workspace-message.live-text {
-    animation: turn-message-arrive 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    display: grid;
+    grid-template-rows: 1fr;
+    animation: turn-message-arrive 300ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    transition: grid-template-rows var(--duration-slow) var(--ease-emphasized),
+        margin-bottom var(--duration-slow) var(--ease-emphasized),
+        transform var(--duration-slow) var(--ease-emphasized),
+        opacity var(--duration-slow) ease;
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .workspace-message.live-text { animation: none; }
-}
+.live-text-body { min-height: 0; }
+
+.workspace-message.live-text .markdown-content { transition: color var(--duration-slow) ease; }
 
 /* Text known to lead into tool calls is a remark, not the answer: it steps back once the model
    starts the call it announced, so the eye moves on to the activity line below it. */
 .workspace-message.live-text.is-preamble .markdown-content {
     color: var(--color-text-muted);
     font-size: 0.92em;
-    transition: color var(--duration-slow) ease;
+}
+
+/* Notes behind the newest step back by age, so the newest reads first with motion off too. Most
+   notes are preambles, already muted, so age starts one step below that. */
+.workspace-message.live-text.is-previous .markdown-content { color: var(--color-text-subtle); }
+.workspace-message.live-text.is-older .markdown-content { color: var(--color-text-faint); }
+
+/* The note pushed out of the stack, and every note once the answer streams under them: it folds
+   away upwards and the notes below rise into its place. It stays mounted only for that. */
+.workspace-message.live-text.is-leaving {
+    grid-template-rows: 0fr;
+    margin-bottom: 0;
+    opacity: 0;
+    transform: translateY(-0.5rem);
+    animation: none;
+    pointer-events: none;
+}
+
+.workspace-message.live-text.is-leaving .live-text-body { overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+    .workspace-message.live-text,
+    .workspace-message.live-text .markdown-content { animation: none; transition: none; }
 }
 
 /* Concrete tool activity or an approval wait under the running turn's text. */
@@ -4866,10 +4896,6 @@ textarea {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .workspace-message.live-text.is-preamble .markdown-content { transition: none; }
 }
 
 .tool-row-glyph {

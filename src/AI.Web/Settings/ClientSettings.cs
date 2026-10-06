@@ -28,6 +28,13 @@ public sealed record ClientSettings
     /// <summary>Whether the turn line shows what the turn used ("42k → 1.8k") next to its time.</summary>
     public bool ShowTurnTokens { get; init; }
 
+    public const int MinLiveNoteCount = 1;
+    public const int MaxLiveNoteCount = 5;
+    public const int DefaultLiveNoteCount = 3;
+
+    /// <summary>How many of a running turn's latest notes stand under its row, newest at the bottom.</summary>
+    public int LiveNoteCount { get; init; } = DefaultLiveNoteCount;
+
     /// <summary>Whether the column of chat widgets is open beside the conversation.</summary>
     public bool ChatWidgetsOpen { get; init; }
 

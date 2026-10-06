@@ -437,6 +437,7 @@
             SelectedRun="@GetSelectedRun()"
             ChatUsage="@(_selectedChat is null ? null : ChatUsage.Find(_selectedChat.Id))"
             ShowTurnTokens="@_showTurnTokens"
+            LiveNoteCount="@_liveNoteCount"
             ActiveCheckpoint="@GetActiveCheckpoint()"
             OnUndoCheckpoint="UndoCheckpointAsync"
             GeneratingElapsed="@GetGeneratingElapsed()"
@@ -1078,7 +1079,7 @@ else if (_guideInvitation is { } guideInvitation)
 }
 @if (_globalSection is not null)
 {
-    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ConnectionToEdit="@_connectionToEdit" SkillToEdit="@_linkedSkillId" SkillSource="@_linkedSkillSource" ToolToEdit="@_linkedToolName" LinkSelection="@_linkedSelection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" ContextWindowUsageChanged="value => _showContextWindowUsage = value" TurnTokensChanged="value => _showTurnTokens = value" />
+    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ConnectionToEdit="@_connectionToEdit" SkillToEdit="@_linkedSkillId" SkillSource="@_linkedSkillSource" ToolToEdit="@_linkedToolName" LinkSelection="@_linkedSelection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" ContextWindowUsageChanged="value => _showContextWindowUsage = value" TurnTokensChanged="value => _showTurnTokens = value" LiveNoteCountChanged="value => _liveNoteCount = value" />
 }
 
 @if (_permissionsScope is not null && _selectedProject is not null)
@@ -1561,6 +1562,7 @@ else if (_guideInvitation is { } guideInvitation)
         CorrectionLanguages.Changed += OnTextCorrectionChanged;
         _showContextWindowUsage = clientSettings.ShowContextWindowUsage;
         _showTurnTokens = clientSettings.ShowTurnTokens;
+        _liveNoteCount = clientSettings.LiveNoteCount;
         _chatWidgetsOpen = clientSettings.ChatWidgetsOpen;
         _chatWidgets = WidgetLayout.Arrange(clientSettings.ChatWidgets);
         Notifications.Changed += OnNotificationsChanged;
@@ -3009,6 +3011,7 @@ else if (_guideInvitation is { } guideInvitation)
     private bool _chatWidgetsOpen;
     private IReadOnlyList<ChatWidgetPreference> _chatWidgets = [];
     private bool _showTurnTokens;
+    private int _liveNoteCount = AI.Web.Settings.ClientSettings.DefaultLiveNoteCount;
     private Guid? _usageChatId;
 
     private IReadOnlyList<ChatMessageView>? _widgetSourceMessages;

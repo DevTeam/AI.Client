@@ -57,7 +57,16 @@ Source, newest first: the draft of the model step in flight (`ChatRunSnapshot.Dr
 - **No going back.** A text the turn has moved past is not shown again.
 - **The end is immediate.** Final answer, stop or failure replace the live text at once; the reader is not made to wait for the thing the wait was for.
 - **Expanded turn:** the notes are shown as themselves, so only the draft of the step in flight is added at the end.
-- A replacement fades in from the row (300 ms); growth of the same text is patched in place. `prefers-reduced-motion` turns the animation off.
+- A new text fades in from the row (300 ms); growth of the same text is patched in place. `prefers-reduced-motion` turns the animation off.
+
+#### Stack of notes
+
+The texts the turn has moved past stay under the row as a stack, newest at the bottom: **Settings → Chat → Notes while working** sets how many, 1 to 5, 3 by default (`ClientSettings.LiveNoteCount`, one value for every chat on this client). With 1 the row behaves as a single live text.
+
+- **Conveyor.** A new text enters at the bottom; the oldest one, pushed out, folds away upwards (its height, gap and opacity go to zero while it rises by half a line) and the notes below it rise into its place. It stays mounted only for that and is hidden from assistive technology meanwhile. Durations are `--duration-slow` with `--ease-emphasized`.
+- **Age.** The notes behind the newest step back: the previous one in `--color-text-subtle`, older ones in `--color-text-faint`. Most notes are preambles, already muted, so age starts a step below that. With motion off this is what tells the newest apart.
+- **The answer.** When the final answer starts streaming, every note folds away the same way and the activity line goes, so the end of the turn is the last step of the conveyor rather than a drop.
+- **Opened mid-run.** A turn presented for the first time (the chat or branch opened while it runs) fills the stack from its earlier notes at once, without waiting for reading time. The transcript keeps the text of a branch's notes while its last turn has no answer, for this; the notes of answered turns are folded as before.
 
 The logic lives in `TurnLiveText` (one instance per transcript) and is covered by `TurnLiveTextTests`.
 
@@ -212,7 +221,7 @@ The row is rendered in a muted color, smaller text, single line with ellipsis on
 2. The row's text matches the table by turn state.
 3. Click on the row expands the intermediate items into today's view without changes.
 4. A running turn shows the model's current text in full under the row, streamed; a new text replaces it only after the reading delay (see [Live text](#live-text)).
-5. During generation the row shows `Working for …` and the growing time; the feed holds at most one live text for the turn, and one activity line under it.
+5. During generation the row shows `Working for …` and the growing time; the feed holds at most the configured number of live notes for the turn (see [Stack of notes](#stack-of-notes)), and one activity line under them.
 6. A turn with no intermediate messages does not add a row.
 7. Stopped and failed turns show `Stopped after …` / `Failed after …`.
 8. The file changes card is visible with the turn collapsed.

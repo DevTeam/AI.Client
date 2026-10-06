@@ -109,6 +109,15 @@
                                     <span class="settings-row-text"><span class="settings-row-label">Tokens per turn</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.chat.turn_tokens")</span></span>
                                     <input class="settings-switch" type="checkbox" role="switch" checked="@_showTurnTokens" @onchange="SetShowTurnTokensAsync" />
                                 </label>
+                                <label class="settings-row">
+                                    <span class="settings-row-text"><span class="settings-row-label">Notes while working</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.chat.live_notes")</span></span>
+                                    <select @attributes="@(ControlHints.Attributes("settings.chat.live_notes"))" value="@_liveNoteCount" @onchange="SetLiveNoteCountAsync">
+                                        @for (var count = AI.Web.Settings.ClientSettings.MinLiveNoteCount; count <= AI.Web.Settings.ClientSettings.MaxLiveNoteCount; count++)
+                                        {
+                                            <option value="@count">@count</option>
+                                        }
+                                    </select>
+                                </label>
                                 @* These are the Host's: it makes the model calls, whichever window is open. *@
                                 <details class="settings-disclosure">
                                     <summary @attributes="@(ControlHints.Attributes("settings.chat.helpers"))" class="settings-row">
@@ -445,6 +454,7 @@
     [Parameter] public EventCallback Saved { get; set; }
     [Parameter] public EventCallback<bool> ContextWindowUsageChanged { get; set; }
     [Parameter] public EventCallback<bool> TurnTokensChanged { get; set; }
+    [Parameter] public EventCallback<int> LiveNoteCountChanged { get; set; }
     /// <summary>The project whose memory and skills the ProjectMemory and ProjectSkills sections edit.</summary>
     [Parameter] public Guid? ProjectId { get; set; }
     private MemoryEditor? _memoryEditor;
@@ -510,6 +520,7 @@
     private bool _otherSoundsEnabled = true;
     private bool _showContextWindowUsage = true;
     private bool _showTurnTokens;
+    private int _liveNoteCount = AI.Web.Settings.ClientSettings.DefaultLiveNoteCount;
     private bool _guideSuggestionsEnabled = true;
     private int _guideIdleMinutes = 5;
     private int _guideCompletedCount;
@@ -560,6 +571,7 @@
         _otherSoundsEnabled = clientSettings.OtherSoundsEnabled;
         _showContextWindowUsage = clientSettings.ShowContextWindowUsage;
         _showTurnTokens = clientSettings.ShowTurnTokens;
+        _liveNoteCount = clientSettings.LiveNoteCount;
         _guideSuggestionsEnabled = clientSettings.GuideSuggestionsEnabled;
         _guideIdleMinutes = clientSettings.GuideIdleMinutes;
         _guideCompletedCount = clientSettings.CompletedGuideTopics.Count;
@@ -672,6 +684,14 @@
         _showContextWindowUsage = args.Value is true;
         await ClientSettings.UpdateAsync(current => current with { ShowContextWindowUsage = _showContextWindowUsage });
         await ContextWindowUsageChanged.InvokeAsync(_showContextWindowUsage);
+    }
+
+    private async Task SetLiveNoteCountAsync(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var count)) return;
+        _liveNoteCount = Math.Clamp(count, AI.Web.Settings.ClientSettings.MinLiveNoteCount, AI.Web.Settings.ClientSettings.MaxLiveNoteCount);
+        await ClientSettings.UpdateAsync(current => current with { LiveNoteCount = _liveNoteCount });
+        await LiveNoteCountChanged.InvokeAsync(_liveNoteCount);
     }
 
     private async Task SetShowTurnTokensAsync(ChangeEventArgs args)

@@ -113,10 +113,9 @@ public sealed class ChatEndpoints : IEndpointModule
             });
         routes.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/workspace-undo/{messageId:guid}",
             async (Guid projectId, Guid chatId, Guid messageId, WorkspaceUndoRequest request,
-                IChatService chats, IChatRunDispatcher runs, IWorkspaceUndoService undo, CancellationToken token) =>
+                IChatService chats, IWorkspaceUndoGuard guard, IWorkspaceUndoService undo, CancellationToken token) =>
             {
-                if ((await runs.GetSnapshotAsync(token)).Any(run => run.ProjectId == projectId
-                    && run.Status is ChatRunStatus.Generating or ChatRunStatus.Paused))
+                if (await guard.IsProjectWritingAsync(projectId, token))
                     return Results.Conflict("Wait for active project runs before undoing files.");
                 var chat = await chats.GetAsync(projectId, chatId, token);
                 var id = chat?.Messages.FirstOrDefault(message => message.Id == messageId)?.WorkspaceChanges?.UndoId;

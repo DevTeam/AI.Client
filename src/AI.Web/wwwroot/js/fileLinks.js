@@ -198,8 +198,8 @@ export function attach(container, dotnet) {
     };
 
     // cachedOnly decorates only what the cache already answers and asks the Host nothing: it runs
-    // as soon as a block is re-rendered, so a streaming answer, whose markup is replaced on every
-    // update, keeps its file links and their icons instead of losing them until the next scan.
+    // as soon as new markup appears, including links first completed during streaming. Existing
+    // links retain their decoration when streamingMarkdown.js preserves their DOM nodes.
     const scanBlock = (block, cachedOnly = false) => {
         if (!block.isConnected) return;
         const known = input => !cachedOnly || cache.has(input);

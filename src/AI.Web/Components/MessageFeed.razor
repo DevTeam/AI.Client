@@ -249,7 +249,7 @@
                              class="workspace-message assistant live-text streaming @(entry.LivePreamble ? "is-preamble" : string.Empty)"
                              @onmouseenter="() => SetLiveTextHeld(true)"
                              @onmouseleave="() => SetLiveTextHeld(false)">
-                        <div class="markdown-content">@((MarkupString)RenderLiveMarkdown(liveText))</div>
+                        <StreamingMarkdown Html="@RenderLiveMarkdown(liveText)" />
                     </article>
                 }
                 else if (entry.Activity is { } activity)
@@ -280,7 +280,7 @@
                        accepted through the completion protocol. *@
                     <article id="message-streaming" class="workspace-message assistant @(streamingRun.Status == ChatRunStatus.Generating ? "streaming" : string.Empty)">
                         @if (streamingRun.Status != ChatRunStatus.Generating) { <span class="message-status">Incomplete</span> }
-                        <div class="markdown-content">@((MarkupString)RenderLiveMarkdown(streamingRun.StreamingContent))</div>
+                        <StreamingMarkdown Html="@RenderLiveMarkdown(streamingRun.StreamingContent)" />
                     </article>
                 }
                 else if (item?.Message is { } message)

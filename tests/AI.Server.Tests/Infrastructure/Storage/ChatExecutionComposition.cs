@@ -29,7 +29,6 @@ internal sealed partial class ChatExecutionComposition
             .DependsOn("AI.Server.Tests.TestServer")
             .Hint(Hint.Comments, "Off")
             .Hint(Hint.Resolve, "Off")
-            .Transient<ExtensionChatKindPolicy>(Tag.Unique)
             .Root<IChatRepository>(nameof(ChatRepository))
             .Root<IUserPromptBroker>(nameof(Broker))
             .Root<IChatContextBuilder>(nameof(Context))
@@ -42,5 +41,6 @@ internal sealed partial class ChatExecutionComposition
             .Root<IProjectService>(nameof(Projects))
             .Root<IChatReplySuggestions>(nameof(ReplySuggestions))
             .Arg<IToolSessionFactory>("tools")
-            .Arg<IWorkspaceChangeTracker>("workspace");
+            .Arg<IWorkspaceChangeTracker>("workspace")
+            .Transient<ExtensionChatKindPolicy>(Tag.Unique);
 }

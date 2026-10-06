@@ -1,10 +1,17 @@
 namespace AI.Web.Layout;
 
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 
 public interface IWorkspaceLayoutService : IAsyncDisposable
 {
-    Task AttachAsync(ElementReference workspace);
+    /// <summary>
+    /// Attaches the side-panel layout to <paramref name="workspace"/>. The chat widget column is the
+    /// page's to render, so the layout asks <paramref name="callbacks"/> to open or close it through
+    /// its <c>SetChatWidgetsOpen(bool)</c> method.
+    /// </summary>
+    Task AttachAsync<TCallbacks>(ElementReference workspace, DotNetObjectReference<TCallbacks> callbacks)
+        where TCallbacks : class;
 
     Task ForwardContextMenuAsync(double clientX, double clientY, string backdropSelector);
 

@@ -36,161 +36,317 @@ export function revealElement(id) {
     document.getElementById(id)?.scrollIntoView({ block: "nearest" });
 }
 
-const sidebarMin = 220;
-const sidebarMax = 420;
-// Dragging this far past the minimum hides the sidebar; the stop at the minimum comes first, so a
+// Both side panels share one behaviour; they differ in the edge they grow from and in their limits.
+// A panel may grow up to its cap, as long as the conversation keeps conversationMin beside it.
+const panels = {
+    left: { min: 220, cap: 640, widthVar: "--sidebar-width", name: "Sidebar" },
+    right: { min: 260, cap: 960, widthVar: "--widgets-width", name: "Chat widgets" }
+};
+const conversationMin = 400;
+// Dragging this far past the minimum hides a panel; the stop at the minimum comes first, so a
 // narrow panel is not lost by overshooting it.
 const collapseOvershoot = 70;
 const keyboardStep = 16;
 // A press that moves less than this is a click on the divider, not a drag.
 const dragSlop = 3;
 const toggleDuration = 150;
+// The phone layout has no room beside the conversation: both panels slide over it as drawers.
+const phoneQuery = "(max-width: 720px)";
+// A swipe has to travel this far, mostly sideways, to open or close a drawer.
+const swipeDistance = 60;
+// On phone width a mouse resting this close to the window's edge for peekDelay brings that drawer
+// out; once the pointer has left the drawer, it goes back after peekLeaveDelay.
+const peekEdge = 12;
+const peekDelay = 200;
+const peekLeaveDelay = 300;
+// Rows that take the person somewhere else; on phone width the drawer they sit in steps aside.
+const navigationSelector = ".chat-link, .search-nav-action, .archive-nav-item, .sidebar-global-nav .workspace-nav-item";
 
-export function attach(workspace) {
+/**
+ * The left panel's visibility is a layout preference kept here, as the sidebar-collapsed class.
+ * The right panel is the chat widget column, which Blazor renders only while it is open, so its
+ * state is Blazor's: the shell carries it as data-widgets, and changes are asked of the page
+ * through callbacks.SetChatWidgetsOpen.
+ */
+export function attach(workspace, callbacks) {
     let stored = {};
     try {
         stored = JSON.parse(localStorage.getItem(storageKey) || "null") || {};
     } catch {
         localStorage.removeItem(storageKey);
     }
-    if (stored.left) workspace.style.setProperty("--sidebar-width", `${stored.left}px`);
-    if (stored.right) workspace.style.setProperty("--settings-width", `${stored.right}px`);
+    if (stored.left) workspace.style.setProperty(panels.left.widthVar, `${stored.left}px`);
+    if (stored.right) workspace.style.setProperty(panels.right.widthVar, `${stored.right}px`);
 
     const save = () => {
-        const styles = getComputedStyle(workspace);
-        const width = name => parseFloat(styles.getPropertyValue(name)) || undefined;
         stored = {
             ...stored,
-            left: width("--sidebar-width"),
-            right: width("--settings-width"),
+            left: widthOf("left"),
+            right: widthOf("right"),
             leftCollapsed: workspace.classList.contains("sidebar-collapsed")
         };
         localStorage.setItem(storageKey, JSON.stringify(stored));
     };
-    const sidebarWidth = () => parseFloat(getComputedStyle(workspace).getPropertyValue("--sidebar-width")) || sidebarMin;
-    const leftSeparator = workspace.querySelector('.workspace-resizer[data-side="left"]');
+    // A width the stylesheet set is in rem until the first drag writes pixels over it.
+    const widthOf = side => {
+        const value = getComputedStyle(workspace).getPropertyValue(panels[side].widthVar).trim();
+        const scale = value.endsWith("rem") ? parseFloat(getComputedStyle(document.documentElement).fontSize) : 1;
+        return parseFloat(value) * scale || panels[side].min;
+    };
+    const isOpen = side => side === "left"
+        ? !workspace.classList.contains("sidebar-collapsed")
+        : workspace.dataset.widgets === "open";
+    const maxOf = side => {
+        const other = side === "left" ? "right" : "left";
+        const taken = isOpen(other) ? widthOf(other) : 0;
+        return Math.max(panels[side].min, Math.min(panels[side].cap, workspace.clientWidth - taken - conversationMin));
+    };
     const describe = () => {
-        const collapsed = workspace.classList.contains("sidebar-collapsed");
-        if (leftSeparator) {
-            leftSeparator.setAttribute("aria-valuenow", collapsed ? "0" : String(Math.round(sidebarWidth())));
-            leftSeparator.setAttribute("aria-valuetext", collapsed ? "Sidebar hidden" : `${Math.round(sidebarWidth())} pixels`);
+        for (const separator of workspace.querySelectorAll(".workspace-resizer")) {
+            const side = separator.dataset.side;
+            const open = isOpen(side);
+            const width = Math.round(widthOf(side));
+            separator.setAttribute("aria-valuemax", String(Math.round(maxOf(side))));
+            separator.setAttribute("aria-valuenow", open ? String(width) : "0");
+            separator.setAttribute("aria-valuetext", open ? `${width} pixels` : `${panels[side].name} hidden`);
         }
         for (const button of workspace.querySelectorAll("[data-sidebar-toggle]")) {
-            button.setAttribute("aria-pressed", String(!collapsed));
+            button.setAttribute("aria-pressed", String(isOpen("left")));
         }
     };
-    const setCollapsed = collapsed => workspace.classList.toggle("sidebar-collapsed", collapsed);
+
+    // The page answers a request by re-rendering data-widgets; until then the last request stands,
+    // so a drag that crosses the collapse point does not ask the same thing on every move.
+    let requestedWidgets = null;
+    const requestWidgets = open => {
+        if (open === (requestedWidgets ?? isOpen("right")) || workspace.dataset.widgets === "unavailable") return;
+        requestedWidgets = open;
+        callbacks?.invokeMethodAsync("SetChatWidgetsOpen", open).catch(() => { requestedWidgets = null; });
+    };
+    const setOpen = (side, open) => {
+        if (side === "left") workspace.classList.toggle("sidebar-collapsed", !open);
+        else requestWidgets(open);
+    };
+
     let animation = 0;
     // Only a deliberate toggle animates; a drag follows the pointer as it is.
-    const toggle = collapsed => {
-        if (collapsed === workspace.classList.contains("sidebar-collapsed")) return;
-        workspace.classList.add("sidebar-animating");
+    const animate = () => {
+        workspace.classList.add("panels-animating");
         clearTimeout(animation);
-        animation = setTimeout(() => workspace.classList.remove("sidebar-animating"), toggleDuration + 50);
-        setCollapsed(collapsed);
+        animation = setTimeout(() => workspace.classList.remove("panels-animating"), toggleDuration + 50);
+    };
+    const toggle = (side, open) => {
+        if (open === isOpen(side)) return;
+        // The widget column animates when the page renders it, see the observer below.
+        if (side === "left") animate();
+        setOpen(side, open);
         describe();
         save();
     };
-    const toggleSidebar = () => toggle(!workspace.classList.contains("sidebar-collapsed"));
 
-    setCollapsed(stored.leftCollapsed === true);
+    workspace.classList.toggle("sidebar-collapsed", stored.leftCollapsed === true);
     describe();
 
-    // Every press on the captured divider ends in a click on it, so two quick drags from the same
-    // spot (the sidebar stopped at its maximum and is pulled again) read as a double-click; one
-    // counts only when neither press moved.
-    let pressesDragged = [false, false];
+    let widgetsState = workspace.dataset.widgets;
+    const observer = new MutationObserver(() => {
+        const state = workspace.dataset.widgets;
+        if (state === widgetsState) return;
+        const changedOpen = (widgetsState === "open") !== (state === "open");
+        widgetsState = state;
+        requestedWidgets = null;
+        if (changedOpen && !workspace.classList.contains("is-resizing")) animate();
+        if (state !== "open") workspace.classList.remove("phone-right-open");
+        describe();
+    });
+    observer.observe(workspace, { attributes: true, attributeFilter: ["data-widgets"] });
+
     const listeners = [];
-    const listen = (element, type, listener) => {
-        element.addEventListener(type, listener);
-        listeners.push([element, type, listener]);
+    const listen = (element, type, listener, options) => {
+        element.addEventListener(type, listener, options);
+        listeners.push([element, type, listener, options]);
     };
+    const separatorOf = event => event.target instanceof Element ? event.target.closest(".workspace-resizer") : null;
 
-    for (const separator of workspace.querySelectorAll(".workspace-resizer")) {
+    // Every press on the captured divider ends in a click on it, so two quick drags from the same
+    // spot (the panel stopped at its maximum and is pulled again) read as a double-click; one
+    // counts only when neither press moved.
+    const pressesDragged = { left: [false, false], right: [false, false] };
+
+    // The right divider comes and goes with the project, so the dividers are found by delegation.
+    listen(workspace, "pointerdown", event => {
+        const separator = separatorOf(event);
+        if (!separator || event.button !== 0) return;
         const side = separator.dataset.side;
-        listen(separator, "pointerdown", event => {
-            if (event.button !== 0) return;
-            separator.setPointerCapture(event.pointerId);
-            const startX = event.clientX;
-            // Hiding by drag passes the minimum on the way; the sidebar comes back at the width it had.
-            const startWidth = sidebarWidth();
-            let dragged = false;
-            workspace.classList.add("is-resizing");
-            const move = moveEvent => {
-                if (!dragged && Math.abs(moveEvent.clientX - startX) < dragSlop) return;
-                dragged = true;
-                const bounds = workspace.getBoundingClientRect();
-                if (side !== "left") {
-                    const value = Math.max(280, Math.min(520, bounds.right - moveEvent.clientX));
-                    workspace.style.setProperty("--settings-width", `${value}px`);
-                    return;
-                }
-
-                const x = moveEvent.clientX - bounds.left;
-                const collapsed = x < sidebarMin - collapseOvershoot;
-                setCollapsed(collapsed);
-                const width = collapsed ? startWidth : Math.max(sidebarMin, Math.min(sidebarMax, x));
-                workspace.style.setProperty("--sidebar-width", `${width}px`);
-                describe();
-            };
-            const up = () => {
-                separator.removeEventListener("pointermove", move);
-                separator.removeEventListener("pointerup", up);
-                separator.removeEventListener("pointercancel", up);
-                workspace.classList.remove("is-resizing");
-                pressesDragged = [pressesDragged[1], dragged];
-                // A click on the edge strip of a hidden sidebar brings it back at its last width.
-                if (!dragged && side === "left" && workspace.classList.contains("sidebar-collapsed")) {
-                    toggle(false);
-                    return;
-                }
-                save();
-            };
-            separator.addEventListener("pointermove", move);
-            separator.addEventListener("pointerup", up);
-            separator.addEventListener("pointercancel", up);
-        });
-    }
-
-    if (leftSeparator) {
-        listen(leftSeparator, "dblclick", () => {
-            if (!pressesDragged.some(Boolean)) toggleSidebar();
-        });
-        listen(leftSeparator, "keydown", event => {
-            const collapsed = workspace.classList.contains("sidebar-collapsed");
-            if (event.key === "Enter" || event.key === " ") {
-                toggleSidebar();
-            } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-                const grow = event.key === "ArrowRight";
-                if (collapsed) {
-                    if (grow) toggle(false);
-                } else if (!grow && sidebarWidth() <= sidebarMin) {
-                    toggle(true);
-                } else {
-                    const value = Math.max(sidebarMin, Math.min(sidebarMax, sidebarWidth() + (grow ? keyboardStep : -keyboardStep)));
-                    workspace.style.setProperty("--sidebar-width", `${value}px`);
-                    describe();
-                    save();
-                }
-            } else {
+        const panel = panels[side];
+        separator.setPointerCapture(event.pointerId);
+        const startX = event.clientX;
+        // Hiding by drag passes the minimum on the way; the panel comes back at the width it had.
+        const startWidth = widthOf(side);
+        const max = maxOf(side);
+        let dragged = false;
+        workspace.classList.add("is-resizing");
+        const move = moveEvent => {
+            if (!dragged && Math.abs(moveEvent.clientX - startX) < dragSlop) return;
+            dragged = true;
+            const bounds = workspace.getBoundingClientRect();
+            const reach = side === "left" ? moveEvent.clientX - bounds.left : bounds.right - moveEvent.clientX;
+            const open = reach >= panel.min - collapseOvershoot;
+            setOpen(side, open);
+            const width = open ? Math.max(panel.min, Math.min(max, reach)) : startWidth;
+            workspace.style.setProperty(panel.widthVar, `${width}px`);
+            describe();
+        };
+        const up = () => {
+            separator.removeEventListener("pointermove", move);
+            separator.removeEventListener("pointerup", up);
+            separator.removeEventListener("pointercancel", up);
+            workspace.classList.remove("is-resizing");
+            pressesDragged[side] = [pressesDragged[side][1], dragged];
+            // A click on the edge strip of a hidden panel brings it back at its last width.
+            if (!dragged && !isOpen(side)) {
+                toggle(side, true);
                 return;
             }
-            event.preventDefault();
-        });
-    }
+            save();
+        };
+        separator.addEventListener("pointermove", move);
+        separator.addEventListener("pointerup", up);
+        separator.addEventListener("pointercancel", up);
+    });
+    listen(workspace, "dblclick", event => {
+        const separator = separatorOf(event);
+        if (!separator) return;
+        const side = separator.dataset.side;
+        if (!pressesDragged[side].some(Boolean)) toggle(side, !isOpen(side));
+    });
+    listen(workspace, "keydown", event => {
+        const separator = separatorOf(event);
+        if (!separator) return;
+        const side = separator.dataset.side;
+        const panel = panels[side];
+        const open = isOpen(side);
+        if (event.key === "Enter" || event.key === " ") {
+            toggle(side, !open);
+        } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            // Each panel grows away from its own edge.
+            const grow = (event.key === "ArrowRight") === (side === "left");
+            if (!open) {
+                if (grow) toggle(side, true);
+            } else if (!grow && widthOf(side) <= panel.min) {
+                toggle(side, false);
+            } else {
+                const value = Math.max(panel.min, Math.min(maxOf(side), widthOf(side) + (grow ? keyboardStep : -keyboardStep)));
+                workspace.style.setProperty(panel.widthVar, `${value}px`);
+                describe();
+                save();
+            }
+        } else {
+            return;
+        }
+        event.preventDefault();
+    });
 
-    // The header button re-renders with Blazor, so its clicks are picked up here by delegation.
+    // Phone width: both panels start folded each time the window gets there, whatever they were
+    // on a wide screen, and come out as drawers over the conversation. The wide-screen layout is
+    // left as it was, so widening the window again brings it back.
+    const phone = window.matchMedia(phoneQuery);
+    const drawerOpen = () => workspace.classList.contains("phone-left-open") || workspace.classList.contains("phone-right-open");
+    const openDrawer = side => {
+        if (side === "right" && workspace.dataset.widgets === "unavailable") return;
+        // Whatever opens or closes a drawer ends a hover peek; the peek sets itself again after.
+        peeking = null;
+        clearTimeout(peekTimer);
+        workspace.classList.toggle("phone-left-open", side === "left");
+        workspace.classList.toggle("phone-right-open", side === "right");
+        if (side === "right") requestWidgets(true);
+    };
+    listen(phone, "change", () => openDrawer(null));
+    const finishSwipe = (dx, dy) => {
+        if (Math.abs(dx) < swipeDistance || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+        const towardsRight = dx > 0;
+        if (workspace.classList.contains("phone-left-open")) {
+            if (!towardsRight) openDrawer(null);
+        } else if (workspace.classList.contains("phone-right-open")) {
+            if (towardsRight) openDrawer(null);
+        } else {
+            openDrawer(towardsRight ? "left" : "right");
+        }
+    };
+    // Code blocks and wide tables scroll sideways under a finger; a swipe there is theirs.
+    const scrollsSideways = target => {
+        for (let element = target instanceof Element ? target : null; element && element !== workspace; element = element.parentElement) {
+            if (element.scrollWidth > element.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(element).overflowX)) return true;
+        }
+        return false;
+    };
+    let swipe = null;
+    listen(workspace, "touchstart", event => {
+        swipe = null;
+        if (!phone.matches || event.touches.length !== 1 || scrollsSideways(event.target)) return;
+        swipe = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+    }, { passive: true });
+    listen(workspace, "touchend", event => {
+        if (!swipe) return;
+        const touch = event.changedTouches[0];
+        finishSwipe(touch.clientX - swipe.x, touch.clientY - swipe.y);
+        swipe = null;
+    }, { passive: true });
+    listen(workspace, "touchcancel", () => { swipe = null; }, { passive: true });
+    // A mouse resting at the window's left or right edge brings that drawer out over the chat for
+    // as long as the pointer stays on it. The rest comes first, so a pointer only passing the edge
+    // does not; leaving the drawer puts it away after a moment, unless one of its menus is open.
+    let peeking = null;
+    let pendingPeek = null;
+    let peekTimer = 0;
+    const edgeOf = event => {
+        const bounds = workspace.getBoundingClientRect();
+        if (event.clientX - bounds.left < peekEdge) return "left";
+        if (bounds.right - event.clientX < peekEdge && workspace.dataset.widgets !== "unavailable") return "right";
+        return null;
+    };
+    listen(workspace, "pointermove", event => {
+        if (!phone.matches || event.pointerType !== "mouse" || event.buttons !== 0) return;
+        const edge = edgeOf(event);
+        if (!drawerOpen()) {
+            if (edge === pendingPeek) return;
+            clearTimeout(peekTimer);
+            pendingPeek = edge;
+            if (edge) {
+                peekTimer = setTimeout(() => {
+                    pendingPeek = null;
+                    if (drawerOpen()) return;
+                    openDrawer(edge);
+                    peeking = edge;
+                }, peekDelay);
+            }
+            return;
+        }
+        if (!peeking) return;
+        clearTimeout(peekTimer);
+        const drawer = peeking === "left" ? ".workspace-sidebar" : ".chat-widgets";
+        const over = edge === peeking || (event.target instanceof Element && event.target.closest(drawer));
+        if (!over && !document.querySelector('.workspace-sidebar [role="menu"], .chat-widgets-menu, .context-menu-backdrop')) {
+            peekTimer = setTimeout(() => { if (peeking) openDrawer(null); }, peekLeaveDelay);
+        }
+    });
+
     listen(workspace, "click", event => {
-        if (event.target instanceof Element && event.target.closest("[data-sidebar-toggle]")) {
-            toggleSidebar();
-            describe();
+        if (!(event.target instanceof Element)) return;
+        // The header button re-renders with Blazor, so its clicks are picked up here by delegation.
+        if (event.target.closest("[data-sidebar-toggle]")) {
+            toggle("left", !isOpen("left"));
+        } else if (event.target.closest(".workspace-phone-scrim")) {
+            openDrawer(null);
+        } else if (phone.matches && event.target.closest(".workspace-sidebar") && event.target.closest(navigationSelector)) {
+            openDrawer(null);
         }
     });
     listen(document, "keydown", event => {
         const ctrlOnly = event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
         if (ctrlOnly && event.code === "KeyB") {
             event.preventDefault();
-            toggleSidebar();
+            if (phone.matches) openDrawer(workspace.classList.contains("phone-left-open") ? null : "left");
+            else toggle("left", !isOpen("left"));
         } else if (ctrlOnly && event.code === "KeyK") {
             // An open search panel takes the focus back; a closed one is opened through its
             // sidebar button (which works while the sidebar is hidden), and Blazor focuses it.
@@ -202,6 +358,8 @@ export function attach(workspace) {
             } else {
                 workspace.querySelector("[data-search-open]")?.click();
             }
+        } else if (event.key === "Escape" && phone.matches && drawerOpen() && !document.querySelector('[aria-modal="true"], dialog[open]')) {
+            openDrawer(null);
         } else {
             pressHotkey(event);
         }
@@ -237,7 +395,8 @@ export function attach(workspace) {
     return {
         dispose: () => {
             clearTimeout(animation);
-            listeners.forEach(([element, type, listener]) => element.removeEventListener(type, listener));
+            observer.disconnect();
+            listeners.forEach(([element, type, listener, options]) => element.removeEventListener(type, listener, options));
         }
     };
 }

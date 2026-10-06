@@ -511,7 +511,6 @@
                             OnNavigateApp="@OnNavigateApp"
                             OnAnswer="response => RunsApi.AnswerPromptAsync(promptRun.ProjectId, promptRun.ChatId, promptRun.BranchId, response, CancellationToken.None)" />
         }
-        @DockContent
     }
 </div>
 @* Only shown when the feed is NOT following the bottom and there is in fact something down
@@ -590,8 +589,6 @@
     [Parameter] public Guid? ForkSourceId { get; set; }
     [Parameter] public Guid? MessageBranchMenuId { get; set; }
     [Parameter] public ChatRunSnapshot? SelectedRun { get; set; }
-    [Parameter] public RenderFragment? DockContent { get; set; }
-    [Parameter] public string? DockStateKey { get; set; }
     /// <summary>What the chat's finished turns used, by the Host's ledger; the running turn comes with <see cref="SelectedRun"/>.</summary>
     [Parameter] public ChatTokenUsage? ChatUsage { get; set; }
     [Parameter] public bool ShowTurnTokens { get; set; }
@@ -710,7 +707,6 @@
     private Guid? _renderedForkSourceId;
     private Guid? _renderedMessageBranchMenuId;
     private ChatRunSnapshot? _renderedSelectedRun;
-    private string? _renderedDockStateKey;
     private ChatTokenUsage? _renderedChatUsage;
     private bool _renderedShowTurnTokens;
     private HistoryCheckpoint? _renderedActiveCheckpoint;
@@ -739,7 +735,6 @@
             || _renderedForkSourceId != ForkSourceId
             || _renderedMessageBranchMenuId != MessageBranchMenuId
             || !ReferenceEquals(_renderedSelectedRun, SelectedRun)
-            || _renderedDockStateKey != DockStateKey
             || !ReferenceEquals(_renderedChatUsage, ChatUsage)
             || _renderedShowTurnTokens != ShowTurnTokens
             || !ReferenceEquals(_renderedActiveCheckpoint, ActiveCheckpoint)
@@ -768,7 +763,6 @@
         _renderedForkSourceId = ForkSourceId;
         _renderedMessageBranchMenuId = MessageBranchMenuId;
         _renderedSelectedRun = SelectedRun;
-        _renderedDockStateKey = DockStateKey;
         _renderedChatUsage = ChatUsage;
         _renderedShowTurnTokens = ShowTurnTokens;
         _renderedActiveCheckpoint = ActiveCheckpoint;

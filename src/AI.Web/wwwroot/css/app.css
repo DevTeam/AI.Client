@@ -3019,9 +3019,16 @@ div.chat-tip-head { cursor: default; }
 }
 
 .composer-dock {
-    /* Live cards use the transcript scrollbar, including when their details exceed the viewport. */
+    grid-row: 3;
+    grid-column: 1;
     min-width: 0;
+    box-sizing: border-box;
+    padding-inline: var(--chat-content-inset) calc(var(--chat-content-inset) + var(--chat-scrollbar-width, 0px));
 }
+/* Keep open cards usable while the composer remains beside the newest turn's controls. */
+.composer-dock .workspace-changes-list,
+.composer-dock .queue-items,
+.composer-dock .tool-approval-details-content { max-height: min(28vh, 16rem); overflow-y: auto; }
 /* Details precede the header so opening a live card leaves its click target in place. */
 .chat-summary-card.opens-upward { display: flex; flex-direction: column-reverse; }
 /* A transcript card restores the clicked header after rendering; its height must settle in that

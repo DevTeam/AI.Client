@@ -36,6 +36,13 @@ public sealed record ClientSettings
     /// <summary>Whether the column of chat widgets is open beside the conversation.</summary>
     public bool ChatWidgetsOpen { get; init; }
 
+    /// <summary>
+    /// Side panel widths and whether the sidebar is hidden. Kept here rather than in a separate
+    /// localStorage entry so that Desktop restores them from its profile: its embedded server gets
+    /// a new port, and so a new localStorage origin, on each start.
+    /// </summary>
+    public AI.Web.Layout.WorkspacePanels? WorkspacePanels { get; init; }
+
     public bool GuideSuggestionsEnabled { get; init; } = true;
     public int GuideIdleMinutes { get; init; } = 5;
     public DateTimeOffset? GuideLastOfferedAt { get; init; }

@@ -1661,7 +1661,7 @@ else if (_guideInvitation is { } guideInvitation)
         if (firstRender)
         {
             _dotNetReference = DotNetObjectReference.Create(this);
-            await WorkspaceLayoutService.AttachAsync(_workspace, _dotNetReference);
+            await WorkspaceLayoutService.AttachAsync(_workspace, _dotNetReference, (await ClientSettings.GetAsync()).WorkspacePanels);
             try
             {
                 _composerModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatComposer.js");
@@ -3050,6 +3050,13 @@ else if (_guideInvitation is { } guideInvitation)
         StateHasChanged();
         await ClientSettings.UpdateAsync(current => current with { ChatWidgetsOpen = open });
         if (open) await RefreshChatUsageAsync();
+    }
+
+    /// <summary>workspaceLayout.js reports the side panels here whenever they are resized or hidden.</summary>
+    [JSInvokable]
+    public async Task SaveWorkspacePanels(WorkspacePanels panels)
+    {
+        await ClientSettings.UpdateAsync(current => current with { WorkspacePanels = panels });
     }
 
     // The Timeline widget rows are also a table of contents: a click scrolls the transcript to

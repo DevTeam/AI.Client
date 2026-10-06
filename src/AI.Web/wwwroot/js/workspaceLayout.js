@@ -1,4 +1,4 @@
-const storageKey = "ai-client.workspace-layout.v1";
+const legacyStorageKey = "ai-client.workspace-layout.v1";
 
 export function forwardContextMenu(x, y, backdropSelector) {
     const backdrop = document.querySelector(backdropSelector);
@@ -68,24 +68,36 @@ const navigationSelector = ".chat-link, .search-nav-action, .archive-nav-item, .
  * state is Blazor's: the shell carries it as data-widgets, and changes are asked of the page
  * through callbacks.SetChatWidgetsOpen.
  */
-export function attach(workspace, callbacks) {
-    let stored = {};
-    try {
-        stored = JSON.parse(localStorage.getItem(storageKey) || "null") || {};
-    } catch {
-        localStorage.removeItem(storageKey);
+export function attach(workspace, callbacks, saved) {
+    // The panels are kept in the client settings (callbacks.SaveWorkspacePanels), which Desktop
+    // restores from its profile. Before that they lived in a localStorage entry of their own; it is
+    // read once when the settings have nothing yet, and then dropped.
+    let stored = saved ?? null;
+    if (!stored) {
+        try {
+            const legacy = JSON.parse(localStorage.getItem(legacyStorageKey) || "null");
+            if (legacy) stored = { sidebarWidth: legacy.left, chatWidgetsWidth: legacy.right, sidebarCollapsed: legacy.leftCollapsed === true };
+        } catch {
+            // An unreadable entry is no worse than none.
+        }
     }
-    if (stored.left) workspace.style.setProperty(panels.left.widthVar, `${stored.left}px`);
-    if (stored.right) workspace.style.setProperty(panels.right.widthVar, `${stored.right}px`);
+    try { localStorage.removeItem(legacyStorageKey); } catch { /* storage unavailable */ }
+    stored ??= {};
+    if (stored.sidebarWidth) workspace.style.setProperty(panels.left.widthVar, `${stored.sidebarWidth}px`);
+    if (stored.chatWidgetsWidth) workspace.style.setProperty(panels.right.widthVar, `${stored.chatWidgetsWidth}px`);
 
+    // A layout taken over from the old entry is saved as soon as the panels are set up.
+    let savedJson = saved ? JSON.stringify(stored) : null;
     const save = () => {
-        stored = {
-            ...stored,
-            left: widthOf("left"),
-            right: widthOf("right"),
-            leftCollapsed: workspace.classList.contains("sidebar-collapsed")
+        const next = {
+            sidebarWidth: Math.round(widthOf("left")),
+            chatWidgetsWidth: Math.round(widthOf("right")),
+            sidebarCollapsed: workspace.classList.contains("sidebar-collapsed")
         };
-        localStorage.setItem(storageKey, JSON.stringify(stored));
+        const json = JSON.stringify(next);
+        if (json === savedJson) return;
+        savedJson = json;
+        callbacks?.invokeMethodAsync("SaveWorkspacePanels", next).catch(() => { savedJson = null; });
     };
     // A width the stylesheet set is in rem until the first drag writes pixels over it.
     const widthOf = side => {
@@ -144,8 +156,9 @@ export function attach(workspace, callbacks) {
         save();
     };
 
-    workspace.classList.toggle("sidebar-collapsed", stored.leftCollapsed === true);
+    workspace.classList.toggle("sidebar-collapsed", stored.sidebarCollapsed === true);
     describe();
+    if (!saved && Object.keys(stored).length) save();
 
     let widgetsState = workspace.dataset.widgets;
     const observer = new MutationObserver(() => {

@@ -221,15 +221,26 @@
                                             <span class="settings-field-control"><ModelPicker @bind-Value="connection.Model" @bind-Value:after="() => InvalidateImageTest(connection)" AriaLabel="Model" Models="@(_resolvedModels.TryGetValue(connection.Id, out var list) ? list : null)" Loading="@(_resolvingModelsForId == connection.Id)" Error="@(_resolvedErrors.TryGetValue(connection.Id, out var err) ? err : null)" OnRetry="@(() => LoadModelsIfStaleAsync(connection.Id, force: true))" Placeholder="@ModelPickerPlaceholder(connection)" EmptyHint="@ModelPickerEmptyHint(connection)" /></span>
                                             @if (_resolvingModelsForId == connection.Id) { <span class="model-loading" aria-label="Loading models" role="status"><AppIcon Name="spinner" Class="tool-row-spinner" /></span> }
                                         </div>
-                                        <div class="settings-row settings-field">
-                                            <span class="settings-row-text"><span class="settings-row-label">Image input</span><span class="settings-row-hint">@(_imageTestResults.TryGetValue(connection.Id, out var result) ? result : "Test the selected model or choose a mode")</span></span>
-                                            <select aria-label="Image input mode" @bind="connection.ImageInput">
-                                                <option value="Automatic">Automatic</option>
-                                                <option value="Enabled">Enabled</option>
-                                                <option value="Disabled">Disabled</option>
-                                            </select>
-                                            <button class="compact-action" type="button" disabled="@(_testingImageForId == connection.Id || string.IsNullOrWhiteSpace(connection.BaseUrl) || string.IsNullOrWhiteSpace(connection.Model))" @onclick="() => TestImageAsync(connection)">@(_testingImageForId == connection.Id ? "Testing…" : "Test")</button>
+                                        @{ var testingImage = _testingImageForId == connection.Id; }
+                                        <div class="settings-row settings-field image-input-row">
+                                            <span class="settings-row-text"><span class="settings-row-label" id="connection-image-input">Image input</span><span class="settings-row-hint">@ImageInputHint(connection.ImageInput)</span></span>
+                                            <span class="settings-field-control">
+                                                <span class="theme-options" role="radiogroup" aria-labelledby="connection-image-input">
+                                                    @foreach (var option in ImageInputOptions)
+                                                    {
+                                                        <label class="theme-option @(connection.ImageInput == option.Value ? "selected" : string.Empty)" title="@ImageInputHint(option.Value)"><input type="radio" name="connection-image-input" checked="@(connection.ImageInput == option.Value)" @onchange="() => connection.ImageInput = option.Value" /><span>@option.Label</span></label>
+                                                    }
+                                                </span>
+                                                <button class="compact-action image-test-action" type="button" title="Send a test image to the selected model and pick the mode from its answer" disabled="@(testingImage || string.IsNullOrWhiteSpace(connection.BaseUrl) || string.IsNullOrWhiteSpace(connection.Model))" @onclick="() => TestImageAsync(connection)"><AppIcon Name="@(testingImage ? "spinner" : "image")" Class="@(testingImage ? "tool-row-spinner" : null)" /><span>@(testingImage ? "Testing…" : "Test")</span></button>
+                                            </span>
                                         </div>
+                                        @if (!testingImage && _imageTestResults.TryGetValue(connection.Id, out var imageTest))
+                                        {
+                                            <div class="settings-row image-test-result @(imageTest.Supported switch { true => "is-supported", false => "is-unsupported", null => "is-failed" })" role="status">
+                                                <AppIcon Name="@(imageTest.Supported switch { true => "check", false => "x", null => "error" })" />
+                                                <span>@imageTest.Detail</span>
+                                            </div>
+                                        }
                                     </div>
                                 </section>
                                 <section class="settings-group" aria-labelledby="connection-more">
@@ -480,7 +491,19 @@
     private readonly Dictionary<Guid, string> _resolvedErrors = [];
     private Guid? _resolvingModelsForId;
     private Guid? _testingImageForId;
-    private readonly Dictionary<Guid, string> _imageTestResults = [];
+    // Supported is null when the test itself failed, so the model's answer is still unknown.
+    private sealed record ImageTestOutcome(bool? Supported, string Detail);
+    private readonly Dictionary<Guid, ImageTestOutcome> _imageTestResults = [];
+
+    private static readonly (ImageInputMode Value, string Label)[] ImageInputOptions =
+        [(ImageInputMode.Automatic, "Auto"), (ImageInputMode.Enabled, "On"), (ImageInputMode.Disabled, "Off")];
+
+    private static string ImageInputHint(ImageInputMode mode) => mode switch
+    {
+        ImageInputMode.Enabled => "Model reads images",
+        ImageInputMode.Disabled => "Images are not sent",
+        _ => "Endpoint decides",
+    };
     // Cancels an in-flight /models request when the user closes the drawer or refreshes again, so
     // the late response cannot leak into a different connection's dropdown.
     private CancellationTokenSource? _resolveCancellation;
@@ -864,10 +887,10 @@
             var result = await GlobalSettingsApi.TestConnectionImageAsync(connection.Id,
                 new ImageProbeRequest(connection.BaseUrl, connection.Model, connection.Secret), CancellationToken.None);
             connection.ImageInput = result.Supported ? ImageInputMode.Enabled : ImageInputMode.Disabled;
-            _imageTestResults[connection.Id] = result.Detail;
+            _imageTestResults[connection.Id] = new ImageTestOutcome(result.Supported, result.Detail);
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException or ArgumentException)
-        { _imageTestResults[connection.Id] = error.Message; }
+        { _imageTestResults[connection.Id] = new ImageTestOutcome(null, error.Message); }
         finally { _testingImageForId = null; }
     }
 

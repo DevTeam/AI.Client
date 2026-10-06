@@ -3,8 +3,10 @@
 @using AI.Contracts.Workspace
 @using AI.Web.Resources
 @inject IReviewApi ReviewsApi
+@inject IWorkspaceUndoState UndoState
 @inject INotificationService Notifications
 @inject IJSRuntime JsRuntime
+@implements IDisposable
 
 <section class="review-workspace" aria-label="Review changes">
     <header class="review-workspace-header">
@@ -16,6 +18,15 @@
                 <span>@_current.Files.Count files · @_current.Comments.Count comments · Round @_current.SourceCreatedAt.LocalDateTime.ToString("g") · Created @_current.CreatedAt.LocalDateTime.ToString("g") · Updated @_current.UpdatedAt.LocalDateTime.ToString("g")</span>
             }
         </div>
+        @if (_undoStatus is { } undoStatus && undoStatus.Files.Any(file => file.State == WorkspaceUndoFileState.Ready))
+        {
+            <button class="review-workspace-undo chat-card-action" type="button" title="Undo changes in all files from this turn"
+                    aria-label="Undo changes in all files from this turn" @onclick="() => BeginUndoAsync(null)"><AppIcon Name="undo" /><span class="workspace-undo-label">Undo</span></button>
+        }
+        @if (_undoStatus is not null && UndoneCount > 0)
+        {
+            <span class="workspace-undo-count">@UndoneCount/@_undoStatus.Files.Count undone</span>
+        }
         @if (_current is not null)
         {
             @if (_confirmingDelete)
@@ -31,6 +42,22 @@
         }
         <button class="icon-action review-close" type="button" title="Close review" aria-label="Close review" @onclick="OnClose"><AppIcon Name="drawer-close" /></button>
     </header>
+    @if (_confirmingUndo)
+    {
+        <div class="workspace-undo-confirm" role="group" aria-label="Confirm Undo">
+            <span>@(_undoPath is null ? $"Undo changes in {ReadyCount} files from this turn?" : $"Undo changes in {Path.GetFileName(_undoPath)}?")</span>
+            @if (_undoPath is null && _current is not null && _undoStatus is not null && _current.Files.Count < _undoStatus.Files.Count)
+            {
+                <span>Includes files excluded from this review.</span>
+            }
+            @if (PendingBlocked)
+            {
+                <span class="workspace-undo-warning">Files changed after this turn or cannot be restored. Review files individually.</span>
+            }
+            <button type="button" disabled="@(_undoBusy || PendingBlocked)" @onclick="ApplyUndoAsync">Undo</button>
+            <button type="button" disabled="@_undoBusy" @onclick="() => _confirmingUndo = false">Cancel</button>
+        </div>
+    }
     @if (_error is { Length: > 0 }) { <p class="review-error" role="alert">@_error</p> }
     @if (_current is null)
     {
@@ -52,7 +79,8 @@
                             <HeaderTemplate Context="comment">
                                 <WorkspaceChangeFileHeader File="@file" Expanded="@_expandedFiles.Contains(file.Path)"
                                                            CommentCount="@_current.Comments.Count(item => item.Path == file.Path)"
-                                                           OnToggle="() => ToggleExpandedFile(file.Path)" OnComment="@comment" />
+                                                           OnToggle="() => ToggleExpandedFile(file.Path)" OnComment="@comment"
+                                                           UndoFileState="@StateFor(file.Path)" OnUndo="() => BeginUndoAsync(file.Path)" />
                             </HeaderTemplate>
                         </ReviewDiffFile>
                     </section>
@@ -107,6 +135,69 @@
     private bool _saving;
     private bool _confirmingDelete;
     private string? _revealPath;
+    private WorkspaceUndoStatus? _undoStatus;
+    private string? _undoPath;
+    private bool _confirmingUndo, _undoBusy;
+
+    private int ReadyCount => _undoStatus?.Files.Count(file => file.State == WorkspaceUndoFileState.Ready) ?? 0;
+    private int UndoneCount => _undoStatus?.Files.Count(file => file.State == WorkspaceUndoFileState.Undone) ?? 0;
+    private bool PendingBlocked => _undoPath is { } path
+        ? StateFor(path) != WorkspaceUndoFileState.Ready
+        : _undoStatus is null || _undoStatus.Files.Any(file =>
+            file.State is WorkspaceUndoFileState.Conflict or WorkspaceUndoFileState.Unavailable);
+
+    private WorkspaceUndoFileState? StateFor(string path) =>
+        _undoStatus?.Files.FirstOrDefault(file => file.Path == path)?.State;
+
+    protected override async Task OnInitializedAsync()
+    {
+        UndoState.Changed += UndoChanged;
+        if (_current is null || (_current.SourceChanges ?? SourceOf(_current)?.WorkspaceChanges)?.UndoId is null) return;
+        try { _undoStatus = await UndoState.LoadAsync(ProjectId, Chat.Id, _current.SourceMessageId); }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        { Notifications.ShowError($"Could not load Undo status: {error.Message}"); }
+    }
+
+    private void UndoChanged(Guid messageId, WorkspaceUndoStatus status)
+    {
+        if (_current?.SourceMessageId == messageId)
+            _ = InvokeAsync(() => { _undoStatus = status; StateHasChanged(); });
+    }
+
+    private async Task BeginUndoAsync(string? path)
+    {
+        if (_current is null) return;
+        try
+        {
+            _undoStatus = await UndoState.LoadAsync(ProjectId, Chat.Id, _current.SourceMessageId, refresh: true);
+            _undoPath = path;
+            _confirmingUndo = true;
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        { Notifications.ShowError($"Could not check files for Undo: {error.Message}"); }
+    }
+
+    private async Task ApplyUndoAsync()
+    {
+        if (_undoBusy || _current is null) return;
+        _undoBusy = true;
+        try
+        {
+            _undoStatus = await UndoState.UndoAsync(ProjectId, Chat.Id, _current.SourceMessageId, _undoPath);
+            if (_undoStatus?.AppliedCount > 0)
+            {
+                _confirmingUndo = false;
+                Notifications.ShowSuccess($"Undid changes in {_undoStatus.AppliedCount} files.");
+                if (_undoStatus.Error is { } issue) Notifications.ShowError(issue);
+            }
+            else Notifications.ShowError(_undoStatus?.Error ?? "No files were undone. The files may have changed since this turn.");
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        { Notifications.ShowError($"Could not undo files: {error.Message}"); }
+        finally { _undoBusy = false; }
+    }
+
+    public void Dispose() => UndoState.Changed -= UndoChanged;
 
     private async Task DeleteAsync()
     {
@@ -190,6 +281,19 @@
                     <span class="review-tree-file-status" title="@FileKindTitle(file.Kind)">@FileKindGlyph(file.Kind)</span>
                     <span class="review-tree-file-name">@node.Name</span>
                 </a>
+                @if (StateFor(file.Path) == WorkspaceUndoFileState.Ready)
+                {
+                    <button class="icon-action workspace-change-undo-action" type="button" title="Undo changes in this file"
+                            aria-label="Undo changes in @file.Path" @onclick="() => BeginUndoAsync(file.Path)"><AppIcon Name="undo" /></button>
+                }
+                else if (StateFor(file.Path) == WorkspaceUndoFileState.Undone)
+                {
+                    <span class="workspace-undo-count" title="Changes in this file were undone">Undone</span>
+                }
+                else if (StateFor(file.Path) == WorkspaceUndoFileState.Conflict)
+                {
+                    <span class="workspace-undo-warning" title="This file changed after the turn">Changed</span>
+                }
                 @if (_current.Comments.Count(item => item.Path == file.Path) is > 0 and var count)
                 {
                     <span class="workspace-change-comments review-tree-comments" title="@count @(count == 1 ? "comment" : "comments")" aria-label="@count @(count == 1 ? "comment" : "comments")"><AppIcon Name="message-circle" />@count</span>

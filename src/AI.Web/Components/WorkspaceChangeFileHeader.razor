@@ -13,6 +13,19 @@
         <button class="icon-action workspace-change-comment-action" type="button" title="Comment on file" aria-label="Comment on file"
                 @onclick="OnComment" @onclick:stopPropagation="true"><AppIcon Name="message-circle" /></button>
     }
+    @if (UndoFileState == WorkspaceUndoFileState.Ready && OnUndo.HasDelegate)
+    {
+        <button class="icon-action workspace-change-undo-action" type="button" title="Undo changes in this file"
+                aria-label="Undo changes in this file" @onclick="OnUndo" @onclick:stopPropagation="true"><AppIcon Name="undo" /></button>
+    }
+    else if (UndoFileState == WorkspaceUndoFileState.Undone)
+    {
+        <span class="workspace-undo-count">Undone</span>
+    }
+    else if (UndoFileState == WorkspaceUndoFileState.Conflict)
+    {
+        <span class="workspace-undo-warning" title="This file changed after the turn">Changed since turn</span>
+    }
     @if (File.Confidence == FileChangeConfidence.Approximate)
     {
         <span class="workspace-change-approximate" title="Exact line counts were not available for this file">approx.</span>
@@ -36,6 +49,8 @@
     [Parameter] public bool Live { get; set; }
     [Parameter] public EventCallback OnToggle { get; set; }
     [Parameter] public EventCallback OnComment { get; set; }
+    [Parameter] public EventCallback OnUndo { get; set; }
+    [Parameter] public WorkspaceUndoFileState? UndoFileState { get; set; }
 
     private string? DragPath => File.Kind == FileChangeKind.Deleted ? null : File.Path;
 

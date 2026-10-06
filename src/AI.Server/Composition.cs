@@ -61,6 +61,7 @@ internal sealed class Composition
                 JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
                 JsonProjectInstructionsRepository, ChatRunDispatcher,
                 ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, WorkspaceChangeTracker,
+                WorkspaceUndoService,
                 ContextEstimateSamples, AppDataChangeSignal, AppNavigationSignal, AppOperationLog, WorkspaceFileSearch,
                 TokenUsageMeter, JsonLinesTokenUsageLedger, PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits,
                 JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, CompositeToolSessionFactory, ContextTextTokenizer>()
@@ -190,6 +191,7 @@ internal sealed class AspNetComposition
             .Root<IWorkspacePathResolver>()
             .Root<IWorkspaceFileSearch>()
             .Root<IReviewService>()
+            .Root<IWorkspaceUndoService>()
             .Root<IFilePreviewService>()
             .Root<IResourceAssetService>()
             .Root<IReviewCommentSuggestions>()

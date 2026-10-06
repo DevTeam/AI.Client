@@ -6,6 +6,9 @@ using Contracts.Chats;
 using Contracts.Projects;
 using Contracts.Resources;
 using Application.Resources;
+using Application.Workspace;
+using Contracts.Workspace;
+using Contracts.Runs;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -99,6 +102,27 @@ public sealed class ChatEndpoints : IEndpointModule
             async (Guid projectId, Guid chatId, Guid reviewId, IReviewService service, CancellationToken token) =>
                 await service.DeleteAsync(projectId, chatId, reviewId, token)
                     ? Results.NoContent() : Results.NotFound());
+        routes.MapGet("/api/projects/{projectId:guid}/chats/{chatId:guid}/workspace-undo/{messageId:guid}",
+            async (Guid projectId, Guid chatId, Guid messageId, IChatService chats,
+                IWorkspaceUndoService undo, CancellationToken token) =>
+            {
+                var chat = await chats.GetAsync(projectId, chatId, token);
+                var id = chat?.Messages.FirstOrDefault(message => message.Id == messageId)?.WorkspaceChanges?.UndoId;
+                return id is { } undoId && await undo.StatusAsync(projectId, chatId, undoId, token) is { } status
+                    ? Results.Ok(status) : Results.NotFound();
+            });
+        routes.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/workspace-undo/{messageId:guid}",
+            async (Guid projectId, Guid chatId, Guid messageId, WorkspaceUndoRequest request,
+                IChatService chats, IChatRunDispatcher runs, IWorkspaceUndoService undo, CancellationToken token) =>
+            {
+                if ((await runs.GetSnapshotAsync(token)).Any(run => run.ProjectId == projectId
+                    && run.Status is ChatRunStatus.Generating or ChatRunStatus.Paused))
+                    return Results.Conflict("Wait for active project runs before undoing files.");
+                var chat = await chats.GetAsync(projectId, chatId, token);
+                var id = chat?.Messages.FirstOrDefault(message => message.Id == messageId)?.WorkspaceChanges?.UndoId;
+                return id is { } undoId && await undo.UndoAsync(projectId, chatId, undoId, request.Path, token) is { } status
+                    ? Results.Ok(status) : Results.NotFound();
+            });
         // Searching is reading, so it stays a GET: the whole request fits in the query string and a result
         // is a projection of stored history, never a change to it.
         routes.MapGet("/api/chats/search", (

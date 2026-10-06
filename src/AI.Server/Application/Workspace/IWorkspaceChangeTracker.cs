@@ -53,6 +53,9 @@ public interface IWorkspaceChangeTracker
     /// </summary>
     Task<WorkspaceChangeSet> SnapshotAsync(WorkspaceRunKey run, CancellationToken cancellationToken);
 
+    /// <summary>Saves exact before/after bytes for a completed root turn, before its baselines are released.</summary>
+    Task<Guid?> CaptureUndoAsync(WorkspaceRunKey run, WorkspaceChangeSet changes, CancellationToken cancellationToken);
+
     /// <summary>
     /// Releases the baselines held for a run. A run with a parent hands its baselines up instead of
     /// dropping them: a subtask finishes long before the turn that delegated it, and the caller's

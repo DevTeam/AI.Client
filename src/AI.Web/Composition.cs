@@ -70,6 +70,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IFilePreviewViewers>()
             .Root<IFileMarkdownRenderer>()
             .Root<IReviewApi>()
+            .Root<IWorkspaceUndoApi>()
+            .Root<IWorkspaceUndoState>()
             .Root<IMemoryApi>()
             .Root<ISkillApi>()
             .Root<IRunStateService>()
@@ -117,6 +119,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Arg<bool>("publicWeb")
             .Singleton<TextCorrectionLanguages, UpdateClient, ChatTipsState, ChatUsageStore,
                 DesktopBadgeNotificationService, HostConnection, SafeMarkdownRenderer, WorkspaceLayoutService,
+                WorkspaceUndoState,
                 WorkspaceStateService, RunStateService, ClientSettingsService, ThemeService>()
             .Transient<GitPickerState, DropAccessPlanner, ChatFeed, TurnLiveText, DirectoryPickerState,
                 SettingsTransferCodec, SettingsImportPlanner, RunStatusPresentation, ComposerHistoryNavigator,
@@ -129,7 +132,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 ChatTimelineStatisticsCalculator, ChatBranchesStatisticsCalculator, ChatUsageApi, HistoryCheckpointApi,
                 DelayedBusyIndicatorFactory, ApiBaseUrl, ClientMode, ClientMetadata, ChatComposerService,
                 ChatMessageDeltaMerger, ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi,
-                GitApi, ResourceApi, ReviewApi, MemoryApi, SkillApi, FilePreviewApi, FilePreviewViewers,
+                GitApi, ResourceApi, ReviewApi, WorkspaceUndoApi, MemoryApi, SkillApi, FilePreviewApi, FilePreviewViewers,
                 FileMarkdownRenderer>()
             .Transient<MediaFilePreviewRegistration, TextFilePreviewRegistration,
                 DirectoryFilePreviewRegistration, ArchiveFilePreviewRegistration>(Tag.Unique)

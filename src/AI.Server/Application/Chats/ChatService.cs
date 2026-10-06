@@ -584,7 +584,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
                 file.IsBinary,
                 (ChatFileChangeConfidence)file.Confidence)).ToArray(),
             changes.Additions,
-            changes.Deletions);
+            changes.Deletions,
+            changes.UndoId);
 
     private static WorkspaceChangeSet? ToContract(ChatWorkspaceChangeSet? changes) => changes is null
         ? null
@@ -599,7 +600,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
                 file.IsBinary,
                 (FileChangeConfidence)file.Confidence)).ToArray(),
             changes.Additions,
-            changes.Deletions);
+            changes.Deletions,
+            changes.UndoId);
 
     private static ToolPolicy ToPolicy(ToolPolicySettings policy) => new(
         new ToolIdentity(new McpServerId(policy.ServerId), policy.Name, policy.SchemaHash),

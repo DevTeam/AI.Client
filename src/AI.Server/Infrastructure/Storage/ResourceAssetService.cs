@@ -124,6 +124,39 @@ public sealed class ResourceAssetService(IProjectStorageLocation location, IProj
             ? ReadAsync(entry.ProjectId, entry.AssetId, cancellationToken)
             : Task.FromResult<ResourceAsset?>(null);
 
+    public async Task<string> StoreUndoBytesAsync(Guid projectId, byte[] data, CancellationToken cancellationToken)
+    {
+        if (await projects.GetAsync(projectId, cancellationToken) is null)
+            throw new FileNotFoundException("Project not found.");
+        if (data.Length > MaximumBytes) throw new InvalidDataException("Undo snapshot is too large.");
+        var assetId = Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
+        var directory = Path.Combine(location.RootDirectory, "assets", projectId.ToString("N"), "undo", "blobs");
+        Directory.CreateDirectory(directory);
+        var destination = Path.Combine(directory, assetId + ".bin");
+        if (File.Exists(destination)) return assetId;
+        var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await File.WriteAllBytesAsync(temporary, data, cancellationToken);
+            try { File.Move(temporary, destination); }
+            catch (IOException) when (File.Exists(destination)) { }
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        return assetId;
+    }
+
+    public async Task<byte[]?> ReadUndoBytesAsync(Guid projectId, string assetId, CancellationToken cancellationToken)
+    {
+        if (assetId.Length != 64 || assetId.Any(character => !Uri.IsHexDigit(character))
+            || await projects.GetAsync(projectId, cancellationToken) is null) return null;
+        var path = Path.Combine(location.RootDirectory, "assets", projectId.ToString("N"), "undo", "blobs",
+            assetId.ToLowerInvariant() + ".bin");
+        if (!File.Exists(path)) return null;
+        var bytes = await File.ReadAllBytesAsync(path, cancellationToken);
+        return Convert.ToHexString(SHA256.HashData(bytes)).Equals(assetId, StringComparison.OrdinalIgnoreCase)
+            ? bytes : null;
+    }
+
     public Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

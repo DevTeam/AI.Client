@@ -197,7 +197,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
                 file.Path, file.Kind, file.Additions, file.Deletions, file.PreviousPath,
                 file.Diff, file.IsBinary, file.Confidence)).ToArray(),
             changes.Additions,
-            changes.Deletions);
+            changes.Deletions,
+            changes.UndoId);
 
     private static ChatWorkspaceChangeSet? ToDomain(WorkspaceChangeDocument? changes) => changes is null
         ? null
@@ -206,12 +207,14 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
                 file.Path, file.Kind, file.Additions, file.Deletions, file.PreviousPath,
                 file.Diff, file.IsBinary, file.Confidence)).ToArray(),
             changes.Additions,
-            changes.Deletions);
+            changes.Deletions,
+            changes.UndoId);
 
     private sealed record WorkspaceChangeDocument(
         FileChangeDocument[] Files,
         int Additions,
-        int Deletions);
+        int Deletions,
+        Guid? UndoId = null);
 
     private sealed record FileChangeDocument(
         string Path,

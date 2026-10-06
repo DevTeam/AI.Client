@@ -47,9 +47,14 @@ public sealed class ResourceAssetServiceTests
             ticket.ShouldNotBeNull();
             var token = ticket.ContentUrl.Split('/')[^1];
             (await service.ReadTicketAsync(token, CancellationToken.None)).ShouldNotBeNull().Data.ShouldBe(bytes);
+            var undoId = await service.StoreUndoBytesAsync(first, [], TestContext.Current.CancellationToken);
+            (await service.ReadUndoBytesAsync(first, undoId, TestContext.Current.CancellationToken))!.ShouldBeEmpty();
+            (await service.ReadAsync(first, undoId, TestContext.Current.CancellationToken)).ShouldBeNull();
+            (await service.CreateTicketAsync(first, undoId, TestContext.Current.CancellationToken)).ShouldBeNull();
             await service.DeleteProjectAsync(first, CancellationToken.None);
             (await service.ReadAsync(first, resource.AssetId!, CancellationToken.None)).ShouldBeNull();
             (await service.ReadTicketAsync(token, CancellationToken.None)).ShouldBeNull();
+            (await service.ReadUndoBytesAsync(first, undoId, TestContext.Current.CancellationToken)).ShouldBeNull();
         }
         finally
         {

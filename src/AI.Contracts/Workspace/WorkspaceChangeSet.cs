@@ -7,7 +7,8 @@ namespace AI.Contracts.Workspace;
 public sealed record WorkspaceChangeSet(
     IReadOnlyList<FileChange> Files,
     int Additions,
-    int Deletions)
+    int Deletions,
+    Guid? UndoId = null)
 {
     public static WorkspaceChangeSet Empty { get; } = new([], 0, 0);
 

@@ -233,7 +233,7 @@
                         <ChatImageThumbnail ProjectId="ProjectId" Resource="image" />
                     </button>
                 }
-                else if (_loadingResults.Contains(invocation.Call.Id))
+                @if (_loadingResults.Contains(invocation.Call.Id))
                 {
                     <p class="tool-row-running">Loading result…</p>
                 }

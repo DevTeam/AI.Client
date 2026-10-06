@@ -254,19 +254,15 @@
                 }
                 else if (entry.Activity is { } activity)
                 {
-                    @* What the turn is doing with its hands while the text above waits: a preamble ending
-                       in "…and run:" is followed by the call it announces, not by a blank. Static on
-                       purpose — with animations off it still reads as work in progress.
-                       The line keeps its place while the model writes, empty: dropping it and bringing
-                       it back with the next call jolted everything below by a line each time. One
-                       element for both states — two keyed branches made Blazor patch one into the
-                       other and lose its class. *@
+                    @* Keep the activity slot's height stable while showing only concrete actions. *@
                     var activityKey = (entry.TurnId, "turn-activity");
                     var idle = ReferenceEquals(activity, TurnActivity.None);
-                    <div @key="activityKey" class="turn-activity @(idle ? "is-idle" : null)"
+                    <div @key="activityKey" class="turn-activity"
                          role="@(idle ? null : "status")" aria-hidden="@(idle ? "true" : null)">
-                        <span class="turn-activity-glyph" aria-hidden="true">›</span>
-                        <span class="turn-activity-title">@(idle ? " " : activity.Title)</span>
+                        @if (!idle)
+                        {
+                            <span class="turn-activity-title">@activity.Title</span>
+                        }
                         @if (activity.Detail is { Length: > 0 } activityDetail)
                         {
                             <span class="turn-activity-detail" title="@activityDetail">@activityDetail</span>
@@ -1161,7 +1157,6 @@
     // from the position this feed is restored to.
     protected override void OnParametersSet()
     {
-        UpdateThinkingPhrase();
         // Moves whenever anything the turn lines or the checkpoint mark read from has changed.
         var usageState = (ChatUsage, ShowTurnTokens, ActiveCheckpoint, SelectedRun?.TurnUsage);
         if (!ReferenceEquals(_usageState.ChatUsage, usageState.ChatUsage) || _usageState.ShowTurnTokens != usageState.ShowTurnTokens
@@ -1360,7 +1355,6 @@
 
     private sealed record TurnActivity(string Title, string? Detail)
     {
-        /// <summary>Nothing to report: the line stays, empty, so it does not come and go.</summary>
         public static TurnActivity None { get; } = new(string.Empty, null);
     }
 
@@ -1572,53 +1566,9 @@
             && message.Content?.Trim().StartsWith(shown, StringComparison.Ordinal) == true);
     }
 
-    private readonly string[] _thinkingPhrases =
-    [
-        "Thinking…",
-        "Working on it…",
-        "Reasoning…",
-        "Analyzing…",
-        "Exploring…",
-        "Investigating…",
-        "Looking into it…",
-        "Examining the details…",
-        "Working through it…",
-        "Connecting the dots…",
-        "Evaluating possibilities…",
-        "Checking the details…",
-        "Exploring approaches…",
-        "Making sense of it…",
-        "Putting it together…"
-    ];
-
-    private int _thinkingPhraseIndex = -1;
-    private (Guid ChatId, Guid BranchId, Guid? MessageId)? _thinkingTurn;
-
-    private void UpdateThinkingPhrase()
-    {
-        if (SelectedRun is not { Status: ChatRunStatus.Generating } run
-            || run.PendingPrompt is not null || run.Wait is not null || run.PendingApproval is not null
-            || run.ActiveTools is { Count: > 0 } || run.DraftToolCall is not null
-            || !string.IsNullOrWhiteSpace(run.DraftContent))
-        {
-            _thinkingTurn = null;
-            return;
-        }
-
-        var turn = (run.ChatId, run.BranchId, run.ActiveMessageId);
-        if (_thinkingTurn == turn) return;
-        _thinkingTurn = turn;
-
-        // Choose once per thinking phase; skip the last phrase when entering the next one.
-        var next = Random.Shared.Next(_thinkingPhrases.Length - (_thinkingPhraseIndex >= 0 ? 1 : 0));
-        if (_thinkingPhraseIndex >= 0 && next >= _thinkingPhraseIndex) next++;
-        _thinkingPhraseIndex = next;
-    }
-
     /// <summary>
-    /// The one line under the live text saying what the turn is doing now. Nothing while the
-    /// model is writing prose — the text itself is the activity — and nothing for a question or a
-    /// rate-limit wait, which have their own cards.
+    /// The one line under the live text for tool activity or an approval wait. Questions and
+    /// rate-limit waits have their own cards.
     /// </summary>
     private TurnActivity? GetTurnActivity()
     {
@@ -1631,8 +1581,7 @@
         }
         if (run.DraftToolCall is { } preparing)
             return new TurnActivity($"Preparing {Presentations.DescribeCall(preparing, null).Title}…", null);
-        if (!string.IsNullOrWhiteSpace(run.DraftContent)) return null;
-        return new TurnActivity(_thinkingPhrases[_thinkingPhraseIndex], null);
+        return null;
     }
 
     // Everything the live text is computed from that the transcript boundary does not already

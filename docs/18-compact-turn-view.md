@@ -67,18 +67,17 @@ A text known to lead into tool calls is a remark, not the answer, and is drawn m
 
 ### Activity line
 
-One muted line under the live text says what the turn is doing now. A model often ends its note with "…and run it:" and then streams the call's arguments for seconds; without the line the colon was followed by a blank.
+One muted line under the live text shows a concrete tool action or an approval wait. A model often ends its note with "…and run it:" and then streams the call's arguments for seconds; the line names the call being prepared or run.
 
 | Run state | Line |
 | --- | --- |
-| A tool is running | `› <tool title>  <detail>` — the last active call, as its tool row names it |
-| The model is streaming a call's arguments | `› Preparing <tool title>…` |
-| Waiting for tool approval | `› Waiting for tool approval` |
-| The model is writing prose | no line: the text itself is the activity |
-| Otherwise (request in flight, after a result) | `› Thinking…` |
+| A tool is running | `<tool title>  <detail>` — the last active call, as its tool row names it |
+| The model is streaming a call's arguments | `Preparing <tool title>…` |
+| Waiting for tool approval | `Waiting for tool approval` |
+| The model is writing prose or waiting for the next step | no line |
 | A question to the user, a rate-limit wait | no line: they have their own cards |
 
-The line is static — no spinner or animation — so it reads as work in progress with animations off. It follows the run at once; it does not wait for the live text's reading delay. It is shown only while the turn is collapsed: expanded, the live tool rows say the same. The row itself no longer names the running tool, which would say the same thing twice.
+The line has no glyph or animation. Its height stays reserved during a running turn so showing or hiding an action does not shift the text below it. It shows content only for the actions above and follows the run at once; it does not wait for the live text's reading delay. It is shown only while the turn is collapsed: expanded, the live tool rows say the same. The row itself no longer names the running tool, which would say the same thing twice.
 
 The start of a call comes from the stream: `ChatCompletionSseParser` raises `ToolCallsStarted` with `ToolCallName` as soon as the endpoint names the call, the agent reports it, and the dispatcher publishes it at once as `DraftToolCall`. It is cleared together with the draft, in the publication that lands the preamble.
 

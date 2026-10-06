@@ -54,6 +54,15 @@ public sealed class AppControlHintsTests
     }
 
     [Fact]
+    public void HelpKeptOnlyForGuidesShouldNotBecomeATooltip()
+    {
+        var attributes = new AppControlHints(new AppNavigationTargets()).Attributes("chat", nativeTooltip: false);
+        attributes["data-app-target"].ShouldBe("chat");
+        attributes["data-app-hint"].ShouldBe(new AppNavigationTargets().Find("chat")!.Hint);
+        attributes.ContainsKey("title").ShouldBeFalse();
+    }
+
+    [Fact]
     public void AnUnregisteredControlShouldNotSilentlyLoseItsHelp() =>
         Should.Throw<ArgumentException>(() => new AppControlHints(new AppNavigationTargets()).Attributes("unknown"));
 }

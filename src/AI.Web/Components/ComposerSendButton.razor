@@ -13,8 +13,9 @@
     <button @attributes="@(ControlHints.Attributes("chat.send", GetActionLabel(), nativeTooltip: false))" class="composer-send" type="button" disabled="@Disabled" aria-label="@GetAriaLabel()" aria-describedby="composer-send-tooltip" @onclick="OnClick">
         <AppIcon Name="@GetIcon()" Class="@(Busy ? "tool-row-spinner" : null)" />
     </button>
+    @* The shared help stays on the button as data-app-hint, where the guide reads it; the panel
+       keeps only what the current state adds, the context ring and the key rows. *@
     <span class="composer-send-tooltip" id="composer-send-tooltip" role="tooltip">
-        <span class="composer-send-tooltip-help">@ControlHints.GetHint("chat.send")</span>
         @if (Context is { } context)
         {
             <span class="composer-send-context">

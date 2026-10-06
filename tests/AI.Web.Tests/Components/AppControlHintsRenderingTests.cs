@@ -55,7 +55,7 @@ public sealed class AppControlHintsRenderingTests
     [InlineData(ComposerSendButton.SendMode.SendNow, "Interrupt and send now")]
     [InlineData(ComposerSendButton.SendMode.EditFork, "Create edited branch")]
     [InlineData(ComposerSendButton.SendMode.Replace, "Replace branch now")]
-    public async Task SendButtonShouldExposeItsCurrentActionAndSharedComplexTooltipHelp(
+    public async Task SendButtonShouldExposeItsCurrentActionWithoutPuttingSharedHelpInTheTooltip(
         ComposerSendButton.SendMode mode, string label)
     {
         await using var services = Services();
@@ -68,7 +68,9 @@ public sealed class AppControlHintsRenderingTests
             html.ShouldContain($"aria-label=\"{label}\"");
             html.ShouldContain($"data-app-ui-hint=\"{label}\"");
             html.ShouldContain("aria-describedby=\"composer-send-tooltip\"");
-            html.ShouldContain(HtmlEncoder.Default.Encode(new AppNavigationTargets().Find("chat.send")!.Hint!));
+            html.ShouldContain($"data-app-hint=\"{HtmlEncoder.Default.Encode(new AppNavigationTargets().Find("chat.send")!.Hint!)}\"");
+            html.ShouldNotContain("composer-send-tooltip-help");
+            html.ShouldNotContain("title=\"");
         });
     }
 

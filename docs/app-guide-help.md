@@ -18,9 +18,11 @@ UI components inject `IAppControlHints` and bind the returned attributes:
 The attributes contain `data-app-target`, `data-app-hint` and a native tooltip. An optional
 current hint records a dynamic action without replacing the shared explanation. Complex
 tooltips can use `nativeTooltip: false`, display `GetHint(target)`, associate their tooltip
-with `aria-describedby`, and mark explanatory fragments with `data-app-tooltip-hint`.
-Inline help uses `GetSummary(target)`; controls with custom state messages retain those
-messages in their rendered UI.
+with `aria-describedby`, and mark explanatory fragments with `data-app-tooltip-hint`. A control
+whose help is meant for the guide alone passes `nativeTooltip: false` as well and renders no hint
+of its own: the element keeps `data-app-target` and `data-app-hint` — what a guide reads — and
+gets no `title`. Inline help uses `GetSummary(target)`; controls with custom state messages retain
+those messages in their rendered UI.
 
 Do not separately copy control descriptions into guide skills. Update the shared help when
 changing a control's behavior, and its component when changing a dynamic state description.

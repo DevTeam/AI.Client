@@ -3604,13 +3604,6 @@ div.chat-tip-head { cursor: default; }
     z-index: 31;
 }
 
-.composer-send-tooltip-help {
-    width: 20rem;
-    max-width: calc(100vw - 3rem);
-    white-space: normal;
-    line-height: 1.4;
-}
-
 .composer-send-wrapper {
     position: relative;
     display: inline-flex;

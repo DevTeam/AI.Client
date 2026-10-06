@@ -111,6 +111,9 @@
             </div>
             @if (project.Id == _selectedProject?.Id)
             {
+                @* Chat and branch rows carry the shared help as data attributes for the guide but no
+                   tooltip: explaining what a chat is would cover the list on every hover, while the
+                   row's own title already says something about this chat rather than the control. *@
                 <nav class="workspace-chat-list" aria-label="Chats in @project.Name" @onkeydown="OnChatListKeyDown" @onpointerenter="OnChatListPointerEnter" @onpointerleave="OnChatListPointerLeave">
                     @{
                         var orderedChats = GetOrderedChats();
@@ -134,7 +137,7 @@
                             }
                             else
                             {
-                                <button @attributes="@(ControlHints.Attributes("chat"))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P" : "Alt+P")" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }</button>
+                                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P" : "Alt+P")" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }</button>
                             }
                             <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat)"><AppIcon Name="edit" /></button>
                             <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenuAsync(chat.Id)"><AppIcon Name="more" /></button>
@@ -204,7 +207,7 @@
                                     }
                                     else
                                     {
-                                        <button @attributes="@(ControlHints.Attributes("branch"))" class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)"><AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /><span class="nav-item-label">@branch.Title</span></button>
+                                        <button @attributes="@(ControlHints.Attributes("branch", nativeTooltip: false))" class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)"><AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /><span class="nav-item-label">@branch.Title</span></button>
                                     }
                                     <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename branch" @onclick="() => BeginBranchRename(branch)"><AppIcon Name="edit" /></button>
                                     <button class="icon-action chat-row-action chat-menu-button @(_branchMenuId == branch.RootId ? "menu-open" : string.Empty)" type="button" title="Branch menu" aria-label="Branch menu" @onclick="() => ToggleBranchMenuAsync(branch.RootId)"><AppIcon Name="more" /></button>

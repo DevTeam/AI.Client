@@ -16,6 +16,46 @@ using Xunit;
 
 public sealed class HomeBranchSelectionTests
 {
+    [Fact]
+    public async Task NewChatShouldClearTheRememberedProjectSelection()
+    {
+        var page = new Home();
+        var projectId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        var workspace = new Mock<IWorkspaceStateService>();
+        SetField(page, "_selectedProject", new ProjectSummary(projectId, "Project", string.Empty, now, 1));
+        SetField(page, "_selectedChat", new ChatDetails(chatId, projectId, "Chat", now, now, 1, null, []));
+        Inject(page, "WorkspaceStateService", workspace.Object);
+
+        await (Task)Invoke(page, "CreateChatAsync")!;
+
+        GetField(page, "_selectedChat").ShouldBeNull();
+        workspace.Verify(value => value.SetProjectContextAsync(projectId, null, null, null), Times.Once);
+    }
+
+    [Fact]
+    public void RememberedBranchShouldFollowItsUpdatedHead()
+    {
+        var page = new Home();
+        var projectId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var branchId = Guid.NewGuid();
+        var previousHead = Guid.NewGuid();
+        var currentHead = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        var chat = new ChatDetails(chatId, projectId, "Chat", now, now, 2, null, [],
+            [new ChatBranchView(chatId, null, "Main"), new ChatBranchView(branchId, currentHead, "Fork")]);
+        SetField(page, "_selectedProject", new ProjectSummary(projectId, "Project", string.Empty, now, 1));
+        Inject(page, "WorkspaceStateService", Mock.Of<IWorkspaceStateService>());
+        Inject(page, "_composerHistoryNavigator", Mock.Of<IComposerHistoryNavigator>());
+
+        Invoke(page, "ApplyRememberedChat", chat, ((Guid?)chatId, (Guid?)previousHead, (Guid?)branchId));
+
+        GetField(page, "_selectedBranchId").ShouldBe(branchId);
+        GetField(page, "_branchLeafId").ShouldBe(currentHead);
+    }
+
     [Theory]
     [InlineData(true, ChatRunStatus.Generating)]
     [InlineData(true, ChatRunStatus.Completed)]
@@ -69,7 +109,7 @@ public sealed class HomeBranchSelectionTests
         updatedChat.Branches!.Single(branch => branch.Id == branchId).HeadMessageId.ShouldBe(answer.Id);
         runState.Runs[new RunKey(chatId, branchId)].Status.ShouldBe(status);
         if (switchToOriginal)
-            workspace.Verify(value => value.SetProjectContextAsync(projectId, chatId, original.Id), Times.Once);
+            workspace.Verify(value => value.SetProjectContextAsync(projectId, chatId, original.Id, chatId), Times.Once);
     }
 
     private static object? Invoke(Home page, string method, params object[] arguments) =>

@@ -23,7 +23,7 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
     // deliberately removed elsewhere in this app.
     private static readonly TimeSpan DraftSaveDelay = TimeSpan.FromMilliseconds(500);
 
-    private sealed record ProjectContextEntry(Guid? ChatId, Guid? BranchLeafId);
+    private sealed record ProjectContextEntry(Guid? ChatId, Guid? BranchLeafId, Guid? BranchId);
 
     // One entry per project/chat rather than a single "last used" slot: switching project A -> B
     // -> A must not lose A's own context, and a chat can be mid-draft in more than one place at once.
@@ -95,12 +95,13 @@ public sealed class WorkspaceStateService(IJSRuntime jsRuntime) : IWorkspaceStat
         await jsRuntime.InvokeVoidAsync("localStorage.setItem", LastBrowsedDirectoryKey, path);
     }
 
-    public (Guid? ChatId, Guid? BranchLeafId) GetProjectContext(Guid projectId) =>
-        _projectContexts.TryGetValue(projectId, out var entry) ? (entry.ChatId, entry.BranchLeafId) : (null, null);
+    public (Guid? ChatId, Guid? BranchLeafId, Guid? BranchId) GetProjectContext(Guid projectId) =>
+        _projectContexts.TryGetValue(projectId, out var entry)
+            ? (entry.ChatId, entry.BranchLeafId, entry.BranchId) : (null, null, null);
 
-    public async Task SetProjectContextAsync(Guid projectId, Guid? chatId, Guid? branchLeafId)
+    public async Task SetProjectContextAsync(Guid projectId, Guid? chatId, Guid? branchLeafId, Guid? branchId = null)
     {
-        var next = new ProjectContextEntry(chatId, branchLeafId);
+        var next = new ProjectContextEntry(chatId, branchLeafId, chatId is null ? null : branchId);
         if (_projectContexts.TryGetValue(projectId, out var current) && current == next) return;
         _projectContexts[projectId] = next;
         await jsRuntime.InvokeVoidAsync("localStorage.setItem", ProjectContextKey, JsonSerializer.Serialize(_projectContexts));

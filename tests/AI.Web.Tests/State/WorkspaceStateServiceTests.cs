@@ -270,7 +270,7 @@ public class WorkspaceStateServiceTests
         var (service, _) = CreateService();
         await service.InitializeAsync();
 
-        service.GetProjectContext(Guid.NewGuid()).ShouldBe((null, null));
+        service.GetProjectContext(Guid.NewGuid()).ShouldBe((null, null, null));
     }
 
     [Fact]
@@ -285,11 +285,45 @@ public class WorkspaceStateServiceTests
         var projectA = Guid.NewGuid();
         var chatA = Guid.NewGuid();
         var leafA = Guid.NewGuid();
-        await service.SetProjectContextAsync(projectA, chatA, leafA);
+        var branchA = Guid.NewGuid();
+        await service.SetProjectContextAsync(projectA, chatA, leafA, branchA);
 
         var reloaded = new WorkspaceStateService(js);
         await reloaded.InitializeAsync();
-        reloaded.GetProjectContext(projectA).ShouldBe((chatA, leafA));
+        reloaded.GetProjectContext(projectA).ShouldBe((chatA, leafA, branchA));
+    }
+
+    [Fact]
+    public async Task ShouldRememberAnEmptyNewChatInsteadOfThePreviousChat()
+    {
+        var (service, js) = CreateService();
+        await service.InitializeAsync();
+        var project = Guid.NewGuid();
+        await service.SetProjectContextAsync(project, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        await service.SetProjectContextAsync(project, null, null);
+
+        var reloaded = new WorkspaceStateService(js);
+        await reloaded.InitializeAsync();
+        reloaded.GetProjectContext(project).ShouldBe((null, null, null));
+    }
+
+    [Fact]
+    public async Task ShouldReadPreviouslySavedContextWithoutBranchId()
+    {
+        var (_, js) = CreateService();
+        var project = Guid.NewGuid();
+        var chat = Guid.NewGuid();
+        var leaf = Guid.NewGuid();
+        js.Entries[ProjectContextStorageKey] = JsonSerializer.Serialize(new Dictionary<Guid, object>
+        {
+            [project] = new { ChatId = chat, BranchLeafId = leaf }
+        });
+
+        var service = new WorkspaceStateService(js);
+        await service.InitializeAsync();
+
+        service.GetProjectContext(project).ShouldBe((chat, leaf, null));
     }
 
     [Fact]
@@ -311,7 +345,7 @@ public class WorkspaceStateServiceTests
         await service.SetProjectContextAsync(project, chatP, leafQ);
 
         var context = service.GetProjectContext(project);
-        context.ShouldBe((chatP, leafQ));
+        context.ShouldBe((chatP, leafQ, null));
     }
 
     [Fact]
@@ -332,8 +366,8 @@ public class WorkspaceStateServiceTests
         await service.SetProjectContextAsync(projectA, chatA, leafA);
         await service.SetProjectContextAsync(projectB, chatB, leafB);
 
-        service.GetProjectContext(projectA).ShouldBe((chatA, leafA));
-        service.GetProjectContext(projectB).ShouldBe((chatB, leafB));
+        service.GetProjectContext(projectA).ShouldBe((chatA, leafA, null));
+        service.GetProjectContext(projectB).ShouldBe((chatB, leafB, null));
     }
 
     [Fact]
@@ -347,7 +381,8 @@ public class WorkspaceStateServiceTests
         var project = Guid.NewGuid();
         var chat = Guid.NewGuid();
         var leaf = Guid.NewGuid();
-        await service.SetProjectContextAsync(project, chat, leaf);
+        var branch = Guid.NewGuid();
+        await service.SetProjectContextAsync(project, chat, leaf, branch);
 
         js.Entries.ShouldContainKey(ProjectContextStorageKey);
         var persisted = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(js.Entries[ProjectContextStorageKey])!;
@@ -355,6 +390,7 @@ public class WorkspaceStateServiceTests
         var entry = persisted[project.ToString()];
         entry.GetProperty("ChatId").GetGuid().ShouldBe(chat);
         entry.GetProperty("BranchLeafId").GetGuid().ShouldBe(leaf);
+        entry.GetProperty("BranchId").GetGuid().ShouldBe(branch);
     }
 
     [Fact]
@@ -382,7 +418,7 @@ public class WorkspaceStateServiceTests
 
         var reloaded = new WorkspaceStateService(js);
         await reloaded.InitializeAsync();
-        reloaded.GetProjectContext(project).ShouldBe((chat, branchLeaf));
+        reloaded.GetProjectContext(project).ShouldBe((chat, branchLeaf, null));
     }
 
     [Fact]

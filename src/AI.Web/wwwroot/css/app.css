@@ -1701,24 +1701,30 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 
 .archive-nav-item > .app-icon,
 .chat-link > .app-icon,
-.chat-icon-with-branch-count > .app-icon {
+.chat-icon-with-branch-count > .app-icon,
+.branch-option-icon {
     color: var(--color-text-disabled);
     transition: color var(--duration-fast) ease, opacity var(--duration-fast) ease;
 }
 
 .chat-link > .app-icon.run-status-generating,
-.chat-icon-with-branch-count > .app-icon.run-status-generating {
+.chat-icon-with-branch-count > .app-icon.run-status-generating,
+.branch-option-icon.run-status-generating {
     color: var(--color-text-strong);
 }
 
 .chat-link > .app-icon.run-status-unread,
-.chat-icon-with-branch-count > .app-icon.run-status-unread { color: var(--color-unread); }
+.chat-icon-with-branch-count > .app-icon.run-status-unread,
+.branch-option-icon.run-status-unread { color: var(--color-unread); }
 .chat-link > .app-icon.run-status-attention,
-.chat-icon-with-branch-count > .app-icon.run-status-attention { color: var(--color-warning); }
+.chat-icon-with-branch-count > .app-icon.run-status-attention,
+.branch-option-icon.run-status-attention { color: var(--color-warning); }
 .chat-link > .app-icon.run-status-failed,
-.chat-icon-with-branch-count > .app-icon.run-status-failed { color: var(--color-danger); }
+.chat-icon-with-branch-count > .app-icon.run-status-failed,
+.branch-option-icon.run-status-failed { color: var(--color-danger); }
 .chat-link > .app-icon.run-status-interrupted,
-.chat-icon-with-branch-count > .app-icon.run-status-interrupted { color: var(--color-text-faint); }
+.chat-icon-with-branch-count > .app-icon.run-status-interrupted,
+.branch-option-icon.run-status-interrupted { color: var(--color-text-faint); }
 
 /* The count overlays the lower-right corner of the chat icon, so it remains visible without
    taking horizontal space from the title. Its colour represents the highest-priority visible
@@ -2815,7 +2821,7 @@ div.chat-tip-head { cursor: default; }
 
 .branch-picker-menu button {
     display: grid;
-    grid-template-columns: 1.2rem auto minmax(0, 1fr);
+    grid-template-columns: 1.2rem auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.4rem;
     border-color: transparent;
@@ -2836,6 +2842,13 @@ div.chat-tip-head { cursor: default; }
 
 .branch-option-spacer {
     width: 1rem;
+}
+
+/* Says which line a click shortens to the message the picker hangs under. */
+.branch-option-tag {
+    color: var(--color-text-faint);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
 }
 
 /* Single status-dot language used everywhere a run's state shows up: project/chat/branch-tree
@@ -4599,6 +4612,13 @@ textarea {
 
 .turn-summary.is-static {
     cursor: default;
+}
+
+/* Pickers of branches that leave a folded step, hung under the summary line they stand in for. */
+.turn-forks {
+    position: relative;
+    width: min(100%, 48rem);
+    margin: -0.7rem auto 0.75rem;
 }
 
 .turn-summary.is-static:hover {

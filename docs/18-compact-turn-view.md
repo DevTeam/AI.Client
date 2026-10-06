@@ -131,6 +131,12 @@ It must not be confused with the jump to the latest message (`.messages-jump`, s
 | Label | `Hide steps` | `New message` or `Writing…` with a pulsing dot |
 | Shown | whenever a turn is expanded | only when something new is below and the feed is not at the bottom |
 
+### Branches leaving a folded step
+
+A branch may start at an intermediate message. Folding the step would hide its branch picker, so while the turn is collapsed the picker of every such step is shown under the row (`.turn-forks`), in step order, with the hint `Branches start inside this turn · expand it to see where`. On the branch that left, that step is the last message of the turn, so the space under the row is where the lines part. Expanding the turn puts each picker back under its own step.
+
+Rejected: expanding turns with branches automatically (it undoes the compact view, and expansion is not persisted), and a branch counter in the row (the row carries only time).
+
 ### Animation
 
 The collapse is animated as an instant change without slide or fade, so a conversation does not appear to "twitch". Expanding today is a layout change that is rendered synchronously.

@@ -1409,7 +1409,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .chat-nav-row {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 1.6rem 1.6rem 1.6rem;
+    grid-template-columns: minmax(0, 1fr) 1.6rem 1.6rem;
     min-width: 0;
     align-items: center;
     column-gap: 0.12rem;
@@ -1433,9 +1433,8 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     min-width: 0;
 }
 
-.chat-nav-row > .chat-pin-button { grid-column: 2; }
-.chat-nav-row > .chat-row-action:not(.chat-menu-button):not(.chat-pin-button) { grid-column: 3; }
-.chat-nav-row > .chat-menu-button { grid-column: 4; }
+.chat-nav-row > .chat-row-action:not(.chat-menu-button) { grid-column: 2; }
+.chat-nav-row > .chat-menu-button { grid-column: 3; }
 
 .sidebar-inline-editor {
     grid-column: 1 / -1;
@@ -1501,15 +1500,6 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .chat-row-action:focus-visible,
 .chat-menu-button.menu-open {
     opacity: 1;
-}
-
-/* Revealed like every other row action, pinned or not. Whether a chat is pinned is said by its
-   leading icon and by its position — the list already sorts pinned chats to the top — so this
-   button no longer has to be a permanent indicator as well as a control. The pin/unpin toggle
-   stays in the muted row-action colour regardless of state, so it reads like every other action
-   on the row instead of being promoted to an "active" accent colour. */
-.chat-nav-row > .chat-pin-button {
-    color: var(--color-text-faint);
 }
 
 .directory-nav-group {

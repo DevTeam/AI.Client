@@ -4,7 +4,8 @@ namespace AI.Domain.Chats;
 public sealed record ChatWorkspaceChangeSet(
     IReadOnlyList<ChatFileChange> Files,
     int Additions,
-    int Deletions);
+    int Deletions,
+    Guid? UndoId = null);
 
 public sealed record ChatFileChange(
     string Path,

@@ -10,7 +10,7 @@ using Contracts.Workspace;
 /// <summary>
 /// Observes the built-in mutating tools and turns them into a net, per-run list of changed files.
 /// </summary>
-public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTracker
+public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService undo) : IWorkspaceChangeTracker
 {
     /// <summary>Built-in tools whose arguments name a path they are about to modify.</summary>
     private static readonly Dictionary<string, string[]> MutatingPathArguments = new(StringComparer.Ordinal)
@@ -31,6 +31,7 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTra
     private const long MaxTrackedBytes = 8 * 1024 * 1024;
 
     private readonly ILineDiff _diff = diff;
+    private readonly IWorkspaceUndoService _undo = undo;
     private readonly ConcurrentDictionary<WorkspaceRunKey, RunState> _runs = new();
 
     public Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, WorkspaceRunKey? parent,
@@ -80,11 +81,30 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTra
         // A path both the run and one of its subtasks touched is one file with one net difference,
         // not two rows, so the earliest baseline wins: measuring against the later one would credit
         // the turn with only the tail of its own change.
+        return Task.FromResult(RunState.Compose(_diff, Merged(run, state)));
+    }
+
+    public async Task<Guid?> CaptureUndoAsync(WorkspaceRunKey run, WorkspaceChangeSet changes,
+        CancellationToken cancellationToken)
+    {
+        if (changes.IsEmpty || !_runs.TryGetValue(run, out var state)) return null;
+        var baselines = Merged(run, state);
+        var captures = RunState.Captures(baselines, changes.Files);
+        try { return await _undo.CaptureAsync(run.ProjectId, run.ChatId, captures, cancellationToken); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            // A failed backup must not turn an otherwise successful agent answer into a failed run.
+            return null;
+        }
+    }
+
+    private Dictionary<string, Baseline> Merged(WorkspaceRunKey run, RunState state)
+    {
         var merged = new Dictionary<string, Baseline>(StringComparer.OrdinalIgnoreCase);
         foreach (var (path, baseline) in state.Baselines().Concat(Descendants(run).SelectMany(child => child.Baselines())))
             if (!merged.TryGetValue(path, out var held) || baseline.Order < held.Order)
                 merged[path] = baseline;
-        return Task.FromResult(RunState.Compose(_diff, merged));
+        return merged;
     }
 
     public Task CompleteRunAsync(WorkspaceRunKey run, CancellationToken cancellationToken)
@@ -196,6 +216,20 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTra
                 files.Sum(file => file.Deletions ?? 0));
         }
 
+        public static List<WorkspaceUndoCapture> Captures(IReadOnlyDictionary<string, Baseline> tracked,
+            IReadOnlyList<FileChange> changes)
+        {
+            var captures = new List<WorkspaceUndoCapture>(changes.Count);
+            foreach (var change in changes)
+            {
+                if (!tracked.TryGetValue(change.Path, out var before)) continue;
+                var after = Read(change.Path);
+                captures.Add(new WorkspaceUndoCapture(change.Path, before.Exists, before.Bytes,
+                    after.Exists, after.Bytes));
+            }
+            return captures;
+        }
+
         private static FileChange? Describe(ILineDiff diff, string path, Baseline before, Baseline after)
         {
             if (!before.Exists && !after.Exists) return null;
@@ -245,18 +279,19 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTra
                 var info = new FileInfo(path);
                 if (!info.Exists) return Baseline.Missing;
                 var order = Baseline.Next();
-                if (info.Length > MaxTrackedBytes) return new Baseline(true, null, info.Length, info.LastWriteTimeUtc, order);
+                if (info.Length > MaxTrackedBytes) return new Baseline(true, null, info.Length, info.LastWriteTimeUtc, order, null);
+                var bytes = File.ReadAllBytes(path);
                 var text = File.ReadAllText(path);
                 // A NUL byte is the usual cheap tell for binary content, where line counts are noise.
                 return text.Contains('\0', StringComparison.Ordinal)
-                    ? new Baseline(true, null, info.Length, info.LastWriteTimeUtc, order)
-                    : new Baseline(true, text, info.Length, info.LastWriteTimeUtc, order);
+                    ? new Baseline(true, null, info.Length, info.LastWriteTimeUtc, order, bytes)
+                    : new Baseline(true, text, info.Length, info.LastWriteTimeUtc, order, bytes);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException
                                               or NotSupportedException or ArgumentException)
             {
                 // The tracker is an observer: a file it cannot read must not fail the run.
-                return Baseline.Missing;
+                return Baseline.Unreadable;
             }
         }
 
@@ -299,11 +334,13 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff) : IWorkspaceChangeTra
     /// is the one kept — comparing timestamps would not settle it, because two captures inside the
     /// same tick are exactly the case that arises when subtasks run at once.
     /// </param>
-    private readonly record struct Baseline(bool Exists, string? Text, long Length, DateTime ModifiedAt, long Order)
+    private readonly record struct Baseline(bool Exists, string? Text, long Length, DateTime ModifiedAt,
+        long Order, byte[]? Bytes)
     {
         private static long _taken;
 
-        public static Baseline Missing => new(false, null, 0, default, Next());
+        public static Baseline Missing => new(false, null, 0, default, Next(), null);
+        public static Baseline Unreadable => new(true, null, 0, default, Next(), null);
 
         public static long Next() => Interlocked.Increment(ref _taken);
     }

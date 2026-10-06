@@ -159,7 +159,8 @@ public class ChatDocumentSerializerTests
             [new ChatFileChange("src/file.cs", ChatFileChangeKind.Modified, 4, 2,
                 Diff: "@@ -1,1 +1,1 @@\n-old\n+new", Confidence: ChatFileChangeConfidence.Measured)],
             4,
-            2);
+            2,
+            Guid.CreateVersion7());
         chat.AddMessage(new ChatMessage(
             new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.Assistant, "Done", createdAt,
             workspaceChanges: changes), createdAt);
@@ -169,6 +170,7 @@ public class ChatDocumentSerializerTests
         var restoredChanges = restored.Chat.Messages.ShouldHaveSingleItem().WorkspaceChanges!;
         restoredChanges.Additions.ShouldBe(4);
         restoredChanges.Deletions.ShouldBe(2);
+        restoredChanges.UndoId.ShouldBe(changes.UndoId);
         restoredChanges.Files.ShouldHaveSingleItem().Diff.ShouldBe("@@ -1,1 +1,1 @@\n-old\n+new");
     }
 

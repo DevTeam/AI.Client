@@ -7,6 +7,7 @@ using AI.Contracts.Tools;
 using AI.Contracts.Workspace;
 using AI.Infrastructure.Workspace;
 using Shouldly;
+using Moq;
 using Xunit;
 
 public sealed class WorkspaceChangeTrackerTests : IDisposable
@@ -21,7 +22,7 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
 
     private async Task<WorkspaceChangeTracker> StartAsync(params string[] roots)
     {
-        var tracker = new WorkspaceChangeTracker(new LineDiff());
+        var tracker = new WorkspaceChangeTracker(new LineDiff(), Mock.Of<IWorkspaceUndoService>());
         await BeginAsync(tracker, _run, null, roots);
         return tracker;
     }

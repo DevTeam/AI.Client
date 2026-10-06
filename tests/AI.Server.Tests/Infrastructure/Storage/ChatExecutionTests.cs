@@ -1895,7 +1895,7 @@ public sealed class ChatExecutionTests
         public Guid ChatId { get; private set; }
         private Fixture(IWorkspaceChangeTracker? workspace = null)
         {
-            Workspace = workspace ?? new WorkspaceChangeTracker(new LineDiff());
+            Workspace = workspace ?? new WorkspaceChangeTracker(new LineDiff(), Mock.Of<IWorkspaceUndoService>());
             _composition = NewComposition();
         }
 
@@ -2075,6 +2075,9 @@ public sealed class ChatExecutionTests
 
         public Task<WorkspaceChangeSet> SnapshotAsync(WorkspaceRunKey run, CancellationToken cancellationToken) =>
             Task.FromResult(_current.GetValueOrDefault(run, WorkspaceChangeSet.Empty));
+
+        public Task<Guid?> CaptureUndoAsync(WorkspaceRunKey run, WorkspaceChangeSet changes,
+            CancellationToken cancellationToken) => Task.FromResult<Guid?>(null);
 
         public Task CompleteRunAsync(WorkspaceRunKey run, CancellationToken cancellationToken)
         {

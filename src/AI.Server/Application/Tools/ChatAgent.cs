@@ -133,6 +133,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             await Draft(null);
             await Answer(answer);
             var changes = await workspace.SnapshotAsync(runKey, token);
+            if (parentBranchId is null && !changes.IsEmpty)
+                changes = changes with { UndoId = await workspace.CaptureUndoAsync(runKey, changes, token) };
             await workspace.CompleteRunAsync(runKey, CancellationToken.None);
             return changes;
         }

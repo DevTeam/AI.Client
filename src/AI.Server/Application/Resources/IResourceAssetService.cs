@@ -13,5 +13,8 @@ public interface IResourceAssetService
     Task<ResourceAssetText?> ReadTextAsync(Guid projectId, string assetId, CancellationToken cancellationToken);
     Task<ResourceTicket?> CreateTicketAsync(Guid projectId, string assetId, CancellationToken cancellationToken);
     Task<ResourceAsset?> ReadTicketAsync(string ticket, CancellationToken cancellationToken);
+    /// <summary>Stores bytes for workspace Undo without creating a chat resource or a public content ticket.</summary>
+    Task<string> StoreUndoBytesAsync(Guid projectId, byte[] data, CancellationToken cancellationToken);
+    Task<byte[]?> ReadUndoBytesAsync(Guid projectId, string assetId, CancellationToken cancellationToken);
     Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken);
 }

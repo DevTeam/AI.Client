@@ -51,7 +51,7 @@ const keyboardStep = 16;
 const dragSlop = 3;
 const toggleDuration = 150;
 // The phone layout has no room beside the conversation: both panels slide over it as drawers.
-const phoneQuery = "(max-width: 720px)";
+const phoneQuery = "(max-width: 900px)";
 // A swipe has to travel this far, mostly sideways, to open or close a drawer.
 const swipeDistance = 60;
 // On phone width a mouse resting this close to the window's edge for peekDelay brings that drawer

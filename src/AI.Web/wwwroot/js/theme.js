@@ -1,4 +1,4 @@
-// Sets <html data-theme="light|dark|darkblue"> from the saved preference. Loaded as a plain
+// Sets <html data-theme="dark|darkblue|gray|light|lightgray"> from the saved preference. Loaded as a plain
 // script in <head>, ahead of the stylesheet, so browser preferences apply before the first paint.
 // The entry is the one ClientSettingsService
 // writes: "ai-client.settings" = {"theme":"system|light|dark|darkBlue","accent":"blue|teal|...",
@@ -12,7 +12,7 @@
 
     // The browser chrome colour cannot come from CSS: this script runs before the stylesheet,
     // so these mirror --color-bg of each theme in app.css.
-    const chromeColors = { dark: "#171717", light: "#ffffff", darkblue: "#101620", gray: "#212121", lightgray: "#f2f2f2" };
+    const chromeColors = { dark: "#171717", light: "#ffffff", darkblue: "#101720", gray: "#212121", lightgray: "#f2f2f2" };
 
     function render() {
         const root = document.documentElement;

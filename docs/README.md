@@ -35,6 +35,7 @@ The documents describe the agreed-upon architecture and are the source of truth 
 29. [Chat widgets](29-chat-widgets.md)
 30. [Dependency injection with Pure.DI](30-dependency-injection.md)
 31. [Context request budgets and quality evaluation](31-context-evaluation.md)
+32. [Styles and palette](33-styles-and-palette.md)
 
 Generator diagnostics and complaints are tracked separately in [Pure.DI observations and issues](pure-di-issues.md).
 

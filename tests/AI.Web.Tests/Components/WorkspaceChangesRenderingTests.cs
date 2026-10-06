@@ -76,6 +76,40 @@ public sealed class WorkspaceChangesRenderingTests
         });
     }
 
+    [Fact]
+    public async Task ShouldStyleTheUndoActionsAsDangerous()
+    {
+        var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
+        var registrations = new ServiceCollection();
+        registrations.AddTransient<AI.Contracts.Navigation.IAppNavigationTargets, AI.Contracts.Navigation.AppNavigationTargets>();
+        registrations.AddTransient<AI.Web.Navigation.IAppControlHints, AI.Web.Navigation.AppControlHints>();
+        registrations.AddSingleton(Mock.Of<IJSRuntime>());
+        await using var services = (ServiceProvider)composition.CreateServiceProvider(composition.CreateBuilder(registrations));
+        await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
+
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var ready = await renderer.RenderComponentAsync<WorkspaceChangeFileHeader>(ParameterView.FromDictionary(
+                new Dictionary<string, object?>
+                {
+                    [nameof(WorkspaceChangeFileHeader.File)] = new FileChange("File.cs", FileChangeKind.Added, 1, 0),
+                    [nameof(WorkspaceChangeFileHeader.UndoFileState)] = WorkspaceUndoFileState.Ready,
+                    [nameof(WorkspaceChangeFileHeader.OnUndo)] = EventCallback.Empty
+                }));
+            var readyHtml = ready.ToHtmlString();
+            // Undo throws away file bytes, so the per-file action must reuse the danger tokens, not the accent ones.
+            readyHtml.ShouldContain("workspace-change-undo-action is-danger");
+
+            var undone = await renderer.RenderComponentAsync<WorkspaceChangeFileHeader>(ParameterView.FromDictionary(
+                new Dictionary<string, object?>
+                {
+                    [nameof(WorkspaceChangeFileHeader.File)] = new FileChange("File.cs", FileChangeKind.Added, 1, 0),
+                    [nameof(WorkspaceChangeFileHeader.UndoFileState)] = WorkspaceUndoFileState.Undone
+                }));
+            undone.ToHtmlString().ShouldNotContain("workspace-change-undo-action");
+        });
+    }
+
     private sealed class CommentHost : ComponentBase
     {
         private readonly FileChange _file = new("File.cs", FileChangeKind.Added, 1, 0, Diff: "@@ -0,0 +1,1 @@\n+code");

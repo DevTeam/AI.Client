@@ -1287,10 +1287,8 @@ else if (_guideInvitation is { } guideInvitation)
     // The chat the user has just asked for, before its transcript exists. The sidebar highlights
     // it immediately: the click IS the selection, loading is only how long the content takes.
     private Guid? _pendingChatId;
-    // Work that belongs to an opened chat but not to opening it — marking it read (a server
-    // round-trip) and recording where the user is (a localStorage write). Run after the render
-    // that puts the transcript on screen, not before it.
-    private (Guid ProjectId, Guid? ChatId, Guid? BranchLeafId)? _openedChatToSettle;
+    // Mark an opened chat as read after the render that puts its transcript on screen.
+    private (Guid ProjectId, Guid? ChatId)? _openedChatToSettle;
     // Two loads with two placeholders, not one flag over both: the project list arrives in a
     // single request, while the selected project's chats only arrive after its settings
     // round-trip, and holding the whole sidebar back until the slower of them was what made the
@@ -1770,7 +1768,6 @@ else if (_guideInvitation is { } guideInvitation)
             if (_selectedProject?.Id == opened.ProjectId && _selectedChat?.Id == opened.ChatId)
             {
                 await MarkSelectedChatReadAsync();
-                await WorkspaceStateService.SetProjectContextAsync(opened.ProjectId, opened.ChatId, opened.BranchLeafId);
             }
         }
 
@@ -2472,9 +2469,12 @@ else if (_guideInvitation is { } guideInvitation)
         _projectSelectionCancellation = projectSelection;
         var cancellation = projectSelection.Token;
 
-        // Start every independent I/O operation before changing the selection. Saving the old
-        // viewport and draft no longer holds up reading the destination, and the remembered chat
-        // no longer waits for both project settings and the chat-summary list to arrive first.
+        // Start independent I/O before changing the selection. The remembered chat and the
+        // previous project's selection can be saved alongside the destination reads.
+        var saveContextTask = _selectedProject is { } currentProject && currentProject.Id != project.Id
+            ? WorkspaceStateService.SetProjectContextAsync(currentProject.Id, _selectedChat?.Id,
+                _branchLeafId, _selectedBranchId)
+            : Task.CompletedTask;
         var context = restoreLastChat ? WorkspaceStateService.GetProjectContext(project.Id) : default;
         var saveScrollTask = SaveCurrentScrollPositionAsync();
         var flushDraftTask = WorkspaceStateService.FlushPendingComposerDraftAsync();
@@ -2487,8 +2487,8 @@ else if (_guideInvitation is { } guideInvitation)
         try
         {
             var reads = rememberedChatTask is null
-                ? new Task[] { saveScrollTask, flushDraftTask, projectDetailsTask, chatsTask }
-                : [saveScrollTask, flushDraftTask, projectDetailsTask, chatsTask, rememberedChatTask];
+                ? new Task[] { saveContextTask, saveScrollTask, flushDraftTask, projectDetailsTask, chatsTask }
+                : [saveContextTask, saveScrollTask, flushDraftTask, projectDetailsTask, chatsTask, rememberedChatTask];
             await Task.WhenAll(reads);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -2556,6 +2556,8 @@ else if (_guideInvitation is { } guideInvitation)
             && rememberedChat?.Id == chatId)
         {
             ApplyRememberedChat(rememberedChat, context);
+            await WorkspaceStateService.SetProjectContextAsync(project.Id, chatId,
+                _branchLeafId, _selectedBranchId);
         }
         else
         {
@@ -2574,23 +2576,25 @@ else if (_guideInvitation is { } guideInvitation)
 
     private void ApplyRememberedChat(
         ChatDetails chat,
-        (Guid? ChatId, Guid? BranchLeafId) context)
+        (Guid? ChatId, Guid? BranchLeafId, Guid? BranchId) context)
     {
         _selectedChat = chat;
-        _branchLeafId = GetOriginalBranchLeaf(chat);
-        if (context.ChatId == chat.Id
-            && context.BranchLeafId is { } rememberedLeafId
-            && chat.Branches?.Any(branch => branch.HeadMessageId == rememberedLeafId) == true)
-        {
-            _branchLeafId = rememberedLeafId;
-        }
-
-        _selectedBranchId = chat.Branches?
-            .FirstOrDefault(branch => branch.HeadMessageId == _branchLeafId)?.Id ?? chat.Id;
+        var rememberedBranch = GetRememberedBranch(chat, context);
+        _selectedBranchId = rememberedBranch?.Id ?? chat.Id;
+        _branchLeafId = rememberedBranch?.HeadMessageId ?? GetOriginalBranchLeaf(chat);
         if (chat.ConnectionId is { } endpointId) SelectGlobalConnection(endpointId);
         RestoreComposerDraft();
         _pendingScrollRestoreKey = GetScrollPositionKey();
-        _openedChatToSettle = (_selectedProject!.Id, chat.Id, _branchLeafId);
+        _openedChatToSettle = (_selectedProject!.Id, chat.Id);
+    }
+
+    private static ChatBranchView? GetRememberedBranch(ChatDetails chat,
+        (Guid? ChatId, Guid? BranchLeafId, Guid? BranchId) context)
+    {
+        if (context.ChatId != chat.Id) return null;
+        return context.BranchId is { } branchId
+            ? chat.Branches?.FirstOrDefault(branch => branch.Id == branchId)
+            : chat.Branches?.FirstOrDefault(branch => branch.HeadMessageId == context.BranchLeafId);
     }
 
     private async Task SaveProjectAsync()
@@ -2907,6 +2911,8 @@ else if (_guideInvitation is { } guideInvitation)
 
     private async Task FinishAcceptedUiUpdatesAsync(ComposerSubmitOutcome.Accepted accepted)
     {
+        await WorkspaceStateService.SetProjectContextAsync(accepted.Chat.ProjectId, accepted.Chat.Id,
+            _branchLeafId, _selectedBranchId);
         // The textarea's DOM value is independent from the bound _chat.Message — Blazor will
         // sync it on the next render, but for Queue mode the snapshot that triggers a render
         // doesn't always arrive (the dispatcher only Publishes when the worker actually
@@ -3338,6 +3344,7 @@ else if (_guideInvitation is { } guideInvitation)
         _selectedChat = null;
         _selectedBranchId = null;
         _branchLeafId = null;
+        await WorkspaceStateService.SetProjectContextAsync(_selectedProject.Id, null, null);
         SetJustArrivedLeaf(null);
         _wasGeneratingByBranch.Clear();
         if (_defaultConnectionId is { } endpointId)
@@ -3648,23 +3655,16 @@ else if (_guideInvitation is { } guideInvitation)
             // Prefer the branch this chat was last left on, within this project, if it's still
             // part of the chat (a branch can be deleted independently of the chat itself).
             var context = WorkspaceStateService.GetProjectContext(_selectedProject.Id);
-            // A remembered leaf can sit on a branch whose transcript is NOT the one currently in
-            // _selectedChat.Messages — at this point _branchLeafId has just been reset to main
-            // via GetOriginalBranchLeaf, so Messages reflects the main transcript and any leaf
-            // that lives past the fork point is invisible to a Messages-based check. Match
-            // against the chat's branch heads instead: that's what "is this still a valid leaf
-            // for this chat?" actually means, and it's stable across which branch is currently
-            // expanded.
-            if (!wasAlreadyOnThisChat
-                && _selectedChat is not null
-                && context.ChatId == chatId
-                && context.BranchLeafId is { } rememberedBranchLeafId
-                && _selectedChat.Branches?.Any(branch => branch.HeadMessageId == rememberedBranchLeafId) == true)
+            // The branch id survives changes to its head while this project is away. Older
+            // saved contexts have only a leaf and are matched against current branch heads.
+            var rememberedBranch = _selectedChat is null || wasAlreadyOnThisChat
+                ? null : GetRememberedBranch(_selectedChat, context);
+            if (rememberedBranch is not null)
             {
-                _branchLeafId = rememberedBranchLeafId;
+                _branchLeafId = rememberedBranch.HeadMessageId;
             }
 
-            _selectedBranchId = _selectedChat?.Branches?.FirstOrDefault(branch => branch.HeadMessageId == _branchLeafId)?.Id ?? _selectedChat?.Id;
+            _selectedBranchId = rememberedBranch?.Id ?? _selectedChat?.Id;
             if (_selectedChat?.ConnectionId is { } endpointId)
             {
                 // Restore the selection without persisting an endpoint change when opening a chat.
@@ -3674,7 +3674,10 @@ else if (_guideInvitation is { } guideInvitation)
             // Whether to jump to the bottom or restore the last-viewed message is decided in
             // MessageFeed (it knows whether a saved position exists) — see OnAfterRenderAsync.
             _pendingScrollRestoreKey = GetScrollPositionKey();
-            _openedChatToSettle = (projectId, _selectedChat?.Id, _branchLeafId);
+            _openedChatToSettle = (projectId, _selectedChat?.Id);
+            if (_selectedChat is not null)
+                await WorkspaceStateService.SetProjectContextAsync(projectId, _selectedChat.Id,
+                    _branchLeafId, _selectedBranchId);
             await LoadReviewsAsync();
         }
         else
@@ -4193,7 +4196,8 @@ else if (_guideInvitation is { } guideInvitation)
         _pendingScrollRestoreKey = GetScrollPositionKey();
         if (_selectedProject is not null && _selectedChat is not null)
         {
-            await WorkspaceStateService.SetProjectContextAsync(_selectedProject.Id, _selectedChat.Id, _branchLeafId);
+            await WorkspaceStateService.SetProjectContextAsync(_selectedProject.Id, _selectedChat.Id,
+                _branchLeafId, _selectedBranchId);
         }
     }
 
@@ -4503,7 +4507,9 @@ else if (_guideInvitation is { } guideInvitation)
         _branchLeafId = refreshedBranch?.LeafId ?? branch.LeafId;
         RestoreComposerDraft();
         _pendingScrollRestoreKey = GetScrollPositionKey();
-        _openedChatToSettle = (_selectedProject.Id, chatId, _branchLeafId);
+        _openedChatToSettle = (_selectedProject.Id, chatId);
+        await WorkspaceStateService.SetProjectContextAsync(_selectedProject.Id, chatId,
+            _branchLeafId, _selectedBranchId);
     }
 
     private async Task OnProjectContextMenu(ProjectSummary project)

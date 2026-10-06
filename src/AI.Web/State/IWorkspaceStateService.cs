@@ -28,10 +28,10 @@ public interface IWorkspaceStateService : IAsyncDisposable
     Task SetLastBrowsedDirectoryAsync(string path);
 
     /// <summary>The chat/branch last selected within the given project, if any.</summary>
-    (Guid? ChatId, Guid? BranchLeafId) GetProjectContext(Guid projectId);
+    (Guid? ChatId, Guid? BranchLeafId, Guid? BranchId) GetProjectContext(Guid projectId);
 
     /// <summary>Records the chat/branch last selected within the given project. No-op (no write) if unchanged.</summary>
-    Task SetProjectContextAsync(Guid projectId, Guid? chatId, Guid? branchLeafId);
+    Task SetProjectContextAsync(Guid projectId, Guid? chatId, Guid? branchLeafId, Guid? branchId = null);
 
     /// <summary>
     /// Messages already sent from this project's composer, newest first. Shared by every chat in

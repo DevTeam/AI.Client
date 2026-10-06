@@ -8,7 +8,7 @@ using Avalonia.Threading;
 
 /// <remarks>
 /// The window comes as a factory: a window built before <see cref="Initialize"/> loads the theme
-/// never gets its drawn titlebar template, so the titlebar neither drags nor clicks.
+/// would miss its styles and brushes.
 /// </remarks>
 internal sealed partial class App(Func<MainWindow> mainWindow, IProcessSignals processSignals, IThemePreferenceStore themes)
     : Application
@@ -40,8 +40,8 @@ internal sealed partial class App(Func<MainWindow> mainWindow, IProcessSignals p
     }
 
     /// <summary>
-    /// The titlebar's brushes live in this application's theme dictionaries, so the variant is set
-    /// here rather than on the window. "system" leaves it to the OS, which is what the page does too;
+    /// The window's brushes live in this application's theme dictionaries, and the system titlebar
+    /// takes its light or dark look from the variant, so it is set here rather than on the window. "system" leaves it to the OS, which is what the page does too;
     /// an unknown preference keeps following the OS rather than guessing.
     /// </summary>
     private void ApplyTheme(string preference) =>

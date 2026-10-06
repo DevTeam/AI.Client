@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using System.Text.Json;
 
@@ -19,6 +20,7 @@ internal sealed partial class MainWindow : Window
     private readonly IClientSettingsStore _clientSettings;
     private readonly ITaskbarBadge _taskbarBadge;
     private readonly IFileDropBridge _fileDrop;
+    private readonly IWindowFrameTheme _frameTheme;
     private readonly IDesktopUpdates _updates;
     private readonly DispatcherTimer _engineWatchdog;
     private bool _engineCreated;
@@ -30,7 +32,7 @@ internal sealed partial class MainWindow : Window
 
     public MainWindow(DesktopStart start, IWindowPlacementStore placements,
         IWorkspaceLocationStore workspaceLocation, IClientSettingsStore clientSettings,
-        ITaskbarBadge taskbarBadge, IFileDropBridge fileDrop, IDesktopUpdates updates)
+        ITaskbarBadge taskbarBadge, IFileDropBridge fileDrop, IWindowFrameTheme frameTheme, IDesktopUpdates updates)
     {
         _start = start;
         _placements = placements;
@@ -38,6 +40,7 @@ internal sealed partial class MainWindow : Window
         _clientSettings = clientSettings;
         _taskbarBadge = taskbarBadge;
         _fileDrop = fileDrop;
+        _frameTheme = frameTheme;
         _updates = updates;
         _updates.ShutdownRequested += () => Dispatcher.UIThread.Post(Close);
         InitializeComponent();
@@ -58,20 +61,13 @@ internal sealed partial class MainWindow : Window
         Retry.Click += (_, _) => Load();
         UpdateHost.IsVisible = start.HostUpdateAddress is not null;
         UpdateHost.Click += async (_, _) => await UpdateIncompatibleHostAsync();
-        PropertyChanged += (_, args) =>
-        {
-            if (args.Property == WindowStateProperty)
-            {
-                UpdateFrame();
-            }
-        };
-        UpdateFrame();
     }
 
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
         if (OperatingSystem.IsWindows()) _taskbarBadge.Attach(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero);
+        ApplyFrameTheme();
         if (_start.Address is null)
         {
             ShowProblem("The AI Client server did not start.", _start.Error, canRetry: false);
@@ -89,6 +85,18 @@ internal sealed partial class MainWindow : Window
         {
             RememberNormalLater();
         }
+        else if (change.Property == ActualThemeVariantProperty && IsVisible)
+        {
+            ApplyFrameTheme();
+        }
+    }
+
+    /// <summary>The app's own variants derive from Light or Dark; the system titlebar knows only those two.</summary>
+    private void ApplyFrameTheme()
+    {
+        var variant = ActualThemeVariant;
+        while (variant.InheritVariant is { } parent) variant = parent;
+        _frameTheme.Apply(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero, variant == ThemeVariant.Dark);
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)
@@ -398,12 +406,4 @@ internal sealed partial class MainWindow : Window
             : OperatingSystem.IsLinux()
                 ? "Install WebKitGTK (for example libwebkit2gtk-4.1-0) or WPE WebKit and start AI Client again."
                 : "The system web view did not start. Restart AI Client; if it happens again, report it.";
-
-    /// <summary>A maximized or full-screen window has no edge to outline.</summary>
-    private void UpdateFrame()
-    {
-        var edge = WindowState is WindowState.Maximized or WindowState.FullScreen ? 0 : 1;
-        Frame.BorderThickness = new Thickness(edge);
-        Chrome.Margin = new Thickness(edge);
-    }
 }

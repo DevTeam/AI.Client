@@ -7,36 +7,19 @@
         MinWidth="360" MinHeight="500"
         WindowStartupLocation="CenterScreen"
         WindowDecorations="Full"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="38"
         Background="{DynamicResource WindowBackgroundBrush}">
-    <Panel>
-        <Grid x:Name="Chrome" RowDefinitions="38,*" Margin="1">
-            <!--
-                Avalonia handles the titlebar in this reserved row; the window background covers
-                its own titlebar fill, so the fill is drawn here and lets the pointer through.
-            -->
-            <Border Grid.Row="0" Background="{DynamicResource TitleBarBackgroundBrush}" BorderBrush="{DynamicResource TitleBarBorderBrush}" BorderThickness="0,0,0,1"
-                    IsHitTestVisible="False" />
-            <Grid Grid.Row="1">
-                <!-- A native WebView must stay below the titlebar; its HWND would cover Avalonia controls. -->
-                <NativeWebView x:Name="WebView" Background="{DynamicResource WindowBackgroundBrush}" IsVisible="False" />
-                <Border x:Name="Status" Background="{DynamicResource WindowBackgroundBrush}" IsVisible="True">
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="560">
-                        <TextBlock x:Name="StatusTitle" Text="Starting AI Client…" FontSize="18" Foreground="{DynamicResource StatusTitleBrush}"
-                                   HorizontalAlignment="Center" />
-                        <TextBlock x:Name="StatusDetail" Foreground="{DynamicResource StatusDetailBrush}" TextWrapping="Wrap" TextAlignment="Center"
-                                   IsVisible="False" />
-                        <Button x:Name="Retry" Content="Retry" HorizontalAlignment="Center" IsVisible="False" />
-                        <Button x:Name="UpdateHost" Content="Update Host" HorizontalAlignment="Center" IsVisible="False" />
-                    </StackPanel>
-                </Border>
-            </Grid>
-        </Grid>
-        <!--
-            Windows 10 draws no visible edge around a dark window, so the outline is ours. It sits
-            beside the content, not around it: the WebView HWND stays 1px inside and cannot cover it.
-        -->
-        <Border x:Name="Frame" BorderBrush="{DynamicResource WindowFrameBrush}" BorderThickness="1" IsHitTestVisible="False" />
-    </Panel>
+    <!-- The titlebar and frame are the system's own, so they look the way the user knows from every other app. -->
+    <Grid>
+        <NativeWebView x:Name="WebView" Background="{DynamicResource WindowBackgroundBrush}" IsVisible="False" />
+        <Border x:Name="Status" Background="{DynamicResource WindowBackgroundBrush}" IsVisible="True">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="560">
+                <TextBlock x:Name="StatusTitle" Text="Starting AI Client…" FontSize="18" Foreground="{DynamicResource StatusTitleBrush}"
+                           HorizontalAlignment="Center" />
+                <TextBlock x:Name="StatusDetail" Foreground="{DynamicResource StatusDetailBrush}" TextWrapping="Wrap" TextAlignment="Center"
+                           IsVisible="False" />
+                <Button x:Name="Retry" Content="Retry" HorizontalAlignment="Center" IsVisible="False" />
+                <Button x:Name="UpdateHost" Content="Update Host" HorizontalAlignment="Center" IsVisible="False" />
+            </StackPanel>
+        </Border>
+    </Grid>
 </Window>

@@ -25,7 +25,7 @@
         document.dispatchEvent(new CustomEvent("ai-client-theme-change", { detail: { theme } }));
     }
 
-    // Inside the desktop app the titlebar is native and follows the page through Avalonia's
+    // Inside the desktop app the window and its system titlebar follow the page through Avalonia's
     // bridge (MainWindow.OnWebMessageReceived). The preference, not the resolved theme, is sent:
     // "system" lets the host follow the OS itself. An ordinary browser has no bridge.
     let toldHost;

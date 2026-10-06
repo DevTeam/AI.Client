@@ -78,6 +78,43 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task ShouldKeepNotesOfUnansweredTurnInTranscript()
+    {
+        var firstUserId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000020"));
+        var firstNoteId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000021"));
+        var firstResultId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000022"));
+        var firstAnswerId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000023"));
+        var userId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000024"));
+        var noteId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000025"));
+        var resultId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000026"));
+        var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
+        chat.AddMessage(new ChatMessage(firstUserId, null, ChatMessageRole.User, "First", _now), _now);
+        chat.AddMessage(new ChatMessage(firstNoteId, firstUserId, ChatMessageRole.Assistant, "Earlier note", _now.AddSeconds(1),
+            toolCalls: [new ChatToolCall("call-1", "process_run", "{}")]), _now.AddSeconds(1));
+        chat.AddMessage(new ChatMessage(firstResultId, firstNoteId, ChatMessageRole.Tool, "result", _now.AddSeconds(2),
+            toolCallId: "call-1"), _now.AddSeconds(2));
+        chat.AddMessage(new ChatMessage(firstAnswerId, firstResultId, ChatMessageRole.Assistant, "Answer", _now.AddSeconds(3)),
+            _now.AddSeconds(3));
+        chat.AddMessage(new ChatMessage(userId, firstAnswerId, ChatMessageRole.User, "Second", _now.AddSeconds(4)), _now.AddSeconds(4));
+        chat.AddMessage(new ChatMessage(noteId, userId, ChatMessageRole.Assistant, "Checking the build", _now.AddSeconds(5),
+            toolCalls: [new ChatToolCall("call-2", "process_run", "{\"command\":\"large\"}")]), _now.AddSeconds(5));
+        chat.AddMessage(new ChatMessage(resultId, noteId, ChatMessageRole.Tool, "very large result", _now.AddSeconds(6),
+            toolCallId: "call-2"), _now.AddSeconds(6));
+        _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None))
+            .ReturnsAsync(new StoredChat(chat, 3));
+
+        var transcript = await CreateInstance().GetTranscriptAsync(_projectId.Value, _chatId.Value, CancellationToken.None);
+
+        transcript.ShouldNotBeNull();
+        var note = transcript.Messages.Single(message => message.Id == noteId.Value);
+        note.Content.ShouldBe("Checking the build");
+        note.ContentOmitted.ShouldBeFalse();
+        note.ToolCalls!.Single().Arguments.ShouldBeEmpty();
+        transcript.Messages.Single(message => message.Id == resultId.Value).ContentOmitted.ShouldBeTrue();
+        transcript.Messages.Single(message => message.Id == firstNoteId.Value).ContentOmitted.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task ShouldLoadTranscriptActivityAndToolResultInLayers()
     {
         var userId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000010"));

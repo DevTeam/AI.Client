@@ -467,14 +467,17 @@
             OnCurrentTurnSummaryVisibilityChanged="SetCurrentTurnSummaryVisibility"
             OnResumeRun="ResumeQueueAsync"
             OnRebaseRun="RebaseQueueAsync"
-            OnDiscardRun="DiscardCommandAsync"
-            DockStateKey="@GetDockStateKey()">
-            <DockContent>
+            OnDiscardRun="DiscardCommandAsync">
+        </MessageFeed>
         <div class="composer-dock">
-        @if (GetDockedChanges() is { } dockedChanges)
+        @if (GetLastTurnChanges() is { } dockedChanges)
         {
-            @* The run's changes share the feed scrollbar with its transcript. *@
-            <WorkspaceChanges Changes="@dockedChanges" Live="true" ExpandUpward="true" />
+            <WorkspaceChanges @key="@(dockedChanges.SourceMessageId ?? GetSelectedRun()?.ActiveMessageId)"
+                              Changes="@dockedChanges.Changes" Label="Last turn" Live="@dockedChanges.Live" ExpandUpward="true"
+                              ProjectId="@_selectedChat!.ProjectId" ChatId="@_selectedChat.Id"
+                              SourceMessageId="@dockedChanges.SourceMessageId"
+                              Review="@(dockedChanges.SourceMessageId is { } sourceId ? _reviews.Where(item => item.Kind == ChatReviewKind.Diff && item.SourceMessageId == sourceId).OrderByDescending(item => item.UpdatedAt).FirstOrDefault() : null)"
+                              OnReview="OpenReviewFromChangesAsync" OnReviewChanged="OnReviewChangedAsync" />
         }
         @if (GetSelectedRun() is { } selectedRun && GetPendingQueue(selectedRun) is { Count: > 0 } pendingQueue)
         {
@@ -551,8 +554,6 @@
             <ToolApprovalBar @ref="_toolApprovalBar" @key="dockedApproval.Id" Run="dockedApprovalRun" Approval="dockedApproval" ChatTitle="@_selectedChat?.Title" />
         }
         </div>
-            </DockContent>
-        </MessageFeed>
         <div class="composer-prelude">
             @if (_navigationCue is { } cue)
             {
@@ -1332,6 +1333,10 @@ else if (_guideInvitation is { } guideInvitation)
     private bool _attachComposer = true;
     private bool _composerNeedsResize;
     private bool _isQueueExpanded = true;
+    private ChatDetails? _lastTurnChangesChat;
+    private Guid? _lastTurnChangesLeafId;
+    private ChatRunSnapshot? _lastTurnChangesRun;
+    private (AI.Contracts.Workspace.WorkspaceChangeSet Changes, Guid? SourceMessageId, bool Live)? _lastTurnChangesCache;
     private ElementReference _queueHeader;
     private IJSObjectReference? _chatSummaryModule;
     private double? _queueHeaderTop;
@@ -3771,13 +3776,47 @@ else if (_guideInvitation is { } guideInvitation)
     private ChatRunSnapshot? GetRun(Guid chatId, Guid branchId) => RunState.Runs.GetValueOrDefault(new RunKey(chatId, branchId));
     private ChatRunSnapshot? GetBranchRun(Guid chatId, BranchTreeItem branch) => GetRun(chatId, branch.RootId);
     private ChatRunSnapshot? GetSelectedRun() => _selectedChat is not null ? GetRun(_selectedChat.Id, GetSelectedRunBranchId()) : null;
-    /// <summary>The selected run's changes until its receipt is saved into the transcript.</summary>
-    private AI.Contracts.Workspace.WorkspaceChangeSet? GetDockedChanges() =>
-        _selectedChat is not null
-        && GetSelectedRun() is { Status: not ChatRunStatus.Completed, WorkspaceChanges: { IsEmpty: false } changes }
-        && !Feed.LastTurnHasWorkspaceReceipt(Feed.BuildBranch(_selectedChat.Messages, _branchLeafId))
-            ? changes
+    /// <summary>The selected branch's newest turn, from its receipt or the active run snapshot.</summary>
+    private (AI.Contracts.Workspace.WorkspaceChangeSet Changes, Guid? SourceMessageId, bool Live)? GetLastTurnChanges()
+    {
+        var run = GetSelectedRun();
+        if (ReferenceEquals(_lastTurnChangesChat, _selectedChat)
+            && _lastTurnChangesLeafId == _branchLeafId
+            && ReferenceEquals(_lastTurnChangesRun, run))
+            return _lastTurnChangesCache;
+
+        _lastTurnChangesChat = _selectedChat;
+        _lastTurnChangesLeafId = _branchLeafId;
+        _lastTurnChangesRun = run;
+        _lastTurnChangesCache = CalculateLastTurnChanges(run);
+        return _lastTurnChangesCache;
+    }
+
+    private (AI.Contracts.Workspace.WorkspaceChangeSet Changes, Guid? SourceMessageId, bool Live)? CalculateLastTurnChanges(ChatRunSnapshot? run)
+    {
+        if (_selectedChat is null) return null;
+        var branch = Feed.BuildBranch(_selectedChat.Messages, _branchLeafId);
+        var lastUserId = branch.LastOrDefault(message => message.Role == "User")?.Id;
+        var activeMessageId = run?.ActiveMessageId
+            ?? run?.Queue.FirstOrDefault(item => item.Stage == QueuedMessageStage.UserCommitted)?.Id;
+
+        // A run snapshot can arrive before its user message. Do not show the previous turn's
+        // receipt as the new turn's changes while the two event streams catch up.
+        if (run is { Status: ChatRunStatus.Generating } && activeMessageId is { } activeId && activeId != lastUserId)
+            return run.WorkspaceChanges is { IsEmpty: false } earlyChanges ? (earlyChanges, null, true) : null;
+
+        for (var index = branch.Count - 1; index >= 0; index--)
+        {
+            var message = branch[index];
+            if (message.WorkspaceChanges is { IsEmpty: false } receipt)
+                return (receipt, message.Id, false);
+            if (message.Role == "User") break;
+        }
+
+        return run is { Status: not ChatRunStatus.Completed, WorkspaceChanges: { IsEmpty: false } liveChanges }
+            ? (liveChanges, null, true)
             : null;
+    }
 
     private async Task ToggleQueueDetailsAsync()
     {
@@ -3785,10 +3824,6 @@ else if (_guideInvitation is { } guideInvitation)
         _queueHeaderTop = await _chatSummaryModule.InvokeAsync<double?>("captureHeader", _queueHeader);
         _isQueueExpanded = !_isQueueExpanded;
     }
-
-    // Keep the dock independent of composer keystrokes while refreshing its local queue controls.
-    private string GetDockStateKey() =>
-        $"{_isQueueExpanded}|{_isConfirmingQueueClearAll}|{_queueActionPending}|{_hidePendingQueue}|{_editingQueueId}|{_editingQueueText}|{string.Join(',', _optimisticallyHiddenQueueIds.Order())}";
 
     private int GetTranscriptRunPresentationVersion()
     {

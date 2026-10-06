@@ -47,6 +47,21 @@ public sealed class ChatMessageDeltaMergerTests
         updated.ShouldBeSameAs(chat);
     }
 
+    [Fact]
+    public void ShouldReloadWhenAReplacementPrunedThePreviousBranchPath()
+    {
+        var chatId = Guid.NewGuid();
+        var original = Message(Guid.NewGuid(), null, "User", "Original");
+        var answer = Message(Guid.NewGuid(), original.Id, "Assistant", "Original answer");
+        var replacement = Message(Guid.NewGuid(), null, "User", "Replacement");
+        var chat = Chat(chatId, chatId, 10, answer) with { Messages = [original, answer] };
+        var run = Run(chatId, chatId, 11, replacement.Id, 3,
+            new ChatMessageAppend(10, 11, replacement));
+
+        _merger.TryApply(chat, run, out var updated).ShouldBeFalse();
+        updated.ShouldBeSameAs(chat);
+    }
+
     private static ChatMessageView Message(Guid id, Guid? parentId, string role, string content) =>
         new(id, parentId, role, content, DateTimeOffset.UtcNow);
 

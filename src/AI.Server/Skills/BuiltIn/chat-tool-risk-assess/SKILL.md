@@ -38,4 +38,6 @@ wrong `allow` can cost them their data.
 Return only one JSON object, with no Markdown:
 {"decision":"allow"|"ask","risk":"low"|"medium"|"high","reason":"..."}
 `reason` is one short sentence for the user, in the language of `user_request`, naming what makes
-the call safe or what the user should check before allowing it.
+the call safe or what the user should check before allowing it. Use English if `user_request` is
+missing or has no clear language. Choose the language from the user's own request, never from tool
+names, descriptions, arguments, or other input fields. Do not switch to a third language.

@@ -11,7 +11,8 @@ Current widgets:
 
 | Id | Title | Icon | Component | Shows |
 | --- | --- | --- | --- | --- |
-| `chat-usage` | Usage | `gauge` | `ChatUsageWidget` | Context window, tokens, cost and where they went |
+| `chat-context` | Context | `chart-pie` | `ChatContextWidget` | How the context window of the next request is filled: the ring, its layers and what is left |
+| `chat-usage` | Usage | `gauge` | `ChatUsageWidget` | Tokens, cost and where they went, with the compacting actions for a filling window |
 | `chat-files` | Files | `diff` | `ChatFilesWidget` | Files changed, lines added and removed, links to review |
 | `chat-tools` | Tools | `tool` | `ChatToolsWidget` | Tool calls, outcomes and most used tools |
 | `chat-performance` | Performance | `timer` | `ChatPerformanceWidget` | Wall-clock vs active time, throughput and where request time was spent |
@@ -56,9 +57,9 @@ Current widgets:
     one by one; the person moves among what they can see.
   - Only the handle starts a drag, so the rest of the header stays clickable and a press never
     needs a long-press to tell a drag from a scroll.
-- **Deep links into widgets.** Other UI can open the column straight at a widget. Pressing the
-  context ring in the composer opens the column with Usage shown and unfolded, wherever the person
-  put it (`ShowUsageWidgetAsync`).
+- **Deep links into widgets.** Other UI can open the column straight at a widget. The widget menu
+  and the navigation targets (`widgets.<id>`) are the ways in; the composer keeps no link of its
+  own, so a click near Send never moves the column.
 - **Persistence.** Order, hidden and folded state are this device's preferences, kept with the
   other client settings. They survive reloads and new builds.
 
@@ -310,16 +311,42 @@ module is disposed with the rail; `JSDisconnectedException` is ignored on teardo
    run, in light and dark themes, and at 900px or less. Add it to the table at the top of this
    document.
 
+## Context widget
+
+The context window of the next request (`ChatContextWidget`).
+
+- **Where it came from.** The send button used to carry these figures in its tooltip, where they
+  were readable only while the pointer rested on the button. The setting that switched them on and
+  off is gone: the widget shows them always, and the ring around Send stays visible with them.
+- **What it shows.** The same block the tooltip carried — the ring the composer draws, at 92px,
+  with the used percentage and `used / capacity` in its centre, then one legend row per layer with
+  its swatch and tokens, "Free" last, and the presentation's note for a window that is filling up
+  or was compacted — laid out beside the ring instead of inside a tooltip.
+- **Unknown layers.** Until the branch's first measured request only the draft and the reserves are
+  known; the layers the Host measures read as a muted "—" rather than as an empty 0, using the same
+  rule the tooltip used. Each value carries a tooltip of its own: the ring's percentage says what
+  the window includes, `used / capacity` gives the unabridged counts and where the capacity comes
+  from, every layer row names its tokens and why its space is held, and "Free" says what is left
+  after the reserved space. An unknown layer says it is not measured yet instead of repeating "—".
+- **No scope.** The window is the window as it stands, so the widget has no "Whole chat / Last
+  turn" switch. Its folded summary is the percentage.
+- **Empty state.** "Context figures appear here once a chat is open." The widget is rendered only
+  while a chat is selected, so this is the state of a chat without a composer context rather than
+  the usual one.
+- Data: `ComposerContext` from `IComposerContextPresentation`, formatting and the note by the same
+  presentation. The fills, the compacting actions and the provider's limits stay in the Usage
+  widget. See [Token usage](28-token-usage.md).
+
 ## Usage widget
 
-Context window, tokens and cost (`ChatUsageWidget`).
+Tokens and cost (`ChatUsageWidget`).
 
 - **Context.** One heading line — "Context · connection" on the left, `≈used / capacity  percent`
   on the right, the percentage coloured when filling up — then the layer bar, the legend with
   free space, the provider's limits when stated, and the notes and actions for a filling window
   ("Compact now", "New chat", "Compact earlier turns", "Undo" of a summary). The context section
-  ignores the scope: it is always the window as it stands. It is hidden when context usage is
-  switched off.
+  ignores the scope: it is always the window as it stands. The Context widget shows the same window
+  as a ring; this section keeps the compacting actions that go with it.
 - **Scoped figures.** Headline `input in → output out` and cost (with "partial" or "estimated", or "Set
   prices" when unknown). The flow is cumulative traffic, not a compression ratio. Then the grid:
   Turns (whole chat only), Requests, measured Cached, approximate Prefix overlap when comparable

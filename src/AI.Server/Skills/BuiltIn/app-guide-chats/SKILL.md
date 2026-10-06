@@ -141,7 +141,7 @@ Opening choices: compose effective requests; add evidence and manage context; qu
 understand model steps and usage. Invite a custom interest.
 
 Requests and evidence: chat.composer → chat.context → chat.send.
-Context and usage: chat.widgets → widgets.chat-usage → settings.chat.context_usage.
+Context and usage: chat.widgets → widgets.chat-context → widgets.chat-usage.
 Typing assistance: settings.chat.text_correction → settings.chat.text_correction.languages →
 chat.text_correction → chat.composer. Use the help to explain typing, paste and undo behavior.
 Offer practice opening the context menu while leaving the draft unchanged.

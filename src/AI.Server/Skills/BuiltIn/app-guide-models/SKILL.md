@@ -142,7 +142,7 @@ tools and delegated work. Invite a custom question.
 
 Prepared request: chat.composer → chat.context → widgets.chat-tools.
 Context budget: settings.connection.context_window → settings.connection.reserved_output →
-settings.chat.context_usage → widgets.chat-usage.
+widgets.chat-context → widgets.chat-usage.
 Connections and estimates: settings.connection.url → settings.connection.model →
 settings.connection.input_price → settings.connection.output_price → settings.connection.cached_price.
 Delegation: settings.connection.subtasks → settings.connection.capability →

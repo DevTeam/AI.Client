@@ -1,0 +1,79 @@
+@inject IComposerContextPresentation ContextPresentation
+@inject IUsagePresentation Usage
+@* The context window on its own: the ring the send button carries, the layers it is made of and
+   what is left. The same figures used to sit inside the send button's tooltip, where they were
+   only readable while the pointer rested on the button. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-context-widget">
+    @if (Context is { } context)
+    {
+        <div class="chat-usage-section">
+            <div class="context-widget">
+                <div class="context-widget-chart">
+                    <ContextRing Context="@context" Size="92" Thickness="8" Gap="5" />
+                    <span class="context-widget-center">
+                        <span class="context-widget-percent" title="@PercentTitle(context)"><AnimatedCount Value="@context.Percent" />%</span>
+                        <span class="context-widget-total" title="@TotalTitle(context)">@ContextPresentation.FormatTokens(context.UsedTokens) / @(context.IsDefaultCapacity ? "~" : null)@ContextPresentation.FormatTokens(context.CapacityTokens)</span>
+                    </span>
+                </div>
+                <div class="context-widget-legend">
+                    @foreach (var layer in context.Layers)
+                    {
+                        <span @key="layer.Kind" class="context-widget-row @(layer.Reserved ? "reserved" : null)">
+                            <span class="context-swatch context-layer-@layer.CssName"></span>
+                            <span class="context-widget-label">@layer.Label</span>
+                            <span class="context-widget-value" title="@LayerTitle(context, layer)">@(IsKnown(context, layer) ? ContextPresentation.FormatTokens(layer.Tokens) : "—")</span>
+                        </span>
+                    }
+                    <span class="context-widget-row free">
+                        <span class="context-swatch"></span>
+                        <span class="context-widget-label">Free</span>
+                        <span class="context-widget-value" title="@FreeTitle(context)">@ContextPresentation.FormatTokens(Math.Max(0, context.CapacityTokens - context.UsedTokens))</span>
+                    </span>
+                </div>
+            </div>
+            @if (ContextPresentation.Note(context) is { } note)
+            {
+                <p class="context-widget-note context-note-@context.Level.ToString().ToLowerInvariant()">@note</p>
+            }
+        </div>
+    }
+    else
+    {
+        <p class="chat-usage-empty">Context figures appear here once a chat is open.</p>
+    }
+</ChatWidget>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>The window as the composer measures it, draft and reserves included.</summary>
+    [Parameter]
+    public ComposerContext? Context { get; set; }
+
+    // Before the first measured request only the draft and the reserves are known; the layers the
+    // Host measures read as unknown rather than as an empty 0.
+    private static bool IsKnown(ComposerContext context, ContextLayer layer) =>
+        context.IsMeasured || layer.Reserved || layer.Kind == ContextLayerKind.Draft;
+
+    private string? GetSummary() => Context is { } context ? $"{context.Percent}%" : null;
+
+    // Why a figure reads as it does is explained on the figure itself, never in another row.
+    private string PercentTitle(ComposerContext context) =>
+        $"{context.Percent}% of the context window is taken by the next request, including the space reserved for the answer and the measured overhead";
+
+    private string TotalTitle(ComposerContext context) =>
+        $"Estimated context use: {Usage.FormatExact(context.UsedTokens)} of {Usage.FormatExact(context.CapacityTokens)} tokens. Includes reserved space; capacity {(context.IsDefaultCapacity ? "uses the default limit" : "comes from the connection settings")}";
+
+    private string LayerTitle(ComposerContext context, ContextLayer layer) => IsKnown(context, layer)
+        ? $"{layer.Label}: {Usage.FormatExact(layer.Tokens)} estimated context tokens{layer.Kind switch
+        {
+            ContextLayerKind.ReservedOutput => " reserved for the response",
+            ContextLayerKind.Overhead => " for protocol framing and the safety margin",
+            _ => string.Empty
+        }}"
+        : $"{layer.Label} is not measured yet; the next request of this session measures it";
+
+    private string FreeTitle(ComposerContext context) =>
+        $"{Usage.FormatExact(Math.Max(0, context.CapacityTokens - context.UsedTokens))} tokens left after estimated context use and reserved space";
+}

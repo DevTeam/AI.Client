@@ -23,8 +23,6 @@ public sealed record ClientSettings
     /// <summary>The quick switch beside the message editor; off pauses correction but keeps the languages.</summary>
     public bool TextCorrectionEnabled { get; init; } = true;
 
-    public bool ShowContextWindowUsage { get; init; } = true;
-
     /// <summary>Whether the turn line shows what the turn used ("42k → 1.8k") next to its time.</summary>
     public bool ShowTurnTokens { get; init; }
 

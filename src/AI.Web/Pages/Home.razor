@@ -714,7 +714,7 @@
                     }
                 </div>
                 @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation" aria-label="Stop generation" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> }
-                <ComposerSendButton ActiveMode="@GetComposerSendMode()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" OnContextClick="ShowUsageWidgetAsync" Context="@(_showContextWindowUsage ? GetComposerContext() : null)" />
+                <ComposerSendButton ActiveMode="@GetComposerSendMode()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
             </div>
             @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
         </footer>
@@ -745,9 +745,13 @@
                                         TopicTitle="@(_guideTopic is { } guideTopic ? GuideTopics.Find(guideTopic)?.Title : null)"
                                         OnStart="StartGuideTopicAsync" OnPause="ToggleGuidePauseAsync" OnStop="StopGuideStepAsync" />
                         break;
+                    case ChatWidgetCatalog.ChatContext:
+                        <ChatContextWidget Widget="@widget"
+                                           Context="@GetComposerContext()" />
+                        break;
                     case ChatWidgetCatalog.ChatUsage:
                         <ChatUsageWidget Widget="@widget"
-                                         Context="@(_showContextWindowUsage ? GetComposerContext() : null)"
+                                         Context="@GetComposerContext()"
                                          ChatUsage="@widgetUsage"
                                          LiveTurn="@widgetRun?.TurnUsage"
                                          IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
@@ -1079,7 +1083,7 @@ else if (_guideInvitation is { } guideInvitation)
 }
 @if (_globalSection is not null)
 {
-    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ConnectionToEdit="@_connectionToEdit" SkillToEdit="@_linkedSkillId" SkillSource="@_linkedSkillSource" ToolToEdit="@_linkedToolName" LinkSelection="@_linkedSelection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" ContextWindowUsageChanged="value => _showContextWindowUsage = value" TurnTokensChanged="value => _showTurnTokens = value" LiveNoteCountChanged="value => _liveNoteCount = value" />
+    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ConnectionToEdit="@_connectionToEdit" SkillToEdit="@_linkedSkillId" SkillSource="@_linkedSkillSource" ToolToEdit="@_linkedToolName" LinkSelection="@_linkedSelection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" TurnTokensChanged="value => _showTurnTokens = value" LiveNoteCountChanged="value => _liveNoteCount = value" />
 }
 
 @if (_permissionsScope is not null && _selectedProject is not null)
@@ -1172,7 +1176,6 @@ else if (_guideInvitation is { } guideInvitation)
     private string _sidebarAnnouncement = string.Empty;
     private string? _globalSection;
     private Guid? _connectionToEdit;
-    private bool _showContextWindowUsage = true;
     private IJSObjectReference? _navigationModule;
     private IJSObjectReference? _navigationHandle;
     private IJSObjectReference? _scrollbarGutterModule;
@@ -1560,7 +1563,6 @@ else if (_guideInvitation is { } guideInvitation)
         _ = PrepareTextCorrectionAsync();
         _textCorrection = await CorrectionLanguages.GetStateAsync();
         CorrectionLanguages.Changed += OnTextCorrectionChanged;
-        _showContextWindowUsage = clientSettings.ShowContextWindowUsage;
         _showTurnTokens = clientSettings.ShowTurnTokens;
         _liveNoteCount = clientSettings.LiveNoteCount;
         _chatWidgetsOpen = clientSettings.ChatWidgetsOpen;
@@ -3066,17 +3068,6 @@ else if (_guideInvitation is { } guideInvitation)
     // so the page just adapts and delegates.
     private async Task OnWidgetBranchSelectedAsync(ChatBranchSummary branch) =>
         await SelectBranchTreeItemAsync(new BranchTreeItem(branch.RootId, branch.Title, branch.Depth, branch.LeafId));
-
-    // Pressing the ring asks about the window, so the answer is the usage widget, open and unfolded,
-    // wherever the person had put it.
-    private async Task ShowUsageWidgetAsync()
-    {
-        _chatWidgetsOpen = true;
-        _chatWidgets = WidgetLayout.Update(_chatWidgets, ChatWidgetCatalog.ChatUsage,
-            item => item with { Hidden = false, Collapsed = false });
-        await ClientSettings.UpdateAsync(current => current with { ChatWidgetsOpen = true, ChatWidgets = _chatWidgets });
-        await RefreshChatUsageAsync();
-    }
 
     private async Task SaveChatWidgetsAsync(IReadOnlyList<ChatWidgetPreference> widgets)
     {

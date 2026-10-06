@@ -1188,6 +1188,21 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .settings-row.is-stacked > textarea { resize: vertical; }
 .settings-range input { flex: 1; min-width: 0; accent-color: var(--color-accent); cursor: pointer; }
 .settings-range output { min-width: 4.5rem; color: var(--color-text-secondary); font-size: var(--font-size-md); }
+/* Image input: the mode pills keep their own width; Test sits beside them, quiet until hovered.
+   The test's verdict follows as its own row so a long answer wraps instead of being cut. */
+.image-input-row > .settings-field-control { justify-content: space-between; }
+.image-input-row > .settings-field-control > .theme-options { flex: none; }
+.image-input-row .theme-option { min-width: 2.6rem; text-align: center; }
+.image-test-action { display: inline-flex; align-items: center; gap: .4rem; border-color: transparent; background: transparent; color: var(--color-text-muted); }
+.image-test-action:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
+.image-test-action .app-icon { width: .95rem; height: .95rem; }
+.settings-row.image-test-result { align-items: flex-start; gap: .5rem; min-height: 0; padding-block: .5rem; padding-left: calc(.8rem + 9.5rem + .75rem); background: var(--color-bg-inset); color: var(--color-text-secondary); font-size: var(--font-size-md); overflow-wrap: anywhere; }
+.settings-card > .settings-row.image-test-result { border-top: 0; }
+.image-test-result > .app-icon { flex: none; width: .95rem; height: .95rem; margin-top: .1rem; }
+.image-test-result.is-supported > .app-icon { color: var(--color-success); }
+.image-test-result.is-unsupported > .app-icon { color: var(--color-warning); }
+.image-test-result.is-failed > .app-icon { color: var(--color-danger); }
+.image-test-result.is-failed { color: var(--color-danger-text); }
 .settings-note { margin: -.3rem .15rem 0; color: var(--color-text-subtle); font-size: var(--font-size-sm); }
 .settings-form .settings-group > h3 { margin-top: .1rem; }
 

@@ -233,10 +233,9 @@
                             id="turn-collapse-@collapseTurnId"
                             class="turn-collapse-footer"
                             type="button"
-                            title="Collapse intermediate steps"
-                            aria-label="Collapse intermediate steps"
+                            title="Collapse the intermediate steps of this turn"
                             @onclick="() => CollapseTurnFromEndAsync(collapseTurnId)">
-                        <AppIcon Name="chevron-up" />
+                        <AppIcon Name="chevron-up" /><span>Hide steps</span>
                     </button>
                 }
                 else if (entry.LiveText is { } liveText)
@@ -515,10 +514,14 @@
    transcript; this one exists to say "the thing you were waiting for arrived elsewhere". *@
 @if (SelectedChat is not null && !_pinned && (_newBelow || SelectedRun is { Status: ChatRunStatus.Generating }))
 {
+    @* The label says what is waiting below: a message that arrived, or one still being written. *@
+    var writing = !_newBelow;
     <button type="button" class="messages-jump"
-            title="Jump to the latest message (End)" aria-label="Jump to the latest message"
+            title="Jump to the latest message (End)"
             @onclick="JumpToBottomAsync">
-        <AppIcon Name="chevron-down" />
+        <AppIcon Name="arrow-down" />
+        <span>@(writing ? "Writing…" : "New message")</span>
+        @if (SelectedRun is { Status: ChatRunStatus.Generating }) { <span class="messages-jump-dot" aria-hidden="true"></span> }
     </button>
 }
 </div>

@@ -1,6 +1,6 @@
 ---
 id: qa-cases-create
-name: Qa cases create
+name: QA cases create
 icon: qa-cases-create
 kind: playbook
 description: Draft traceable test cases with prerequisites, data, steps and expected outcomes, covering meaningful normal, boundary and error behavior; changes nothing.

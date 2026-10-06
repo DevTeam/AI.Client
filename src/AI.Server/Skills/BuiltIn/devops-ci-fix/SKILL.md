@@ -1,6 +1,6 @@
 ---
 id: devops-ci-fix
-name: Devops ci fix
+name: DevOps CI fix
 icon: devops-ci-fix
 kind: playbook
 description: Diagnose a failed CI run from its logs and configuration, fix the demonstrated pipeline cause and validate the change; reruns remote jobs only when explicitly authorized.

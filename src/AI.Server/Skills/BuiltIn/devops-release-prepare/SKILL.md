@@ -1,6 +1,6 @@
 ---
 id: devops-release-prepare
-name: Devops release prepare
+name: DevOps release prepare
 icon: devops-release-prepare
 kind: playbook
 description: Prepare a selected release version, notes, packages and checksums using existing build commands and verify the artifacts; never publishes or deploys.

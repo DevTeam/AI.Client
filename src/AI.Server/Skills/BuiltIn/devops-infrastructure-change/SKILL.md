@@ -1,6 +1,6 @@
 ---
 id: devops-infrastructure-change
-name: Devops infrastructure change
+name: DevOps infrastructure change
 icon: devops-infrastructure-change
 kind: playbook
 description: Prepare and validate an infrastructure-as-code change with the project's existing tooling, show its exact plan and apply only specifically authorized live changes.

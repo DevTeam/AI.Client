@@ -1,6 +1,6 @@
 ---
 id: mermaid-create-er
-name: Mermaid create er
+name: Mermaid create ER
 icon: mermaid-create-er
 kind: playbook
 description: Create a Mermaid entity relationship diagram from schemas or models with verified attributes, keys and relationship cardinalities.

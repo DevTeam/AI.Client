@@ -1,6 +1,6 @@
 ---
 id: code-run-csharp
-name: Code run csharp
+name: Code run C#
 aliases: ["c#","cs","csharp","cs-run"]
 icon: code-run-csharp
 kind: playbook

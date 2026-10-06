@@ -1,6 +1,6 @@
 ---
 id: svg-optimize
-name: Svg optimize
+name: SVG optimize
 icon: svg-optimize
 kind: playbook
 description: Optimize SVG source size or rendering cost with measured before-and-after results while preserving appearance and consumer contracts.

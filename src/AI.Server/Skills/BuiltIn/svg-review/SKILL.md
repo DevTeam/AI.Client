@@ -1,6 +1,6 @@
 ---
 id: svg-review
-name: Svg review
+name: SVG review
 icon: svg-review
 kind: playbook
 description: Review SVG source and rendered output for correctness, readability, accessibility, portability and unnecessary complexity without editing files.

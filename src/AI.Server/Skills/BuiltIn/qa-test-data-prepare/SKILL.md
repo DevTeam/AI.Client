@@ -1,6 +1,6 @@
 ---
 id: qa-test-data-prepare
-name: Qa test data prepare
+name: QA test data prepare
 icon: qa-test-data-prepare
 kind: playbook
 description: Prepare reproducible synthetic test datasets and fixtures for selected cases, validate their setup and define safe task-owned cleanup; never alters live data.

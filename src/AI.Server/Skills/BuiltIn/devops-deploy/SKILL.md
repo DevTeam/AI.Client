@@ -1,6 +1,6 @@
 ---
 id: devops-deploy
-name: Devops deploy
+name: DevOps deploy
 icon: devops-deploy
 kind: playbook
 description: Prepare and perform an authorized deployment of a selected immutable artifact to an explicitly chosen environment, verify rollout and report recovery options.

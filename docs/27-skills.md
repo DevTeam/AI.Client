@@ -43,7 +43,10 @@ application permissions, and every write still goes through tool approval.
   action is a verb: create, rename, compact, fork, add, remove, review, save, edit, suggest,
   implement, fix, run, commit.
 - `name` is the id in words with the first letter capitalized (`project-directory-add` →
-  "Project directory add"), so the `/` list groups skills by domain.
+  "Project directory add"), so the `/` list groups skills by domain. An abbreviation keeps its
+  official spelling: `qa-plan` → "QA plan", `devops-ci-create` → "DevOps CI create",
+  `svg-create` → "SVG create", `settings-import-mcp` → "Settings import MCP", `code-run-csharp` →
+  "Code run C#".
 - `description` is one sentence that starts with a verb, leads with the task the skill is for and
   names every side effect. The model chooses from the catalog by it.
 - Playbooks confirm every change with `ask_user` unless the exact value came from the user, put

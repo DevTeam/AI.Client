@@ -9,6 +9,13 @@ public class BuiltInSkillCatalogTests
 {
     private static readonly string[] Domains = ["chat", "project", "memory", "skill", "instructions", "code", "git", "devops", "qa", "mermaid", "svg", "settings", "app"];
 
+    // An abbreviation keeps its official spelling in the name (docs/27-skills.md, skill-create).
+    private static readonly Dictionary<string, string> Abbreviations = new(StringComparer.Ordinal)
+    {
+        ["api"] = "API", ["ci"] = "CI", ["csharp"] = "C#", ["devops"] = "DevOps", ["e2e"] = "E2E",
+        ["er"] = "ER", ["mcp"] = "MCP", ["qa"] = "QA", ["svg"] = "SVG", ["ui"] = "UI",
+    };
+
     [Fact]
     public void ShouldExposeCSharpAndShellExecutionPlaybooks()
     {
@@ -106,11 +113,12 @@ public class BuiltInSkillCatalogTests
     {
         foreach (var skill in new BuiltInSkillCatalog().List())
         {
-            // <domain>-<action>[-<object>], and the name is the id in words.
+            // <domain>-<action>[-<object>], and the name is the id in words with official abbreviations.
             Domains.ShouldContain(skill.Id.Split('-')[0], skill.Id);
             skill.Id.Split('-').Length.ShouldBeGreaterThan(1, skill.Id);
-            var words = skill.Id.Replace('-', ' ');
-            skill.Name.ShouldBe(char.ToUpperInvariant(words[0]) + words[1..], skill.Id);
+            var words = skill.Id.Split('-').Select(word => Abbreviations.GetValueOrDefault(word, word)).ToArray();
+            words[0] = char.ToUpperInvariant(words[0][0]) + words[0][1..];
+            skill.Name.ShouldBe(string.Join(' ', words), skill.Id);
             char.IsUpper(skill.Description[0]).ShouldBeTrue(skill.Id);
         }
     }

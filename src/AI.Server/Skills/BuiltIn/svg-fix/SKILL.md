@@ -1,6 +1,6 @@
 ---
 id: svg-fix
-name: Svg fix
+name: SVG fix
 icon: svg-fix
 kind: playbook
 description: Fix an SVG parsing, geometry or rendering defect using the actual source and target while preserving intended artwork.

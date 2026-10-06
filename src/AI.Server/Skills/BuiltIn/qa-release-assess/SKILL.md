@@ -1,6 +1,6 @@
 ---
 id: qa-release-assess
-name: Qa release assess
+name: QA release assess
 icon: qa-release-assess
 kind: playbook
 description: Assess a selected release against agreed quality gates, test evidence, open defects and residual risks, reporting readiness or insufficient evidence; never publishes.

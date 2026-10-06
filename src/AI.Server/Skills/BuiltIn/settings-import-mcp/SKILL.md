@@ -1,6 +1,6 @@
 ---
 id: settings-import-mcp
-name: Settings import mcp
+name: Settings import MCP
 icon: settings-import-mcp
 kind: playbook
 description: Find and import an external MCP server by source, name or capability, configure dependencies, merge settings, verify discovery, offer functional tests and propose relevant skills for its tools; testing and skill creation require the user's agreement.

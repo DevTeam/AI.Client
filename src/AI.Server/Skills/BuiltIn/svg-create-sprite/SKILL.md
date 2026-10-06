@@ -1,6 +1,6 @@
 ---
 id: svg-create-sprite
-name: Svg create sprite
+name: SVG create sprite
 icon: svg-create-sprite
 kind: playbook
 description: Create an SVG symbol sprite from requested icons with stable unique IDs, preserved geometry and a complete usage preview.

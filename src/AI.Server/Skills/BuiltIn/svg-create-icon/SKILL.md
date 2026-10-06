@@ -1,6 +1,6 @@
 ---
 id: svg-create-icon
-name: Svg create icon
+name: SVG create icon
 icon: svg-create-icon
 kind: playbook
 description: Draw original SVG icons with consistent geometry, optical alignment and readable details at the intended small sizes.

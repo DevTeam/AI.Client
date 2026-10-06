@@ -1,6 +1,6 @@
 ---
 id: svg-create
-name: Svg create
+name: SVG create
 icon: svg-create
 kind: playbook
 description: Create an editable SVG image from the user's description, choosing suitable vector geometry and delivering a complete preview or requested files.

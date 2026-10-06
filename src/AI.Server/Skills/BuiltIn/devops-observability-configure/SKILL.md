@@ -1,6 +1,6 @@
 ---
 id: devops-observability-configure
-name: Devops observability configure
+name: DevOps observability configure
 icon: devops-observability-configure
 kind: playbook
 description: Configure service logs, metrics, tracing, health checks and actionable alerts, validate their behavior and apply remote settings only when specifically authorized.

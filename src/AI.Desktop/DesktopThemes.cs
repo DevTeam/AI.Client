@@ -3,7 +3,7 @@ namespace AI.Desktop;
 using Avalonia.Styling;
 
 /// <summary>
-/// The theme variants this window can paint its own chrome and drawn titlebar in. Light and Dark
+/// The theme variants this window can paint its own chrome in. Light and Dark
 /// are Avalonia's; Dark blue is the app's own, a <see cref="ThemeVariant"/> derived from
 /// <see cref="ThemeVariant.Dark"/> so every key the built-in Fluent theme does not define for it
 /// still resolves to the dark value.

@@ -1,7 +1,7 @@
 namespace AI.Desktop;
 
 /// <summary>
-/// Keeps the theme the page last asked for, so the next run paints the titlebar in it before the
+/// Keeps the theme the page last asked for, so the next run paints the window in it before the
 /// page has loaded and said so again.
 /// </summary>
 internal interface IThemePreferenceStore

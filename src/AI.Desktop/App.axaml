@@ -4,91 +4,45 @@
              x:Class="AI.Desktop.App"
              RequestedThemeVariant="Dark">
     <!--
-        The drawn titlebar is not a child of the window, so its brushes resolve here, not in
-        Window.Resources. Caption* and TitleBarBackgroundBrush are the names Fluent's
-        WindowDrawnDecorations theme looks up; the rest are the window's own. The values follow
-        the page's tokens (app.css): App.ApplyTheme switches between the sets when the page
-        changes its theme.
+        The window's own brushes, for what shows before the page loads or when it cannot. The values
+        follow the page's tokens (app.css): App.ApplyTheme switches between the sets when the page
+        changes its theme, and the system titlebar follows the set's light or dark base.
     -->
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#202020" />
-                    <SolidColorBrush x:Key="TitleBarBorderBrush" Color="#2E2E2E" />
-                    <SolidColorBrush x:Key="CaptionButtonForeground" Color="#ECECEC" />
-                    <SolidColorBrush x:Key="CaptionButtonBackground" Color="#2B2B2B" />
-                    <SolidColorBrush x:Key="CaptionButtonBorderBrush" Color="#454545" />
                     <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#171717" />
-                    <SolidColorBrush x:Key="WindowFrameBrush" Color="#3A3A3A" />
                     <SolidColorBrush x:Key="StatusTitleBrush" Color="#E5E5E5" />
                     <SolidColorBrush x:Key="StatusDetailBrush" Color="#A3A3A3" />
                 </ResourceDictionary>
                 <!-- The page's dark blue palette (app.css), for the chrome it cannot paint. -->
                 <ResourceDictionary x:Key="{x:Static desktop:DesktopThemes.DarkBlue}">
-                    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#17212D" />
-                    <SolidColorBrush x:Key="TitleBarBorderBrush" Color="#24313F" />
-                    <SolidColorBrush x:Key="CaptionButtonForeground" Color="#E8EDF4" />
-                    <SolidColorBrush x:Key="CaptionButtonBackground" Color="#212C39" />
-                    <SolidColorBrush x:Key="CaptionButtonBorderBrush" Color="#3A4A5C" />
                     <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#101720" />
-                    <SolidColorBrush x:Key="WindowFrameBrush" Color="#2D3A4A" />
                     <SolidColorBrush x:Key="StatusTitleBrush" Color="#E8EDF4" />
                     <SolidColorBrush x:Key="StatusDetailBrush" Color="#A3B0C0" />
                 </ResourceDictionary>
-                <!-- The page's neutral grey palette (app.css), for the chrome it cannot paint. The
-                     colours mirror the CSS tokens one-for-one so the drawn titlebar reads as the
-                     same dark grey as the rest of the workspace. -->
+                <!-- The page's neutral grey palette (app.css), for the chrome it cannot paint. -->
                 <ResourceDictionary x:Key="{x:Static desktop:DesktopThemes.Gray}">
-                    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#262626" />
-                    <SolidColorBrush x:Key="TitleBarBorderBrush" Color="#2E2E2E" />
-                    <SolidColorBrush x:Key="CaptionButtonForeground" Color="#ECECEC" />
-                    <SolidColorBrush x:Key="CaptionButtonBackground" Color="#2E2E2E" />
-                    <SolidColorBrush x:Key="CaptionButtonBorderBrush" Color="#3C3C3C" />
                     <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#212121" />
-                    <SolidColorBrush x:Key="WindowFrameBrush" Color="#3C3C3C" />
                     <SolidColorBrush x:Key="StatusTitleBrush" Color="#ECECEC" />
                     <SolidColorBrush x:Key="StatusDetailBrush" Color="#AAAAAA" />
                 </ResourceDictionary>
-                <!-- The page's light grey palette (app.css), for the chrome it cannot paint. The
-                     colours mirror the CSS tokens one-for-one so the drawn titlebar reads as the
-                     same soft grey as the rest of the workspace. -->
+                <!-- The page's light grey palette (app.css), for the chrome it cannot paint. -->
                 <ResourceDictionary x:Key="{x:Static desktop:DesktopThemes.LightGray}">
-                    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#F5F5F5" />
-                    <SolidColorBrush x:Key="TitleBarBorderBrush" Color="#D6D6D6" />
-                    <SolidColorBrush x:Key="CaptionButtonForeground" Color="#1F1F1F" />
-                    <SolidColorBrush x:Key="CaptionButtonBackground" Color="#E2E2E2" />
-                    <SolidColorBrush x:Key="CaptionButtonBorderBrush" Color="#C5C5C5" />
                     <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F2F2F2" />
-                    <SolidColorBrush x:Key="WindowFrameBrush" Color="#C5C5C5" />
                     <SolidColorBrush x:Key="StatusTitleBrush" Color="#1F1F1F" />
                     <SolidColorBrush x:Key="StatusDetailBrush" Color="#5C5C5C" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
-                    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#F3F3F3" />
-                    <SolidColorBrush x:Key="TitleBarBorderBrush" Color="#E0E0E0" />
-                    <SolidColorBrush x:Key="CaptionButtonForeground" Color="#1F1F1F" />
-                    <SolidColorBrush x:Key="CaptionButtonBackground" Color="#E2E2E2" />
-                    <SolidColorBrush x:Key="CaptionButtonBorderBrush" Color="#CFCFCF" />
                     <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="WindowFrameBrush" Color="#CFCFCF" />
                     <SolidColorBrush x:Key="StatusTitleBrush" Color="#1F1F1F" />
                     <SolidColorBrush x:Key="StatusDetailBrush" Color="#575757" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
-            <x:Double x:Key="CaptionButtonWidth">46</x:Double>
-            <x:Double x:Key="CaptionButtonHeight">38</x:Double>
         </ResourceDictionary>
     </Application.Resources>
     <Application.Styles>
         <FluentTheme />
-        <!--
-            No full-screen button: leaving full screen on Windows restores the window through
-            SW_RESTORE, which unmaximizes it and moves a snapped one back to its pre-snap place,
-            and a maximized window already gives this app the whole screen.
-        -->
-        <Style Selector="WindowDrawnDecorations /template/ Button#PART_FullScreenButton">
-            <Setter Property="IsVisible" Value="False" />
-        </Style>
     </Application.Styles>
 </Application>

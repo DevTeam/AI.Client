@@ -29,7 +29,7 @@ internal sealed class JsonThemePreferenceStore(DesktopStart start) : IThemePrefe
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            // The titlebar then starts in the system theme next time and catches up once the page loads.
+            // The window then starts in the system theme next time and catches up once the page loads.
         }
     }
 

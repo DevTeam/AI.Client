@@ -98,6 +98,21 @@ public sealed class NotificationService(IJSRuntime jsRuntime, IClientSettingsSer
         _ = PersistAsync();
     }
 
+    public void MarkChatBranchSeen(Guid chatId, Guid branchId)
+    {
+        var changed = false;
+        for (var index = 0; index < _history.Count; index++)
+        {
+            var item = _history[index];
+            if (item.IsSeen || item.ChatId != chatId || item.BranchId != branchId) continue;
+            _history[index] = item with { IsSeen = true };
+            changed = true;
+        }
+        if (!changed) return;
+        Changed?.Invoke();
+        _ = PersistAsync();
+    }
+
     public void ResolveChatAttention(Guid chatId, Guid branchId)
     {
         var changed = false;

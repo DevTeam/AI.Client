@@ -59,6 +59,7 @@ internal sealed class DesktopBadgeNotificationService(
     public void OpenCenter() => baseNotificationService.OpenCenter();
     public void MarkAllSeen() => baseNotificationService.MarkAllSeen();
     public void MarkSeen(Guid id) => baseNotificationService.MarkSeen(id);
+    public void MarkChatBranchSeen(Guid chatId, Guid branchId) => baseNotificationService.MarkChatBranchSeen(chatId, branchId);
     public void ResolveChatAttention(Guid chatId, Guid branchId) => baseNotificationService.ResolveChatAttention(chatId, branchId);
     public void ShowChatEvent(string message, NotificationKind kind, Guid projectId, Guid chatId, Guid branchId, bool requiresAction = false, Guid? messageId = null) =>
         baseNotificationService.ShowChatEvent(message, kind, projectId, chatId, branchId, requiresAction, messageId);

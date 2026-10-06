@@ -389,6 +389,7 @@ export function attach(scroller, owner) {
             scroller.scrollTop = scroller.scrollHeight;
             return true;
         },
+        isAtBottom: () => distanceFromBottom(scroller) <= PinThresholdPx,
         scrollToBottom: () => toBottom(false),
         // Called after the feed has been put somewhere deliberately — a restored reading position.
         // The anchor still holds whatever was under the top edge before that move, and the next

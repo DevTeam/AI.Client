@@ -103,7 +103,7 @@ internal sealed class Composition
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ProtectedGlobalSecretStore,
                 ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,
                 MemoryService, ProjectInstructionsService, FilePreviewFormats, FilePreviewTextReader,
-                TextFilePreviewFormat>()
+                TextFilePreviewFormat, WorkspaceUndoGuard>()
             .Transient<DirectoryFilePreviewFormat, ArchiveFilePreviewFormat, MediaFilePreviewFormat,
                 MarkupFilePreviewFormat>(Tag.Unique)
             // Instruction composition, context planning, credentials and usage accounting.
@@ -192,6 +192,7 @@ internal sealed class AspNetComposition
             .Root<IWorkspaceFileSearch>()
             .Root<IReviewService>()
             .Root<IWorkspaceUndoService>()
+            .Root<IWorkspaceUndoGuard>()
             .Root<IFilePreviewService>()
             .Root<IResourceAssetService>()
             .Root<IReviewCommentSuggestions>()

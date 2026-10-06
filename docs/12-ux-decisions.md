@@ -103,7 +103,7 @@ The goal of the interface is a compact desktop workspace, visually and behaviora
 - Tool calls of one agent step are grouped into a single collapsible card.
 - An Ask approval is displayed inline with Allow once, Allow for chat, and Deny.
 - File changes are shown as a linked Changes card with a unified diff for view only.
-- Completed turns with saved Undo snapshots offer an icon and text action in the Changes card and review header. The review's file rows use an icon-only action with a tooltip and accessible name. Undo restores the pre-turn file bytes, including pre-existing user edits, without changing the Git index. A later edit blocks that file; bulk Undo requires every remaining file to be restorable. The historical diff and review comments remain visible after Undo.
+- Completed turns with saved Undo snapshots offer an icon and text action in the Changes card and review header. The review's file rows use an icon-only action with a tooltip and accessible name. Undo restores the pre-turn file bytes, including pre-existing user edits, without changing the Git index. A later edit blocks that file; bulk Undo requires every remaining file to be restorable. Only a run that is generating blocks Undo project-wide, because it may still write a shared workspace file; a paused run is a standing state left by an interrupted worker, not an activity, and used to refuse Undo in every chat of the project until that unrelated queue was resumed or cleared. The historical diff and review comments remain visible after Undo.
 - These elements are implemented after the MCP connection manager and agent loop.
 
 ## Deferred

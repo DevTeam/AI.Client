@@ -26,7 +26,7 @@
         <span class="chat-card-header-actions">
             @if (_undoStatus is { } undoStatus && undoStatus.Files.Any(file => file.State == WorkspaceUndoFileState.Ready))
             {
-                <button class="workspace-review-action chat-card-action workspace-undo-action" type="button"
+                <button class="workspace-review-action chat-card-action chat-card-action-danger workspace-undo-action" type="button"
                         title="Undo changes in all files from this turn" aria-label="Undo changes in all files from this turn"
                         @onclick="BeginUndoAsync"><AppIcon Name="undo" /><span class="workspace-undo-label">Undo</span></button>
             }
@@ -56,7 +56,7 @@
                 {
                     <span class="workspace-undo-warning">@BlockedCount @(BlockedCount == 1 ? "file has" : "files have") changed or cannot be restored. Review files individually.</span>
                 }
-                <button type="button" disabled="@(_undoBusy || BlockedCount > 0 || ReadyCount == 0)" @onclick="ApplyUndoAsync">Undo files</button>
+                <button class="workspace-undo-confirm-yes" type="button" disabled="@(_undoBusy || BlockedCount > 0 || ReadyCount == 0)" @onclick="ApplyUndoAsync">Undo files</button>
                 <button type="button" disabled="@_undoBusy" @onclick="() => _confirmUndo = false">Cancel</button>
             </div>
         }

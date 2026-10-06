@@ -15,7 +15,7 @@
     }
     @if (UndoFileState == WorkspaceUndoFileState.Ready && OnUndo.HasDelegate)
     {
-        <button class="icon-action workspace-change-undo-action" type="button" title="Undo changes in this file"
+        <button class="icon-action workspace-change-undo-action is-danger" type="button" title="Undo changes in this file"
                 aria-label="Undo changes in this file" @onclick="OnUndo" @onclick:stopPropagation="true"><AppIcon Name="undo" /></button>
     }
     else if (UndoFileState == WorkspaceUndoFileState.Undone)

@@ -5153,7 +5153,10 @@ textarea {
 .workspace-change-comment-action:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-accent); }
 .workspace-change-undo-action { flex: 0 0 auto; width: 1.4rem; height: 1.4rem; border: 0; border-radius: calc(.3rem * var(--corner-scale)); background: transparent; color: var(--color-text-muted); }
 .workspace-change-undo-action .app-icon { width: .85rem; height: .85rem; }
-.workspace-change-undo-action:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-accent); }
+/* Undo is destructive: it throws away file content the user may not have committed yet, so the
+   action borrows the danger tokens instead of the accent ones (as .review-comment-icon-action.is-danger does). */
+.workspace-change-undo-action.is-danger { color: var(--color-danger-text); }
+.workspace-change-undo-action.is-danger:hover:not(:disabled), .workspace-change-undo-action.is-danger:focus-visible { background: var(--color-danger-bg-hover); color: var(--color-danger-text); }
 
 .workspace-change-kind {
     flex: 0 0 auto;
@@ -6249,6 +6252,9 @@ textarea {
 .workspace-undo-confirm button { padding: .2rem .45rem; border: 1px solid var(--color-border); border-radius: calc(.3rem * var(--corner-scale)); background: var(--color-fill); color: var(--color-text); cursor: pointer; }
 .workspace-undo-confirm button:disabled { opacity: .5; cursor: default; }
 .workspace-undo-confirm button:not(:disabled):hover { background: var(--color-fill-hover); }
+/* The button that actually performs the Undo is the dangerous one; Cancel keeps the quiet fill. */
+.workspace-undo-confirm .workspace-undo-confirm-yes { border-color: var(--color-danger-border); background: var(--color-danger-bg); color: var(--color-danger-text); }
+.workspace-undo-confirm .workspace-undo-confirm-yes:not(:disabled):hover { border-color: var(--color-danger-border-strong); background: var(--color-danger-bg-hover); }
 .chat-summary-card.is-expanded .chat-summary-top { border-bottom: 1px solid var(--color-border-subtle); }
 .chat-summary-card.is-expanded .chat-summary-toggle { border-bottom-color: transparent; }
 

@@ -6,4 +6,4 @@ public sealed record QueuedChatMessage(Guid Id, string Content, DateTimeOffset C
     MessageParentMode ParentMode = MessageParentMode.BranchHead, Guid? ParentMessageId = null,
     QueuedMessageStage Stage = QueuedMessageStage.Prepared,
     IReadOnlyList<Resources.ChatResource>? Resources = null, bool IsAside = false,
-    Chats.MessageSender? Sender = null);
+    Chats.MessageSender? Sender = null, bool JoinsTurn = false);

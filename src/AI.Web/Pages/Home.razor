@@ -540,6 +540,10 @@
                                             {
                                                 <span class="queue-aside-label" title="Read by the turn in flight at its next step, or added after its reply">Aside</span>
                                             }
+                                            @if (item.Sender is { } queuedSender)
+                                            {
+                                                <span class="queue-aside-label" title="@(item.JoinsTurn ? "Sent by another branch; the turn in flight reads it at its next step, or it runs as its own turn" : "Sent by another branch")">@GetQueuedSenderLabel(queuedSender)</span>
+                                            }
                                             @(string.IsNullOrWhiteSpace(item.Content) ? "Workspace references" : GetSingleLine(item.Content))
                                             @if (item.Resources is { Count: > 0 })
                                             {
@@ -3166,6 +3170,16 @@ else if (_guideInvitation is { } guideInvitation)
     // a ChatBranchSummary; the existing SelectBranchTreeItemAsync takes the sidebar's
     // BranchTreeItem, and the two records carry the same fields (root id, title, depth, leaf id),
     // so the page just adapts and delegates.
+    /// <summary>Which branch a queued team message comes from, and what it is meant to be.</summary>
+    private string GetQueuedSenderLabel(MessageSender sender)
+    {
+        var name = _selectedChat is null || sender.ChatId != _selectedChat.Id ? "Another chat"
+            : sender.BranchId == _selectedChat.Id ? "Main branch"
+            : _selectedChat.Branches?.SingleOrDefault(branch => branch.Id == sender.BranchId)?.Title is { Length: > 0 } title
+                ? title : "A branch";
+        return sender.Intent is { Length: > 0 } intent ? $"{name} · {intent}" : name;
+    }
+
     /// <summary>Opens the branch whose run sent a message, from the sender label on that message.</summary>
     private Task OpenSenderBranchAsync(Guid branchId) =>
         _selectedChat?.Branches?.SingleOrDefault(item => item.Id == branchId) is { HeadMessageId: { } head } branch

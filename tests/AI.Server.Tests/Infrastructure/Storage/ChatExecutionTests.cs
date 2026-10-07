@@ -392,6 +392,56 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task TeamMessageDuringARunShouldJoinTheTurnInsteadOfWaitingForItsOwn()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Collect the reports"));
+        var first = await fixture.NextCallAsync();
+        var report = Guid.NewGuid();
+        var queued = await fixture.Dispatcher.SubmitFromRunAsync(fixture.ProjectId, fixture.ChatId,
+            new SubmitChatMessageRequest(report, report, "Research finished: three findings."),
+            new AI.Domain.Chats.ChatMessageSender(fixture.ChatId, Guid.NewGuid(), "done"), CancellationToken.None);
+        queued.Queue.ShouldContain(item => item.Id == report && item.JoinsTurn && !item.IsAside);
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+
+        var second = await fixture.NextCallAsync();
+        second.Request.ContextMessages!.ShouldContain(item => item.MessageId == report);
+        second.Answer.SetResult("All reports are in.");
+        var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        // Read in the turn, so no second turn is spent on it.
+        completed.Queue.ShouldBeEmpty();
+        fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Single(message => message.Id == report).Delivery.ShouldBe(MessageDelivery.InTurn);
+    }
+
+    [Fact]
+    public async Task TeamMessageArrivingDuringTheFinalAnswerShouldStillGetATurn()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Plan the next phase"));
+        var first = await fixture.NextCallAsync();
+        var question = Guid.NewGuid();
+        await fixture.Dispatcher.SubmitFromRunAsync(fixture.ProjectId, fixture.ChatId,
+            new SubmitChatMessageRequest(question, question, "Which port does the API use?"),
+            new AI.Domain.Chats.ChatMessageSender(fixture.ChatId, Guid.NewGuid(), "question"), CancellationToken.None);
+        first.Answer.SetResult("The plan.");
+
+        // No step boundary came, so the question is answered in a turn of its own.
+        var next = await fixture.NextCallAsync();
+        next.Request.ContextMessages!.Last(item => item.Role == "user" && !item.IsContextSummary).MessageId.ShouldBe(question);
+        next.Answer.SetResult("8080");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed && run.Queue.Count == 0);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Single(message => message.Id == question).Delivery.ShouldBe(MessageDelivery.Turn);
+    }
+
+    [Fact]
     public async Task MessageFromAnotherBranchsRunShouldCarryItsSender()
     {
         await using var fixture = await Fixture.CreateAsync();

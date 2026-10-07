@@ -37,7 +37,10 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    wants the result committed, do it here once the team is done, with the git skills.
 5. Never edit a teammate's owned paths yourself, and do not send acknowledgements, thanks or
    restatements: every message to a branch costs that teammate a turn. Do not poll the teammates'
-   branches or runs while they work: end the turn, and their messages wake you. A teammate whose
+   branches or runs while they work, and do not collect their results by reading their branches:
+   a teammate's report comes to you as a message — before your next step while you are working,
+   or as a new turn once you have ended yours. Read a teammate's branch only to verify a `done`.
+   End the turn when you are waiting, and their messages wake you. A teammate whose
    turn stopped for lack of progress reports it here as a `blocker` on its own.
 6. Answer with a short status table (role, state, last report, open question) and what you decided
    or are waiting for. When the work is complete, give the final report instead: what each

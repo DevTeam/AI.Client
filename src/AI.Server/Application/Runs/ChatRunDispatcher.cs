@@ -244,7 +244,10 @@ public sealed class ChatRunDispatcher(
         runtime.State.Enqueue(request.OperationId, new QueuedRunMessage(request.MessageId, request.Content.Trim(), clock.UtcNow,
             parentMode, parentId, replaceId, request.Mode == ChatSubmitMode.Fork ? sourceBranchId : null,
             sourceBranch.Revision, Resources: ResourceReferences.ToDomain(validatedResources), Interactive: interactive,
-            Sender: sender, BranchTitle: request.Mode == ChatSubmitMode.Fork ? request.BranchTitle : null));
+            Sender: sender, BranchTitle: request.Mode == ChatSubmitMode.Fork ? request.BranchTitle : null,
+            // A teammate's report or question waits for no one: a lead busy with a turn reads it
+            // there, instead of polling for it and then spending a whole turn on it afterwards.
+            JoinsTurn: sender is not null && request.Mode == ChatSubmitMode.Send));
         if (request.Mode == ChatSubmitMode.Queue)
         {
             runtime.ResumeRequested = false;
@@ -326,14 +329,15 @@ public sealed class ChatRunDispatcher(
     }
 
     /// <summary>
-    /// Hands the running turn the asides that arrived since its last step. Called by the agent
-    /// after a tool batch's results, the only point where a user message keeps the history valid.
+    /// Hands the running turn the asides and team messages that arrived since its last step. Called
+    /// by the agent after a tool batch's results, the only point where a user message keeps the
+    /// history valid.
     /// </summary>
     private async Task<IReadOnlyList<ChatCompletionMessage>> TakeAsidesIntoTurnAsync(Runtime runtime,
         CancellationToken token)
     {
         using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
-        var asides = runtime.State.Asides;
+        var asides = runtime.State.TurnJoiners;
         if (asides.Count == 0 || runtime.ToolHead is not { } head) return [];
         var chat = await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token)
             ?? throw new InvalidOperationException("Chat not found.");
@@ -366,9 +370,15 @@ public sealed class ChatRunDispatcher(
         while (cursor is { } id && id != userId && byId.TryGetValue(id, out var message))
         {
             if (message.Delivery == MessageDelivery.InTurn)
+            {
+                // A team message that asks for something joined the turn instead of waiting for its
+                // own; on a retry it must still get one if the new attempt ends before taking it.
+                var joins = message.Sender?.Intent is "question" or "answer" or "blocker" or "done";
                 taken.Add(new QueuedRunMessage(message.Id, message.Content, message.CreatedAt,
-                    Resources: ResourceReferences.ToDomain(message.Resources), IsAside: true,
-                    Sender: message.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null));
+                    Resources: ResourceReferences.ToDomain(message.Resources), IsAside: !joins,
+                    Sender: message.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null,
+                    JoinsTurn: joins));
+            }
             cursor = message.ParentId;
         }
         taken.Reverse();
@@ -1547,7 +1557,7 @@ public sealed class ChatRunDispatcher(
         (ChatRunStatus)state.Status, state.StreamingContent,
         state.Queue.Select(item => new QueuedChatMessage(item.Id, item.Content, item.CreatedAt,
             ParentMode(item.ParentMode), item.ParentMessageId, Stage(item.Stage),
-            ResourceReferences.ToContract(item.Resources), item.IsAside, ToContract(item.Sender))).ToArray(),
+            ResourceReferences.ToContract(item.Resources), item.IsAside, ToContract(item.Sender), item.JoinsTurn)).ToArray(),
         state.HasUnreadResponse, state.Error, state.Revision, chat?.Revision ?? 0,
         chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.HeadMessageId,
         FailureCode: FailureCode(state.FailureKind), CanRetry: state.CanRetry,

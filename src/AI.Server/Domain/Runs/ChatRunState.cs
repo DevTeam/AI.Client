@@ -104,13 +104,20 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
     public IReadOnlyList<QueuedRunMessage> Asides => _queue.Where(item => item.IsAside).ToArray();
 
     /// <summary>
+    /// What a running turn takes at its next step boundary: the asides, and the messages that join
+    /// a turn rather than wait for their own. The rest of the queue keeps its order.
+    /// </summary>
+    public IReadOnlyList<QueuedRunMessage> TurnJoiners =>
+        _queue.Where(item => item.IsAside || item is { JoinsTurn: true, Stage: QueuedRunStage.Prepared }).ToArray();
+
+    /// <summary>
     /// Puts back asides an abandoned attempt had taken, so the retried attempt reads them again.
     /// Their operations are already remembered, so they bypass <see cref="Enqueue"/>.
     /// </summary>
     public void ReturnAsides(IEnumerable<QueuedRunMessage> asides)
     {
         var returned = asides.Where(item => _queue.All(queued => queued.Id != item.Id))
-            .Select(item => item with { IsAside = true, Stage = QueuedRunStage.Prepared }).ToArray();
+            .Select(item => item with { IsAside = !item.JoinsTurn, Stage = QueuedRunStage.Prepared }).ToArray();
         if (returned.Length == 0) return;
         _queue.AddRange(returned);
         Revision++;

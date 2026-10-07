@@ -2402,6 +2402,7 @@ public sealed partial class ChatExecutionTests
         public IChatReplySuggestions ReplySuggestions => _composition.ReplySuggestions;
         public AI.Application.Schedules.IChatScheduleService Schedules => _composition.Schedules;
         public AI.Application.Schedules.IScheduledChatPass SchedulePass => _composition.SchedulePass;
+        public IGuideChats Guides => _composition.Guides;
         public async Task SetChatAutomationAsync(ChatAutomationSettings automation)
         {
             var global = await Settings.LoadAsync(CancellationToken.None);

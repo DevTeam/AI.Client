@@ -179,6 +179,36 @@ public sealed partial class ChatExecutionTests
             .ShouldHaveSingleItem().Content.ShouldBe("Check the nightly build and report failures.");
     }
 
+    [Fact]
+    public async Task GuideScheduleDemoShowsRunsStartsNothingAndIsRemovedOnlyWhileUntouched()
+    {
+        await using var fixture = await ScheduledFixtureAsync();
+
+        var demo = await fixture.Guides.CreateScheduleDemoAsync(fixture.ProjectId, CancellationToken.None);
+
+        demo.Kind.ShouldBe(ChatSchedule.Kind);
+        demo.Branches!.Count(branch => branch.Id != demo.Id).ShouldBe(5);
+        demo.Branches!.ShouldContain(branch => branch.Title.EndsWith("· failed", StringComparison.Ordinal));
+        var schedule = (await fixture.Schedules.GetAsync(fixture.ProjectId, demo.Id, CancellationToken.None))!.Schedule!;
+        schedule.Demo.ShouldBeTrue();
+        schedule.Runs!.Select(run => run.Status).ShouldBe([ScheduleRunStatus.Succeeded, ScheduleRunStatus.Failed,
+            ScheduleRunStatus.Succeeded, ScheduleRunStatus.Succeeded, ScheduleRunStatus.Succeeded]);
+        // Nothing about a demo is ever due, and a pass over it starts nothing.
+        fixture.SchedulePass.DueAt(schedule, schedule.NextRunAt!.Value, null).ShouldBeNull();
+        await fixture.SchedulePass.ProcessAsync(fixture.ProjectId, demo.Id, schedule.NextRunAt!.Value, CancellationToken.None);
+        (await fixture.Schedules.GetAsync(fixture.ProjectId, demo.Id, CancellationToken.None))!.Schedule!.Runs!.Count.ShouldBe(5);
+
+        (await fixture.Guides.CleanUpAsync(fixture.ProjectId, null, CancellationToken.None)).ShouldBe(1);
+        (await fixture.Chats.GetAsync(fixture.ProjectId, demo.Id, CancellationToken.None)).ShouldBeNull();
+
+        // Changed by the person, the demo is their schedule and stays.
+        var kept = await fixture.Guides.CreateScheduleDemoAsync(fixture.ProjectId, CancellationToken.None);
+        await fixture.Schedules.PauseAsync(fixture.ProjectId, kept.Id, true, null, CancellationToken.None);
+        (await fixture.Schedules.GetAsync(fixture.ProjectId, kept.Id, CancellationToken.None))!.Schedule!.Demo.ShouldBeFalse();
+        (await fixture.Guides.CleanUpAsync(fixture.ProjectId, null, CancellationToken.None)).ShouldBe(0);
+        (await fixture.Chats.GetAsync(fixture.ProjectId, kept.Id, CancellationToken.None)).ShouldNotBeNull();
+    }
+
     private static async Task<Fixture> ScheduledFixtureAsync()
     {
         var fixture = await Fixture.CreateAsync();

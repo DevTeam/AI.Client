@@ -79,7 +79,9 @@ public sealed class ChatScheduleService(
                     Revision = existing.Revision + 1,
                     NextRunAt = next,
                     // A changed retry rule applies to the next failure, not to one already waiting.
-                    RetryAt = settings.Retry is null ? null : existing.RetryAt
+                    RetryAt = settings.Retry is null ? null : existing.RetryAt,
+                    // A person who changes the guide's demo makes it their own schedule.
+                    Demo = false
                 };
             }
             return new ChatSchedule(settings, request.Paused ?? false, NextRunAt: next, Runs: []);
@@ -106,7 +108,8 @@ public sealed class ChatScheduleService(
                 Revision = existing.Revision + 1,
                 NextRunAt = paused ? existing.NextRunAt
                     : calendar.NextAfter(existing.Settings.Recurrence, existing.Settings.TimeZone, now),
-                RetryAt = paused ? null : existing.RetryAt
+                RetryAt = paused ? null : existing.RetryAt,
+                Demo = false
             };
         }, cancellationToken);
         if (stored is null) return null;
@@ -131,7 +134,7 @@ public sealed class ChatScheduleService(
             var existing = Scheduled(current);
             if (existing.ActiveRun is { } active)
                 throw new InvalidOperationException($"Run #{active.Number} is still going; one run goes at a time.");
-            return existing with { RunRequestedAt = now };
+            return existing with { RunRequestedAt = now, Demo = false };
         }, cancellationToken);
         if (stored is null) return null;
         scheduler().Nudge();

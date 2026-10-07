@@ -105,6 +105,10 @@
                     @Descriptions.Describe(settings.Recurrence)
                 </span>
             </p>
+            @if (schedule.Demo)
+            {
+                <p class="chat-usage-note" title="Set up by the application guide to show a schedule">Guide demo: this schedule starts no run. Change it, and it becomes your own.</p>
+            }
             @if (schedule.ActiveRun is { BranchId: { } activeBranch } active)
             {
                 <div class="chat-usage-note @(active.Status == ScheduleRunStatus.Blocked ? "context-note-warning" : null)">

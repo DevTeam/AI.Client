@@ -15,7 +15,8 @@ using AI.Domain.Chats;
 /// The scheduler arrives as a factory: it depends on the run dispatcher, which depends on the
 /// registry this policy belongs to.
 /// </remarks>
-public sealed class ScheduledChatKindPolicy(IChatScheduleStore store, IScheduleCalendar calendar, Func<IChatScheduler> scheduler)
+public sealed class ScheduledChatKindPolicy(IChatScheduleStore store, IScheduleCalendar calendar, Func<IChatScheduler> scheduler,
+    Func<IScheduleDemo> demo)
     : IChatKindPolicy
 {
     public ChatKind Kind => ChatKind.Scheduled;
@@ -33,8 +34,10 @@ public sealed class ScheduledChatKindPolicy(IChatScheduleStore store, IScheduleC
     public bool AllowsServer(Guid serverId) => true;
     public bool AllowsTool(Guid serverId, string toolName) => true;
 
-    public Task<bool> ShouldCleanUpAsync(StoredChatSummary summary,
-        Func<CancellationToken, Task<ChatDetails?>> loadChat, CancellationToken token) => Task.FromResult(false);
+    /// <summary>Only the guide's demo is cleaned up, and only while nobody has changed or written in it.</summary>
+    public async Task<bool> ShouldCleanUpAsync(StoredChatSummary summary,
+        Func<CancellationToken, Task<ChatDetails?>> loadChat, CancellationToken token) =>
+        summary.Title == ScheduleDemo.Title && await loadChat(token) is { } chat && demo().IsUntouched(chat);
 
     public Task OnHostStartedAsync(CancellationToken token)
     {

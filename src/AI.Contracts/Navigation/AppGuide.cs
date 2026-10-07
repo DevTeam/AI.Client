@@ -21,6 +21,7 @@ public sealed class AppGuideTopics : IAppGuideTopics
         new("chats", "app-guide-chats", "Chats and context", "Messages, context references and the queue"),
         new("branches", "app-guide-branches", "Branches", "Try another approach while keeping earlier replies"),
         new("team", "app-guide-team", "Team work", "Run a task as a team of branches and follow it from any of them"),
+        new("schedules", "app-guide-schedules", "Scheduled chats", "Run a chat's task on a schedule and follow its runs"),
         new("settings", "app-guide-settings", "Settings", "Appearance, text correction, connections and tool permissions"),
         new("permissions", "app-guide-permissions", "Tool permissions", "Allow, Ask, Deny, approval scopes and inherited rules"),
         new("navigation", "app-guide-navigation", "Search, panels and notifications", "Find messages, toggle sidebars and follow notifications"),

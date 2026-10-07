@@ -43,6 +43,7 @@ internal sealed partial class ChatExecutionComposition
             .Root<IChatReplySuggestions>(nameof(ReplySuggestions))
             .Root<IChatScheduleService>(nameof(Schedules))
             .Root<IScheduledChatPass>(nameof(SchedulePass))
+            .Root<IGuideChats>(nameof(Guides))
             .Arg<IToolSessionFactory>("tools")
             .Arg<IWorkspaceChangeTracker>("workspace")
             .Transient<ExtensionChatKindPolicy>(Tag.Unique);

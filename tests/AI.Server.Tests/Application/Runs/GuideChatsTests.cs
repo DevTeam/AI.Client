@@ -33,7 +33,7 @@ public sealed class GuideChatsTests
     [Fact]
     public void ShouldSkipADisabledProjectConnectionAndFallBackToTheDefault()
     {
-        var chats = new GuideChats(Mock.Of<IChatRepository>(), Mock.Of<IChatRunDispatcher>(), Mock.Of<IChatService>(), Mock.Of<IAppDataChangeSignal>(), new ConnectionChoice(), Kinds);
+        var chats = new GuideChats(Mock.Of<IChatRepository>(), Mock.Of<IChatRunDispatcher>(), Mock.Of<IChatService>(), Mock.Of<IAppDataChangeSignal>(), new ConnectionChoice(), Kinds, Mock.Of<AI.Application.Schedules.IScheduleDemo>());
 
         chats.PickConnection(Settings, Disabled, Disabled).ShouldBe(Default);
         chats.PickConnection(Settings, null, Other).ShouldBe(Other);
@@ -43,7 +43,7 @@ public sealed class GuideChatsTests
     [Fact]
     public void ShouldPickNoConnectionWhenNoneIsEnabled()
     {
-        var chats = new GuideChats(Mock.Of<IChatRepository>(), Mock.Of<IChatRunDispatcher>(), Mock.Of<IChatService>(), Mock.Of<IAppDataChangeSignal>(), new ConnectionChoice(), Kinds);
+        var chats = new GuideChats(Mock.Of<IChatRepository>(), Mock.Of<IChatRunDispatcher>(), Mock.Of<IChatService>(), Mock.Of<IAppDataChangeSignal>(), new ConnectionChoice(), Kinds, Mock.Of<AI.Application.Schedules.IScheduleDemo>());
 
         chats.PickConnection(Settings with { Connections = [Settings.Connections[0]] }, Disabled, null).ShouldBeNull();
     }
@@ -72,7 +72,7 @@ public sealed class GuideChatsTests
         runs.Setup(item => item.DeleteChatAsync(projectId, finished, 7, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ChatDeleteResult(true, 7));
 
-        var deleted = await new GuideChats(repository.Object, runs.Object, Mock.Of<IChatService>(), Mock.Of<IAppDataChangeSignal>(), new ConnectionChoice(), Kinds).CleanUpAsync(projectId, null, CancellationToken.None);
+        var deleted = await new GuideChats(repository.Object, runs.Object, Mock.Of<IChatService>(), Mock.Of<IAppDataChangeSignal>(), new ConnectionChoice(), Kinds, Mock.Of<AI.Application.Schedules.IScheduleDemo>()).CleanUpAsync(projectId, null, CancellationToken.None);
 
         deleted.ShouldBe(1);
         runs.Verify(item => item.DeleteChatAsync(projectId, finished, 7, It.IsAny<CancellationToken>()), Times.Once);
@@ -101,7 +101,7 @@ public sealed class GuideChatsTests
         runs.Setup(item => item.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         runs.Setup(item => item.DeleteChatAsync(projectId, untouched, 7, It.IsAny<CancellationToken>())).ReturnsAsync(new ChatDeleteResult(true, 7));
 
-        var deleted = await new GuideChats(repository.Object, runs.Object, chats.Object, Mock.Of<IAppDataChangeSignal>(), new ConnectionChoice(), Kinds)
+        var deleted = await new GuideChats(repository.Object, runs.Object, chats.Object, Mock.Of<IAppDataChangeSignal>(), new ConnectionChoice(), Kinds, Mock.Of<AI.Application.Schedules.IScheduleDemo>())
             .CleanUpAsync(projectId, null, CancellationToken.None);
 
         deleted.ShouldBe(1);

@@ -79,8 +79,8 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
             if (!run.Interactive)
                 return reply.Reply(Failed("This run is not attached to the user's window."), true);
             target ??= branchId is not null ? "branch" : chatId is not null ? "chat" : "project";
-            if (target is "chat.demo" or "chat.demo_team")
-                return await OpenDemoAsync(idProject, comment, timeoutSeconds, target == "chat.demo_team", cancellationToken);
+            if (target is "chat.demo" or "chat.demo_team" or "chat.demo_schedule")
+                return await OpenDemoAsync(idProject, comment, timeoutSeconds, target, cancellationToken);
             var definition = targets.Find(target);
             if (definition is null || !definition.Actions.Contains(action))
                 return reply.Reply(Failed("Unknown target or unsupported action. Use action='targets' to discover targets."), true);
@@ -138,22 +138,26 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
         /// Sets up a demo chat and points at it in the sidebar; Continue opens it. Only a guide asks
         /// for one, and only after the person chose it, since it adds a chat to their project.
         /// </summary>
-        private async Task<CallToolResult> OpenDemoAsync(Guid idProject, string? comment, int timeoutSeconds, bool team,
+        private async Task<CallToolResult> OpenDemoAsync(Guid idProject, string? comment, int timeoutSeconds, string target,
             CancellationToken cancellationToken)
         {
+            var team = target == "chat.demo_team";
+            var schedule = target == "chat.demo_schedule";
             if (!_behavior.CanCreateDemo || !run.Interactive)
                 return reply.Reply(new AppNavigateResult(false, idProject, null, null, "Nothing was created.",
                     "Only an application guide in the person's window can set up a demo chat.", "unavailable"), true);
             var project = await projects.GetAsync(idProject, cancellationToken);
             if (project is null) return reply.Reply(new AppNavigateResult(false, idProject, null, null, "Nothing was created.",
                 "Project not found.", "unavailable"), true);
-            var demo = team
-                ? await guideChats().CreateTeamDemoAsync(idProject, cancellationToken)
+            var demo = team ? await guideChats().CreateTeamDemoAsync(idProject, cancellationToken)
+                : schedule ? await guideChats().CreateScheduleDemoAsync(idProject, cancellationToken)
                 : await guideChats().CreateDemoAsync(idProject, cancellationToken);
             var response = await navigation.RequestAsync(new AppNavigation(idProject, demo.Id, null, run.ChatId, project.Name, demo.Title,
                 "chat", "click", comment ?? (team
                     ? "A demo team: a lead, two teammates, their reports and an open question. Continue opens it."
-                    : "A demo chat with a question and an answer. Continue opens it."), true,
+                    : schedule
+                        ? "A demo scheduled chat: an exchange rate posted every weekday, with five runs. Continue opens it."
+                        : "A demo chat with a question and an answer. Continue opens it."), true,
                 ExpiresAt: DateTimeOffset.UtcNow.AddSeconds(timeoutSeconds)), cancellationToken);
             var opened = response.Outcome == "applied";
             var members = team
@@ -162,7 +166,11 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
                 : null;
             return reply.Reply(new AppNavigateResult(opened, idProject, demo.Id, null,
                 opened
-                    ? team
+                    ? schedule
+                        ? $"Created and opened demo scheduled chat '{demo.Title}': every weekday at 09:00, five runs (one failed and "
+                          + "retried), all kept as branches. Its controls, such as widgets.chat-schedule, chat.branches and branch, are "
+                          + "in view now; its schedule starts no run. It is removed when the tour ends unless the person changes it or writes in it."
+                    : team
                         ? $"Created and opened demo team chat '{demo.Title}' on its lead's branch: the task, the charter, Ada's "
                           + "done report and Bo's question waiting for the lead. Its controls, such as chat.team_message, branch "
                           + "and widgets.chat-team, are in view now." + members

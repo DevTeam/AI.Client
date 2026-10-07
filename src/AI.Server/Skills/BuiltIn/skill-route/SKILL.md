@@ -24,6 +24,13 @@ Choose:
   talk, questions answered from knowledge, and tasks no skill covers.
   A request to implement a read-only plan or fix review findings changes the task: choose the
   appropriate implementation/fix skill instead of keeping the read-only skill active.
+  Team work: choose team-assemble first when the message asks for a large piece of work spanning
+  several independent areas that could proceed at the same time — for example an API, its UI and
+  its tests; several modules or services; a comparison of several options researched separately —
+  or when it mentions a team, roles, teammates or parallel work. team-assemble itself decides
+  whether a team pays off and falls back to one branch, so a doubtful large request may go to it;
+  a change in one area, a single file, a bug, a question or a continuation of the active skill
+  never does. In a branch whose active skill is team-contribute or team-coordinate, keep it active.
   For code tasks, prefer a specific available skill over code-feature-implement: planning uses
   code-plan, source explanations code-explain, behavior-preserving structural changes code-refactor,
   adding tests code-tests-add, compiler/analyzer diagnostics code-build-fix, correctness review

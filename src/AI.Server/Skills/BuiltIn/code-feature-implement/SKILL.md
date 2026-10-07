@@ -25,6 +25,8 @@ steps where they differ: their build, test and style rules are the ones to follo
 4. Plan. When the change spans more than three files, write a short numbered plan (file and what
    changes) in your text before the first edit. Stay inside `goal` and `scope`: no unrelated
    refactoring, renames, formatting or dependency upgrades, and ask before adding a dependency.
+   When the plan splits into substantial parts on disjoint files that could proceed at the same
+   time, offer team-assemble in one sentence before implementing; do not start a team yourself.
 5. Implement with `edit_file` for changes and `write_file` for new files. Match the surrounding
    code's naming, idiom and comment density. Add or update tests for the new behaviour where the
    project has tests.

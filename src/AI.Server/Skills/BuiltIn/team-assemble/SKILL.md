@@ -3,7 +3,8 @@ id: team-assemble
 name: Team assemble
 icon: users
 kind: playbook
-description: Decide whether a task pays off as team work; if so, write a team charter and start one branch per teammate.
+aliases: ["team"]
+description: Large task spanning several independent areas (API, UI, tests, modules): decide if a team pays off; if so, start a branch per teammate.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"The task"}},"additionalProperties":false}
 tools: ["app_read","app_runs","app_navigate","ask_user","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files"]
 ---

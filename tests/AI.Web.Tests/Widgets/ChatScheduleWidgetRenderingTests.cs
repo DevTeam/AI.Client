@@ -80,6 +80,35 @@ public sealed class ChatScheduleWidgetRenderingTests
     }
 
     [Fact]
+    public async Task ShouldScheduleANewChatFromTheMessageBoxWithoutSendingIt()
+    {
+        var definition = new ChatWidgetCatalog(new AppNavigationTargets()).Find(ChatWidgetCatalog.ChatSchedule)!;
+        var widget = new ChatWidgetContext(definition, new(definition.Id), () => Task.CompletedTask, () => Task.CompletedTask,
+            _ => Task.CompletedTask);
+
+        var intro = WebUtility.HtmlDecode(await RenderAsync<ChatScheduleWidget>(new Dictionary<string, object?>
+        {
+            [nameof(ChatScheduleWidget.Widget)] = widget,
+            [nameof(ChatScheduleWidget.CanCreate)] = true
+        }));
+        intro.ShouldContain("Schedule a new chat");
+        intro.ShouldContain("Nothing reaches the model until the first run");
+
+        // Alt+Shift+Enter in the message box opens the editor with the box's text as the task.
+        var editor = WebUtility.HtmlDecode(await RenderAsync<ChatScheduleWidget>(new Dictionary<string, object?>
+        {
+            [nameof(ChatScheduleWidget.Widget)] = widget,
+            [nameof(ChatScheduleWidget.CanCreate)] = true,
+            [nameof(ChatScheduleWidget.ComposerText)] = "Collect the weekly metrics",
+            [nameof(ChatScheduleWidget.DraftRequest)] = 1
+        }));
+        editor.ShouldContain("Schedule a new chat");
+        editor.ShouldContain("Collect the weekly metrics");
+        editor.ShouldContain("recurrence-editor");
+        editor.ShouldContain("the model first sees it in the first run");
+    }
+
+    [Fact]
     public async Task ShouldRenderTheRecurrencePickerWithAPresetInsideAQuestion()
     {
         var weekly = ScheduleCalendar.Serialize(new ScheduleRecurrence(ScheduleFrequency.Weekly,

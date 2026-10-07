@@ -781,7 +781,7 @@
                     }
                 </div>
                 @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation" aria-label="Stop generation" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> }
-                <ComposerSendButton ActiveMode="@GetComposerSendMode()" CanAside="@(_selectedChat is not null && !_isForking && _replaceSourceId is null)" TurnInFlight="@IsTurnInFlight()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
+                <ComposerSendButton ActiveMode="@GetComposerSendMode()" CanAside="@(_selectedChat is not null && !_isForking && _replaceSourceId is null)" CanSchedule="@CanScheduleComposerText()" TurnInFlight="@IsTurnInFlight()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
             </div>
             @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
         </footer>
@@ -904,6 +904,9 @@
                     case ChatWidgetCatalog.ChatSchedule:
                         <ChatScheduleWidget Widget="@widget"
                                             Chat="@widgetChat"
+                                            CanCreate="@(_selectedProject is not null)"
+                                            ComposerText="@_chat.Message"
+                                            DraftRequest="@_scheduleDraft?.Number"
                                             OnSave="SaveScheduleAsync"
                                             OnPause="PauseScheduleAsync"
                                             OnRemove="RemoveScheduleAsync"
@@ -2006,6 +2009,9 @@ else if (_guideInvitation is { } guideInvitation)
 
     [JSInvokable]
     public Task AsideFromKeyboard() => SubmitComposerAsync(ComposerSubmitMode.Aside);
+
+    [JSInvokable]
+    public Task ScheduleFromKeyboard() => InvokeAsync(OpenScheduleDraftAsync);
 
     /// <summary>
     /// Walks the project's sent-message history: -1 towards older entries, +1 back towards newer
@@ -3116,6 +3122,7 @@ else if (_guideInvitation is { } guideInvitation)
         if (_composerAltDown && _composerCtrlDown) return $"{baseHint} · fork on Enter";
         if (_composerCtrlDown && _composerShiftDown) return $"{baseHint} · interrupt and send now on Enter";
         if (_composerCtrlDown) return $"{baseHint} · queue on Enter";
+        if (_composerAltDown && _composerShiftDown) return $"{baseHint} · schedule it on Enter, nothing is sent";
         // The only affordance history has: nothing in the composer points at the Up key, and an
         // empty composer is exactly the moment the key is worth mentioning.
         return _chat.Message.Length == 0 && GetComposerHistory().Count > 0 ? $"{baseHint} · ↑ for history" : baseHint;
@@ -3361,13 +3368,17 @@ else if (_guideInvitation is { } guideInvitation)
                         ? ComposerSendButton.SendMode.SendNow
                         : _composerCtrlDown
                             ? ComposerSendButton.SendMode.Queue
-                            : _composerAltDown && _selectedChat is not null
-                                ? ComposerSendButton.SendMode.Aside
-                                : ComposerSendButton.SendMode.Send;
+                            : _composerAltDown && _composerShiftDown
+                                ? ComposerSendButton.SendMode.Schedule
+                                : _composerAltDown && _selectedChat is not null
+                                    ? ComposerSendButton.SendMode.Aside
+                                    : ComposerSendButton.SendMode.Send;
 
     // The button does whatever its tooltip is highlighting, so pressing it and pressing the keys
     // it shows can never mean two different things.
-    private Task SubmitFromSendButtonAsync() => SubmitComposerAsync(GetComposerSendMode() switch
+    private Task SubmitFromSendButtonAsync() => GetComposerSendMode() == ComposerSendButton.SendMode.Schedule
+        ? InvokeAsync(OpenScheduleDraftAsync)
+        : SubmitComposerAsync(GetComposerSendMode() switch
     {
         ComposerSendButton.SendMode.Fork => ComposerSubmitMode.Fork,
         ComposerSendButton.SendMode.EditFork => ComposerSubmitMode.Fork,
@@ -4210,8 +4221,73 @@ else if (_guideInvitation is { } guideInvitation)
     // The schedule widget changes the open chat's schedule through the Host, then re-reads like
     // any other change of application data, so the widget, the sidebar icon and the run branches
     // all show the stored result. A refusal comes back to the widget in the Host's words.
-    private Task<string?> SaveScheduleAsync(AI.Contracts.Schedules.SetChatScheduleRequest request) =>
-        ChangeScheduleAsync((project, chat) => ScheduleApi.SetAsync(project, chat, request, CancellationToken.None));
+    // Alt+Shift+Enter, or the send button while those keys are held: the text in the composer becomes
+    // the task of a schedule instead of a message. Nothing is sent and nothing is created yet; the
+    // Schedule widget opens with the task filled in, and saving it creates the chat if there is none.
+    private sealed record ScheduleDraftRequest(string Task, int Number, string DraftKey);
+    private ScheduleDraftRequest? _scheduleDraft;
+
+    private bool CanScheduleComposerText() => !_isForking && _replaceSourceId is null
+        && _selectedChat is null or { Kind: "conversation" or AI.Contracts.Schedules.ChatSchedule.Kind };
+
+    private async Task OpenScheduleDraftAsync()
+    {
+        if (_selectedProject is null || !CanScheduleComposerText()) return;
+        _scheduleDraft = new ScheduleDraftRequest(_chat.Message.Trim(), (_scheduleDraft?.Number ?? 0) + 1, GetComposerDraftKey());
+        // Asked for by the person, so the widget is shown and unfolded for good, not for a moment.
+        await SaveChatWidgetsAsync(WidgetLayout.Update(_chatWidgets, ChatWidgetCatalog.ChatSchedule,
+            item => item with { Hidden = false, Collapsed = false }));
+        await SetChatWidgetsOpen(true);
+        StateHasChanged();
+    }
+
+    private async Task<string?> SaveScheduleAsync(AI.Contracts.Schedules.SetChatScheduleRequest request)
+    {
+        if (_selectedChat is not null)
+        {
+            var error = await ChangeScheduleAsync((project, chat) => ScheduleApi.SetAsync(project, chat, request, CancellationToken.None));
+            if (error is null) ClearScheduledComposerText(request.Settings.Task);
+            StateHasChanged();
+            return error;
+        }
+        if (_selectedProject is not { } selectedProject) return "Open a project first.";
+        // A new chat is made only now, with the schedule: its task becomes the first message, which
+        // the model does not answer until the first run.
+        try
+        {
+            var task = request.Settings.Task.Trim();
+            var firstLine = task.Split('\n', 2)[0].Trim();
+            var title = firstLine.Length == 0 ? "Scheduled chat" : firstLine[..Math.Min(48, firstLine.Length)];
+            var created = await ChatHistoryApi.CreateAsync(selectedProject.Id,
+                new CreateChatRequest(title, _chat.CredentialProfileId, ApprovalMode: _newChatApprovalMode), CancellationToken.None);
+            await ScheduleApi.SetAsync(selectedProject.Id, created.Id, request, CancellationToken.None);
+            ClearScheduledComposerText(request.Settings.Task);
+            await LoadChatsAsync(selectedProject.Id);
+            await SelectChatAsync(created.Id);
+            // The widget calls back through a plain delegate, which does not re-render this page.
+            StateHasChanged();
+            return null;
+        }
+        catch (AI.Web.Chats.ChatScheduleException refused)
+        {
+            return refused.Message;
+        }
+        catch (HttpRequestException)
+        {
+            return "The chat could not be scheduled. Check the connection and try again.";
+        }
+    }
+
+    /// <summary>The composer text that became the task is not left behind to be sent by mistake.</summary>
+    private void ClearScheduledComposerText(string task)
+    {
+        if (_scheduleDraft is not { } draft) return;
+        _scheduleDraft = null;
+        if (draft.Task.Length == 0 || _chat.Message.Trim() != draft.Task || !task.Contains(draft.Task, StringComparison.Ordinal)) return;
+        _chat.Message = string.Empty;
+        _composerNeedsResize = true;
+        WorkspaceStateService.QueueComposerDraftSave(draft.DraftKey, string.Empty);
+    }
 
     private Task<string?> PauseScheduleAsync(bool paused, long revision) =>
         ChangeScheduleAsync((project, chat) => ScheduleApi.PauseAsync(project, chat, paused, revision, CancellationToken.None));

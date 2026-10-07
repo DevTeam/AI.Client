@@ -3850,14 +3850,16 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 
 .composer-send-tooltip {
     position: absolute;
-    bottom: calc(100% + 0.5rem);
-    right: 0;
+    bottom: calc(100% + 0.6rem);
+    right: -0.35rem;
     display: grid;
-    gap: 0.3rem;
-    padding: 0.55rem 0.7rem;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 0.55rem;
     min-width: max-content;
-    border-radius: var(--radius-md);
-    background: var(--color-surface);
+    padding: 0.35rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-raised);
     color: var(--color-text);
     box-shadow: var(--shadow-sm);
     font-size: var(--font-size-md);
@@ -3940,27 +3942,71 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     .composer-send-wrapper.context-critical .composer-send-ring { animation: none; }
 }
 
+/* One row per action: icon, words, keys. Rows share the panel's columns, so labels and key caps
+   line up whatever the number of keys; the action the held keys would take is the lit row. */
+.composer-send-tooltip-heading {
+    grid-column: 1 / -1;
+    padding: 0.45rem 0.5rem 0.25rem;
+    color: var(--color-text-faint);
+    font-size: var(--font-size-2xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.composer-send-tooltip-heading:first-child { padding-top: 0.25rem; }
+
 .composer-send-tooltip-row {
-    display: inline-flex;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     align-items: center;
-    gap: 0.3rem;
-    color: var(--color-text-muted);
-    transition: color var(--duration-fast) ease;
+    padding: 0.3rem 0.5rem;
+    border-radius: var(--radius-sm);
+    color: var(--color-text-secondary);
+    transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.composer-send-tooltip-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+    color: var(--color-text-faint);
+}
+
+.composer-send-tooltip-keys {
+    display: inline-flex;
+    justify-content: flex-end;
+    gap: 0.15rem;
+    margin-left: 1rem;
 }
 
 .composer-send-tooltip-row.active {
+    background: var(--color-accent-bg);
     color: var(--color-text-strong);
 }
+
+.composer-send-tooltip-row.active .composer-send-tooltip-icon { color: var(--color-accent-text); }
+.composer-send-tooltip-row.active .composer-send-tooltip-label { font-weight: 500; }
 
 .composer-send-tooltip-row.active kbd {
-    background: var(--color-fill-strong);
-    border-color: var(--color-border-stronger);
-    color: var(--color-text-strong);
+    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+    background: var(--color-surface);
+    color: var(--color-accent-text);
 }
 
-.composer-send-tooltip-label {
-    margin-left: 0.4rem;
+.composer-send-tooltip-footnote {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: 0.15rem;
+    margin-top: 0.3rem;
+    padding: 0.45rem 0.5rem 0.2rem;
+    border-top: 1px solid var(--color-border-subtle);
+    color: var(--color-text-faint);
+    font-size: var(--font-size-xs);
 }
+
+.composer-send-tooltip-footnote > span { margin-left: 0.35rem; }
 
 .composer-send-tooltip kbd {
     display: inline-block;
@@ -8373,6 +8419,10 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-schedule-editor-heading { display: flex; align-items: center; gap: .4rem; color: var(--color-text); font-size: var(--font-size-md); }
 .chat-schedule-editor-heading > .app-icon { width: .95rem; height: .95rem; color: var(--color-accent-text); }
 .chat-schedule-editor-heading strong { font-weight: 500; }
+.chat-schedule-editor-heading:focus { outline: none; }
+.chat-schedule-shortcut { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem; margin: 0; color: var(--color-text-subtle); font-size: var(--font-size-xs); }
+.chat-schedule-shortcut > span { margin-left: .3rem; }
+.chat-schedule-shortcut kbd { padding: .1rem .3rem; border: 1px solid var(--color-border); border-bottom-width: 2px; border-radius: var(--radius-xs); background: var(--color-fill); color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--font-size-2xs); line-height: 1.2; }
 .chat-schedule-facts .chat-usage-grid-wide { text-align: left; white-space: normal; }
 .chat-schedule-task { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; color: var(--color-text); }
 .chat-schedule-rules { display: flex; flex-wrap: wrap; gap: .2rem .6rem; }

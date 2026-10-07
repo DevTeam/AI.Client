@@ -55,6 +55,7 @@ public sealed class AppControlHintsRenderingTests
     [InlineData(ComposerSendButton.SendMode.SendNow, "Interrupt and send now")]
     [InlineData(ComposerSendButton.SendMode.EditFork, "Create edited branch")]
     [InlineData(ComposerSendButton.SendMode.Replace, "Replace branch now")]
+    [InlineData(ComposerSendButton.SendMode.Schedule, "Schedule instead of sending")]
     public async Task SendButtonShouldExposeItsCurrentActionWithoutPuttingSharedHelpInTheTooltip(
         ComposerSendButton.SendMode mode, string label)
     {

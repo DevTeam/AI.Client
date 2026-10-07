@@ -2,11 +2,15 @@
 id: chat-schedule-create
 name: Chat schedule create
 icon: chat-schedule-create
+aliases: ["schedule"]
 kind: playbook
-description: Turn this chat, or a new chat, into a scheduled chat that the application runs on a date or a recurrence, asking the user for every missing time, success, retry and cleanup rule; changes the chat's kind and starts automatic runs.
+description: Set up a task to run later or repeatedly — once at a date and time, every day, every weekday, every Monday, hourly or monthly — by turning this chat, or a new chat, into a scheduled chat instead of doing the task now; asks the user for every missing time, success, retry and cleanup rule, changes the chat's kind and starts automatic runs.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"What each run should do, if the user said it"},"when":{"type":"string","description":"When it should run, in the user's words"},"newChat":{"type":"boolean","description":"True when the user wants a separate new chat instead of this one"}},"additionalProperties":false}
 tools: ["app_read","app_schedule","app_chats","ask_user","app_navigate"]
 ---
+
+Do not carry out the task in this turn: the user asked for it to run on a schedule, and this skill
+only sets the schedule up. The first run does the work.
 
 A scheduled chat keeps its history. At every occurrence the application forks it from the end of
 its main branch, and that run branch carries out the task with the `chat-schedule-run` skill. Never

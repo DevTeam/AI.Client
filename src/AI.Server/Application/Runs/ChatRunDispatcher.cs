@@ -185,7 +185,19 @@ public sealed class ChatRunDispatcher(
         var sourceBranch = chat.Branches?.SingleOrDefault(branch => branch.Id == sourceBranchId)
             ?? throw new ArgumentException("Branch does not exist.");
         var runtime = await GetRuntimeAsync(projectId, chatId, branchId, chat, cancellationToken);
-        if (runtime.State.Operations.Contains(request.OperationId)) return runtime.Snapshot;
+        // An id repeated with the same message is a retry and changes nothing; repeated with another
+        // message it is a model reusing a made-up id, and returning the old result as if the new
+        // message had been accepted would lose it without a word.
+        var known = (chat.Messages.SingleOrDefault(message => message.Id == request.MessageId)?.Content
+            ?? runtime.State.Queue.SingleOrDefault(item => item.Id == request.MessageId)?.Content)?.Trim();
+        if (runtime.State.Operations.Contains(request.OperationId))
+        {
+            if (known is not null && known != request.Content.Trim())
+                throw new ArgumentException("This operationId was already used for a different message. Use a fresh random UUID for every new message.");
+            return runtime.Snapshot;
+        }
+        if (known is not null)
+            throw new ArgumentException("This message id is already used in the chat. Use a fresh random UUID for every new message.");
         var validatedResources = await resources.ValidateForChatAsync(projectId, chatId, request.Resources, cancellationToken);
         // The branch of an aside moves under it by design — a running turn is what it is meant for —
         // so neither the revision nor a parent applies to it.

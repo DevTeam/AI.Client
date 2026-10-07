@@ -8197,6 +8197,32 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-team-blocker { color: var(--color-warning-text); }
 .chat-team-intent-icon { width: .8rem; height: .8rem; margin-right: .2rem; vertical-align: -.1rem; }
 .chat-team-note { font-size: var(--font-size-xs); font-style: italic; }
+/* The team as a whole: the person's task, how far the team is, and the roster. */
+.chat-team-task { display: grid; gap: .3rem; }
+.chat-team-task-text {
+    display: -webkit-box;
+    overflow: hidden;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    font-size: var(--font-size-md);
+    text-align: left;
+    cursor: pointer;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+.chat-team-task-text:hover, .chat-team-task-text:focus-visible { color: var(--color-accent-text); outline: none; }
+.chat-team-progress { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .6rem; font-size: var(--font-size-xs); }
+.chat-team-link { padding: 0; border: 0; background: none; color: var(--color-accent); font: inherit; cursor: pointer; }
+.chat-team-link:hover, .chat-team-link:focus-visible { text-decoration: underline; outline: none; }
+.chat-team-row.is-current { background: var(--color-fill); }
+.chat-team-mark .member-dot { width: .6rem; height: .6rem; }
+.chat-team-meta > .chat-team-report { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chat-team-open { overflow: hidden; font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
+.chat-team-done { color: var(--color-success-text); }
+.chat-team-subhead { font-size: var(--font-size-xs); }
 /* Unfinished-work widget: the project's runs that have not finished. Only a reason that asks the
    person to act wears a status word colour, and the reason word always stays in the text beside the
    mark, so colour never carries the meaning alone. */

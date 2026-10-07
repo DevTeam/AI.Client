@@ -492,6 +492,24 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task AnIdReusedForAnotherMessageShouldBeRefusedNotSilentlyAccepted()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        var id = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(id, id, "First"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        // The same call again is a retry and is answered with what it already did.
+        (await fixture.SubmitAsync(new SubmitChatMessageRequest(id, id, "First"))).Status.ShouldBe(ChatRunStatus.Completed);
+        // A made-up id that collides with an earlier message is an error the caller can correct.
+        await Should.ThrowAsync<ArgumentException>(() => fixture.SubmitAsync(new SubmitChatMessageRequest(id, id, "Second")));
+        await Should.ThrowAsync<ArgumentException>(() => fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), id, "Third")));
+        fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task ATeammatesFailedTurnShouldBeReportedToTheLead()
     {
         await using var fixture = await Fixture.CreateAsync();

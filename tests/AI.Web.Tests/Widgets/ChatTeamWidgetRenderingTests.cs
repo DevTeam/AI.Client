@@ -57,8 +57,28 @@ public sealed class ChatTeamWidgetRenderingTests
             .ShouldContain("Branches that send team messages into this one appear here.");
     }
 
+    [Fact]
+    public async Task ATeammatesBranchShouldShowTheTaskAndTheWholeTeam()
+    {
+        var (chat, ada, bo, _, _) = ChatTeamRosterCalculatorTests.Team();
+
+        var html = await RenderAsync([], chat.Branches, chat, ada,
+            [ChatTeamRosterCalculatorTests.Run(chat, bo, AI.Contracts.Runs.ChatRunStatus.Failed)]);
+
+        var text = WebUtility.HtmlDecode(html);
+        text.ShouldContain("Add CSV export with API, UI and tests");
+        text.ShouldContain("Charter");
+        text.ShouldContain("1 of 2 done");
+        text.ShouldContain("Ada · Backend · this branch");
+        text.ShouldContain("Bo · Tests");
+        text.ShouldContain("Waiting for the lead: question · Which delimiter?");
+        text.ShouldContain("Stopped");
+        text.ShouldNotContain("Branches that send team messages into this one appear here.");
+    }
+
     private static async Task<string> RenderAsync(IReadOnlyList<ChatMessageView> messages,
-        IReadOnlyList<ChatBranchView>? branches)
+        IReadOnlyList<ChatBranchView>? branches, ChatDetails? chat = null, Guid? selectedBranchId = null,
+        IReadOnlyList<AI.Contracts.Runs.ChatRunSnapshot>? runs = null)
     {
         var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
         var registrations = new ServiceCollection();
@@ -79,7 +99,10 @@ public sealed class ChatTeamWidgetRenderingTests
                     [nameof(ChatTeamWidget.Widget)] = widget,
                     [nameof(ChatTeamWidget.Messages)] = messages,
                     [nameof(ChatTeamWidget.Branches)] = branches,
-                    [nameof(ChatTeamWidget.IsGenerating)] = false
+                    [nameof(ChatTeamWidget.IsGenerating)] = false,
+                    [nameof(ChatTeamWidget.Chat)] = chat,
+                    [nameof(ChatTeamWidget.SelectedBranchId)] = selectedBranchId,
+                    [nameof(ChatTeamWidget.Runs)] = runs ?? []
                 }));
             html = component.ToHtmlString();
         });

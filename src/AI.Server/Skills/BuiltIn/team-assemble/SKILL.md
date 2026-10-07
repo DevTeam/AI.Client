@@ -46,35 +46,35 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    Give each teammate an identity: a name taken in order from Ada, Bo, Cleo, Dan, Eva, Finn, Gia,
    Hal (skipping any this chat already uses) and its role in one or two words in the charter's
    language, written the same way everywhere — "Ada · Backend". The identity is fixed for the
-   life of the team; the teammate's focus belongs to its scope, not to its name. Before writing
-   the charter, generate each teammate's `operationId` now: it becomes the teammate's branchId.
+   life of the team; the teammate's focus belongs to its scope, not to its name.
+   Never make up an `operationId`: omit it, and the application assigns one and returns it as the
+   result's `messageId`.
 6. Show the proposed team with `ask_user`, labelled "Team": the plan in one line per phase and one
    line per teammate, with the options "Start the team (Recommended)", "Adjust the team" and
    "Work without a team"; `allowOther` on. Adjust and repeat on an answer; stop on "Work without a
    team", dismissed, expired or interrupted.
-7. Write the charter into this branch: `app_runs` Submit, `branchId` = `chatId`, mode `Aside`,
-   intent `Decision`, a fresh `operationId` that you keep as the charter's message id, and content
-   headed "Team charter" with: goal and done, glossary, phases, a table of teammates whose first
-   column is the identity ("Ada · Backend") followed by its branchId, then scope, owned paths,
-   deliverable and done; the lead as "Lead" with the chat id; the contracts; and the protocol
-   below. Name teammates by their identity in the phases and contracts too. Make that call alone in
+7. Write the charter into this branch: `app_runs` with `operation` `Submit`, `branchId` = `chatId`, mode `Aside`,
+   intent `Decision`, no `operationId`, and content headed "Team charter" with: goal and done,
+   glossary, phases, a table of teammates whose first column is the identity ("Ada · Backend"),
+   then scope, owned paths, deliverable and done; the lead as "Lead"; the contracts; and the
+   protocol below. Keep the result's `messageId`: it is the charter's id. Name teammates by their identity in the phases and contracts too. Make that call alone in
    its step: the aside joins this turn after the call's result, and the branches must start from it.
 8. In the next step, read the main branch with `app_read` and confirm the charter message is there.
-   Then for each teammate: `app_runs` Submit, `branchId` = `chatId`, mode `Fork`,
-   `parentMessageId` = the charter's id, `operationId` = the one generated for that teammate,
-   intent `Decision`, `wait` false, `memberName` and `role` = its identity (no `title`: the
+   Then for each teammate: `app_runs` with `operation` `Submit`, `branchId` = `chatId`, mode `Fork`,
+   `parentMessageId` = the charter's id, no `operationId`, intent `Decision`, `wait` false, `memberName` and `role` = its identity (no `title`: the
    application names the branch "Name · Role" and signs its messages so), content = the teammate's
    brief: "You are <Name> · <Role> in this team. Run the team-contribute skill first." followed by the
    scope, owned paths, deliverable, definition of done, skills to use and whom to ask. Every branch
    inherits the analysis and the charter from the message it starts from, so the brief repeats
-   only what is the teammate's own.
+   only what is the teammate's own. Each result's `branchId` is that teammate's branch; every
+   message it sends you carries the same branchId in its header.
 9. Answer with the team as a table (identity, deliverable) and one line on how it works: the
    teammates report to this branch, which coordinates them with the team-coordinate skill. Do not
    wait for the teammates in this turn, and do not read their branches over and over: what they
    send arrives here as messages.
 
 Protocol to put in the charter:
-- Teammates write to the main branch with `app_runs` Submit, `branchId` = the chat id.
+- Teammates write to the main branch with `app_runs` with `operation` `Submit`, `branchId` = the chat id.
 - `status` goes as an Aside: it costs the lead nothing until its next step. `question`, `blocker`
   and `done` go as ordinary messages and wake the lead. No acknowledgements, no thanks.
 - Every message is self-contained: what, why, and what is needed back.

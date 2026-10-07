@@ -708,6 +708,26 @@ Which models answered the chat (`ChatModelsWidget`, `IChatModelStatisticsCalcula
 
 Which branches are working with this one (`ChatTeamWidget`, `IChatTeamStatisticsCalculator`).
 
+### The team as a whole
+
+In a chat with teammates (branches with a `Member` identity, see
+`docs/34-asides-and-team-messages.md`) the widget opens with the whole team, built by
+`IChatTeamRosterCalculator` from every branch of the chat and the chat's run snapshots. It is the
+same whichever branch is open, so a teammate's branch shows the task it is part of:
+
+- **Task.** The person's first message on the main branch, up to three lines; a click opens the
+  lead's branch at it. Under it: "X of N done", "K waiting for the lead" when teammates have an
+  unanswered question or blocker, and a **Charter** link to the lead's latest "Team charter".
+- **Roster.** The lead, then every teammate in the order they were started, each with its colour
+  dot and "Name · Role" ("· this branch" on the visible one), its state — Working, Needs you (a
+  confirmation or question waits), Stopped (failed, interrupted or paused), Done (latest report is
+  `done`), Waiting — and its latest report to the lead, intent and first line. A teammate whose
+  latest question or blocker came after the lead's last message into its branch shows
+  "Waiting for the lead: …". A click opens that member's branch.
+- **Summary.** "X/N done", with "· K waiting" when there are open items.
+
+The statistics below, under "Messages into this branch", are the per-branch figures described next.
+
 - **Scope.** Whole chat or last turn, with the same switch as the other widgets. The visible branch
   is split into turns by the same rule the Models and Branches widgets use, so "the last turn" means
   the same thing in all of them; the headline says "so far" while it runs.

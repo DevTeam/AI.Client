@@ -893,7 +893,12 @@
                                         Messages="@widgetMessages"
                                         Branches="@widgetChat?.Branches"
                                         IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
-                                        OnSelectMessage="ScrollToTurnAsync" />
+                                        OnSelectMessage="ScrollToTurnAsync"
+                                        Chat="@widgetChat"
+                                        Runs="@(widgetChat is null ? [] : RunState.Runs.Values.Where(run => run.ChatId == widgetChat.Id).ToArray())"
+                                        SelectedBranchId="@GetSelectedBranchId()"
+                                        OnOpenBranch="OpenSenderBranchAsync"
+                                        OnShowTeamMessage="ShowTeamMessageAsync" />
                         break;
                     case ChatWidgetCatalog.ChatUnfinished:
                         <ChatUnfinishedWidget Widget="@widget"
@@ -3192,6 +3197,17 @@ else if (_guideInvitation is { } guideInvitation)
         _selectedChat?.Branches?.SingleOrDefault(item => item.Id == branchId) is { HeadMessageId: { } head } branch
             ? SelectBranchTreeItemAsync(new BranchTreeItem(branch.Id, branch.Title, 0, head))
             : Task.CompletedTask;
+
+    /// <summary>
+    /// Shows a message of the lead's branch — the task or the charter — from a teammate's branch
+    /// too: the lead's branch is opened first, and the transcript scrolls once it holds the message.
+    /// </summary>
+    private async Task ShowTeamMessageAsync(Guid messageId)
+    {
+        if (_selectedChat is not { } chat) return;
+        if (GetSelectedRunBranchId() != chat.Id) await OpenSenderBranchAsync(chat.Id);
+        await ScrollToTurnAsync(messageId);
+    }
 
     // The Branches widget lists every stored branch and lets the person click one to make it the
     // visible branch — the same action the sidebar's branch links perform. The widget hands back

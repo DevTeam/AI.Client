@@ -7,7 +7,7 @@
    the conversation narrows to make room, and the drawers — settings, review and the rest — open
    over it as they open over everything else. What each widget shows is the caller's; the column
    owns their order, which of them are shown, and the shell they share. *@
-<aside @attributes="@(ControlHints.Attributes("widgets"))" class="chat-widgets" id="chat-widgets" aria-label="Chat widgets">
+<aside @attributes="@(ControlHints.Attributes("widgets", nativeTooltip: false))" class="chat-widgets" id="chat-widgets" aria-label="Chat widgets">
     <header class="chat-widgets-header">
         <span class="chat-widgets-heading">Widgets</span>
         <span class="chat-widgets-menu-anchor">

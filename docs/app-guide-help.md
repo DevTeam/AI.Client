@@ -21,7 +21,10 @@ tooltips can use `nativeTooltip: false`, display `GetHint(target)`, associate th
 with `aria-describedby`, and mark explanatory fragments with `data-app-tooltip-hint`. A control
 whose help is meant for the guide alone passes `nativeTooltip: false` as well and renders no hint
 of its own: the element keeps `data-app-target` and `data-app-hint` — what a guide reads — and
-gets no `title`. Inline help uses `GetSummary(target)`; controls with custom state messages retain
+gets no `title`. Regions and self-explanatory fields — the sidebar, drawers, the widget column and
+each widget, the message editor, toasts, the approval bar, text inputs whose label says what they
+take — are such targets: a `title` there pops a paragraph over whatever the pointer rests on. When
+the guide hovers one, it shows `data-app-hint` in its own tooltip instead. Inline help uses `GetSummary(target)`; controls with custom state messages retain
 those messages in their rendered UI.
 
 Do not separately copy control descriptions into guide skills. Update the shared help when

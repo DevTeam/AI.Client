@@ -41,7 +41,9 @@ public sealed class AppControlHintsRenderingTests
             {
                 var target = targets.Find(match.Groups[1].Value).ShouldNotBeNull();
                 match.Value.ShouldContain($"data-app-hint=\"{HtmlEncoder.Default.Encode(target.Hint!)}\"");
-                match.Value.ShouldContain("title=\"");
+                // The drawer is a region, not a control: hovering anywhere in it must not raise its help.
+                if (match.Value.StartsWith("<aside", StringComparison.Ordinal)) match.Value.ShouldNotContain("title=\"");
+                else match.Value.ShouldContain("title=\"");
             }
             foreach (var target in targets.All.Where(target => target.Section == section))
                 html.ShouldContain($"data-app-target=\"{target.Id}\"");

@@ -7,7 +7,7 @@
 @using AI.Contracts.Tools
 
 @{ var presentation = Presentations.DescribeCall(Approval.Name, Approval.Arguments); }
-<section @attributes="@(ControlHints.Attributes("chat.approval"))" class="tool-approval-bar opens-upward @(_detailsOpen ? "is-expanded" : "is-collapsed")" role="region" aria-label="Tool approval" aria-busy="@(_decidingApproval ? "true" : "false")">
+<section @attributes="@(ControlHints.Attributes("chat.approval", nativeTooltip: false))" class="tool-approval-bar opens-upward @(_detailsOpen ? "is-expanded" : "is-collapsed")" role="region" aria-label="Tool approval" aria-busy="@(_decidingApproval ? "true" : "false")">
     <div class="tool-approval-main chat-card-header">
         <button class="tool-approval-header" type="button" aria-expanded="@_detailsOpen" aria-controls="@_detailsId" @ref="_header" title="@(_detailsOpen ? "Collapse tool details" : "Expand tool details")" @onclick="ToggleDetails">
             <span class="tool-approval-mark chat-card-mark" aria-hidden="true"><AppIcon Name="shield" /></span>

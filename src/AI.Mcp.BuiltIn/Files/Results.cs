@@ -8,6 +8,21 @@ public sealed record TextFileResult(
     bool Truncated,
     string? Error);
 
+/// <summary>
+/// The outcome of reading one image. <paramref name="Width"/> and <paramref name="Height"/> are the
+/// pixel size read from the header, or <c>null</c> when the header could not be parsed;
+/// <paramref name="Attached"/> says whether the image bytes themselves travel with this result as
+/// an image content block, which is what lets a multimodal model look at the picture.
+/// </summary>
+public sealed record ImageFileResult(
+    string Path,
+    string MediaType,
+    long Bytes,
+    int? Width,
+    int? Height,
+    bool Attached,
+    string? Error);
+
 public sealed record FileText(string Path, string Content, bool Truncated, string? Error);
 
 public sealed record MultipleFilesResult(FileText[] Files, string? Error);

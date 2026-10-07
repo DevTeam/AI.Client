@@ -2,7 +2,7 @@
 
 ## Composition
 
-The built-in server ships 20 tools. All of them receive the `Ask` policy on first discovery, like any new tool.
+The built-in server ships 21 tools. All of them receive the `Ask` policy on first discovery, like any new tool.
 
 In addition, the Host ships a second built-in server — [App tools](17-app-tools.md) with five tools over the application's own data.
 
@@ -13,6 +13,7 @@ In addition, the Host ships a second built-in server — [App tools](17-app-tool
 | `list_allowed_directories` | enumerate project directory grants | — |
 | `read_text_file` | read a text file, `head`/`tail` options | `read` |
 | `read_multiple_files` | batch read up to 32 files | `read` |
+| `read_image_file` | read an image and return the picture itself as an image block | `read` |
 | `list_directory` | direct children of a directory | `read` |
 | `directory_tree` | flat directory tree walk | `read` |
 | `search_files` | glob-pattern search | `read` |
@@ -29,7 +30,7 @@ In addition, the Host ships a second built-in server — [App tools](17-app-tool
 | `zip_extract` | unpack entries into a destination directory | `read` for the archive, `write` for the destination |
 | `zip_create` | pack files and directories into a new archive | `read` for the sources, `write` for the archive |
 
-The following reference servers from `modelcontextprotocol/servers` are intentionally not adopted: `git` (12 tools are covered by `process_run`), `memory` (9 tools — a separate product decision about memory architecture), `sequentialthinking`, `time`, the deprecated `read_file`, as well as `read_media_file` and `list_directory_with_sizes` as excessive for the current scenarios.
+The following reference servers from `modelcontextprotocol/servers` are intentionally not adopted: `git` (12 tools are covered by `process_run`), `memory` (9 tools — a separate product decision about memory architecture), `sequentialthinking`, `time`, the deprecated `read_file`, as well as `list_directory_with_sizes` as excessive for the current scenarios. `read_media_file` is covered by `read_image_file`, which is narrower: it accepts only the image formats the Host can store and always returns the bytes rather than a choice between text and base64.
 
 ## Usage
 
@@ -79,11 +80,21 @@ Path check in `PathGuard`:
 - comparison against the grant root is case-insensitive on Windows; a non-recursive grant only allows direct children;
 - the grant root is canonicalized the same way when the server starts.
 
-Result limits: 262144 characters per file contents, 32 files and 262144 characters per `read_multiple_files`, 5000 entries per `list_directory`, 20000 entries and 32 levels per `directory_tree`, 1000 matches and 200000 visited entries per `search_files`, 1000 matches, 5000 read files, and 131072 characters per `grep_files`, 64 replacements per `edit_file`. Directory links are enumerated but not expanded during the walk. `move_file` does not overwrite an existing destination. `delete_file` deletes only a file, `delete_directory` only a directory: each tool refuses the other kind of path and names the suitable one. Without `recursive`, a non-empty directory is not removed, so a call that did not request recursion cannot wipe more than the named directory. Both tools declare `destructive = true` and `idempotent = false`: a repeat call on an already removed path returns `deleted: false` with an error.
+Result limits: 262144 characters per file contents, 32 files and 262144 characters per `read_multiple_files`, 15 MB per `read_image_file`, 5000 entries per `list_directory`, 20000 entries and 32 levels per `directory_tree`, 1000 matches and 200000 visited entries per `search_files`, 1000 matches, 5000 read files, and 131072 characters per `grep_files`, 64 replacements per `edit_file`. Directory links are enumerated but not expanded during the walk. `move_file` does not overwrite an existing destination. `delete_file` deletes only a file, `delete_directory` only a directory: each tool refuses the other kind of path and names the suitable one. Without `recursive`, a non-empty directory is not removed, so a call that did not request recursion cannot wipe more than the named directory. Both tools declare `destructive = true` and `idempotent = false`: a repeat call on an already removed path returns `deleted: false` with an error.
 
 `read_text_file` without `head`/`tail` returns the contents verbatim, including the trailing newline, so the result can be written back without distortion. `edit_file` compares text in normalized LF form and preserves the file's original newline style; every `oldText` must occur exactly once, otherwise no replacement is applied.
 
-Not implemented: `IncludePatterns`/`ExcludePatterns` from the `DirectoryGrant` model, media file reading.
+Not implemented: `IncludePatterns`/`ExcludePatterns` from the `DirectoryGrant` model.
+
+## read_image_file
+
+A file attached to a chat by path reaches the model as text — a name, a size, a media type — so a multimodal model asked about a picture it was only told about has nothing to look at. `read_image_file` closes that gap: it returns the bytes of the image itself as an MCP image content block, and the Host stores them as an asset exactly as it does for an uploaded image, so the next request carries the real picture.
+
+Input is a single absolute `path`. The format is decided by the bytes, not by the extension: PNG, JPEG, WebP and GIF are accepted, the same four the Host's asset store recognizes. The structured result carries `path`, `mediaType`, `bytes`, `width`, `height`, `attached` and `error`. Dimensions are read from the file header and are reported as `null` when it does not parse; a header that cannot be read never stops the picture itself from being returned.
+
+A file that is not one of those formats, an empty file, a path outside every `read` grant and a file above 15 MB are all refused with an `error` naming `read_text_file` for text or `get_file_info` for metadata. The limit matches the Host's own asset limit: a larger image would be rejected by the store that has to keep it, after the whole call had been paid for. A refused call carries no image block at all.
+
+A tool image becomes an asset only when the run has a project; when image input is disabled for the connection (`ImageInputMode.Disabled`), the Host drops the image from the request and the model sees the structured metadata alone.
 
 ## zip_list, zip_read, zip_extract, zip_create
 
@@ -149,12 +160,12 @@ Third-party stdio/HTTP server execution, OAuth, dynamic `list_changed`, the Resp
 
 The standard command is `dotnet run --project build -- verify`.
 
-Tests cover the real stdio MCP with `dotnet --info`, the 20-tool composition, fragmented model calls, schema validation, confirm/refuse/policy withdrawal, history recovery, both output streams, non-zero exit code, timeout, cancellation, environment, and child termination.
+Tests cover the real stdio MCP with `dotnet --info`, the 21-tool composition, fragmented model calls, schema validation, confirm/refuse/policy withdrawal, history recovery, both output streams, non-zero exit code, timeout, cancellation, environment, and child termination.
 
 For FileSystem tools and `fetch` additional checks cover: refusal when grants are missing, capability and containment (including non-recursive grant, `..`, and relative path), parsing and filtering of `AI_CLIENT_DIRECTORY_GRANTS`, Markdown extraction from HTML, and an end-to-end scenario through a real stdio — `create_directory`, `write_file`, `read_text_file` with `tail`, `edit_file` with `dryRun` and a repeat failed replacement, `read_multiple_files`, `search_files`, `list_directory`, `directory_tree`, `get_file_info`, `move_file`, `delete_file`, and `delete_directory` along with a denial of deletion under a grant without the `delete` capability, refusal of a path outside the grant, and rejection of a relative path before confirmation.
 
 For the archive tools an end-to-end scenario through the real stdio packs a directory, lists the archive with and without a glob, reads one entry and a missing one, unpacks it, refuses a repeat extraction without `overwrite`, refuses a Zip Slip entry contained in a hostile archive, refuses a path outside the grant for both listing and creating, and reports a plain file as not a valid zip archive.
 
-For the archive tools an end-to-end scenario through the real stdio packs a directory, lists the archive with and without a glob, reads one entry, unpacks it, refuses a repeat extraction without `overwrite`, refuses a Zip Slip entry contained in a hostile archive, refuses a path outside the grant for both listing and creating, and reports a plain file as not a valid zip archive.
+For `read_image_file` an end-to-end scenario through the real stdio reads a PNG and a JPEG, checks that the media type and the header dimensions are reported for each, and asserts that the image block carries the file's own bytes; it also checks that a text file is refused with a pointer to `read_text_file` and that a path outside the grant is refused without any image block.
 
 The publish build includes the server under `mcp`.

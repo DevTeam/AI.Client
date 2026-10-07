@@ -8,7 +8,7 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
 {
     protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        "read_text_file", "read_multiple_files", "list_directory", "directory_tree", "search_files", "grep_files",
+        "read_text_file", "read_multiple_files", "read_image_file", "list_directory", "directory_tree", "search_files", "grep_files",
         "get_file_info", "write_file", "edit_file", "create_directory", "move_file", "delete_file", "delete_directory",
         "zip_list", "zip_read", "zip_extract", "zip_create",
         "list_allowed_directories",
@@ -24,6 +24,7 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
             "read_multiple_files" => new ToolCallPresentation("Read files",
                 ArgumentArray(arguments, "paths") is { } paths ? Plural(paths.GetArrayLength(), "file", "files") : null,
                 ToolSafety.ReadOnly),
+            "read_image_file" => new ToolCallPresentation("Read image", FileLabel(path), ToolSafety.ReadOnly),
             "list_directory" => new ToolCallPresentation("List directory", FileLabel(path), ToolSafety.ReadOnly),
             "directory_tree" => new ToolCallPresentation("Read directory tree", FileLabel(path), ToolSafety.ReadOnly),
             "search_files" => new ToolCallPresentation("Search files",
@@ -76,6 +77,19 @@ public sealed class FileToolPresentationAdapter : BuiltInToolPresentationAdapter
             {
                 var files = Count(structured, "files") ?? 0;
                 return new ToolResultPresentation(Plural(files, "file", "files"), ToolResultSeverity.Ok, [], null);
+            }
+            case "read_image_file":
+            {
+                var bytes = Size(structured, "bytes");
+                var width = Number(structured, "width");
+                var height = Number(structured, "height");
+                var size = width is { } w && height is { } h ? $"{w}×{h}" : null;
+                return new ToolResultPresentation(
+                    Flag(structured, "attached") ? "Image attached" : "Image not attached",
+                    SeverityFor(!Flag(structured, "attached")),
+                    Facts(("Path", Text(structured, "path")), ("Media type", Text(structured, "mediaType")),
+                        ("Size", Bytes(bytes)), ("Dimensions", size)),
+                    null);
             }
             case "list_directory":
             case "directory_tree":

@@ -37,6 +37,28 @@ public class BuiltInToolPresentationTests
     }
 
     [Fact]
+    public void ShouldDescribeAnImageReadByThePictureItReturned()
+    {
+        var call = Call("read_image_file", """{"path":"C:\\src\\assets\\logo.png"}""");
+        call.Title.ShouldBe("Read image");
+        call.Detail.ShouldBe("assets/logo.png");
+        call.Safety.ShouldBe(ToolSafety.ReadOnly);
+
+        var described = Result("read_image_file", "{}",
+            """{"path":"/a.png","mediaType":"image/png","bytes":2048,"width":640,"height":480,"attached":true}""");
+        described.Summary.ShouldBe("Image attached");
+        described.Severity.ShouldBe(ToolResultSeverity.Ok);
+        described.Facts.ShouldContain(fact => fact.Label == "Dimensions" && fact.Value == "640×480");
+        described.Facts.ShouldContain(fact => fact.Label == "Media type" && fact.Value == "image/png");
+
+        // A result whose bytes did not travel is worth a warning: the model was told about an image
+        // it cannot see.
+        Result("read_image_file", "{}",
+                """{"path":"/a.png","mediaType":"image/png","bytes":2048,"attached":false}""")
+            .Summary.ShouldBe("Image not attached");
+    }
+
+    [Fact]
     public void ShouldMarkWritingToolsDestructiveAndReadingToolsReadOnly()
     {
         Call("read_text_file", """{"path":"/a"}""").Safety.ShouldBe(ToolSafety.ReadOnly);

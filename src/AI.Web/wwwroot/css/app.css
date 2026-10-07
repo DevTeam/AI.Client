@@ -813,7 +813,7 @@ body {
 
 .project-menu > button,
 .chat-menu > button,
-.branch-picker-menu button,
+.branch-picker-menu .branch-picker-row,
 .composer-endpoint-menu button,
 .composer-approval-menu button {
     gap: 0.45rem;
@@ -2910,24 +2910,180 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     top: calc(100% + 0.2rem);
     left: 0.8rem;
     display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
     min-width: 13rem;
-    max-width: min(24rem, 70vw);
+    /* Never wider than the feed it opens in (its container), which would scroll it sideways. */
+    max-width: min(24rem, 70vw, calc(100cqi - 2.5rem));
+    max-height: min(60vh, 32rem);
 }
 
-.branch-picker-menu button {
+/* Many lines: a fixed width, so filtering does not make the menu jump. */
+.branch-picker-menu.is-rich { width: min(23rem, 70vw, calc(100cqi - 2.5rem)); }
+
+.branch-picker-list {
+    display: grid;
+    align-content: start;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.branch-picker-row {
     display: grid;
     grid-template-columns: 1.2rem auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.4rem;
     border-color: transparent;
     background: transparent;
+    color: var(--color-text-secondary);
     text-align: left;
 }
 
-.branch-picker-menu button:hover,
-.branch-picker-menu button.selected {
-    background: var(--color-fill-active);
+.branch-picker-row:hover:not(:disabled),
+.branch-picker-row.is-highlighted {
+    background: var(--color-fill-hover);
+    color: var(--color-text);
 }
+
+.branch-picker-row.selected,
+.branch-picker-row.selected:hover:not(:disabled) {
+    background: var(--color-accent-bg);
+    color: var(--color-accent-text);
+}
+
+.branch-picker-row.selected.is-highlighted { background: var(--color-accent-bg-hover); }
+.branch-picker-check { color: var(--color-accent-text); }
+
+.branch-picker-search {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0 0 0.25rem;
+    padding: 0.15rem 0.5rem 0.4rem;
+    border-bottom: 1px solid var(--color-border-subtle);
+    color: var(--color-text-faint);
+}
+
+.branch-picker-search > .app-icon { flex: none; width: 0.9rem; height: 0.9rem; }
+
+.branch-picker-search > input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.3rem 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text);
+    font-size: var(--font-size-md);
+}
+
+.branch-picker-search > input:focus { outline: none; }
+.branch-picker-keys { display: inline-flex; gap: 0.15rem; }
+
+.branch-picker-keys kbd {
+    padding: 0.1rem 0.3rem;
+    border: 1px solid var(--color-border);
+    border-bottom-width: 2px;
+    border-radius: var(--radius-xs);
+    background: var(--color-fill);
+    color: var(--color-text-subtle);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-2xs);
+    line-height: 1.2;
+}
+
+.branch-picker-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.6rem 0.25rem;
+    color: var(--color-text-faint);
+    font-size: var(--font-size-2xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.branch-picker-heading:first-child { padding-top: 0.2rem; }
+.branch-picker-heading > span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.branch-picker-heading .app-icon { width: 0.75rem; height: 0.75rem; }
+.branch-picker-heading > span:last-child { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+
+.branch-picker-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.1rem 0.5rem 0.35rem; }
+
+.branch-picker-menu .branch-picker-chips > button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+}
+
+.branch-picker-chips > button > b { color: var(--color-text-subtle); font-weight: 500; font-variant-numeric: tabular-nums; }
+.branch-picker-chips > button > i { width: 0.4rem; height: 0.4rem; border-radius: 50%; }
+.branch-picker-menu .branch-picker-chips > button:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
+
+.branch-picker-menu .branch-picker-chips > button.is-on {
+    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+    background: var(--color-accent-bg);
+    color: var(--color-accent-text);
+}
+
+.branch-picker-chips > button.is-on > b { color: inherit; }
+
+.branch-run-dot { width: 0.5rem; height: 0.5rem; margin: 0 0.25rem; border-radius: 50%; background: var(--color-text-faint); }
+.branch-run-dot.is-succeeded, .branch-picker-chips .is-succeeded > i { background: var(--color-success); }
+.branch-run-dot.is-failed, .branch-picker-chips .is-failed > i { background: var(--color-danger); }
+.branch-run-dot.is-blocked, .branch-picker-chips .is-blocked > i { background: var(--color-warning); }
+.branch-run-dot.is-running, .branch-picker-chips .is-running > i { background: var(--color-accent); }
+.branch-run-dot.is-running { animation: chat-schedule-pulse 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .branch-run-dot.is-running { animation: none; } }
+
+.branch-picker-row .branch-option-label { display: flex; align-items: center; min-width: 0; font-variant-numeric: tabular-nums; }
+.branch-picker-row .branch-option-text { overflow: hidden; text-overflow: ellipsis; }
+.branch-picker-row .branch-run-tag { flex: none; }
+
+.branch-run-tag {
+    margin-left: 0.4rem;
+    padding: 0.05rem 0.35rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-fill);
+    color: var(--color-text-subtle);
+    font-size: var(--font-size-2xs);
+}
+
+.branch-run-outcome { color: var(--color-text-faint); font-size: var(--font-size-xs); white-space: nowrap; }
+.branch-run-outcome.is-succeeded { color: var(--color-success-text); }
+.branch-run-outcome.is-failed { color: var(--color-danger-text); }
+.branch-run-outcome.is-blocked { color: var(--color-warning-text); }
+.branch-run-outcome.is-running { color: var(--color-accent-text); }
+
+.branch-picker-menu .branch-picker-more {
+    justify-self: start;
+    margin: 0.15rem 0 0.1rem;
+    padding: 0.3rem 0.6rem;
+    border: 0;
+    background: transparent;
+    color: var(--color-accent-text);
+    font-size: var(--font-size-sm);
+}
+
+.branch-picker-menu .branch-picker-more:hover { text-decoration: underline; }
+/* The sidebar folds a scheduled chat's runs the way the branch picker groups them. */
+.branch-runs-group .branch-link { color: var(--color-text-secondary); }
+.branch-runs-chevron { flex: none; width: 0.8rem; height: 0.8rem; transition: transform var(--duration-base) ease; }
+.branch-runs-group [aria-expanded="true"] .branch-runs-chevron { transform: rotate(90deg); }
+.branch-runs-counts { display: inline-flex; flex: none; gap: 0.45rem; margin-left: auto; color: var(--color-text-subtle); font-size: var(--font-size-xs); font-variant-numeric: tabular-nums; }
+.branch-runs-counts > span { display: inline-flex; align-items: center; gap: 0.2rem; }
+.branch-runs-counts .branch-run-dot { width: 0.4rem; height: 0.4rem; margin: 0; }
+.branch-run-row .branch-link { font-variant-numeric: tabular-nums; }
+.branch-run-row .branch-run-dot { flex: none; }
+.branch-runs-more .nav-item-label { color: var(--color-accent-text); font-size: var(--font-size-sm); }
+
+.branch-picker-empty { padding: 0.6rem; color: var(--color-text-subtle); font-size: var(--font-size-sm); }
 
 .branch-option-label {
     overflow: hidden;

@@ -126,7 +126,7 @@ public sealed class BranchPickerRenderingTests
     }
 
     private static string[] Labels(string html) => html
-        .Split("<span class=\"branch-option-label\">").Skip(1)
+        .Split("<span class=\"branch-option-text\">").Skip(1)
         .Select(fragment => fragment[..fragment.IndexOf("</span>", StringComparison.Ordinal)])
         .ToArray();
 

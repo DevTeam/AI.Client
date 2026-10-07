@@ -1,0 +1,190 @@
+@* The list a fork point's branch chooser opens. A few lines stay a plain list. Once there are many —
+   a scheduled chat gains one per run — it grows a filter box, splits the conversation's own
+   branches from the scheduled runs, lets the runs be filtered by outcome and shows only the newest
+   until asked for all; the current line is always among those shown. ↑ and ↓ move through what is
+   shown, Enter opens it, Escape closes the menu (the feed handles that). *@
+@using AI.Contracts.Schedules
+
+<span class="branch-picker-menu @(Rich ? "is-rich" : null)" role="menu" @onkeydown="KeyAsync">
+    @if (ShowSearch)
+    {
+        <span class="branch-picker-search">
+            <AppIcon Name="search" />
+            <input @ref="_search" type="text" value="@_query" placeholder="Filter @Items.Count branches" aria-label="Filter branches"
+                   @oninput="args => { _query = args.Value?.ToString() ?? string.Empty; _highlight = 0; }" />
+            <span class="branch-picker-keys" aria-hidden="true"><kbd>↑↓</kbd><kbd>Enter</kbd></span>
+        </span>
+    }
+    @{
+        var visible = Visible(out var conversation, out var runs, out var runTotal, out var hiddenRuns);
+        var index = 0;
+    }
+    <span class="branch-picker-list">
+        @if (conversation.Count > 0)
+        {
+            @if (runTotal > 0 || runs.Count > 0)
+            {
+                <span class="branch-picker-heading"><span>Conversation</span><span>@conversation.Count</span></span>
+            }
+            @foreach (var item in conversation)
+            {
+                @Row(item, index++ == _highlight)
+            }
+        }
+        @if (AllRuns.Count > 0)
+        {
+            <span class="branch-picker-heading"><span><AppIcon Name="stopwatch" />Scheduled runs</span><span>@runTotal</span></span>
+            @if (Outcomes().Count > 1)
+            {
+                <span class="branch-picker-chips" role="group" aria-label="Show runs by outcome">
+                    <button type="button" class="@(_outcome is null ? "is-on" : null)" aria-pressed="@(_outcome is null ? "true" : "false")"
+                            @onclick="() => SetOutcome(null)">All <b>@AllRuns.Count</b></button>
+                    @foreach (var (status, count) in Outcomes())
+                    {
+                        <button type="button" class="is-@status.ToString().ToLowerInvariant() @(_outcome == status ? "is-on" : null)"
+                                aria-pressed="@(_outcome == status ? "true" : "false")" @onclick="() => SetOutcome(status)">
+                            <i aria-hidden="true"></i>@OutcomeLabel(status) <b>@count</b>
+                        </button>
+                    }
+                </span>
+            }
+            @foreach (var item in runs)
+            {
+                @Row(item, index++ == _highlight)
+            }
+            @if (hiddenRuns > 0 || _expanded && runTotal > CollapsedRuns && _query.Length == 0)
+            {
+                <button type="button" class="branch-picker-more" @onclick="() => _expanded = !_expanded">
+                    @(hiddenRuns > 0 ? $"Show all {runTotal} runs" : "Show fewer")
+                </button>
+            }
+        }
+        @if (visible.Count == 0)
+        {
+            <span class="branch-picker-empty">No branch matches “@_query.Trim()”.</span>
+        }
+    </span>
+</span>
+
+@code {
+    /// <summary>Runs shown before "Show all".</summary>
+    public const int CollapsedRuns = 6;
+
+    /// <summary>More lines than this and the picker offers a filter box.</summary>
+    public const int SearchThreshold = 7;
+
+    [Parameter, EditorRequired] public IReadOnlyList<BranchPickerItem> Items { get; set; } = [];
+    [Parameter] public EventCallback<BranchPickerItem> OnSelect { get; set; }
+
+    private ElementReference _search;
+    private string _query = string.Empty;
+    private ScheduleRunStatus? _outcome;
+    private bool _expanded;
+    private int _highlight;
+    private bool _focused;
+
+    private bool ShowSearch => Items.Count > SearchThreshold;
+    private bool Rich => ShowSearch || AllRuns.Count > 0;
+    private IReadOnlyList<BranchPickerItem> AllRuns => Items.Where(item => item.RunStatus is not null)
+        .OrderByDescending(item => item.RunNumber).ToArray();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focused || !ShowSearch) return;
+        _focused = true;
+        // The menu opens to be searched: the keyboard is in the filter box straight away.
+        try { await _search.FocusAsync(); }
+        catch (InvalidOperationException) { }
+    }
+
+    private List<BranchPickerItem> Visible(out List<BranchPickerItem> conversation, out List<BranchPickerItem> runs,
+        out int runTotal, out int hiddenRuns)
+    {
+        var query = _query.Trim();
+        bool Matches(BranchPickerItem item) => query.Length == 0
+            || item.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
+            || item.RunTag?.Contains(query, StringComparison.OrdinalIgnoreCase) == true
+            || item.RunStatus is { } status && OutcomeLabel(status).Contains(query, StringComparison.OrdinalIgnoreCase);
+        conversation = Items.Where(item => item.RunStatus is null && Matches(item)).ToList();
+        var matchingRuns = AllRuns.Where(item => Matches(item) && (_outcome is null || item.RunStatus == _outcome)).ToList();
+        runTotal = matchingRuns.Count;
+        // Collapsed, the newest runs are shown — and always the current one, wherever it is.
+        var collapse = !_expanded && query.Length == 0 && matchingRuns.Count > CollapsedRuns;
+        runs = collapse
+            ? matchingRuns.Where((item, position) => position < CollapsedRuns || item.Selected).ToList()
+            : matchingRuns;
+        hiddenRuns = runTotal - runs.Count;
+        return [.. conversation, .. runs];
+    }
+
+    private List<(ScheduleRunStatus Status, int Count)> Outcomes() => AllRuns
+        .GroupBy(item => item.RunStatus!.Value)
+        .OrderBy(group => OutcomeOrder(group.Key))
+        .Select(group => (group.Key, group.Count())).ToList();
+
+    private void SetOutcome(ScheduleRunStatus? outcome)
+    {
+        _outcome = _outcome == outcome ? null : outcome;
+        _highlight = 0;
+    }
+
+    private async Task KeyAsync(KeyboardEventArgs args)
+    {
+        var visible = Visible(out _, out _, out _, out _);
+        if (visible.Count == 0) return;
+        switch (args.Key)
+        {
+            case "ArrowDown":
+                _highlight = (_highlight + 1) % visible.Count;
+                break;
+            case "ArrowUp":
+                _highlight = (_highlight - 1 + visible.Count) % visible.Count;
+                break;
+            case "Enter" when ShowSearch:
+                await OnSelect.InvokeAsync(visible[Math.Clamp(_highlight, 0, visible.Count - 1)]);
+                break;
+        }
+    }
+
+    private RenderFragment Row(BranchPickerItem item, bool highlighted) =>
+        @<button class="branch-picker-row @(item.Selected ? "selected" : null) @(highlighted && ShowSearch ? "is-highlighted" : null)"
+                 type="button" role="menuitemradio" aria-checked="@(item.Selected ? "true" : "false")" title="@item.Tooltip"
+                 @onclick="() => OnSelect.InvokeAsync(item)">
+            @if (item.Selected) { <AppIcon Name="check" Class="branch-picker-check" /> } else { <span class="branch-option-spacer"></span> }
+            @if (item.RunStatus is { } status)
+            {
+                <i class="branch-run-dot is-@status.ToString().ToLowerInvariant()" aria-hidden="true"></i>
+            }
+            else
+            {
+                <AppIcon Name="@item.Icon" Class="@($"branch-option-icon {item.IconClass}")" />
+            }
+            <span class="branch-option-label"><span class="branch-option-text">@item.Title</span>@if (item.RunTag is { } tag) { <span class="branch-run-tag">@tag</span> }</span>
+            @if (item.RunStatus is { } outcome)
+            {
+                <span class="branch-run-outcome is-@outcome.ToString().ToLowerInvariant()">@OutcomeLabel(outcome).ToLowerInvariant()</span>
+            }
+            else if (item.EndsHere)
+            {
+                <span class="branch-option-tag">ends here</span>
+            }
+        </button>;
+
+    private static string OutcomeLabel(ScheduleRunStatus status) => status switch
+    {
+        ScheduleRunStatus.Succeeded => "Succeeded",
+        ScheduleRunStatus.Failed => "Failed",
+        ScheduleRunStatus.Blocked => "Waiting",
+        ScheduleRunStatus.Running => "Running",
+        _ => status.ToString()
+    };
+
+    private static int OutcomeOrder(ScheduleRunStatus status) => status switch
+    {
+        ScheduleRunStatus.Succeeded => 0,
+        ScheduleRunStatus.Failed => 1,
+        ScheduleRunStatus.Blocked => 2,
+        ScheduleRunStatus.Running => 3,
+        _ => 4
+    };
+}

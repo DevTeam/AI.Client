@@ -159,6 +159,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         }
 
         var empty = 0;
+        var interrupted = 0;
         var truncated = 0;
         var continuedAnswer = new StringBuilder();
         var stalledSteps = 0;
@@ -377,17 +378,30 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             }
             await Usage(plan);
             if (!plan.Fits) throw new ContextWindowExceededException(plan);
-            await foreach (var chunk in completion.StreamAsync(
-                               request with { ContextMessages = plan.Messages, Tools = available }, token))
+            try
             {
-                chunkCount++;
-                if (chunk.ToolCalls is { } received) calls.AddRange(received);
-                if (chunk.FinishReason is { Length: > 0 } reason) finish = reason;
-                if (chunk is { ToolCallsStarted: true, ToolCallName: { Length: > 0 } starting } && draftToolCall is not null)
-                    await draftToolCall(starting, token);
-                if (chunk.Content.Length == 0) continue;
-                content.Append(chunk.Content);
-                await Draft(chunk.Content);
+                await foreach (var chunk in completion.StreamAsync(
+                                   request with { ContextMessages = plan.Messages, Tools = available }, token))
+                {
+                    chunkCount++;
+                    if (chunk.ToolCalls is { } received) calls.AddRange(received);
+                    if (chunk.FinishReason is { Length: > 0 } reason) finish = reason;
+                    if (chunk is { ToolCallsStarted: true, ToolCallName: { Length: > 0 } starting } && draftToolCall is not null)
+                        await draftToolCall(starting, token);
+                    if (chunk.Content.Length == 0) continue;
+                    content.Append(chunk.Content);
+                    await Draft(chunk.Content);
+                }
+                interrupted = 0;
+            }
+            // A stream that broke off part-way has left nothing behind: the step is persisted only
+            // once it is complete, so none of its calls ran. Asking for the step again is what the
+            // person would do with Retry, and a team branch has nobody watching to press it.
+            catch (Exception error) when (StreamBroke(error, token) && ++interrupted <= MaxInterruptedSteps)
+            {
+                await Draft(null);
+                await Task.Delay(TimeSpan.FromSeconds(2 * interrupted), token);
+                continue;
             }
             if (calls.Count == 0 && content.Length == 0)
             {
@@ -593,6 +607,20 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// hammered, and the user is the one waiting through every attempt.
     /// </summary>
     private const int MaxEmptyTurns = 2;
+
+    /// <summary>
+    /// How many times in a row a step whose stream broke off is asked for again before the run
+    /// fails. A provider that keeps dropping the same request is reported rather than retried forever.
+    /// </summary>
+    private const int MaxInterruptedSteps = 3;
+
+    /// <summary>
+    /// Whether a step failed because its stream broke off after it had started — fell silent, ended
+    /// mid tool call, or lost its connection — rather than because the endpoint refused it.
+    /// </summary>
+    private static bool StreamBroke(Exception error, CancellationToken token) =>
+        !token.IsCancellationRequested && error is ChatStreamInterruptedException or IOException
+            or HttpRequestException { StatusCode: null };
 
     /// <summary>
     /// Summarizes what fills a context that is filling up: the earlier turns, kept as a history

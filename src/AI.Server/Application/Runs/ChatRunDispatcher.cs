@@ -386,11 +386,12 @@ public sealed class ChatRunDispatcher(
     }
 
     /// <summary>
-    /// A teammate whose turn stopped for lack of progress tells the lead, who would otherwise learn
-    /// of it only by looking. A teammate's branch is one that a team message of the main branch
+    /// A teammate whose turn stopped — for lack of progress, or failed — tells the lead, who would
+    /// otherwise learn of it only by looking, and a team waits on a lead that does not look. A
+    /// teammate's branch is one that a team message of the main branch
     /// started (docs/34-asides-and-team-messages.md); any other branch keeps the report to itself.
     /// </summary>
-    private async Task ReportStalledTeammateAsync(Runtime runtime, string report, CancellationToken token)
+    private async Task ReportToLeadAsync(Runtime runtime, string report, CancellationToken token)
     {
         var (projectId, chatId, branchId) = (runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId);
         if (branchId == chatId) return;
@@ -405,7 +406,7 @@ public sealed class ChatRunDispatcher(
         try
         {
             await SubmitCoreAsync(projectId, chatId, new SubmitChatMessageRequest(id, id,
-                    "Stopped: several steps in a row produced nothing new.\n\n" + report, ChatSubmitMode.Send, chatId),
+                    report, ChatSubmitMode.Send, chatId),
                 true, token, new ChatMessageSender(chatId, branchId, "blocker"));
         }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or IOException
@@ -695,7 +696,8 @@ public sealed class ChatRunDispatcher(
                     draftToolCall: (name, ct) => ReportDraftToolCallAsync(runtime, name, ct),
                     overlayPromptsAllowed: queued.Interactive,
                     asides: ct => TakeAsidesIntoTurnAsync(runtime, ct),
-                    stalledReport: (report, ct) => ReportStalledTeammateAsync(runtime, report, ct));
+                    stalledReport: (report, ct) => ReportToLeadAsync(runtime,
+                        "Stopped: several steps in a row produced nothing new.\n\n" + report, ct));
                 var suggestTitle = false;
                 Guid? answeredHead = null;
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
@@ -771,6 +773,15 @@ public sealed class ChatRunDispatcher(
                 try { await chatMutations.MarkActivityCoreAsync(runtime.State.ProjectId, runtime.State.ChatId, CancellationToken.None); }
                 catch (Exception markError) when (markError is IOException or UnauthorizedAccessException
                     or InvalidOperationException or Domain.Common.DomainException) { }
+                // Started outside this lease: telling the lead submits into the main branch, which
+                // takes the same chat lock.
+                if (!_shutdown.IsCancellationRequested)
+                {
+                    var failure = Describe(error);
+                    _ = Task.Run(() => ReportToLeadAsync(runtime,
+                        $"Failed: {failure}\nThe branch is stopped until someone retries or discards its turn.",
+                        _shutdown.Token));
+                }
             }
             if (error is OperationCanceledException && runtime.ResumeRequested && !_shutdown.IsCancellationRequested) runtime.State.Resume();
             try { await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, CancellationToken.None), CancellationToken.None); }

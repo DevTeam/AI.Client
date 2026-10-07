@@ -23,6 +23,9 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
      sender's branch, intent `Answer`, mode Send: it wakes the teammate.
    - `blocker`: unblock it — answer, adjust the scope, or move the work to another teammate. A
      change to scope, owned paths or a contract is a decision (below).
+     A `blocker` that starts with "Failed:" is the application reporting that the teammate's turn
+     failed (an endpoint or stream error, not the teammate's judgement): resume that branch once
+     with `app_runs` Resume; if it fails again, tell the user which branch is stopped and why.
    - `decision` proposed by a teammate: accept or reject it as a decision.
    - `status`: nothing to send. Note it for the status table.
    - `done`: check the deliverable against its definition of done — read the changes, run the

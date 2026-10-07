@@ -168,6 +168,20 @@ model's account of the stall to the main branch as a `blocker` from that branch,
 lead (see the stall rule in [Hidden model instructions](22-hidden-model-instructions-and-run-completion.md)).
 A teammate's branch is recognised by its first message: a team message the main branch sent.
 
+### Failures
+
+A team runs with nobody watching each branch, so a failure must neither stop the team silently
+nor wait for someone to press Retry:
+
+- **A broken stream is retried by the agent.** When a model step's stream breaks off after it has
+  started — falls silent past the idle timeout, ends in the middle of a tool call, or loses its
+  connection (`ChatStreamInterruptedException`, `IOException`) — the agent asks for the step again,
+  up to three times in a row, after 2, 4 and 6 seconds. Nothing of the broken step was persisted
+  or executed, so this is the same as Retry. This applies to every chat, not only teams.
+- **A teammate's failed turn is reported to the lead** as a `blocker` beginning with "Failed:";
+  `team-coordinate` resumes that branch once with `app_runs` Resume and tells the user if it fails
+  again. A turn stopped for lack of progress is reported the same way.
+
 ### Known limits
 
 - Branches share the project's working directory. The charter assigns owned paths to each role;

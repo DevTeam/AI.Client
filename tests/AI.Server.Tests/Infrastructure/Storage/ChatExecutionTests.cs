@@ -442,6 +442,51 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task AStepWhoseStreamBrokeOffShouldBeAskedForAgainWithoutFailingTheRun()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        fixture.Completion.NextPrelude = "Reading the files";
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Summarize the repository"));
+
+        (await fixture.NextCallAsync()).Answer.SetException(
+            new AI.Application.Chat.ChatStreamInterruptedException("Tool call stream timed out before completion."));
+        (await fixture.NextCallAsync()).Answer.SetResult("The summary.");
+
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages[^1].Content.ShouldBe("The summary.");
+        // The broken attempt left nothing behind, its half-streamed text included.
+        chat.Messages.ShouldNotContain(message => message.Content.Contains("Reading the files"));
+    }
+
+    [Fact]
+    public async Task ATeammatesFailedTurnShouldBeReportedToTheLead()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Team charter"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Forking the team.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var head = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.Messages[^1].Id;
+        var brief = Guid.NewGuid();
+        await fixture.Dispatcher.SubmitFromRunAsync(fixture.ProjectId, fixture.ChatId,
+            new SubmitChatMessageRequest(brief, brief, "You are backend.", ChatSubmitMode.Fork, fixture.ChatId,
+                MessageParentMode.Explicit, head),
+            new AI.Domain.Chats.ChatMessageSender(fixture.ChatId, fixture.ChatId, "decision"), CancellationToken.None);
+
+        (await fixture.NextCallAsync()).Answer.SetException(new InvalidOperationException("The endpoint refused the request."));
+
+        // The lead is woken by the report rather than waiting for a teammate that will never answer.
+        var lead = await fixture.NextCallAsync();
+        var report = lead.Request.ContextMessages!.Last(item => item.Role == "user" && !item.IsContextSummary);
+        report.ForModel.ShouldContain("(blocker)");
+        report.ForModel.ShouldContain("Failed: The endpoint refused the request.");
+        lead.Answer.SetResult("Resuming the backend branch.");
+        await fixture.WaitAsync(run => run.BranchId == fixture.ChatId && run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task MessageFromAnotherBranchsRunShouldCarryItsSender()
     {
         await using var fixture = await Fixture.CreateAsync();

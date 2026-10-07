@@ -67,7 +67,7 @@ public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageRead
 
             if (line is null)
             {
-                if (calls.Count > 0) throw new InvalidOperationException("Tool call stream ended before completion.");
+                if (calls.Count > 0) throw new ChatStreamInterruptedException("Tool call stream ended before completion.");
                 break;
             }
 
@@ -83,7 +83,7 @@ public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageRead
             var data = line[5..].TrimStart();
             if (data == "[DONE]")
             {
-                if (calls.Count > 0) throw new InvalidOperationException("Tool call stream has no completion marker.");
+                if (calls.Count > 0) throw new ChatStreamInterruptedException("Tool call stream has no completion marker.");
                 break;
             }
 
@@ -182,8 +182,8 @@ public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageRead
     /// whatever text had arrived — often only "Now I'll create the files." — the run's final
     /// answer, and the run reported success with the work not done.
     /// </summary>
-    private InvalidOperationException Stalled(int pendingToolCalls) => pendingToolCalls > 0
-        ? new InvalidOperationException("Tool call stream timed out before completion.")
-        : new InvalidOperationException(
+    private ChatStreamInterruptedException Stalled(int pendingToolCalls) => pendingToolCalls > 0
+        ? new ChatStreamInterruptedException("Tool call stream timed out before completion.")
+        : new ChatStreamInterruptedException(
             $"The model stopped sending its answer for {policy.StreamIdleTimeout.TotalSeconds:0} seconds before finishing it.");
 }

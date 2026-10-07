@@ -131,6 +131,7 @@ public sealed partial class SettingsTransferCodec : ISettingsTransferCodec
 
         if (!server.Enabled) writer.WriteBoolean("disabled", true);
         if (server.Policy != "Ask") writer.WriteString("policy", server.Policy);
+        if (server.ModernProtocolOnly) writer.WriteBoolean("modernProtocolOnly", true);
         writer.WriteEndObject();
     }
 
@@ -415,7 +416,8 @@ public sealed partial class SettingsTransferCodec : ISettingsTransferCodec
                 transport == Stdio ? arguments : [],
                 transport == Stdio ? String(element, "cwd")?.Trim() : null,
                 environment,
-                false);
+                false,
+                TryGet(element, "modernProtocolOnly", out var modernOnly) && modernOnly.ValueKind == JsonValueKind.True);
             McpServers.Add(new ImportedSettingsItem<McpServerSettings>(settings, credentialOmitted, notes));
         }
 

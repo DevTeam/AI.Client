@@ -317,6 +317,10 @@
                                         <div class="settings-card">
                                             <label class="settings-row settings-field"><span class="settings-row-label">Name</span><InputText autocomplete="off" @bind-Value="server.Name" readonly="@hostProvided" /></label>
                                             <label class="settings-row settings-field"><span class="settings-row-label">Transport</span><select disabled="@hostProvided" @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option>@if (hostProvided) { <option>InProcess</option> }</select></label>
+                                            @if (!hostProvided)
+                                            {
+                                                <label class="settings-row"><span class="settings-row-text"><span class="settings-row-label">2026-07-28 protocol only</span><span class="settings-row-hint">Use for servers known to support it; disables fallback to the older initialize handshake.</span></span><input class="settings-switch" type="checkbox" role="switch" @bind="server.ModernProtocolOnly" /></label>
+                                            }
                                             @if (!hostProvided && server.Transport == "StreamableHttp")
                                             {
                                                 <label class="settings-row settings-field"><span class="settings-row-label">URL</span><InputText autocomplete="url" @bind-Value="server.Url" /></label>
@@ -1567,6 +1571,7 @@
         public string Transport { get; set; } = "StreamableHttp";
         public bool Enabled { get; set; } = true;
         public string Policy { get; set; } = "Ask";
+        public bool ModernProtocolOnly { get; set; }
         public string? Url { get; set; }
         public string? Command { get; set; }
         public string ArgumentsText { get; set; } = string.Empty;
@@ -1602,7 +1607,7 @@
         public static GlobalMcpServerEditor From(AI.Contracts.Settings.McpServerSettings item) => new()
         {
             Id = item.Id, Name = item.Name, Transport = item.Transport, Enabled = item.Enabled,
-            Policy = item.Policy, Url = item.Url, Command = item.Command,
+            Policy = item.Policy, ModernProtocolOnly = item.ModernProtocolOnly, Url = item.Url, Command = item.Command,
             ArgumentsText = string.Join(Environment.NewLine, item.Arguments),
             WorkingDirectory = item.WorkingDirectory,
             EnvironmentText = string.Join(Environment.NewLine, item.EnvironmentVariables.Select(variable =>
@@ -1617,7 +1622,7 @@
             ArgumentsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             WorkingDirectory,
             ParseEnvironment(),
-            HasCredential);
+            HasCredential, ModernProtocolOnly);
 
         // HasSecret is the Host's to say, and it ignores what is sent; it is filled in here so an
         // import can tell a server that already holds a key from one that does not.

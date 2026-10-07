@@ -13,4 +13,5 @@ public sealed record McpServerSettings(
     IReadOnlyList<string> Arguments,
     string? WorkingDirectory,
     IReadOnlyList<McpEnvironmentVariableSettings> EnvironmentVariables,
-    bool HasCredential);
+    bool HasCredential,
+    bool ModernProtocolOnly = false);

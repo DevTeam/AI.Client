@@ -22,6 +22,12 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    you work, before your next step.
 3. Do the work with the skills your brief names, the project's conventions and its checks. Change
    only your owned paths. A change anywhere else, or to a contract, is a question to the lead.
+   The team shares one working directory, so other teammates' unfinished work is on disk next to
+   yours: never change the git index or working tree as a whole — no commit, stash, checkout,
+   reset, restore, clean, rebase, merge, cherry-pick or revert, even when another skill's steps
+   say so. Committing and integrating are the lead's. Read-only git (status, diff, log) is fine.
+   A question another skill would put to the user goes to the lead first; use `ask_user` only for
+   a decision the charter leaves to the user, and say in it that you are asking as <role>.
 4. Write to the lead with `app_runs` Submit, `branchId` = `chatId`, a fresh `operationId`,
    `wait` false:
    - progress worth knowing: mode Aside, intent `Status`, at most once per phase;

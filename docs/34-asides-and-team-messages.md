@@ -122,6 +122,20 @@ submitted from the main branch's run, so each brief shows the main branch as its
 
 `team` is a skill domain for these playbooks.
 
+The protocol lives in these three playbooks only; other skills stay unaware of teams. Where a
+general skill would conflict, the team playbook overrides it: a teammate never changes the git
+state of the shared working directory (committing is the lead's, at integration) and takes
+questions to the lead before the user. `code-plan` mentions `team-assemble` when its plan splits
+into parallel parts on disjoint files, and the help of the send button and the branch row tells
+the guide about asides and team branches.
+
+A loaded playbook stays active only for the last few user messages (see
+[Skills](27-skills.md)), and team messages are user messages. So a message that carries an intent
+and comes from the same chat names the protocol in its header: "team message from the lead: keep
+to the team-contribute protocol" in a teammate's branch, "team message to the lead: handle it with
+the team-coordinate protocol" in the main branch. A fork or a message without an intent gets no
+such line.
+
 ### Known limits
 
 - Branches share the project's working directory. The charter assigns owned paths to each role;

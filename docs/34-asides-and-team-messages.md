@@ -122,6 +122,23 @@ submitted from the main branch's run, so each brief shows the main branch as its
 
 `team` is a skill domain for these playbooks.
 
+### Being offered
+
+Users rarely ask for a team by name, so `team-assemble` is reached in four ways:
+
+- **The router.** `skill-route` puts it first for a large request spanning several independent areas
+  that could proceed at the same time (an API with its UI and tests, several modules or services,
+  separately researched options) or one that mentions a team, roles or parallel work — never for a
+  change in one area, a bug, a question or a continuation. A doubtful choice costs one analysis:
+  the playbook decides whether a team pays off and falls back to one branch.
+- **Its description** names those signals, for the catalog the model reads.
+- **`/team`** invokes it directly.
+- **Planning skills** (`code-plan`, `code-feature-implement`, `qa-plan`) offer it in one sentence
+  when their plan splits into parallel parts on disjoint files; they never start a team themselves.
+
+`evals/AI.Routing.Evals` measures the router on messages that should and should not reach it (see
+[Context request budgets and quality evaluation](31-context-evaluation.md#opt-in-model-quality-evaluation)).
+
 The protocol lives in these three playbooks only; other skills stay unaware of teams. Where a
 general skill would conflict, the team playbook overrides it: a teammate never changes the git
 state of the shared working directory (committing is the lead's, at integration) and takes

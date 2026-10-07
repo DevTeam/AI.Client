@@ -48,6 +48,8 @@ queries and existing result inspection are allowed; describe unavailable verific
    required data/accounts, environment dependencies and realistic constraints.
 6. Produce an ordered plan with scenarios, responsible test layer, evidence needed, blocked
    prerequisites and entry/exit criteria. Include failure triage and regression selection;
-   do not invent a schedule or imply one metric proves release quality.
+   do not invent a schedule or imply one metric proves release quality. When the plan holds
+   several independent test areas worth running at the same time, mention that team-assemble
+   could carry them out as a team.
 7. Report the complete plan, prioritized risks, source links, acceptance/exit criteria and
    open decisions. Planning does not execute checks; a request to execute is a different task.

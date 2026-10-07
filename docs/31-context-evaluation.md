@@ -103,3 +103,18 @@ Review answers for meaning as well: whether a rejected alternative remains rejec
 approval remains pending, and unrun tests are not described as passed. Identifier recall alone
 cannot detect every status reversal or unsupported inference. Extend fixtures from observed
 failures before tuning budgets. No live quality result is claimed by an offline test run.
+
+`evals/AI.Routing.Evals` checks the skill router the same way: the real `skill-route` request on
+the model under test, for messages that should and should not put `team-assemble` first. It needs
+`AI_ROUTING_EVAL=1`, `AI_ROUTING_EVAL_BASE_URL`, `AI_ROUTING_EVAL_MODEL` and optionally
+`AI_ROUTING_EVAL_API_KEY`, makes one call per case, and reports each case's chosen skills.
+
+```powershell
+$env:AI_ROUTING_EVAL = '1'
+$env:AI_ROUTING_EVAL_BASE_URL = 'http://localhost:8080/v1'
+$env:AI_ROUTING_EVAL_MODEL = 'your-model'
+dotnet build evals/AI.Routing.Evals/AI.Routing.Evals.csproj
+evals/AI.Routing.Evals/bin/Debug/net10.0/AI.Routing.Evals.exe -showLiveOutput
+```
+
+The xUnit v3 runner is the test executable itself; the report is printed as test output.

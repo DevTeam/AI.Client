@@ -43,24 +43,32 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    Give each teammate one role, one scope, owned paths, the deliverable, its definition of done
    and the skills that fit its work (for example code-feature-implement, code-tests-add,
    code-review, qa-cases-create).
+   Give each teammate an identity: a name taken in order from Ada, Bo, Cleo, Dan, Eva, Finn, Gia,
+   Hal (skipping any this chat already uses) and its role in one or two words in the charter's
+   language, written the same way everywhere — "Ada · Backend". The identity is fixed for the
+   life of the team; the teammate's focus belongs to its scope, not to its name. Before writing
+   the charter, generate each teammate's `operationId` now: it becomes the teammate's branchId.
 6. Show the proposed team with `ask_user`, labelled "Team": the plan in one line per phase and one
    line per teammate, with the options "Start the team (Recommended)", "Adjust the team" and
    "Work without a team"; `allowOther` on. Adjust and repeat on an answer; stop on "Work without a
    team", dismissed, expired or interrupted.
 7. Write the charter into this branch: `app_runs` Submit, `branchId` = `chatId`, mode `Aside`,
    intent `Decision`, a fresh `operationId` that you keep as the charter's message id, and content
-   headed "Team charter" with: goal and done, glossary, phases, a table of teammates (role, scope,
-   owned paths, deliverable, done), the contracts, and the protocol below. Make that call alone in
+   headed "Team charter" with: goal and done, glossary, phases, a table of teammates whose first
+   column is the identity ("Ada · Backend") followed by its branchId, then scope, owned paths,
+   deliverable and done; the lead as "Lead" with the chat id; the contracts; and the protocol
+   below. Name teammates by their identity in the phases and contracts too. Make that call alone in
    its step: the aside joins this turn after the call's result, and the branches must start from it.
 8. In the next step, read the main branch with `app_read` and confirm the charter message is there.
    Then for each teammate: `app_runs` Submit, `branchId` = `chatId`, mode `Fork`,
-   `parentMessageId` = the charter's id, intent `Decision`, `wait` false, `title` = "<Role> — <focus>"
-   in two to five words, content = the teammate's
-   brief: "You are <role> in this team. Run the team-contribute skill first." followed by the
+   `parentMessageId` = the charter's id, `operationId` = the one generated for that teammate,
+   intent `Decision`, `wait` false, `memberName` and `role` = its identity (no `title`: the
+   application names the branch "Name · Role" and signs its messages so), content = the teammate's
+   brief: "You are <Name> · <Role> in this team. Run the team-contribute skill first." followed by the
    scope, owned paths, deliverable, definition of done, skills to use and whom to ask. Every branch
    inherits the analysis and the charter from the message it starts from, so the brief repeats
    only what is the teammate's own.
-9. Answer with the team as a table (role, branch, deliverable) and one line on how it works: the
+9. Answer with the team as a table (identity, deliverable) and one line on how it works: the
    teammates report to this branch, which coordinates them with the team-coordinate skill. Do not
    wait for the teammates in this turn, and do not read their branches over and over: what they
    send arrives here as messages.
@@ -70,6 +78,8 @@ Protocol to put in the charter:
 - `status` goes as an Aside: it costs the lead nothing until its next step. `question`, `blocker`
   and `done` go as ordinary messages and wake the lead. No acknowledgements, no thanks.
 - Every message is self-contained: what, why, and what is needed back.
+- Everyone is named by identity — "Ada · Backend", "Lead" — in plans, decisions and reports; the
+  application signs each message with its sender's identity, so nobody introduces themselves.
 - A teammate changes only its owned paths; anything else is a question to the lead.
 - A teammate starts changing its owned paths early and grows the result; reading without changing
   anything is not progress.

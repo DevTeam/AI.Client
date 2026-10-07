@@ -199,6 +199,20 @@ public sealed class ChatRunDispatcher(
             throw new InvalidOperationException("The branch changed. Reload it before submitting.");
         if (request.ParentMessageId is { } parent && chat.Messages.All(message => message.Id != parent))
             throw new ArgumentException("Parent message does not exist.");
+        // Refused here, where the caller can still choose another name, rather than when the worker
+        // makes the branch and nobody is left to correct it.
+        if (request is { Mode: ChatSubmitMode.Fork, BranchMember: { } newMember })
+        {
+            if (string.IsNullOrWhiteSpace(newMember.Name) || string.IsNullOrWhiteSpace(newMember.Role)
+                || newMember.Name.Trim().Length > 32 || newMember.Role.Trim().Length > 48)
+                throw new ArgumentException("A teammate needs a name of up to 32 characters and a role of up to 48.");
+            if (chat.Branches?.Any(branch => string.Equals(branch.Member?.Name, newMember.Name.Trim(),
+                    StringComparison.OrdinalIgnoreCase)) == true
+                // A fork submitted a moment ago has no branch yet, only its queued command.
+                || _runtimes.Values.Where(item => item.State.ChatId == chatId).SelectMany(item => item.State.Queue)
+                    .Any(item => string.Equals(item.BranchMember?.Name, newMember.Name.Trim(), StringComparison.OrdinalIgnoreCase)))
+                throw new ArgumentException($"The team already has a teammate named '{newMember.Name.Trim()}'.");
+        }
         if (request.Mode != ChatSubmitMode.Fork && chat.Branches?.All(branch => branch.Id != branchId) == true
             && runtime.State.Queue.Count == 0 && branchId != request.MessageId)
             throw new ArgumentException("Branch does not exist.");
@@ -245,6 +259,8 @@ public sealed class ChatRunDispatcher(
             parentMode, parentId, replaceId, request.Mode == ChatSubmitMode.Fork ? sourceBranchId : null,
             sourceBranch.Revision, Resources: ResourceReferences.ToDomain(validatedResources), Interactive: interactive,
             Sender: sender, BranchTitle: request.Mode == ChatSubmitMode.Fork ? request.BranchTitle : null,
+            BranchMember: request is { Mode: ChatSubmitMode.Fork, BranchMember: { } member }
+                ? new ChatBranchMember(member.Name, member.Role, string.Empty) : null,
             // A teammate's report or question waits for no one: a lead busy with a turn reads it
             // there, instead of polling for it and then spending a whole turn on it afterwards.
             JoinsTurn: sender is not null && request.Mode == ChatSubmitMode.Send));
@@ -631,7 +647,8 @@ public sealed class ChatRunDispatcher(
                                 BranchId: runtime.State.BranchId, ParentBranchId: queued.ParentBranchId,
                                 ReplaceSourceId: queued.ReplaceSourceId,
                                 Resources: ResourceReferences.ToContract(queued.Resources), Sender: ToContract(queued.Sender),
-                                BranchTitle: queued.BranchTitle),
+                                BranchTitle: queued.BranchTitle,
+                                BranchMember: queued.BranchMember is { } member ? new TeamMember(member.Name, member.Role) : null),
                             RetainedMessageIds(chat.Id, queued.Id), token)
                             ?? throw new InvalidOperationException("Message conflict.");
                         TrackMessage(runtime, baseRevision, chat, queued.Id);

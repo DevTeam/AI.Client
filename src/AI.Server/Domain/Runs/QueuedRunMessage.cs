@@ -10,4 +10,6 @@ public sealed record QueuedRunMessage(Guid Id, string Content, DateTimeOffset Cr
     bool IsAside = false, AI.Domain.Chats.ChatMessageSender? Sender = null, string? BranchTitle = null,
     // A message another branch's run sent that needs a reply: a turn in flight takes it at its
     // next step boundary like an aside, and only when no turn does it runs as one of its own.
-    bool JoinsTurn = false);
+    bool JoinsTurn = false,
+    // The teammate a Fork's branch belongs to; the chat gives it its colour when the branch is made.
+    AI.Domain.Chats.ChatBranchMember? BranchMember = null);

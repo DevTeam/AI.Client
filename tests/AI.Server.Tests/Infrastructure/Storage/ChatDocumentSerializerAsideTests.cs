@@ -31,6 +31,22 @@ public sealed class ChatDocumentSerializerAsideTests
     }
 
     [Fact]
+    public void ATeammateBranchShouldKeepItsIdentity()
+    {
+        var chat = new ChatThread(new ChatId(Guid.NewGuid()), new ProjectId(Guid.NewGuid()), "Team", Now);
+        var charter = new ChatMessage(new ChatMessageId(Guid.NewGuid()), null, ChatMessageRole.User, "Charter", Now);
+        chat.AddMessage(charter, Now);
+        var brief = new ChatMessage(new ChatMessageId(Guid.NewGuid()), charter.Id, ChatMessageRole.User, "You are Ada.", Now);
+        chat.AddMessage(brief, Now, brief.Id.Value, chat.Id.Value, branchMember: new ChatBranchMember(" Ada ", "Backend", ""));
+        var serializer = new ChatDocumentSerializer();
+
+        var branch = serializer.Deserialize(serializer.Serialize(chat, 1)).Chat.Branches.Single(item => item.Id == brief.Id.Value);
+
+        branch.Title.ShouldBe("Ada · Backend");
+        branch.Member.ShouldBe(new ChatBranchMember("Ada", "Backend", "teal"));
+    }
+
+    [Fact]
     public void AnOrdinaryMessageShouldBeWrittenWithoutTheNewFields()
     {
         var chat = new ChatThread(new ChatId(Guid.NewGuid()), new ProjectId(Guid.NewGuid()), "Plain", Now);

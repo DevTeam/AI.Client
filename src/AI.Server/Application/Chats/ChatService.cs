@@ -211,7 +211,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             stored.Chat.PruneUnreachableMessages(retainedMessageIds.Select(id => new ChatMessageId(id)));
         }
         else
-            stored.Chat.AddMessage(message, now, request.BranchId, request.ParentBranchId, request.BranchTitle);
+            stored.Chat.AddMessage(message, now, request.BranchId, request.ParentBranchId, request.BranchTitle,
+                request.BranchMember is { } member ? new ChatBranchMember(member.Name, member.Role, string.Empty) : null);
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
@@ -481,7 +482,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         chat.ConnectionId?.Value,
         chat.Messages.OrderBy(item => item.CreatedAt).Select(message => ToView(message)).ToArray(),
         chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
-            branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
+            branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision, ToContract(branch.Member))).ToArray(),
         chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
             policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
             policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
@@ -527,7 +528,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             chat.ConnectionId?.Value,
             projected,
             chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
-                branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
+                branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision, ToContract(branch.Member))).ToArray(),
             chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
                 policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
                 policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
@@ -589,6 +590,9 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             (MessageDelivery)message.Delivery,
             message.Sender is { } sender ? new MessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null);
     }
+
+    private static TeamMember? ToContract(ChatBranchMember? member) =>
+        member is null ? null : new TeamMember(member.Name, member.Role, member.Color);
 
     private static bool? ToolResultErrorFlag(string content)
     {

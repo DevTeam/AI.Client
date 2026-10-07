@@ -3,6 +3,7 @@ namespace AI.Mcp.App;
 using AI.Application.Runs;
 using AI.Application.Tools;
 using AI.Contracts.Runs;
+using AI.Contracts.Chats;
 using AI.Contracts.Resources;
 using AI.Domain.Chats;
 using ModelContextProtocol.Protocol;
@@ -108,7 +109,9 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
                               + "'operationId' must be a fresh UUID per distinct message and the same UUID when repeating one. "
                               + "Submit may include resource references returned by app_resources Create; these add no file contents to the message. "
                               + "A submitted message is marked as sent by this run's branch, and 'intent' says what it is to the branch "
-                              + "that reads it. Mode Aside starts no turn: use it for status and other information that needs no answer."
+                              + "that reads it. Mode Aside starts no turn: use it for status and other information that needs no answer. "
+                              + "A Fork for a teammate takes 'memberName' and 'role' instead of 'title': the branch is named \"Name · Role\" and "
+                              + "every message from it is signed that way."
             });
 
         [McpServerTool(Name = "app_runs", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false,
@@ -123,6 +126,8 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             SubmitMode mode = SubmitMode.Send,
             MessageIntent? intent = null,
             string? title = null,
+            string? memberName = null,
+            string? role = null,
             Guid? parentMessageId = null,
             Guid? messageId = null,
             ChatResource[]? resources = null,
@@ -130,7 +135,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             bool wait = false,
             int waitTimeoutMs = 60_000,
             CancellationToken cancellationToken = default) =>
-            tool.RunsAsync(run, operation, projectId, chatId, operationId, branchId, content, mode, intent, title, parentMessageId,
+            tool.RunsAsync(run, operation, projectId, chatId, operationId, branchId, content, mode, intent, title, memberName, role, parentMessageId,
                 messageId, resources, position, wait, waitTimeoutMs, cancellationToken);
     }
 
@@ -145,6 +150,8 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         SubmitMode mode,
         MessageIntent? intent,
         string? title,
+        string? memberName,
+        string? role,
         Guid? parentMessageId,
         Guid? messageId,
         ChatResource[]? resources,
@@ -161,7 +168,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         return writes.RunAsync(operation.ToString(), operationId, builder => operation switch
         {
             RunOperation.Submit => SubmitAsync(builder, projectId, chatId, branch, operationId, content, resources, mode,
-                sender, title, parentMessageId, wait, waitTimeoutMs, cancellationToken),
+                sender, title, memberName, role, parentMessageId, wait, waitTimeoutMs, cancellationToken),
             RunOperation.Stop => CommandAsync(builder, projectId, chatId, branch, "Stopped the run.",
                 () => runs().StopAsync(projectId, chatId, branch, cancellationToken, operationId)),
             RunOperation.UpdateQueued => CommandAsync(builder, projectId, chatId, branch, "Updated the queued message.",
@@ -186,13 +193,15 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
     private async Task<AppWriteResult> SubmitAsync(
         AppWriteBuilder builder, Guid projectId, Guid chatId, Guid branchId, Guid operationId, string? content,
         ChatResource[]? resources, SubmitMode mode, ChatMessageSender? sender, string? title,
-        Guid? parentMessageId, bool wait, int waitTimeoutMs, CancellationToken cancellationToken)
+        string? memberName, string? role, Guid? parentMessageId, bool wait, int waitTimeoutMs, CancellationToken cancellationToken)
     {
         var text = content ?? string.Empty;
         if (string.IsNullOrWhiteSpace(text) && resources is not { Length: > 0 })
             throw new ArgumentException("'content' or 'resources' is required to submit a message.", nameof(content));
         if (mode is SubmitMode.Fork or SubmitMode.Replace && parentMessageId is null)
             throw new ArgumentException("'parentMessageId' is required to fork or replace.", nameof(parentMessageId));
+        if (string.IsNullOrWhiteSpace(memberName) != string.IsNullOrWhiteSpace(role) || memberName is not null && mode != SubmitMode.Fork)
+            throw new ArgumentException("'memberName' and 'role' go together, and only with mode Fork.", nameof(memberName));
         if (mode == SubmitMode.Aside && parentMessageId is not null)
             throw new ArgumentException("An aside always joins the branch head; omit 'parentMessageId'.", nameof(parentMessageId));
 
@@ -202,7 +211,9 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             Enum.Parse<ChatSubmitMode>(mode.ToString()), branchId,
             parentMessageId is null ? MessageParentMode.BranchHead : MessageParentMode.Explicit, parentMessageId,
             mode == SubmitMode.Replace ? parentMessageId : null, Resources: resources,
-            BranchTitle: mode == SubmitMode.Fork && !string.IsNullOrWhiteSpace(title) ? title.Trim() : null);
+            BranchTitle: mode == SubmitMode.Fork && !string.IsNullOrWhiteSpace(title) ? title.Trim() : null,
+            BranchMember: mode == SubmitMode.Fork && !string.IsNullOrWhiteSpace(memberName)
+                ? new TeamMember(memberName.Trim(), role?.Trim() ?? string.Empty) : null);
         var snapshot = sender is null
             ? await runs().SubmitAsync(projectId, chatId, request, cancellationToken)
             : await runs().SubmitFromRunAsync(projectId, chatId, request, sender, cancellationToken);

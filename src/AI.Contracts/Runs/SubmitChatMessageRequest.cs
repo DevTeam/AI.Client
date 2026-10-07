@@ -15,4 +15,6 @@ public sealed record SubmitChatMessageRequest(Guid OperationId, Guid MessageId, 
     Guid? ReplaceSourceId = null, long? ExpectedBranchRevision = null,
     IReadOnlyList<Resources.ChatResource>? Resources = null,
     // The title of the branch a Fork creates; without one it is named after its first message.
-    string? BranchTitle = null);
+    string? BranchTitle = null,
+    // The teammate a Fork's branch belongs to; it names the branch "Name · Role" instead of a title.
+    Chats.TeamMember? BranchMember = null);

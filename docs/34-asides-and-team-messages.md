@@ -174,6 +174,25 @@ model's account of the stall to the main branch as a `blocker` from that branch,
 lead (see the stall rule in [Hidden model instructions](22-hidden-model-instructions-and-run-completion.md)).
 A teammate's branch is recognised by its first message: a team message the main branch sent.
 
+### Identity
+
+Every teammate has one identity, `Name · Role` ("Ada · Backend"), stored on its branch as
+`ChatBranch.Member` and shown the same way everywhere:
+
+- `app_runs` Fork takes `memberName` and `role` instead of `title`; the branch is named
+  "Name · Role" by the server. The name is unique in the chat (case-insensitive) and is refused at
+  submission, while the lead can still pick another. Names come in order from a fixed list in
+  `team-assemble` (Ada, Bo, Cleo, …), so the model does not invent them.
+- The chat gives each teammate the first accent swatch no other teammate wears (teal, amber,
+  purple, green, pink, orange, indigo, then blue). The colour is drawn as a dot in the sidebar's
+  branch row and in the queue, and as the left edge and dot of the teammate's cards in the
+  transcript. Only a known swatch reaches a style, as the component's `--member-color`.
+- Message headers, sender cards and queue rows name a teammate by its identity, not by the branch
+  title, so renaming the branch by hand changes nothing about how it is signed. In a chat with
+  teammates the main branch is "Lead" (the model reads "From the lead").
+- The charter's teammate table starts with the identity and the branchId; the skills tell everyone
+  to name each other only by identity in plans, decisions and reports.
+
 ### Failures
 
 A team runs with nobody watching each branch, so a failure must neither stop the team silently

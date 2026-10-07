@@ -461,6 +461,37 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task TeammateBranchesShouldBeNamedAndColouredByTheirIdentity()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Team charter"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Forking the team.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var head = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.Messages[^1].Id;
+        Task<ChatRunSnapshot> Fork(Guid id, string name, string role) => fixture.Dispatcher.SubmitFromRunAsync(
+            fixture.ProjectId, fixture.ChatId, new SubmitChatMessageRequest(id, id, $"You are {name}.", ChatSubmitMode.Fork,
+                fixture.ChatId, MessageParentMode.Explicit, head, BranchMember: new TeamMember(name, role)),
+            new AI.Domain.Chats.ChatMessageSender(fixture.ChatId, fixture.ChatId, "decision"), CancellationToken.None);
+
+        var ada = Guid.NewGuid();
+        var bo = Guid.NewGuid();
+        await Fork(ada, "Ada", "Backend");
+        await Fork(bo, "Bo", "Tests");
+        // A second teammate with the same name is refused while the lead can still pick another.
+        await Should.ThrowAsync<ArgumentException>(() => Fork(Guid.NewGuid(), "ada", "Frontend"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Backend done.");
+        (await fixture.NextCallAsync()).Answer.SetResult("Tests done.");
+        await fixture.WaitAsync(run => run.BranchId == bo && run.Status == ChatRunStatus.Completed);
+
+        var branches = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.Branches!;
+        branches.Single(branch => branch.Id == ada).Title.ShouldBe("Ada · Backend");
+        branches.Single(branch => branch.Id == ada).Member.ShouldBe(new TeamMember("Ada", "Backend", "teal"));
+        branches.Single(branch => branch.Id == bo).Member.ShouldBe(new TeamMember("Bo", "Tests", "amber"));
+        branches.Single(branch => branch.Id == fixture.ChatId).Member.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task ATeammatesFailedTurnShouldBeReportedToTheLead()
     {
         await using var fixture = await Fixture.CreateAsync();

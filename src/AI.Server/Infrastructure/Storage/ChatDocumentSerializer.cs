@@ -33,7 +33,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             ToDocument(message.WorkspaceChanges), ResourceReferences.ToContract(message.Resources),
             message.Delivery, message.Sender is { } sender ? new SenderDocument(sender.ChatId, sender.BranchId, sender.Intent) : null)).ToArray(),
         chat.Branches.Select(branch => new BranchDocument(branch.Id, branch.HeadMessageId?.Value, branch.Title,
-            branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
+            branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision,
+            branch.Member is { } member ? new MemberDocument(member.Name, member.Role, member.Color) : null)).ToArray(),
         chat.ToolPolicies.Select(policy => new ToolPolicyDocument(policy.Tool.ServerId.Value, policy.Tool.Name,
             policy.Tool.SchemaHash, policy.Decision, policy.MaxCallsPerRun, policy.Timeout)).ToArray(),
         chat.IsPinned,
@@ -92,7 +93,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         }
         chat.RestoreBranches(document.Branches.Select(branch => new ChatBranch(branch.Id,
             branch.HeadMessageId is { } head ? new ChatMessageId(head) : null, branch.Title,
-            branch.ParentBranchId, branch.RootMessageId is { } root ? new ChatMessageId(root) : null, branch.Revision)));
+            branch.ParentBranchId, branch.RootMessageId is { } root ? new ChatMessageId(root) : null, branch.Revision,
+            branch.Member is { } member ? new ChatBranchMember(member.Name, member.Role, member.Color) : null)));
         foreach (var policy in document.ToolPolicies ?? [])
             chat.SetToolPolicy(new ToolPolicy(new ToolIdentity(new McpServerId(policy.ServerId), policy.Name,
                 policy.SchemaHash), policy.Decision, policy.MaxCallsPerRun, policy.Timeout), document.UpdatedAt);
@@ -191,7 +193,11 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         ToolPolicyDecision Decision, int? MaxCallsPerRun, TimeSpan? Timeout);
 
     private sealed record BranchDocument(Guid Id, Guid? HeadMessageId, string Title, Guid? ParentBranchId,
-        Guid? RootMessageId, long Revision);
+        Guid? RootMessageId, long Revision,
+        // Only a teammate's branch has one; absent everywhere else and in documents written before teams.
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MemberDocument? Member = null);
+
+    private sealed record MemberDocument(string Name, string Role, string Color);
 
     private static WorkspaceChangeDocument? ToDocument(ChatWorkspaceChangeSet? changes) => changes is null
         ? null

@@ -2635,6 +2635,21 @@ div.chat-tip-head { cursor: default; }
     background: var(--color-surface);
 }
 .workspace-message.user.from-branch .message-actions { justify-content: flex-start; }
+/* A teammate's card is edged in its colour (set as --member-color from its identity), the colour
+   of its dot in the sidebar and the queue. */
+.workspace-message.user.from-branch[style*="--member-color"] .message-body {
+    border-left: 3px solid var(--member-color);
+}
+.member-dot {
+    display: inline-block;
+    flex: none;
+    width: .5rem;
+    height: .5rem;
+    border-radius: 50%;
+    background: var(--member-color);
+}
+.branch-link .member-dot { margin-right: .35rem; }
+.queue-aside-label .member-dot { margin-right: .3rem; vertical-align: middle; }
 .workspace-message.user.from-branch .markdown-content pre { background: var(--color-bg-inset); }
 
 .message-origin {

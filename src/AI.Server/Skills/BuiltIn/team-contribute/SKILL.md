@@ -15,7 +15,9 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
 
 1. Take `projectId`, `chatId` and `branchId` from output.context. The lead is the chat's main
    branch, whose id equals `chatId`. From the charter and your brief, restate for yourself: your
-   role, scope, owned paths, deliverable, definition of done and the contracts you depend on.
+   identity ("Ada · Backend"), scope, owned paths, deliverable, definition of done and the
+   contracts you depend on. Name yourself, the lead ("Lead") and other teammates only by their
+   identities from the charter.
 2. Before starting and before each major step, read the main branch with `app_read`
    resource=Messages, `branchId` = `chatId`, for decisions made since the charter. A decision
    overrides your brief. A message the lead sends into this branch arrives as a new turn or, while
@@ -47,8 +49,8 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
      same thing again and again stops the turn as making no progress;
    - stuck with no way forward: mode Send, intent `Blocker`, with what you tried;
    - a decision others must follow that your scope lets you make: mode Aside, intent `Decision`.
-   The lead reads each message under a header naming your branch and its intent, added by the
-   application: do not open it with your role or status. Every message is self-contained — what, why, and what you need back. No acknowledgements, no
+   The lead reads each message under a header with your identity and its intent, added by the
+   application: do not open it with your name, role or status. Every message is self-contained — what, why, and what you need back. No acknowledgements, no
    thanks, and no messages to other teammates: the lead routes them.
 5. When the deliverable meets its definition of done, check it once more against the charter's
    contracts, then send intent `Done` (mode Send) with what changed (paths), how it was verified,

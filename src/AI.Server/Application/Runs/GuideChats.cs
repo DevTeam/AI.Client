@@ -38,6 +38,13 @@ public interface IGuideChats
     Task<ChatDetails> CreateTeamDemoAsync(Guid projectId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// A visible scheduled chat with a few finished runs, written without a model, whose schedule
+    /// starts nothing, so the Schedule widget, the run branches and their outcomes have something to
+    /// show. It is removed with the tour unless the person changes it or writes in it.
+    /// </summary>
+    Task<ChatDetails> CreateScheduleDemoAsync(Guid projectId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Deletes the project's guide chats that have no run in progress, except <paramref name="keep"/>,
     /// and its demo chats nobody has written in. A tour still running, in this window or another,
     /// is left alone.
@@ -46,7 +53,7 @@ public interface IGuideChats
 }
 
 public sealed class GuideChats(IChatRepository repository, IChatRunDispatcher runs, IChatService chats, IAppDataChangeSignal changes,
-    IConnectionChoice connectionChoice, IChatKindPolicyRegistry kindPolicies) : IGuideChats
+    IConnectionChoice connectionChoice, IChatKindPolicyRegistry kindPolicies, AI.Application.Schedules.IScheduleDemo scheduleDemo) : IGuideChats
 {
     public const string DemoTitle = DemoChatKindPolicy.Title;
 
@@ -57,6 +64,13 @@ public sealed class GuideChats(IChatRepository repository, IChatRunDispatcher ru
     {
         var chat = await chats.CreateAsync(projectId, new CreateChatRequest(DemoTitle, Kind: ChatKind.Demo.Value), cancellationToken);
         // The window learns about chats a tool made from this signal, and lists the new one.
+        changes.Notify();
+        return chat;
+    }
+
+    public async Task<ChatDetails> CreateScheduleDemoAsync(Guid projectId, CancellationToken cancellationToken)
+    {
+        var chat = await scheduleDemo.CreateAsync(projectId, cancellationToken);
         changes.Notify();
         return chat;
     }

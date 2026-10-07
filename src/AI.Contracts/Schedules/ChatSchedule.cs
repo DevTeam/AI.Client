@@ -114,6 +114,10 @@ public sealed record ScheduleRunRecord(
 /// <param name="Occurrences">Occurrences started so far, against <see cref="ScheduleRecurrence.Count"/>.</param>
 /// <param name="RetryAt">When the pending retry of the last failed run starts.</param>
 /// <param name="RunRequestedAt">A person or a skill asked for a run now.</param>
+/// <param name="Demo">
+/// Set up by the application guide to show a schedule: the dispatcher starts nothing for it, and the
+/// first change a person makes turns it into an ordinary schedule.
+/// </param>
 public sealed record ChatSchedule(
     ChatScheduleSettings Settings,
     bool Paused = false,
@@ -123,7 +127,8 @@ public sealed record ChatSchedule(
     int RunNumber = 0,
     DateTimeOffset? RetryAt = null,
     DateTimeOffset? RunRequestedAt = null,
-    IReadOnlyList<ScheduleRunRecord>? Runs = null)
+    IReadOnlyList<ScheduleRunRecord>? Runs = null,
+    bool Demo = false)
 {
     public const string Kind = "scheduled";
     public const int StateVersion = 1;

@@ -57,6 +57,8 @@ public sealed class ScheduledChatPass(
 
     public DateTimeOffset? DueAt(ChatSchedule schedule, DateTimeOffset now, DateTimeOffset? watchedAt)
     {
+        // The guide's demo only shows a schedule; nothing about it is ever due.
+        if (schedule.Demo) return null;
         var candidates = new List<DateTimeOffset?>
         {
             schedule.ActiveRun is null ? null : watchedAt is { } watched ? watched + Watch : now,
@@ -89,7 +91,7 @@ public sealed class ScheduledChatPass(
     private async Task ProcessCoreAsync(Guid projectId, Guid chatId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var schedule = await ReadAsync(projectId, chatId, cancellationToken);
-        if (schedule is null) return;
+        if (schedule is null or { Demo: true }) return;
         if (schedule.ActiveRun is { } active)
         {
             await WatchAsync(projectId, chatId, schedule, active, now, cancellationToken);

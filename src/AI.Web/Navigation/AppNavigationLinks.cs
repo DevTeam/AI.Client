@@ -22,7 +22,7 @@ public sealed partial class AppNavigationLinks(IAppNavigationTargets targets) : 
         var chatControl = target.StartsWith("chat.", StringComparison.Ordinal) && definition?.Section is null;
         // Showing a known control is safe even when that control can perform an action.
         // The demo target is a guide command, not a destination in the visible UI.
-        if (definition is null || target is "chat.demo" or "chat.demo_team") return null;
+        if (definition is null || target is "chat.demo" or "chat.demo_team" or "chat.demo_schedule") return null;
         var ids = new Dictionary<string, Guid>(StringComparer.Ordinal);
         string? skillId = null;
         string? toolName = null;

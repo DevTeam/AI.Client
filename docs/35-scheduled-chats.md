@@ -194,6 +194,21 @@ back in `values` in one spelling — `yyyy-MM-dd`, `HH:mm`, or recurrence JSON i
 guessing. Options may carry exact `value`s as presets; choosing one fills the picker, and adjusting the
 picker then is the answer.
 
+## Guide tour
+
+The application guide has a *Scheduled chats* topic (`app-guide-schedules`). Its routes: what a
+scheduled chat is; setting one up without sending (Alt+Shift+Enter, the Schedule widget, `/schedule`);
+reading a schedule; following runs in the branch picker and the sidebar; pausing, changing and
+removing a schedule — taught with show steps beside the real controls, never by changing a schedule.
+
+When the open chat is not scheduled, the tour offers a demo: `app_navigate` with
+target=`chat.demo_schedule` creates *Guide schedule demo* without a model (`IScheduleDemo`): a request
+to post the euro rate every weekday at 09:00, the answer that scheduled it, and five runs kept as
+branches — #2 failed, #3 is its retry — with their run messages, answers and summaries. Its schedule
+is marked `Demo`: the dispatcher never starts or watches anything for it, and the widget says so. The
+first Set, Pause, Resume or Run now makes it an ordinary schedule. The guide's clean-up removes the
+demo only while it is still a demo with nothing written in it.
+
 ## Verification
 
 - `ScheduleCalendarTests`: weekdays, every other week, last day and last weekday of a month, short

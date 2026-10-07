@@ -38,7 +38,10 @@ public sealed class ScheduleCalendar : IScheduleCalendar
     public const string TimeFormat = "HH:mm";
     private const int MaxSteps = 200_000;
 
-    public string LocalTimeZoneId => TimeZoneInfo.Local.Id;
+    // IANA where the platform names zones the Windows way, so a schedule set on the host reads the
+    // same as one set in the browser ("Europe/Moscow", not "Russian Standard Time").
+    public string LocalTimeZoneId => TimeZoneInfo.TryConvertWindowsIdToIanaId(TimeZoneInfo.Local.Id, out var iana)
+        ? iana : TimeZoneInfo.Local.Id;
 
     public DateTimeOffset? NextAfter(ScheduleRecurrence recurrence, string timeZone, DateTimeOffset after) =>
         Upcoming(recurrence, timeZone, after, 1) is [var next] ? next : null;

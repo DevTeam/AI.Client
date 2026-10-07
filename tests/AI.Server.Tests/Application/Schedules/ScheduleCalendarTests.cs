@@ -100,6 +100,15 @@ public sealed class ScheduleCalendarTests
     }
 
     [Fact]
+    public void ShouldNameTheHostTimeZoneTheWayTheBrowserDoes()
+    {
+        var id = _calendar.LocalTimeZoneId;
+
+        _calendar.FindTimeZone(id).ShouldNotBeNull();
+        if (TimeZoneInfo.TryConvertWindowsIdToIanaId(TimeZoneInfo.Local.Id, out var iana)) id.ShouldBe(iana);
+    }
+
+    [Fact]
     public void ShouldKeepOneSpellingOfPickedValues()
     {
         SchedulePickers.Normalize("date", " 2030-01-05 ", _calendar).ShouldBe("2030-01-05");

@@ -120,7 +120,7 @@ internal sealed class Composition
                 RateLimitHeaderReader, ContextSummaryWriter, HistoryCheckpointService, ChatHistoryCompaction,
                 ToolAutoApprover, GuideChats, ConnectionChoice, ReviewCommentSuggestions, AppToolReply,
                 GenericSkillExecutor, SkillGuide, SkillRouting, AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>()
-            .Transient<ChatScheduleStore, ChatScheduleService, ScheduledChatPass>()
+            .Transient<ChatScheduleStore, ChatScheduleService, ScheduledChatPass, ScheduleDemo>()
             .Transient<IKeyringMasterKeyStore>(ctx =>
             {
                 if (OperatingSystem.IsMacOS())

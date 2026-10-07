@@ -59,7 +59,7 @@ public sealed class ChatUnfinishedWidgetRenderingTests
     {
         var text = WebUtility.HtmlDecode(await RenderAsync(ChatUnfinishedStatistics.Empty));
 
-        text.ShouldContain("Unfinished chat work appears here");
+        text.ShouldContain("Nothing is unfinished");
     }
 
     [Fact]
@@ -75,14 +75,87 @@ public sealed class ChatUnfinishedWidgetRenderingTests
 
         text.ShouldContain("running");
         text.ShouldContain("Resume all (1)");
-        text.ShouldContain("1 opens its chat");
+        text.ShouldContain("1 is handled in its chat");
+    }
+
+    [Fact]
+    public async Task ShouldSayWhatEachRunWaitsOn()
+    {
+        var stats = new ChatUnfinishedStatistics(
+        [
+            Task(ChatA, "Alpha", ChatUnfinishedReason.Approval, ChatRunStatus.Generating, canResume: false) with { Detail = "write_file" },
+            Task(ChatB, "Beta", ChatUnfinishedReason.Prompt, ChatRunStatus.Generating, canResume: false) with { Detail = "Which folder?" }
+        ], 2, 0);
+
+        var text = WebUtility.HtmlDecode(await RenderAsync(stats));
+
+        text.ShouldContain("Approve write_file");
+        text.ShouldContain("Asks: Which folder?");
+        text.ShouldContain("2 need you");
+        text.ShouldNotContain("Resume all");
+    }
+
+    [Fact]
+    public async Task ShouldNotRepeatAStatusTheReasonAlreadyNames()
+    {
+        var stats = new ChatUnfinishedStatistics(
+            [Task(ChatA, "Alpha", ChatUnfinishedReason.Interrupted, ChatRunStatus.Interrupted)], 1, 1);
+
+        var html = await RenderAsync(stats);
+
+        html.ShouldNotContain("chat-unfinished-status");
+    }
+
+    [Fact]
+    public async Task ShouldMarkTheRunsOfTheOpenChat()
+    {
+        var stats = new ChatUnfinishedStatistics(
+        [
+            Task(ChatA, "Alpha", ChatUnfinishedReason.Paused, ChatRunStatus.Paused),
+            Task(ChatB, "Beta", ChatUnfinishedReason.Paused, ChatRunStatus.Paused)
+        ], 2, 2);
+
+        var html = WebUtility.HtmlDecode(await RenderAsync(stats, currentChatId: ChatA));
+
+        html.ShouldContain("open now");
+        html.ShouldContain("aria-current=\"true\"");
+    }
+
+    [Fact]
+    public async Task ShouldFoldALongListBehindShowMore()
+    {
+        var tasks = Enumerable.Range(0, 8)
+            .Select(index => Task(Guid.NewGuid(), $"Chat {index}", ChatUnfinishedReason.Interrupted, ChatRunStatus.Interrupted))
+            .ToArray();
+
+        var text = WebUtility.HtmlDecode(await RenderAsync(new ChatUnfinishedStatistics(tasks, 8, 8)));
+
+        text.ShouldContain("Chat 5");
+        text.ShouldNotContain("Chat 6");
+        text.ShouldContain("Show 2 more");
+        text.ShouldContain("Resume all (8)");
+    }
+
+    [Fact]
+    public async Task ShouldOfferTheLegendAsAFilterWhenThereIsMoreThanOneReason()
+    {
+        var stats = new ChatUnfinishedStatistics(
+        [
+            Task(ChatA, "Alpha", ChatUnfinishedReason.Interrupted, ChatRunStatus.Interrupted),
+            Task(ChatB, "Beta", ChatUnfinishedReason.Running, ChatRunStatus.Generating, canResume: false)
+        ], 2, 1);
+
+        var html = await RenderAsync(stats);
+
+        html.ShouldContain("chat-unfinished-filter");
+        html.ShouldContain("aria-pressed=\"false\"");
     }
 
     private static ChatUnfinishedTask Task(Guid chatId, string title, ChatUnfinishedReason reason,
         ChatRunStatus status, bool canResume = true) =>
         new(chatId, title, chatId, true, status, reason, true, 0, canResume, T0);
 
-    private static async Task<string> RenderAsync(ChatUnfinishedStatistics stats)
+    private static async Task<string> RenderAsync(ChatUnfinishedStatistics stats, Guid? currentChatId = null)
     {
         var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
         var registrations = new ServiceCollection();
@@ -101,7 +174,8 @@ public sealed class ChatUnfinishedWidgetRenderingTests
                 new Dictionary<string, object?>
                 {
                     [nameof(ChatUnfinishedWidget.Widget)] = widget,
-                    [nameof(ChatUnfinishedWidget.Statistics)] = stats
+                    [nameof(ChatUnfinishedWidget.Statistics)] = stats,
+                    [nameof(ChatUnfinishedWidget.CurrentChatId)] = currentChatId
                 }));
             html = component.ToHtmlString();
         });

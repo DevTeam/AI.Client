@@ -168,6 +168,116 @@ public class ChatUnfinishedStatisticsCalculatorTests
     }
 
     [Fact]
+    public void ShouldNotOfferResumeForARunThatIsStillGenerating()
+    {
+        var run = Run(ChatA, ChatA, ChatRunStatus.Generating, queue: [Queued()]);
+
+        var task = _calculator.Calculate([Chat(ChatA, "Alpha")], [run]).Tasks.ShouldHaveSingleItem();
+
+        task.Reason.ShouldBe(ChatUnfinishedReason.Running);
+        task.CanResume.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ShouldNotOfferResumeForWhatWaitsOnAnAnswerOrALimit()
+    {
+        var runs = new List<ChatRunSnapshot>
+        {
+            Run(ChatA, ChatA, ChatRunStatus.Paused, approval: Approval()),
+            Run(ChatA, BranchX, ChatRunStatus.Generating, prompt: Prompt()),
+            Run(ChatB, ChatB, ChatRunStatus.Generating, wait: new ChatRunWait(ChatRunWaitKind.RateLimit, T0, 1))
+        };
+
+        var stats = _calculator.Calculate([Chat(ChatA, "Alpha"), Chat(ChatB, "Beta")], runs);
+
+        stats.Tasks.ShouldAllBe(task => !task.CanResume);
+        stats.Resumable.ShouldBe(0);
+    }
+
+    [Fact]
+    public void ShouldNotOfferResumeForAFailureWithoutResumeEvenWithMessagesQueued()
+    {
+        var run = Run(ChatA, ChatA, ChatRunStatus.Failed, queue: [Queued()], recovery: [RunRecoveryAction.Retry]);
+
+        var task = _calculator.Calculate([Chat(ChatA, "Alpha")], [run]).Tasks.ShouldHaveSingleItem();
+
+        task.Reason.ShouldBe(ChatUnfinishedReason.Failed);
+        task.CanResume.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ShouldOfferResumeForMessagesQueuedBehindAnIdleChat()
+    {
+        var run = Run(ChatA, ChatA, ChatRunStatus.Completed, queue: [Queued()]);
+
+        _calculator.Calculate([Chat(ChatA, "Alpha")], [run]).Tasks.ShouldHaveSingleItem().CanResume.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ShouldNameTheToolWaitingForApproval()
+    {
+        var approval = Approval() with { CallIndex = 2, BatchSize = 3 };
+        var run = Run(ChatA, ChatA, ChatRunStatus.Generating, approval: approval);
+
+        _calculator.Calculate([Chat(ChatA, "Alpha")], [run]).Tasks.ShouldHaveSingleItem()
+            .Detail.ShouldBe("read_file (2 of 3)");
+    }
+
+    [Fact]
+    public void ShouldQuoteTheFirstQuestionOnOneLine()
+    {
+        var prompt = new UserPrompt(Guid.NewGuid(), [Question("Which\n  folder?"), Question("Why?")], 0);
+        var run = Run(ChatA, ChatA, ChatRunStatus.Generating, prompt: prompt);
+
+        _calculator.Calculate([Chat(ChatA, "Alpha")], [run]).Tasks.ShouldHaveSingleItem()
+            .Detail.ShouldBe("Which folder? (+1 more)");
+    }
+
+    [Fact]
+    public void ShouldShortenALongFailureMessage()
+    {
+        var error = string.Join(' ', Enumerable.Repeat("word", 60));
+        var run = Run(ChatA, ChatA, ChatRunStatus.Failed, recovery: [RunRecoveryAction.Retry]) with { Error = error };
+
+        var detail = _calculator.Calculate([Chat(ChatA, "Alpha")], [run]).Tasks.ShouldHaveSingleItem().Detail;
+
+        detail.ShouldNotBeNull();
+        detail.Length.ShouldBeLessThanOrEqualTo(121);
+        detail.ShouldEndWith("word…");
+    }
+
+    [Fact]
+    public void ShouldPreviewTheNextQueuedMessage()
+    {
+        var run = Run(ChatA, ChatA, ChatRunStatus.Interrupted, queue: [Queued()]);
+
+        _calculator.Calculate([Chat(ChatA, "Alpha")], [run]).Tasks.ShouldHaveSingleItem().Detail.ShouldBe("later");
+    }
+
+    [Fact]
+    public void ShouldCarryWhenAWaitingRunTriesAgain()
+    {
+        var run = Run(ChatA, ChatA, ChatRunStatus.Generating,
+            wait: new ChatRunWait(ChatRunWaitKind.RateLimit, T0.AddMinutes(3), 1));
+
+        _calculator.Calculate([Chat(ChatA, "Alpha")], [run]).Tasks.ShouldHaveSingleItem()
+            .RetryAt.ShouldBe(T0.AddMinutes(3));
+    }
+
+    [Fact]
+    public void ShouldCountTheTasksThatNeedThePerson()
+    {
+        var runs = new List<ChatRunSnapshot>
+        {
+            Run(ChatA, ChatA, ChatRunStatus.Interrupted),
+            Run(ChatA, BranchX, ChatRunStatus.Generating),
+            Run(ChatB, ChatB, ChatRunStatus.Completed, approval: Approval())
+        };
+
+        _calculator.Calculate([Chat(ChatA, "Alpha"), Chat(ChatB, "Beta")], runs).NeedingAttention.ShouldBe(2);
+    }
+
+    [Fact]
     public void ShouldReportAnEmptyProjectAsAnEmptyList()
     {
         var stats = _calculator.Calculate([], []);
@@ -194,4 +304,7 @@ public class ChatUnfinishedStatisticsCalculatorTests
 
     private static UserPrompt Prompt() =>
         new(Guid.NewGuid(), [], 0);
+
+    private static UserPromptQuestion Question(string text) =>
+        new(Guid.NewGuid().ToString(), text, null, [], false, false);
 }

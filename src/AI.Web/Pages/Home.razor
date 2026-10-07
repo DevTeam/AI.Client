@@ -903,9 +903,10 @@
                     case ChatWidgetCatalog.ChatUnfinished:
                         <ChatUnfinishedWidget Widget="@widget"
                                               Statistics="@GetUnfinishedStatistics()"
+                                              CurrentChatId="@_selectedChat?.Id"
+                                              CurrentBranchId="@(_selectedChat is null ? null : (Guid?)GetSelectedRunBranchId())"
                                               OnOpen="OpenUnfinishedTaskAsync"
-                                              OnResume="ResumeUnfinishedTaskAsync"
-                                              OnResumeAll="ResumeAllUnfinishedTasksAsync" />
+                                              OnResume="ResumeUnfinishedTaskAsync" />
                         break;
                 }
             </WidgetTemplate>
@@ -4200,21 +4201,12 @@ else if (_guideInvitation is { } guideInvitation)
     private Task OpenUnfinishedTaskAsync(ChatUnfinishedTask task) =>
         NavigateToTargetAsync(new WorkspaceTarget(null, task.ChatId, task.BranchId, null, false));
 
-    private Task ResumeUnfinishedTaskAsync(ChatUnfinishedTask task) =>
-        ResumeUnfinishedRunAsync(task.ChatId, task.BranchId);
-
-    // Resumes one after another rather than in parallel: each resume appends to the same project's
-    // run state, and a refusal on the first should not be hidden behind a burst of concurrent calls.
-    private async Task ResumeAllUnfinishedTasksAsync()
-    {
-        foreach (var task in GetUnfinishedStatistics().Tasks.Where(item => item.CanResume).ToArray())
-            await ResumeUnfinishedRunAsync(task.ChatId, task.BranchId);
-    }
-
-    private async Task ResumeUnfinishedRunAsync(Guid chatId, Guid branchId)
+    // The widget resumes one task at a time, "Resume all" included, so it can show which one is in
+    // flight; this completes once the Host has answered and reports a refusal like any queue command.
+    private async Task ResumeUnfinishedTaskAsync(ChatUnfinishedTask task)
     {
         if (_selectedProject is not { } project) return;
-        await RunQueueCommandAsync(() => ChatRunsApi.ResumeAsync(project.Id, chatId, branchId,
+        await RunQueueCommandAsync(() => ChatRunsApi.ResumeAsync(project.Id, task.ChatId, task.BranchId,
             Guid.CreateVersion7(), CancellationToken.None));
     }
     private Task SkipFailedQueueAsync() => _selectedProject is null || _selectedChat is null ? Task.CompletedTask

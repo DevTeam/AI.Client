@@ -193,6 +193,19 @@ Every teammate has one identity, `Name · Role` ("Ada · Backend"), stored on it
 - The charter's teammate table starts with the identity and the branchId; the skills tell everyone
   to name each other only by identity in plans, decisions and reports.
 
+### Guide
+
+The application guide has a "Team work" topic (`app-guide-team`). A tour needs a team to point at,
+so `app_navigate` with `target=chat.demo_team` sets up "Guide team demo" without a model
+(`TeamDemoChatKindPolicy`, chat kind `team-demo`) and opens its lead's branch: the person's task,
+the lead's reply, the charter as an aside, Ada · Backend and Bo · Tests with their briefs and
+replies, Ada's `done` report with the lead's reply, and Bo's `question` still waiting for the lead.
+Every message carries the sender, intent and identity the real protocol would, so the branch rows,
+sender cards (`chat.team_message`), the Team widget and the lead's team status show what they show
+in a real team. Like the plain demo chat it is removed when the tour ends unless the person writes
+in it. The tour's routes: who is who (branch rows, the roster), how the team talks (team messages,
+intents, Alt+Enter asides), following the team from any branch, and how to start one (/team).
+
 ### Team status for the lead
 
 A lead that has to rebuild its team's state reads its own branch and every teammate's branch to do

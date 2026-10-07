@@ -137,7 +137,7 @@ internal sealed class Composition
             .Transient<ChatToolRiskAssessSkill>("chat-tool-risk-assess")
             // Endpoints, app tools and session factories are injected as collections; the tag belongs to
             // the call, so each tagged group stays on its own.
-            .Transient<ConversationChatKindPolicy, GuideChatKindPolicy, DemoChatKindPolicy>(Tag.Unique)
+            .Transient<ConversationChatKindPolicy, GuideChatKindPolicy, DemoChatKindPolicy, TeamDemoChatKindPolicy>(Tag.Unique)
             .Transient<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints,
                 ChatCompletionEndpoints, FileSystemEndpoints, FilePreviewEndpoints, GitEndpoints, MemoryEndpoints,
                 SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints,

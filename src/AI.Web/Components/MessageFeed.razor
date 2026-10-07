@@ -328,7 +328,8 @@
                         {
                             @* Where the message came from and how it was delivered, when that is anything other
                                than the person starting a turn: docs/34-asides-and-team-messages.md. *@
-                            <div class="message-origin">
+                            <div class="message-origin" @attributes="@(message.Sender is { } teamSender && SelectedChat.MemberOf(teamSender.BranchId) is not null
+                                     ? ControlHints.Attributes("chat.team_message", nativeTooltip: false) : null)">
                                 @if (message.Sender is { } sender)
                                 {
                                     @if (sender.ChatId == SelectedChat.Id && SelectedChat.Branches?.Any(branch => branch.Id == sender.BranchId) == true)

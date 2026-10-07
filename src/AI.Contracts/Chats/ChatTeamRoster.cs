@@ -151,7 +151,9 @@ public sealed class ChatTeamRosterCalculator : IChatTeamRosterCalculator
     {
         foreach (var raw in content.Split('\n'))
         {
-            var line = raw.Trim().TrimStart('#', '>', '*', '-', ' ').Trim();
+            // Shown as plain text, so inline code and emphasis marks would only be noise.
+            var line = raw.Trim().TrimStart('#', '>', '*', '-', ' ').Replace("`", "", StringComparison.Ordinal)
+                .Replace("**", "", StringComparison.Ordinal).Trim();
             if (line.Length == 0) continue;
             return line.Length <= MaxLine ? line : line[..(MaxLine - 1)] + "…";
         }

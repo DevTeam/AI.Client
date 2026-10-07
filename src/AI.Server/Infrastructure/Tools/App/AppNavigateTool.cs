@@ -47,7 +47,9 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
                               + "The result confirms what the window actually did. Stop the guide on stopped/expired; on unavailable the control "
                               + "is not in the current view and the result says how to go on. "
                               + "In a guide, target='chat.demo' creates a demo chat with a question and an answer (no model involved) and "
-                              + "opens it, for tours that need a conversation; the guide removes it afterwards unless the person writes in it. "
+                              + "opens it, for tours that need a conversation; target='chat.demo_team' creates and opens a demo team instead "
+                              + "(a lead, two teammates, their reports and an open question). The guide removes either afterwards unless "
+                              + "the person writes in it. "
                               + "Never send messages, create objects or change settings without the user's explicit step."
             });
 
@@ -77,7 +79,8 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
             if (!run.Interactive)
                 return reply.Reply(Failed("This run is not attached to the user's window."), true);
             target ??= branchId is not null ? "branch" : chatId is not null ? "chat" : "project";
-            if (target == "chat.demo") return await OpenDemoAsync(idProject, comment, timeoutSeconds, cancellationToken);
+            if (target is "chat.demo" or "chat.demo_team")
+                return await OpenDemoAsync(idProject, comment, timeoutSeconds, target == "chat.demo_team", cancellationToken);
             var definition = targets.Find(target);
             if (definition is null || !definition.Actions.Contains(action))
                 return reply.Reply(Failed("Unknown target or unsupported action. Use action='targets' to discover targets."), true);
@@ -135,7 +138,8 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
         /// Sets up a demo chat and points at it in the sidebar; Continue opens it. Only a guide asks
         /// for one, and only after the person chose it, since it adds a chat to their project.
         /// </summary>
-        private async Task<CallToolResult> OpenDemoAsync(Guid idProject, string? comment, int timeoutSeconds, CancellationToken cancellationToken)
+        private async Task<CallToolResult> OpenDemoAsync(Guid idProject, string? comment, int timeoutSeconds, bool team,
+            CancellationToken cancellationToken)
         {
             if (!_behavior.CanCreateDemo || !run.Interactive)
                 return reply.Reply(new AppNavigateResult(false, idProject, null, null, "Nothing was created.",
@@ -143,15 +147,29 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
             var project = await projects.GetAsync(idProject, cancellationToken);
             if (project is null) return reply.Reply(new AppNavigateResult(false, idProject, null, null, "Nothing was created.",
                 "Project not found.", "unavailable"), true);
-            var demo = await guideChats().CreateDemoAsync(idProject, cancellationToken);
+            var demo = team
+                ? await guideChats().CreateTeamDemoAsync(idProject, cancellationToken)
+                : await guideChats().CreateDemoAsync(idProject, cancellationToken);
             var response = await navigation.RequestAsync(new AppNavigation(idProject, demo.Id, null, run.ChatId, project.Name, demo.Title,
-                "chat", "click", comment ?? "A demo chat with a question and an answer. Continue opens it.", true,
+                "chat", "click", comment ?? (team
+                    ? "A demo team: a lead, two teammates, their reports and an open question. Continue opens it."
+                    : "A demo chat with a question and an answer. Continue opens it."), true,
                 ExpiresAt: DateTimeOffset.UtcNow.AddSeconds(timeoutSeconds)), cancellationToken);
             var opened = response.Outcome == "applied";
+            var members = team
+                ? " Teammate branches: " + string.Join(", ", (demo.Branches ?? [])
+                    .Where(branch => branch.Member is not null).Select(branch => $"{branch.Member!.Label} (branchId {branch.Id})")) + "."
+                : null;
             return reply.Reply(new AppNavigateResult(opened, idProject, demo.Id, null,
-                opened ? $"Created and opened demo chat '{demo.Title}' with a question and an answer. Its controls, such as "
-                         + "chat.fork, chat.edit_branch and chat.branches, are in view now. It is removed when the tour ends unless the person writes in it."
-                       : $"Created demo chat '{demo.Title}', but it was not opened: {response.Outcome}.",
+                opened
+                    ? team
+                        ? $"Created and opened demo team chat '{demo.Title}' on its lead's branch: the task, the charter, Ada's "
+                          + "done report and Bo's question waiting for the lead. Its controls, such as chat.team_message, branch "
+                          + "and widgets.chat-team, are in view now." + members
+                          + " It is removed when the tour ends unless the person writes in it."
+                        : $"Created and opened demo chat '{demo.Title}' with a question and an answer. Its controls, such as "
+                          + "chat.fork, chat.edit_branch and chat.branches, are in view now. It is removed when the tour ends unless the person writes in it."
+                    : $"Created demo chat '{demo.Title}', but it was not opened: {response.Outcome}.",
                 response.Error, response.Outcome));
         }
     }

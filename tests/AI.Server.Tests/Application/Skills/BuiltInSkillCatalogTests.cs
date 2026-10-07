@@ -60,7 +60,7 @@ public class BuiltInSkillCatalogTests
     public void ShouldLimitEveryBundledGuideStepToFifteenSeconds()
     {
         var guides = new BuiltInSkillCatalog().List().Where(skill => skill.Id.StartsWith("app-guide-", StringComparison.Ordinal)).ToArray();
-        guides.Length.ShouldBe(11);
+        guides.Length.ShouldBe(12);
         foreach (var guide in guides) guide.Content.Contains("`timeoutSeconds=15`", StringComparison.Ordinal).ShouldBeTrue(guide.Id);
     }
 
@@ -82,7 +82,7 @@ public class BuiltInSkillCatalogTests
     public void ShouldGiveEveryGuideTheSameLanguagePriorityForHiddenAndRegularChats()
     {
         var guides = new BuiltInSkillCatalog().List().Where(skill => skill.Id.StartsWith("app-guide-", StringComparison.Ordinal)).ToArray();
-        guides.Length.ShouldBe(11);
+        guides.Length.ShouldBe(12);
         foreach (var guide in guides)
         {
             guide.Content.ShouldContain("`requestedLanguage`");
@@ -127,7 +127,7 @@ public class BuiltInSkillCatalogTests
     public void ShouldOfferNavigationShortcutsInEveryGuideWithoutReplacingVisualSteps()
     {
         var guides = new BuiltInSkillCatalog().List().Where(skill => skill.Id.StartsWith("app-guide-", StringComparison.Ordinal)).ToArray();
-        guides.Length.ShouldBe(11);
+        guides.Length.ShouldBe(12);
         foreach (var guide in guides)
         {
             guide.Content.ShouldContain("aiclient://navigate/settings.connections");

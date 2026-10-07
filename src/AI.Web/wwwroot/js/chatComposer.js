@@ -249,7 +249,10 @@ export function attach(textarea, dotNetReference) {
         // Shift+Enter is a newline, but Ctrl+Shift+Enter is "interrupt and send now" — so the
         // combination has to be recognised before Shift is treated as "the user is typing".
         const interrupting = event.ctrlKey && event.shiftKey && !event.altKey;
-        if (event.shiftKey && !interrupting) {
+        // Alt+Shift+Enter keeps the text for a schedule instead of sending it: the Alt family is
+        // "no reply now", as Alt+Enter is for an aside.
+        const scheduling = event.altKey && event.shiftKey && !event.ctrlKey;
+        if (event.shiftKey && !interrupting && !scheduling) {
             pushModifiers(event.ctrlKey, event.altKey, event.shiftKey);
             return;
         }
@@ -257,6 +260,8 @@ export function attach(textarea, dotNetReference) {
         sending = true;
         const method = interrupting
             ? "SendNowFromKeyboard"
+            : scheduling
+                ? "ScheduleFromKeyboard"
             : event.ctrlKey && event.altKey
                 ? "ForkFromKeyboard"
                 : event.ctrlKey

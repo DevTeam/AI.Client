@@ -3,8 +3,10 @@
    history intact. In a scheduled chat it leads with the countdown to the next run, says how the
    schedule stands (active, paused, running, waiting for you), offers Run now, Pause or Resume and
    Edit, lists what the schedule does, and shows the recent runs — each opens its branch while it
-   exists. Removing the schedule asks first and keeps the chat. Every change goes through Home,
-   which calls the same service the app_schedule tool uses. *@
+   exists. Removing the schedule asks first and keeps the chat. Before a new chat exists it
+   schedules one: the text in the message box is the task, and nothing reaches the model until
+   the first run. Alt+Shift+Enter in the message box opens the editor with that text (DraftRequest).
+   Every change goes through Home, which calls the same service the app_schedule tool uses. *@
 @using AI.Contracts.Chats
 @using AI.Contracts.Schedules
 @using AI.Web.Widgets
@@ -15,20 +17,35 @@
 @implements IDisposable
 
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-schedule-widget">
-    @if (Chat is null)
+    @if (Chat is null && _draft is null)
     {
-        <p class="chat-usage-empty">Open a chat to schedule it.</p>
+        @if (!CanCreate)
+        {
+            <p class="chat-usage-empty">Open a project to schedule a chat.</p>
+        }
+        else
+        {
+            <div class="chat-usage-section chat-schedule-intro">
+                <p class="chat-usage-empty">Write what the new chat should do in the message box, then schedule it instead of sending it. Nothing reaches the model until the first run.</p>
+                <button class="compact-action chat-schedule-primary" type="button" @onclick="StartScheduling">
+                    <AppIcon Name="stopwatch" /> Schedule a new chat
+                </button>
+                <p class="chat-schedule-shortcut"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>Enter</kbd><span>in the message box does the same</span></p>
+            </div>
+        }
     }
     else if (_draft is { } draft)
     {
         <div class="chat-usage-section">
-            <div class="chat-schedule-editor-heading">
+            <div class="chat-schedule-editor-heading" tabindex="-1" @ref="_editorHeading">
                 <AppIcon Name="stopwatch" />
-                <strong>@(_schedule is null ? "Schedule this chat" : "Edit the schedule")</strong>
+                <strong>@(_schedule is not null ? "Edit the schedule" : Chat is null ? "Schedule a new chat" : "Schedule this chat")</strong>
             </div>
             @if (_schedule is null)
             {
-                <p class="chat-usage-footnote">Runs fork the chat from its end and carry out the task; the conversation so far stays as their context.</p>
+                <p class="chat-usage-footnote">@(Chat is null
+                    ? "The task becomes the chat's first message; the model first sees it in the first run."
+                    : "Runs fork the chat from its end and carry out the task; the conversation so far stays as their context.")</p>
             }
             <ScheduleSettingsForm Value="@draft" ValueChanged="settings => _draft = settings" Disabled="@_busy" />
             @if (_error is not null)
@@ -214,6 +231,15 @@
     [Parameter] public Func<Task<string?>>? OnRunNow { get; set; }
     [Parameter] public EventCallback<Guid> OnOpenBranch { get; set; }
 
+    /// <summary>Whether a new chat can be scheduled here: a project is open and no chat is.</summary>
+    [Parameter] public bool CanCreate { get; set; }
+
+    /// <summary>The text in the message box, the task a new schedule starts from.</summary>
+    [Parameter] public string? ComposerText { get; set; }
+
+    /// <summary>Grows each time the message box asks for the editor (Alt+Shift+Enter).</summary>
+    [Parameter] public int? DraftRequest { get; set; }
+
     private ChatSchedule? _schedule;
     private ChatScheduleSettings? _draft;
     private string? _error;
@@ -223,8 +249,11 @@
     private Guid? _chatId;
     private DateTimeOffset _now = DateTimeOffset.UtcNow;
     private Timer? _ticker;
+    private int? _draftRequest;
+    private bool _focusEditor;
+    private ElementReference _editorHeading;
 
-    private bool CanSchedule => Chat is { Kind: "conversation" or ChatSchedule.Kind };
+    private bool CanSchedule => Chat is { Kind: "conversation" or ChatSchedule.Kind } || Chat is null && CanCreate;
 
     protected override void OnParametersSet()
     {
@@ -238,7 +267,27 @@
         }
         _schedule = Chat is null ? null : ScheduleApi.Parse(Chat.Kind, Chat.KindState);
         _now = DateTimeOffset.UtcNow;
+        if (DraftRequest is { } request && request != _draftRequest)
+        {
+            _draftRequest = request;
+            // The message box asked: its text is the task, of a new schedule or of the one being edited.
+            if (_schedule is { } existing)
+                _draft = string.IsNullOrWhiteSpace(ComposerText) ? existing.Settings : existing.Settings with { Task = ComposerText.Trim() };
+            else
+                StartScheduling();
+            _error = null;
+            _focusEditor = true;
+        }
         Tick();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusEditor || _draft is null) return;
+        _focusEditor = false;
+        // Focus brings the editor into view in the column and puts the keyboard where the person continues.
+        try { await _editorHeading.FocusAsync(); }
+        catch (InvalidOperationException) { }
     }
 
     /// <summary>The countdown ticks every second in its last hour, otherwise every half minute.</summary>
@@ -279,8 +328,10 @@
 
     private void StartScheduling()
     {
-        var task = Chat?.Messages.Where(message => message.Role == "User" && message.Content.Length > 0)
-            .OrderBy(message => message.CreatedAt).Select(message => message.Content.Trim()).FirstOrDefault() ?? string.Empty;
+        // What is in the message box is what the person means now; otherwise the chat's first request.
+        var task = !string.IsNullOrWhiteSpace(ComposerText) ? ComposerText.Trim()
+            : Chat?.Messages.Where(message => message.Role == "User" && message.Content.Length > 0)
+                .OrderBy(message => message.CreatedAt).Select(message => message.Content.Trim()).FirstOrDefault() ?? string.Empty;
         _draft = Presentation.Draft(task.Length > 4000 ? task[..4000] : task, Calendar.LocalTimeZoneId,
             Calendar.ToLocal(DateTimeOffset.UtcNow, Calendar.LocalTimeZoneId));
         _error = null;

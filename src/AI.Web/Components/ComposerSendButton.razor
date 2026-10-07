@@ -8,26 +8,27 @@
         <AppIcon Name="@GetIcon()" Class="@(Busy ? "tool-row-spinner" : null)" />
     </button>
     @* The shared help stays on the button as data-app-hint, where the guide reads it; the panel
-       keeps only what the current send mode adds, the key rows. *@
+       keeps only what the current send mode adds: one row per action, its keys aligned on the
+       right, the action the keys held now would take highlighted. Actions that start a reply come
+       first, those that only put the text somewhere follow. *@
     <span class="composer-send-tooltip" id="composer-send-tooltip" role="tooltip">
-        @if (ActiveMode == SendMode.EditFork)
+        @if (ActiveMode is SendMode.EditFork or SendMode.Replace)
         {
-            <span class="composer-send-tooltip-row active" data-app-tooltip-hint><kbd>Enter</kbd><span class="composer-send-tooltip-label">Create edited branch</span></span>
-        }
-        else if (ActiveMode == SendMode.Replace)
-        {
-            <span class="composer-send-tooltip-row active" data-app-tooltip-hint><kbd>Enter</kbd><span class="composer-send-tooltip-label">Replace branch now</span></span>
+            @Row(new(ActiveMode, ActiveMode == SendMode.EditFork ? "fork" : "edit-replace", GetActionLabel(), ["Enter"]))
         }
         else
         {
-            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Send ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send</span></span>
-            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Queue ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Queue for later</span></span>
-            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Fork ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Ctrl</kbd><span>+</span><kbd>Alt</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send in a forked session</span></span>
-            <span class="composer-send-tooltip-row @(ActiveMode == SendMode.SendNow ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Interrupt and send now</span></span>
-            @if (CanAside)
+            <span class="composer-send-tooltip-heading" data-app-tooltip-hint>Reply</span>
+            @foreach (var row in ReplyRows())
             {
-                <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Aside ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Alt</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">@AsideLabel</span></span>
+                @Row(row)
             }
+            <span class="composer-send-tooltip-heading" data-app-tooltip-hint>No reply now</span>
+            @foreach (var row in QuietRows())
+            {
+                @Row(row)
+            }
+            <span class="composer-send-tooltip-footnote" data-app-tooltip-hint><kbd>Shift</kbd><kbd>Enter</kbd><span>new line</span></span>
         }
     </span>
 </span>
@@ -53,11 +54,43 @@
     [Parameter]
     public bool TurnInFlight { get; set; }
 
+    /// <summary>Whether the text can become the task of a schedule instead of a message.</summary>
+    [Parameter]
+    public bool CanSchedule { get; set; } = true;
+
     private string AsideLabel => TurnInFlight ? "Add to the current turn" : "Add as an aside, no reply";
 
     /// <summary>How the context window is filled; no ring is drawn without it.</summary>
     [Parameter]
     public ComposerContext? Context { get; set; }
+
+    private sealed record TooltipRow(SendMode Mode, string Icon, string Label, string[] Keys);
+
+    private IEnumerable<TooltipRow> ReplyRows()
+    {
+        yield return new(SendMode.Send, "arrow-up", "Send", ["Enter"]);
+        yield return new(SendMode.Queue, "queue", "Queue for later", ["Ctrl", "Enter"]);
+        yield return new(SendMode.Fork, "fork", "Send in a forked session", ["Ctrl", "Alt", "Enter"]);
+        yield return new(SendMode.SendNow, "zap", "Interrupt and send now", ["Ctrl", "Shift", "Enter"]);
+    }
+
+    private IEnumerable<TooltipRow> QuietRows()
+    {
+        if (CanAside) yield return new(SendMode.Aside, "plus", AsideLabel, ["Alt", "Enter"]);
+        if (CanSchedule) yield return new(SendMode.Schedule, "stopwatch", "Schedule instead of sending", ["Alt", "Shift", "Enter"]);
+    }
+
+    private RenderFragment Row(TooltipRow row) =>
+        @<span class="composer-send-tooltip-row @(row.Mode == ActiveMode ? "active" : null)" data-app-tooltip-hint>
+            <AppIcon Name="@row.Icon" Class="composer-send-tooltip-icon" />
+            <span class="composer-send-tooltip-label">@row.Label</span>
+            <span class="composer-send-tooltip-keys">
+                @foreach (var key in row.Keys)
+                {
+                    <kbd>@key</kbd>
+                }
+            </span>
+        </span>;
 
     private string GetAriaLabel() => Context is { } context
         ? $"{GetActionLabel()}, context {context.Percent}% full"
@@ -71,6 +104,7 @@
         SendMode.Queue => "Queue for later",
         SendMode.Fork => "Send in a forked session",
         SendMode.Aside => AsideLabel,
+        SendMode.Schedule => "Schedule instead of sending",
         _ => "Send message"
     };
 
@@ -80,8 +114,9 @@
         SendMode.EditFork => "fork",
         SendMode.Replace => "edit-replace",
         SendMode.Aside => "plus",
+        SendMode.Schedule => "stopwatch",
         _ => "arrow-up"
     };
 
-    public enum SendMode { Send, Queue, Fork, SendNow, EditFork, Replace, Aside }
+    public enum SendMode { Send, Queue, Fork, SendNow, EditFork, Replace, Aside, Schedule }
 }

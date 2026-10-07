@@ -148,6 +148,21 @@ The settings form (`ScheduleSettingsForm`) holds the task, the recurrence editor
 retry (attempts, delay, condition), a rule per outcome, chat deletion (keep, after the last run, or on
 a date and time) and the time zone. Refusals from the Host appear in the widget in its words.
 
+## From the message box
+
+Typing a request and pressing Enter starts a turn, which is wrong for a task meant to run later.
+**Alt+Shift+Enter** (or the send button while those keys are held) sends nothing: it opens the
+Schedule widget — shown and unfolded even if it was hidden — with the composer text as the task and
+the keyboard in the editor. In an open chat it schedules that chat (in a scheduled chat it edits the
+schedule with the new task); with no chat open the widget offers *Schedule a new chat*, and saving
+creates the chat with the task as its first message, which the model first sees in the first run.
+The composer is cleared only after the schedule is saved.
+
+`/schedule` (the alias of `chat-schedule-create`) does the same in words: the skill sets the schedule
+up, asking for whatever is missing, and is told not to carry out the task in that turn. Its
+description names the usual phrasings ("every day", "every Monday", "at 9:00") so the router picks
+it for such requests even without the alias.
+
 ## `ask_user` schedule pickers
 
 `pickerKind` `date`, `time` and `recurrence` open a calendar, a clock or the recurrence editor inside

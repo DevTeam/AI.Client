@@ -59,7 +59,7 @@ public sealed class ChatKnowledgeStatisticsCalculator : IChatKnowledgeStatistics
     // else.
     private static readonly HashSet<string> ReadTools = new(StringComparer.Ordinal)
     {
-        "read_text_file", "read_multiple_files",
+        "read_text_file", "read_multiple_files", "read_image_file",
         "list_directory", "directory_tree",
         "search_files", "grep_files",
         "get_file_info", "list_allowed_directories",
@@ -222,6 +222,7 @@ public sealed class ChatKnowledgeStatisticsCalculator : IChatKnowledgeStatistics
     {
         "read_text_file" => "Read file",
         "read_multiple_files" => "Read files",
+        "read_image_file" => "Read image",
         "list_directory" => "List directory",
         "directory_tree" => "Read directory tree",
         "search_files" => "Search files",

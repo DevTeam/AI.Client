@@ -255,7 +255,7 @@ public sealed class McpToolSession : IToolSession
         ModelContextProtocol.Protocol.TextContentBlock text =>
             new ToolContent(ToolContentKind.Text, text.Text, null, null, null),
         ModelContextProtocol.Protocol.ImageContentBlock image =>
-            new ToolContent(ToolContentKind.Image, null, image.MimeType, null, null, Data: image.Data.ToArray()),
+            new ToolContent(ToolContentKind.Image, null, image.MimeType, null, null, Data: ImageBytes(image)),
         ModelContextProtocol.Protocol.AudioContentBlock audio =>
             new ToolContent(ToolContentKind.Audio, null, audio.MimeType, null, null),
         ModelContextProtocol.Protocol.ResourceLinkBlock link =>
@@ -266,6 +266,22 @@ public sealed class McpToolSession : IToolSession
                 embedded.Resource?.MimeType, embedded.Resource?.Uri, null),
         _ => new ToolContent(ToolContentKindExtensions.FromWireType(block.Type), null, null, null, null),
     };
+
+    // The block's Data member holds the Base64 characters as sent on the wire, not the bytes;
+    // DecodedData decodes them. A server that sends something that is not Base64 would throw
+    // here, and a hostile or simply broken server must not be able to fail the whole tool call:
+    // the block is then passed on without bytes, which is how an unrecognised block degrades.
+    private static byte[]? ImageBytes(ModelContextProtocol.Protocol.ImageContentBlock image)
+    {
+        try
+        {
+            return image.DecodedData.ToArray();
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>Adapts the protocol's progress notifications to the Host's own shape.</summary>
     private sealed class ProgressRelay(IProgress<ToolProgress> target)

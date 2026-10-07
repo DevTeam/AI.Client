@@ -26,6 +26,13 @@ internal static class FileLimits
     public const int WriteCharacters = 1048576;
 
     /// <summary>
+    /// Bytes of one image <see cref="ReadImageFileTool"/> is willing to hand to the model. It
+    /// matches the Host's own asset limit (<c>ResourceAssetService.MaximumBytes</c>): a larger file
+    /// would be rejected by the store that has to keep it, after the whole call had been paid for.
+    /// </summary>
+    public const int ImageBytes = 15 * 1024 * 1024;
+
+    /// <summary>
     /// Directory names <see cref="DirectoryTreeTool"/>, <see cref="SearchFilesTool"/> and
     /// <see cref="GrepFilesTool"/> skip by
     /// default — version control metadata and build/dependency output that is almost never what

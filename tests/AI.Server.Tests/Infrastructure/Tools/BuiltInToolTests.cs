@@ -57,7 +57,7 @@ public sealed class BuiltInToolTests
         await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync([], ToolRunContext.None, timeout.Token);
         session.Tools.Select(item => item.OriginalName).ShouldBe(
         [
-            "process_run", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "list_directory",
+            "process_run", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "read_image_file", "list_directory",
             "directory_tree", "search_files", "grep_files", "get_file_info", "write_file", "edit_file", "create_directory",
             "move_file", "delete_file", "delete_directory", "zip_list", "zip_read", "zip_extract", "zip_create"
         ], ignoreOrder: true);
@@ -660,6 +660,94 @@ public sealed class BuiltInToolTests
         var tool = session.Tools.Single(item => item.OriginalName == name);
         var result = await session.CallAsync(tool, JsonSerializer.Serialize(arguments), null, token);
         return result.StructuredContent ?? throw new InvalidOperationException($"Tool '{name}' returned no structured content.");
+    }
+
+    // A header-only sample is enough: the tool reads the dimensions from the header and never
+    // decodes the pixels, so a full image would add nothing but bytes to the test.
+    private static byte[] PngHeader(int width, int height)
+    {
+        var data = new byte[33];
+        new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }.CopyTo(data, 0);
+        System.Text.Encoding.ASCII.GetBytes("IHDR").CopyTo(data, 12);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(data.AsSpan(16), width);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(data.AsSpan(20), height);
+        return data;
+    }
+
+    private static byte[] JpegHeader(int width, int height)
+    {
+        var data = new byte[30];
+        data[0] = 0xFF;
+        data[1] = 0xD8;
+        // APP0 with a 14-byte payload, then SOF0, where the height and width are stored.
+        data[2] = 0xFF;
+        data[3] = 0xE0;
+        data[4] = 0x00;
+        data[5] = 0x10;
+        data[20] = 0xFF;
+        data[21] = 0xC0;
+        data[22] = 0x00;
+        data[23] = 0x11;
+        data[24] = 0x08;
+        System.Buffers.Binary.BinaryPrimitives.WriteInt16BigEndian(data.AsSpan(25), (short)height);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt16BigEndian(data.AsSpan(27), (short)width);
+        data[29] = 0x03;
+        return data;
+    }
+
+    [Fact]
+    public async Task ShouldReturnThePictureItselfRatherThanOnlyItsMetadata()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var root = Path.Combine(Path.GetTempPath(), "ai-client-image-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
+                [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
+            var token = timeout.Token;
+            var tool = session.Tools.Single(item => item.OriginalName == "read_image_file");
+
+            var image = Path.Combine(root, "picture.png");
+            await File.WriteAllBytesAsync(image, PngHeader(3, 2), token);
+            var result = await session.CallAsync(tool, JsonSerializer.Serialize(new { path = image }), null, token);
+
+            result.IsError.ShouldBeFalse();
+            var structured = result.StructuredContent!.Value;
+            structured.GetProperty("mediaType").GetString().ShouldBe("image/png");
+            structured.GetProperty("width").GetInt32().ShouldBe(3);
+            structured.GetProperty("height").GetInt32().ShouldBe(2);
+            structured.GetProperty("attached").GetBoolean().ShouldBeTrue();
+            // This is the whole point: the bytes travel with the result, so a multimodal model can
+            // look at the picture instead of guessing from a path and a size.
+            var block = result.Content.Single(item => item.Kind == ToolContentKind.Image);
+            block.MimeType.ShouldBe("image/png");
+            block.Data.ShouldBe(File.ReadAllBytes(image));
+
+            // The dimensions come from the header of each format, not from the file name.
+            var jpeg = Path.Combine(root, "picture.jpg");
+            await File.WriteAllBytesAsync(jpeg, JpegHeader(7, 5), token);
+            var jpegResult = await Structured(session, "read_image_file", new { path = jpeg }, token);
+            jpegResult.GetProperty("mediaType").GetString().ShouldBe("image/jpeg");
+            jpegResult.GetProperty("width").GetInt32().ShouldBe(7);
+            jpegResult.GetProperty("height").GetInt32().ShouldBe(5);
+
+            // A file that is not an image points at the tool that reads it instead.
+            var text = Path.Combine(root, "note.txt");
+            await File.WriteAllTextAsync(text, "hello", token);
+            var notAnImage = await session.CallAsync(tool, JsonSerializer.Serialize(new { path = text }), null, token);
+            notAnImage.IsError.ShouldBeTrue();
+            notAnImage.StructuredContent!.Value.GetProperty("error").GetString()!.ShouldContain("read_text_file");
+            notAnImage.Content.ShouldAllBe(item => item.Kind != ToolContentKind.Image);
+
+            // Refusal outside every grant, and a refusal never carries image bytes.
+            var outside = Path.Combine(Path.GetTempPath(), "ai-client-image-outside.png");
+            var denied = await session.CallAsync(tool, JsonSerializer.Serialize(new { path = outside }), null, token);
+            denied.IsError.ShouldBeTrue();
+            denied.StructuredContent!.Value.GetProperty("error").GetString()!.ShouldContain("No directory grant");
+            denied.Content.ShouldAllBe(item => item.Kind != ToolContentKind.Image);
+        }
+        finally { Directory.Delete(root, true); }
     }
 
     private sealed class Grants(params DirectoryGrantSpec[] grants) : IGrantSource

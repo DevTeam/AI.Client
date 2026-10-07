@@ -22,7 +22,8 @@ internal sealed partial class Composition
             .Hint(Hint.ThreadSafe, "Off")
             .Root<Program>(nameof(Root))
             // Tools
-            .Transient<ProcessRunTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ListDirectoryTool, DirectoryTreeTool,
+            .Transient<ProcessRunTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ReadImageFileTool,
+                ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,
                 DeleteFileTool, DeleteDirectoryTool, ZipListTool, ZipReadTool, ZipExtractTool, ZipCreateTool>(Tag.Unique)
             .Transient<ProcessRunner, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()

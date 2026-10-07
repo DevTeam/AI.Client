@@ -1,0 +1,197 @@
+@* Unfinished work across the whole project: every run the client knows about that has not finished —
+   waiting for a tool approval or an answer, paused or interrupted (closing the application leaves
+   runs interrupted), failed with recovery still open, still generating, or finished with messages
+   queued behind it. The list is project-wide, so it is not scoped to the open chat and has no
+   whole-chat/last-turn switch. A row opens its chat or branch; the tasks the Host would agree to
+   resume can be resumed one by one or all at once. The data is the client's own run snapshots, so a
+   run the Host no longer keeps is not listed, and last-activity times are message timestamps. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-unfinished-widget">
+    @if (!HasTasks)
+    {
+        <p class="chat-usage-empty">Unfinished chat work appears here while any run is waiting, paused, interrupted, failed or still queued.</p>
+    }
+    else
+    {
+        <div class="chat-usage-section">
+            <div class="chat-widget-headline">
+                <span class="chat-widget-count" title="Chats in this project with at least one unfinished run">@_stats.ChatsWithUnfinishedWork</span>
+                <span class="chat-usage-muted">@(_stats.ChatsWithUnfinishedWork == 1 ? "chat" : "chats")</span>
+                <span class="chat-widget-headline-aside chat-usage-muted" title="Unfinished runs; each branch of a chat counts as one">@_stats.Tasks.Count @(_stats.Tasks.Count == 1 ? "task" : "tasks")</span>
+            </div>
+            <div class="chat-usage-legend">
+                @foreach (var reason in PresentReasons())
+                {
+                    <span @key="reason.Reason" title="@ReasonTitle(reason.Reason)" class="@ReasonClass(reason.Reason)">
+                        <AppIcon Name="@ReasonIcon(reason.Reason)" Class="chat-unfinished-reason-icon" />
+                        @reason.Count @ReasonLabel(reason.Reason)
+                    </span>
+                }
+            </div>
+        </div>
+
+        @if (_stats.Resumable > 0)
+        {
+            <div class="chat-usage-section chat-unfinished-actions">
+                <button class="compact-action" type="button" title="Resumes every unfinished task the Host offers to resume, one after another" @onclick="ResumeAllAsync">Resume all (@_stats.Resumable)</button>
+                <span class="chat-usage-muted" title="A task whose run the Host cannot resume — a failure with no recovery left, or work already running — is opened by its row instead">@NotResumableNote()</span>
+            </div>
+        }
+
+        <div class="chat-usage-section">
+            <ul class="chat-unfinished-list">
+                @foreach (var task in _stats.Tasks)
+                {
+                    <li @key="(task.ChatId, task.BranchId)">
+                        <div class="chat-unfinished-row">
+                            <button class="chat-unfinished-open" type="button" title="@RowTitle(task)" @onclick="() => OpenAsync(task)">
+                                <span class="chat-unfinished-mark @ReasonClass(task.Reason)" aria-hidden="true"><AppIcon Name="@ReasonIcon(task.Reason)" /></span>
+                                <span class="chat-unfinished-body">
+                                    <span class="chat-unfinished-title">@task.ChatTitle</span>
+                                    <span class="chat-unfinished-meta chat-usage-muted">
+                                        <span title="@ReasonTitle(task.Reason)">@ReasonLabel(task.Reason)</span>
+                                        @if (!task.IsMainBranch)
+                                        {
+                                            <span title="The run works on this branch rather than on the chat itself">branch</span>
+                                        }
+                                        @if (task.Queued > 0)
+                                        {
+                                            <span title="Messages waiting in the queue, sent once the run ahead of them finishes">@task.Queued queued</span>
+                                        }
+                                        <span class="chat-unfinished-status" title="The run's status exactly as the Host reported it">@task.Status</span>
+                                        <span title="When the chat was last active; it is when something was written, not when the run stopped">≈ @FormatAt(task.LastActivityAt)</span>
+                                    </span>
+                                </span>
+                            </button>
+                            @if (task.CanResume)
+                            {
+                                <button class="icon-action chat-unfinished-resume" type="button" title="Resume this run" aria-label="Resume @task.ChatTitle" @onclick="() => ResumeAsync(task)"><AppIcon Name="play" /></button>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        </div>
+
+        <div class="chat-usage-section chat-usage-footnote">
+            <span title="Every figure comes from this client's own run snapshots, so it is what the client knows about rather than what the Host provably still holds">from run snapshots</span>
+            <span class="chat-unfinished-note" title="A last-activity time is a message timestamp: it is when the chat was written to, not when the model stopped, and it includes time the chat sat idle.">≈ last activity</span>
+        </div>
+    }
+</ChatWidget>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>Every unfinished run in the project, built by the page from its run snapshots.</summary>
+    [Parameter]
+    public ChatUnfinishedStatistics Statistics { get; set; } = ChatUnfinishedStatistics.Empty;
+
+    /// <summary>Asks the page to open a chat, and its branch when the run works on a fork.</summary>
+    [Parameter]
+    public EventCallback<ChatUnfinishedTask> OnOpen { get; set; }
+
+    /// <summary>Asks the page to resume one run.</summary>
+    [Parameter]
+    public EventCallback<ChatUnfinishedTask> OnResume { get; set; }
+
+    /// <summary>Asks the page to resume every resumable run, one after another.</summary>
+    [Parameter]
+    public EventCallback OnResumeAll { get; set; }
+
+    private ChatUnfinishedStatistics _stats = ChatUnfinishedStatistics.Empty;
+
+    private bool HasTasks => _stats.HasTasks;
+
+    protected override void OnParametersSet()
+    {
+        // The page re-renders as runs change; only a different statistics object needs a redraw.
+        if (!ReferenceEquals(_stats, Statistics)) _stats = Statistics;
+    }
+
+    private string? GetSummary() => !HasTasks
+        ? null
+        : $"{_stats.Tasks.Count} unfinished · {_stats.ChatsWithUnfinishedWork} chat{(_stats.ChatsWithUnfinishedWork == 1 ? null : "s")}";
+
+    private Task OpenAsync(ChatUnfinishedTask task) => OnOpen.InvokeAsync(task);
+
+    private Task ResumeAsync(ChatUnfinishedTask task) => OnResume.InvokeAsync(task);
+
+    private Task ResumeAllAsync() => OnResumeAll.InvokeAsync();
+
+    private string NotResumableNote()
+    {
+        var remaining = _stats.Tasks.Count - _stats.Resumable;
+        return remaining <= 0
+            ? "every task can be resumed"
+            : $"{remaining} open{(remaining == 1 ? "s" : string.Empty)} its chat";
+    }
+
+    // One legend entry per reason the project actually has, in the list's own order of urgency.
+    private IReadOnlyList<(ChatUnfinishedReason Reason, int Count)> PresentReasons()
+    {
+        var order = new[]
+        {
+            ChatUnfinishedReason.Approval, ChatUnfinishedReason.Prompt, ChatUnfinishedReason.Wait,
+            ChatUnfinishedReason.Failed, ChatUnfinishedReason.Paused, ChatUnfinishedReason.Interrupted,
+            ChatUnfinishedReason.Running, ChatUnfinishedReason.Queue
+        };
+        var counts = new Dictionary<ChatUnfinishedReason, int>();
+        foreach (var task in _stats.Tasks) counts[task.Reason] = counts.GetValueOrDefault(task.Reason) + 1;
+        return order.Where(reason => counts.ContainsKey(reason)).Select(reason => (reason, counts[reason])).ToArray();
+    }
+
+    private static string ReasonLabel(ChatUnfinishedReason reason) => reason switch
+    {
+        ChatUnfinishedReason.Approval => "approval",
+        ChatUnfinishedReason.Prompt => "awaiting answer",
+        ChatUnfinishedReason.Wait => "waiting out a limit",
+        ChatUnfinishedReason.Failed => "failed",
+        ChatUnfinishedReason.Paused => "paused",
+        ChatUnfinishedReason.Interrupted => "interrupted",
+        ChatUnfinishedReason.Running => "running",
+        _ => "queued"
+    };
+
+    private static string ReasonTitle(ChatUnfinishedReason reason) => reason switch
+    {
+        ChatUnfinishedReason.Approval => "A tool call is waiting for your approval; the run cannot continue until you decide",
+        ChatUnfinishedReason.Prompt => "The run asked a question and is waiting for your answer",
+        ChatUnfinishedReason.Wait => "The provider set a limit; the run waits and then tries again on its own",
+        ChatUnfinishedReason.Failed => "The run ended with a failure and still offers a recovery action",
+        ChatUnfinishedReason.Paused => "The run is stopped with its work held; resume it to continue",
+        ChatUnfinishedReason.Interrupted => "The run stopped without finishing; closing the application leaves runs in this state until you resume them",
+        ChatUnfinishedReason.Running => "The run is still producing its answer",
+        _ => "The run finished or is idle, but messages are still queued behind it"
+    };
+
+    private static string ReasonIcon(ChatUnfinishedReason reason) => reason switch
+    {
+        ChatUnfinishedReason.Approval or ChatUnfinishedReason.Prompt => "shield-alert",
+        ChatUnfinishedReason.Wait => "timer",
+        ChatUnfinishedReason.Failed => "error",
+        ChatUnfinishedReason.Paused or ChatUnfinishedReason.Interrupted => "interrupted",
+        ChatUnfinishedReason.Running => "spinner",
+        _ => "queue"
+    };
+
+    // Colour never carries the meaning alone: the reason word stays in the text beside it. Only the
+    // states that ask a person to act wear a status colour; a run still going or merely queued does not.
+    private static string? ReasonClass(ChatUnfinishedReason reason) => reason switch
+    {
+        ChatUnfinishedReason.Approval or ChatUnfinishedReason.Prompt or ChatUnfinishedReason.Wait
+            or ChatUnfinishedReason.Failed => "chat-unfinished-attention",
+        ChatUnfinishedReason.Paused or ChatUnfinishedReason.Interrupted => "chat-unfinished-held",
+        _ => null
+    };
+
+    private string RowTitle(ChatUnfinishedTask task)
+    {
+        var branch = task.IsMainBranch ? "the chat itself" : "a branch of this chat";
+        var queued = task.Queued == 0 ? null : $", {task.Queued} queued behind it";
+        var resume = task.CanResume ? "Use the button to resume it." : "Resume is not offered for this one; open it to act.";
+        return $"{task.ChatTitle} — {ReasonLabel(task.Reason)} on {branch}{queued}. Status: {task.Status}. {resume}";
+    }
+
+    private static string FormatAt(DateTimeOffset at) => at.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
+}

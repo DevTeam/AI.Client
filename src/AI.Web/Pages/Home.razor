@@ -25,6 +25,7 @@
 @inject AI.Web.Resources.IResourceMentionMatcher MentionMatcher
 @inject IChatRunsApi ChatRunsApi
 @inject IRunStateService RunState
+@inject IChatUnfinishedStatisticsCalculator UnfinishedStatistics
 @inject IChatComposerService Composer
 @inject AI.Web.Resources.IResourceApi ResourceApi
 @inject AI.Web.Resources.IDropAccessPlanner DropAccessPlanner
@@ -893,6 +894,13 @@
                                         Branches="@widgetChat?.Branches"
                                         IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
                                         OnSelectMessage="ScrollToTurnAsync" />
+                        break;
+                    case ChatWidgetCatalog.ChatUnfinished:
+                        <ChatUnfinishedWidget Widget="@widget"
+                                              Statistics="@GetUnfinishedStatistics()"
+                                              OnOpen="OpenUnfinishedTaskAsync"
+                                              OnResume="ResumeUnfinishedTaskAsync"
+                                              OnResumeAll="ResumeAllUnfinishedTasksAsync" />
                         break;
                 }
             </WidgetTemplate>
@@ -4168,6 +4176,34 @@ else if (_guideInvitation is { } guideInvitation)
     }
     private Task ResumeQueueAsync() => _selectedProject is null || _selectedChat is null ? Task.CompletedTask
         : RunQueueCommandAsync(() => ChatRunsApi.ResumeAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None));
+
+    // The unfinished-work widget is project-wide: it reads every run snapshot the client holds for
+    // the project, not just the open chat's, and names each one's chat from the sidebar's own list.
+    // A run whose chat the sidebar no longer shows (archived, or deleted elsewhere) is left out.
+    private ChatUnfinishedStatistics GetUnfinishedStatistics() =>
+        UnfinishedStatistics.Calculate(_chats, RunState.Runs.Values.ToArray());
+
+    /// <summary>Opens the chat a task belongs to, and its branch when the run works on a fork.</summary>
+    private Task OpenUnfinishedTaskAsync(ChatUnfinishedTask task) =>
+        NavigateToTargetAsync(new WorkspaceTarget(null, task.ChatId, task.BranchId, null, false));
+
+    private Task ResumeUnfinishedTaskAsync(ChatUnfinishedTask task) =>
+        ResumeUnfinishedRunAsync(task.ChatId, task.BranchId);
+
+    // Resumes one after another rather than in parallel: each resume appends to the same project's
+    // run state, and a refusal on the first should not be hidden behind a burst of concurrent calls.
+    private async Task ResumeAllUnfinishedTasksAsync()
+    {
+        foreach (var task in GetUnfinishedStatistics().Tasks.Where(item => item.CanResume).ToArray())
+            await ResumeUnfinishedRunAsync(task.ChatId, task.BranchId);
+    }
+
+    private async Task ResumeUnfinishedRunAsync(Guid chatId, Guid branchId)
+    {
+        if (_selectedProject is not { } project) return;
+        await RunQueueCommandAsync(() => ChatRunsApi.ResumeAsync(project.Id, chatId, branchId,
+            Guid.CreateVersion7(), CancellationToken.None));
+    }
     private Task SkipFailedQueueAsync() => _selectedProject is null || _selectedChat is null ? Task.CompletedTask
         : RunQueueCommandAsync(() => ChatRunsApi.SkipFailedAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None));
     private Task RebaseQueueAsync() => _selectedProject is null || _selectedChat is null ? Task.CompletedTask

@@ -23,6 +23,7 @@ Current widgets:
 | `chat-references` | References | `link` | `ChatReferencesWidget` | The files, directories, images, uploads, skills, diffs, chats and projects the messages named, added up over the whole chat or the last turn, each with a click that shows its earliest message |
 | `chat-models` | Models | `cpu` | `ChatModelsWidget` | Which models answered the chat and how many answer requests each served, for the whole chat or the last turn |
 | `chat-team` | Team | `users` | `ChatTeamWidget` | The branches that sent team messages into the visible branch, with what each sent: messages, asides and intents, for the whole chat or the last turn, each with a click that shows its latest message |
+| `chat-unfinished` | Unfinished work | `list-checks` | `ChatUnfinishedWidget` | Every run in this project that has not finished — waiting for an approval or an answer, paused, interrupted, failed with a recovery action left, still generating or with messages queued behind it — with a click that opens its chat and branch and a button that resumes it |
 
 ## UX
 
@@ -748,4 +749,58 @@ Which branches are working with this one (`ChatTeamWidget`, `IChatTeamStatistics
   in `tests/AI.Web.Tests/Widgets`. The widget is a `ChatWidget` with `Summary`,
   `ChatWidgetScopeSwitch`, the shared count headline and `chat-usage-*` building blocks; the rows
   use `chat-team-*`. A blocker wears the warning status token, and its word stays in the text, so
+  colour never carries the meaning alone.
+
+## Unfinished work widget
+
+Which work in this project has not finished and still wants the person
+(`ChatUnfinishedWidget`, `IChatUnfinishedStatisticsCalculator`). It is the widget to open first after
+starting the application, when runs left over from the last session are waiting.
+
+- **Scope.** The whole project, not the open chat, so it has no whole-chat/last-turn switch. The
+  widget sits in whichever chat is open, but its list is the same everywhere: every run snapshot the
+  client holds for the project's chats.
+- **Source of truth.** `IRunStateService.Runs` — the run snapshots the client itself keeps, loaded at
+  startup and kept in step by the Host's pushes. Each one carries `Status`, `Queue`, `PendingApproval`,
+  `PendingPrompt`, `Wait` and `RecoveryActions`; the chat's own title and last-activity time come from
+  the sidebar's `ChatSummary`. Nothing is inferred from message text or from token usage.
+- **What counts as unfinished.** A run is listed while it is `Generating`, `Paused`, `Interrupted` or
+  `Failed` with a recovery action left, while it has a pending approval, a pending question or a
+  provider wait, or while messages are still queued behind it.
+- **What it shows.**
+  - **Headline.** How many chats have unfinished work, and the total number of unfinished runs on the
+    right; each branch of a chat counts as its own run.
+  - **Legend.** One entry per reason the project actually has, most demanding first: `Approval`,
+    `Prompt`, `Wait`, `Failed`, `Paused`, `Interrupted`, `Running`, `Queue`.
+  - **Actions.** `Resume all (N)` resumes every run the Host offers to resume, one after another. The
+    note beside it says how many are opened by their row instead.
+  - **Rows.** Most demanding first, then by chat title. Each row: the chat title, its reason, whether
+    the run works on a branch rather than on the chat itself, how many messages are queued, the run's
+    own status exactly as the Host reported it, and the chat's last-activity time. The row opens the
+    chat — and its branch, when the run works on a fork. Rows the Host would agree to resume carry
+    their own resume button.
+  - **Footer.** "from run snapshots" and the note that last-activity times are message timestamps.
+- **Honesty rules.**
+  - **Only runs the client knows about.** The list is this client's own run snapshots, not a query of
+    the Host. A run the Host no longer keeps is not listed; a run the client has not yet received at
+    startup appears when it arrives.
+  - **Last-activity times are approximate and marked "≈".** They come from the chat's stored summary,
+    which is when something was written to the chat — not when the run stopped — and they include time
+    the chat sat idle. The tooltip and the footer note both say so.
+  - **Resume is only offered where the Host would accept it.** A run whose recovery actions do not
+    include `Resume`, and a failure with no recovery left, opens its chat instead of showing a resume
+    button, rather than offering an action the Host would refuse.
+  - **Empty chats and archived chats are left out**, even when a stale snapshot still names them.
+- **Empty state.** "Unfinished chat work appears here while any run is waiting, paused, interrupted,
+  failed or still queued."
+- **Folded summary.** `N unfinished · M chat/chats`; null when nothing is unfinished.
+- **Data.** The sidebar's `ChatSummary` list and `IRunStateService.Runs`. No presentation service is
+  injected.
+- **Architecture.** `IChatUnfinishedStatisticsCalculator` in `src/AI.Web/Widgets` returns a
+  `ChatUnfinishedStatistics` record holding one `ChatUnfinishedTask` per unfinished run; a pure
+  function over the chats and the run snapshots. Bound in `Composition.cs` and tested in
+  `tests/AI.Web.Tests/Widgets`. The widget is a `ChatWidget` with `Summary`, the shared count headline
+  and `chat-usage-*` building blocks; the rows use `chat-unfinished-*`. Only a reason that asks a
+  person to act wears a status word colour — `--color-warning-text` for what blocks the run now,
+  `--color-danger-text` for what stopped — and the reason word stays in the text beside the mark, so
   colour never carries the meaning alone.

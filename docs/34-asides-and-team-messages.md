@@ -107,7 +107,7 @@ teammates. Nothing beyond this document's mechanics is needed in code; the proto
   off — at least two parts that run at once, disjoint owned paths, contracts fixable up front, each
   part substantial. If not, it says so and recommends one branch or `spawn_subtask`. Otherwise it
   proposes 2–4 teammates, asks the user to confirm, writes the "Team charter" into the main branch
-  as an aside and forks one branch per teammate from it, named "Role — focus".
+  as an aside and forks one branch per teammate from it, named "Role — focus" by the fork's `title`.
 - `team-coordinate` (main branch, the lead): handles team messages by intent — answers questions,
   unblocks, records decisions and sends them to the affected branches as asides, checks `done`
   against the definition of done, moves the team between phases and integrates the result.
@@ -135,6 +135,13 @@ and comes from the same chat names the protocol in its header: "team message fro
 to the team-contribute protocol" in a teammate's branch, "team message to the lead: handle it with
 the team-coordinate protocol" in the main branch. A fork or a message without an intent gets no
 such line.
+
+Nobody polls. Waiting for an answer means ending the turn: the answer arrives as a message and wakes
+the branch. Reading the same branch again and again brings nothing new and stops the turn as a
+stall. A teammate whose turn does stop that way reports it by itself: the dispatcher sends the
+model's account of the stall to the main branch as a `blocker` from that branch, which wakes the
+lead (see the stall rule in [Hidden model instructions](22-hidden-model-instructions-and-run-completion.md)).
+A teammate's branch is recognised by its first message: a team message the main branch sent.
 
 ### Known limits
 

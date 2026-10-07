@@ -48,7 +48,7 @@ public enum SubmitMode
     /// <summary>Append to the branch head and wait behind whatever is already queued.</summary>
     Queue,
 
-    /// <summary>Start a new branch from 'parentMessageId'.</summary>
+    /// <summary>Start a new branch from 'parentMessageId'; 'title' names it, so no rename is needed.</summary>
     Fork,
 
     /// <summary>Replace 'parentMessageId' and everything below it.</summary>
@@ -122,6 +122,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             string? content = null,
             SubmitMode mode = SubmitMode.Send,
             MessageIntent? intent = null,
+            string? title = null,
             Guid? parentMessageId = null,
             Guid? messageId = null,
             ChatResource[]? resources = null,
@@ -129,7 +130,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             bool wait = false,
             int waitTimeoutMs = 60_000,
             CancellationToken cancellationToken = default) =>
-            tool.RunsAsync(run, operation, projectId, chatId, operationId, branchId, content, mode, intent, parentMessageId,
+            tool.RunsAsync(run, operation, projectId, chatId, operationId, branchId, content, mode, intent, title, parentMessageId,
                 messageId, resources, position, wait, waitTimeoutMs, cancellationToken);
     }
 
@@ -143,6 +144,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         string? content,
         SubmitMode mode,
         MessageIntent? intent,
+        string? title,
         Guid? parentMessageId,
         Guid? messageId,
         ChatResource[]? resources,
@@ -159,7 +161,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         return writes.RunAsync(operation.ToString(), operationId, builder => operation switch
         {
             RunOperation.Submit => SubmitAsync(builder, projectId, chatId, branch, operationId, content, resources, mode,
-                sender, parentMessageId, wait, waitTimeoutMs, cancellationToken),
+                sender, title, parentMessageId, wait, waitTimeoutMs, cancellationToken),
             RunOperation.Stop => CommandAsync(builder, projectId, chatId, branch, "Stopped the run.",
                 () => runs().StopAsync(projectId, chatId, branch, cancellationToken, operationId)),
             RunOperation.UpdateQueued => CommandAsync(builder, projectId, chatId, branch, "Updated the queued message.",
@@ -183,7 +185,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
 
     private async Task<AppWriteResult> SubmitAsync(
         AppWriteBuilder builder, Guid projectId, Guid chatId, Guid branchId, Guid operationId, string? content,
-        ChatResource[]? resources, SubmitMode mode, ChatMessageSender? sender,
+        ChatResource[]? resources, SubmitMode mode, ChatMessageSender? sender, string? title,
         Guid? parentMessageId, bool wait, int waitTimeoutMs, CancellationToken cancellationToken)
     {
         var text = content ?? string.Empty;
@@ -199,7 +201,8 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         var request = new SubmitChatMessageRequest(operationId, operationId, text,
             Enum.Parse<ChatSubmitMode>(mode.ToString()), branchId,
             parentMessageId is null ? MessageParentMode.BranchHead : MessageParentMode.Explicit, parentMessageId,
-            mode == SubmitMode.Replace ? parentMessageId : null, Resources: resources);
+            mode == SubmitMode.Replace ? parentMessageId : null, Resources: resources,
+            BranchTitle: mode == SubmitMode.Fork && !string.IsNullOrWhiteSpace(title) ? title.Trim() : null);
         var snapshot = sender is null
             ? await runs().SubmitAsync(projectId, chatId, request, cancellationToken)
             : await runs().SubmitFromRunAsync(projectId, chatId, request, sender, cancellationToken);

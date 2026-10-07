@@ -423,7 +423,8 @@ public sealed class ChatExecutionTests
         await fixture.SetPolicyAsync("Allow");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Find information"));
 
-        for (var attempt = 0; attempt < 5; attempt++)
+        // One step that finds something, then three that only repeat it.
+        for (var attempt = 0; attempt < 4; attempt++)
         {
             var work = await fixture.NextCallAsync();
             work.ToolCalls = [new ChatToolCall($"call-{attempt}", "mcp_built_in__process_run", "{}")];
@@ -438,7 +439,7 @@ public sealed class ChatExecutionTests
         answer.Answer.SetResult("I could not find the answer with the available tools.");
 
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
-        fixture.Tools.CallCount.ShouldBe(5);
+        fixture.Tools.CallCount.ShouldBe(4);
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
             .ShouldHaveSingleItem().Content.ShouldBe("I could not find the answer with the available tools.");
@@ -451,7 +452,7 @@ public sealed class ChatExecutionTests
         await fixture.SetPolicyAsync("Allow");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Find information"));
 
-        for (var attempt = 0; attempt < 5; attempt++)
+        for (var attempt = 0; attempt < 4; attempt++)
         {
             var work = await fixture.NextCallAsync();
             work.ToolCalls = [new ChatToolCall($"call-{attempt}", "mcp_built_in__process_run", "{}")];
@@ -462,11 +463,90 @@ public sealed class ChatExecutionTests
         ignored.ToolCalls = [new ChatToolCall("call-ignored", "mcp_built_in__process_run", "{}")];
         ignored.Answer.SetResult("");
 
+        // The model is asked once more, with nothing to call, for its own account of the turn.
+        var report = await fixture.NextCallAsync();
+        report.Request.Tools.ShouldBeEmpty();
+        report.Answer.SetResult("The command printed the same output every time; I need the log path.");
+
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
-        fixture.Tools.CallCount.ShouldBe(5);
+        fixture.Tools.CallCount.ShouldBe(4);
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
-            .ShouldHaveSingleItem().Content.ShouldContain("stopped after several steps");
+            .ShouldHaveSingleItem().Content.ShouldBe("The command printed the same output every time; I need the log path.");
+    }
+
+    [Fact]
+    public async Task ABatchOfRepeatedCallsShouldCountAsOneStepWithoutNews()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Re-read what you need"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-0", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+        var again = await fixture.NextCallAsync();
+        again.ToolCalls = [.. Enumerable.Range(1, 4).Select(index => new ChatToolCall($"call-{index}", "mcp_built_in__process_run", "{}"))];
+        again.Answer.SetResult("");
+
+        // Four repeated results in one step used to stop the turn on their own.
+        var next = await fixture.NextCallAsync();
+        next.Request.ContextMessages!.Where(IsInstruction)
+            .ShouldNotContain(message => message.ForModel.Contains("no new information", StringComparison.Ordinal));
+        next.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task ATeammateWhoseTurnStalledShouldReportABlockerToTheLead()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Analyse the project as a team"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Team charter: QA owns tests/.");
+        var lead = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var teammate = Guid.NewGuid();
+        await fixture.Dispatcher.SubmitFromRunAsync(fixture.ProjectId, fixture.ChatId,
+            new SubmitChatMessageRequest(teammate, teammate, "You are QA in this team.", ChatSubmitMode.Fork,
+                fixture.ChatId, MessageParentMode.Explicit, lead.HeadMessageId, BranchTitle: "QA — test coverage"),
+            new AI.Domain.Chats.ChatMessageSender(fixture.ChatId, fixture.ChatId, "decision"), CancellationToken.None);
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var work = await fixture.NextCallAsync();
+            work.ToolCalls = [new ChatToolCall($"call-{attempt}", "mcp_built_in__process_run", "{}")];
+            work.Answer.SetResult("");
+        }
+        var ignored = await fixture.NextCallAsync();
+        ignored.ToolCalls = [new ChatToolCall("call-ignored", "mcp_built_in__process_run", "{}")];
+        ignored.Answer.SetResult("");
+        (await fixture.NextCallAsync()).Answer.SetResult("The test runner never starts; I need the build fixed first.");
+
+        // The blocker wakes the lead, whose next request reads it with the teammate as its sender.
+        var woken = await fixture.NextCallAsync();
+        woken.Request.ContextMessages!.ShouldContain(message => message.ForModel.Contains(
+            $"From branch \"QA — test coverage\" (branchId {teammate}) (blocker)", StringComparison.Ordinal)
+            && message.ForModel.Contains("I need the build fixed first", StringComparison.Ordinal));
+        woken.Answer.SetResult("Fixing the build first.");
+        await fixture.WaitAsync(run => run.BranchId == fixture.ChatId && run.Status == ChatRunStatus.Completed
+            && run.Queue.Count == 0 && run.HeadMessageId != lead.HeadMessageId);
+    }
+
+    [Fact]
+    public async Task ABranchShouldBeRenamedWhateverChangedInTheChatMeanwhile()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Hello"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Hi");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        // Revision 0 is long gone; a title conflicts with none of what was written since.
+        var renamed = await fixture.Chats.RenameBranchAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            new RenameChatBranchRequest("Greeting", 0), CancellationToken.None);
+
+        renamed.ShouldNotBeNull().Branches!.Single(branch => branch.Id == fixture.ChatId).Title.ShouldBe("Greeting");
     }
 
     [Fact]

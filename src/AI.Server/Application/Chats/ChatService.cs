@@ -211,7 +211,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             stored.Chat.PruneUnreachableMessages(retainedMessageIds.Select(id => new ChatMessageId(id)));
         }
         else
-            stored.Chat.AddMessage(message, now, request.BranchId, request.ParentBranchId);
+            stored.Chat.AddMessage(message, now, request.BranchId, request.ParentBranchId, request.BranchTitle);
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
@@ -425,7 +425,11 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
         if (stored is null) return null;
         stored.Chat.RenameBranch(new ChatMessageId(branchId), request.Title, clock.UtcNow);
-        var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
+        // A title conflicts with nothing written meanwhile, and while branches run the chat's
+        // revision moves with every message, so a rename against the revision the caller read
+        // could keep failing for as long as a team works. The chat lock makes saving against the
+        // stored revision safe; the request's revision is only what the caller last saw.
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
         return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
     }
 

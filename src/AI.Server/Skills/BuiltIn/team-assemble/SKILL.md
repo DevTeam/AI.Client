@@ -5,7 +5,7 @@ icon: users
 kind: playbook
 description: Decide whether a task pays off as team work; if so, write a team charter and start one branch per teammate.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"The task"}},"additionalProperties":false}
-tools: ["app_read","app_chats","app_runs","app_navigate","ask_user","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files"]
+tools: ["app_read","app_runs","app_navigate","ask_user","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files"]
 ---
 
 The user's instructions take precedence over this playbook. Ask questions and report results in
@@ -51,16 +51,16 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    its step: the aside joins this turn after the call's result, and the branches must start from it.
 8. In the next step, read the main branch with `app_read` and confirm the charter message is there.
    Then for each teammate: `app_runs` Submit, `branchId` = `chatId`, mode `Fork`,
-   `parentMessageId` = the charter's id, intent `Decision`, `wait` false, content = the teammate's
+   `parentMessageId` = the charter's id, intent `Decision`, `wait` false, `title` = "<Role> — <focus>"
+   in two to five words, content = the teammate's
    brief: "You are <role> in this team. Run the team-contribute skill first." followed by the
    scope, owned paths, deliverable, definition of done, skills to use and whom to ask. Every branch
    inherits the analysis and the charter from the message it starts from, so the brief repeats
    only what is the teammate's own.
-9. Read the chat's revision and `app_chats` RenameBranch each new branch to "<Role> — <focus>",
-   two to five words, reading the revision again before each rename.
-10. Answer with the team as a table (role, branch, deliverable) and one line on how it works: the
-    teammates report to this branch, which coordinates them with the team-coordinate skill. Do
-    not wait for the teammates in this turn.
+9. Answer with the team as a table (role, branch, deliverable) and one line on how it works: the
+   teammates report to this branch, which coordinates them with the team-coordinate skill. Do not
+   wait for the teammates in this turn, and do not read their branches over and over: what they
+   send arrives here as messages.
 
 Protocol to put in the charter:
 - Teammates write to the main branch with `app_runs` Submit, `branchId` = the chat id.
@@ -70,3 +70,5 @@ Protocol to put in the charter:
 - A teammate changes only its owned paths; anything else is a question to the lead.
 - Before each major step a teammate reads the main branch since the charter for new decisions.
 - Teammates do not message each other; the lead routes what one needs from another.
+- Nobody polls: waiting for an answer means ending the turn, and the answer arrives as a message.
+  Reading the same branch again and again with nothing new in it stops the turn.

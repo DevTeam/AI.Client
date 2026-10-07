@@ -55,10 +55,18 @@ What remains of the earlier machinery:
   is fed back and continued, up to five times, into one message.
 - **Empty responses.** A response with neither text nor calls is asked for again with a
   `response.empty` note, at most twice, then the run fails with the finish reason and chunk count.
-- **Stalls.** Tool errors and repeated identical results count as steps without new information;
-  after four, the `run.stalled` note asks for an answer without another tool. The tools stay
-  offered so the request keeps its cached start; a tool called anyway ends the run with a fixed
-  explanation instead of going round again.
+- **Stalls.** A step is counted as bringing no new information when none of its calls returned
+  something the turn had not already seen: the same tool, arguments and result again. An error is
+  information like any other result unless it repeats exactly, so failing tests with changing
+  output or a missing file followed by a search are progress, and a batch of parallel calls is one
+  step, however many of them repeat. What was seen is forgotten when the history is summarized,
+  since reading it again is then legitimate. After three such steps in a row the `run.stalled` note
+  asks for an answer without another tool. The tools stay offered so the request keeps its cached
+  start; a tool called anyway is not run, and the model is asked once more with no tools to give
+  its own account of what it found and what blocks it. Only an endpoint that cannot answer that
+  gets the fixed explanation. In a team's teammate branch the account also goes to the main branch
+  as a `blocker` ([Asides and team messages](34-asides-and-team-messages.md)). A message added to the
+  turn as an aside resets the count.
 
 Until 2026-10 a control tool, `app_finish_run`, was the only way to finish a turn that had used
 tools: plain text after a tool was held back and the model was corrected until it called the tool

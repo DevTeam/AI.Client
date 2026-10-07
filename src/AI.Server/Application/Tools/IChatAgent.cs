@@ -42,5 +42,8 @@ public interface IChatAgent
         // Messages added to the branch while the turn runs, already persisted by the caller. Asked
         // for after every tool batch, the only point where a user message keeps the history valid;
         // what it returns is read by the model in its next request.
-        Func<CancellationToken, Task<IReadOnlyList<ChatCompletionMessage>>>? asides = null);
+        Func<CancellationToken, Task<IReadOnlyList<ChatCompletionMessage>>>? asides = null,
+        // Told when the turn ends because its steps stopped producing anything new, with the
+        // account the model gave of it; that account is also the turn's answer.
+        Func<string, CancellationToken, Task>? stalledReport = null);
 }

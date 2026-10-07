@@ -32,7 +32,9 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    `wait` false:
    - progress worth knowing: mode Aside, intent `Status`, at most once per phase;
    - something only the lead or the user can settle: mode Send, intent `Question`; then carry on
-     with what does not depend on the answer, or end the turn saying what you wait for;
+     with what does not depend on the answer, or end the turn saying what you wait for. Do not
+     poll the main branch for the answer: it arrives in this branch as a message, and reading the
+     same thing again and again stops the turn as making no progress;
    - stuck with no way forward: mode Send, intent `Blocker`, with what you tried;
    - a decision others must follow that your scope lets you make: mode Aside, intent `Decision`.
    Every message is self-contained — what, why, and what you need back. No acknowledgements, no

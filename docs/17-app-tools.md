@@ -84,6 +84,8 @@ The timeout expiring is not an error: the message is accepted either way, so the
 
 Every message `app_runs Submit` writes carries its sender, the chat and branch of the calling run, set by the server; the optional `intent` (`Question`, `Answer`, `Decision`, `Status`, `Blocker`, `Done`) is stored with it. `mode: Aside` starts no turn and ignores `wait`: a running turn reads the message at its next step, an idle branch just records it. See [Asides and team messages](34-asides-and-team-messages.md).
 
+`mode: Fork` takes an optional `title` for the new branch, so it needs no separate rename. `app_chats RenameBranch` (and the HTTP rename) no longer compares the chat revision: a title conflicts with nothing written meanwhile, and while branches run the revision moves with every message, so a rename against the revision the caller had read kept failing for as long as a team worked.
+
 ### spawn_subtask
 
 Delegates work to a separate conversation and returns only the answer. The point is the audience split already built into `ToolCallResult`: `ModelContent` is the only thing that enters the model context, and `_meta` is excluded from that projection by contract. Therefore the subtask's result goes to the calling model, while its entire conversation — reasoning, every tool call, every result — is placed into `_meta` and is visible only in the UI, as a folded block inside the call card.

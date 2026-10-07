@@ -3848,6 +3848,10 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     height: 1.2rem;
 }
 
+.composer-send-icon { animation: composer-send-icon-in var(--duration-base) var(--ease-emphasized); }
+@keyframes composer-send-icon-in { from { opacity: 0; transform: scale(0.7); } }
+@media (prefers-reduced-motion: reduce) { .composer-send-icon { animation: none; } }
+
 .composer-send-tooltip {
     position: absolute;
     bottom: calc(100% + 0.6rem);

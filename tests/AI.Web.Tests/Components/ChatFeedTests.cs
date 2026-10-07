@@ -32,6 +32,38 @@ public sealed class ChatFeedTests
         Message("Tool", content, toolCallId: callId);
 
     [Fact]
+    public void MessageAddedDuringATurnShouldStayInsideThatTurn()
+    {
+        var question = User("Run the tests");
+        var call = Assistant("", "call-1");
+        var result = ToolResult("call-1");
+        var added = User("They are in tests/Integration") with { Delivery = MessageDelivery.InTurn };
+        var answer = Assistant("All green");
+
+        var turns = _feed.BuildTurns([question, call, result, added, answer]);
+
+        var turn = turns.ShouldHaveSingleItem();
+        turn.UserMessage.ShouldBe(question);
+        turn.IntermediateMessages.ShouldContain(added);
+        turn.FinalAnswer!.Value.Message.ShouldBe(answer);
+    }
+
+    [Fact]
+    public void AsideAfterAnAnswerShouldStandAsItsOwnItemWithoutTakingTheAnswer()
+    {
+        var question = User("Summarize");
+        var answer = Assistant("A summary");
+        var aside = User("Keep it short next time") with { Delivery = MessageDelivery.Aside };
+
+        var turns = _feed.BuildTurns([question, answer, aside]);
+
+        turns.Count.ShouldBe(2);
+        turns[0].FinalAnswer!.Value.Message.ShouldBe(answer);
+        turns[1].UserMessage.ShouldBe(aside);
+        turns[1].FinalAnswer.ShouldBeNull();
+    }
+
+    [Fact]
     public void ShouldKeepAssistantContentVisibleWhileGroupingItsToolCalls()
     {
         var preamble = Assistant("Проверю путь сообщения от модели до рендера ленты.", "call-1");

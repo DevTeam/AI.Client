@@ -464,6 +464,7 @@
             OnEditAndReplaceBranch="EditAndReplaceBranchAsync"
             OnToggleBranchMenu="ToggleMessageBranchMenu"
             OnSelectBranch="SelectMessageBranch"
+            OnOpenSenderBranch="OpenSenderBranchAsync"
             OnSelectBranchLeaf="SelectMessageBranchLeaf"
             OnBranchPickerKeyDown="HandleBranchPickerKeyDown"
             OnCurrentTurnSummaryVisibilityChanged="SetCurrentTurnSummaryVisibility"
@@ -528,17 +529,29 @@
                                     }
                                     else
                                     {
-                                        <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button>
+                                        @* An aside has no place in the order: the turn in flight takes it at its next
+                                           step, or it follows the reply. Only its text and its presence can change. *@
+                                        @if (!item.IsAside)
+                                        {
+                                            <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button>
+                                        }
                                         <span title="@item.Content">
+                                            @if (item.IsAside)
+                                            {
+                                                <span class="queue-aside-label" title="Read by the turn in flight at its next step, or added after its reply">Aside</span>
+                                            }
                                             @(string.IsNullOrWhiteSpace(item.Content) ? "Workspace references" : GetSingleLine(item.Content))
                                             @if (item.Resources is { Count: > 0 })
                                             {
                                                 <span class="queue-resource-count"> refs: @item.Resources.Count</span>
                                             }
                                         </span>
-                                        <button class="icon-action queue-send-now" type="button" title="Interrupt and send this message now" aria-label="Interrupt and send this message now" @onclick="() => SendQueuedMessageNowAsync(item.Id)"><AppIcon Name="zap" /></button>
-                                        <button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button>
-                                        <button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button>
+                                        @if (!item.IsAside)
+                                        {
+                                            <button class="icon-action queue-send-now" type="button" title="Interrupt and send this message now" aria-label="Interrupt and send this message now" @onclick="() => SendQueuedMessageNowAsync(item.Id)"><AppIcon Name="zap" /></button>
+                                            <button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button>
+                                            <button class="icon-action" type="button" title="Move down" aria-label="Move down" @onclick="() => MoveQueuedMessageAsync(item.Id, 1)"><AppIcon Name="chevron-down" /></button>
+                                        }
                                         <button class="icon-action" type="button" title="Edit queued message" aria-label="Edit queued message" @onclick="() => BeginQueueEdit(item)"><AppIcon Name="edit" /></button>
                                         <button class="icon-action destructive-action" type="button" title="Remove queued message" aria-label="Remove queued message" @onclick="() => RemoveQueuedMessageAsync(item.Id)"><AppIcon Name="trash" /></button>
                                     }
@@ -735,7 +748,7 @@
                     }
                 </div>
                 @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation" aria-label="Stop generation" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> }
-                <ComposerSendButton ActiveMode="@GetComposerSendMode()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
+                <ComposerSendButton ActiveMode="@GetComposerSendMode()" CanAside="@(_selectedChat is not null && !_isForking && _replaceSourceId is null)" TurnInFlight="@IsTurnInFlight()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
             </div>
             @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
         </footer>
@@ -1929,6 +1942,9 @@ else if (_guideInvitation is { } guideInvitation)
     [JSInvokable]
     public Task SendNowFromKeyboard() => SubmitComposerAsync(ComposerSubmitMode.SendNow);
 
+    [JSInvokable]
+    public Task AsideFromKeyboard() => SubmitComposerAsync(ComposerSubmitMode.Aside);
+
     /// <summary>
     /// Walks the project's sent-message history: -1 towards older entries, +1 back towards newer
     /// ones and finally back to the draft the user started from. Returns null when the press
@@ -2838,8 +2854,10 @@ else if (_guideInvitation is { } guideInvitation)
         // the composer was left in.
         if (_selectedChat is null) ResetBranchOperationState();
 
+        // An aside needs a conversation to join; the first message of a new chat is its first turn.
         var effectiveMode = _isForking ? ComposerSubmitMode.Fork
             : _replaceSourceId is not null ? ComposerSubmitMode.Send
+            : mode == ComposerSubmitMode.Aside && _selectedChat is null ? ComposerSubmitMode.Send
             : mode;
         _isSubmittingMessage = true;
         _isSendingNowFromComposer = effectiveMode == ComposerSubmitMode.SendNow;
@@ -2945,7 +2963,16 @@ else if (_guideInvitation is { } guideInvitation)
         if (_selectedChat?.Id != accepted.Chat.Id || _selectedChat.Revision < accepted.Chat.Revision) _selectedChat = accepted.Chat;
         _selectedBranchId = accepted.RunBranchId;
         StoreRun(accepted.Snapshot);
-        if (accepted.UpdatedBranchLeafId is { } updatedLeaf)
+        // An aside on an idle branch is already in the transcript when the submission returns, and
+        // the push carrying it may have arrived first; its own snapshot brings it in either way.
+        if (accepted.Snapshot.ChatId == _selectedChat.Id && accepted.Snapshot.ChatRevision > _selectedChat.Revision
+            && ChatMessageDeltaMerger.TryApply(_selectedChat, accepted.Snapshot, out var updatedChat))
+        {
+            _selectedChat = updatedChat;
+            CacheChatDetails(updatedChat);
+        }
+        // A leaf the transcript does not hold yet would show an empty branch; the push moves it.
+        if (accepted.UpdatedBranchLeafId is { } updatedLeaf && _selectedChat.Messages.Any(message => message.Id == updatedLeaf))
         {
             _branchLeafId = updatedLeaf;
         }
@@ -3112,6 +3139,12 @@ else if (_guideInvitation is { } guideInvitation)
     // a ChatBranchSummary; the existing SelectBranchTreeItemAsync takes the sidebar's
     // BranchTreeItem, and the two records carry the same fields (root id, title, depth, leaf id),
     // so the page just adapts and delegates.
+    /// <summary>Opens the branch whose run sent a message, from the sender label on that message.</summary>
+    private Task OpenSenderBranchAsync(Guid branchId) =>
+        _selectedChat?.Branches?.SingleOrDefault(item => item.Id == branchId) is { HeadMessageId: { } head } branch
+            ? SelectBranchTreeItemAsync(new BranchTreeItem(branch.Id, branch.Title, 0, head))
+            : Task.CompletedTask;
+
     private async Task OnWidgetBranchSelectedAsync(ChatBranchSummary branch) =>
         await SelectBranchTreeItemAsync(new BranchTreeItem(branch.RootId, branch.Title, branch.Depth, branch.LeafId));
 
@@ -3230,6 +3263,13 @@ else if (_guideInvitation is { } guideInvitation)
         if (_selectedChat?.Id == chatId) await RefreshChatUsageAsync();
     }
 
+    /// <summary>
+    /// Whether the selected branch has a command in flight — generating, or stopped with its message
+    /// already sent — which is what an aside then joins instead of standing on its own.
+    /// </summary>
+    private bool IsTurnInFlight() => GetSelectedRun() is { } run
+        && (run.Status == ChatRunStatus.Generating || run.Queue.Any(item => item.Stage == QueuedMessageStage.UserCommitted));
+
     private ComposerSendButton.SendMode GetComposerSendMode() =>
         _replaceSourceId is not null
             ? ComposerSendButton.SendMode.Replace
@@ -3241,7 +3281,9 @@ else if (_guideInvitation is { } guideInvitation)
                         ? ComposerSendButton.SendMode.SendNow
                         : _composerCtrlDown
                             ? ComposerSendButton.SendMode.Queue
-                            : ComposerSendButton.SendMode.Send;
+                            : _composerAltDown && _selectedChat is not null
+                                ? ComposerSendButton.SendMode.Aside
+                                : ComposerSendButton.SendMode.Send;
 
     // The button does whatever its tooltip is highlighting, so pressing it and pressing the keys
     // it shows can never mean two different things.
@@ -3252,6 +3294,7 @@ else if (_guideInvitation is { } guideInvitation)
         ComposerSendButton.SendMode.Replace => ComposerSubmitMode.Send,
         ComposerSendButton.SendMode.Queue => ComposerSubmitMode.Queue,
         ComposerSendButton.SendMode.SendNow => ComposerSubmitMode.SendNow,
+        ComposerSendButton.SendMode.Aside => ComposerSubmitMode.Aside,
         _ => ComposerSubmitMode.Send
     });
 
@@ -3264,6 +3307,7 @@ else if (_guideInvitation is { } guideInvitation)
         if (_composerAltDown && _composerCtrlDown) return " · fork on Enter";
         if (_composerCtrlDown && _composerShiftDown) return " · interrupt and send now on Enter";
         if (_composerCtrlDown) return " · queue on Enter, stays paused";
+        if (_composerAltDown) return " · add to this turn on Enter";
         return "";
     }
 

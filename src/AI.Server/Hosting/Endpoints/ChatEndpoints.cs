@@ -192,7 +192,10 @@ public sealed class ChatEndpoints : IEndpointModule
             "/api/projects/{projectId:guid}/chats/{chatId:guid}/messages",
             async (Guid projectId, Guid chatId, AppendChatMessageRequest request, IChatService service, IChatRunDispatcher runs, IChatBranchIds branchIds, CancellationToken cancellationToken) =>
             {
-                var chat = await service.AppendMessageAsync(projectId, chatId, request, cancellationToken);
+                // Who sent a message and how it reached the branch are the run dispatcher's to say;
+                // a client never names a branch as the author of what it writes.
+                var chat = await service.AppendMessageAsync(projectId, chatId,
+                    request with { Sender = null, Delivery = MessageDelivery.Turn }, cancellationToken);
                 if (chat is not null) await runs.ReconcileChatAsync(projectId, chatId, branchIds.Collect(chat), cancellationToken);
                 return chat is null ? Results.NotFound() : Results.Ok(chat);
             });

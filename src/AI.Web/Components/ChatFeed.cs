@@ -17,7 +17,7 @@ public sealed class ChatFeed : IChatFeedProjection
         var usage = turns.ToDictionary(turn => turn.TurnId);
         var result = new Dictionary<Guid, IReadOnlyList<ModelSwitch>>();
         string? previous = null;
-        foreach (var user in chain.Where(message => message.Role == "User"))
+        foreach (var user in chain.Where(message => message.StartsTurn))
         {
             usage.TryGetValue(user.Id, out var stored);
             var models = (stored?.AnswerModels ?? [])
@@ -130,7 +130,7 @@ public sealed class ChatFeed : IChatFeedProjection
 
         foreach (var item in BuildFeedItems(chain))
         {
-            if (item.Message is { Role: "User" } nextUser)
+            if (item.Message is { StartsTurn: true } nextUser)
             {
                 FlushTurn();
                 user = nextUser;
@@ -192,7 +192,7 @@ public sealed class ChatFeed : IChatFeedProjection
         for (var index = chain.Count - 1; index >= 0; index--)
         {
             var message = chain[index];
-            if (message.Role == "User") return false;
+            if (message.StartsTurn) return false;
             if (message.WorkspaceChanges is { IsEmpty: false }) return true;
         }
         return false;

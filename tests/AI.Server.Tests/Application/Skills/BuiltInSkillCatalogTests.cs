@@ -7,7 +7,7 @@ using Xunit;
 
 public class BuiltInSkillCatalogTests
 {
-    private static readonly string[] Domains = ["chat", "project", "memory", "skill", "instructions", "code", "git", "devops", "qa", "mermaid", "svg", "settings", "app"];
+    private static readonly string[] Domains = ["chat", "project", "memory", "skill", "instructions", "code", "git", "devops", "qa", "mermaid", "svg", "settings", "app", "team"];
 
     // An abbreviation keeps its official spelling in the name (docs/27-skills.md, skill-create).
     private static readonly Dictionary<string, string> Abbreviations = new(StringComparer.Ordinal)

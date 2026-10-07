@@ -52,7 +52,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         Func<string?, CancellationToken, Task>? draft = null,
         Func<ContextUsage, CancellationToken, Task>? contextUsage = null,
         Func<string, CancellationToken, Task>? draftToolCall = null,
-        bool overlayPromptsAllowed = true)
+        bool overlayPromptsAllowed = true,
+        Func<CancellationToken, Task<IReadOnlyList<ChatCompletionMessage>>>? asides = null)
     {
         var estimator = tokenEstimator.ForModel(request.Model);
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -541,6 +542,16 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             if (toolImages.Count > 0 && configuredConnection?.ImageInput != ImageInputMode.Disabled)
                 context.Add(new ChatCompletionMessage("user", "Images returned by the preceding tools:",
                     IsContextSummary: true, ImageAssetIds: toolImages));
+            // Every call of the batch has its result, so a message added meanwhile can join here.
+            // It is new information, so steps that found nothing new no longer count against the turn.
+            if (asides is not null)
+                foreach (var aside in await asides(token))
+                {
+                    context.Add(configuredConnection?.ImageInput == ImageInputMode.Disabled
+                        ? aside with { ImageAssetIds = null }
+                        : aside);
+                    stalledSteps = 0;
+                }
         }
     }
     /// <summary>

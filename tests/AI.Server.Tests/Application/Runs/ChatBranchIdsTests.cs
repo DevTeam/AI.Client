@@ -32,6 +32,6 @@ public sealed class ChatBranchIdsTests
              new ChatMessageView(first, root, "Assistant", "First", DateTimeOffset.UnixEpoch),
              new ChatMessageView(second, root, "Assistant", "Second", DateTimeOffset.UnixEpoch)]);
         var toolResults = new ToolResultCodec(new ToolResultModelProjector());
-        new ChatContext(toolResults, new ResourceModelProjection()).Build(chat, second).Select(message => message.Content).ShouldBe(["Question", "Second"]);
+        new ChatContext(toolResults, new ResourceModelProjection(), new ModelMessageHeader()).Build(chat, second).Select(message => message.Content).ShouldBe(["Question", "Second"]);
     }
 }

@@ -33,7 +33,7 @@ public sealed class ChatRunDispatcher(
     ISkillRunner skillRunner, ISkillCatalog skillCatalog, IChatReplySuggestions replySuggestions,
     IToolAutoApprover autoApprover, ITokenUsageMeter usageMeter, ITokenUsageAggregator usageAggregator,
     IHistoryCheckpointService historyCheckpoints, IConnectionChoice connectionChoice,
-    IChatKindPolicyRegistry kindPolicies)
+    IChatKindPolicyRegistry kindPolicies, IModelMessageHeader headers)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -157,8 +157,12 @@ public sealed class ChatRunDispatcher(
     public Task<ChatRunSnapshot> SubmitUnattendedAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request,
         CancellationToken cancellationToken) => SubmitCoreAsync(projectId, chatId, request, false, cancellationToken);
 
+    public Task<ChatRunSnapshot> SubmitFromRunAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request,
+        ChatMessageSender sender, CancellationToken cancellationToken) =>
+        SubmitCoreAsync(projectId, chatId, request, true, cancellationToken, sender);
+
     private async Task<ChatRunSnapshot> SubmitCoreAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request,
-        bool interactive, CancellationToken cancellationToken)
+        bool interactive, CancellationToken cancellationToken, ChatMessageSender? sender = null)
     {
         if (_updating) throw new InvalidOperationException("The application is restarting to install an update. Try again after it reconnects.");
         _shutdown.Token.ThrowIfCancellationRequested();
@@ -183,6 +187,13 @@ public sealed class ChatRunDispatcher(
         var runtime = await GetRuntimeAsync(projectId, chatId, branchId, chat, cancellationToken);
         if (runtime.State.Operations.Contains(request.OperationId)) return runtime.Snapshot;
         var validatedResources = await resources.ValidateForChatAsync(projectId, chatId, request.Resources, cancellationToken);
+        // The branch of an aside moves under it by design — a running turn is what it is meant for —
+        // so neither the revision nor a parent applies to it.
+        if (request.Mode == ChatSubmitMode.Aside)
+            return await SubmitAsideAsync(runtime, chat, sourceBranch, request.OperationId, new QueuedRunMessage(
+                request.MessageId, request.Content.Trim(), clock.UtcNow,
+                Resources: ResourceReferences.ToDomain(validatedResources), Interactive: interactive,
+                IsAside: true, Sender: sender), cancellationToken);
         if (request.ExpectedBranchRevision is { } branchRevision && branchRevision != sourceBranch.Revision
             && request.Mode != ChatSubmitMode.Replace)
             throw new InvalidOperationException("The branch changed. Reload it before submitting.");
@@ -232,7 +243,8 @@ public sealed class ChatRunDispatcher(
         if (request.Mode == ChatSubmitMode.Replace) runtime.State.Clear();
         runtime.State.Enqueue(request.OperationId, new QueuedRunMessage(request.MessageId, request.Content.Trim(), clock.UtcNow,
             parentMode, parentId, replaceId, request.Mode == ChatSubmitMode.Fork ? sourceBranchId : null,
-            sourceBranch.Revision, Resources: ResourceReferences.ToDomain(validatedResources), Interactive: interactive));
+            sourceBranch.Revision, Resources: ResourceReferences.ToDomain(validatedResources), Interactive: interactive,
+            Sender: sender));
         if (request.Mode == ChatSubmitMode.Queue)
         {
             runtime.ResumeRequested = false;
@@ -261,6 +273,110 @@ public sealed class ChatRunDispatcher(
         StartWorker(runtime);
         return runtime.Snapshot;
     }
+
+    /// <summary>
+    /// An aside never starts a turn. With a command in flight — generating, or stopped with its
+    /// user message already in the transcript — it waits for that turn's next step boundary;
+    /// otherwise there is no turn to join and it is appended at once.
+    /// </summary>
+    private async Task<ChatRunSnapshot> SubmitAsideAsync(Runtime runtime, ChatDetails chat, ChatBranchView branch,
+        Guid operationId, QueuedRunMessage aside, CancellationToken token)
+    {
+        var before = Clone(runtime.State);
+        try
+        {
+            if (runtime.State.Status == RunStatus.Generating
+                || runtime.State.Queue.Any(item => item.Stage == QueuedRunStage.UserCommitted))
+            {
+                runtime.State.Enqueue(operationId, aside);
+            }
+            else
+            {
+                runtime.State.RememberOperation(operationId);
+                chat = await AppendAsidesAsync(runtime, chat, [aside], branch.HeadMessageId, ChatMessageDelivery.Aside, token);
+            }
+            await SaveAsync(runtime, chat, token);
+        }
+        catch { runtime.State = before; throw; }
+        return runtime.Snapshot;
+    }
+
+    /// <summary>
+    /// Writes asides as user messages under <paramref name="parent"/>, in the order they were
+    /// submitted, and drops each from the queue once it is in the transcript. A failure part-way
+    /// leaves the rest queued rather than lost.
+    /// </summary>
+    private async Task<ChatDetails> AppendAsidesAsync(Runtime runtime, ChatDetails chat,
+        IReadOnlyList<QueuedRunMessage> asides, Guid? parent, ChatMessageDelivery delivery, CancellationToken token)
+    {
+        foreach (var aside in asides)
+        {
+            var baseRevision = chat.Revision;
+            chat = await chatMutations.AppendMessageCoreAsync(chat.ProjectId, chat.Id,
+                new AppendChatMessageRequest(aside.Id, parent, "User", aside.Content, chat.Revision,
+                    BranchId: runtime.State.BranchId, Resources: ResourceReferences.ToContract(aside.Resources),
+                    Delivery: (MessageDelivery)delivery, Sender: ToContract(aside.Sender)),
+                RetainedMessageIds(chat.Id), token)
+                ?? throw new InvalidOperationException("Message conflict.");
+            TrackMessage(runtime, baseRevision, chat, aside.Id);
+            runtime.State.Remove(aside.Id);
+            parent = aside.Id;
+        }
+        return chat;
+    }
+
+    /// <summary>
+    /// Hands the running turn the asides that arrived since its last step. Called by the agent
+    /// after a tool batch's results, the only point where a user message keeps the history valid.
+    /// </summary>
+    private async Task<IReadOnlyList<ChatCompletionMessage>> TakeAsidesIntoTurnAsync(Runtime runtime,
+        CancellationToken token)
+    {
+        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
+        var asides = runtime.State.Asides;
+        if (asides.Count == 0 || runtime.ToolHead is not { } head) return [];
+        var chat = await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token)
+            ?? throw new InvalidOperationException("Chat not found.");
+        chat = await AppendAsidesAsync(runtime, chat, asides, head, ChatMessageDelivery.InTurn, token);
+        runtime.ToolHead = asides[^1].Id;
+        await SaveAsync(runtime, chat, token);
+        var taken = new List<ChatCompletionMessage>();
+        foreach (var aside in asides)
+        {
+            var message = chat.Messages.Single(item => item.Id == aside.Id);
+            var projected = await resourceProjection.ProjectAsync(chat.ProjectId, chat.Id, message.Content,
+                message.Resources, token);
+            taken.Add(new ChatCompletionMessage("user", message.Content,
+                ModelContent: headers.Apply(message, chat, projected), MessageId: message.Id,
+                ImageAssetIds: message.Resources?.Where(item => item.Kind == AI.Contracts.Resources.ChatResourceKind.Image)
+                    .Select(item => item.AssetId).OfType<string>().ToArray()));
+        }
+        return taken;
+    }
+
+    /// <summary>
+    /// The asides an attempt took, from its user message to <paramref name="head"/>, as they were
+    /// queued: a retry prunes that attempt, and what the person added must not go with it.
+    /// </summary>
+    private static List<QueuedRunMessage> TakenAsides(ChatDetails chat, Guid? head, Guid userId)
+    {
+        var byId = chat.Messages.ToDictionary(message => message.Id);
+        var taken = new List<QueuedRunMessage>();
+        var cursor = head;
+        while (cursor is { } id && id != userId && byId.TryGetValue(id, out var message))
+        {
+            if (message.Delivery == MessageDelivery.InTurn)
+                taken.Add(new QueuedRunMessage(message.Id, message.Content, message.CreatedAt,
+                    Resources: ResourceReferences.ToDomain(message.Resources), IsAside: true,
+                    Sender: message.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null));
+            cursor = message.ParentId;
+        }
+        taken.Reverse();
+        return taken;
+    }
+
+    private static MessageSender? ToContract(ChatMessageSender? sender) =>
+        sender is null ? null : new MessageSender(sender.ChatId, sender.BranchId, sender.Intent);
 
     public Task<ChatRunSnapshot?> StopAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null) =>
         MutateAsync(projectId, chatId, branchId, runtime => { runtime.ResumeRequested = false; runtime.Cancellation?.Cancel(); runtime.State.Pause(); }, operationId, cancellationToken);
@@ -407,6 +523,18 @@ public sealed class ChatRunDispatcher(
                 {
                     if (runtime.State.Queue.Count == 0 || runtime.State.Status is RunStatus.Paused or RunStatus.Interrupted or RunStatus.Failed) return;
                     queued = runtime.State.Queue[0];
+                    if (queued.IsAside)
+                    {
+                        // Left behind by a command that was dropped before it reached a step
+                        // boundary: no turn will take it now, so it joins the history as it is.
+                        var current = await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, CancellationToken.None)
+                            ?? throw new InvalidOperationException("Chat not found.");
+                        current = await AppendAsidesAsync(runtime, current, runtime.State.Asides,
+                            current.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId)?.HeadMessageId,
+                            ChatMessageDelivery.Aside, CancellationToken.None);
+                        await SaveAsync(runtime, current, CancellationToken.None);
+                        continue;
+                    }
                     runtime.ActiveMessageId = queued.Id;
                     runtime.ResumeRequested = false;
                     runtime.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
@@ -421,8 +549,15 @@ public sealed class ChatRunDispatcher(
                     if (chat.Messages.Any(message => message.Id == PartialReplyId(queued.Id))
                         && chat.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId) is { } attemptBranch
                         && IsAncestor(chat, attemptBranch.HeadMessageId, queued.Id))
-                        chat = await chatMutations.RewindBranchCoreAsync(chat.ProjectId, chat.Id, runtime.State.BranchId,
-                            queued.Id, RetainedMessageIds(chat.Id), token) ?? chat;
+                    {
+                        var taken = TakenAsides(chat, attemptBranch.HeadMessageId, queued.Id);
+                        if (await chatMutations.RewindBranchCoreAsync(chat.ProjectId, chat.Id, runtime.State.BranchId,
+                                queued.Id, RetainedMessageIds(chat.Id), token) is { } rewound)
+                        {
+                            runtime.State.ReturnAsides(taken);
+                            chat = rewound;
+                        }
+                    }
                     if (chat.Messages.Any(message => message.Id == ReplyId(queued.Id)))
                     {
                         runtime.State.Remove(queued.Id);
@@ -457,7 +592,7 @@ public sealed class ChatRunDispatcher(
                             new AppendChatMessageRequest(queued.Id, parent, "User", queued.Content, chat.Revision,
                                 BranchId: runtime.State.BranchId, ParentBranchId: queued.ParentBranchId,
                                 ReplaceSourceId: queued.ReplaceSourceId,
-                                Resources: ResourceReferences.ToContract(queued.Resources)),
+                                Resources: ResourceReferences.ToContract(queued.Resources), Sender: ToContract(queued.Sender)),
                             RetainedMessageIds(chat.Id, queued.Id), token)
                             ?? throw new InvalidOperationException("Message conflict.");
                         TrackMessage(runtime, baseRevision, chat, queued.Id);
@@ -475,6 +610,7 @@ public sealed class ChatRunDispatcher(
                         kindPolicies.Resolve(new ChatKind(chat.Kind)).Behavior.UseFullHistory
                             ? chat.Messages.Select(message => new ChatCompletionMessage(message.Role.ToLowerInvariant(),
                             message.Content, message.ToolCalls, message.ToolCallId,
+                            ModelContent: message.Role == "User" ? headers.Apply(message, chat, message.Content) : null,
                             ImageAssetIds: message.Resources?.Where(item => item.Kind == AI.Contracts.Resources.ChatResourceKind.Image)
                                 .Select(item => item.AssetId).OfType<string>().ToArray())).ToArray()
                             : await historyCheckpoints.ApplyAsync(chat.ProjectId, chat.Id,
@@ -519,7 +655,8 @@ public sealed class ChatRunDispatcher(
                     draft: (chunk, ct) => ReportDraftAsync(runtime, chunk, ct),
                     contextUsage: (usage, ct) => ReportContextAsync(runtime, usage, ct),
                     draftToolCall: (name, ct) => ReportDraftToolCallAsync(runtime, name, ct),
-                    overlayPromptsAllowed: queued.Interactive);
+                    overlayPromptsAllowed: queued.Interactive,
+                    asides: ct => TakeAsidesIntoTurnAsync(runtime, ct));
                 var suggestTitle = false;
                 Guid? answeredHead = null;
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
@@ -541,6 +678,12 @@ public sealed class ChatRunDispatcher(
                     }
                     runtime.State.Remove(queued.Id);
                     runtime.State.Complete(true);
+                    // Asides that came after the turn's last step boundary: the model did not read
+                    // them, and they join the history right after the reply, ahead of whatever
+                    // command is queued next.
+                    var asides = runtime.State.Asides;
+                    if (asides.Count > 0)
+                        chat = await AppendAsidesAsync(runtime, chat, asides, replyId, ChatMessageDelivery.Aside, token);
                     // The persisted reply now owns the final copy; keeping the live copy would
                     // duplicate it if the branch is later paused with another queued message.
                     runtime.WorkspaceChanges = null;
@@ -551,10 +694,11 @@ public sealed class ChatRunDispatcher(
                         RetainedMessageIds(chat.Id), token) ?? chat;
                     await SaveAsync(runtime, chat, token);
                     suggestTitle = runtime.State.BranchId == chat.Id && chat.AutoTitlePending
-                        && chat.Messages.Count(message => message.Role == "User") == 1;
+                        && chat.Messages.Count(message => message.Role == "User" && message.Delivery == MessageDelivery.Turn) == 1;
                     // A reply is drafted only for the answer the user is left with: with more
-                    // messages queued behind it, the next one is already the reply.
-                    if (runtime.State.Queue.Count == 0 && kindPolicies.Resolve(new ChatKind(chat.Kind)).Behavior.SuggestReplies)
+                    // messages queued behind it, the next one is already the reply, and an aside
+                    // written under it is not an answer to reply to.
+                    if (runtime.State.Queue.Count == 0 && asides.Count == 0 && kindPolicies.Resolve(new ChatKind(chat.Kind)).Behavior.SuggestReplies)
                         answeredHead = chat.Branches?.SingleOrDefault(branch => branch.Id == runtime.State.BranchId)?.HeadMessageId;
                 }
                 if (suggestTitle || answeredHead is not null)
@@ -992,7 +1136,7 @@ public sealed class ChatRunDispatcher(
         while (cursor is { } id && visited.Add(id) && byId.TryGetValue(id, out var message))
         {
             if (id == userId) return head.Value;
-            if (message.Role == "User") break;
+            if (message.StartsTurn) break;
             cursor = message.ParentId;
         }
         return userId;
@@ -1374,7 +1518,7 @@ public sealed class ChatRunDispatcher(
         (ChatRunStatus)state.Status, state.StreamingContent,
         state.Queue.Select(item => new QueuedChatMessage(item.Id, item.Content, item.CreatedAt,
             ParentMode(item.ParentMode), item.ParentMessageId, Stage(item.Stage),
-            ResourceReferences.ToContract(item.Resources))).ToArray(),
+            ResourceReferences.ToContract(item.Resources), item.IsAside, ToContract(item.Sender))).ToArray(),
         state.HasUnreadResponse, state.Error, state.Revision, chat?.Revision ?? 0,
         chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.HeadMessageId,
         FailureCode: FailureCode(state.FailureKind), CanRetry: state.CanRetry,

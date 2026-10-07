@@ -15,6 +15,12 @@ public interface IChatRunDispatcher
     /// <summary>Enqueues a run from a trusted host component without a person to answer prompts.</summary>
     Task<ChatRunSnapshot> SubmitUnattendedAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request,
         CancellationToken cancellationToken);
+    /// <summary>
+    /// Submits on behalf of a model run, which becomes the message's sender. Only the host sets a
+    /// sender; the HTTP API never accepts one.
+    /// </summary>
+    Task<ChatRunSnapshot> SubmitFromRunAsync(Guid projectId, Guid chatId, SubmitChatMessageRequest request,
+        AI.Domain.Chats.ChatMessageSender sender, CancellationToken cancellationToken);
     Task WarmUpAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ChatRunSnapshot>> GetSnapshotAsync(CancellationToken cancellationToken);

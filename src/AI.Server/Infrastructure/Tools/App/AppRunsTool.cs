@@ -4,6 +4,7 @@ using AI.Application.Runs;
 using AI.Application.Tools;
 using AI.Contracts.Runs;
 using AI.Contracts.Resources;
+using AI.Domain.Chats;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
@@ -52,6 +53,34 @@ public enum SubmitMode
 
     /// <summary>Replace 'parentMessageId' and everything below it.</summary>
     Replace,
+
+    /// <summary>
+    /// Add to the branch without starting a turn: a running turn reads it at its next step, an idle
+    /// branch just records it. For information that needs no answer of its own.
+    /// </summary>
+    Aside,
+}
+
+/// <summary>What a message to another branch is meant to be; the receiving model reads it in the message header.</summary>
+public enum MessageIntent
+{
+    /// <summary>Needs an answer before the sender can continue.</summary>
+    Question,
+
+    /// <summary>Answers a question.</summary>
+    Answer,
+
+    /// <summary>Fixes something the others must follow.</summary>
+    Decision,
+
+    /// <summary>Progress, nothing to act on; send it as an Aside.</summary>
+    Status,
+
+    /// <summary>The sender is stuck and cannot continue on its own.</summary>
+    Blocker,
+
+    /// <summary>The sender's part is finished and the message is its result.</summary>
+    Done,
 }
 
 [McpServerToolType]
@@ -62,44 +91,75 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
 
     private const int MinWaitMs = 1_000;
 
-    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => McpServerTool.Create(
-        RunsAsync,
-        new McpServerToolCreateOptions
-        {
-            SerializerOptions = reply.Json,
-            Description = "Drive this application's chat runs: put a message into any chat — including one you just created — and manage "
-                          + "its queue. 'branchId' defaults to the chat's main branch, whose id equals the chat's. With 'wait' false the "
-                          + "call returns as soon as the message is accepted and the answer is read later with 'app_read'; with 'wait' "
-                          + "true it returns when that run stops, or reports the run's current status if 'waitTimeoutMs' runs out first. "
-                          + "Waiting is also bounded by this tool's own policy timeout, so a long wait can be cut short from outside. "
-                          + "'operationId' must be a fresh UUID per distinct message and the same UUID when repeating one. "
-                          + "Submit may include resource references returned by app_resources Create; these add no file contents to the message."
-        });
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(this, run, reply).Create();
 
-    [McpServerTool(Name = "app_runs", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false,
-        UseStructuredContent = true, OutputSchemaType = typeof(AppWriteResult))]
+    private sealed class Session(AppRunsTool tool, ToolRunContext run, IAppToolReply reply)
+    {
+        public McpServerTool Create() => McpServerTool.Create(
+            RunsAsync,
+            new McpServerToolCreateOptions
+            {
+                SerializerOptions = reply.Json,
+                Description = "Drive this application's chat runs: put a message into any chat — including one you just created — and manage "
+                              + "its queue. 'branchId' defaults to the chat's main branch, whose id equals the chat's. With 'wait' false the "
+                              + "call returns as soon as the message is accepted and the answer is read later with 'app_read'; with 'wait' "
+                              + "true it returns when that run stops, or reports the run's current status if 'waitTimeoutMs' runs out first. "
+                              + "Waiting is also bounded by this tool's own policy timeout, so a long wait can be cut short from outside. "
+                              + "'operationId' must be a fresh UUID per distinct message and the same UUID when repeating one. "
+                              + "Submit may include resource references returned by app_resources Create; these add no file contents to the message. "
+                              + "A submitted message is marked as sent by this run's branch, and 'intent' says what it is to the branch "
+                              + "that reads it. Mode Aside starts no turn: use it for status and other information that needs no answer."
+            });
+
+        [McpServerTool(Name = "app_runs", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false,
+            UseStructuredContent = true, OutputSchemaType = typeof(AppWriteResult))]
+        private Task<CallToolResult> RunsAsync(
+            RunOperation operation,
+            Guid projectId,
+            Guid chatId,
+            Guid operationId,
+            Guid? branchId = null,
+            string? content = null,
+            SubmitMode mode = SubmitMode.Send,
+            MessageIntent? intent = null,
+            Guid? parentMessageId = null,
+            Guid? messageId = null,
+            ChatResource[]? resources = null,
+            int? position = null,
+            bool wait = false,
+            int waitTimeoutMs = 60_000,
+            CancellationToken cancellationToken = default) =>
+            tool.RunsAsync(run, operation, projectId, chatId, operationId, branchId, content, mode, intent, parentMessageId,
+                messageId, resources, position, wait, waitTimeoutMs, cancellationToken);
+    }
+
     private Task<CallToolResult> RunsAsync(
+        ToolRunContext run,
         RunOperation operation,
         Guid projectId,
         Guid chatId,
         Guid operationId,
-        Guid? branchId = null,
-        string? content = null,
-        SubmitMode mode = SubmitMode.Send,
-        Guid? parentMessageId = null,
-        Guid? messageId = null,
-        ChatResource[]? resources = null,
-        int? position = null,
-        bool wait = false,
-        int waitTimeoutMs = 60_000,
-        CancellationToken cancellationToken = default)
+        Guid? branchId,
+        string? content,
+        SubmitMode mode,
+        MessageIntent? intent,
+        Guid? parentMessageId,
+        Guid? messageId,
+        ChatResource[]? resources,
+        int? position,
+        bool wait,
+        int waitTimeoutMs,
+        CancellationToken cancellationToken)
     {
         // The main branch carries the chat's own id, so an omitted branch means "the chat itself".
         var branch = branchId ?? chatId;
+        // A run outside any chat (a subtask) has no branch to answer to, so its messages carry no sender.
+        var sender = run.ChatId == Guid.Empty ? null
+            : new ChatMessageSender(run.ChatId, run.BranchId, intent?.ToString().ToLowerInvariant());
         return writes.RunAsync(operation.ToString(), operationId, builder => operation switch
         {
             RunOperation.Submit => SubmitAsync(builder, projectId, chatId, branch, operationId, content, resources, mode,
-                parentMessageId, wait, waitTimeoutMs, cancellationToken),
+                sender, parentMessageId, wait, waitTimeoutMs, cancellationToken),
             RunOperation.Stop => CommandAsync(builder, projectId, chatId, branch, "Stopped the run.",
                 () => runs().StopAsync(projectId, chatId, branch, cancellationToken, operationId)),
             RunOperation.UpdateQueued => CommandAsync(builder, projectId, chatId, branch, "Updated the queued message.",
@@ -123,7 +183,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
 
     private async Task<AppWriteResult> SubmitAsync(
         AppWriteBuilder builder, Guid projectId, Guid chatId, Guid branchId, Guid operationId, string? content,
-        ChatResource[]? resources, SubmitMode mode,
+        ChatResource[]? resources, SubmitMode mode, ChatMessageSender? sender,
         Guid? parentMessageId, bool wait, int waitTimeoutMs, CancellationToken cancellationToken)
     {
         var text = content ?? string.Empty;
@@ -131,6 +191,8 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             throw new ArgumentException("'content' or 'resources' is required to submit a message.", nameof(content));
         if (mode is SubmitMode.Fork or SubmitMode.Replace && parentMessageId is null)
             throw new ArgumentException("'parentMessageId' is required to fork or replace.", nameof(parentMessageId));
+        if (mode == SubmitMode.Aside && parentMessageId is not null)
+            throw new ArgumentException("An aside always joins the branch head; omit 'parentMessageId'.", nameof(parentMessageId));
 
         // The dispatcher dedupes by operation id too, and reusing it as the message id keeps a
         // repeated call from writing a second message with a different identity.
@@ -138,7 +200,15 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             Enum.Parse<ChatSubmitMode>(mode.ToString()), branchId,
             parentMessageId is null ? MessageParentMode.BranchHead : MessageParentMode.Explicit, parentMessageId,
             mode == SubmitMode.Replace ? parentMessageId : null, Resources: resources);
-        var snapshot = await runs().SubmitAsync(projectId, chatId, request, cancellationToken);
+        var snapshot = sender is null
+            ? await runs().SubmitAsync(projectId, chatId, request, cancellationToken)
+            : await runs().SubmitFromRunAsync(projectId, chatId, request, sender, cancellationToken);
+        // An aside starts nothing, so there is nothing of its own to wait for.
+        if (mode == SubmitMode.Aside)
+            return builder.Applied(snapshot.Queue.Any(item => item.Id == operationId)
+                    ? "Queued the aside; the turn in flight reads it at its next step, or it follows the reply."
+                    : "Added the aside to the branch; no turn was started.", projectId, chatId, snapshot.BranchId, operationId,
+                snapshot.ChatRevision, snapshot.Status.ToString(), Element(snapshot, reply.Json));
         if (wait) snapshot = await AwaitStopAsync(snapshot, waitTimeoutMs, cancellationToken);
         return builder.Applied(Effect(snapshot, wait), projectId, chatId, snapshot.BranchId, operationId,
             snapshot.ChatRevision, snapshot.Status.ToString(), Element(snapshot, reply.Json));

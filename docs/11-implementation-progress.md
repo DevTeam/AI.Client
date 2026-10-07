@@ -485,3 +485,27 @@ unified diff numbering. The file-preview JavaScript navigation test passed. Web 
 projects built with zero warnings/errors. The normal solution build encountered DLL locks held
 by the running Desktop app; Desktop and Host then built with zero warnings/errors into separate
 verification output directories. `git diff --check` passed.
+
+## 2026-10-07 — asides, team messages and team skills
+
+A message can now reach a branch without starting a turn ([Asides and team messages](34-asides-and-team-messages.md)).
+`ChatSubmitMode.Aside` (Alt+Enter in the composer, `mode: Aside` in `app_runs`) appends at once to
+an idle branch, or waits in the queue while a command is in flight: the agent takes it after the
+next tool batch's results and the model reads it with a header before its next request; whatever
+arrives after the last step boundary follows the reply. A retried turn puts the asides it had
+taken back into the queue. Messages carry `Delivery` (`Turn`, `Aside`, `InTurn`) and, when a model
+run submitted them through `app_runs`, a server-filled `Sender` (chat, branch, intent); the HTTP
+append endpoint drops both. Every user message except an in-turn one bounds a turn in the feed,
+the turn lookups and resume. The transcript labels asides and in-turn messages, keeps an in-turn
+message visible in a folded turn, and draws a message from another branch as a card with the
+branch title (a link to it) and the intent. Three playbooks build team work on top of this:
+`team-assemble`, `team-coordinate` and `team-contribute`, in the new `team` skill domain.
+
+Checks: the new Server tests (aside on an idle branch, aside joining a turn after its tool
+results, aside during the final answer, sender from another run, `app_runs` aside with sender,
+storage round trip, queue state) and two Web feed tests pass; all 531 Web tests pass; the Server
+suite passes except ten tool-approval tests in `ChatExecutionTests`, which fail identically on a
+clean `be39e8c`. Host builds with no Pure.DI diagnostics. Checked in the browser against a
+scripted model: an Alt+Enter aside during a turn is read by the model and stays visible in the
+folded turn, idle asides appear at once, and an `app_runs` question shows its sender and intent,
+in the dark blue and the light green themes.

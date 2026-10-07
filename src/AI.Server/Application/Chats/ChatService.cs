@@ -83,7 +83,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         var start = -1;
         for (var index = 0; index < branch.Count; index++)
         {
-            if (branch[index].Id.Value == turnId && branch[index].Role == ChatMessageRole.User)
+            if (branch[index].Id.Value == turnId && branch[index].StartsTurn)
             {
                 start = index;
                 break;
@@ -92,7 +92,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         if (start < 0) return null;
 
         var end = start + 1;
-        while (end < branch.Count && branch[end].Role != ChatMessageRole.User) end++;
+        while (end < branch.Count && !branch[end].StartsTurn) end++;
         // A completed turn's last plain assistant message is already present in the compact
         // transcript as the final answer. Everything before it is expandable activity.
         if (end > start + 1 && IsPlainAssistant(branch[end - 1])) end--;
@@ -195,7 +195,9 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             request.IsIncomplete,
             request.ToolCalls?.Select(call => new ChatToolCall(call.Id, call.Name, call.Arguments)).ToArray(),
             request.ToolCallId,
-            ToDomain(request.WorkspaceChanges), ResourceReferences.ToDomain(request.Resources));
+            ToDomain(request.WorkspaceChanges), ResourceReferences.ToDomain(request.Resources),
+            delivery: (ChatMessageDelivery)request.Delivery,
+            sender: request.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null);
         if (role == ChatMessageRole.User) stored.Chat.SetArchived(false, Guid.Empty, now);
         if (request.ReplaceSourceId is { } replaceId)
         {
@@ -492,7 +494,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             .OfType<ChatMessageId>()
             .ToHashSet();
         var followedByUser = messages
-            .Where(message => message.Role == ChatMessageRole.User && message.ParentId is not null)
+            .Where(message => message.StartsTurn && message.ParentId is not null)
             .Select(message => message.ParentId!.Value)
             .ToHashSet();
         var unansweredNotes = GetUnansweredTurnNotes(messages, branchHeads);
@@ -541,7 +543,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         {
             var current = byId.GetValueOrDefault(head);
             if (current is null || IsPlainAssistant(current)) continue;
-            while (current is not null && current.Role != ChatMessageRole.User)
+            while (current is not null && !current.StartsTurn)
             {
                 if (current.Role == ChatMessageRole.Assistant) notes.Add(current.Id);
                 current = current.ParentId is { } parent ? byId.GetValueOrDefault(parent) : null;
@@ -576,7 +578,9 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             ToContract(message.WorkspaceChanges),
             contentOmitted,
             ResourceReferences.ToContract(message.Resources),
-            message.Role == ChatMessageRole.Tool ? ToolResultErrorFlag(message.Content) : null);
+            message.Role == ChatMessageRole.Tool ? ToolResultErrorFlag(message.Content) : null,
+            (MessageDelivery)message.Delivery,
+            message.Sender is { } sender ? new MessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null);
     }
 
     private static bool? ToolResultErrorFlag(string content)

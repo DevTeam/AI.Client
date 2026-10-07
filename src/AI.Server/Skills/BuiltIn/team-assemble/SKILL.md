@@ -27,7 +27,9 @@ sender, `intent` says what it is, and mode Aside adds information without starti
 3. Decompose the plan into parts a single teammate could own: for each, its scope, the paths it
    owns (none may be owned twice), its inputs and outputs, what it depends on and its size.
    Contracts between parts (interfaces, data shapes, file formats) are fixed here, not discovered
-   later.
+   later. When one part implements a contract and another tests it, write the contract's edge
+   cases as examples, input → output (empty values, separators, limits, paths that leave a root),
+   so both read the same answer instead of each inferring its own.
 4. Decide whether a team pays off. All of these must hold:
    - at least two parts can run at the same time;
    - their owned paths do not overlap, and shared files have one owner;
@@ -69,6 +71,10 @@ Protocol to put in the charter:
   and `done` go as ordinary messages and wake the lead. No acknowledgements, no thanks.
 - Every message is self-contained: what, why, and what is needed back.
 - A teammate changes only its owned paths; anything else is a question to the lead.
+- A teammate starts changing its owned paths early and grows the result; reading without changing
+  anything is not progress.
+- A conflict between a contract, a reference and another teammate's work is a question to the lead
+  as soon as it is found; until the lead decides, the charter's contract holds.
 - Before each major step a teammate reads the main branch since the charter for new decisions.
 - Teammates do not message each other; the lead routes what one needs from another.
 - Nobody polls: waiting for an answer means ending the turn, and the answer arrives as a message.

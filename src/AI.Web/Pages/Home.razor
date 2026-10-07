@@ -13,6 +13,7 @@
 @inject IApiBaseUrl _apiBaseUrl
 @inject IProjectApi ProjectApi
 @inject IChatHistoryApi ChatHistoryApi
+@inject AI.Web.Chats.IChatScheduleApi ScheduleApi
 @inject ISearchResultPresentation SearchResults
 @inject IChatMessageDeltaMerger ChatMessageDeltaMerger
 @inject IJSRuntime JsRuntime
@@ -138,7 +139,7 @@
                             }
                             else
                             {
-                                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P" : "Alt+P")" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }</button>
+                                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P" : "Alt+P")" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind ? "stopwatch" : chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }</button>
                             }
                             <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat)"><AppIcon Name="edit" /></button>
                             <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenuAsync(chat.Id)"><AppIcon Name="more" /></button>
@@ -899,6 +900,15 @@
                                         SelectedBranchId="@GetSelectedBranchId()"
                                         OnOpenBranch="OpenSenderBranchAsync"
                                         OnShowTeamMessage="ShowTeamMessageAsync" />
+                        break;
+                    case ChatWidgetCatalog.ChatSchedule:
+                        <ChatScheduleWidget Widget="@widget"
+                                            Chat="@widgetChat"
+                                            OnSave="SaveScheduleAsync"
+                                            OnPause="PauseScheduleAsync"
+                                            OnRemove="RemoveScheduleAsync"
+                                            OnRunNow="RunScheduleNowAsync"
+                                            OnOpenBranch="OpenScheduledRunAsync" />
                         break;
                     case ChatWidgetCatalog.ChatUnfinished:
                         <ChatUnfinishedWidget Widget="@widget"
@@ -4196,6 +4206,44 @@ else if (_guideInvitation is { } guideInvitation)
     // A run whose chat the sidebar no longer shows (archived, or deleted elsewhere) is left out.
     private ChatUnfinishedStatistics GetUnfinishedStatistics() =>
         UnfinishedStatistics.Calculate(_chats, RunState.Runs.Values.ToArray());
+
+    // The schedule widget changes the open chat's schedule through the Host, then re-reads like
+    // any other change of application data, so the widget, the sidebar icon and the run branches
+    // all show the stored result. A refusal comes back to the widget in the Host's words.
+    private Task<string?> SaveScheduleAsync(AI.Contracts.Schedules.SetChatScheduleRequest request) =>
+        ChangeScheduleAsync((project, chat) => ScheduleApi.SetAsync(project, chat, request, CancellationToken.None));
+
+    private Task<string?> PauseScheduleAsync(bool paused, long revision) =>
+        ChangeScheduleAsync((project, chat) => ScheduleApi.PauseAsync(project, chat, paused, revision, CancellationToken.None));
+
+    private Task<string?> RemoveScheduleAsync() =>
+        ChangeScheduleAsync((project, chat) => ScheduleApi.RemoveAsync(project, chat, CancellationToken.None));
+
+    private Task<string?> RunScheduleNowAsync() =>
+        ChangeScheduleAsync((project, chat) => ScheduleApi.RunNowAsync(project, chat, CancellationToken.None));
+
+    private async Task<string?> ChangeScheduleAsync(Func<Guid, Guid, Task<AI.Contracts.Schedules.ChatScheduleView>> change)
+    {
+        if (_selectedProject is not { } project || _selectedChat is not { } chat) return "Open a chat first.";
+        string? error = null;
+        try
+        {
+            await change(project.Id, chat.Id);
+        }
+        catch (AI.Web.Chats.ChatScheduleException refused)
+        {
+            error = refused.Message;
+        }
+        catch (HttpRequestException)
+        {
+            error = "The schedule could not be changed. Check the connection and try again.";
+        }
+        await OnApplicationDataChanged();
+        return error;
+    }
+
+    private Task OpenScheduledRunAsync(Guid branchId) => _selectedChat is not { } chat ? Task.CompletedTask
+        : NavigateToTargetAsync(new WorkspaceTarget(null, chat.Id, branchId, null, false));
 
     /// <summary>Opens the chat a task belongs to, and its branch when the run works on a fork.</summary>
     private Task OpenUnfinishedTaskAsync(ChatUnfinishedTask task) =>

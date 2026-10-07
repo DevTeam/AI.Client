@@ -1,0 +1,358 @@
+@* The schedule of the open chat. In an ordinary chat it is the way in: "Schedule this chat" opens
+   the editor with every value visible, and saving turns the chat into a scheduled one with its
+   history intact. In a scheduled chat it leads with the countdown to the next run, says how the
+   schedule stands (active, paused, running, waiting for you), offers Run now, Pause or Resume and
+   Edit, lists what the schedule does, and shows the recent runs — each opens its branch while it
+   exists. Removing the schedule asks first and keeps the chat. Every change goes through Home,
+   which calls the same service the app_schedule tool uses. *@
+@using AI.Contracts.Chats
+@using AI.Contracts.Schedules
+@using AI.Web.Widgets
+@inject AI.Web.Chats.IChatScheduleApi ScheduleApi
+@inject IChatSchedulePresentation Presentation
+@inject IScheduleCalendar Calendar
+@inject IScheduleDescriptions Descriptions
+@implements IDisposable
+
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-schedule-widget">
+    @if (Chat is null)
+    {
+        <p class="chat-usage-empty">Open a chat to schedule it.</p>
+    }
+    else if (_draft is { } draft)
+    {
+        <div class="chat-usage-section">
+            <div class="chat-schedule-editor-heading">
+                <AppIcon Name="stopwatch" />
+                <strong>@(_schedule is null ? "Schedule this chat" : "Edit the schedule")</strong>
+            </div>
+            @if (_schedule is null)
+            {
+                <p class="chat-usage-footnote">Runs fork the chat from its end and carry out the task; the conversation so far stays as their context.</p>
+            }
+            <ScheduleSettingsForm Value="@draft" ValueChanged="settings => _draft = settings" Disabled="@_busy" />
+            @if (_error is not null)
+            {
+                <p class="chat-usage-note context-note-critical" role="alert">@_error</p>
+            }
+            <div class="chat-schedule-actions">
+                <button class="compact-action chat-schedule-primary" type="button" disabled="@(_busy || Calendar.Validate(draft) is not null)"
+                        title="@Calendar.Validate(draft)" @onclick="SaveAsync">
+                    <AppIcon Name="check" /> @(_schedule is null ? "Schedule" : "Save")
+                </button>
+                <button class="compact-action secondary-action" type="button" disabled="@_busy" @onclick="CancelEdit">Cancel</button>
+            </div>
+        </div>
+    }
+    else if (_schedule is not { } schedule)
+    {
+        <div class="chat-usage-section chat-schedule-intro">
+            <p class="chat-usage-empty">This chat runs only when you write in it. Schedule it to run its task on a date or a recurrence — by itself, in a branch of its own each time.</p>
+            @if (!CanSchedule)
+            {
+                <p class="chat-usage-footnote">Only an ordinary conversation can be scheduled.</p>
+            }
+            else
+            {
+                <button class="compact-action chat-schedule-primary" type="button" @onclick="StartScheduling">
+                    <AppIcon Name="stopwatch" /> Schedule this chat
+                </button>
+            }
+        </div>
+    }
+    else
+    {
+        var state = Presentation.State(schedule);
+        var settings = schedule.Settings;
+        var next = NextRun(schedule);
+        <div class="chat-usage-section">
+            <div class="chat-widget-headline">
+                @if (next is { } at && state.Kind is ChatScheduleStateKind.Active or ChatScheduleStateKind.Running or ChatScheduleStateKind.Blocked)
+                {
+                    <span class="chat-widget-count chat-schedule-countdown" role="timer" title="@($"Time left until the next run, {Presentation.Moment(at, settings.TimeZone, _now)}")">@Presentation.Countdown(at, _now)</span>
+                    <span class="chat-usage-muted">until @(schedule.RetryAt == at ? "the retry" : "the next run")</span>
+                }
+                else
+                {
+                    <span class="chat-widget-count chat-schedule-countdown is-idle">@(state.Kind == ChatScheduleStateKind.Paused ? "Paused" : "—")</span>
+                }
+                <span class="chat-widget-headline-aside chat-schedule-state is-@state.Kind.ToString().ToLowerInvariant()" title="@state.Title"><i aria-hidden="true"></i>@state.Label</span>
+            </div>
+            <p class="chat-schedule-when">
+                <AppIcon Name="@(settings.Recurrence.Frequency == ScheduleFrequency.Once ? "calendar" : "repeat")" />
+                <span>
+                    @if (next is { } shown && state.Kind != ChatScheduleStateKind.Paused)
+                    {
+                        <b>@Presentation.Moment(shown, settings.TimeZone, _now)</b><span class="chat-schedule-dot" aria-hidden="true">·</span>
+                    }
+                    @Descriptions.Describe(settings.Recurrence)
+                </span>
+            </p>
+            @if (schedule.ActiveRun is { BranchId: { } activeBranch } active)
+            {
+                <div class="chat-usage-note @(active.Status == ScheduleRunStatus.Blocked ? "context-note-warning" : null)">
+                    <span>@(active.Status == ScheduleRunStatus.Blocked ? $"Run #{active.Number} waits for you: an approval, an answer or a resume." : $"Run #{active.Number} is going now.")</span>
+                    <button class="chat-usage-link" type="button" @onclick="() => OnOpenBranch.InvokeAsync(activeBranch)">Open run</button>
+                </div>
+            }
+            <div class="chat-schedule-actions">
+                <button class="compact-action" type="button" disabled="@(_busy || schedule.ActiveRun is not null)"
+                        title="@(schedule.ActiveRun is null ? "Start a run now, outside the schedule" : "One run goes at a time")" @onclick="RunNowAsync">
+                    <AppIcon Name="play" /> Run now
+                </button>
+                <button class="compact-action" type="button" disabled="@_busy" @onclick="() => PauseAsync(!schedule.Paused)"
+                        title="@(schedule.Paused ? "Start runs again; occurrences missed while paused are skipped" : "Stop starting runs; a run going now keeps going")">
+                    <AppIcon Name="@(schedule.Paused ? "play" : "pause")" /> @(schedule.Paused ? "Resume" : "Pause")
+                </button>
+                <button class="compact-action" type="button" disabled="@_busy" @onclick="StartEditing"><AppIcon Name="edit" /> Edit</button>
+            </div>
+            @if (_error is not null)
+            {
+                <p class="chat-usage-note context-note-critical" role="alert">@_error</p>
+            }
+        </div>
+
+        <div class="chat-usage-section">
+            <dl class="chat-usage-grid chat-schedule-facts">
+                <dt class="chat-usage-grid-row">Task</dt><dd class="chat-usage-grid-wide chat-schedule-task" title="@settings.Task">@settings.Task</dd>
+                <dt class="chat-usage-grid-row">Success</dt><dd class="chat-usage-grid-wide" title="@settings.SuccessCriteria">@(settings.SuccessCriteria ?? "The task is done completely")</dd>
+                <dt class="chat-usage-grid-row">On failure</dt><dd class="chat-usage-grid-wide" title="@settings.Retry?.Condition">@Presentation.Retry(settings.Retry)</dd>
+                <dt class="chat-usage-grid-row">Runs</dt>
+                <dd class="chat-usage-grid-wide chat-schedule-rules">
+                    @{ var retention = settings.Retention ?? DefaultRetention; }
+                    <span class="is-succeeded" title="What happens to the branch of a run that succeeded"><i aria-hidden="true"></i>@Presentation.Retention(retention.Succeeded)</span>
+                    <span class="is-failed" title="What happens to the branch of a run that failed"><i aria-hidden="true"></i>@Presentation.Retention(retention.Failed)</span>
+                    <span class="is-blocked" title="What happens to the branch of a run that waits for you"><i aria-hidden="true"></i>@Presentation.Retention(retention.Blocked)</span>
+                </dd>
+                <dt class="chat-usage-grid-row">Chat</dt><dd class="chat-usage-grid-wide">@Presentation.Deletion(settings.Deletion, settings.TimeZone, _now)</dd>
+                <dt class="chat-usage-grid-row">Time zone</dt><dd class="chat-usage-grid-wide">@settings.TimeZone</dd>
+            </dl>
+        </div>
+
+        <div class="chat-usage-section">
+            <div class="chat-usage-row chat-usage-heading">
+                <span>Recent runs</span>
+                <span class="chat-usage-muted">@RunCount(schedule)</span>
+            </div>
+            @if (schedule.Runs is not { Count: > 0 } runs)
+            {
+                <p class="chat-usage-empty">Runs appear here, newest first, with how each one ended.</p>
+            }
+            else
+            {
+                var newest = runs.Reverse().ToArray();
+                var shownRuns = _showAllRuns ? newest : newest.Take(CollapsedRuns).ToArray();
+                <ul class="chat-schedule-runs">
+                    @foreach (var run in shownRuns)
+                    {
+                        var open = run.BranchId is { } branchId && !run.BranchDeleted && BranchExists(branchId);
+                        <li @key="run.Id">
+                            <button type="button" class="chat-schedule-run is-@run.Status.ToString().ToLowerInvariant()" disabled="@(!open)"
+                                    title="@(open ? "Open this run's branch" : RunGoneTitle(run))"
+                                    @onclick="() => OpenRunAsync(run)">
+                                <span class="chat-schedule-run-mark" aria-hidden="true"><AppIcon Name="@RunIcon(run.Status)" /></span>
+                                <span class="chat-schedule-run-body">
+                                    <span class="chat-schedule-run-title">
+                                        @(run.Number > 0 ? $"#{run.Number} · " : null)@Presentation.Moment(run.Number > 0 ? run.StartedAt : run.ScheduledFor, settings.TimeZone, _now)
+                                    </span>
+                                    <span class="chat-schedule-run-meta">
+                                        <span class="chat-schedule-run-status">@Descriptions.Outcome(run.Status)</span>
+                                        @if (run.Manual) { <span>manual</span> }
+                                        else if (run.Attempt > 1) { <span>retry @(run.Attempt - 1)</span> }
+                                        @if (run.BranchDeleteAt is { } deleteAt && !run.BranchDeleted && open) { <span title="The run branch is deleted by its rule">deleted @Presentation.Moment(deleteAt, settings.TimeZone, _now).ToLowerInvariant()</span> }
+                                    </span>
+                                    @if (run.Summary is { Length: > 0 } summary)
+                                    {
+                                        <span class="chat-schedule-run-summary" title="@summary">@summary</span>
+                                    }
+                                </span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+                @if (newest.Length > CollapsedRuns)
+                {
+                    <button class="chat-usage-link" type="button" @onclick="() => _showAllRuns = !_showAllRuns">@(_showAllRuns ? "Show fewer" : $"Show all {newest.Length}")</button>
+                }
+            }
+        </div>
+
+        <div class="chat-usage-section chat-schedule-remove">
+            @if (_confirmRemove)
+            {
+                <div class="chat-usage-note context-note-warning" role="alert">
+                    <span>Remove the schedule? The chat and its branches stay as an ordinary conversation; no more runs start.</span>
+                    <span class="chat-usage-note-actions">
+                        <button class="compact-action chat-schedule-danger" type="button" disabled="@_busy" @onclick="RemoveAsync">Remove</button>
+                        <button class="compact-action secondary-action" type="button" disabled="@_busy" @onclick="() => _confirmRemove = false">Keep</button>
+                    </span>
+                </div>
+            }
+            else
+            {
+                <button class="chat-usage-link chat-schedule-remove-link" type="button" disabled="@_busy" @onclick="() => _confirmRemove = true">
+                    <AppIcon Name="chat-schedule-delete" /> Remove the schedule
+                </button>
+            }
+        </div>
+    }
+</ChatWidget>
+
+@code {
+    private const int CollapsedRuns = 5;
+    private static readonly ScheduleBranchRetention DefaultRetention = new(
+        new ScheduleRetentionRule(ScheduleRetentionAction.Delete), new ScheduleRetentionRule(ScheduleRetentionAction.Keep),
+        new ScheduleRetentionRule(ScheduleRetentionAction.Keep));
+
+    [Parameter, EditorRequired] public ChatWidgetContext Widget { get; set; } = null!;
+    [Parameter] public ChatDetails? Chat { get; set; }
+
+    /// <summary>Saves settings; returns what the Host refused, or null.</summary>
+    [Parameter] public Func<SetChatScheduleRequest, Task<string?>>? OnSave { get; set; }
+    [Parameter] public Func<bool, long, Task<string?>>? OnPause { get; set; }
+    [Parameter] public Func<Task<string?>>? OnRemove { get; set; }
+    [Parameter] public Func<Task<string?>>? OnRunNow { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpenBranch { get; set; }
+
+    private ChatSchedule? _schedule;
+    private ChatScheduleSettings? _draft;
+    private string? _error;
+    private bool _busy;
+    private bool _confirmRemove;
+    private bool _showAllRuns;
+    private Guid? _chatId;
+    private DateTimeOffset _now = DateTimeOffset.UtcNow;
+    private Timer? _ticker;
+
+    private bool CanSchedule => Chat is { Kind: "conversation" or ChatSchedule.Kind };
+
+    protected override void OnParametersSet()
+    {
+        if (Chat?.Id != _chatId)
+        {
+            _chatId = Chat?.Id;
+            _draft = null;
+            _error = null;
+            _confirmRemove = false;
+            _showAllRuns = false;
+        }
+        _schedule = Chat is null ? null : ScheduleApi.Parse(Chat.Kind, Chat.KindState);
+        _now = DateTimeOffset.UtcNow;
+        Tick();
+    }
+
+    /// <summary>The countdown ticks every second in its last hour, otherwise every half minute.</summary>
+    private void Tick()
+    {
+        var next = _schedule is { } schedule ? NextRun(schedule) : null;
+        var period = next is { } at && at - _now < TimeSpan.FromHours(1) ? TimeSpan.FromSeconds(1) : TimeSpan.FromSeconds(30);
+        if (next is null || Widget.Preference.Collapsed && period > TimeSpan.FromSeconds(1))
+        {
+            _ticker?.Dispose();
+            _ticker = null;
+            return;
+        }
+        _ticker ??= new Timer(_ => InvokeAsync(() =>
+        {
+            _now = DateTimeOffset.UtcNow;
+            StateHasChanged();
+        }), null, period, period);
+        _ticker.Change(period, period);
+    }
+
+    public void Dispose() => _ticker?.Dispose();
+
+    private static DateTimeOffset? NextRun(ChatSchedule schedule)
+    {
+        if (schedule.Paused) return null;
+        return new[] { schedule.NextRunAt, schedule.RetryAt }.OfType<DateTimeOffset>().Select(at => (DateTimeOffset?)at).Min();
+    }
+
+    private string GetSummary()
+    {
+        if (_schedule is not { } schedule) return "Not scheduled";
+        var state = Presentation.State(schedule);
+        return state.Kind is ChatScheduleStateKind.Active && NextRun(schedule) is { } next
+            ? $"in {Presentation.Countdown(next, _now)}"
+            : state.Label;
+    }
+
+    private void StartScheduling()
+    {
+        var task = Chat?.Messages.Where(message => message.Role == "User" && message.Content.Length > 0)
+            .OrderBy(message => message.CreatedAt).Select(message => message.Content.Trim()).FirstOrDefault() ?? string.Empty;
+        _draft = Presentation.Draft(task.Length > 4000 ? task[..4000] : task, Calendar.LocalTimeZoneId,
+            Calendar.ToLocal(DateTimeOffset.UtcNow, Calendar.LocalTimeZoneId));
+        _error = null;
+    }
+
+    private void StartEditing()
+    {
+        _draft = _schedule?.Settings;
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _draft = null;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_draft is not { } draft || OnSave is null) return;
+        if (await RunAsync(() => OnSave(new SetChatScheduleRequest(draft, _schedule?.Revision))) && _error is null) _draft = null;
+    }
+
+    private Task PauseAsync(bool paused) => OnPause is null || _schedule is null
+        ? Task.CompletedTask : RunAsync(() => OnPause(paused, _schedule.Revision));
+
+    private async Task RemoveAsync()
+    {
+        if (OnRemove is null) return;
+        await RunAsync(OnRemove);
+        _confirmRemove = false;
+    }
+
+    private Task RunNowAsync() => OnRunNow is null ? Task.CompletedTask : RunAsync(OnRunNow);
+
+    private async Task<bool> RunAsync(Func<Task<string?>> action)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            _error = await action();
+            return true;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task OpenRunAsync(ScheduleRunRecord run) =>
+        run.BranchId is { } branchId ? OnOpenBranch.InvokeAsync(branchId) : Task.CompletedTask;
+
+    private bool BranchExists(Guid branchId) => Chat?.Branches?.Any(branch => branch.Id == branchId) == true;
+
+    private static string RunCount(ChatSchedule schedule)
+    {
+        var finished = schedule.Runs?.Count(run => run.Number > 0 && run.Status is not (ScheduleRunStatus.Running or ScheduleRunStatus.Blocked)) ?? 0;
+        var succeeded = schedule.Runs?.Count(run => run.Status == ScheduleRunStatus.Succeeded) ?? 0;
+        return finished == 0 ? string.Empty : $"{succeeded} of {finished} succeeded";
+    }
+
+    private static string RunGoneTitle(ScheduleRunRecord run) => run.BranchId is null
+        ? "This occurrence did not run"
+        : "The run's branch was deleted";
+
+    private static string RunIcon(ScheduleRunStatus status) => status switch
+    {
+        ScheduleRunStatus.Running => "generating",
+        ScheduleRunStatus.Blocked => "hand",
+        ScheduleRunStatus.Succeeded => "check",
+        ScheduleRunStatus.Failed => "error",
+        _ => "minimize"
+    };
+}

@@ -13,6 +13,7 @@ using AI.Contracts.Tools;
 using AI.Application.Instructions;
 using AI.Application.Notifications;
 using AI.Application.Skills;
+using AI.Application.Schedules;
 using Pure.DI;
 
 /// <summary>
@@ -40,6 +41,8 @@ internal sealed partial class ChatExecutionComposition
             .Root<IStandingInstructions>(nameof(Standing))
             .Root<IProjectService>(nameof(Projects))
             .Root<IChatReplySuggestions>(nameof(ReplySuggestions))
+            .Root<IChatScheduleService>(nameof(Schedules))
+            .Root<IScheduledChatPass>(nameof(SchedulePass))
             .Arg<IToolSessionFactory>("tools")
             .Arg<IWorkspaceChangeTracker>("workspace")
             .Transient<ExtensionChatKindPolicy>(Tag.Unique);

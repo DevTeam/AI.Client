@@ -2,6 +2,8 @@
    inline at the end of the transcript rather than over it: the question belongs to this chat, and
    the other chats in the window are still working. *@
 @using AI.Contracts.Runs
+@using AI.Contracts.Schedules
+@inject IScheduleCalendar ScheduleCalendar
 @using AI.Web.FileSystem
 @using AI.Web.Markdown
 @inject IJSRuntime JsRuntime
@@ -44,7 +46,13 @@
                     </span>
                 </label>
             }
-            @if (question.PickerKind is "branch" or "commit")
+            @if (SchedulePickers.IsSchedulePicker(question.PickerKind))
+            {
+                <SchedulePickerField Kind="@(question.PickerKind!)" MultiSelect="@question.MultiSelect" Disabled="@_sending"
+                                     Label="@question.Label" Values="@_values[questionIndex]"
+                                     ValuesChanged="values => SchedulePicked(questionIndex, values)" />
+            }
+            else if (question.PickerKind is "branch" or "commit")
             {
                 <div class="user-prompt-paths">
                     @if (_values[questionIndex].Count > 0)
@@ -384,6 +392,7 @@
             _other[index] = string.Empty;
             _paths[index] = [];
             _values[index] = [];
+            SyncPreset(index);
         }
 
         _sending = false;
@@ -413,6 +422,31 @@
         }
 
         if (on) _selected[question].Add(option); else _selected[question].Remove(option);
+        if (!multiSelect) SyncPreset(question);
+    }
+
+    /// <summary>
+    /// A preset chosen above a schedule picker shows in the picker, ready to adjust; adjusting it
+    /// then is the answer, and the preset is no longer chosen.
+    /// </summary>
+    private void SyncPreset(int question)
+    {
+        var prompt = Prompt.Questions[question];
+        if (prompt.MultiSelect || !SchedulePickers.IsSchedulePicker(prompt.PickerKind)) return;
+        var value = _selected[question].Select(index => prompt.Options[index].Value)
+            .Select(value => SchedulePickers.Normalize(prompt.PickerKind, value, ScheduleCalendar))
+            .OfType<string>().FirstOrDefault();
+        if (value is not null) _values[question] = [value];
+    }
+
+    private void SchedulePicked(int question, IReadOnlyList<string> values)
+    {
+        var prompt = Prompt.Questions[question];
+        if (!prompt.MultiSelect && values.Count > 0 && _values[question].SequenceEqual(values)) return;
+        _values[question] = values.ToList();
+        if (prompt.MultiSelect || values.Count == 0) return;
+        _selected[question].Clear();
+        _other[question] = string.Empty;
     }
 
     private void SelectOther(int question, bool multiSelect, ChangeEventArgs args)

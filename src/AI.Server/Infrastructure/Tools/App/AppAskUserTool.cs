@@ -5,12 +5,17 @@ using AI.Application.Chats;
 using AI.Domain.Chats;
 using AI.Application.Tools;
 using AI.Contracts.Runs;
+using AI.Contracts.Schedules;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 /// <summary>One choice offered to the person. Plain text: these are captions on controls, not content.</summary>
 /// <param name="Description">A line of nuance under the label, for a choice whose consequence is not obvious.</param>
-public sealed record AskUserOption(string Label, string? Description = null, bool Recommended = false);
+/// <param name="Value">
+/// The exact value the choice stands for, returned in 'values' when it is chosen. For a date, time or
+/// recurrence picker it must be a value that picker returns.
+/// </param>
+public sealed record AskUserOption(string Label, string? Description = null, bool Recommended = false, string? Value = null);
 
 /// <param name="Id">Names this question in the answer. Must be unique within the call.</param>
 /// <param name="Text">
@@ -26,7 +31,10 @@ public sealed record AskUserOption(string Label, string? Description = null, boo
 /// "directories" permits several choices, which come back in 'paths'.
 /// Leave it out for every other kind of question.
 /// </param>
-/// <param name="PickerKind">"branch" or "commit" for Git selection; use MultiSelect for several choices.</param>
+/// <param name="PickerKind">
+/// "branch" or "commit" for Git selection; "date", "time" or "recurrence" for schedule values. Use
+/// MultiSelect for several choices.
+/// </param>
 /// <param name="RepositoryPath">Absolute repository directory on the host, required for a Git picker.</param>
 /// <param name="Revision">Optional branch or revision limiting the commit history.</param>
 public sealed record AskUserQuestion(
@@ -46,8 +54,10 @@ public sealed record AskUserQuestion(
 /// say what was decided when it is read back without the question in front of it.
 /// </param>
 /// <param name="Other">What they typed, when they typed something instead of choosing.</param>
+/// <param name="Values">Exact values in selection order: picked Git refs, commits, dates, times or recurrences, and the values of chosen options.</param>
+/// <param name="ValueDescriptions">Each recurrence in 'values' in words, in the same order, to say back to the user.</param>
 public sealed record AskUserReply(string Id, string[] Selected, string? Other, IReadOnlyList<string>? Paths = null,
-    IReadOnlyList<string>? Values = null);
+    IReadOnlyList<string>? Values = null, IReadOnlyList<string>? ValueDescriptions = null);
 
 /// <param name="Outcome">
 /// <c>answered</c>, <c>dismissed</c> (they told you to decide), <c>declined</c> (they refused the
@@ -75,7 +85,8 @@ public sealed record AskUserResult(
 /// obliged to say what it chose. That is why nothing here returns an error for silence.
 /// </remarks>
 [McpServerToolType]
-public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPolicyRegistry kindPolicies) : IAppTool
+public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPolicyRegistry kindPolicies,
+    IScheduleCalendar calendar, IScheduleDescriptions descriptions) : IAppTool
 {
     /// <summary>
     /// The tool is built per session and the application registers one instance of this class, so
@@ -83,10 +94,10 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
     /// Each session gets its own <see cref="Session"/> holding its own run, and the shared instance
     /// holds nothing but the way to reach the broker.
     /// </summary>
-    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(broker, kindPolicies, run, reply).Create();
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(broker, kindPolicies, calendar, descriptions, run, reply).Create();
 
     private sealed class Session(Func<IUserPromptBroker> broker, IChatKindPolicyRegistry kindPolicies,
-        ToolRunContext run, IAppToolReply reply)
+        IScheduleCalendar calendar, IScheduleDescriptions descriptions, ToolRunContext run, IAppToolReply reply)
     {
         /// <summary>
         /// How long a question waits. Long enough to fetch a coffee and come back, short enough that a
@@ -100,6 +111,7 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
         private const int MaxLabelLength = 24;
         private const int MaxOptionLength = 80;
         private const int MaxDescriptionLength = 160;
+        private const int MaxValueLength = 2000;
 
         private const string DirectoryPath = "directory";
         private const string DirectoriesPath = "directories";
@@ -130,7 +142,12 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
                         + "alongside — list the paths you already consider likely. Use 'multiSelect' only when the choices "
                         + "genuinely combine. For Git selection set 'pickerKind' to 'branch' or 'commit' and 'repositoryPath' to the absolute repository directory. "
                         + "Set 'multiSelect' to true for several branches or commits. Optional 'revision' limits commit history to that branch or revision. "
-                        + "Leave 'pathKind' unset; options may be empty. The Git picker returns full ref names or commit hashes in 'values', in selection order. The user may "
+                        + "Leave 'pathKind' unset; options may be empty. The Git picker returns full ref names or commit hashes in 'values', in selection order. "
+                        + "For a date, a time of day or a repeating schedule set 'pickerKind' to 'date', 'time' or 'recurrence' (no repositoryPath): "
+                        + "the user picks on a calendar, a clock or a recurrence editor, and 'values' returns exact 'yyyy-MM-dd', 'HH:mm' or recurrence JSON "
+                        + "(the shape app_schedule takes), with 'valueDescriptions' saying each recurrence in words. Options may offer presets with an exact "
+                        + "'value' in that format, such as {label:'Tomorrow', value:'2026-10-08'}; any option may carry a 'value', returned in 'values' when chosen. "
+                        + "Ask for the missing parts only: never a date or time the user already gave. The user may "
                         + "answer some questions and not others, or none at all: an absent answer means the choice is yours to "
                         + "make, never an invitation to ask again. The user may also decline the question outright "
                         + "(outcome 'declined'): then stop that work and wait for them instead of choosing. "
@@ -225,7 +242,8 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
             question.Id,
             question.Text,
             question.Label,
-            (question.Options ?? []).Select(option => new UserPromptOption(option.Label, option.Description, option.Recommended)).ToArray(),
+            (question.Options ?? []).Select(option => new UserPromptOption(option.Label, option.Description, option.Recommended,
+                string.IsNullOrWhiteSpace(option.Value) ? null : option.Value.Trim())).ToArray(),
             question.MultiSelect,
             question.AllowOther,
             question.PathKind?.Trim().ToLowerInvariant(),
@@ -238,7 +256,7 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
         /// dropped rather than guessed at: the two sides of this conversion are a process apart, and a
         /// mismatch means the question was replaced, not that the person meant the neighbouring choice.
         /// </summary>
-        private static AskUserReply? Reply(AskUserQuestion[] questions, UserPromptAnswer answer)
+        private AskUserReply? Reply(AskUserQuestion[] questions, UserPromptAnswer answer)
         {
             var question = questions.FirstOrDefault(item => string.Equals(item.Id, answer.QuestionId, StringComparison.Ordinal));
             if (question is null) return null;
@@ -250,14 +268,30 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
                 ? answer.Paths?.Where(path => !string.IsNullOrWhiteSpace(path))
                     .Select(path => path.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
                 : null;
-            var values = question.PickerKind?.Trim().ToLowerInvariant() is "branch" or "commit"
+            var picker = question.PickerKind?.Trim().ToLowerInvariant();
+            var picked = picker is "branch" or "commit"
                 ? answer.Values?.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim())
-                    .Distinct(StringComparer.Ordinal).Take(question.MultiSelect ? 200 : 1).ToArray()
+                : SchedulePickers.IsSchedulePicker(picker)
+                    ? answer.Values?.Select(value => SchedulePickers.Normalize(picker, value, calendar)).OfType<string>()
+                    : null;
+            // A chosen option stands for its value, in the order it was chosen; picked values follow.
+            var chosen = answer.Selected
+                .Where(index => index >= 0 && index < (question.Options?.Length ?? 0))
+                .Select(index => question.Options![index].Value)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => SchedulePickers.IsSchedulePicker(picker) ? SchedulePickers.Normalize(picker, value, calendar) : value!.Trim())
+                .OfType<string>();
+            var values = chosen.Concat(picked ?? []).Distinct(StringComparer.Ordinal)
+                .Take(question.MultiSelect ? 200 : 1).ToArray();
+            var described = picker == SchedulePickers.Recurrence
+                ? values.Select(value => ScheduleCalendar.TryDeserialize(value, out var recurrence)
+                    ? descriptions.Describe(recurrence!) : value).ToArray()
                 : null;
             return new AskUserReply(question.Id, selected,
                 string.IsNullOrWhiteSpace(answer.Other) ? null : answer.Other.Trim(),
                 paths is { Length: > 0 } ? paths : null,
-                values is { Length: > 0 } ? values : null);
+                values is { Length: > 0 } ? values : null,
+                described is { Length: > 0 } ? described : null);
         }
 
         /// <summary>
@@ -265,7 +299,7 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
         /// Every limit here is about the card staying readable: a question nobody can take in at a
         /// glance is worse than no question at all.
         /// </summary>
-        private static string? Validate(AskUserQuestion[]? questions)
+        private string? Validate(AskUserQuestion[]? questions)
         {
             if (questions is not { Length: > 0 }) return "Ask at least one question.";
             if (questions.Length > MaxQuestions) return $"Ask at most {MaxQuestions} questions in one call.";
@@ -284,9 +318,11 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
                 var picker = question.PickerKind?.Trim().ToLowerInvariant();
                 if (picker is { Length: > 0 })
                 {
-                    if (picker is not ("branch" or "commit")) return $"The 'pickerKind' of '{question.Id}' must be 'branch' or 'commit'.";
+                    if (picker is not ("branch" or "commit") && !SchedulePickers.IsSchedulePicker(picker))
+                        return $"The 'pickerKind' of '{question.Id}' must be 'branch', 'commit', 'date', 'time' or 'recurrence'.";
                     if (path is { Length: > 0 }) return $"Question '{question.Id}' cannot combine 'pathKind' and 'pickerKind'.";
-                    if (string.IsNullOrWhiteSpace(question.RepositoryPath) || !Path.IsPathFullyQualified(question.RepositoryPath))
+                    if (picker is "branch" or "commit"
+                        && (string.IsNullOrWhiteSpace(question.RepositoryPath) || !Path.IsPathFullyQualified(question.RepositoryPath)))
                         return $"Question '{question.Id}' needs an absolute 'repositoryPath' for its Git picker.";
                 }
                 if (options.Length > MaxOptions) return $"Question '{question.Id}' offers more than {MaxOptions} options.";
@@ -300,6 +336,13 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
                     if (option.Label.Length > MaxOptionLength) return $"An option of '{question.Id}' is longer than {MaxOptionLength} characters.";
                     if (option.Description is { Length: > MaxDescriptionLength })
                         return $"An option description of '{question.Id}' is longer than {MaxDescriptionLength} characters.";
+                    if (option.Value is { Length: > MaxValueLength })
+                        return $"An option value of '{question.Id}' is longer than {MaxValueLength} characters.";
+                    if (SchedulePickers.IsSchedulePicker(picker) && !string.IsNullOrWhiteSpace(option.Value)
+                        && SchedulePickers.Normalize(picker, option.Value, calendar) is null)
+                        return $"The value of option '{option.Label}' in '{question.Id}' is not a valid {picker}: use "
+                            + (picker == SchedulePickers.Date ? "yyyy-MM-dd" : picker == SchedulePickers.Time ? "HH:mm"
+                                : "recurrence JSON such as {\"frequency\":\"Weekly\",\"start\":\"2026-10-12\",\"time\":\"09:00\",\"weekdays\":[\"Monday\"]}") + ".";
                 }
             }
 

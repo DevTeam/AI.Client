@@ -1,0 +1,111 @@
+@* A time of day as hours and minutes, each typed or stepped, with a row of common times. The value
+   is HH:mm, or null until both parts are chosen, so an untouched field is no answer at all.
+   Arrow Up and Arrow Down step the part they are in: an hour, or five minutes. *@
+@using System.Globalization
+
+<div class="time-picker @(Disabled ? "is-disabled" : null)" role="group" aria-label="@(Label ?? "Pick a time")">
+    <div class="time-picker-dial">
+        <div class="time-picker-part">
+            <button class="icon-action time-picker-step" type="button" tabindex="-1" aria-label="Next hour" disabled="@Disabled" @onclick="() => StepAsync(60)"><AppIcon Name="chevron-up" /></button>
+            <input class="time-picker-input" type="text" inputmode="numeric" maxlength="2" placeholder="--" aria-label="Hours"
+                   value="@(_hour?.ToString("00", Culture))" disabled="@Disabled"
+                   @onchange="args => TypeAsync(args, true)" @onkeydown="args => KeyAsync(args, 60)" />
+            <button class="icon-action time-picker-step" type="button" tabindex="-1" aria-label="Previous hour" disabled="@Disabled" @onclick="() => StepAsync(-60)"><AppIcon Name="chevron-down" /></button>
+        </div>
+        <span class="time-picker-colon" aria-hidden="true">:</span>
+        <div class="time-picker-part">
+            <button class="icon-action time-picker-step" type="button" tabindex="-1" aria-label="Five minutes later" disabled="@Disabled" @onclick="() => StepAsync(5)"><AppIcon Name="chevron-up" /></button>
+            <input class="time-picker-input" type="text" inputmode="numeric" maxlength="2" placeholder="--" aria-label="Minutes"
+                   value="@(_minute?.ToString("00", Culture))" disabled="@Disabled"
+                   @onchange="args => TypeAsync(args, false)" @onkeydown="args => KeyAsync(args, 5)" />
+            <button class="icon-action time-picker-step" type="button" tabindex="-1" aria-label="Five minutes earlier" disabled="@Disabled" @onclick="() => StepAsync(-5)"><AppIcon Name="chevron-down" /></button>
+        </div>
+    </div>
+    @if (ShowPresets)
+    {
+        <div class="time-picker-presets" role="group" aria-label="Common times">
+            @foreach (var preset in Presets)
+            {
+                <button type="button" class="time-picker-preset @(Value == preset ? "is-selected" : null)" disabled="@Disabled"
+                        aria-pressed="@(Value == preset ? "true" : "false")" @onclick="() => SetAsync(preset)">@preset</button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly CultureInfo Culture = CultureInfo.InvariantCulture;
+    private static readonly string[] Presets = ["09:00", "12:00", "15:00", "18:00", "21:00"];
+
+    /// <summary>HH:mm, or null when no time is chosen.</summary>
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool ShowPresets { get; set; } = true;
+
+    private int? _hour;
+    private int? _minute;
+    private string? _shown;
+
+    protected override void OnParametersSet()
+    {
+        if (Value == _shown) return;
+        _shown = Value;
+        if (AI.Contracts.Schedules.ScheduleCalendar.TryParseTime(Value, out var time))
+        {
+            _hour = time.Hour;
+            _minute = time.Minute;
+        }
+        else if (Value is null && _hour is not null && _minute is not null)
+        {
+            _hour = null;
+            _minute = null;
+        }
+    }
+
+    private Task SetAsync(string value)
+    {
+        var time = TimeOnly.ParseExact(value, "HH:mm", Culture);
+        _hour = time.Hour;
+        _minute = time.Minute;
+        return PublishAsync();
+    }
+
+    private Task StepAsync(int minutes)
+    {
+        var current = new TimeOnly(_hour ?? 9, _minute ?? 0);
+        // A first step chooses the time it lands on, so it starts from a sensible morning hour.
+        var next = _hour is null && _minute is null ? current : current.AddMinutes(minutes);
+        if (minutes % 60 != 0 && _minute is not null) next = new TimeOnly(next.Hour, next.Minute / 5 * 5);
+        _hour = next.Hour;
+        _minute = next.Minute;
+        return PublishAsync();
+    }
+
+    private Task KeyAsync(KeyboardEventArgs args, int minutes) => args.Key switch
+    {
+        "ArrowUp" => StepAsync(minutes),
+        "ArrowDown" => StepAsync(-minutes),
+        _ => Task.CompletedTask
+    };
+
+    private Task TypeAsync(ChangeEventArgs args, bool hours)
+    {
+        var text = args.Value?.ToString()?.Trim() ?? string.Empty;
+        int? parsed = int.TryParse(text, NumberStyles.None, Culture, out var number) ? number : null;
+        if (hours) _hour = parsed is { } hour ? Math.Clamp(hour, 0, 23) : null;
+        else _minute = parsed is { } minute ? Math.Clamp(minute, 0, 59) : null;
+        // An hour typed alone means its full hour.
+        if (hours && _hour is not null && _minute is null) _minute = 0;
+        return PublishAsync();
+    }
+
+    private async Task PublishAsync()
+    {
+        var value = _hour is { } hour && _minute is { } minute ? new TimeOnly(hour, minute).ToString("HH:mm", Culture) : null;
+        if (value == Value) return;
+        _shown = value;
+        await ValueChanged.InvokeAsync(value);
+    }
+}

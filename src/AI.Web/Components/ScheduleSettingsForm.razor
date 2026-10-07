@@ -1,0 +1,186 @@
+@* Every setting of a schedule on one form, in the order a person decides them: what a run does,
+   when it runs, how it knows it succeeded, what happens after a failure, and what is cleaned up.
+   It edits a copy; the widget saves it. *@
+@using System.Globalization
+@using AI.Contracts.Schedules
+@inject AI.Web.Widgets.IChatSchedulePresentation Presentation
+@inject IScheduleCalendar Calendar
+
+<div class="schedule-form">
+    <label class="schedule-field">
+        <span class="schedule-field-label">Task</span>
+        <textarea rows="3" placeholder="What each run does, on its own, without asking" disabled="@Disabled"
+                  @onchange="args => ChangeAsync(Value with { Task = args.Value?.ToString() ?? string.Empty })">@Value.Task</textarea>
+    </label>
+
+    <div class="schedule-field">
+        <span class="schedule-field-label">When</span>
+        <RecurrenceEditor Value="@Value.Recurrence" TimeZone="@Value.TimeZone" Disabled="@Disabled"
+                          ValueChanged="recurrence => ChangeAsync(Value with { Recurrence = recurrence })" />
+    </div>
+
+    <label class="schedule-field">
+        <span class="schedule-field-label">Success criteria</span>
+        <textarea rows="2" placeholder="How a run knows it succeeded — optional" disabled="@Disabled"
+                  @onchange="args => ChangeAsync(Value with { SuccessCriteria = Text(args) })">@Value.SuccessCriteria</textarea>
+    </label>
+
+    <div class="schedule-field">
+        <label class="schedule-check">
+            <input type="checkbox" checked="@(Value.Retry is not null)" disabled="@Disabled"
+                   @onchange="args => ChangeAsync(Value with { Retry = args.Value is true ? new ScheduleRetry(3, 15) : null })" />
+            <span class="schedule-field-label">Retry failed runs</span>
+        </label>
+        @if (Value.Retry is { } retry)
+        {
+            <div class="schedule-inline">
+                <span>Up to</span>
+                <div class="number-stepper">
+                    <button class="icon-action" type="button" aria-label="Fewer retries" disabled="@(Disabled || retry.MaxAttempts <= 1)"
+                            @onclick="() => ChangeAsync(Value with { Retry = retry with { MaxAttempts = retry.MaxAttempts - 1 } })"><AppIcon Name="chevron-down" /></button>
+                    <input type="text" inputmode="numeric" aria-label="Retries" value="@retry.MaxAttempts" disabled="@Disabled"
+                           @onchange="args => ChangeAsync(Value with { Retry = retry with { MaxAttempts = Number(args, 1, 10, retry.MaxAttempts) } })" />
+                    <button class="icon-action" type="button" aria-label="More retries" disabled="@(Disabled || retry.MaxAttempts >= 10)"
+                            @onclick="() => ChangeAsync(Value with { Retry = retry with { MaxAttempts = retry.MaxAttempts + 1 } })"><AppIcon Name="chevron-up" /></button>
+                </div>
+                <span>@(retry.MaxAttempts == 1 ? "retry" : "retries"),</span>
+                <select aria-label="Delay between retries" disabled="@Disabled"
+                        @onchange="args => ChangeAsync(Value with { Retry = retry with { DelayMinutes = int.Parse(args.Value!.ToString()!, Culture) } })">
+                    @foreach (var minutes in Delays(RetryDelays, retry.DelayMinutes))
+                    {
+                        <option value="@minutes" selected="@(minutes == retry.DelayMinutes)">@Presentation.Duration(minutes)</option>
+                    }
+                </select>
+                <span>apart</span>
+            </div>
+            <input type="text" placeholder="Retry only when… — optional" aria-label="Retry condition" value="@retry.Condition" disabled="@Disabled"
+                   @onchange="args => ChangeAsync(Value with { Retry = retry with { Condition = Text(args) } })" />
+        }
+    </div>
+
+    <div class="schedule-field">
+        <span class="schedule-field-label">Run branches</span>
+        <div class="schedule-rules">
+            @foreach (var (outcome, label, rule) in Rules())
+            {
+                <label class="schedule-rule">
+                    <span class="schedule-rule-outcome is-@outcome.ToString().ToLowerInvariant()"><i aria-hidden="true"></i>@label</span>
+                    <select aria-label="@($"{label} runs")" disabled="@Disabled" @onchange="args => SetRuleAsync(outcome, args)">
+                        @foreach (var choice in RetentionChoices(rule))
+                        {
+                            <option value="@choice.Key" selected="@(choice.Key == Key(rule))">@choice.Label</option>
+                        }
+                    </select>
+                </label>
+            }
+        </div>
+    </div>
+
+    <div class="schedule-field">
+        <span class="schedule-field-label">The chat itself</span>
+        <select aria-label="When the chat is deleted" disabled="@Disabled" @onchange="SetDeletionAsync">
+            <option value="keep" selected="@(Value.Deletion is null)">Keep the chat</option>
+            @foreach (var minutes in Delays(AfterLastRun, Value.Deletion?.AfterLastRunMinutes))
+            {
+                <option value="@($"after:{minutes}")" selected="@(Value.Deletion is { At: null, AfterLastRunMinutes: { } current } && current == minutes)">
+                    @(minutes == 0 ? "Delete right after the last run" : $"Delete {Presentation.Duration(minutes)} after the last run")
+                </option>
+            }
+            <option value="at" selected="@(Value.Deletion?.At is not null)">Delete on a date…</option>
+        </select>
+        @if (Value.Deletion?.At is { } at)
+        {
+            var local = Calendar.ToLocal(at, Value.TimeZone);
+            <div class="schedule-inline schedule-deletion-at">
+                <DatePickerCalendar Values="@([local.ToString(ScheduleCalendar.DateFormat, Culture)])" Disabled="@Disabled" Label="Deletion date"
+                                    ValuesChanged="values => SetDeletionAtAsync(values.FirstOrDefault(), local.ToString(ScheduleCalendar.TimeFormat, Culture))" />
+                <TimePickerField Value="@local.ToString(ScheduleCalendar.TimeFormat, Culture)" ShowPresets="false" Disabled="@Disabled" Label="Deletion time"
+                                 ValueChanged="time => SetDeletionAtAsync(local.ToString(ScheduleCalendar.DateFormat, Culture), time)" />
+            </div>
+        }
+    </div>
+
+    <label class="schedule-field">
+        <span class="schedule-field-label">Time zone</span>
+        <input type="text" value="@Value.TimeZone" placeholder="@Calendar.LocalTimeZoneId" aria-label="Time zone" disabled="@Disabled"
+               @onchange="args => ChangeAsync(Value with { TimeZone = Text(args) ?? Calendar.LocalTimeZoneId })" />
+    </label>
+</div>
+
+@code {
+    private static readonly CultureInfo Culture = CultureInfo.InvariantCulture;
+    private static readonly int[] RetryDelays = [5, 15, 30, 60, 120, 360, 1440];
+    private static readonly int[] RetentionDelays = [60, 1440, 10080, 43200];
+    private static readonly int[] AfterLastRun = [0, 1440, 10080];
+
+    [Parameter, EditorRequired] public ChatScheduleSettings Value { get; set; } = null!;
+    [Parameter] public EventCallback<ChatScheduleSettings> ValueChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private ScheduleBranchRetention Retention => Value.Retention ?? new ScheduleBranchRetention(
+        new ScheduleRetentionRule(ScheduleRetentionAction.Delete), new ScheduleRetentionRule(ScheduleRetentionAction.Keep),
+        new ScheduleRetentionRule(ScheduleRetentionAction.Keep));
+
+    private Task ChangeAsync(ChatScheduleSettings next) => ValueChanged.InvokeAsync(next);
+
+    private IEnumerable<(ScheduleRunStatus Outcome, string Label, ScheduleRetentionRule Rule)> Rules()
+    {
+        yield return (ScheduleRunStatus.Succeeded, "Succeeded", Retention.Succeeded);
+        yield return (ScheduleRunStatus.Failed, "Failed", Retention.Failed);
+        yield return (ScheduleRunStatus.Blocked, "Waiting for you", Retention.Blocked);
+    }
+
+    private IEnumerable<(string Key, string Label)> RetentionChoices(ScheduleRetentionRule current)
+    {
+        yield return ("keep", "Keep");
+        yield return ("delete:0", "Delete at once");
+        foreach (var minutes in Delays(RetentionDelays, current is { Action: ScheduleRetentionAction.Delete, DelayMinutes: > 0 } ? current.DelayMinutes : null))
+            yield return ($"delete:{minutes}", $"Delete after {Presentation.Duration(minutes)}");
+    }
+
+    private static string Key(ScheduleRetentionRule rule) =>
+        rule.Action == ScheduleRetentionAction.Keep ? "keep" : $"delete:{Math.Max(0, rule.DelayMinutes)}";
+
+    private Task SetRuleAsync(ScheduleRunStatus outcome, ChangeEventArgs args)
+    {
+        var key = args.Value?.ToString() ?? "keep";
+        var rule = key == "keep" ? new ScheduleRetentionRule(ScheduleRetentionAction.Keep)
+            : new ScheduleRetentionRule(ScheduleRetentionAction.Delete, int.Parse(key["delete:".Length..], Culture));
+        var retention = outcome switch
+        {
+            ScheduleRunStatus.Succeeded => Retention with { Succeeded = rule },
+            ScheduleRunStatus.Failed => Retention with { Failed = rule },
+            _ => Retention with { Blocked = rule }
+        };
+        return ChangeAsync(Value with { Retention = retention });
+    }
+
+    private Task SetDeletionAsync(ChangeEventArgs args)
+    {
+        var key = args.Value?.ToString() ?? "keep";
+        var deletion = key switch
+        {
+            "keep" => null,
+            "at" => new ScheduleChatDeletion(At: DateTimeOffset.UtcNow.AddDays(30)),
+            _ => new ScheduleChatDeletion(AfterLastRunMinutes: int.Parse(key["after:".Length..], Culture))
+        };
+        return ChangeAsync(Value with { Deletion = deletion });
+    }
+
+    private Task SetDeletionAtAsync(string? date, string? time)
+    {
+        if (!ScheduleCalendar.TryParseDate(date, out var day) || !ScheduleCalendar.TryParseTime(time, out var clock)) return Task.CompletedTask;
+        var zone = Calendar.FindTimeZone(Value.TimeZone) ?? TimeZoneInfo.Local;
+        var local = day.ToDateTime(clock);
+        return ChangeAsync(Value with { Deletion = new ScheduleChatDeletion(At: new DateTimeOffset(local, zone.GetUtcOffset(local))) });
+    }
+
+    /// <summary>The usual choices, with the current value among them when it is not one of them.</summary>
+    private static IEnumerable<int> Delays(int[] usual, int? current) =>
+        current is { } value && !usual.Contains(value) ? usual.Append(value).Order() : usual;
+
+    private static string? Text(ChangeEventArgs args) => args.Value?.ToString() is { } text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
+
+    private static int Number(ChangeEventArgs args, int min, int max, int fallback) =>
+        int.TryParse(args.Value?.ToString(), NumberStyles.None, Culture, out var number) ? Math.Clamp(number, min, max) : fallback;
+}

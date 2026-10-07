@@ -37,6 +37,8 @@ The documents describe the agreed-upon architecture and are the source of truth 
 31. [Context request budgets and quality evaluation](31-context-evaluation.md)
 32. [Styles and palette](33-styles-and-palette.md)
 33. [Asides and team messages](34-asides-and-team-messages.md)
+34. [Extensible chat kinds](32-chat-kinds.md)
+35. [Scheduled chats](35-scheduled-chats.md)
 
 Generator diagnostics and complaints are tracked separately in [Pure.DI observations and issues](pure-di-issues.md).
 

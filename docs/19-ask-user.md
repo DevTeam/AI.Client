@@ -68,7 +68,7 @@ In `spawn_subtask` nobody is watching the run, and it has no card of its own. Th
 | Constraint | Value |
 |---|---|
 | questions per call | 1–5, `id` is unique and non-empty |
-| options per question | 0–8; zero is allowed with `allowOther: true`, a path picker or a Git picker |
+| options per question | 0–8; zero is allowed with `allowOther: true`, a path picker, a Git picker or a schedule picker |
 | lengths | `text` ≤ 500, `label` ≤ 24, option ≤ 80, option description ≤ 160 |
 | `allowOther` | defaults to `true` |
 
@@ -99,6 +99,30 @@ Both the UI response and the tool result carry `values`: full, case-sensitive re
 as Git arguments. The model must still validate the selected refs/objects before mutation,
 because repository state can change while a question is open. Old clients/questions remain
 compatible: these fields are optional, and `selected`, `other` and `paths` keep their meanings.
+
+### Option values
+
+Any option may carry an exact `value` — a date, a version, an id — returned in `values` when the option is
+chosen, next to its label in `selected`. Values of chosen options come first, in the order they were chosen,
+then picked values. An option value is at most 2000 characters.
+
+### Schedule pickers
+
+Set `pickerKind` to `date`, `time` or `recurrence`; no `repositoryPath`. The card draws the picker inline:
+
+| Kind | Picker | Value |
+|---|---|---|
+| `date` | A month calendar; several dates with `multiSelect`, numbered in the order picked | `yyyy-MM-dd` |
+| `time` | Hours and minutes, typed or stepped (Arrow keys: an hour, five minutes), and common times; several with `multiSelect` and *Add time* | `HH:mm` |
+| `recurrence` | The recurrence editor of the schedule widget: frequency, interval, weekdays, day of the month or counted weekday, time, start, end, with the result in words and the next three runs | recurrence JSON in the shape `app_schedule` takes |
+
+Options are presets with a `value` in the picker's format, such as `{label:"Tomorrow", value:"2026-10-08"}`; a
+preset whose value the picker could not return makes the call `invalid`. Choosing a preset fills the picker, and
+adjusting the picker then is the answer, so the preset is no longer chosen. An untouched picker is no answer.
+`allowOther`, `multiSelect`, partial answers and the other buttons behave as for every question. The Host checks
+every value again and returns it in one spelling; a value the picker cannot return is dropped. Recurrences also
+come back in `valueDescriptions` in words, to say back to the user. Schedule pickers cannot use
+`timeoutBehavior='submit_defaults'`.
 
 Read-only `/api/git/branches` and `/api/git/commits` use the host's installed Git with argument
 arrays, without a shell, fetch or working-tree changes. Like filesystem browsing, they are

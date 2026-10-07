@@ -52,6 +52,7 @@ public static class SkillIcons
         "svg-create", "svg-create-icon", "svg-create-illustration", "svg-create-schematic",
         "svg-create-diagram", "svg-create-chart", "svg-create-infographic", "svg-create-logo",
         "svg-create-pattern", "svg-create-animation", "svg-create-sprite", "svg-edit",
-        "svg-fix", "svg-optimize", "svg-review", "svg-export"
+        "svg-fix", "svg-optimize", "svg-review", "svg-export",
+        "stopwatch", "chat-schedule-create", "chat-schedule-edit", "chat-schedule-delete", "chat-schedule-run"
     ];
 }

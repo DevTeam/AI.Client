@@ -11,6 +11,7 @@ Current widgets:
 
 | Id | Title | Icon | Component | Shows |
 | --- | --- | --- | --- | --- |
+| `chat-schedule` | Schedule | `stopwatch` | `ChatScheduleWidget` | In an ordinary chat, the way to schedule it; in a scheduled chat, the countdown to the next run, its state, Run now, Pause or Resume, Edit and Remove, what the schedule does and the recent runs, each opening its branch — see [Scheduled chats](35-scheduled-chats.md) |
 | `chat-context` | Context | `chart-pie` | `ChatContextWidget` | How the context window of the next request is filled: the ring, its layers and what is left |
 | `chat-usage` | Usage | `gauge` | `ChatUsageWidget` | Tokens, cost and where they went, with the compacting actions for a filling window |
 | `chat-files` | Files | `diff` | `ChatFilesWidget` | Files changed, lines added and removed, links to review |

@@ -40,7 +40,8 @@ Skill conventions:
   mermaid-edit, mermaid-fix, mermaid-review, mermaid-export, svg-create, svg-create-icon,
   svg-create-illustration, svg-create-schematic, svg-create-diagram, svg-create-chart,
   svg-create-infographic, svg-create-logo, svg-create-pattern, svg-create-animation,
-  svg-create-sprite, svg-edit, svg-fix, svg-optimize, svg-review, svg-export.
+  svg-create-sprite, svg-edit, svg-fix, svg-optimize, svg-review, svg-export, stopwatch,
+  chat-schedule-create, chat-schedule-edit, chat-schedule-delete, chat-schedule-run.
   Only when the user asks for a picture none of these give,
   `icon` is SVG path data instead: one line starting with `M`, drawn as a 2px stroke on a 24x24
   grid, such as `M12 3 3 8l9 5 9-5ZM3 13l9 5 9-5`.

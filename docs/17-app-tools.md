@@ -42,6 +42,7 @@ The tools are grouped by risk level: the tool boundary matches the boundary of w
 | `app_resources` | create and retire project file/directory references; create and update named chat reviews; attach them with `app_runs Submit` |
 | `app_memory` | `Create`, `Update`, `Delete` long-term memory entries — see [25-memory-and-instructions.md](25-memory-and-instructions.md) |
 | `app_instructions` | replace the current project's instructions; kept apart so it still asks where other writes are allowed |
+| `app_schedule` | `Get`, `Set`, `Pause`, `Resume`, `Remove`, `RunNow`, `ReportRun` for a chat's schedule — see [35-scheduled-chats.md](35-scheduled-chats.md) |
 | `spawn_subtask` | run a task in a separate conversation and return only its result |
 | `ask_user` | ask the user a question and wait for an answer — see [19-ask-user.md](19-ask-user.md) |
 

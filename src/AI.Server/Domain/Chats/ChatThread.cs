@@ -43,9 +43,9 @@ public sealed class ChatThread
     public ProjectId ProjectId { get; }
     public string Title { get; private set; }
     public bool AutoTitlePending { get; private set; }
-    public ChatKind Kind { get; }
-    public JsonElement? KindState { get; }
-    public int KindStateVersion { get; }
+    public ChatKind Kind { get; private set; }
+    public JsonElement? KindState { get; private set; }
+    public int KindStateVersion { get; private set; }
     public DateTimeOffset CreatedAt { get; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset LastActivityAt { get; private set; }
@@ -70,6 +70,20 @@ public sealed class ChatThread
     /// </summary>
     public int BranchCount => _branches.Values.Count(branch => branch.Id != Id.Value && branch.HeadMessageId is not null);
     public IReadOnlyCollection<ToolPolicy> ToolPolicies => _toolPolicies.Values;
+
+    /// <summary>
+    /// Changes what kind of chat this is, keeping every message and branch: a conversation becomes
+    /// scheduled and back. The caller's kind policy has validated the state.
+    /// </summary>
+    public void SetKind(ChatKind kind, JsonElement? state, int stateVersion, DateTimeOffset updatedAt)
+    {
+        if (stateVersion < 1) throw new DomainException("Chat kind state version must be positive.");
+        EnsureTimestampDoesNotMoveBackwards(updatedAt);
+        Kind = kind == default ? ChatKind.Conversation : kind;
+        KindState = state?.Clone();
+        KindStateVersion = stateVersion;
+        UpdatedAt = updatedAt;
+    }
 
     public void SetToolPolicy(ToolPolicy policy, DateTimeOffset updatedAt)
     {

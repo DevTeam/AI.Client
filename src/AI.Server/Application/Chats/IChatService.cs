@@ -20,5 +20,18 @@ public interface IChatService
     Task<ChatSummary?> PinAsync(Guid projectId, Guid chatId, PinChatRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> RenameBranchAsync(Guid projectId, Guid chatId, Guid branchId, RenameChatBranchRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> SetToolPolicyAsync(Guid projectId, Guid chatId, AI.Contracts.Projects.ToolPolicySettings policy, CancellationToken cancellationToken);
+    /// <summary>
+    /// Reads the chat's kind and state and replaces them in one step under the chat's lease, so a
+    /// schedule edited from a widget, a tool and the dispatcher never loses a write. <paramref name="change"/>
+    /// returns null to leave the chat as it is. Null when the chat does not exist.
+    /// </summary>
+    Task<ChatKindChange?> ChangeKindAsync(Guid projectId, Guid chatId, Func<ChatKindState, ChatKindState?> change,
+        CancellationToken cancellationToken);
     Task<ChatDetails?> RemoveToolPolicyAsync(Guid projectId, Guid chatId, Guid serverId, string name, string schemaHash, CancellationToken cancellationToken);
 }
+
+/// <summary>A chat's kind with its versioned state.</summary>
+public sealed record ChatKindState(string Kind, System.Text.Json.JsonElement? State, int Version);
+
+/// <param name="Changed">False when the change function left the chat as it was.</param>
+public sealed record ChatKindChange(ChatKindState Current, long Revision, bool Changed);

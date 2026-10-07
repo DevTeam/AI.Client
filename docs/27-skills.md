@@ -68,6 +68,10 @@ application permissions, and every write still goes through tool approval.
 | `chat-fork` | Starts a branch from an earlier user message with a new prompt, and opens it | `app_runs` Fork, `app_chats` RenameBranch, `app_navigate` |
 | `chat-summary` | Summarizes this or another chat; read-only, the safe example for testing skills | `app_read` |
 | `chat-branch-cleanup` | Deletes branches the user picks; never the main or current branch | `app_chats` DeleteBranch |
+| `chat-schedule-create` | Turns this or a new chat into a scheduled chat, asking through `ask_user` pickers for every missing time, success, retry and cleanup rule | `app_read`, `app_schedule`, `app_chats`, `ask_user`, `app_navigate` |
+| `chat-schedule-edit` | Changes, pauses or resumes a schedule, asking only for values not named | `app_schedule`, `ask_user`, `run_skill` |
+| `chat-schedule-delete` | Removes the schedule (keeping the chat), pauses it, or deletes the chat, after one confirmation | `app_schedule`, `app_read`, `app_chats`, `ask_user` |
+| `chat-schedule-run` | In a scheduled run branch carries out the task, checks the success criteria and reports the outcome; elsewhere starts a run now. The dispatcher attaches it to every run | `app_schedule`, `app_read`, `ask_user`, `tool_search` |
 | `project-create` | Creates a project from picked directories with a suggested name and access, creates its first chat, submits the requested work there and opens it | `app_projects`, `app_security`, `app_chats`, `app_runs`, `app_navigate` |
 | `project-rename` | Offers three names that keep the current meaning and applies the chosen one | `app_projects` Update |
 | `project-describe` | Drafts a description from the project's README and manifests | `app_projects` Update |
@@ -272,6 +276,11 @@ The history of a chat is compacted for the model only while a request would not 
 on request and points to `chat-compact` when the turn has nothing to compact. `chat-compact` is the
 explicit way to start over with a small context: the old chat stays unchanged. Running it is the request,
 so it does not ask for confirmation.
+
+The `chat-schedule-*` skills never fill in a schedule value the user did not give: a missing date, time,
+recurrence, success criterion, retry or cleanup rule is asked through `ask_user` (the date, time and recurrence
+pickers for times), and a value already named in the chat or the branch is not asked again. A dismissed or
+unanswered question schedules nothing. Each has its own stopwatch icon. See [Scheduled chats](35-scheduled-chats.md).
 
 `chat-rename` has a dedicated executor because it changes the chat title under the chat mutation
 lock. Automatic naming starts after the first main-branch answer; explicit requests can rename

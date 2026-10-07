@@ -27,7 +27,7 @@ using AI.Infrastructure.Workspace;
 using AI.Server.Hosting;
 using System.Text.Json;
 
-public sealed class ChatExecutionTests
+public sealed partial class ChatExecutionTests
 {
     [Fact]
     public async Task RegisteredExtensionKindRunsThroughDispatcherAndAgent()
@@ -2400,6 +2400,8 @@ public sealed class ChatExecutionTests
                 [new Contracts.Projects.McpServerSettings(projectDisabled, "CSharp", "Stdio", false)], []), CancellationToken.None);
         }
         public IChatReplySuggestions ReplySuggestions => _composition.ReplySuggestions;
+        public AI.Application.Schedules.IChatScheduleService Schedules => _composition.Schedules;
+        public AI.Application.Schedules.IScheduledChatPass SchedulePass => _composition.SchedulePass;
         public async Task SetChatAutomationAsync(ChatAutomationSettings automation)
         {
             var global = await Settings.LoadAsync(CancellationToken.None);

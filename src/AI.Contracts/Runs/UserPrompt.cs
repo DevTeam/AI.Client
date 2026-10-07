@@ -36,7 +36,10 @@ public sealed record UserPrompt(
 /// <see cref="UserPromptAnswer.Other"/> like any other typed answer. The "directories" mode allows
 /// several selections and returns them in <see cref="UserPromptAnswer.Paths"/>.
 /// </param>
-/// <param name="PickerKind">"branch" or "commit" for a Git picker; MultiSelect allows several choices.</param>
+/// <param name="PickerKind">
+/// "branch" or "commit" for a Git picker; "date", "time" or "recurrence" for a schedule picker.
+/// MultiSelect allows several choices. Every picker answers in <see cref="UserPromptAnswer.Values"/>.
+/// </param>
 /// <param name="RepositoryPath">Absolute repository directory on the host for a Git picker.</param>
 /// <param name="Revision">Optional branch or revision to limit the commit history.</param>
 public sealed record UserPromptQuestion(
@@ -52,7 +55,11 @@ public sealed record UserPromptQuestion(
     string? Revision = null);
 
 /// <summary>One choice. Plain text in both fields: these are captions on controls, never markup.</summary>
-public sealed record UserPromptOption(string Label, string? Description, bool Recommended = false);
+/// <param name="Value">
+/// What choosing it means to a program — a date, a time, a recurrence or any other exact value.
+/// A chosen option's value is returned in <see cref="UserPromptAnswer.Values"/> next to its label.
+/// </param>
+public sealed record UserPromptOption(string Label, string? Description, bool Recommended = false, string? Value = null);
 
 /// <summary>
 /// What the person chose for one question. Options are identified by position, so the answer cannot
@@ -62,7 +69,10 @@ public sealed record UserPromptOption(string Label, string? Description, bool Re
 /// <param name="Selected">Indices into the question's options. Empty means the question was left to the model.</param>
 /// <param name="Other">Free text, or one selected path.</param>
 /// <param name="Paths">Several selected directory paths for a "directories" question.</param>
-/// <param name="Values">Full Git ref names or commit hashes in selection order.</param>
+/// <param name="Values">
+/// Picked values in selection order: full Git ref names or commit hashes, dates (yyyy-MM-dd), times
+/// (HH:mm) or recurrences (JSON), and the values of chosen options.
+/// </param>
 public sealed record UserPromptAnswer(
     string QuestionId,
     IReadOnlyList<int> Selected,

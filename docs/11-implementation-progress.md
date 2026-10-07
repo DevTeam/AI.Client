@@ -509,3 +509,26 @@ clean `be39e8c`. Host builds with no Pure.DI diagnostics. Checked in the browser
 scripted model: an Alt+Enter aside during a turn is read by the model and stays visible in the
 folded turn, idle asides appear at once, and an `app_runs` question shows its sender and intent,
 in the dark blue and the light green themes.
+
+## 2026-10-07 — scheduled chats
+
+A conversation can become a scheduled chat (kind `scheduled`, state `ChatSchedule`) without losing its
+history, and back. The Host's dispatcher (`ChatScheduler`, `ScheduledChatPass`) forks the chat from the
+end of its main branch at every occurrence; the run follows `chat-schedule-run` and reports its outcome
+with `app_schedule ReportRun`. Runs that wait for an approval, an answer or a resume are blocked with the
+usual attention marker; failures retry by the schedule's rule; run branches are kept or deleted per
+outcome after a delay, and the chat itself can be deleted on a date or after its last run. Occurrences
+during a run are skipped, ones missed while the application was closed are recorded and not run.
+Run branches are named by when they started and how they ended (`#12 · Tue 7 Oct 09:00 · succeeded`).
+`app_schedule` reads and changes schedules; `chat-schedule-create`, `-edit`, `-delete` and `-run` ask
+for every missing value through `ask_user`, which gained date, time and recurrence pickers and exact
+option values. The Schedule widget converts, counts down, pauses, runs now, edits, removes and lists
+runs; scheduled chats have a stopwatch icon. See [Scheduled chats](35-scheduled-chats.md).
+
+Checks: new Server tests (calendar, dispatcher through the shipped graph, `ask_user` pickers and
+`app_schedule` over MCP) and Web tests (widget states, pickers in a question card, presentation) pass;
+all 592 Web tests pass; the Server suite (1013) passes except the eleven tool-approval and stale-rename
+tests that fail identically on a clean `dbb731a`. Checked in the browser against a scripted model: the
+three pickers answer with exact values, the widget schedules a chat, Run now starts a fork that blocks on
+an approval, is shown as waiting, reports success and has its branch deleted by rule; an interrupted run
+after a Host restart is shown as waiting; dark blue and light green themes.

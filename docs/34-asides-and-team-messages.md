@@ -111,7 +111,8 @@ A team is a chat whose main branch is the coordination channel and whose other b
 teammates. Nothing beyond this document's mechanics is needed in code; the protocol lives in skills:
 
 - `team-assemble` (main branch): analyses the task (goal and done, domain glossary, areas, phased
-  plan), decomposes it into parts with owned paths and contracts, and decides whether a team pays
+  plan), decomposes it into parts with owned paths and contracts (a contract one part implements and
+  another tests carries its edge cases as input → output examples), and decides whether a team pays
   off — at least two parts that run at once, disjoint owned paths, contracts fixable up front, each
   part substantial. If not, it says so and recommends one branch or `spawn_subtask`. Otherwise it
   proposes 2–4 teammates, asks the user to confirm, writes the "Team charter" into the main branch
@@ -121,7 +122,12 @@ teammates. Nothing beyond this document's mechanics is needed in code; the proto
   against the definition of done, moves the team between phases and integrates the result.
 - `team-contribute` (teammate branch): works only in the owned paths, reads the main branch for
   decisions before each major step, and reports by the protocol: `status` as an aside, `question`,
-  `blocker` and `done` as messages that wake the lead.
+  `blocker` and `done` as messages that wake the lead. It pins the file-writing tools and
+  `run_skill`, starts the skills its brief names, and makes a first change in its owned paths early
+  instead of reading on: a teammate that started with read-only tools once spent three hours and
+  some 150 reads without writing a file. A conflict between the charter's contract, a reference
+  and another teammate's work goes to the lead as a `question` at once, and the teammate carries on
+  by the charter's contract until the lead decides.
 
 Every teammate branch starts from the charter, so it inherits the whole analysis without copying it.
 The charter is written as an aside in its own step: it joins the running turn after that call's

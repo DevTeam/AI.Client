@@ -5,7 +5,7 @@ icon: users
 kind: playbook
 description: Work as a teammate in a branch: do the assigned part and report to the main branch.
 parameters: {"type":"object","properties":{},"additionalProperties":false}
-tools: ["app_read","app_runs","ask_user","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run"]
+tools: ["app_read","app_runs","ask_user","run_skill","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","process_run"]
 ---
 
 The user's instructions take precedence over this playbook. Report in the language of the charter.
@@ -20,8 +20,18 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    resource=Messages, `branchId` = `chatId`, for decisions made since the charter. A decision
    overrides your brief. A message the lead sends into this branch arrives as a new turn or, while
    you work, before your next step.
-3. Do the work with the skills your brief names, the project's conventions and its checks. Change
-   only your owned paths. A change anywhere else, or to a contract, is a question to the lead.
+3. Do the work. Start each skill your brief names with `run_skill` in this turn and follow its
+   steps; with none named, follow the project's conventions and its checks. Change only your owned
+   paths. A change anywhere else, or to a contract, is a question to the lead.
+   Make the first change early: as soon as the contracts and one example of the project's style
+   are known, write the smallest real part of the deliverable in your owned paths — the files,
+   types and signatures the contracts fix — and grow it from there. Reading on without changing
+   anything is not progress: when a few more reads still leave you unable to start, ask the lead
+   or report a blocker instead.
+   When the charter's contracts, a reference you were pointed to and another teammate's work
+   disagree, do not settle it yourself and do not stop for it: send a question at once with the
+   exact case and both readings, then carry on by the charter's contract, which holds until the
+   lead decides.
    The team shares one working directory, so other teammates' unfinished work is on disk next to
    yours: never change the git index or working tree as a whole — no commit, stash, checkout,
    reset, restore, clean, rebase, merge, cherry-pick or revert, even when another skill's steps

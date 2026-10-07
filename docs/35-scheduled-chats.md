@@ -32,7 +32,7 @@ in `AI.Contracts.Schedules` so the Host and the Web share them:
 | Type | Holds |
 | --- | --- |
 | `ScheduleRecurrence` | `frequency` (Once, Hourly, Daily, Weekly, Monthly, Yearly), `start` (`yyyy-MM-dd`), `time` (`HH:mm`), `interval`, `weekdays`, `monthDay` (1–31, -1 last), `monthWeekday` (`{ordinal 1–4 or -1, day}`), `until`, `count` |
-| `ChatScheduleSettings` | `task`, `recurrence`, `timeZone` (IANA or Windows id), `successCriteria`, `retry`, `retention`, `deletion` |
+| `ChatScheduleSettings` | `task`, `recurrence`, `timeZone` (accepted as an IANA or Windows id, stored and read back as IANA: the browser does not know Windows ids), `successCriteria`, `retry`, `retention`, `deletion` |
 | `ScheduleRetry` | `maxAttempts` (1–10 retries after the first attempt), `delayMinutes`, `condition` in the user's words |
 | `ScheduleBranchRetention` | One `ScheduleRetentionRule` (`Keep` or `Delete` after `delayMinutes`, 0 = at the next pass) per outcome: `succeeded`, `failed`, `blocked` |
 | `ScheduleChatDeletion` | `at` (absolute) or `afterLastRunMinutes` (once nothing is left to run). Absent: the chat stays |
@@ -146,7 +146,7 @@ The Schedule widget (`chat-schedule`, `stopwatch`) is available in every chat:
 
 The settings form (`ScheduleSettingsForm`) holds the task, the recurrence editor, success criteria,
 retry (attempts, delay, condition), a rule per outcome, chat deletion (keep, after the last run, or on
-a date and time) and the time zone. Refusals from the Host appear in the widget in its words.
+a date and time) and the time zone. Refusals from the Host appear in the widget in its words, and while the form is invalid a note under it says why Save is unavailable.
 
 ## Run branches in the branch picker and the sidebar
 

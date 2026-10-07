@@ -109,6 +109,14 @@ public sealed class ScheduleCalendarTests
     }
 
     [Fact]
+    public void ShouldStoreWindowsTimeZonesByTheirIanaId()
+    {
+        _calendar.CanonicalTimeZoneId(" Russian Standard Time ").ShouldBe("Europe/Moscow");
+        _calendar.CanonicalTimeZoneId("Europe/Moscow").ShouldBe("Europe/Moscow");
+        _calendar.CanonicalTimeZoneId(" Mars/Olympus ").ShouldBe("Mars/Olympus");
+    }
+
+    [Fact]
     public void ShouldKeepOneSpellingOfPickedValues()
     {
         SchedulePickers.Normalize("date", " 2030-01-05 ", _calendar).ShouldBe("2030-01-05");

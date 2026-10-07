@@ -33,7 +33,7 @@ public interface IChatScheduleStore
 /// <param name="Schedule">Null for a chat that is not scheduled.</param>
 public sealed record StoredSchedule(string Kind, ChatSchedule? Schedule, long ChatRevision);
 
-public sealed class ChatScheduleStore(IChatService chats) : IChatScheduleStore
+public sealed class ChatScheduleStore(IChatService chats, IScheduleCalendar calendar) : IChatScheduleStore
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -63,7 +63,10 @@ public sealed class ChatScheduleStore(IChatService chats) : IChatScheduleStore
         if (state is not { ValueKind: JsonValueKind.Object } value) return null;
         try
         {
-            return value.Deserialize<ChatSchedule>(Json);
+            // Schedules saved before zones were stored as IANA ids may name a Windows one.
+            return value.Deserialize<ChatSchedule>(Json) is { Settings.TimeZone: { Length: > 0 } zone } schedule
+                ? schedule with { Settings = schedule.Settings with { TimeZone = calendar.CanonicalTimeZoneId(zone) } }
+                : null;
         }
         catch (JsonException)
         {

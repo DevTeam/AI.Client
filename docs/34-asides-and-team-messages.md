@@ -193,6 +193,19 @@ Every teammate has one identity, `Name · Role` ("Ada · Backend"), stored on it
 - The charter's teammate table starts with the identity and the branchId; the skills tell everyone
   to name each other only by identity in plans, decisions and reports.
 
+### Team status for the lead
+
+A lead that has to rebuild its team's state reads its own branch and every teammate's branch to do
+it, again each turn, filling its context with transcripts it already holds. Instead, every turn of
+the main branch of a team starts with a model instruction `run.team-status` written by
+`TeamStatusBrief`: "X of N done, K waiting for you", then one line per teammate — identity,
+branchId, state (working, waiting for the person, stopped, done, idle), its latest report's intent
+and first line, and a question or blocker still waiting for the lead. It is built by the same
+`ChatTeamRosterCalculator` (in `AI.Contracts`) the team widget uses, so the person and the lead see
+one state. `team-coordinate` tells the lead that its branch is its context, that a report is taken
+as stated, that a `done` is checked against the deliverable itself, and that a teammate's branch is
+read only when the result contradicts the report.
+
 ### Failures
 
 A team runs with nobody watching each branch, so a failure must neither stop the team silently

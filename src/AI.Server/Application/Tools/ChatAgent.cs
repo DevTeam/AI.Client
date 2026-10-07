@@ -104,6 +104,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             instructions.Upsert(run, new ModelInstruction("run.context",
                 $"This run: projectId {projectId}, chatId {chatId}, branchId {branchId}. The main branch id equals the chat id.",
                 900, ModelInstructionLifetime.Run, Required: true));
+        // A lead that has to rebuild its team's state reads every branch to do it; handed the state,
+        // it reads none.
+        if (request.TeamStatus is { Length: > 0 } teamStatus)
+            instructions.Upsert(run, new ModelInstruction("run.team-status", teamStatus, 880,
+                ModelInstructionLifetime.Run, Required: true));
         if (behavior.IncludeStandingInstructions) await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), configuredConnection, token);
         // Set while the application compacts the history itself, so its summary is accounted as a
         // compaction rather than as a checkpoint the model asked for.

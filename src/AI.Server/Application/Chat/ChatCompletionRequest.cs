@@ -11,4 +11,6 @@ public sealed record ChatCompletionRequest(
     Guid? CredentialProfileId = null,
     IReadOnlyList<ChatCompletionMessage>? ContextMessages = null,
     IReadOnlyList<ChatToolDefinition>? Tools = null, ChatKind Kind = default, JsonElement? KindState = null,
-    int KindStateVersion = 1, Guid? ProjectId = null);
+    int KindStateVersion = 1, Guid? ProjectId = null,
+    // The team's state as the turn starts, for a team lead's run; see docs/34-asides-and-team-messages.md.
+    string? TeamStatus = null);

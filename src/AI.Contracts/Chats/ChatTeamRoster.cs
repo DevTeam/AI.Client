@@ -1,7 +1,6 @@
-namespace AI.Web.Widgets;
+namespace AI.Contracts.Chats;
 
-using AI.Contracts.Chats;
-using AI.Contracts.Runs;
+using Runs;
 
 /// <summary>Where a teammate stands, as its run and its reports say.</summary>
 public enum ChatTeamMemberState

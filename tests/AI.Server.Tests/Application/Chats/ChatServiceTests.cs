@@ -19,7 +19,7 @@ public class ChatServiceTests
     private readonly DateTimeOffset _now = new(2026, 8, 12, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task ShouldRenameChatUsingExpectedRevision()
+    public async Task ShouldRenameChatEvenWhenTheCallersRevisionIsStale()
     {
         var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
         _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None))
@@ -28,10 +28,11 @@ public class ChatServiceTests
         _repository.Setup(i => i.SaveAsync(chat, 2, CancellationToken.None))
             .ReturnsAsync(ChatSaveResult.Saved(3));
 
+        // The sidebar still knew revision 1; a message written since must not block the rename.
         var result = await CreateInstance().RenameAsync(
             _projectId.Value,
             _chatId.Value,
-            new RenameChatRequest("Renamed", 2),
+            new RenameChatRequest("Renamed", 1),
             CancellationToken.None);
 
         result.ShouldNotBeNull();

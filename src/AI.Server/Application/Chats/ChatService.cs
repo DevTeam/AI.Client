@@ -395,7 +395,10 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
         if (stored is null) return null;
         stored.Chat.Rename(request.Title, clock.UtcNow);
-        var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
+        // As with a branch title: a chat title conflicts with nothing written meanwhile, and the
+        // revision a sidebar row carries is stale after the chat's next message, so renaming
+        // against it failed whenever the chat had moved on. The chat lock makes this save safe.
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
         return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
     }
 

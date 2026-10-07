@@ -6597,41 +6597,77 @@ textarea {
 .review-legacy-summary strong { color: var(--color-text-secondary); font-weight: 500; }
 .review-legacy-summary section p { margin: .25rem 0 0 .75rem; white-space: pre-wrap; }
 .review-workspace-body { display: grid; grid-template-columns: var(--review-tree-width, 22rem) .35rem minmax(0, 1fr); flex: 1; min-height: 0; }
-.review-diff-scroll, .review-file-tree { overflow: auto; min-width: 0; }
+.review-diff-scroll { overflow: auto; min-width: 0; }
 .review-diff-scroll { grid-column: 3; container-type: inline-size; padding: .25rem 0 1rem; scroll-behavior: smooth; background: var(--color-bg-inset); font-family: var(--font-mono); font-size: var(--font-size-md); line-height: 1.55; }
-.review-file-tree { grid-column: 1; grid-row: 1; border-right: 1px solid var(--color-border); padding: .45rem; }
+/* The filter stays above the tree, as above a Settings list; only the tree scrolls. */
+.review-file-tree { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; gap: .4rem; min-width: 0; min-height: 0; padding: .45rem; border-right: 1px solid var(--color-border); }
+.review-file-tree > .settings-filter { flex: none; }
+.review-file-tree-list { flex: 1; min-height: 0; overflow: auto; }
+.review-file-tree-list > .empty-hint { margin: .5rem .3rem; font-size: var(--font-size-sm); }
 .review-tree-resizer { grid-column: 2; grid-row: 1; z-index: 2; background: var(--color-fill); cursor: col-resize; touch-action: none; }
 .review-tree-resizer:hover, .review-tree-resizer:focus-visible, .review-workspace-body.is-resizing .review-tree-resizer { background: var(--color-accent); }
 .review-workspace-body.is-resizing { cursor: col-resize; user-select: none; }
-.review-file-tree input[type=search] { width: 100%; margin-bottom: .35rem; }
 .review-file { margin: 0; border-bottom: 1px solid var(--color-border-subtle); scroll-margin-top: 0; }
 .review-file .workspace-change-summary { min-height: 1.65rem; }
 .review-file.is-tree-hovered > .workspace-change-summary { background: var(--color-fill-active); box-shadow: inset 3px 0 var(--color-accent); }
 .review-file .review-diff-content { border-top: 1px solid var(--color-border-subtle); }
-.diff-line-review:hover { outline: 1px solid var(--color-border-stronger); }
-.diff-line-review.diff-line-commented { box-shadow: inset .18rem 0 var(--color-accent); }
-.diff-line-review.diff-line-selected { box-shadow: inset .18rem 0 var(--color-accent); outline: 1px solid var(--color-accent); outline-offset: -1px; }
-.diff-line-comment { position: sticky; left: 0; z-index: 1; flex: 0 0 1.8rem; padding: 0; border: 0; border-radius: var(--radius-2xs); background: linear-gradient(var(--diff-line-tint), var(--diff-line-tint)), var(--color-bg-inset); color: transparent; cursor: pointer; }
-.diff-line-review:hover .diff-line-comment, .diff-line-comment:focus-visible { background: linear-gradient(var(--color-fill-active), var(--color-fill-active)), var(--color-bg-inset); color: var(--color-text); }
-.diff-line-comment:hover, .diff-line-comment:focus-visible { background: var(--color-highlight-bg); color: var(--color-highlight-fg); }
+/* Commenting. The "+" in the first column turns into an accent key cap on the hovered line; lines
+   picked for a comment share one accent tint and bar, so a range reads as a single block, and lines
+   that already carry a comment keep a quieter bar. The bars are drawn on the sticky first column,
+   which would cover one drawn on the line itself. */
+.diff-line-review.diff-line-selected { --diff-line-tint: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.diff-line-review.diff-line-selected .diff-gutter { color: var(--color-accent-text); }
+.diff-line-comment { position: sticky; left: 0; z-index: 1; display: grid; place-items: center; align-self: stretch; flex: 0 0 1.8rem; padding: 0; border: 0; border-radius: 0; background: linear-gradient(var(--diff-line-tint), var(--diff-line-tint)), var(--color-bg-inset); color: var(--color-on-accent); cursor: pointer; }
+.diff-line-comment:hover:not(:disabled) { color: var(--color-on-accent); }
+.diff-line-comment:focus-visible { outline-offset: -2px; }
+.diff-line-comment-glyph { display: grid; place-items: center; width: 1.1rem; height: 1.1rem; border-radius: var(--radius-xs); background: var(--color-accent-fill); font-family: var(--font-sans); font-weight: 600; line-height: 1; opacity: 0; transform: scale(.7); transition: opacity var(--duration-fast) ease, transform var(--duration-fast) ease; }
+.diff-line-review:hover .diff-line-comment-glyph, .diff-line-comment:focus-visible .diff-line-comment-glyph { opacity: 1; transform: none; }
+.diff-line-comment:hover .diff-line-comment-glyph { transform: scale(1.12); box-shadow: var(--shadow-xs); }
+.diff-line-review:hover .diff-gutter { color: var(--color-text-subtle); }
+.diff-line-commented .diff-line-comment { box-shadow: inset .2rem 0 color-mix(in srgb, var(--color-accent) 55%, transparent); }
+.diff-line-selected .diff-line-comment { box-shadow: inset .2rem 0 var(--color-accent-strong); }
 .diff-line-review .diff-gutter { left: 1.8rem; }
 .diff-line-review .diff-gutter + .diff-gutter { left: 4.6rem; }
 .diff-line-review .diff-sign { left: 7.4rem; }
 .review-diff-scroll .diff-note { padding-left: .6rem; }
-/* A file's diff is as wide as its longest line, so line tints and borders run under scrolled text;
-   comments stay pinned beside the gutter and are sized by the scroll viewport, not by that width. */
-.review-diff-content { width: max-content; min-width: 100%; }
-.review-diff-content > .review-comment, .review-diff-content > .review-comment-editor { position: sticky; left: 6rem; }
-.review-comment-range-hint { display: block; margin-bottom: .2rem; color: var(--color-text-subtle); font-size: var(--font-size-xs); }
-.review-comment, .review-comment-editor { margin: .15rem .5rem .2rem 6rem; padding: .25rem .4rem; border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface-raised); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: var(--font-size-sm); line-height: 1.4; }
-.review-comment-anchor { margin-bottom: .15rem; color: var(--color-accent); font-size: var(--font-size-xs); }
-.review-comment { box-sizing: border-box; width: fit-content; max-width: calc(100cqi - 6.5rem); }
-.review-comment.is-editing, .review-comment-editor { box-sizing: border-box; width: min(30rem, calc(100cqi - 6.5rem)); }
-.review-comment .review-comment-body { display: block; width: 100%; margin: 0 0 .2rem; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; cursor: pointer; }
-.review-comment > .review-comment-editor { margin: 0; padding: 0; border: 0; background: transparent; }
-.review-comment.is-editing > .review-comment-editor { width: 100%; }
-.review-comment-actions { display: flex; gap: .15rem; justify-content: flex-end; }
-.review-comment-editor textarea { display: block; box-sizing: border-box; width: 100%; min-height: 2.5rem; margin-bottom: .2rem; font: inherit; resize: vertical; }
+/* In the review workspace a file's diff is as wide as its longest line, so line tints run under
+   scrolled text; comments stay pinned beside the gutter and are sized by the scroll viewport. */
+.review-diff-scroll .review-diff-content { width: max-content; min-width: 100%; }
+.review-diff-scroll .review-diff-content > :is(.review-comment, .review-comment-editor) { --review-comment-room: 100cqi; position: sticky; left: var(--review-comment-inset); }
+
+/* A comment card sits under the line it ends on, lined up with the code, with a notch pointing at
+   that line. The header names the lines; the card's actions show on hover. */
+.review-diff-content { --review-comment-inset: 8.5rem; }
+.review-comment, .review-comment-editor { --review-comment-room: 100%; position: relative; box-sizing: border-box; margin: .4rem 1rem .4rem var(--review-comment-inset); border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-surface-raised); box-shadow: var(--shadow-xs); color: var(--color-text); font-family: var(--font-sans); font-size: var(--font-size-sm); line-height: 1.5; white-space: normal; transition: border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease; }
+.review-comment::before, .review-comment-editor::before { content: ""; position: absolute; top: calc(-.3rem - 1px); left: .85rem; width: .55rem; height: .55rem; border: inherit; border-right: 0; border-bottom: 0; border-radius: var(--radius-2xs) 0 0; background: inherit; transform: rotate(45deg); }
+.review-comment { width: fit-content; min-width: min(16rem, calc(var(--review-comment-room) - var(--review-comment-inset) - 1rem)); max-width: min(48rem, calc(var(--review-comment-room) - var(--review-comment-inset) - 1rem)); }
+.review-comment.is-editing, .review-comment-editor { width: min(36rem, calc(var(--review-comment-room) - var(--review-comment-inset) - 1rem)); }
+.review-comment-editor:focus-within, .review-comment.is-editing:focus-within { border-color: var(--color-accent); box-shadow: var(--shadow-xs), 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent); }
+.review-comment > .review-comment-editor { width: auto; margin: 0; border: 0; background: transparent; box-shadow: none; }
+.review-comment > .review-comment-editor::before { content: none; }
+.review-comment-header { display: flex; align-items: center; gap: .4rem; min-width: 0; padding: .4rem .45rem .2rem .6rem; }
+.review-comment-header > .app-icon { flex: none; width: .85rem; height: .85rem; color: var(--color-accent); }
+.review-comment-anchor { flex: none; padding: .05rem .45rem; border-radius: var(--radius-pill); background: var(--color-accent-bg); color: var(--color-accent-text); font-size: var(--font-size-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
+.review-comment-range-hint { min-width: 0; margin-left: auto; overflow: hidden; color: var(--color-text-subtle); font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
+.review-comment-range-hint kbd { padding: 0 .25rem; border: 1px solid var(--color-border); border-radius: var(--radius-xs); color: var(--color-text-muted); font-family: inherit; font-size: var(--font-size-2xs); }
+.review-comment-actions { display: flex; gap: .1rem; margin-left: auto; opacity: 0; transition: opacity var(--duration-fast) ease; }
+.review-comment:hover .review-comment-actions, .review-comment:focus-within .review-comment-actions { opacity: 1; }
+@media (hover: none) { .review-comment-actions { opacity: 1; } }
+.review-comment .review-comment-body { display: block; width: 100%; margin: 0; padding: .1rem .75rem .6rem; border: 0; border-radius: 0 0 var(--radius-md) var(--radius-md); background: transparent; color: inherit; font: inherit; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.review-comment .review-comment-body:hover:not(:disabled) { color: var(--color-text-strong); }
+.review-comment-editor textarea { display: block; box-sizing: border-box; width: 100%; min-height: 3.4rem; margin: 0; padding: .3rem .75rem .45rem; border: 0; border-radius: 0; background: transparent; color: var(--color-text); font: inherit; resize: none; outline: none; box-shadow: none; }
+.review-comment-footer { display: flex; align-items: center; gap: .3rem; padding: .35rem .45rem; border-top: 1px solid var(--color-border-subtle); }
+.review-comment-footer > button { display: inline-flex; align-items: center; gap: .3rem; min-height: 1.75rem; padding: .2rem .7rem; border: 1px solid transparent; border-radius: var(--radius-sm); font-size: var(--font-size-sm); line-height: 1.2; }
+.review-comment-footer .app-icon { width: .85rem; height: .85rem; }
+.review-comment-suggest { margin-right: auto; color: var(--color-text-muted); }
+.review-comment-footer > .review-comment-suggest { padding-inline: .45rem; }
+.review-comment-suggest:hover:not(:disabled), .review-comment-cancel:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
+.review-comment-suggest:hover:not(:disabled) > .app-icon { color: var(--color-warning); }
+.review-comment-cancel { color: var(--color-text-secondary); }
+.review-comment-save { border-color: var(--color-accent-strong); background: var(--color-accent-fill); color: var(--color-on-accent); font-weight: 600; }
+.review-comment-footer > .review-comment-save { border-color: var(--color-accent-strong); }
+.review-comment-save:hover:not(:disabled) { background: var(--color-accent-strong); color: var(--color-on-accent); }
+.review-comment-footer > .review-comment-save:disabled { border-color: var(--color-border); background: var(--color-fill); color: var(--color-text-disabled); }
 .review-comment-icon-action, .message-review-editor-actions .review-comment-icon-action { display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--color-text-muted); cursor: pointer; }
 .review-comment-icon-action .app-icon { width: .85rem; height: .85rem; }
 /* The Host's draft of a comment is the empty box's placeholder (ReviewCommentInput), grey italic

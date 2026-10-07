@@ -186,6 +186,17 @@
                                         </div>
                                         }
                                     }
+                                    @if (chat.BranchCount > 0)
+                                    {
+                                        @if (_confirmingSubBranchDeleteId == chat.Id)
+                                        {
+                                            <div class="project-menu-confirm"><span>Delete all @chat.BranchCount @(chat.BranchCount == 1 ? "branch" : "branches")? The main conversation stays.</span><button class="danger compact-action" type="button" disabled="@_deletingSubBranches" @onclick="() => DeleteSubBranchesAsync(chat.Id, null)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="() => _confirmingSubBranchDeleteId = null"><AppIcon Name="x" /></button></div>
+                                        }
+                                        else
+                                        {
+                                            <button class="menu-danger" type="button" role="menuitem" @onclick="() => _confirmingSubBranchDeleteId = chat.Id"><AppIcon Name="git-branch" /><span>Delete all branches (@chat.BranchCount)</span></button>
+                                        }
+                                    }
                                     <button type="button" role="menuitem" @onclick="() => ArchiveChatAsync(chat)"><AppIcon Name="archive" /><span>Archive chat</span></button>
                                     @if (_isConfirmingChatDelete)
                                     {
@@ -211,7 +222,7 @@
                                        newest are a click away, the current one is always shown. *@
                                     <div class="chat-nav-row branch-nav-row branch-runs-group" style="--branch-depth: 1">
                                         <span class="branch-tree-line" aria-hidden="true"></span>
-                                        <button class="workspace-nav-item chat-link branch-link" type="button" aria-expanded="@(_runsGroupExpanded ? "true" : "false")"
+                                        <button class="workspace-nav-item chat-link branch-link" type="button" data-stays-in-drawer aria-expanded="@(_runsGroupExpanded ? "true" : "false")"
                                                 title="@(_runsGroupExpanded ? "Hide the scheduled runs" : "Show the scheduled runs")" @onclick="() => { _runsGroupExpanded = !_runsGroupExpanded; _runsGroupShowAll = false; }">
                                             <AppIcon Name="chevron-right" Class="branch-runs-chevron" />
                                             <span class="nav-item-label">Runs</span>
@@ -266,6 +277,17 @@
                                                 </div>
                                                 }
                                             }
+                                            @if (CountSubBranches(branch.RootId) is var subBranches and > 0)
+                                            {
+                                                @if (_confirmingSubBranchDeleteId == branch.RootId)
+                                                {
+                                                    <div class="project-menu-confirm"><span>Delete its @subBranches @(subBranches == 1 ? "sub-branch" : "sub-branches")? This branch stays.</span><button class="danger compact-action" type="button" disabled="@_deletingSubBranches" @onclick="() => DeleteSubBranchesAsync(chat.Id, branch.RootId)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="() => _confirmingSubBranchDeleteId = null"><AppIcon Name="x" /></button></div>
+                                                }
+                                                else
+                                                {
+                                                    <button class="menu-danger" type="button" role="menuitem" @onclick="() => _confirmingSubBranchDeleteId = branch.RootId"><AppIcon Name="git-branch" /><span>Delete all sub-branches (@subBranches)</span></button>
+                                                }
+                                            }
                                             @if (_confirmingBranchDeleteId == branch.RootId)
                                             {
                                                 <div class="project-menu-confirm"><span>Delete this branch?</span><button class="danger compact-action" type="button" @onclick="() => DeleteBranchAsync(branch)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="CancelBranchDelete"><AppIcon Name="x" /></button></div>
@@ -282,7 +304,7 @@
                             {
                                 <div class="chat-nav-row branch-nav-row branch-runs-more" style="--branch-depth: 2">
                                     <span class="branch-tree-line" aria-hidden="true"></span>
-                                    <button class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => _runsGroupShowAll = !_runsGroupShowAll">
+                                    <button class="workspace-nav-item chat-link branch-link" type="button" data-stays-in-drawer @onclick="() => _runsGroupShowAll = !_runsGroupShowAll">
                                         <span class="nav-item-label">@(_runsGroupShowAll ? "Show fewer" : $"Show all {runRows.Length} runs")</span>
                                     </button>
                                 </div>
@@ -4840,6 +4862,73 @@ else if (_guideInvitation is { } guideInvitation)
             else _selectedChat = renamed;
         }
         finally { _isCompletingInlineEdit = false; CancelInlineEdit(); }
+    }
+
+    private Guid? _confirmingSubBranchDeleteId;
+    private bool _deletingSubBranches;
+
+    /// <summary>The visible branches forked from a branch, at any depth.</summary>
+    private int CountSubBranches(Guid branchId) => _selectedChat is { Branches: { } branches } chat
+        ? SubBranchIds(branches, chat.Id, branchId).Count(id => branches.Any(branch => branch.Id == id && branch.HeadMessageId is not null))
+        : 0;
+
+    /// <summary>Every branch below <paramref name="rootId"/> at any depth; a branch without a parent hangs from the main line.</summary>
+    private static HashSet<Guid> SubBranchIds(IReadOnlyList<ChatBranchView> branches, Guid mainId, Guid rootId)
+    {
+        var below = new HashSet<Guid>();
+        var pending = new Queue<Guid>([rootId]);
+        while (pending.TryDequeue(out var id))
+            foreach (var child in branches.Where(branch => branch.Id != mainId && (branch.ParentBranchId ?? mainId) == id))
+                if (child.Id != rootId && below.Add(child.Id)) pending.Enqueue(child.Id);
+        return below;
+    }
+
+    /// <summary>
+    /// Deletes every branch below a branch, or every branch of the chat but its main line when
+    /// <paramref name="rootBranchId"/> is null. Deepest first: deleting a branch hands its children to
+    /// its parent, which here would only move them. Each delete names the chat revision it read.
+    /// </summary>
+    private async Task DeleteSubBranchesAsync(Guid chatId, Guid? rootBranchId)
+    {
+        if (_selectedProject is not { } project || _deletingSubBranches) return;
+        _deletingSubBranches = true;
+        var deleted = 0;
+        try
+        {
+            for (var attempt = 0; attempt < 500; attempt++)
+            {
+                var chat = await ChatHistoryApi.GetTranscriptAsync(project.Id, chatId, CancellationToken.None);
+                if (chat?.Branches is not { } branches) break;
+                var targets = SubBranchIds(branches, chat.Id, rootBranchId ?? chat.Id);
+                if (targets.Count == 0) break;
+                // A target nothing else hangs from: the deepest of what is left.
+                var leaf = targets.First(id => branches.All(branch => branch.Id == chat.Id || (branch.ParentBranchId ?? chat.Id) != id));
+                var result = await ChatHistoryApi.DeleteBranchAsync(project.Id, chatId, leaf, chat.Revision, CancellationToken.None);
+                if (result.IsDeleted) deleted++;
+            }
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            Notifications.ShowError($"Deleted {deleted} {(deleted == 1 ? "branch" : "branches")}; the rest could not be deleted: {error.Message}");
+        }
+        finally
+        {
+            _deletingSubBranches = false;
+            _confirmingSubBranchDeleteId = null;
+            _branchMenuId = null;
+            _chatMenuId = null;
+        }
+        if (_selectedChat?.Id == chatId)
+        {
+            _selectedChat = await ChatHistoryApi.GetTranscriptAsync(project.Id, chatId, CancellationToken.None);
+            // The branch on screen may have been one of them: show the branch they hung from.
+            if (_selectedChat?.Branches?.All(branch => branch.Id != _selectedBranchId) == true)
+            {
+                _selectedBranchId = rootBranchId ?? _selectedChat.Id;
+                _branchLeafId = _selectedChat.Branches.SingleOrDefault(branch => branch.Id == _selectedBranchId)?.HeadMessageId;
+            }
+        }
+        await LoadChatsAsync(project.Id);
     }
 
     private async Task DeleteBranchAsync(BranchTreeItem branch)

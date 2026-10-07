@@ -161,7 +161,12 @@ recognised from the schedule (`runs[].branchId`), never from their titles.
   grows wider than the feed it opens in.
 - **Sidebar**: the runs fold under one *Runs* row with a dot and count per outcome. Unfolded, it shows
   the newest six and *Show all N runs*; folded, only the current run stays visible. Today's runs show
-  their time alone, older ones their date as well.
+  their time alone, older ones their date as well. Folding, unfolding and *Show all* keep the phone drawer open (`data-stays-in-drawer`);
+  opening a run closes it as any navigation does.
+- **Clearing them out**: the chat's menu offers *Delete all branches (N)* — every branch, the main
+  conversation stays — and a branch's menu *Delete all sub-branches (N)* — every branch below it, at
+  any depth, the branch itself stays. Both ask once, delete deepest first against the current chat
+  revision, and move the view to the remaining branch when the open one was among them.
 
 ## From the message box
 

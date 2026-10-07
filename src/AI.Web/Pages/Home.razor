@@ -887,6 +887,13 @@
                                           Messages="@widgetMessages"
                                           IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)" />
                         break;
+                    case ChatWidgetCatalog.ChatTeam:
+                        <ChatTeamWidget Widget="@widget"
+                                        Messages="@widgetMessages"
+                                        Branches="@widgetChat?.Branches"
+                                        IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
+                                        OnSelectMessage="ScrollToTurnAsync" />
+                        break;
                 }
             </WidgetTemplate>
         </ChatWidgetRail>

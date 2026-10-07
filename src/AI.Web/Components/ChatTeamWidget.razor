@@ -1,0 +1,194 @@
+@inject IChatTeamStatisticsCalculator Calculator
+
+@* The team this branch is working with: every branch whose run sent a message into the visible
+   branch, with what it sent. The only source is ChatMessageView.Sender — the chat and branch the
+   Host recorded from the sending run's own context, which no client and no model can forge. A
+   message without a sender is the person's or this branch's own and does not count, and a branch
+   that never sent anything is not listed: the widget reports what happened, not who was invited.
+   Arrival times come from message timestamps and so are marked approximate. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-team-widget">
+    @if (_hasAny) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
+
+    @if (!_stats.HasBranches)
+    {
+        <p class="chat-usage-empty">@(_scope == ChatWidgetScope.LastTurn && _hasAny
+            ? "The last turn exchanged no team messages."
+            : "Branches that send team messages into this one appear here.")</p>
+    }
+    else
+    {
+        <div class="chat-usage-section">
+            <div class="chat-widget-headline">
+                <span class="chat-widget-count" title="Branches whose run sent at least one message into the selected scope; a branch that never sent anything is not counted">@_stats.Branches.Count</span>
+                <span class="chat-usage-muted">@(_stats.Branches.Count == 1 ? "branch" : "branches")@(_stats.IsRunning ? " so far" : null)</span>
+                <span class="chat-widget-headline-aside chat-usage-muted" title="Messages of the selected scope that carry a sending branch, from every branch together">@_stats.Messages @(_stats.Messages == 1 ? "message" : "messages")</span>
+            </div>
+            <div class="chat-usage-legend">
+                @foreach (var intent in _stats.Intents)
+                {
+                    <span @key="intent.Intent" title="@IntentTitle(intent.Intent)" class="@IntentClass(intent.Intent)">
+                        <AppIcon Name="message-circle" Class="chat-team-intent-icon" />
+                        @intent.Count @IntentLabel(intent.Intent)
+                    </span>
+                }
+            </div>
+        </div>
+
+        <div class="chat-usage-section">
+            <ul class="chat-team-list">
+                @foreach (var branch in _stats.Branches)
+                {
+                    <li @key="branch.BranchId">
+                        <button class="chat-team-row" type="button" title="@RowTitle(branch)" @onclick="() => ShowInTranscriptAsync(branch)">
+                            <span class="chat-team-mark" aria-hidden="true"><AppIcon Name="users" /></span>
+                            <span class="chat-team-body">
+                                <span class="chat-team-title">@branch.Title</span>
+                                <span class="chat-team-meta chat-usage-muted">
+                                    <span title="Messages this branch sent into the selected scope">@branch.Messages @(branch.Messages == 1 ? "message" : "messages")</span>
+                                    @if (branch.Asides > 0)
+                                    {
+                                        <span title="Of them, added as asides: the turn in flight reads an aside at its next step, so it costs the receiving branch no turn of its own">@branch.Asides @(branch.Asides == 1 ? "aside" : "asides")</span>
+                                    }
+                                    @foreach (var intent in branch.Intents)
+                                    {
+                                        <span title="@IntentTitle(intent.Intent)" class="@IntentClass(intent.Intent)">@IntentCountLabel(intent)</span>
+                                    }
+                                    <span title="Arrival time of this branch's latest message in scope; it is when the message was stored, not when the sender wrote it">≈ @FormatAt(branch.LastAt)</span>
+                                </span>
+                            </span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        </div>
+
+        <div class="chat-usage-section chat-usage-footnote">
+            <span title="Turns with at least one team message, out of all turns in the selected scope">In @_stats.TurnsWithMessages of @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns") team messages arrived</span>
+            <span class="chat-team-note" title="Every figure comes from the sender the Host recorded on each message, so a teammate that has sent nothing yet, and work a branch did without reporting it, are not visible here. The arrival times are approximate: they are message timestamps.">≈ arrival time</span>
+        </div>
+    }
+</ChatWidget>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>The visible branch, root to leaf.</summary>
+    [Parameter]
+    public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+
+    /// <summary>The chat's stored branches, used only to name the sending branch.</summary>
+    [Parameter]
+    public IReadOnlyList<ChatBranchView>? Branches { get; set; }
+
+    /// <summary>True while the last turn is still going; the widget says so far.</summary>
+    [Parameter]
+    public bool IsGenerating { get; set; }
+
+    /// <summary>Asks the page to scroll the transcript to a message.</summary>
+    [Parameter]
+    public EventCallback<Guid> OnSelectMessage { get; set; }
+
+    private ChatWidgetScope _scope = ChatWidgetScope.Chat;
+
+    private ChatTeamStatistics _stats = ChatTeamStatistics.Empty;
+    private bool _hasAny;
+
+    private bool _statisticsInitialized;
+    private IReadOnlyList<ChatMessageView> _statisticsMessages = [];
+    private IReadOnlyList<ChatBranchView>? _statisticsBranches;
+    private bool _statisticsIsGenerating;
+
+    protected override void OnParametersSet()
+    {
+        // Parent renders also follow typing and modifier keys; only changed data needs statistics.
+        if (_statisticsInitialized
+            && ReferenceEquals(_statisticsMessages, Messages)
+            && ReferenceEquals(_statisticsBranches, Branches)
+            && _statisticsIsGenerating == IsGenerating) return;
+
+        Refresh();
+        _statisticsInitialized = true;
+        _statisticsMessages = Messages;
+        _statisticsBranches = Branches;
+        _statisticsIsGenerating = IsGenerating;
+    }
+
+    private void SetScope(ChatWidgetScope scope)
+    {
+        _scope = scope;
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        _stats = Calculator.Calculate(Messages, Branches, IsGenerating, _scope);
+        _hasAny = _scope == ChatWidgetScope.Chat
+            ? _stats.HasBranches
+            : Calculator.Calculate(Messages, Branches, IsGenerating, ChatWidgetScope.Chat).HasBranches;
+    }
+
+    private string? GetSummary()
+    {
+        if (!_stats.HasBranches) return null;
+        var count = _stats.Branches.Count;
+        var word = count == 1 ? "branch" : "branches";
+        return $"{count} {word} · {_stats.Messages}";
+    }
+
+    // The branch's latest message in scope: the most recent thing it said is what a person reaches
+    // for, and the transcript marks that message as coming from a branch.
+    private Task ShowInTranscriptAsync(ChatTeamBranchSummary branch) =>
+        OnSelectMessage.InvokeAsync(branch.LastMessageId);
+
+    private string RowTitle(ChatTeamBranchSummary branch)
+    {
+        var sent = $"{branch.Messages} {(branch.Messages == 1 ? "message" : "messages")} sent into the selected scope";
+        var asides = branch.Asides == 0
+            ? null
+            : $"{branch.Asides} of them added as {(branch.Asides == 1 ? "an aside" : "asides")}";
+        var intents = branch.Intents.Count == 0
+            ? "no intent stated"
+            : string.Join(", ", branch.Intents.Select(intent => $"{intent.Count} {IntentLabel(intent.Intent)}"));
+        var when = branch.LastAt.LocalDateTime.ToString("g");
+        var head = $"{branch.Title} — {sent}{(asides is null ? null : $", {asides}")}. Intents: {intents}.";
+        return $"{head} Last message stored {when} — click to show it in the transcript.";
+    }
+
+    // The protocol's intent words. An intent this build does not know keeps its own spelling, so a
+    // newer team skill is still reported as it named itself.
+    private static string IntentLabel(string? intent) => intent switch
+    {
+        "question" => "question",
+        "answer" => "answer",
+        "decision" => "decision",
+        "blocker" => "blocker",
+        "status" => "status",
+        "done" => "done",
+        null => "no intent",
+        _ => intent
+    };
+
+    private static string IntentCountLabel(ChatTeamIntentCount intent) =>
+        $"{intent.Count} {IntentLabel(intent.Intent)}";
+
+    private static string IntentTitle(string? intent) => intent switch
+    {
+        "question" => "Needs an answer before the sending branch can continue",
+        "answer" => "Answers a question",
+        "decision" => "Fixes something the other branches have to follow",
+        "blocker" => "The sending branch was stuck and could not continue on its own",
+        "status" => "Progress, nothing to act on",
+        "done" => "The sending branch finished its part; this message carries its result",
+        null => "Sent without an intent",
+        _ => $"Intent \"{intent}\", as the sending run named it; this build has no wording of its own for it"
+    };
+
+    // A blocker is the one intent that asks a person to act, so it wears the status word colour.
+    // Colour never carries the meaning alone: the word itself stays in the text.
+    private static string? IntentClass(string? intent) =>
+        intent == "blocker" ? "chat-team-blocker" : null;
+
+    private static string FormatAt(DateTimeOffset at) =>
+        at.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
+}

@@ -2085,6 +2085,32 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task HostShutdownShouldInterruptTheRunAndUserStopShouldStayPaused()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"));
+        await fixture.NextCallAsync();
+        await fixture.RestartAsync();
+
+        // The shutdown cancels the same token as Stop, but nobody pressed Stop: the run has to
+        // come back as interrupted, not as paused by the user.
+        var interrupted = (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None))
+            .Single(run => run.BranchId == fixture.ChatId);
+        interrupted.Status.ShouldBe(ChatRunStatus.Interrupted);
+        await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
+        (await fixture.NextCallAsync()).Answer.SetResult("Answer");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Another"));
+        await fixture.NextCallAsync();
+        await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused);
+        await fixture.RestartAsync();
+        (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None))
+            .Single(run => run.BranchId == fixture.ChatId).Status.ShouldBe(ChatRunStatus.Paused);
+    }
+
+    [Fact]
     public async Task AnswersCutOffAtTheTokenLimitShouldBeContinuedIntoOneMessage()
     {
         await using var fixture = await Fixture.CreateAsync();

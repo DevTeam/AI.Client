@@ -22,7 +22,8 @@ current turn is too large.
    out greetings, dead ends that taught nothing, and secrets.
 3. `app_chats` Create with the old title followed by a short "continued" marker in the title's
    language, for example "Deploy fixes (cont.)" or "Исправления деплоя (продолжение)".
-4. `app_runs` Submit to the new chat with mode Send and wait false. The content is one line
+4. `app_runs` with `operation` `Submit` to the new chat, mode Send, wait false and no
+   `operationId` (the application assigns it). The content is one line
    saying it continues «<old title>», then the summary, then the next step: `next` when given,
    otherwise an instruction to wait for the user's next message without doing anything.
 5. `app_navigate` to the new chat, so the user continues there.

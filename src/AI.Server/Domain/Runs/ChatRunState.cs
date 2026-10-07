@@ -307,7 +307,14 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         return state;
     }
 
-    public void RecoverAfterRestart()
+    public void RecoverAfterRestart() => Interrupt();
+
+    /// <summary>
+    /// Marks a generation cut short by the Host itself — a shutdown or a crash — rather than by
+    /// the user. Only a run that was still generating qualifies: Stop and Queue pause the run
+    /// before cancelling it, and that pause is the user's own decision to keep.
+    /// </summary>
+    public void Interrupt()
     {
         if (Status != RunStatus.Generating) return;
         Status = RunStatus.Interrupted;

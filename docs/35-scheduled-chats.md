@@ -148,6 +148,21 @@ The settings form (`ScheduleSettingsForm`) holds the task, the recurrence editor
 retry (attempts, delay, condition), a rule per outcome, chat deletion (keep, after the last run, or on
 a date and time) and the time zone. Refusals from the Host appear in the widget in its words.
 
+## Run branches in the branch picker and the sidebar
+
+A scheduled chat gains a branch per run, so both places that list branches group them. Runs are
+recognised from the schedule (`runs[].branchId`), never from their titles.
+
+- **Branch picker** (`BranchPickerMenu`): a few lines stay a plain list. With more than seven it gets a
+  filter box that takes the keyboard at once (↑ ↓ move, Enter opens), splits *Conversation* from
+  *Scheduled runs*, filters runs by outcome with counted chips, and shows the newest six runs plus
+  *Show all*; the current line is always shown. A run reads `#12 · 8 Oct 09:00` with an outcome dot
+  and word and a `manual` or `retry n` tag; its full title and summary are the tooltip. The menu never
+  grows wider than the feed it opens in.
+- **Sidebar**: the runs fold under one *Runs* row with a dot and count per outcome. Unfolded, it shows
+  the newest six and *Show all N runs*; folded, only the current run stays visible. Today's runs show
+  their time alone, older ones their date as well.
+
 ## From the message box
 
 Typing a request and pressing Enter starts a turn, which is wrong for a task meant to run later.

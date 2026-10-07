@@ -14,6 +14,7 @@
 @inject IProjectApi ProjectApi
 @inject IChatHistoryApi ChatHistoryApi
 @inject AI.Web.Chats.IChatScheduleApi ScheduleApi
+@inject AI.Contracts.Schedules.IScheduleCalendar ScheduleCalendar
 @inject ISearchResultPresentation SearchResults
 @inject IChatMessageDeltaMerger ChatMessageDeltaMerger
 @inject IJSRuntime JsRuntime
@@ -199,9 +200,31 @@
                         </div>
                         @if (_selectedChat?.Id == chat.Id)
                         {
-                            @foreach (var branch in GetBranchTreeItems())
+                            var runRows = GetBranchTreeItems().Where(item => item.Run is not null).ToArray();
+                            var runsHeaderShown = false;
+                            @foreach (var branch in GetVisibleBranchTreeItems())
                             {
-                                <div class="chat-nav-row branch-nav-row @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" data-branch-id="@branch.RootId" title="@GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
+                                @if (branch.Run is not null && !runsHeaderShown)
+                                {
+                                    runsHeaderShown = true;
+                                    @* The runs of a scheduled chat fold under one row, as in the branch picker: the
+                                       newest are a click away, the current one is always shown. *@
+                                    <div class="chat-nav-row branch-nav-row branch-runs-group" style="--branch-depth: 1">
+                                        <span class="branch-tree-line" aria-hidden="true"></span>
+                                        <button class="workspace-nav-item chat-link branch-link" type="button" aria-expanded="@(_runsGroupExpanded ? "true" : "false")"
+                                                title="@(_runsGroupExpanded ? "Hide the scheduled runs" : "Show the scheduled runs")" @onclick="() => { _runsGroupExpanded = !_runsGroupExpanded; _runsGroupShowAll = false; }">
+                                            <AppIcon Name="chevron-right" Class="branch-runs-chevron" />
+                                            <span class="nav-item-label">Runs</span>
+                                            <span class="branch-runs-counts">
+                                                @foreach (var outcome in runRows.GroupBy(item => item.Run!.Status).OrderBy(group => (int)group.Key))
+                                                {
+                                                    <span title="@($"{outcome.Count()} {outcome.Key.ToString().ToLowerInvariant()}")"><i class="branch-run-dot is-@outcome.Key.ToString().ToLowerInvariant()" aria-hidden="true"></i>@outcome.Count()</span>
+                                                }
+                                            </span>
+                                        </button>
+                                    </div>
+                                }
+                                <div class="chat-nav-row branch-nav-row @(branch.Run is not null ? "branch-run-row" : null) @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" data-branch-id="@branch.RootId" title="@(branch.RunTooltip ?? GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
                                     <span class="branch-tree-line" aria-hidden="true"></span>
                                     @if (_editingBranchId == branch.RootId)
                                     {
@@ -209,7 +232,7 @@
                                     }
                                     else
                                     {
-                                        <button @attributes="@(ControlHints.Attributes("branch", nativeTooltip: false))" class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)"><AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /><MemberDot Member="@_selectedChat?.MemberOf(branch.RootId)" /><span class="nav-item-label">@branch.Title</span></button>
+                                        <button @attributes="@(ControlHints.Attributes("branch", nativeTooltip: false))" class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)">@if (branch.Run is { } branchRun) { <i class="branch-run-dot is-@branchRun.Status.ToString().ToLowerInvariant() @GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" aria-hidden="true"></i> } else { <AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> }<MemberDot Member="@_selectedChat?.MemberOf(branch.RootId)" /><span class="nav-item-label">@branch.Title</span></button>
                                     }
                                     <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename branch" @onclick="() => BeginBranchRename(branch)"><AppIcon Name="edit" /></button>
                                     <button class="icon-action chat-row-action chat-menu-button @(_branchMenuId == branch.RootId ? "menu-open" : string.Empty)" type="button" title="Branch menu" aria-label="Branch menu" @onclick="() => ToggleBranchMenuAsync(branch.RootId)"><AppIcon Name="more" /></button>
@@ -253,6 +276,15 @@
                                             }
                                         </div>
                                     }
+                                </div>
+                            }
+                            @if (_runsGroupExpanded && runRows.Length > SidebarRuns)
+                            {
+                                <div class="chat-nav-row branch-nav-row branch-runs-more" style="--branch-depth: 2">
+                                    <span class="branch-tree-line" aria-hidden="true"></span>
+                                    <button class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => _runsGroupShowAll = !_runsGroupShowAll">
+                                        <span class="nav-item-label">@(_runsGroupShowAll ? "Show fewer" : $"Show all {runRows.Length} runs")</span>
+                                    </button>
                                 </div>
                             }
                         }
@@ -1236,7 +1268,28 @@ else if (_guideInvitation is { } guideInvitation)
    just calls Notifications.ShowSuccess / ShowError / ShowInfo. *@
 
 @code {
-    private sealed record BranchTreeItem(Guid RootId, string Title, int Depth, Guid LeafId);
+    /// <param name="Run">The scheduled run that made the branch; such branches fold under one sidebar row.</param>
+    private sealed record BranchTreeItem(Guid RootId, string Title, int Depth, Guid LeafId,
+        AI.Contracts.Schedules.ScheduleRunRecord? Run = null, string? RunTooltip = null);
+
+    private bool _runsGroupExpanded;
+    private bool _runsGroupShowAll;
+    private const int SidebarRuns = 6;
+
+    /// <summary>
+    /// The branch rows the sidebar shows: every conversation branch, then the scheduled runs —
+    /// newest first, the newest few when unfolded (all on request), and the current run always.
+    /// </summary>
+    private IReadOnlyList<BranchTreeItem> GetVisibleBranchTreeItems()
+    {
+        var items = GetBranchTreeItems();
+        var runs = items.Where(item => item.Run is not null).OrderByDescending(item => item.Run!.Number).ToArray();
+        if (runs.Length == 0) return items;
+        var selected = GetSelectedBranchId();
+        var shown = runs.Where((item, position) => item.RootId == selected
+            || _runsGroupExpanded && (_runsGroupShowAll || position < SidebarRuns));
+        return [.. items.Where(item => item.Run is null), .. shown];
+    }
 
     private readonly List<ProjectSummary> _projects = [];
     private ProjectSummary? _selectedProject;
@@ -4821,9 +4874,25 @@ else if (_guideInvitation is { } guideInvitation)
     {
         if (_selectedChat is null) return [];
         var branches = _selectedChat.Branches ?? [];
+        var schedule = ScheduleApi.Parse(_selectedChat.Kind, _selectedChat.KindState);
+        var runs = (schedule?.Runs ?? []).Where(run => run.BranchId is not null)
+            .GroupBy(run => run.BranchId!.Value).ToDictionary(group => group.Key, group => group.Last());
         return branches.Where(branch => branch.Id != _selectedChat.Id && branch.HeadMessageId is not null)
+            .Select(branch => runs.TryGetValue(branch.Id, out var run) && schedule is not null
+                // A run reads as in the branch picker: its number and start; the full title is the tooltip.
+                ? new BranchTreeItem(branch.Id, $"#{run.Number} · {RunStart(run, schedule)}", 2, branch.HeadMessageId!.Value, run,
+                    run.Summary is { Length: > 0 } summary ? $"{branch.Title} · {summary}" : branch.Title)
+                : new BranchTreeItem(branch.Id, branch.Title, GetBranchDepth(branch, branches), branch.HeadMessageId!.Value))
             // ReSharper disable once UseCollectionExpression
-            .Select(branch => new BranchTreeItem(branch.Id, branch.Title, GetBranchDepth(branch, branches), branch.HeadMessageId!.Value)).ToArray();
+            .ToArray();
+    }
+
+    // The sidebar is narrow: today's runs by time alone, older ones with their date.
+    private string RunStart(AI.Contracts.Schedules.ScheduleRunRecord run, AI.Contracts.Schedules.ChatSchedule schedule)
+    {
+        var started = ScheduleCalendar.ToLocal(run.StartedAt, schedule.Settings.TimeZone);
+        var today = ScheduleCalendar.ToLocal(DateTimeOffset.UtcNow, schedule.Settings.TimeZone).Date;
+        return started.ToString(started.Date == today ? "HH:mm" : "d MMM HH:mm", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static int GetBranchDepth(ChatBranchView branch, IReadOnlyList<ChatBranchView> branches)

@@ -16,6 +16,8 @@
 @inject IToolPresentations Presentations
 @inject IApiBaseUrl ApiBaseUrl
 @inject IUsagePresentation Usage
+@inject AI.Web.Chats.IChatScheduleApi ScheduleApi
+@inject AI.Contracts.Schedules.IScheduleCalendar ScheduleCalendar
 @implements IAsyncDisposable
 @using AI.Contracts.Tools
 @using AI.Contracts.Resources
@@ -118,15 +120,8 @@
                             <button @attributes="@(ControlHints.Attributes("chat.branches", picker.Folded ? "Branches start inside this turn · expand it to see where" : "Choose branch"))" class="branch-picker-trigger" type="button" aria-label="Choose branch" aria-expanded="@(MessageBranchMenuId == pickerMessage.Id ? "true" : "false")" @onclick="() => OnToggleBranchMenu.InvokeAsync(pickerMessage.Id)"><AppIcon Name="git-branch" /><span>Branch @GetActiveBranchPosition(options) of @options.Count</span></button>
                             @if (MessageBranchMenuId == pickerMessage.Id)
                             {
-                                <span class="branch-picker-menu" role="menu">
-                                    @foreach (var option in options)
-                                    {
-                                        var selected = IsOptionActive(option);
-                                        var optionTitle = GetBranchOptionHint(option) ?? GetBranchOptionTitle(option);
-                                        var optionStatusTooltip = GetOptionStatusTooltip(option);
-                                        <button class="@(selected ? "selected" : string.Empty)" type="button" role="menuitemradio" aria-checked="@(selected ? "true" : "false")" title="@(optionStatusTooltip is null ? optionTitle : $"{optionTitle} · {optionStatusTooltip}")" @onclick="() => SelectBranchOptionAsync(option)">@if (selected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }<AppIcon Name="@GetBranchOptionIcon(option)" Class="@($"branch-option-icon {GetOptionStatusClass(option)}")" /><span class="branch-option-label">@GetBranchOptionTitle(option)</span>@if (option.EndsHere) { <span class="branch-option-tag">ends here</span> }</button>
-                                    }
-                                </span>
+                                <BranchPickerMenu @key="pickerMessage.Id" Items="@GetBranchPickerItems(options)"
+                                                  OnSelect="item => SelectBranchOptionAsync((BranchOption)item.Key)" />
                             }
                         }
                     </div>
@@ -2363,6 +2358,36 @@
         }
 
         return GetMessagePreview(option.Message.Content);
+    }
+
+    /// <summary>
+    /// The picker's lines. A branch a scheduled run made is told apart by the schedule itself, not
+    /// by its title, and is shown by run number and start with its outcome beside it.
+    /// </summary>
+    private IReadOnlyList<BranchPickerItem> GetBranchPickerItems(IReadOnlyList<BranchOption> options)
+    {
+        var schedule = SelectedChat is null ? null : ScheduleApi.Parse(SelectedChat.Kind, SelectedChat.KindState);
+        var runs = (schedule?.Runs ?? []).Where(run => run.BranchId is not null)
+            .GroupBy(run => run.BranchId!.Value).ToDictionary(group => group.Key, group => group.Last());
+        return options.Select(option =>
+        {
+            var title = GetBranchOptionTitle(option);
+            var hint = GetBranchOptionHint(option) ?? title;
+            var statusTooltip = GetOptionStatusTooltip(option);
+            var tooltip = statusTooltip is null ? hint : $"{hint} · {statusTooltip}";
+            if (schedule is not null && !option.EndsHere && option.Branch is { } branch && runs.TryGetValue(branch.Id, out var run))
+            {
+                // Short enough for a narrow feed; the branch title in the tooltip keeps the weekday.
+                var started = ScheduleCalendar.ToLocal(run.StartedAt, schedule.Settings.TimeZone)
+                    .ToString("d MMM HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+                var tag = run.Manual ? "manual" : run.Attempt > 1 ? $"retry {run.Attempt - 1}" : null;
+                return new BranchPickerItem(option, $"#{run.Number} · {started}", "git-branch", null,
+                    $"{branch.Title}{(run.Summary is { Length: > 0 } summary ? $" · {summary}" : null)}",
+                    IsOptionActive(option), false, run.Status, run.Number, tag);
+            }
+            return new BranchPickerItem(option, title, GetBranchOptionIcon(option), GetOptionStatusClass(option), tooltip,
+                IsOptionActive(option), option.EndsHere);
+        }).ToArray();
     }
 
     // The sidebar's icons: the chat for its main line, a branch for every other line.

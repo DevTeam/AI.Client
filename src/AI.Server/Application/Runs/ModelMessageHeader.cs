@@ -43,9 +43,13 @@ public sealed class ModelMessageHeader : IModelMessageHeader
         var intent = sender.Intent is { Length: > 0 } value ? $" ({value})" : string.Empty;
         if (sender.ChatId != chat.Id)
             return $"From chat {sender.ChatId}, branch {sender.BranchId}{intent}";
-        var title = chat.Branches?.SingleOrDefault(branch => branch.Id == sender.BranchId)?.Title;
-        var name = sender.BranchId == chat.Id ? "the main branch"
-            : title is { Length: > 0 } ? $"branch \"{title}\"" : "a branch";
+        var branch = chat.Branches?.SingleOrDefault(item => item.Id == sender.BranchId);
+        // A teammate is named by its identity, not by the branch title a person may have renamed;
+        // in a team the main branch is the lead.
+        var name = branch?.Member is { } member ? member.Label
+            : sender.BranchId == chat.Id
+                ? chat.Branches?.Any(item => item.Member is not null) == true ? "the lead" : "the main branch"
+            : branch?.Title is { Length: > 0 } title ? $"branch \"{title}\"" : "a branch";
         return $"From {name} (branchId {sender.BranchId}){intent}";
     }
 }

@@ -35,6 +35,22 @@ public sealed class ModelMessageHeaderTests
             + "added while you were working: take it into account and continue the task]\nText");
 
     [Fact]
+    public void ATeammateShouldBeNamedByItsIdentityAndTheMainBranchAsTheLead()
+    {
+        var member = Guid.NewGuid();
+        var team = Chat with
+        {
+            Branches = [new ChatBranchView(ChatId, null, "Team"),
+                new ChatBranchView(member, null, "renamed by hand", ChatId, Member: new TeamMember("Ada", "Backend", "teal"))]
+        };
+        string Header(Guid branch) => new ModelMessageHeader().Apply(new ChatMessageView(Guid.NewGuid(), null, "User", "Text",
+            DateTimeOffset.UnixEpoch, Sender: new MessageSender(ChatId, branch, "done")), team, "Text");
+
+        Header(member).ShouldStartWith($"[From Ada · Backend (branchId {member}) (done);");
+        Header(ChatId).ShouldStartWith($"[From the lead (branchId {ChatId}) (done);");
+    }
+
+    [Fact]
     public void AMessageWithoutAnIntentShouldNotBeTreatedAsTeamWork()
     {
         // A fork or a message put into another chat names its sender, but is not team work.

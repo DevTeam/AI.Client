@@ -235,7 +235,7 @@ public sealed class ChatThread
         message.Role != ChatMessageRole.Tool && message.ToolCalls is not { Count: > 0 };
 
     public void AddMessage(ChatMessage message, DateTimeOffset updatedAt, Guid? branchId = null, Guid? parentBranchId = null,
-        string? branchTitle = null)
+        string? branchTitle = null, ChatBranchMember? branchMember = null)
     {
         ArgumentNullException.ThrowIfNull(message);
         if (message.ParentId is { } parentId && !_messages.ContainsKey(parentId))
@@ -244,6 +244,8 @@ public sealed class ChatThread
         }
 
         EnsureTimestampDoesNotMoveBackwards(updatedAt);
+        // Checked before anything changes: a refused teammate must not leave a message without a branch.
+        var member = branchMember is null ? null : Member(branchMember);
         if (!_messages.TryAdd(message.Id, message))
         {
             throw new DomainException($"Chat message '{message.Id}' already exists.");
@@ -263,8 +265,8 @@ public sealed class ChatThread
             }
             var id = branchId ?? message.Id.Value;
             branch = new ChatBranch(id, message.ParentId,
-                branchTitle is { Length: > 0 } title ? title.Trim() : message.Content[..Math.Min(48, message.Content.Length)],
-                parentBranch?.Id ?? Id.Value, message.Id);
+                member?.Label ?? (branchTitle is { Length: > 0 } title ? title.Trim() : message.Content[..Math.Min(48, message.Content.Length)]),
+                parentBranch?.Id ?? Id.Value, message.Id, Member: member);
         }
         else if (branch.HeadMessageId != message.ParentId)
         {
@@ -274,6 +276,24 @@ public sealed class ChatThread
         _branches[branch.Id] = branch with { HeadMessageId = message.Id, Revision = checked(branch.Revision + 1) };
         UpdatedAt = updatedAt;
         if (IsActivity(message)) LastActivityAt = updatedAt;
+    }
+
+    /// <summary>
+    /// A new teammate, trimmed, with a name no other teammate of this chat has and the first colour
+    /// none of them wears; past the last colour they repeat.
+    /// </summary>
+    private ChatBranchMember Member(ChatBranchMember requested)
+    {
+        var name = requested.Name.Trim();
+        var role = requested.Role.Trim();
+        if (name.Length is 0 or > 32 || role.Length is 0 or > 48)
+            throw new DomainException("A teammate needs a name of up to 32 characters and a role of up to 48.");
+        var members = _branches.Values.Select(item => item.Member).OfType<ChatBranchMember>().ToArray();
+        if (members.Any(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase)))
+            throw new DomainException($"The team already has a teammate named '{name}'.");
+        var color = ChatBranchMember.Colors.FirstOrDefault(item => members.All(member => member.Color != item))
+            ?? ChatBranchMember.Colors[members.Length % ChatBranchMember.Colors.Count];
+        return new ChatBranchMember(name, role, color);
     }
 
     public bool RemoveReviewReferences(Guid reviewId, DateTimeOffset updatedAt)

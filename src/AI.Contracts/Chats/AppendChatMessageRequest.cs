@@ -16,4 +16,5 @@ public sealed record AppendChatMessageRequest(
     IReadOnlyList<Resources.ChatResource>? Resources = null,
     MessageDelivery Delivery = MessageDelivery.Turn,
     MessageSender? Sender = null,
-    string? BranchTitle = null);
+    string? BranchTitle = null,
+    TeamMember? BranchMember = null);

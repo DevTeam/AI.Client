@@ -15,8 +15,9 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
 
 1. Take `projectId` and `chatId` from output.context. Find the charter in this branch with
    `app_read` resource=Messages and the teammates' branches with resource=Chat. A message from a
-   teammate starts with a header naming its branch, its branchId and its intent; asides are
-   information that asked for no reply.
+   teammate starts with a header naming its identity ("Ada · Backend"), its branchId and its
+   intent; asides are information that asked for no reply. Name every teammate by that identity —
+   in answers, decisions, phase plans and the status table — never by a paraphrase of its role.
 2. Handle every teammate message since your last answer, by intent:
    - `question`: answer it when the charter, the code or an earlier decision settles it; a choice
      that belongs to the user goes to `ask_user` first. Reply with `app_runs` Submit into the
@@ -45,6 +46,6 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    or as a new turn once you have ended yours. Read a teammate's branch only to verify a `done`.
    End the turn when you are waiting, and their messages wake you. A teammate whose
    turn stopped for lack of progress reports it here as a `blocker` on its own.
-6. Answer with a short status table (role, state, last report, open question) and what you decided
+6. Answer with a short status table (teammate as "Name · Role", state, last report, open question) and what you decided
    or are waiting for. When the work is complete, give the final report instead: what each
    teammate delivered, how it was verified, and what is left.

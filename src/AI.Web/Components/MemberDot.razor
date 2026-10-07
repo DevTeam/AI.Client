@@ -1,0 +1,11 @@
+@* The teammate's colour, the same in the sidebar, the transcript and the queue. Only a known
+   swatch reaches the style, which sets nothing but the component's own custom property. *@
+@if (Member is { Swatch: { } swatch })
+{
+    <span class="member-dot" style="--member-color: @swatch" title="@Member.Label" aria-hidden="true"></span>
+}
+
+@code {
+    [Parameter]
+    public AI.Contracts.Chats.TeamMember? Member { get; set; }
+}

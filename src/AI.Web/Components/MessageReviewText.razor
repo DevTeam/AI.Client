@@ -11,21 +11,26 @@
 @if (_selection is { } selected && _editing)
 {
     <div id="review-editor-@MessageId" popover="manual"
-         class="message-review-editor @(_popupBelow ? "is-below" : null)" role="dialog" aria-label="Comment on selected text"
+         class="review-comment-editor message-review-editor @(_popupBelow ? "is-below" : null)" role="dialog" aria-label="Comment on selected text"
          style="left: @_popupXpx; top: @_popupYpx;" @onkeydown="HandleEditorKeyDown">
-        <small>Comment on “@selected.Quote”</small>
+        <header class="review-comment-header">
+            <AppIcon Name="@(_editingId is null ? "plus" : "edit")" />
+            <span class="review-comment-quote" title="@selected.Quote">@selected.Quote</span>
+        </header>
         <ReviewCommentInput @ref="_input" @bind-Value="_body" AriaLabel="Message review comment" OnKeyDown="HandleTextKeyDownAsync"
                             Suggest="(automatic, token) => SuggestAsync(selected, automatic, token)" />
-        <div class="message-review-editor-actions">
-            <button class="review-comment-icon-action" type="button" title="Suggest a comment (Ctrl+Space)" aria-label="Suggest a comment" aria-keyshortcuts="Control+Space" disabled="@_saving" @onclick="() => _input?.RequestAsync() ?? Task.CompletedTask"><AppIcon Name="lightbulb" /></button>
-            <button class="review-comment-icon-action is-save" type="button" title="Save comment (Enter)" aria-label="Save comment" aria-keyshortcuts="Enter" disabled="@(_saving || string.IsNullOrWhiteSpace(_body))" @onclick="SaveAsync"><AppIcon Name="check" /></button>
+        @if (_error is not null) { <p class="error" role="alert">@_error</p> }
+        <footer class="review-comment-footer">
+            <button class="review-comment-suggest" type="button" title="Suggest a comment (Ctrl+Space)" aria-keyshortcuts="Control+Space" disabled="@_saving"
+                    @onclick="() => _input?.RequestAsync() ?? Task.CompletedTask"><AppIcon Name="lightbulb" /><span>Suggest</span></button>
             @if (_editingId is { } editingId && _current?.MessageComments?.FirstOrDefault(item => item.Id == editingId) is { } editingComment)
             {
                 <button class="review-comment-icon-action is-danger" type="button" title="Delete comment" aria-label="Delete comment" disabled="@_saving" @onclick="() => DeleteAsync(editingComment)"><AppIcon Name="trash" /></button>
             }
-            <button class="review-comment-icon-action" type="button" title="Cancel (Esc)" aria-label="Cancel comment" aria-keyshortcuts="Escape" @onclick="Cancel"><AppIcon Name="x" /></button>
-        </div>
-        @if (_error is not null) { <p class="error" role="alert">@_error</p> }
+            <button class="review-comment-cancel" type="button" title="Cancel (Esc)" aria-keyshortcuts="Escape" @onclick="Cancel">Cancel</button>
+            <button class="review-comment-save" type="button" title="Save comment (Enter)" aria-keyshortcuts="Enter"
+                    disabled="@(_saving || string.IsNullOrWhiteSpace(_body))" @onclick="SaveAsync">@(_editingId is null ? "Comment" : "Save")</button>
+        </footer>
     </div>
 }
 @if (_current?.MessageComments is { Count: > 0 } comments)
@@ -40,15 +45,16 @@
             <ul class="message-review-comment-list">
                 @foreach (var comment in comments.OrderBy(item => item.Start))
                 {
-                    <li class="message-review-comment" @key="comment.Id" data-review-comment-id="@comment.Id">
-                        <button type="button" class="message-review-comment-open" title="Edit comment" @onclick="() => EditAsync(comment)">
-                            <span class="message-review-quote">@comment.Quote</span>
-                            <span class="message-review-body">@comment.Body</span>
-                        </button>
-                        <span class="message-review-comment-actions">
-                            <button class="review-comment-icon-action" type="button" title="Edit comment" aria-label="Edit comment" disabled="@_saving" @onclick="() => EditAsync(comment)"><AppIcon Name="edit" /></button>
-                            <button class="review-comment-icon-action is-danger" type="button" title="Delete comment" aria-label="Delete comment" disabled="@_saving" @onclick="() => DeleteAsync(comment)"><AppIcon Name="trash" /></button>
-                        </span>
+                    <li class="review-comment message-review-comment" @key="comment.Id" data-review-comment-id="@comment.Id">
+                        <header class="review-comment-header">
+                            <AppIcon Name="message-circle" />
+                            <span class="review-comment-quote" title="@comment.Quote">@comment.Quote</span>
+                            <span class="review-comment-actions">
+                                <button class="review-comment-icon-action" type="button" title="Edit comment" aria-label="Edit comment" disabled="@_saving" @onclick="() => EditAsync(comment)"><AppIcon Name="edit" /></button>
+                                <button class="review-comment-icon-action is-danger" type="button" title="Delete comment" aria-label="Delete comment" disabled="@_saving" @onclick="() => DeleteAsync(comment)"><AppIcon Name="trash" /></button>
+                            </span>
+                        </header>
+                        <button type="button" class="review-comment-body" title="Edit comment" @onclick="() => EditAsync(comment)">@comment.Body</button>
                     </li>
                 }
             </ul>

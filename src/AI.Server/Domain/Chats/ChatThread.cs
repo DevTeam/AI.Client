@@ -295,7 +295,8 @@ public sealed class ChatThread
         var remaining = resources.Where(item => item.Id != reviewId).ToArray();
         _messages[messageId] = new ChatMessage(message.Id, message.ParentId, message.Role,
             message.Content, message.CreatedAt, message.IsIncomplete, message.ToolCalls,
-            message.ToolCallId, message.WorkspaceChanges, remaining, allowEmptyAfterResourceRemoval: true);
+            message.ToolCallId, message.WorkspaceChanges, remaining, allowEmptyAfterResourceRemoval: true,
+            message.Delivery, message.Sender);
         UpdatedAt = updatedAt;
         return true;
     }

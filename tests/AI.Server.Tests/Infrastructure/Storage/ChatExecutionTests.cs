@@ -304,6 +304,118 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task AsideOnAnIdleBranchShouldBeRecordedWithoutStartingATurn()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Hello"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Hi");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var aside = Guid.NewGuid();
+        var snapshot = await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), aside,
+            "The logs are in /var/log/app", ChatSubmitMode.Aside));
+
+        snapshot.Queue.ShouldBeEmpty();
+        snapshot.Status.ShouldBe(ChatRunStatus.Completed);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var message = chat!.Messages[^1];
+        message.Id.ShouldBe(aside);
+        message.Delivery.ShouldBe(MessageDelivery.Aside);
+        message.ParentId.ShouldBe(chat.Messages[^2].Id);
+        chat.Branches!.Single(branch => branch.Id == fixture.ChatId).HeadMessageId.ShouldBe(aside);
+        fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
+
+        // The next turn reads it as an aside, ahead of its own question.
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Why does it crash?"));
+        var next = await fixture.NextCallAsync();
+        next.Request.ContextMessages!.ShouldContain(item => item.MessageId == aside
+            && item.ForModel.StartsWith("[aside:", StringComparison.Ordinal)
+            && item.ForModel.EndsWith("The logs are in /var/log/app", StringComparison.Ordinal));
+        next.Answer.SetResult("Because of the logs");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task AsideDuringARunShouldJoinTheTurnAfterTheToolResults()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run the tests"));
+        var first = await fixture.NextCallAsync();
+
+        var aside = Guid.NewGuid();
+        var queued = await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), aside,
+            "They are in tests/Integration", ChatSubmitMode.Aside));
+        queued.Queue.ShouldContain(item => item.Id == aside && item.IsAside);
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+
+        var second = await fixture.NextCallAsync();
+        var context = second.Request.ContextMessages!;
+        var index = context.ToList().FindIndex(item => item.MessageId == aside);
+        index.ShouldBeGreaterThan(0);
+        context[index - 1].ToolCallId.ShouldBe("call-1");
+        // The step's guidance is attached to the last message, so only the start is the aside's own.
+        context[index].ForModel.ShouldStartWith(
+            "[added while you were working: take it into account and continue the task]\nThey are in tests/Integration");
+        second.Answer.SetResult("All green");
+        var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        completed.Queue.ShouldBeEmpty();
+
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var stored = chat!.Messages.Single(message => message.Id == aside);
+        stored.Delivery.ShouldBe(MessageDelivery.InTurn);
+        stored.StartsTurn.ShouldBeFalse();
+        chat.Messages[^1].Content.ShouldBe("All green");
+        chat.Messages[^1].ParentId.ShouldBe(aside);
+    }
+
+    [Fact]
+    public async Task AsideDuringTheFinalAnswerShouldFollowTheReply()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Summarize"));
+        var call = await fixture.NextCallAsync();
+        var aside = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), aside, "Keep it short", ChatSubmitMode.Aside));
+        call.Answer.SetResult("A summary");
+
+        var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed && run.Queue.Count == 0);
+        completed.HeadMessageId.ShouldBe(aside);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var stored = chat!.Messages.Single(message => message.Id == aside);
+        stored.Delivery.ShouldBe(MessageDelivery.Aside);
+        chat.Messages.Single(message => message.Id == stored.ParentId).Content.ShouldBe("A summary");
+        fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task MessageFromAnotherBranchsRunShouldCarryItsSender()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        var teammate = Guid.NewGuid();
+        var question = Guid.NewGuid();
+        await fixture.Dispatcher.SubmitFromRunAsync(fixture.ProjectId, fixture.ChatId,
+            new SubmitChatMessageRequest(question, question, "Which port does the API use?"),
+            new AI.Domain.Chats.ChatMessageSender(fixture.ChatId, teammate, "question"), CancellationToken.None);
+
+        var call = await fixture.NextCallAsync();
+        call.Request.ContextMessages!.Single(item => item.MessageId == question).ForModel
+            .ShouldStartWith($"[From a branch (branchId {teammate}) (question)]");
+        call.Answer.SetResult("8080");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var stored = chat!.Messages.Single(message => message.Id == question);
+        stored.Sender.ShouldBe(new MessageSender(fixture.ChatId, teammate, "question"));
+        stored.Delivery.ShouldBe(MessageDelivery.Turn);
+        stored.Content.ShouldBe("Which port does the API use?");
+    }
+
+    [Fact]
     public async Task RepeatedToolResultsShouldBeAnsweredWithoutAnotherTool()
     {
         await using var fixture = await Fixture.CreateAsync();

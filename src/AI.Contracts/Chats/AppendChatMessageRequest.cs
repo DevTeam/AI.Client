@@ -13,4 +13,6 @@ public sealed record AppendChatMessageRequest(
     IReadOnlyList<Chat.ChatToolCall>? ToolCalls = null,
     string? ToolCallId = null,
     Workspace.WorkspaceChangeSet? WorkspaceChanges = null,
-    IReadOnlyList<Resources.ChatResource>? Resources = null);
+    IReadOnlyList<Resources.ChatResource>? Resources = null,
+    MessageDelivery Delivery = MessageDelivery.Turn,
+    MessageSender? Sender = null);

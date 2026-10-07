@@ -1,6 +1,6 @@
 # Composer rules
 
-Enter sends the message, Ctrl+Enter queues it, Ctrl+Alt+Enter creates a branch, Ctrl+Shift+Enter interrupts the current run and sends the message first. The send button performs whichever action is highlighted in its tooltip, so the keys and the button always mean the same thing. Fork and Replace pass the server the branch point or the message being replaced. Replace always interrupts the work of the selected branch, discards its old queue and starts the replacement immediately.
+Enter sends the message, Ctrl+Enter queues it, Ctrl+Alt+Enter creates a branch, Ctrl+Shift+Enter interrupts the current run and sends the message first, Alt+Enter adds it as an aside without starting a turn — into the running turn at its next step, or as a note of its own on an idle branch ([Asides and team messages](34-asides-and-team-messages.md)). The send button performs whichever action is highlighted in its tooltip, so the keys and the button always mean the same thing. Fork and Replace pass the server the branch point or the message being replaced. Replace always interrupts the work of the selected branch, discards its old queue and starts the replacement immediately.
 
 During generation the composer stays available: Enter puts the message at the tail of the queue, Ctrl+Shift+Enter answers it immediately. The composer performs a single Submit command. The server chooses the context, changes the history and manages the queue. The Web does not delete the subtree before sending and does not duplicate the CLI execution.
 

@@ -96,6 +96,26 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         }
     }
 
+    /// <summary>
+    /// The asides waiting in the queue, in the order they were submitted. They are delivered all
+    /// at once — to the running turn at a step boundary, or after its reply — each removed with
+    /// <see cref="Remove"/> once its message is in the transcript.
+    /// </summary>
+    public IReadOnlyList<QueuedRunMessage> Asides => _queue.Where(item => item.IsAside).ToArray();
+
+    /// <summary>
+    /// Puts back asides an abandoned attempt had taken, so the retried attempt reads them again.
+    /// Their operations are already remembered, so they bypass <see cref="Enqueue"/>.
+    /// </summary>
+    public void ReturnAsides(IEnumerable<QueuedRunMessage> asides)
+    {
+        var returned = asides.Where(item => _queue.All(queued => queued.Id != item.Id))
+            .Select(item => item with { IsAside = true, Stage = QueuedRunStage.Prepared }).ToArray();
+        if (returned.Length == 0) return;
+        _queue.AddRange(returned);
+        Revision++;
+    }
+
     public void Remove(Guid id)
     {
         var index = _queue.FindIndex(item => item.Id == id);

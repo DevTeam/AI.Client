@@ -13,7 +13,9 @@ public sealed class ChatMessage(
     string? toolCallId = null,
     ChatWorkspaceChangeSet? workspaceChanges = null,
     IReadOnlyList<AI.Domain.Resources.ChatResource>? resources = null,
-    bool allowEmptyAfterResourceRemoval = false)
+    bool allowEmptyAfterResourceRemoval = false,
+    ChatMessageDelivery delivery = ChatMessageDelivery.Turn,
+    ChatMessageSender? sender = null)
 {
     public ChatMessageId Id { get; } = id;
 
@@ -36,4 +38,9 @@ public sealed class ChatMessage(
     public ChatWorkspaceChangeSet? WorkspaceChanges { get; } = workspaceChanges is null
         ? null
         : workspaceChanges with { Files = workspaceChanges.Files.ToArray() };
+    public ChatMessageDelivery Delivery { get; } = delivery;
+    public ChatMessageSender? Sender { get; } = sender;
+
+    /// <summary>Whether this message opens a turn, or stands as one as an aside: any user message not taken by a running turn.</summary>
+    public bool StartsTurn => Role == ChatMessageRole.User && Delivery != ChatMessageDelivery.InTurn;
 }

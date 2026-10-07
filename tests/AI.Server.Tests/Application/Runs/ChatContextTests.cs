@@ -32,7 +32,7 @@ public sealed class ChatContextTests
                     ToolCallId: "call-1")
             ]);
 
-        var context = new ChatContext(ToolResults, new ResourceModelProjection()).Build(chat, tool);
+        var context = new ChatContext(ToolResults, new ResourceModelProjection(), new ModelMessageHeader()).Build(chat, tool);
 
         context.Select(item => item.Role).ShouldBe(["user", "assistant", "tool", "user"]);
         context[^1].ImageAssetIds.ShouldBe([assetId]);
@@ -49,7 +49,7 @@ public sealed class ChatContextTests
             [new ChatMessageView(id, null, "User", "Check this", DateTimeOffset.UnixEpoch,
                 Resources: [reference])]);
 
-        var message = new ChatContext(ToolResults, new ResourceModelProjection()).Build(chat, id).Single();
+        var message = new ChatContext(ToolResults, new ResourceModelProjection(), new ModelMessageHeader()).Build(chat, id).Single();
 
         message.Content.ShouldBe("Check this");
         message.ForModel.ShouldContain("file:");
@@ -79,7 +79,7 @@ public sealed class ChatContextTests
                 new ChatMessageView(nextUser, firstResult, "User", "Urgent", DateTimeOffset.UnixEpoch)
             ]);
 
-        var context = new ChatContext(ToolResults, new ResourceModelProjection()).Build(chat, nextUser);
+        var context = new ChatContext(ToolResults, new ResourceModelProjection(), new ModelMessageHeader()).Build(chat, nextUser);
 
         context.Select(message => message.Role).ShouldBe(["user", "assistant", "tool", "tool", "tool", "user"]);
         context.Where(message => message.Role == "tool").Select(message => message.ToolCallId)
@@ -104,7 +104,7 @@ public sealed class ChatContextTests
                 new ChatMessageView(tool, assistant, "Tool", stored, DateTimeOffset.UnixEpoch, ToolCallId: "call-1")
             ]);
 
-        var restored = new ChatContext(ToolResults, new ResourceModelProjection()).Build(chat, tool).Single(message => message.Role == "tool");
+        var restored = new ChatContext(ToolResults, new ResourceModelProjection(), new ModelMessageHeader()).Build(chat, tool).Single(message => message.Role == "tool");
 
         restored.Content.ShouldBe(stored);
         restored.ForModel.ShouldBe("{\"exitCode\":0}");
@@ -127,7 +127,7 @@ public sealed class ChatContextTests
                 new ChatMessageView(tool, assistant, "Tool", stored, DateTimeOffset.UnixEpoch, ToolCallId: "call-1")
             ]);
 
-        var restored = new ChatContext(ToolResults, new ResourceModelProjection()).Build(chat, tool).Single(message => message.Role == "tool");
+        var restored = new ChatContext(ToolResults, new ResourceModelProjection(), new ModelMessageHeader()).Build(chat, tool).Single(message => message.Role == "tool");
 
         restored.ModelContent.ShouldBeNull();
         restored.ForModel.ShouldBe(stored);

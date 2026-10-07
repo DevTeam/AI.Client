@@ -321,9 +321,40 @@
                         <HistoryCheckpointMark @key="activeCheckpoint.Id" Checkpoint="@activeCheckpoint" OnUndo="OnUndoCheckpoint" />
                     }
                     <article @key="message.Id" id="message-@message.Id"
-                             class="workspace-message @message.Role.ToLowerInvariant() @(message.Role == "User" && string.IsNullOrWhiteSpace(message.Content) ? "resource-only" : string.Empty) @(entry.RevealIndex is null ? string.Empty : "turn-message-arriving") @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)"
+                             class="workspace-message @message.Role.ToLowerInvariant() @(message.Role == "User" && string.IsNullOrWhiteSpace(message.Content) ? "resource-only" : string.Empty) @(message.Sender is null ? string.Empty : "from-branch") @(message.Delivery != MessageDelivery.Turn ? "is-aside" : string.Empty) @(entry.RevealIndex is null ? string.Empty : "turn-message-arriving") @(message.Id == BranchLeafId ? "branch-leaf" : string.Empty) @(message.Id == JustArrivedLeafId ? "branch-leaf-arrived" : string.Empty) @(message.Id == ForkSourceId ? "fork-source" : string.Empty)"
                              style="@(entry.RevealIndex is { } messageRevealIndex ? $"--turn-arrive-delay: {messageRevealIndex * 60}ms" : null)">
                         <div class="message-body">
+                        @if (message.Role == "User" && (message.Sender is not null || message.Delivery != MessageDelivery.Turn))
+                        {
+                            @* Where the message came from and how it was delivered, when that is anything other
+                               than the person starting a turn: docs/34-asides-and-team-messages.md. *@
+                            <div class="message-origin">
+                                @if (message.Sender is { } sender)
+                                {
+                                    @if (sender.ChatId == SelectedChat.Id && SelectedChat.Branches?.Any(branch => branch.Id == sender.BranchId) == true)
+                                    {
+                                        <button class="message-origin-sender" type="button" title="Open the branch that sent it"
+                                                @onclick="() => OnOpenSenderBranch.InvokeAsync(sender.BranchId)"><AppIcon Name="git-branch" /><span>@SenderName(sender)</span></button>
+                                    }
+                                    else
+                                    {
+                                        <span class="message-origin-sender"><AppIcon Name="git-branch" /><span>@SenderName(sender)</span></span>
+                                    }
+                                    @if (sender.Intent is { Length: > 0 } intent)
+                                    {
+                                        <span class="message-origin-intent @(intent is "question" or "blocker" ? "needs-answer" : intent == "done" ? "is-done" : string.Empty)">@intent</span>
+                                    }
+                                }
+                                @if (message.Delivery == MessageDelivery.InTurn)
+                                {
+                                    <span class="message-origin-delivery" title="The model read this before its next step, without a new turn">Added during the turn</span>
+                                }
+                                else if (message.Delivery == MessageDelivery.Aside)
+                                {
+                                    <span class="message-origin-delivery" title="Added without starting a turn; the next turn reads it">Aside</span>
+                                }
+                            </div>
+                        }
                         @if (message.IsIncomplete) { <span class="message-status">Incomplete</span> }
                         @if (message.Role == "User" && string.IsNullOrWhiteSpace(message.Content)
                             && message.Resources is not { Count: > 0 })
@@ -651,6 +682,8 @@
     [Parameter] public EventCallback<ChatMessageView> OnEditAndReplaceBranch { get; set; }
     [Parameter] public EventCallback<Guid> OnToggleBranchMenu { get; set; }
     [Parameter] public EventCallback<Guid> OnSelectBranch { get; set; }
+    /// <summary>Opens a branch of this chat by its id: where a team message came from.</summary>
+    [Parameter] public EventCallback<Guid> OnOpenSenderBranch { get; set; }
     /// <summary>Shows the branch whose leaf is the given message.</summary>
     [Parameter] public EventCallback<Guid> OnSelectBranchLeaf { get; set; }
     [Parameter] public EventCallback<KeyboardEventArgs> OnBranchPickerKeyDown { get; set; }
@@ -1483,10 +1516,13 @@
                 }
                 else
                 {
-                    // The message itself is folded, not its durable workspace receipt.
+                    // The message itself is folded, not its durable workspace receipt, nor what the
+                    // person added to the turn: that is theirs, not the model's work.
                     entries.AddRange(turn.IntermediateMessages
-                        .Where(message => message.WorkspaceChanges is { IsEmpty: false })
-                        .Select(message => new RenderedFeedEntry(ChangesMessage: message)));
+                        .Where(message => message.WorkspaceChanges is { IsEmpty: false } || message.Delivery == MessageDelivery.InTurn)
+                        .Select(message => message.Delivery == MessageDelivery.InTurn
+                            ? new RenderedFeedEntry(Item: new FeedItem(message, null))
+                            : new RenderedFeedEntry(ChangesMessage: message)));
                 }
 
                 // The final answer arriving as StreamingContent is shown below as it is; the live
@@ -1723,7 +1759,7 @@
         // that frame makes the UI claim that an already answered turn is still working.
         if (Feed.LastTurnHasCompleteAnswer(GetVisibleBranchMessages())) return false;
 
-        return GetVisibleBranchMessages().LastOrDefault(message => message.Role == "User")?.Id
+        return GetVisibleBranchMessages().LastOrDefault(message => message.StartsTurn)?.Id
             == activeMessageId;
     }
 
@@ -1887,7 +1923,7 @@
     private bool IsCurrentTurn(FeedTurn turn)
     {
         if (turn.Id is not { } id) return false;
-        return GetVisibleBranchMessages().LastOrDefault(message => message.Role == "User")?.Id == id;
+        return GetVisibleBranchMessages().LastOrDefault(message => message.StartsTurn)?.Id == id;
     }
 
     private bool IsRunningTurn(FeedTurn turn) =>
@@ -1901,7 +1937,7 @@
     {
         if (SelectedRun is { } run
             && !string.IsNullOrWhiteSpace(run.StreamingContent)) return "message-streaming";
-        var turnId = GetVisibleBranchMessages().LastOrDefault(message => message.Role == "User")?.Id;
+        var turnId = GetVisibleBranchMessages().LastOrDefault(message => message.StartsTurn)?.Id;
         return turnId is { } id ? $"turn-summary-{id}" : "message-streaming";
     }
 
@@ -2123,10 +2159,10 @@
         var entries = new List<HistoryEntry>();
         for (var index = 0; index < chain.Count; index++)
         {
-            if (chain[index].Role != "User") continue;
+            if (!chain[index].StartsTurn) continue;
             ChatMessageView? answer = null;
             var hasFork = forkPoints.Contains(chain[index].Id);
-            for (var next = index + 1; next < chain.Count && chain[next].Role != "User"; next++)
+            for (var next = index + 1; next < chain.Count && !chain[next].StartsTurn; next++)
             {
                 hasFork |= forkPoints.Contains(chain[next].Id);
                 if (chain[next].Role == "Assistant" && chain[next].ToolCalls is not { Count: > 0 }) answer = chain[next];
@@ -2234,6 +2270,13 @@
         var text = content.ReplaceLineEndings(" ").Trim();
         return text[..Math.Min(text.Length, 36)] + (text.Length > 36 ? "…" : string.Empty);
     }
+
+    /// <summary>The sending branch by its current title; a renamed branch shows its new name.</summary>
+    private string SenderName(MessageSender sender) =>
+        SelectedChat is null || sender.ChatId != SelectedChat.Id ? "Another chat"
+        : sender.BranchId == SelectedChat.Id ? "Main branch"
+        : SelectedChat.Branches?.SingleOrDefault(branch => branch.Id == sender.BranchId)?.Title is { Length: > 0 } title
+            ? title : "A branch";
 
     private string ResourceLabel(ChatResource resource)
     {

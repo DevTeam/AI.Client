@@ -38,5 +38,9 @@ public interface IChatAgent
         // before its arguments are complete. A null draft ends it along with the step's prose.
         // The completion protocol's own tool is not reported: it is how the run ends, not work.
         Func<string, CancellationToken, Task>? draftToolCall = null,
-        bool overlayPromptsAllowed = true);
+        bool overlayPromptsAllowed = true,
+        // Messages added to the branch while the turn runs, already persisted by the caller. Asked
+        // for after every tool batch, the only point where a user message keeps the history valid;
+        // what it returns is read by the model in its next request.
+        Func<CancellationToken, Task<IReadOnlyList<ChatCompletionMessage>>>? asides = null);
 }

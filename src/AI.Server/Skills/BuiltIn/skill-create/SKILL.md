@@ -10,7 +10,7 @@ tools: ["app_read","ask_user","app_skills","skill_search"]
 
 Skill conventions:
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. Domains: chat, project, memory,
-  skill, instructions, code, git, devops, qa, mermaid, svg, settings; start a new domain only for a new area such as `doc`. The action
+  skill, instructions, code, git, devops, qa, mermaid, svg, settings, team; start a new domain only for a new area such as `doc`. The action
   is a verb: create, rename, compact, fork, add, remove, review, save, edit, implement, fix, run.
 - `name` is the id in words with the first letter capitalized: `project-directory-add` becomes
   "Project directory add". An abbreviation keeps its official spelling: `qa-plan` becomes "QA plan",

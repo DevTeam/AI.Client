@@ -108,7 +108,7 @@ internal sealed class Composition
                 MarkupFilePreviewFormat>(Tag.Unique)
             // Instruction composition, context planning, credentials and usage accounting.
             .Transient<WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService,
-                OpenAiCompatibleConnectionModelsResolver, ConnectionImageProbe, ChatContext, ChatAgent, ContextTokenEstimator,
+                OpenAiCompatibleConnectionModelsResolver, ConnectionImageProbe, ChatContext, ModelMessageHeader, ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, KeyringOrFileMasterKeyStore, ModelInstructionComposer,
                 AdaptiveContextPolicy, ToolResultContextProjector, ToolDiscoveryGuidance,
                 ToolPolicyResolver, LineDiff, MasterKeyFormat, ProcessCommandRunner, AppWrites, AppMcpServerHost,

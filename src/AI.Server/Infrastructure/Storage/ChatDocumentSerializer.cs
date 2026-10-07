@@ -30,7 +30,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             message.Content,
             message.CreatedAt,
             message.IsIncomplete, message.ToolCalls, message.ToolCallId,
-            ToDocument(message.WorkspaceChanges), ResourceReferences.ToContract(message.Resources))).ToArray(),
+            ToDocument(message.WorkspaceChanges), ResourceReferences.ToContract(message.Resources),
+            message.Delivery, message.Sender is { } sender ? new SenderDocument(sender.ChatId, sender.BranchId, sender.Intent) : null)).ToArray(),
         chat.Branches.Select(branch => new BranchDocument(branch.Id, branch.HeadMessageId?.Value, branch.Title,
             branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision)).ToArray(),
         chat.ToolPolicies.Select(policy => new ToolPolicyDocument(policy.Tool.ServerId.Value, policy.Tool.Name,
@@ -85,7 +86,9 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
                 message.CreatedAt,
                 message.IsIncomplete, message.ToolCalls, message.ToolCallId,
                 ToDomain(message.WorkspaceChanges), ResourceReferences.ToDomain(message.Resources),
-                allowEmptyAfterResourceRemoval: true), message.CreatedAt);
+                allowEmptyAfterResourceRemoval: true, message.Delivery,
+                message.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null),
+                message.CreatedAt);
         }
         chat.RestoreBranches(document.Branches.Select(branch => new ChatBranch(branch.Id,
             branch.HeadMessageId is { } head ? new ChatMessageId(head) : null, branch.Title,
@@ -239,5 +242,13 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         string? ToolCallId = null,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
         WorkspaceChangeDocument? WorkspaceChanges = null,
-        IReadOnlyList<AI.Contracts.Resources.ChatResource>? Resources = null);
+        IReadOnlyList<AI.Contracts.Resources.ChatResource>? Resources = null,
+        // Both absent from ordinary turn messages and from documents written before asides existed.
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        ChatMessageDelivery Delivery = ChatMessageDelivery.Turn,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        SenderDocument? Sender = null);
+
+    private sealed record SenderDocument(Guid ChatId, Guid BranchId,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Intent = null);
 }

@@ -21,6 +21,29 @@ public class ChatRunStateTests
     }
 
     [Fact]
+    public void AsidesShouldBeListedInOrderAndReturnedOnceAfterARetry()
+    {
+        var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var command = new QueuedRunMessage(Guid.NewGuid(), "Run the tests", DateTimeOffset.UtcNow);
+        var first = new QueuedRunMessage(Guid.NewGuid(), "In tests/Integration", DateTimeOffset.UtcNow, IsAside: true);
+        var second = new QueuedRunMessage(Guid.NewGuid(), "Skip the slow ones", DateTimeOffset.UtcNow, IsAside: true);
+        state.Enqueue(Guid.NewGuid(), command);
+        state.Enqueue(Guid.NewGuid(), first);
+        state.Enqueue(Guid.NewGuid(), second);
+
+        state.Asides.Select(item => item.Id).ShouldBe([first.Id, second.Id]);
+        state.Remove(first.Id);
+        state.Remove(second.Id);
+        state.Asides.ShouldBeEmpty();
+
+        // A retry puts back what the abandoned attempt took; one still queued is not doubled.
+        state.Enqueue(Guid.NewGuid(), second);
+        state.ReturnAsides([first with { IsAside = false, Stage = QueuedRunStage.UserCommitted }, second]);
+        state.Asides.Select(item => item.Id).ShouldBe([second.Id, first.Id]);
+        state.Asides.ShouldAllBe(item => item.IsAside && item.Stage == QueuedRunStage.Prepared);
+    }
+
+    [Fact]
     public void ShouldIgnoreRepeatedOperation()
     {
         var state = new ChatRunState(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());

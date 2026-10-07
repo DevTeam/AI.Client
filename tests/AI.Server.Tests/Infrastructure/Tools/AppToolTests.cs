@@ -221,6 +221,28 @@ public sealed class AppToolTests
     }
 
     [Fact]
+    public async Task RunsToolShouldAddAnAsideMarkedWithTheCallingBranch()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var operationId = Guid.NewGuid();
+
+        var result = await AppFixture.CallAsync(session, "app_runs", new
+        {
+            operation = "Submit", projectId = fixture.ProjectId, chatId = fixture.ChatId, operationId,
+            content = "Schema migrated, starting on the handlers", mode = "Aside", intent = "Status"
+        });
+
+        result.GetProperty("effect").GetString().ShouldBe("Added the aside to the branch; no turn was started.");
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var message = chat!.Messages.ShouldHaveSingleItem();
+        message.Id.ShouldBe(operationId);
+        message.Delivery.ShouldBe(MessageDelivery.Aside);
+        // The sender is the run that called the tool; the model cannot name another one.
+        message.Sender.ShouldBe(new MessageSender(fixture.ChatId, fixture.ChatId, "status"));
+    }
+
+    [Fact]
     public async Task ProjectToolShouldDescribeDirectoryBasedNameSuggestion()
     {
         await using var fixture = await AppFixture.CreateAsync();

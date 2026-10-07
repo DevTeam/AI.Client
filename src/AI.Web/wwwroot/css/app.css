@@ -2615,6 +2615,70 @@ div.chat-tip-head { cursor: default; }
 .message-empty-label { display: block; color: var(--color-text-secondary); font-size: var(--font-size-md); }
 .workspace-message.user.resource-only .message-resource-list { margin-bottom: 0; }
 
+/* === Asides and team messages (docs/34-asides-and-team-messages.md) === */
+
+/* What the person added without starting a turn keeps their bubble, drawn dashed: it was said,
+   but nothing answered it as a turn. */
+.workspace-message.user.is-aside .message-body {
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+
+/* A message another branch's run sent is not the person's: it leaves their side of the
+   transcript and reads as a card of that branch. */
+.workspace-message.user.from-branch {
+    margin-left: 0;
+    margin-right: auto;
+}
+.workspace-message.user.from-branch .message-body {
+    border-color: var(--color-border);
+    background: var(--color-surface);
+}
+.workspace-message.user.from-branch .message-actions { justify-content: flex-start; }
+.workspace-message.user.from-branch .markdown-content pre { background: var(--color-bg-inset); }
+
+.message-origin {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .35rem;
+    margin-bottom: .25rem;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+}
+.message-origin-sender {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-weight: 600;
+}
+button.message-origin-sender { cursor: pointer; color: var(--color-accent); }
+button.message-origin-sender:hover, button.message-origin-sender:focus-visible { text-decoration: underline; }
+.message-origin-sender .app-icon { width: .8rem; height: .8rem; }
+.message-origin-intent,
+.queue-aside-label {
+    padding: 0 .4rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-fill);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-2xs);
+    line-height: 1.5;
+}
+.message-origin-intent.needs-answer {
+    background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+    color: var(--color-warning-text);
+}
+.message-origin-intent.is-done {
+    background: color-mix(in srgb, var(--color-success) 16%, transparent);
+    color: var(--color-success-text);
+}
+.queue-aside-label { margin-right: .35rem; }
+
 /* === Branch leaf transient effects === */
 
 /* The leaf marker is structural, not visual: it identifies the bottom of the

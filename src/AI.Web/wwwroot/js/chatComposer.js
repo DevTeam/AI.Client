@@ -261,7 +261,9 @@ export function attach(textarea, dotNetReference) {
                 ? "ForkFromKeyboard"
                 : event.ctrlKey
                     ? "QueueFromKeyboard"
-                    : "SendFromKeyboard";
+                    : event.altKey
+                        ? "AsideFromKeyboard"
+                        : "SendFromKeyboard";
         dotNetReference.invokeMethodAsync(method).finally(() => { sending = false; });
     };
 

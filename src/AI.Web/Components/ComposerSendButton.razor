@@ -24,6 +24,10 @@
             <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Queue ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Queue for later</span></span>
             <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Fork ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Ctrl</kbd><span>+</span><kbd>Alt</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Send in a forked session</span></span>
             <span class="composer-send-tooltip-row @(ActiveMode == SendMode.SendNow ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">Interrupt and send now</span></span>
+            @if (CanAside)
+            {
+                <span class="composer-send-tooltip-row @(ActiveMode == SendMode.Aside ? "active" : string.Empty)" data-app-tooltip-hint><kbd>Alt</kbd><span>+</span><kbd>Enter</kbd><span class="composer-send-tooltip-label">@AsideLabel</span></span>
+            }
         }
     </span>
 </span>
@@ -41,6 +45,16 @@
     [Parameter, EditorRequired]
     public EventCallback OnClick { get; set; }
 
+    /// <summary>Whether there is a conversation an aside could join; a new chat starts with a turn.</summary>
+    [Parameter]
+    public bool CanAside { get; set; }
+
+    /// <summary>Whether a turn is in flight on the branch, which is what an aside then joins.</summary>
+    [Parameter]
+    public bool TurnInFlight { get; set; }
+
+    private string AsideLabel => TurnInFlight ? "Add to the current turn" : "Add as an aside, no reply";
+
     /// <summary>How the context window is filled; no ring is drawn without it.</summary>
     [Parameter]
     public ComposerContext? Context { get; set; }
@@ -56,6 +70,7 @@
         SendMode.Replace => "Replace branch now",
         SendMode.Queue => "Queue for later",
         SendMode.Fork => "Send in a forked session",
+        SendMode.Aside => AsideLabel,
         _ => "Send message"
     };
 
@@ -64,8 +79,9 @@
         SendMode.SendNow => "zap",
         SendMode.EditFork => "fork",
         SendMode.Replace => "edit-replace",
+        SendMode.Aside => "plus",
         _ => "arrow-up"
     };
 
-    public enum SendMode { Send, Queue, Fork, SendNow, EditFork, Replace }
+    public enum SendMode { Send, Queue, Fork, SendNow, EditFork, Replace, Aside }
 }

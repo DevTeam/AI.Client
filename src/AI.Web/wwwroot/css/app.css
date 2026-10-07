@@ -5524,24 +5524,29 @@ textarea {
 }
 
 .diff-line {
+    --diff-line-tint: transparent;
     display: flex;
     align-items: baseline;
     white-space: pre;
+    background: var(--diff-line-tint);
 }
 
 /* Tinted the whole width, not just behind the text, so the shape of a change is visible while
    skimming — but faintly, because the sign column is what actually states the direction. */
-.diff-line-added { background: var(--color-diff-added-bg); }
-.diff-line-removed { background: var(--color-diff-removed-bg); }
+.diff-line-added { --diff-line-tint: var(--color-diff-added-bg); }
+.diff-line-removed { --diff-line-tint: var(--color-diff-removed-bg); }
 
 /* The numbers stay put while a long line scrolls past them; without this the only thing telling
-   you where you are would slide off the left edge. */
+   you where you are would slide off the left edge. The tint is translucent, so the sticky columns
+   lay it over the opaque surface the diff sits on, and they stretch to the line's height even when
+   empty — otherwise the scrolled text shows through them. */
 .diff-gutter {
     position: sticky;
     left: 0;
     flex: 0 0 2.8rem;
+    align-self: stretch;
     padding-right: 0.4rem;
-    background: inherit;
+    background: linear-gradient(var(--diff-line-tint), var(--diff-line-tint)), var(--diff-surface, var(--color-bg-inset));
     color: var(--color-text-disabled);
     text-align: right;
     user-select: none;
@@ -5556,8 +5561,9 @@ textarea {
     position: sticky;
     left: 5.6rem;
     flex: 0 0 1.1rem;
+    align-self: stretch;
     padding-left: 0.35rem;
-    background: inherit;
+    background: linear-gradient(var(--diff-line-tint), var(--diff-line-tint)), var(--diff-surface, var(--color-bg-inset));
     user-select: none;
 }
 
@@ -6592,7 +6598,7 @@ textarea {
 .review-legacy-summary section p { margin: .25rem 0 0 .75rem; white-space: pre-wrap; }
 .review-workspace-body { display: grid; grid-template-columns: var(--review-tree-width, 22rem) .35rem minmax(0, 1fr); flex: 1; min-height: 0; }
 .review-diff-scroll, .review-file-tree { overflow: auto; min-width: 0; }
-.review-diff-scroll { grid-column: 3; padding: .25rem 0 1rem; scroll-behavior: smooth; background: var(--color-bg-inset); font-family: var(--font-mono); font-size: var(--font-size-md); line-height: 1.55; }
+.review-diff-scroll { grid-column: 3; container-type: inline-size; padding: .25rem 0 1rem; scroll-behavior: smooth; background: var(--color-bg-inset); font-family: var(--font-mono); font-size: var(--font-size-md); line-height: 1.55; }
 .review-file-tree { grid-column: 1; grid-row: 1; border-right: 1px solid var(--color-border); padding: .45rem; }
 .review-tree-resizer { grid-column: 2; grid-row: 1; z-index: 2; background: var(--color-fill); cursor: col-resize; touch-action: none; }
 .review-tree-resizer:hover, .review-tree-resizer:focus-visible, .review-workspace-body.is-resizing .review-tree-resizer { background: var(--color-accent); }
@@ -6605,19 +6611,22 @@ textarea {
 .diff-line-review:hover { outline: 1px solid var(--color-border-stronger); }
 .diff-line-review.diff-line-commented { box-shadow: inset .18rem 0 var(--color-accent); }
 .diff-line-review.diff-line-selected { box-shadow: inset .18rem 0 var(--color-accent); outline: 1px solid var(--color-accent); outline-offset: -1px; }
-.diff-line-comment { position: sticky; left: 0; z-index: 1; flex: 0 0 1.8rem; padding: 0; border: 0; border-radius: var(--radius-2xs); background: var(--color-fill-active); color: var(--color-text); cursor: pointer; opacity: 0; }
-.diff-line-review:hover .diff-line-comment, .diff-line-comment:focus-visible { opacity: 1; }
+.diff-line-comment { position: sticky; left: 0; z-index: 1; flex: 0 0 1.8rem; padding: 0; border: 0; border-radius: var(--radius-2xs); background: linear-gradient(var(--diff-line-tint), var(--diff-line-tint)), var(--color-bg-inset); color: transparent; cursor: pointer; }
+.diff-line-review:hover .diff-line-comment, .diff-line-comment:focus-visible { background: linear-gradient(var(--color-fill-active), var(--color-fill-active)), var(--color-bg-inset); color: var(--color-text); }
 .diff-line-comment:hover, .diff-line-comment:focus-visible { background: var(--color-highlight-bg); color: var(--color-highlight-fg); }
 .diff-line-review .diff-gutter { left: 1.8rem; }
 .diff-line-review .diff-gutter + .diff-gutter { left: 4.6rem; }
 .diff-line-review .diff-sign { left: 7.4rem; }
 .review-diff-scroll .diff-note { padding-left: .6rem; }
-.review-diff-content { min-width: 0; }
+/* A file's diff is as wide as its longest line, so line tints and borders run under scrolled text;
+   comments stay pinned beside the gutter and are sized by the scroll viewport, not by that width. */
+.review-diff-content { width: max-content; min-width: 100%; }
+.review-diff-content > .review-comment, .review-diff-content > .review-comment-editor { position: sticky; left: 6rem; }
 .review-comment-range-hint { display: block; margin-bottom: .2rem; color: var(--color-text-subtle); font-size: var(--font-size-xs); }
 .review-comment, .review-comment-editor { margin: .15rem .5rem .2rem 6rem; padding: .25rem .4rem; border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface-raised); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: var(--font-size-sm); line-height: 1.4; }
 .review-comment-anchor { margin-bottom: .15rem; color: var(--color-accent); font-size: var(--font-size-xs); }
-.review-comment { box-sizing: border-box; width: fit-content; max-width: calc(100% - 6.5rem); }
-.review-comment.is-editing, .review-comment-editor { box-sizing: border-box; width: min(30rem, calc(100% - 6.5rem)); }
+.review-comment { box-sizing: border-box; width: fit-content; max-width: calc(100cqi - 6.5rem); }
+.review-comment.is-editing, .review-comment-editor { box-sizing: border-box; width: min(30rem, calc(100cqi - 6.5rem)); }
 .review-comment .review-comment-body { display: block; width: 100%; margin: 0 0 .2rem; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; cursor: pointer; }
 .review-comment > .review-comment-editor { margin: 0; padding: 0; border: 0; background: transparent; }
 .review-comment.is-editing > .review-comment-editor { width: 100%; }
@@ -8065,7 +8074,7 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .file-preview-mode-check { width: .85rem; height: .85rem; visibility: hidden; }
 .file-preview-mode.is-active .file-preview-mode-check { visibility: visible; color: var(--color-accent); }
 .file-preview-markdown { padding: 1rem 1.2rem; overflow-wrap: anywhere; }
-.file-preview-diff { min-width: max-content; padding-block: .5rem; font: var(--font-size-md)/1.2rem var(--font-mono); }
+.file-preview-diff { --diff-surface: var(--color-surface); min-width: max-content; padding-block: .5rem; font: var(--font-size-md)/1.2rem var(--font-mono); }
 .file-preview-diff .diff-note, .file-preview-diff .diff-hunk { padding: .4rem .8rem; white-space: pre; }
 .file-preview-archive-entry { display: flex; align-items: center; gap: .5rem; padding: .6rem; }
 .file-preview-archive-entry > span { flex: 1; overflow-wrap: anywhere; }

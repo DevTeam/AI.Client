@@ -133,7 +133,7 @@ The Schedule widget (`chat-schedule`, `stopwatch`) is available in every chat:
 
 - **Ordinary chat** — says the chat runs only when written in and offers *Schedule this chat*, which
   opens the settings form prefilled with the first user message as the task, daily at 09:00
-  tomorrow, the host's time zone and the default branch rules — every value visible and editable
+  tomorrow, this device's time zone and the default branch rules — every value visible and editable
   before *Schedule* saves it.
 - **Scheduled chat** — leads with a countdown to the next run or retry (ticking every second in its
   last hour), a status pill (Active, Paused, Running #n, Waits for you, Finished), the next run and
@@ -146,7 +146,9 @@ The Schedule widget (`chat-schedule`, `stopwatch`) is available in every chat:
 
 The settings form (`ScheduleSettingsForm`) holds the task, the recurrence editor, success criteria,
 retry (attempts, delay, condition), a rule per outcome, chat deletion (keep, after the last run, or on
-a date and time) and the time zone. Refusals from the Host appear in the widget in its words, and while the form is invalid a note under it says why Save is unavailable.
+a date and time). It has no time zone field: a schedule set in the form uses this device's time
+zone. Only a schedule in another zone (set by a tool, or on another device) says which, with *Use my
+time zone* to switch to the local one; wall-clock times stay as they are. Refusals from the Host appear in the widget in its words, and while the form is invalid a note under it says why Save is unavailable.
 
 ## Run branches in the branch picker and the sidebar
 

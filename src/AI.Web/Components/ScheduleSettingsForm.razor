@@ -100,11 +100,17 @@
         }
     </div>
 
-    <label class="schedule-field">
-        <span class="schedule-field-label">Time zone</span>
-        <input type="text" value="@Value.TimeZone" placeholder="@Calendar.LocalTimeZoneId" aria-label="Time zone" disabled="@Disabled"
-               @onchange="args => ChangeAsync(Value with { TimeZone = Text(args) ?? Calendar.LocalTimeZoneId })" />
-    </label>
+    @* Times are the person's own: a new schedule takes this device's time zone and the form says
+       nothing about it. Only a schedule set elsewhere in another zone names it, with a way back. *@
+    @if (Calendar.CanonicalTimeZoneId(Value.TimeZone) != Calendar.LocalTimeZoneId)
+    {
+        <p class="schedule-zone">
+            <AppIcon Name="globe" />
+            <span>Times are in @Value.TimeZone.</span>
+            <button type="button" class="chat-tips-link" disabled="@Disabled"
+                    @onclick="() => ChangeAsync(Value with { TimeZone = Calendar.LocalTimeZoneId })">Use my time zone, @Calendar.LocalTimeZoneId</button>
+        </p>
+    }
 </div>
 
 @code {

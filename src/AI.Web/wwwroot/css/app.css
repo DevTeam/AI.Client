@@ -8625,6 +8625,8 @@ button.is-auto-pressed { filter: brightness(1.15); }
 
 .schedule-form { display: grid; gap: .8rem; min-width: 0; }
 .schedule-field { display: grid; gap: .35rem; min-width: 0; }
+.schedule-zone { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin: 0; color: var(--color-text-muted); font-size: var(--font-size-sm); }
+.schedule-zone .app-icon { width: .85rem; height: .85rem; }
 .schedule-field-label { color: var(--color-text-secondary); font-size: var(--font-size-sm); font-weight: 500; }
 .schedule-field textarea { min-height: 0; padding: .4rem .5rem; border-color: var(--color-border-subtle); border-radius: var(--radius-md); font-size: var(--font-size-md); resize: vertical; }
 .schedule-field input[type="text"] { padding: .35rem .5rem; border-color: var(--color-border-subtle); border-radius: var(--radius-md); font-size: var(--font-size-md); }

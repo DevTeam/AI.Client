@@ -92,7 +92,9 @@ public sealed class AskUserPresentationAdapter : BuiltInToolPresentationAdapter
                 .Select(item => item.GetString()!)
                 .Where(item => item.Length > 0));
         if (Text(answer, "other") is { Length: > 0 } other) parts.Add(other);
-        foreach (var property in new[] { "paths", "values" })
+        // A recurrence reads in words; its JSON is for the model.
+        var described = answer.TryGetProperty("valueDescriptions", out var words) && words.ValueKind == JsonValueKind.Array;
+        foreach (var property in new[] { "paths", described ? "valueDescriptions" : "values" })
             if (answer.TryGetProperty(property, out var values) && values.ValueKind == JsonValueKind.Array)
                 parts.AddRange(values.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
                     .Select(item => item.GetString()!).Where(item => item.Length > 0));

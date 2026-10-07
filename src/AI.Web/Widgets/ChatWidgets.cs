@@ -39,10 +39,12 @@ public sealed class ChatWidgetCatalog(IAppNavigationTargets targets) : IChatWidg
     public const string ChatModels = "chat-models";
     public const string ChatTeam = "chat-team";
     public const string ChatUnfinished = "chat-unfinished";
+    public const string ChatSchedule = "chat-schedule";
     public const string AppGuide = "app-guide";
 
     public IReadOnlyList<ChatWidgetDefinition> Widgets { get; } =
     [
+        new(ChatSchedule, "Schedule", "stopwatch", targets.Find("widgets." + ChatSchedule)!.Hint!),
         new(ChatContext, "Context", "chart-pie", targets.Find("widgets." + ChatContext)!.Hint!),
         new(ChatUsage, "Usage", "gauge", targets.Find("widgets." + ChatUsage)!.Hint!),
         new(ChatFiles, "Files", "diff", targets.Find("widgets." + ChatFiles)!.Hint!),

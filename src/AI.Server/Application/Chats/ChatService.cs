@@ -329,7 +329,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             stored.Chat.IsPinned,
             stored.Chat.PinnedAt,
             stored.Chat.BranchCount,
-            stored.Chat.Messages.Count == 0, stored.Chat.ArchivedAt, stored.Chat.ArchiveOperationId);
+            stored.Chat.Messages.Count == 0, stored.Chat.ArchivedAt, stored.Chat.ArchiveOperationId, stored.Chat.Kind.Value);
     }
 
     /// <summary>Returns the key that puts <paramref name="chatId"/> in front of <paramref name="beforeChatId"/>
@@ -446,6 +446,27 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         stored.Chat.SetToolPolicy(ToPolicy(policy), clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
         return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
+    }
+
+    public async Task<ChatKindChange?> ChangeKindAsync(Guid projectId, Guid chatId,
+        Func<ChatKindState, ChatKindState?> change, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        var current = new ChatKindState(stored.Chat.Kind.Value, stored.Chat.KindState, stored.Chat.KindStateVersion);
+        if (change(current) is not { } next) return new ChatKindChange(current, stored.Revision, false);
+        var kind = new ChatKind(next.Kind);
+        // The storage route is chosen by the kind's persistence; moving a chat between routes would
+        // leave it behind in the old one.
+        if (kindPolicies.Resolve(kind).Behavior.Persistence != kindPolicies.Resolve(stored.Chat.Kind).Behavior.Persistence)
+            throw new InvalidOperationException($"A '{stored.Chat.Kind}' chat cannot become '{kind}'.");
+        kindPolicies.Resolve(kind).ValidateState(next.State, next.Version);
+        stored.Chat.SetKind(kind, next.State, next.Version, clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        if (!result.IsSaved) throw new InvalidOperationException("Could not change the chat kind.");
+        return new ChatKindChange(new ChatKindState(kind.Value, stored.Chat.KindState, next.Version), result.Revision, true);
     }
 
     public async Task<ChatDetails?> RemoveToolPolicyAsync(Guid projectId, Guid chatId,

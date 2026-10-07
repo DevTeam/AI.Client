@@ -8259,3 +8259,162 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-unfinished-more .app-icon { width: .8rem; height: .8rem; }
 .chat-unfinished-spin { animation: tool-row-spin .9s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .chat-unfinished-spin { animation: none; } }
+
+/* Schedule pickers: the calendar, the clock and the recurrence editor of ask_user and the schedule widget. */
+.date-picker { display: grid; gap: .4rem; justify-self: start; width: min(100%, 17rem); padding: .55rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-surface); }
+.date-picker-header { display: flex; align-items: center; gap: .15rem; }
+.date-picker-month { flex: 1; padding-left: .3rem; color: var(--color-text); font-size: var(--font-size-md); font-weight: 500; }
+.date-picker-step.icon-action { width: 1.7rem; height: 1.7rem; border-radius: var(--radius-sm); color: var(--color-text-muted); }
+.date-picker-step.icon-action:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
+.date-picker-step .app-icon { width: .9rem; height: .9rem; }
+.date-picker-today { margin-left: .2rem; padding: .2rem .5rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-pill); color: var(--color-text-secondary); font-size: var(--font-size-xs); }
+.date-picker-today:hover:not(:disabled) { background: var(--color-fill-hover); }
+.date-picker-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .1rem; }
+.date-picker-weekday { padding: .15rem 0; color: var(--color-text-faint); font-size: var(--font-size-2xs); font-weight: 500; text-align: center; text-transform: uppercase; letter-spacing: .04em; }
+.date-picker-day { position: relative; display: grid; aspect-ratio: 1; min-width: 0; padding: 0; place-items: center; border-radius: 50%; color: var(--color-text); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease; }
+.date-picker-day:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
+.date-picker-day.is-outside { color: var(--color-text-faint); }
+.date-picker-day.is-today { box-shadow: inset 0 0 0 1px var(--color-accent); color: var(--color-accent-text); font-weight: 600; }
+.date-picker-day.is-selected, .date-picker-day.is-selected:hover:not(:disabled) { background: var(--color-accent-fill); color: var(--color-on-accent); font-weight: 600; }
+.date-picker-day:disabled { opacity: .35; }
+.date-picker-order { position: absolute; top: -.2rem; right: -.2rem; display: grid; min-width: .9rem; height: .9rem; padding: 0 .15rem; place-items: center; border-radius: var(--radius-pill); background: var(--color-surface-raised); box-shadow: var(--shadow-xs); color: var(--color-accent-text); font-size: var(--font-size-2xs); line-height: 1; }
+
+.time-picker { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem; }
+.time-picker-dial { display: inline-flex; align-items: center; gap: .15rem; padding: .15rem .35rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-surface); }
+.time-picker-part { display: grid; justify-items: center; }
+.time-picker-step.icon-action { width: 1.6rem; height: 1.05rem; border-radius: var(--radius-xs); color: var(--color-text-faint); }
+.time-picker-step.icon-action:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
+.time-picker-step .app-icon { width: .8rem; height: .8rem; }
+.time-picker-input { width: 2.3rem; padding: .05rem 0; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--color-text-strong); font-size: var(--font-size-2xl); font-variant-numeric: tabular-nums; font-weight: 500; text-align: center; }
+.time-picker-input:focus { border-color: var(--color-accent); outline: none; background: var(--color-accent-bg); }
+.time-picker-input::placeholder { color: var(--color-text-faint); }
+.time-picker-colon { color: var(--color-text-subtle); font-size: var(--font-size-2xl); font-weight: 500; }
+.time-picker-presets { display: flex; flex-wrap: wrap; gap: .3rem; }
+.time-picker-preset { padding: .2rem .55rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-pill); color: var(--color-text-secondary); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.time-picker-preset:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
+.time-picker-preset.is-selected { border-color: var(--color-accent); background: var(--color-accent-bg); color: var(--color-accent-text); }
+
+.number-stepper { display: inline-flex; align-items: center; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-surface); }
+.number-stepper > .icon-action { width: 1.6rem; height: 1.7rem; border-radius: var(--radius-sm); color: var(--color-text-muted); }
+.number-stepper > .icon-action:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
+.number-stepper > .icon-action .app-icon { width: .8rem; height: .8rem; }
+.number-stepper > input { width: 2.6rem; padding: .15rem 0; border: 0; border-radius: 0; background: transparent; font-size: var(--font-size-md); font-variant-numeric: tabular-nums; text-align: center; }
+.number-stepper > input:focus { outline: none; background: var(--color-accent-bg); }
+
+.recurrence-editor { display: grid; gap: .5rem; min-width: 0; }
+.recurrence-frequency, .recurrence-ends { display: flex; flex-wrap: wrap; gap: 2px; padding: 2px; border-radius: var(--radius-md); background: var(--color-fill); }
+.recurrence-frequency > button, .recurrence-ends > button { flex: 1 1 auto; padding: .25rem .4rem; border: 0; border-radius: var(--radius-sm); color: var(--color-text-subtle); font-size: var(--font-size-sm); }
+.recurrence-frequency > button:hover:not(:disabled), .recurrence-ends > button:hover:not(:disabled) { color: var(--color-text); }
+.recurrence-frequency > button.is-selected, .recurrence-ends > button.is-selected { background: var(--color-surface); box-shadow: var(--shadow-xs), 0 0 0 1px var(--color-border-subtle); color: var(--color-text); font-weight: 500; }
+.recurrence-row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .5rem; min-width: 0; }
+.recurrence-label { flex: none; width: 3.4rem; color: var(--color-text-subtle); font-size: var(--font-size-sm); }
+.recurrence-unit, .recurrence-hint { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.recurrence-hint { color: var(--color-text-faint); }
+.recurrence-weekdays { display: flex; flex-wrap: wrap; gap: .15rem; }
+.recurrence-weekdays > button { display: grid; width: 1.75rem; height: 1.75rem; padding: 0; place-items: center; border: 1px solid var(--color-border-subtle); border-radius: 50%; color: var(--color-text-secondary); font-size: var(--font-size-xs); font-weight: 500; }
+.recurrence-weekdays > button:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
+.recurrence-weekdays > button.is-selected, .recurrence-weekdays > button.is-selected:hover:not(:disabled) { border-color: var(--color-accent-fill); background: var(--color-accent-fill); color: var(--color-on-accent); }
+.recurrence-choices { display: grid; gap: .3rem; min-width: 0; }
+.recurrence-choice { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.recurrence-choice > input { width: auto; margin: 0; }
+.recurrence-choice > select, .schedule-inline > select, .schedule-rule > select, .schedule-field > select { min-height: 0; padding: .2rem .4rem; border-color: var(--color-border-subtle); border-radius: var(--radius-sm); font-size: var(--font-size-sm); }
+.recurrence-date { display: inline-flex; align-items: center; gap: .4rem; padding: .3rem .55rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text); font-size: var(--font-size-sm); }
+.recurrence-date:hover:not(:disabled), .recurrence-date.is-open { border-color: var(--color-border-strong); color: var(--color-text); }
+.recurrence-date .app-icon { width: .85rem; height: .85rem; color: var(--color-text-muted); }
+.recurrence-date .recurrence-date-chevron { width: .7rem; height: .7rem; transition: transform var(--duration-base) ease; }
+.recurrence-date.is-open .recurrence-date-chevron { transform: rotate(180deg); }
+.recurrence-summary { display: flex; align-items: flex-start; gap: .5rem; margin: .1rem 0 0; padding: .5rem .6rem; border-radius: var(--radius-md); background: var(--color-accent-bg); color: var(--color-accent-text); font-size: var(--font-size-sm); }
+.recurrence-summary > .app-icon { flex: none; width: .95rem; height: .95rem; margin-top: .1rem; }
+.recurrence-summary > div { display: grid; gap: .1rem; min-width: 0; }
+.recurrence-summary strong { color: var(--color-text); font-weight: 500; }
+.recurrence-next { color: var(--color-text-secondary); font-size: var(--font-size-xs); font-variant-numeric: tabular-nums; }
+.recurrence-next.is-empty { color: var(--color-warning-text); }
+.recurrence-summary.is-invalid { background: var(--color-danger-bg); color: var(--color-danger-text); }
+
+.schedule-picker { display: grid; gap: .55rem; justify-items: start; padding: .65rem .75rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+.schedule-picker-recurrence { justify-items: stretch; }
+.schedule-picker-picked { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.schedule-picker-picked > .app-icon { width: .9rem; height: .9rem; color: var(--color-accent-text); }
+.schedule-picker-clear { padding: .1rem .3rem; color: var(--color-text-subtle); font-size: var(--font-size-xs); text-decoration: underline; }
+.schedule-picker-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin: 0; padding: 0; list-style: none; }
+.schedule-picker-chips.is-wide { display: grid; }
+.schedule-picker-chips > li { display: inline-flex; align-items: center; gap: .15rem; padding: .1rem .1rem .1rem .55rem; border-radius: var(--radius-pill); background: var(--color-accent-bg); color: var(--color-accent-text); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.schedule-picker-chips.is-wide > li { justify-content: space-between; border-radius: var(--radius-md); }
+.schedule-picker-chips .icon-action { width: 1.4rem; height: 1.4rem; border-radius: 50%; color: inherit; }
+.schedule-picker-chips .icon-action .app-icon { width: .7rem; height: .7rem; }
+.schedule-picker-add, .schedule-picker-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.schedule-picker-open, .schedule-picker-add > button, .schedule-picker-actions > .compact-action { display: inline-flex; align-items: center; gap: .4rem; }
+.schedule-picker .compact-action .app-icon { width: .85rem; height: .85rem; }
+
+/* The schedule widget and its settings form. */
+.chat-schedule-intro { justify-items: start; }
+.chat-schedule-primary { display: inline-flex; align-items: center; gap: .4rem; border-color: var(--color-accent-fill); background: var(--color-accent-fill); color: var(--color-on-accent); }
+.chat-schedule-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent-fill) 88%, var(--color-text-strong)); color: var(--color-on-accent); }
+.chat-schedule-primary .app-icon, .chat-schedule-actions .compact-action .app-icon { width: .85rem; height: .85rem; }
+.chat-schedule-countdown { letter-spacing: -.01em; }
+.chat-schedule-countdown.is-idle { color: var(--color-text-muted); }
+.chat-schedule-state { display: inline-flex; align-items: center; gap: .35rem; padding: .1rem .5rem; border-radius: var(--radius-pill); background: var(--color-fill); color: var(--color-text-secondary); font-size: var(--font-size-xs); font-weight: 500; }
+.chat-schedule-state > i { width: .45rem; height: .45rem; border-radius: 50%; background: currentColor; }
+.chat-schedule-state.is-active { color: var(--color-success-text); }
+.chat-schedule-state.is-active > i { background: var(--color-success); }
+.chat-schedule-state.is-running { background: var(--color-accent-bg); color: var(--color-accent-text); }
+.chat-schedule-state.is-running > i { background: var(--color-accent); animation: chat-schedule-pulse 1.4s ease-in-out infinite; }
+.chat-schedule-state.is-blocked { background: color-mix(in srgb, var(--color-warning) 14%, transparent); color: var(--color-warning-text); }
+.chat-schedule-state.is-blocked > i { background: var(--color-warning); }
+.chat-schedule-state.is-paused, .chat-schedule-state.is-finished { color: var(--color-text-muted); }
+@keyframes chat-schedule-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .chat-schedule-state.is-running > i { animation: none; } }
+.chat-schedule-when { display: flex; align-items: flex-start; gap: .4rem; margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.chat-schedule-when > .app-icon { flex: none; width: .85rem; height: .85rem; margin-top: .15rem; color: var(--color-text-muted); }
+.chat-schedule-when b { color: var(--color-text); font-weight: 500; font-variant-numeric: tabular-nums; }
+.chat-schedule-dot { margin: 0 .35rem; color: var(--color-text-faint); }
+.chat-schedule-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin-top: .15rem; }
+.chat-schedule-actions .compact-action { display: inline-flex; align-items: center; gap: .35rem; }
+.chat-schedule-editor-heading { display: flex; align-items: center; gap: .4rem; color: var(--color-text); font-size: var(--font-size-md); }
+.chat-schedule-editor-heading > .app-icon { width: .95rem; height: .95rem; color: var(--color-accent-text); }
+.chat-schedule-editor-heading strong { font-weight: 500; }
+.chat-schedule-facts .chat-usage-grid-wide { text-align: left; white-space: normal; }
+.chat-schedule-task { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; color: var(--color-text); }
+.chat-schedule-rules { display: flex; flex-wrap: wrap; gap: .2rem .6rem; }
+.chat-schedule-rules > span, .schedule-rule-outcome { display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap; }
+.chat-schedule-rules i, .schedule-rule-outcome > i { width: .45rem; height: .45rem; border-radius: 50%; }
+.chat-schedule-rules .is-succeeded > i, .schedule-rule-outcome.is-succeeded > i { background: var(--color-success); }
+.chat-schedule-rules .is-failed > i, .schedule-rule-outcome.is-failed > i { background: var(--color-danger); }
+.chat-schedule-rules .is-blocked > i, .schedule-rule-outcome.is-blocked > i { background: var(--color-warning); }
+.chat-schedule-runs { display: grid; margin: 0 -.35rem; padding: 0; list-style: none; }
+.chat-schedule-run { display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); align-items: start; column-gap: .45rem; width: 100%; padding: .35rem; border: 0; border-radius: var(--radius-sm); background: none; color: var(--color-text); font: inherit; text-align: left; }
+.chat-schedule-run:hover:not(:disabled), .chat-schedule-run:focus-visible { background: var(--color-fill-hover); color: var(--color-text); outline: none; }
+.chat-schedule-run:disabled { color: var(--color-text); opacity: 1; cursor: default; }
+.chat-schedule-run-mark { display: inline-flex; align-items: center; justify-content: center; height: 1.2rem; color: var(--color-text-faint); }
+.chat-schedule-run-mark .app-icon { width: .85rem; height: .85rem; }
+.chat-schedule-run.is-succeeded .chat-schedule-run-mark { color: var(--color-success); }
+.chat-schedule-run.is-failed .chat-schedule-run-mark { color: var(--color-danger); }
+.chat-schedule-run.is-blocked .chat-schedule-run-mark { color: var(--color-warning); }
+.chat-schedule-run.is-running .chat-schedule-run-mark { color: var(--color-accent); }
+.chat-schedule-run-body { display: flex; flex-direction: column; gap: .05rem; min-width: 0; }
+.chat-schedule-run-title { overflow: hidden; font-size: var(--font-size-md); font-variant-numeric: tabular-nums; line-height: 1.2rem; text-overflow: ellipsis; white-space: nowrap; }
+.chat-schedule-run-meta { display: flex; flex-wrap: wrap; color: var(--color-text-subtle); font-size: var(--font-size-xs); }
+.chat-schedule-run-meta > span { white-space: nowrap; }
+.chat-schedule-run-meta > span + span::before { content: "\00b7"; margin: 0 .35rem; }
+.chat-schedule-run.is-succeeded .chat-schedule-run-status { color: var(--color-success-text); }
+.chat-schedule-run.is-failed .chat-schedule-run-status { color: var(--color-danger-text); }
+.chat-schedule-run.is-blocked .chat-schedule-run-status { color: var(--color-warning-text); }
+.chat-schedule-run.is-running .chat-schedule-run-status { color: var(--color-accent-text); }
+.chat-schedule-run-summary { overflow: hidden; color: var(--color-text-secondary); font-size: var(--font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
+.chat-schedule-remove { padding-top: .5rem; }
+.chat-schedule-remove-link { display: inline-flex; align-items: center; gap: .35rem; justify-self: start; color: var(--color-danger-text); }
+.chat-schedule-remove-link .app-icon { width: .85rem; height: .85rem; }
+.chat-schedule-danger { border-color: var(--color-danger-border); color: var(--color-danger-text); }
+.chat-schedule-danger:hover:not(:disabled) { background: var(--color-danger-bg-hover); color: var(--color-danger-text-strong); }
+
+.schedule-form { display: grid; gap: .8rem; min-width: 0; }
+.schedule-field { display: grid; gap: .35rem; min-width: 0; }
+.schedule-field-label { color: var(--color-text-secondary); font-size: var(--font-size-sm); font-weight: 500; }
+.schedule-field textarea { min-height: 0; padding: .4rem .5rem; border-color: var(--color-border-subtle); border-radius: var(--radius-md); font-size: var(--font-size-md); resize: vertical; }
+.schedule-field input[type="text"] { padding: .35rem .5rem; border-color: var(--color-border-subtle); border-radius: var(--radius-md); font-size: var(--font-size-md); }
+.schedule-check { display: flex; align-items: center; gap: .45rem; cursor: pointer; }
+.schedule-check > input { width: auto; margin: 0; }
+.schedule-inline { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.schedule-deletion-at { align-items: flex-start; }
+.schedule-rules { display: grid; gap: .3rem; }
+.schedule-rule { display: flex; align-items: center; justify-content: space-between; gap: .5rem; color: var(--color-text-secondary); font-size: var(--font-size-sm); }

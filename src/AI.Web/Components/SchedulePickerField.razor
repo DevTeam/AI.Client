@@ -1,0 +1,149 @@
+@* The schedule pickers of a question card: a calendar for "date", a clock for "time", the recurrence
+   editor for "recurrence". What is picked travels as exact values — yyyy-MM-dd, HH:mm, recurrence
+   JSON — in the order picked; nothing is picked until the person touches the picker, so an
+   untouched one leaves the question to the assistant like any blank answer. *@
+@using AI.Contracts.Schedules
+@inject IScheduleCalendar Calendar
+@inject IScheduleDescriptions Descriptions
+
+<div class="schedule-picker schedule-picker-@Kind">
+    @switch (Kind)
+    {
+        case SchedulePickers.Date:
+            <DatePickerCalendar Values="@Values" MultiSelect="@MultiSelect" Disabled="@Disabled" Label="@Label"
+                                ValuesChanged="ValuesChanged" />
+            @if (Values.Count > 0)
+            {
+                <p class="schedule-picker-picked">
+                    <AppIcon Name="calendar-check" />
+                    <span>@string.Join(", ", Values.Select(DateLabel))</span>
+                    <button class="schedule-picker-clear" type="button" disabled="@Disabled" @onclick="ClearAsync">Clear</button>
+                </p>
+            }
+            break;
+        case SchedulePickers.Time when !MultiSelect:
+            <TimePickerField Value="@Values.FirstOrDefault()" Disabled="@Disabled" Label="@Label"
+                             ValueChanged="time => ValuesChanged.InvokeAsync(time is null ? [] : [time])" />
+            break;
+        case SchedulePickers.Time:
+            @if (Values.Count > 0)
+            {
+                <ul class="schedule-picker-chips" aria-label="Picked times">
+                    @foreach (var time in Values)
+                    {
+                        <li><span>@time</span><button class="icon-action" type="button" aria-label="Remove @time" disabled="@Disabled"
+                                                      @onclick="() => ValuesChanged.InvokeAsync(Values.Where(item => item != time).ToArray())"><AppIcon Name="x" /></button></li>
+                    }
+                </ul>
+            }
+            <div class="schedule-picker-add">
+                <TimePickerField @bind-Value="_draftTime" Disabled="@Disabled" Label="@Label" />
+                <button class="secondary-action compact-action" type="button" disabled="@(Disabled || _draftTime is null || Values.Contains(_draftTime))"
+                        @onclick="AddTimeAsync"><AppIcon Name="plus" /> Add time</button>
+            </div>
+            break;
+        case SchedulePickers.Recurrence:
+            @if (MultiSelect && Values.Count > 0)
+            {
+                <ul class="schedule-picker-chips is-wide" aria-label="Picked schedules">
+                    @foreach (var value in Values)
+                    {
+                        <li><span>@Describe(value)</span><button class="icon-action" type="button" aria-label="Remove schedule" disabled="@Disabled"
+                                                                @onclick="() => ValuesChanged.InvokeAsync(Values.Where(item => item != value).ToArray())"><AppIcon Name="x" /></button></li>
+                    }
+                </ul>
+            }
+            @if (_editor is { } recurrence)
+            {
+                <RecurrenceEditor Value="@recurrence" ValueChanged="EditAsync" TimeZone="@Calendar.LocalTimeZoneId" Disabled="@Disabled" />
+                <div class="schedule-picker-actions">
+                    @if (MultiSelect)
+                    {
+                        <button class="secondary-action compact-action" type="button" disabled="@(Disabled || Calendar.Validate(recurrence) is not null)"
+                                @onclick="AddRecurrenceAsync"><AppIcon Name="plus" /> Add this schedule</button>
+                    }
+                    <button class="schedule-picker-clear" type="button" disabled="@Disabled" @onclick="ClearAsync">@(MultiSelect ? "Close" : "Clear")</button>
+                </div>
+            }
+            else
+            {
+                <button class="secondary-action compact-action schedule-picker-open" type="button" disabled="@Disabled" @onclick="OpenEditorAsync">
+                    <AppIcon Name="repeat" /> @(MultiSelect && Values.Count > 0 ? "Add another schedule…" : "Set a schedule…")
+                </button>
+            }
+            break;
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Kind { get; set; } = SchedulePickers.Date;
+    [Parameter] public IReadOnlyList<string> Values { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyList<string>> ValuesChanged { get; set; }
+    [Parameter] public bool MultiSelect { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Label { get; set; }
+
+    private string? _draftTime;
+    private ScheduleRecurrence? _editor;
+    private string? _shown;
+
+    protected override void OnParametersSet()
+    {
+        // A preset chosen above the picker arrives as a value: the editor shows it, ready to adjust.
+        if (Kind != SchedulePickers.Recurrence || MultiSelect) return;
+        var value = Values.FirstOrDefault();
+        if (value == _shown) return;
+        _shown = value;
+        _editor = ScheduleCalendar.TryDeserialize(value, out var recurrence) ? recurrence : value is null ? null : _editor;
+    }
+
+    private Task OpenEditorAsync()
+    {
+        var tomorrow = DateOnly.FromDateTime(DateTime.Now).AddDays(1);
+        _editor = new ScheduleRecurrence(ScheduleFrequency.Daily,
+            tomorrow.ToString(ScheduleCalendar.DateFormat, System.Globalization.CultureInfo.InvariantCulture), "09:00");
+        return MultiSelect ? Task.CompletedTask : PublishAsync(_editor);
+    }
+
+    private Task EditAsync(ScheduleRecurrence recurrence)
+    {
+        _editor = recurrence;
+        return MultiSelect ? Task.CompletedTask : PublishAsync(recurrence);
+    }
+
+    private Task PublishAsync(ScheduleRecurrence recurrence)
+    {
+        // An unfinished recurrence is no answer yet: the editor says what is wrong with it.
+        var value = Calendar.Validate(recurrence) is null ? ScheduleCalendar.Serialize(recurrence) : null;
+        _shown = value;
+        return ValuesChanged.InvokeAsync(value is null ? [] : [value]);
+    }
+
+    private async Task AddRecurrenceAsync()
+    {
+        if (_editor is not { } recurrence || Calendar.Validate(recurrence) is not null) return;
+        var value = ScheduleCalendar.Serialize(recurrence);
+        _editor = null;
+        if (!Values.Contains(value)) await ValuesChanged.InvokeAsync([.. Values, value]);
+    }
+
+    private async Task AddTimeAsync()
+    {
+        if (_draftTime is not { } time || Values.Contains(time)) return;
+        _draftTime = null;
+        await ValuesChanged.InvokeAsync([.. Values, time]);
+    }
+
+    private async Task ClearAsync()
+    {
+        _editor = null;
+        _shown = null;
+        if (!MultiSelect || Kind != SchedulePickers.Recurrence) await ValuesChanged.InvokeAsync([]);
+    }
+
+    private string Describe(string value) => ScheduleCalendar.TryDeserialize(value, out var recurrence)
+        ? Descriptions.Describe(recurrence!) : value;
+
+    private static string DateLabel(string value) => ScheduleCalendar.TryParseDate(value, out var date)
+        ? date.ToString("ddd d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture) : value;
+}

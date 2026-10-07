@@ -10,6 +10,7 @@ using Application.Memory;
 using Application.Notifications;
 using Application.Projects;
 using Application.Runs;
+using Application.Schedules;
 using Application.Resources;
 using Application.Settings;
 using Application.Skills;
@@ -65,6 +66,8 @@ internal sealed class Composition
                 ContextEstimateSamples, AppDataChangeSignal, AppNavigationSignal, AppOperationLog, WorkspaceFileSearch,
                 TokenUsageMeter, JsonLinesTokenUsageLedger, PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits,
                 JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, CompositeToolSessionFactory, ContextTextTokenizer>()
+            // The dispatcher of scheduled chats owns one loop and the schedules it last read.
+            .Singleton<ChatScheduler>()
             .Singleton<ChatKindPolicyRegistry>()
             .Bind<IPersistentChatRepository>().As(Lifetime.Singleton).To<JsonChatRepository>()
             .Bind<IHostLifetimeChatRepository>().As(Lifetime.Singleton).To<HostLifetimeChatRepository>()
@@ -117,6 +120,7 @@ internal sealed class Composition
                 RateLimitHeaderReader, ContextSummaryWriter, HistoryCheckpointService, ChatHistoryCompaction,
                 ToolAutoApprover, GuideChats, ConnectionChoice, ReviewCommentSuggestions, AppToolReply,
                 GenericSkillExecutor, SkillGuide, SkillRouting, AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>()
+            .Transient<ChatScheduleStore, ChatScheduleService, ScheduledChatPass>()
             .Transient<IKeyringMasterKeyStore>(ctx =>
             {
                 if (OperatingSystem.IsMacOS())
@@ -137,14 +141,15 @@ internal sealed class Composition
             .Transient<ChatToolRiskAssessSkill>("chat-tool-risk-assess")
             // Endpoints, app tools and session factories are injected as collections; the tag belongs to
             // the call, so each tagged group stays on its own.
-            .Transient<ConversationChatKindPolicy, GuideChatKindPolicy, DemoChatKindPolicy, TeamDemoChatKindPolicy>(Tag.Unique)
+            .Transient<ConversationChatKindPolicy, GuideChatKindPolicy, DemoChatKindPolicy, TeamDemoChatKindPolicy,
+                ScheduledChatKindPolicy>(Tag.Unique)
             .Transient<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints,
                 ChatCompletionEndpoints, FileSystemEndpoints, FilePreviewEndpoints, GitEndpoints, MemoryEndpoints,
                 SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints,
-                AppGuideEndpoints>(Tag.Unique)
+                AppGuideEndpoints, ScheduleEndpoints>(Tag.Unique)
             .Transient<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool,
                 AppAskUserTool, AppToolSearchTool, AppContextCompactTool, AppResourcesTool, AppMemoryTool,
-                AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool,
+                AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool, AppScheduleTool,
                 DefaultToolSessionFactory, CSharpToolSessionFactory>(Tag.Unique)
             .Transient<AppToolSessionFactory>(Tag.Type)
             .Transient((
@@ -175,6 +180,7 @@ internal sealed class AspNetComposition
             .Root<IChatService>()
             .Root<IChatKindPolicyRegistry>()
             .Root<IChatArchiveService>()
+            .Root<IChatScheduleService>()
             .Root<ISkillCatalog>()
             .Root<ISkillRunner>()
             .Root<IChatSearchService>()

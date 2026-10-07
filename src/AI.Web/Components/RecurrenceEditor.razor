@@ -1,0 +1,289 @@
+@* One editor for every recurrence a schedule can have — once, every N hours, days, weeks, months or
+   years, on chosen weekdays or a day of the month, from a start date until a date or a number of
+   runs. It is used by the recurrence picker of ask_user and by the schedule widget. Every change
+   hands the whole recurrence back, and under the controls the editor says the result in words and
+   lists the next runs, so what is saved is never a guess. *@
+@using System.Globalization
+@using AI.Contracts.Schedules
+@inject IScheduleCalendar Calendar
+@inject IScheduleDescriptions Descriptions
+
+<div class="recurrence-editor @(Disabled ? "is-disabled" : null)" @onkeydown:stopPropagation="true">
+    <div class="recurrence-frequency" role="radiogroup" aria-label="Repeats">
+        @foreach (var frequency in Enum.GetValues<ScheduleFrequency>())
+        {
+            var chosen = Value.Frequency == frequency;
+            <button type="button" role="radio" aria-checked="@(chosen ? "true" : "false")" class="@(chosen ? "is-selected" : null)"
+                    disabled="@Disabled" @onclick="() => SetFrequencyAsync(frequency)">@FrequencyLabel(frequency)</button>
+        }
+    </div>
+
+    @if (Value.Frequency != ScheduleFrequency.Once)
+    {
+        <div class="recurrence-row">
+            <span class="recurrence-label">Every</span>
+            <div class="number-stepper">
+                <button class="icon-action" type="button" aria-label="Fewer" disabled="@(Disabled || Value.Interval <= 1)"
+                        @onclick="() => ChangeAsync(Value with { Interval = Math.Max(1, Value.Interval - 1) })"><AppIcon Name="chevron-down" /></button>
+                <input type="text" inputmode="numeric" aria-label="Interval" value="@Value.Interval" disabled="@Disabled"
+                       @onchange="args => ChangeAsync(Value with { Interval = Number(args, 1, 999, Value.Interval) })" />
+                <button class="icon-action" type="button" aria-label="More" disabled="@(Disabled || Value.Interval >= 999)"
+                        @onclick="() => ChangeAsync(Value with { Interval = Math.Min(999, Value.Interval + 1) })"><AppIcon Name="chevron-up" /></button>
+            </div>
+            <span class="recurrence-unit">@Unit()</span>
+        </div>
+    }
+
+    @if (Value.Frequency == ScheduleFrequency.Weekly || Value is { Frequency: ScheduleFrequency.Daily, Interval: 1 })
+    {
+        <div class="recurrence-row">
+            <span class="recurrence-label">@(Value.Frequency == ScheduleFrequency.Daily ? "Only on" : "On")</span>
+            <div class="recurrence-weekdays" role="group" aria-label="Weekdays">
+                @foreach (var day in Enum.GetValues<ScheduleWeekday>())
+                {
+                    var on = Weekdays().Contains(day);
+                    <button type="button" class="@(on ? "is-selected" : null)" aria-pressed="@(on ? "true" : "false")"
+                            title="@day" aria-label="@day" disabled="@Disabled" @onclick="() => ToggleWeekdayAsync(day)">@day.ToString()[..2]</button>
+                }
+            </div>
+            @if (Value.Frequency == ScheduleFrequency.Daily)
+            {
+                <span class="recurrence-hint">@(Value.Weekdays is { Count: > 0 } ? null : "any day")</span>
+            }
+        </div>
+    }
+
+    @if (Value.Frequency == ScheduleFrequency.Monthly)
+    {
+        var byWeekday = Value.MonthWeekday is not null;
+        <div class="recurrence-row recurrence-month" role="radiogroup" aria-label="Day of the month">
+            <span class="recurrence-label">On</span>
+            <div class="recurrence-choices">
+                <label class="recurrence-choice">
+                    <input type="radio" name="@_id-month" checked="@(!byWeekday)" disabled="@Disabled"
+                           @onchange="() => ChangeAsync(Value with { MonthWeekday = null, MonthDay = StartDate().Day })" />
+                    <span>day</span>
+                    <select aria-label="Day of the month" disabled="@(Disabled || byWeekday)"
+                            @onchange="args => ChangeAsync(Value with { MonthDay = int.Parse(args.Value!.ToString()!, Culture), MonthWeekday = null })">
+                        @for (var day = 1; day <= 31; day++)
+                        {
+                            var number = day;
+                            <option value="@number" selected="@((Value.MonthDay ?? StartDate().Day) == number)">@number</option>
+                        }
+                        <option value="-1" selected="@(Value.MonthDay == -1)">last</option>
+                    </select>
+                </label>
+                <label class="recurrence-choice">
+                    <input type="radio" name="@_id-month" checked="@byWeekday" disabled="@Disabled"
+                           @onchange="() => ChangeAsync(Value with { MonthDay = null, MonthWeekday = DefaultMonthWeekday() })" />
+                    <span>the</span>
+                    <select aria-label="Which one" disabled="@(Disabled || !byWeekday)"
+                            @onchange="args => ChangeAsync(Value with { MonthWeekday = (Value.MonthWeekday ?? DefaultMonthWeekday()) with { Ordinal = int.Parse(args.Value!.ToString()!, Culture) } })">
+                        @foreach (var (ordinal, label) in Ordinals)
+                        {
+                            <option value="@ordinal" selected="@(Value.MonthWeekday?.Ordinal == ordinal)">@label</option>
+                        }
+                    </select>
+                    <select aria-label="Weekday" disabled="@(Disabled || !byWeekday)"
+                            @onchange="args => ChangeAsync(Value with { MonthWeekday = (Value.MonthWeekday ?? DefaultMonthWeekday()) with { Day = Enum.Parse<ScheduleWeekday>(args.Value!.ToString()!) } })">
+                        @foreach (var day in Enum.GetValues<ScheduleWeekday>())
+                        {
+                            <option value="@day" selected="@(Value.MonthWeekday?.Day == day)">@day</option>
+                        }
+                    </select>
+                </label>
+            </div>
+        </div>
+    }
+
+    <div class="recurrence-row">
+        <span class="recurrence-label">@(Value.Frequency == ScheduleFrequency.Hourly ? "First at" : "At")</span>
+        <TimePickerField Value="@Value.Time" ValueChanged="time => ChangeAsync(Value with { Time = time ?? Value.Time })"
+                         Disabled="@Disabled" ShowPresets="false" Label="Time of day" />
+    </div>
+
+    <div class="recurrence-row">
+        <span class="recurrence-label">@(Value.Frequency == ScheduleFrequency.Once ? "On" : "Starts")</span>
+        <button type="button" class="recurrence-date @(_editing == DateField.Start ? "is-open" : null)" disabled="@Disabled"
+                aria-expanded="@(_editing == DateField.Start ? "true" : "false")" @onclick="() => Toggle(DateField.Start)">
+            <AppIcon Name="calendar" /><span>@DateLabel(Value.Start)</span><AppIcon Name="chevron-down" Class="recurrence-date-chevron" />
+        </button>
+    </div>
+    @if (_editing == DateField.Start)
+    {
+        <DatePickerCalendar Values="@([Value.Start])" Label="Start date" Disabled="@Disabled"
+                            ValuesChanged="values => PickDateAsync(values, DateField.Start)" />
+    }
+
+    @if (Value.Frequency != ScheduleFrequency.Once)
+    {
+        var ends = Value.Until is not null ? "until" : Value.Count is not null ? "count" : "never";
+        <div class="recurrence-row">
+            <span class="recurrence-label">Ends</span>
+            <div class="recurrence-ends" role="radiogroup" aria-label="Ends">
+                <button type="button" role="radio" aria-checked="@(ends == "never" ? "true" : "false")" class="@(ends == "never" ? "is-selected" : null)"
+                        disabled="@Disabled" @onclick="() => ChangeAsync(Value with { Until = null, Count = null })">Never</button>
+                <button type="button" role="radio" aria-checked="@(ends == "until" ? "true" : "false")" class="@(ends == "until" ? "is-selected" : null)"
+                        disabled="@Disabled" @onclick="SetUntilAsync">On a date</button>
+                <button type="button" role="radio" aria-checked="@(ends == "count" ? "true" : "false")" class="@(ends == "count" ? "is-selected" : null)"
+                        disabled="@Disabled" @onclick="() => ChangeAsync(Value with { Until = null, Count = Value.Count ?? 10 })">After</button>
+            </div>
+        </div>
+        @if (Value.Until is { } until)
+        {
+            <div class="recurrence-row">
+                <span class="recurrence-label"></span>
+                <button type="button" class="recurrence-date @(_editing == DateField.Until ? "is-open" : null)" disabled="@Disabled"
+                        aria-expanded="@(_editing == DateField.Until ? "true" : "false")" @onclick="() => Toggle(DateField.Until)">
+                    <AppIcon Name="calendar" /><span>@DateLabel(until)</span><AppIcon Name="chevron-down" Class="recurrence-date-chevron" />
+                </button>
+            </div>
+            @if (_editing == DateField.Until)
+            {
+                <DatePickerCalendar Values="@([until])" Min="@Value.Start" Label="Last date" Disabled="@Disabled"
+                                    ValuesChanged="values => PickDateAsync(values, DateField.Until)" />
+            }
+        }
+        else if (Value.Count is { } count)
+        {
+            <div class="recurrence-row">
+                <span class="recurrence-label"></span>
+                <div class="number-stepper">
+                    <button class="icon-action" type="button" aria-label="Fewer runs" disabled="@(Disabled || count <= 1)"
+                            @onclick="() => ChangeAsync(Value with { Count = Math.Max(1, count - 1) })"><AppIcon Name="chevron-down" /></button>
+                    <input type="text" inputmode="numeric" aria-label="Number of runs" value="@count" disabled="@Disabled"
+                           @onchange="args => ChangeAsync(Value with { Count = Number(args, 1, 100_000, count) })" />
+                    <button class="icon-action" type="button" aria-label="More runs" disabled="@Disabled"
+                            @onclick="() => ChangeAsync(Value with { Count = Math.Min(100_000, count + 1) })"><AppIcon Name="chevron-up" /></button>
+                </div>
+                <span class="recurrence-unit">@(count == 1 ? "run" : "runs")</span>
+            </div>
+        }
+    }
+
+    @if (Calendar.Validate(Value) is { } invalid)
+    {
+        <p class="recurrence-summary is-invalid" role="alert"><AppIcon Name="error" /><span>@invalid</span></p>
+    }
+    else
+    {
+        var upcoming = Calendar.Upcoming(Value, TimeZone, DateTimeOffset.UtcNow, 3);
+        <div class="recurrence-summary" aria-live="polite">
+            <AppIcon Name="@(Value.Frequency == ScheduleFrequency.Once ? "calendar" : "repeat")" />
+            <div>
+                <strong>@Descriptions.Describe(Value)</strong>
+                @if (upcoming.Count == 0)
+                {
+                    <span class="recurrence-next is-empty">No run after now: pick a later date or time.</span>
+                }
+                else
+                {
+                    <span class="recurrence-next">Next: @string.Join(" · ", upcoming.Select(at => Descriptions.Moment(Calendar.ToLocal(at, TimeZone))))</span>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly CultureInfo Culture = CultureInfo.InvariantCulture;
+    private static readonly (int Ordinal, string Label)[] Ordinals = [(1, "first"), (2, "second"), (3, "third"), (4, "fourth"), (-1, "last")];
+    private enum DateField { None, Start, Until }
+
+    [Parameter, EditorRequired] public ScheduleRecurrence Value { get; set; } = null!;
+    [Parameter] public EventCallback<ScheduleRecurrence> ValueChanged { get; set; }
+
+    /// <summary>The time zone the recurrence is in, for the next runs it lists.</summary>
+    [Parameter] public string TimeZone { get; set; } = TimeZoneInfo.Local.Id;
+    [Parameter] public bool Disabled { get; set; }
+
+    private readonly string _id = $"recurrence-{Guid.NewGuid():N}";
+    private DateField _editing;
+
+    private Task ChangeAsync(ScheduleRecurrence next) => ValueChanged.InvokeAsync(next);
+
+    private Task SetFrequencyAsync(ScheduleFrequency frequency)
+    {
+        if (frequency == Value.Frequency) return Task.CompletedTask;
+        // Each frequency keeps only what it understands, so the saved recurrence carries no
+        // leftovers that would read differently later.
+        var start = StartDate();
+        return ChangeAsync(Value with
+        {
+            Frequency = frequency,
+            Interval = frequency == ScheduleFrequency.Once ? 1 : Value.Interval,
+            Weekdays = frequency == ScheduleFrequency.Weekly ? Value.Weekdays is { Count: > 0 } days ? days : [Weekday(start)] : null,
+            MonthDay = frequency is ScheduleFrequency.Monthly or ScheduleFrequency.Yearly ? Value.MonthDay : null,
+            MonthWeekday = frequency == ScheduleFrequency.Monthly ? Value.MonthWeekday : null,
+            Until = frequency == ScheduleFrequency.Once ? null : Value.Until,
+            Count = frequency == ScheduleFrequency.Once ? null : Value.Count
+        });
+    }
+
+    private Task ToggleWeekdayAsync(ScheduleWeekday day)
+    {
+        var days = Weekdays().ToList();
+        if (!days.Remove(day)) days.Add(day);
+        days.Sort();
+        // A weekly schedule needs at least one day; a daily one with none runs every day.
+        if (days.Count == 0 && Value.Frequency == ScheduleFrequency.Weekly) return Task.CompletedTask;
+        return ChangeAsync(Value with { Weekdays = days.Count == 0 ? null : days });
+    }
+
+    private IReadOnlyList<ScheduleWeekday> Weekdays() => Value.Weekdays is { Count: > 0 } days ? days
+        : Value.Frequency == ScheduleFrequency.Weekly ? [Weekday(StartDate())] : [];
+
+    private ScheduleMonthWeekday DefaultMonthWeekday()
+    {
+        var start = StartDate();
+        return new ScheduleMonthWeekday(Math.Min(4, (start.Day - 1) / 7 + 1), Weekday(start));
+    }
+
+    private Task SetUntilAsync() => ChangeAsync(Value with
+    {
+        Count = null,
+        Until = Value.Until ?? StartDate().AddMonths(1).ToString(ScheduleCalendar.DateFormat, Culture)
+    });
+
+    private void Toggle(DateField field) => _editing = _editing == field ? DateField.None : field;
+
+    private Task PickDateAsync(IReadOnlyList<string> values, DateField field)
+    {
+        if (values is not [var date]) return Task.CompletedTask;
+        _editing = DateField.None;
+        return ChangeAsync(field == DateField.Start ? Value with { Start = date } : Value with { Until = date });
+    }
+
+    private DateOnly StartDate() => ScheduleCalendar.TryParseDate(Value.Start, out var start) ? start : DateOnly.FromDateTime(DateTime.Now);
+
+    private static ScheduleWeekday Weekday(DateOnly date) => (ScheduleWeekday)(((int)date.DayOfWeek + 6) % 7);
+
+    private static string DateLabel(string value) => ScheduleCalendar.TryParseDate(value, out var date)
+        ? date.ToString("ddd d MMM yyyy", Culture) : value;
+
+    private string Unit()
+    {
+        var one = Value.Interval == 1;
+        return Value.Frequency switch
+        {
+            ScheduleFrequency.Hourly => one ? "hour" : "hours",
+            ScheduleFrequency.Daily => one ? "day" : "days",
+            ScheduleFrequency.Weekly => one ? "week" : "weeks",
+            ScheduleFrequency.Monthly => one ? "month" : "months",
+            _ => one ? "year" : "years"
+        };
+    }
+
+    private static string FrequencyLabel(ScheduleFrequency frequency) => frequency switch
+    {
+        ScheduleFrequency.Once => "Once",
+        ScheduleFrequency.Hourly => "Hourly",
+        ScheduleFrequency.Daily => "Daily",
+        ScheduleFrequency.Weekly => "Weekly",
+        ScheduleFrequency.Monthly => "Monthly",
+        _ => "Yearly"
+    };
+
+    private static int Number(ChangeEventArgs args, int min, int max, int fallback) =>
+        int.TryParse(args.Value?.ToString(), NumberStyles.None, Culture, out var number) ? Math.Clamp(number, min, max) : fallback;
+}

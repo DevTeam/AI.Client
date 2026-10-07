@@ -1,0 +1,102 @@
+@* A month on one card: the date picker of ask_user and of the schedule editor. Dates travel as
+   yyyy-MM-dd so what is picked is what is stored. Several dates can be picked when the question
+   allows it; their order is the order they were picked in. Days are plain buttons, so Tab and
+   Enter work as anywhere else; keys stay inside, so Enter on a day never sends the question card. *@
+@using System.Globalization
+@using AI.Contracts.Schedules
+
+<div class="date-picker @(Disabled ? "is-disabled" : null)" role="group" aria-label="@(Label ?? "Pick a date")" @onkeydown:stopPropagation="true">
+    <div class="date-picker-header">
+        <button class="icon-action date-picker-step" type="button" title="Previous month" aria-label="Previous month"
+                disabled="@Disabled" @onclick="() => Step(-1)"><AppIcon Name="chevron-left" /></button>
+        <span class="date-picker-month" aria-live="polite">@_month.ToString("MMMM yyyy", Culture)</span>
+        <button class="icon-action date-picker-step" type="button" title="Next month" aria-label="Next month"
+                disabled="@Disabled" @onclick="() => Step(1)"><AppIcon Name="chevron-right" /></button>
+        <button class="date-picker-today" type="button" disabled="@Disabled" title="Show today" @onclick="ShowToday">Today</button>
+    </div>
+    <div class="date-picker-grid">
+        @foreach (var name in WeekdayNames)
+        {
+            <span class="date-picker-weekday" aria-hidden="true">@name</span>
+        }
+        @foreach (var day in Days())
+        {
+            var value = day.ToString(ScheduleCalendar.DateFormat, Culture);
+            var position = SelectedPosition(value);
+            var outside = day.Month != _month.Month;
+            var blocked = IsBlocked(day);
+            <button @key="value" type="button"
+                    class="date-picker-day @(outside ? "is-outside" : null) @(day == Today ? "is-today" : null) @(position > 0 ? "is-selected" : null)"
+                    disabled="@(Disabled || blocked)"
+                    aria-pressed="@(position > 0 ? "true" : "false")"
+                    aria-label="@DayLabel(day)"
+                    @onclick="() => PickAsync(day)">
+                @day.Day
+                @if (MultiSelect && position > 0 && Values.Count > 1)
+                {
+                    <span class="date-picker-order" aria-hidden="true">@position</span>
+                }
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly CultureInfo Culture = CultureInfo.InvariantCulture;
+    private static readonly string[] WeekdayNames = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+
+    /// <summary>Picked dates, yyyy-MM-dd, in the order they were picked.</summary>
+    [Parameter] public IReadOnlyList<string> Values { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyList<string>> ValuesChanged { get; set; }
+    [Parameter] public bool MultiSelect { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>The first date that may be picked, yyyy-MM-dd.</summary>
+    [Parameter] public string? Min { get; set; }
+
+    private DateOnly _month;
+    private bool _initialized;
+
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
+
+    protected override void OnParametersSet()
+    {
+        if (_initialized) return;
+        _initialized = true;
+        var start = Values.Count > 0 && ScheduleCalendar.TryParseDate(Values[^1], out var picked) ? picked : Today;
+        _month = new DateOnly(start.Year, start.Month, 1);
+    }
+
+    private IEnumerable<DateOnly> Days()
+    {
+        var first = _month.AddDays(-(((int)_month.DayOfWeek + 6) % 7));
+        for (var index = 0; index < 42; index++) yield return first.AddDays(index);
+    }
+
+    private static string DayLabel(DateOnly day) => day.ToString("dddd d MMMM yyyy", Culture) + (day == Today ? ", today" : null);
+
+    private bool IsBlocked(DateOnly day) => Min is { } min && ScheduleCalendar.TryParseDate(min, out var first) && day < first;
+
+    private int SelectedPosition(string value)
+    {
+        for (var index = 0; index < Values.Count; index++)
+            if (Values[index] == value) return index + 1;
+        return 0;
+    }
+
+    private void Step(int months) => _month = _month.AddMonths(months);
+
+    private void ShowToday() => _month = new DateOnly(Today.Year, Today.Month, 1);
+
+    private async Task PickAsync(DateOnly day)
+    {
+        if (Disabled || IsBlocked(day)) return;
+        if (day.Month != _month.Month) _month = new DateOnly(day.Year, day.Month, 1);
+        var value = day.ToString(ScheduleCalendar.DateFormat, Culture);
+        IReadOnlyList<string> next = MultiSelect
+            ? Values.Contains(value) ? Values.Where(item => item != value).ToArray() : [.. Values, value]
+            : Values is [var only] && only == value ? [] : [value];
+        await ValuesChanged.InvokeAsync(next);
+    }
+}

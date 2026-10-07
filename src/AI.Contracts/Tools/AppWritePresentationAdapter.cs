@@ -12,7 +12,7 @@ public sealed class AppWritePresentationAdapter : BuiltInToolPresentationAdapter
 {
     protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        "app_chats", "app_runs", "app_projects", "app_security", "app_memory", "app_instructions", "app_skills",
+        "app_chats", "app_runs", "app_projects", "app_security", "app_memory", "app_instructions", "app_skills", "app_schedule",
     };
 
     protected override string Prefix => ToolRef.AppPrefix;
@@ -28,7 +28,9 @@ public sealed class AppWritePresentationAdapter : BuiltInToolPresentationAdapter
             detail is { Length: > 0 } ? Trim(detail) : null,
             // The tools that can delete announce themselves as destructive; app_runs changes state
             // without ever removing history, and remembering something removes nothing either.
-            tool.Name == "app_runs" || tool.Name == "app_memory" && operation != "Delete"
+            // A schedule is never history: removing one keeps the chat, and reading one changes nothing.
+            tool.Name == "app_schedule" && operation == "Get" ? ToolSafety.ReadOnly
+            : tool.Name is "app_runs" or "app_schedule" || tool.Name == "app_memory" && operation != "Delete"
                 ? ToolSafety.Mutating : ToolSafety.Destructive);
     }
 

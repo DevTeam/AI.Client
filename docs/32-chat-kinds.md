@@ -1,6 +1,6 @@
 # Extensible chat kinds
 
-Status: Implemented for Conversation, Guide, and Demo. The other kinds below are design examples only.
+Status: Implemented for Conversation, Guide, Demo, Team demo and Scheduled. The other kinds below are design examples only.
 
 ## Current contract
 
@@ -13,6 +13,7 @@ The current policies are:
 | `conversation` | Normal visible, durable chat and run behavior. |
 | `guide` | Guide interaction surface, restricted tools and navigation, full context, overlay questions, hidden from the normal chat list, and host-start cleanup. |
 | `demo` | Normal visible execution with guide-owned sample messages and cleanup while untouched. A same-title conversation is not a demo. |
+| `scheduled` | Normal visible chat and runs; its versioned state is a schedule, and the policy starts and stops the dispatcher that runs it. See [Scheduled chats](35-scheduled-chats.md). |
 
 The chat and run repositories route by the policy's persistence choice. Durable storage uses the existing JSON repositories. Host-lifetime storage keeps chat documents and run state in memory and is available for a future policy to select; no current kind selects it. Both routes use the same chat and run APIs. An unattended submission is available to trusted host components; it is recorded with the queued message so a retry remains unattended. Such a run cannot wait for a user prompt or tool approval that requires a person.
 
@@ -28,8 +29,12 @@ The tests register a fourth, test-only kind with versioned state and host-lifeti
 
 Chat kind and project purpose are separate dimensions. A future Scheduled chat may belong to a **special Scheduled project**, which may be visible or hidden according to the project design. A future ephemeral chat may belong to a **special Temporary project** instead of a normal user project. Project identity must come from stable metadata, never from a display name. Project visibility and lifetime belong to the project layer; the chat policy chooses or requests placement through a project-placement boundary. The current project layer has no special-project implementation, so creating those projects remains future work.
 
-## Scheduled as an extension example
+## Changing the kind of a chat
 
-Scheduled is not a registered kind. A future implementation would add a policy and a versioned state shape for schedule data, plus a scheduler that participates in host startup and shutdown. The scheduler would create or find its special project and submit through the unattended dispatch path. The chat policy would decide model and tool behavior, visibility, persistence, and cleanup. Project visibility would be set by the project layer, independently of chat visibility. None of these steps requires a Scheduled branch in `ChatService`, `ChatAgent`, `ChatRunDispatcher`, the chat repositories, or the current frontend chat list.
+`IChatService.ChangeKindAsync` reads a chat's kind and state and replaces them in one step under the chat's lease; `ChatThread.SetKind` keeps every message and branch. The new kind's policy validates the state, and a kind with another persistence route is refused, because the chat would be left behind in the old route. A conversation becomes `scheduled` and back this way.
+
+## Scheduled
+
+Scheduled is the first kind added through this contract after the migration: a policy, a versioned state shape (`ChatSchedule`), and a dispatcher the policy starts with the Host. It stays in the chat's own project and submits interactive runs, because a run that needs an approval or an answer waits for the person with the usual attention marker. No Scheduled branch was needed in `ChatService`, `ChatAgent`, `ChatRunDispatcher`, the chat repositories or the frontend chat list; the stopwatch icon reads `ChatSummary.Kind`. See [Scheduled chats](35-scheduled-chats.md).
 
 Other possible growth points, without implemented identifiers or behavior: background/service chat, ephemeral chat, task/automation chat, imported chat, and subtask chat. They are examples, not requirements. In particular, making Guide ephemeral is a separate behavioral change and is not part of this migration.

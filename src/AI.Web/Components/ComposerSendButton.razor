@@ -5,7 +5,8 @@
        behind it are in the Context widget. *@
     @if (Context is not null) { <ContextRing Context="@Context" Size="50" Thickness="2.5" Gap="9" Class="composer-send-ring" /> }
     <button @attributes="@(ControlHints.Attributes("chat.send", GetActionLabel(), nativeTooltip: false))" class="composer-send" type="button" disabled="@Disabled" aria-label="@GetAriaLabel()" aria-describedby="composer-send-tooltip" @onclick="OnClick">
-        <AppIcon Name="@GetIcon()" Class="@(Busy ? "tool-row-spinner" : null)" />
+        @* Keyed by the icon, so a held modifier swaps it with a short entrance instead of a jump. *@
+        <AppIcon @key="GetIcon()" Name="@GetIcon()" Class="@(Busy ? "tool-row-spinner" : "composer-send-icon")" />
     </button>
     @* The shared help stays on the button as data-app-hint, where the guide reads it; the panel
        keeps only what the current send mode adds: one row per action, its keys aligned on the
@@ -69,15 +70,15 @@
     private IEnumerable<TooltipRow> ReplyRows()
     {
         yield return new(SendMode.Send, "arrow-up", "Send", ["Enter"]);
-        yield return new(SendMode.Queue, "queue", "Queue for later", ["Ctrl", "Enter"]);
-        yield return new(SendMode.Fork, "fork", "Send in a forked session", ["Ctrl", "Alt", "Enter"]);
-        yield return new(SendMode.SendNow, "zap", "Interrupt and send now", ["Ctrl", "Shift", "Enter"]);
+        yield return new(SendMode.Queue, "send-queue", "Queue for later", ["Ctrl", "Enter"]);
+        yield return new(SendMode.Fork, "send-fork", "Send in a forked session", ["Ctrl", "Alt", "Enter"]);
+        yield return new(SendMode.SendNow, "send-now", "Interrupt and send now", ["Ctrl", "Shift", "Enter"]);
     }
 
     private IEnumerable<TooltipRow> QuietRows()
     {
-        if (CanAside) yield return new(SendMode.Aside, "plus", AsideLabel, ["Alt", "Enter"]);
-        if (CanSchedule) yield return new(SendMode.Schedule, "stopwatch", "Schedule instead of sending", ["Alt", "Shift", "Enter"]);
+        if (CanAside) yield return new(SendMode.Aside, "send-aside", AsideLabel, ["Alt", "Enter"]);
+        if (CanSchedule) yield return new(SendMode.Schedule, "send-schedule", "Schedule instead of sending", ["Alt", "Shift", "Enter"]);
     }
 
     private RenderFragment Row(TooltipRow row) =>
@@ -110,11 +111,14 @@
 
     private string GetIcon() => Busy ? "spinner" : ActiveMode switch
     {
-        SendMode.SendNow => "zap",
+        // Every way of sending is the send arrow, varied; editing a branch keeps its own icons.
+        SendMode.Queue => "send-queue",
+        SendMode.Fork => "send-fork",
+        SendMode.SendNow => "send-now",
         SendMode.EditFork => "fork",
         SendMode.Replace => "edit-replace",
-        SendMode.Aside => "plus",
-        SendMode.Schedule => "stopwatch",
+        SendMode.Aside => "send-aside",
+        SendMode.Schedule => "send-schedule",
         _ => "arrow-up"
     };
 

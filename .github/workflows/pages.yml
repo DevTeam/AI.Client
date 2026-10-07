@@ -24,6 +24,10 @@ jobs:
           dotnet-version: 10.0.x
       - name: Build public Web
         run: dotnet run --project ./build -- publish-web
+      - name: Build release catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 build/updates/generate_catalog.py artifacts/web/wwwroot/updates/releases.json
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

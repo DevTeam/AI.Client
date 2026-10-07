@@ -9,7 +9,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Xunit;
 
-public sealed class GitHubUpdateFeedTests
+public sealed class PublishedUpdateFeedTests
 {
     [Theory]
     [InlineData("1.0.0-rc.2", "1.0.0-rc.10", -1)]
@@ -30,7 +30,7 @@ public sealed class GitHubUpdateFeedTests
             Release("2.0.0", false), Release("3.0.0", false, "AI.Desktop-win-arm64.exe"),
             Release("9.0.0", false) with { Draft = true }]);
         using var http = new HttpClient(handler);
-        IUpdateFeed feed = new GitHubUpdateFeed(http);
+        IUpdateFeed feed = new PublishedUpdateFeed(http);
         var result = await feed.FindAsync("Desktop", "win-x64", "1.0.0", channel, TestContext.Current.CancellationToken);
         result.Release.ShouldNotBeNull().Version.ShouldBe(expected);
         result.StableAvailable.ShouldBeTrue();
@@ -43,7 +43,7 @@ public sealed class GitHubUpdateFeedTests
         release.Assets[0] = release.Assets[0] with { Digest = null };
         using var handler = new FeedHandler([release]);
         using var http = new HttpClient(handler);
-        IUpdateFeed feed = new GitHubUpdateFeed(http);
+        IUpdateFeed feed = new PublishedUpdateFeed(http);
         await Should.ThrowAsync<InvalidOperationException>(() => feed.FindAsync("Desktop", "win-x64", "1.0.0",
             UpdateChannel.Stable, TestContext.Current.CancellationToken));
     }
@@ -53,19 +53,38 @@ public sealed class GitHubUpdateFeedTests
     {
         using var handler = new FeedHandler([Release("2.0.0-rc.1", true)]);
         using var http = new HttpClient(handler);
-        IUpdateFeed feed = new GitHubUpdateFeed(http);
+        IUpdateFeed feed = new PublishedUpdateFeed(http);
         var result = await feed.FindAsync("Desktop", "win-x64", "1.0.0", UpdateChannel.Stable, TestContext.Current.CancellationToken);
         result.Release.ShouldBeNull();
         result.StableAvailable.ShouldBeFalse();
     }
 
-    private static GitHubUpdateFeed.Release Release(string version, bool prerelease, string name = "AI.Desktop-win-x64.exe") =>
+    [Fact]
+    public async Task ReadsPublishedCatalogWithoutCallingGitHubApi()
+    {
+        using var handler = new FeedHandler([Release("2.0.0", false)]);
+        using var http = new HttpClient(handler);
+        IUpdateFeed feed = new PublishedUpdateFeed(http);
+
+        await feed.FindAsync("Desktop", "win-x64", "1.0.0", UpdateChannel.Stable,
+            TestContext.Current.CancellationToken);
+
+        handler.RequestUri.ShouldBe(new Uri("https://ai.dev-team.org/updates/releases.json"));
+    }
+
+    private static PublishedUpdateFeed.Release Release(string version, bool prerelease, string name = "AI.Desktop-win-x64.exe") =>
         new("v" + version, false, prerelease, $"https://github.com/DevTeam/AI.Client/releases/tag/v{version}",
             [new(name, $"https://github.com/DevTeam/AI.Client/releases/download/v{version}/{name}", "sha256:" + new string('a', 64), 10)]);
 
-    private sealed class FeedHandler(GitHubUpdateFeed.Release[] releases) : HttpMessageHandler
+    private sealed class FeedHandler(PublishedUpdateFeed.Release[] releases) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(releases) });
+        public Uri? RequestUri { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestUri = request.RequestUri;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            { Content = JsonContent.Create(new PublishedUpdateFeed.Catalog(1, releases)) });
+        }
     }
 }

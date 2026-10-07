@@ -51,6 +51,10 @@ dotnet run --project build -- package-release --runtime linux-x64 --version 1.0.
 
 All six runtime combinations are in `.github/workflows/release.yml`. A `v*` tag builds the installers and attaches them to a GitHub Release. A manual workflow run uses its version input to create or update the same Release from the run's commit, so the Web download links can find the installers. Production distribution of Windows and macOS installers still requires code signing; macOS notarization also requires Apple credentials. Those credentials are not configured in this repository.
 
+The release workflow marks versions with a prerelease suffix, such as `v1.2.0-rc.1`, as Preview releases. After publishing all installers, it starts the Pages workflow on `master`. Every Pages deployment builds `updates/releases.json` from published GitHub Releases with an authenticated workflow token. Installed Host and Desktop clients read this static catalog at `https://ai.dev-team.org/updates/releases.json`; they do not call the GitHub API. The catalog includes package SHA-256 digests, which the updater checks after download. The Pages workflow also runs on every push to `master`, so a site deployment keeps the catalog current.
+
+For a normal release, push a new `v<version>` tag, wait for both the release and Pages workflows to succeed, and verify the GitHub Release files and the catalog URL before checking an update in the installed app. A manual release workflow run with a version input follows the same publication steps. Do not edit the catalog by hand. If Pages publication fails, repair and rerun the Pages workflow before announcing the release; installed clients will continue seeing the previous catalog.
+
 ## Web publishing
 
 `dotnet run --project build -- publish-web` writes `artifacts/web/wwwroot`, including `CNAME`, `.nojekyll`, the public Host address, and a Pages fallback page. `.github/workflows/pages.yml` deploys that directory on pushes to `master` or manual runs.

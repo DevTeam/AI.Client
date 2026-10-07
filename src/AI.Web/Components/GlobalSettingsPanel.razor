@@ -17,7 +17,7 @@
 @implements IAsyncDisposable
 
 <div class="permissions-drawer-backdrop"></div>
-<aside @attributes="@(ControlHints.Attributes(GuideSectionTarget))" class="permissions-drawer settings-drawer @(Section == "Settings" ? "is-narrow" : null)" aria-label="@Title" @ref="_drawer" @onclick:stopPropagation="true">
+<aside @attributes="@(ControlHints.Attributes(GuideSectionTarget, nativeTooltip: false))" class="permissions-drawer settings-drawer @(Section == "Settings" ? "is-narrow" : null)" aria-label="@Title" @ref="_drawer" @onclick:stopPropagation="true">
     <header>
         <div><h2>@Title</h2><p>@Description</p></div>
         <div class="settings-drawer-header-actions">

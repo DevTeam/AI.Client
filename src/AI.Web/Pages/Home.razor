@@ -62,7 +62,7 @@
 @* The shell's classes belong to workspaceLayout.js; the widget column's state is passed as data
    instead, since a re-rendered class attribute would wipe the classes the script has set. *@
 <main class="workspace-shell" data-widgets="@GetChatWidgetsState()" @ref="_workspace">
-    <aside @attributes="@(ControlHints.Attributes("workspace.sidebar"))" class="workspace-sidebar" id="workspace-sidebar">
+    <aside @attributes="@(ControlHints.Attributes("workspace.sidebar", nativeTooltip: false))" class="workspace-sidebar" id="workspace-sidebar">
         <div class="sidebar-projects">
         @* The projects list is the sidebar's top level now, so it has no heading of its own and
            nothing to collapse it into. Creating a project is an action row at the head of the
@@ -749,7 +749,7 @@
                 <ResourceMentionMenu Items="_mentionItems" SelectedIndex="_mentionIndex" OnPick="PickMentionSuggestionAsync" OnPickContent="PickMentionContentAsync" OnHover="HoverMentionSuggestion" />
             }
             @* chatComposer.js draws the draft's "@" links as pills under the text; nothing here renders into it. *@
-            <div @attributes="@(ControlHints.Attributes("chat.composer"))" class="composer-input">
+            <div @attributes="@(ControlHints.Attributes("chat.composer", nativeTooltip: false))" class="composer-input">
                 <div class="composer-mention-highlight" aria-hidden="true" hidden></div>
                 @if (GetMentionBubbleResource() is { } bubbled)
                 {
@@ -1050,7 +1050,7 @@
     @if (_isProjectSettingsOpen && _selectedProject is not null)
     {
         <div class="permissions-drawer-backdrop"></div>
-        <aside @attributes="@(ControlHints.Attributes("project.settings"))" class="permissions-drawer project-settings-drawer" aria-label="Project settings">
+        <aside @attributes="@(ControlHints.Attributes("project.settings", nativeTooltip: false))" class="permissions-drawer project-settings-drawer" aria-label="Project settings">
             <header>
                 <div class="project-settings-heading"><h2>Project settings</h2><p title="@_selectedProject.Name">@_selectedProject.Name</p></div>
                 <button class="icon-action" type="button" title="Close" aria-label="Close project settings" @onclick="RequestCloseProjectSettingsAsync"><AppIcon Name="drawer-close" /></button>
@@ -1059,15 +1059,15 @@
                 <EditForm Model="_editor" class="settings-form project-settings-form">
                     <DataAnnotationsValidator />
                     <div class="settings-card">
-                        <label @attributes="@(ControlHints.Attributes("project.name"))" class="settings-row settings-field"><span class="settings-row-label">Name</span><InputText @bind-Value="_editor.Name" /></label>
+                        <label @attributes="@(ControlHints.Attributes("project.name", nativeTooltip: false))" class="settings-row settings-field"><span class="settings-row-label">Name</span><InputText @bind-Value="_editor.Name" /></label>
                         <label class="settings-row settings-field">
                             <span class="settings-row-label">Connection</span>
                             <select @bind="_editor.ConnectionId"><option value="">— Default —</option>@foreach (var connection in _connections) { <option value="@connection.Id" disabled="@(!connection.Enabled)">@connection.Name@(!connection.Enabled ? " (Unavailable)" : string.Empty)</option> }</select>
                         </label>
-                        <label @attributes="@(ControlHints.Attributes("project.description"))" class="settings-row is-stacked"><span class="settings-row-label">Description</span><InputTextArea @bind-Value="_editor.Description" rows="2" /></label>
+                        <label @attributes="@(ControlHints.Attributes("project.description", nativeTooltip: false))" class="settings-row is-stacked"><span class="settings-row-label">Description</span><InputTextArea @bind-Value="_editor.Description" rows="2" /></label>
                     </div>
                 </EditForm>
-                <div @attributes="@(ControlHints.Attributes("project.instructions"))"><ProjectInstructionsEditor @ref="_instructionsEditor" ProjectId="@_selectedProject.Id" /></div>
+                <div @attributes="@(ControlHints.Attributes("project.instructions", nativeTooltip: false))"><ProjectInstructionsEditor @ref="_instructionsEditor" ProjectId="@_selectedProject.Id" /></div>
                 @if (!string.IsNullOrEmpty(_error)) { <p class="error" role="alert">@_error</p> }
             </div>
             @if (!string.IsNullOrEmpty(_error))
@@ -1084,7 +1084,7 @@
     {
         @* No backdrop and no close on an outside press: the point of the panel is reading the chat
            beside it while stepping through what was found. *@
-        <aside @attributes="@(ControlHints.Attributes("search"))" class="permissions-drawer search-drawer" id="search-drawer" aria-label="Search messages">
+        <aside @attributes="@(ControlHints.Attributes("search", nativeTooltip: false))" class="permissions-drawer search-drawer" id="search-drawer" aria-label="Search messages">
             <header>
                 <h2>Search</h2>
                 <button @attributes="@(ControlHints.Attributes("search.close", "Close (Esc)"))" class="icon-action" type="button" aria-label="Close search" @onclick="CloseSearchPanelAsync"><AppIcon Name="drawer-close" /></button>
@@ -1092,7 +1092,7 @@
             <div class="search-drawer-controls">
                 @* A combobox in the ARIA sense: focus stays in the box while Up/Down move the active
                    result, so the query can still be edited between steps. *@
-                <input @attributes="@(ControlHints.Attributes("search.query"))" type="search" class="search-drawer-input" @ref="_searchInput" value="@_searchQuery" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown"
+                <input @attributes="@(ControlHints.Attributes("search.query", nativeTooltip: false))" type="search" class="search-drawer-input" @ref="_searchInput" value="@_searchQuery" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown"
                        placeholder="Search messages in all chats" aria-label="Search messages in all chats" aria-keyshortcuts="Control+K"
                        role="combobox" aria-autocomplete="list" aria-controls="search-results"
                        aria-expanded="@(_searchGroups.Count > 0 ? "true" : "false")"
@@ -1138,7 +1138,7 @@
             {
                 @* Results of the previous query stay while the next one runs, dimmed once the wait
                    is long enough to notice, instead of blinking out on every keystroke. *@
-                <div @attributes="@(ControlHints.Attributes("search.results"))" class="search-drawer-results @(_isSearching && SearchBusy.IsVisible ? "stale" : string.Empty)" id="search-results" role="listbox" aria-label="Search results" aria-busy="@(_isSearching ? "true" : "false")">
+                <div @attributes="@(ControlHints.Attributes("search.results", nativeTooltip: false))" class="search-drawer-results @(_isSearching && SearchBusy.IsVisible ? "stale" : string.Empty)" id="search-results" role="listbox" aria-label="Search results" aria-busy="@(_isSearching ? "true" : "false")">
                     @* A failure is reported by the status line alone. *@
                     @if (found.Matches.Count == 0 && found.Error is not { Length: > 0 })
                     {
@@ -1252,7 +1252,7 @@ else if (_guideInvitation is { } guideInvitation)
 @if (_notificationsOpen)
 {
     <div class="permissions-drawer-backdrop"></div>
-    <section @attributes="@(ControlHints.Attributes("notifications"))" class="permissions-drawer notifications-drawer" aria-label="Notifications">
+    <section @attributes="@(ControlHints.Attributes("notifications", nativeTooltip: false))" class="permissions-drawer notifications-drawer" aria-label="Notifications">
         <header><h2>Notifications</h2><button class="icon-action" type="button" title="Close notifications" aria-label="Close notifications" @onclick="ToggleNotificationsAsync"><AppIcon Name="drawer-close" /></button></header>
         <div class="notification-filters">
             <button type="button" class="@(!_showAttentionOnly ? "selected" : string.Empty)" @onclick="() => _showAttentionOnly = false">All</button>

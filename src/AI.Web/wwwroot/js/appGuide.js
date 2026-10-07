@@ -318,7 +318,7 @@ export async function perform(request, activate = true) {
             element.classList.add("app-guide-hover");
             element.dispatchEvent(new PointerEvent("pointerenter", { bubbles: false }));
             element.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
-            const title = element.getAttribute("title") || input.getAttribute("title");
+            const title = element.getAttribute("title") || input.getAttribute("title") || element.getAttribute("data-app-hint");
             if (title) {
                 const tip = document.createElement("span");
                 tip.className = "app-guide-tooltip"; tip.textContent = title;

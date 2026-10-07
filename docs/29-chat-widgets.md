@@ -23,7 +23,7 @@ Current widgets:
 | `chat-references` | References | `link` | `ChatReferencesWidget` | The files, directories, images, uploads, skills, diffs, chats and projects the messages named, added up over the whole chat or the last turn, each with a click that shows its earliest message |
 | `chat-models` | Models | `cpu` | `ChatModelsWidget` | Which models answered the chat and how many answer requests each served, for the whole chat or the last turn |
 | `chat-team` | Team | `users` | `ChatTeamWidget` | The branches that sent team messages into the visible branch, with what each sent: messages, asides and intents, for the whole chat or the last turn, each with a click that shows its latest message |
-| `chat-unfinished` | Unfinished work | `list-checks` | `ChatUnfinishedWidget` | Every run in this project that has not finished — waiting for an approval or an answer, paused, interrupted, failed with a recovery action left, still generating or with messages queued behind it — with a click that opens its chat and branch and a button that resumes it |
+| `chat-unfinished` | Unfinished work | `list-checks` | `ChatUnfinishedWidget` | Every run in this project that has not finished — waiting for an approval or an answer, paused, interrupted, failed with a recovery action left, still generating or with messages queued behind it — with what each waits on, a filter by reason, a click that opens its chat and branch and, where a resume is what it waits for, a button that resumes it |
 
 ## UX
 
@@ -779,26 +779,38 @@ starting the application, when runs left over from the last session are waiting.
 
 - **Scope.** The whole project, not the open chat, so it has no whole-chat/last-turn switch. The
   widget sits in whichever chat is open, but its list is the same everywhere: every run snapshot the
-  client holds for the project's chats.
+  client holds for the project's chats. The open chat's rows are marked instead.
 - **Source of truth.** `IRunStateService.Runs` — the run snapshots the client itself keeps, loaded at
   startup and kept in step by the Host's pushes. Each one carries `Status`, `Queue`, `PendingApproval`,
-  `PendingPrompt`, `Wait` and `RecoveryActions`; the chat's own title and last-activity time come from
-  the sidebar's `ChatSummary`. Nothing is inferred from message text or from token usage.
+  `PendingPrompt`, `Wait`, `Error` and `RecoveryActions`; the chat's own title and last-activity time
+  come from the sidebar's `ChatSummary`. Nothing is inferred from token usage.
 - **What counts as unfinished.** A run is listed while it is `Generating`, `Paused`, `Interrupted` or
   `Failed` with a recovery action left, while it has a pending approval, a pending question or a
   provider wait, or while messages are still queued behind it.
 - **What it shows.**
-  - **Headline.** How many chats have unfinished work, and the total number of unfinished runs on the
-    right; each branch of a chat counts as its own run.
-  - **Legend.** One entry per reason the project actually has, most demanding first: `Approval`,
-    `Prompt`, `Wait`, `Failed`, `Paused`, `Interrupted`, `Running`, `Queue`.
-  - **Actions.** `Resume all (N)` resumes every run the Host offers to resume, one after another. The
-    note beside it says how many are opened by their row instead.
-  - **Rows.** Most demanding first, then by chat title. Each row: the chat title, its reason, whether
-    the run works on a branch rather than on the chat itself, how many messages are queued, the run's
-    own status exactly as the Host reported it, and the chat's last-activity time. The row opens the
-    chat — and its branch, when the run works on a fork. Rows the Host would agree to resume carry
-    their own resume button.
+  - **Headline.** The total number of unfinished runs and how many chats they are in; each branch of a
+    chat counts as its own run. On the right, how many of them need the person (in the warning colour),
+    or "nothing needs you" when every run is still moving on its own.
+  - **Legend and filter.** One entry per reason the project actually has, most demanding first:
+    `Approval`, `Prompt`, `Wait`, `Failed`, `Paused`, `Interrupted`, `Running`, `Queue`. With more than
+    one reason present each entry is a toggle button (`aria-pressed`) that narrows the list to that
+    reason; pressing it again shows everything. A filter whose reason has gone from the project stops
+    narrowing on its own.
+  - **Actions.** `Resume all (N)` — `Resume shown (N)` while filtered — resumes every listed run that
+    waits for a resume, one after another. While it works the button reads `Resuming i of N…` and every
+    resume button is disabled. The note beside it says how many listed runs are handled in their chat.
+  - **Rows.** Most demanding first, then by chat title; the first six, with `Show N more` / `Show fewer`
+    beneath a longer list. Each row: the chat title; a detail line saying what the run waits on when the
+    snapshot says it — `Approve <tool>` (with `i of n` for a batch), `Asks: <first question>` (with
+    `+n more`), `Tries again at <time>`, the failure message, or `Next: <queued message>`, cut to one line
+    of 120 characters; then the reason, `open now` or `this chat` for the open chat's runs (the row also
+    gets `aria-current` and the accent background when it is the open branch), whether the run works on
+    a branch, how many messages are queued, the run's own status only when it says more than the reason,
+    and the chat's last-activity time. Times are compact: `HH:mm` today, `yesterday HH:mm`,
+    `d MMM HH:mm` this year, the date otherwise; the tooltip has the full time. The row opens the chat —
+    and its branch, when the run works on a fork. Rows waiting for a resume carry their own resume
+    button, which turns into a spinner and is disabled while its request is in flight, so a second click
+    cannot send it twice.
   - **Footer.** "from run snapshots" and the note that last-activity times are message timestamps.
 - **Honesty rules.**
   - **Only runs the client knows about.** The list is this client's own run snapshots, not a query of
@@ -806,16 +818,21 @@ starting the application, when runs left over from the last session are waiting.
     startup appears when it arrives.
   - **Last-activity times are approximate and marked "≈".** They come from the chat's stored summary,
     which is when something was written to the chat — not when the run stopped — and they include time
-    the chat sat idle. The tooltip and the footer note both say so.
-  - **Resume is only offered where the Host would accept it.** A run whose recovery actions do not
-    include `Resume`, and a failure with no recovery left, opens its chat instead of showing a resume
-    button, rather than offering an action the Host would refuse.
+    the chat sat idle. The tooltip and the footer note both say so. A retry time is the Host's own and
+    carries no "≈".
+  - **Resume is only offered where it is what the run waits for**: paused, interrupted, idle with
+    messages queued, or failed with `Resume` among its recovery actions. An approval or a question needs
+    an answer, a limit lifts on its own and a generating run is already moving — even with messages
+    queued behind it — so those rows open their chat instead of showing a button that would be refused
+    or do nothing. A failure without `Resume` is not offered one even when messages are queued.
   - **Empty chats and archived chats are left out**, even when a stale snapshot still names them.
-- **Empty state.** "Unfinished chat work appears here while any run is waiting, paused, interrupted,
-  failed or still queued."
-- **Folded summary.** `N unfinished · M chat/chats`; null when nothing is unfinished.
-- **Data.** The sidebar's `ChatSummary` list and `IRunStateService.Runs`. No presentation service is
-  injected.
+- **Empty state.** "Nothing is unfinished. Runs that wait for you, were paused or interrupted, failed
+  or still have messages queued appear here."
+- **Folded summary.** `N need/needs you · M unfinished` while anything needs the person, otherwise
+  `M unfinished · K chat/chats`; null when nothing is unfinished.
+- **Data.** The sidebar's `ChatSummary` list and `IRunStateService.Runs`, plus the open chat and branch
+  from the page. No presentation service is injected; the page resumes one run per `OnResume` call and
+  the widget sequences "Resume all" itself so it can show progress.
 - **Architecture.** `IChatUnfinishedStatisticsCalculator` in `src/AI.Web/Widgets` returns a
   `ChatUnfinishedStatistics` record holding one `ChatUnfinishedTask` per unfinished run; a pure
   function over the chats and the run snapshots. Bound in `Composition.cs` and tested in

@@ -8244,3 +8244,18 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-unfinished-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .chat-unfinished-resume { flex: none; }
 .chat-unfinished-note { font-size: var(--font-size-xs); font-style: italic; }
+.chat-unfinished-detail { overflow: hidden; color: var(--color-text-secondary); font-size: var(--font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
+.chat-unfinished-list > li.is-current .chat-unfinished-open { background: var(--color-accent-bg); }
+.chat-unfinished-list > li.is-current .chat-unfinished-open:hover, .chat-unfinished-list > li.is-current .chat-unfinished-open:focus-visible { background: var(--color-accent-bg-hover); }
+.chat-unfinished-here { color: var(--color-accent-text); }
+.chat-unfinished-actions .compact-action { display: inline-flex; align-items: center; gap: .35rem; }
+.chat-unfinished-actions .compact-action .app-icon { width: .85rem; height: .85rem; }
+.chat-unfinished-filter { display: inline-flex; align-items: center; gap: .3rem; margin: 0 -.3rem; padding: .1rem .3rem; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; cursor: pointer; transition: background-color var(--duration-fast) ease, border-color var(--duration-fast) ease; }
+.chat-unfinished-filter:hover, .chat-unfinished-filter:focus-visible { background: var(--color-fill-hover); outline: none; }
+.chat-unfinished-filter.is-active { border-color: var(--color-border-strong); background: var(--color-fill-active); }
+.chat-unfinished-filter .chat-unfinished-reason-icon { margin-right: 0; }
+.chat-unfinished-more { display: inline-flex; align-items: center; gap: .3rem; margin: .2rem -.35rem 0; padding: .25rem .35rem; border: 0; border-radius: var(--radius-sm); background: none; color: var(--color-text-muted); font: inherit; font-size: var(--font-size-xs); cursor: pointer; }
+.chat-unfinished-more:hover, .chat-unfinished-more:focus-visible { background: var(--color-fill-hover); color: var(--color-text); outline: none; }
+.chat-unfinished-more .app-icon { width: .8rem; height: .8rem; }
+.chat-unfinished-spin { animation: tool-row-spin .9s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .chat-unfinished-spin { animation: none; } }

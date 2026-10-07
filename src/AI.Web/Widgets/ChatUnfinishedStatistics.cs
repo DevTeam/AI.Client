@@ -41,12 +41,16 @@ public enum ChatUnfinishedReason
 /// <param name="NeedsAttention">True when the run cannot progress without the person, the same rule
 /// the sidebar status badge uses.</param>
 /// <param name="Queued">Messages still queued behind the run.</param>
-/// <param name="CanResume">True when resuming is offered for this run: the Host lists a Resume
-/// recovery action, or the queue only needs a pause lifted. A failure with no Resume among its
-/// recovery actions opens the chat without a resume button rather than offering an action the Host
-/// would refuse.</param>
+/// <param name="CanResume">True when resuming is what the run is waiting for: it is paused or
+/// interrupted, it failed and the Host lists Resume among its recovery actions, or the chat is idle
+/// with messages queued behind it. A run that waits for an answer, waits out a limit or is still
+/// generating is never offered a resume: resuming would not move it, so its row opens the chat.</param>
 /// <param name="LastActivityAt">When the chat itself was last active, from its stored summary. It is
 /// when something was written, not when the run stopped, so the widget marks it approximate.</param>
+/// <param name="Detail">What exactly the run waits on, in a few words when the snapshot says it: the
+/// tool asking for approval, the question asked, the failure message, or the next queued message.
+/// Null when the snapshot carries nothing more than the reason itself.</param>
+/// <param name="RetryAt">When a run waiting out a provider limit tries again on its own.</param>
 public sealed record ChatUnfinishedTask(
     Guid ChatId,
     string ChatTitle,
@@ -57,7 +61,9 @@ public sealed record ChatUnfinishedTask(
     bool NeedsAttention,
     int Queued,
     bool CanResume,
-    DateTimeOffset LastActivityAt);
+    DateTimeOffset LastActivityAt,
+    string? Detail = null,
+    DateTimeOffset? RetryAt = null);
 
 /// <summary>The project's unfinished chat work: every run the client knows about that has not finished.</summary>
 /// <param name="Tasks">One entry per unfinished run, the ones needing a person first.</param>
@@ -71,6 +77,9 @@ public sealed record ChatUnfinishedStatistics(
     public static ChatUnfinishedStatistics Empty { get; } = new([], 0, 0);
 
     public bool HasTasks => Tasks.Count > 0;
+
+    /// <summary>How many tasks cannot progress until the person acts.</summary>
+    public int NeedingAttention => Tasks.Count(task => task.NeedsAttention);
 }
 
 /// <summary>Builds the project's unfinished-work list from the run snapshots the client already holds.</summary>
@@ -110,8 +119,10 @@ public sealed class ChatUnfinishedStatisticsCalculator : IChatUnfinishedStatisti
                 described.Reason,
                 described.NeedsAttention,
                 run.Queue.Count,
-                CanResume(run),
-                chat.LastActivityAt));
+                CanResume(run, described.Reason),
+                chat.LastActivityAt,
+                DescribeDetail(run, described.Reason),
+                described.Reason == ChatUnfinishedReason.Wait ? run.Wait?.RetryAt : null));
         }
 
         tasks.Sort(Compare);
@@ -160,8 +171,40 @@ public sealed class ChatUnfinishedStatisticsCalculator : IChatUnfinishedStatisti
         return null;
     }
 
-    private static bool CanResume(ChatRunSnapshot run) =>
-        run.RecoveryActions?.Contains(RunRecoveryAction.Resume) == true
-        || run.Status is ChatRunStatus.Paused or ChatRunStatus.Interrupted
-        || run.Queue.Count > 0;
+    // Resume is offered only where it is the thing the run waits for. An approval or a question needs
+    // an answer, a limit lifts on its own and a generating run is already moving: a resume button
+    // there would either be refused or do nothing, so those rows open the chat instead.
+    private static bool CanResume(ChatRunSnapshot run, ChatUnfinishedReason reason) => reason switch
+    {
+        ChatUnfinishedReason.Paused or ChatUnfinishedReason.Interrupted or ChatUnfinishedReason.Queue => true,
+        ChatUnfinishedReason.Failed => run.RecoveryActions?.Contains(RunRecoveryAction.Resume) == true,
+        _ => false
+    };
+
+    private const int DetailLength = 120;
+
+    // The words a person needs to decide without opening the chat. Only what the snapshot states is
+    // used; a reason the snapshot has nothing more to say about gets no detail.
+    private static string? DescribeDetail(ChatRunSnapshot run, ChatUnfinishedReason reason) => reason switch
+    {
+        ChatUnfinishedReason.Approval when run.PendingApproval is { } approval => approval.BatchSize > 1
+            ? $"{approval.Name} ({approval.CallIndex} of {approval.BatchSize})"
+            : approval.Name,
+        ChatUnfinishedReason.Prompt when run.PendingPrompt is { Questions: [var first, ..] } prompt =>
+            Shorten(first.Text) + (prompt.Questions.Count > 1 ? $" (+{prompt.Questions.Count - 1} more)" : null),
+        ChatUnfinishedReason.Failed => Shorten(run.Error),
+        ChatUnfinishedReason.Queue or ChatUnfinishedReason.Paused or ChatUnfinishedReason.Interrupted
+            when run.Queue is [var next, ..] => Shorten(next.Content),
+        _ => null
+    };
+
+    // One line, whitespace collapsed, cut at a word where possible.
+    private static string? Shorten(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var line = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (line.Length <= DetailLength) return line;
+        var cut = line.LastIndexOf(' ', DetailLength);
+        return line[..(cut > DetailLength / 2 ? cut : DetailLength)] + "…";
+    }
 }

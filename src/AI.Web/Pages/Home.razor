@@ -4578,7 +4578,13 @@ else if (_guideInvitation is { } guideInvitation)
         try
         {
             var renamed = await ChatHistoryApi.RenameAsync(_selectedProject.Id, chat.Id, new RenameChatRequest(_editingTitle.Trim(), chat.Revision), CancellationToken.None);
-            if (renamed is not null) { _selectedChat = renamed; await LoadChatsAsync(_selectedProject.Id); }
+            if (renamed is null) Notifications.ShowError("The chat was not renamed. Reload the chat list and try again.");
+            else
+            {
+                // Renaming a chat from the sidebar does not open it.
+                if (_selectedChat?.Id == renamed.Id) _selectedChat = renamed;
+                await LoadChatsAsync(_selectedProject.Id);
+            }
         }
         finally { _isCompletingInlineEdit = false; CancelInlineEdit(); }
     }
@@ -4591,7 +4597,8 @@ else if (_guideInvitation is { } guideInvitation)
         try
         {
             var renamed = await ChatHistoryApi.RenameBranchAsync(_selectedProject.Id, _selectedChat.Id, branch.RootId, new RenameChatBranchRequest(_editingTitle.Trim(), _selectedChat.Revision), CancellationToken.None);
-            if (renamed is not null) _selectedChat = renamed;
+            if (renamed is null) Notifications.ShowError("The branch was not renamed. Reload the chat and try again.");
+            else _selectedChat = renamed;
         }
         finally { _isCompletingInlineEdit = false; CancelInlineEdit(); }
     }

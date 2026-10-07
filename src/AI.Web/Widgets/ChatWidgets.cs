@@ -37,6 +37,7 @@ public sealed class ChatWidgetCatalog(IAppNavigationTargets targets) : IChatWidg
     public const string ChatBranches = "chat-branches";
     public const string ChatReferences = "chat-references";
     public const string ChatModels = "chat-models";
+    public const string ChatTeam = "chat-team";
     public const string AppGuide = "app-guide";
 
     public IReadOnlyList<ChatWidgetDefinition> Widgets { get; } =
@@ -52,6 +53,7 @@ public sealed class ChatWidgetCatalog(IAppNavigationTargets targets) : IChatWidg
         new(ChatModels, "Models", "cpu", targets.Find("widgets." + ChatModels)!.Hint!),
         new(ChatTimeline, "Timeline", "history", targets.Find("widgets." + ChatTimeline)!.Hint!),
         new(ChatBranches, "Branches", "git-branch", targets.Find("widgets." + ChatBranches)!.Hint!),
+        new(ChatTeam, "Team", "users", targets.Find("widgets." + ChatTeam)!.Hint!),
         new(AppGuide, "Application guide", "book", targets.Find("widgets." + AppGuide)!.Hint!)
     ];
 

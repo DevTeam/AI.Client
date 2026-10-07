@@ -22,6 +22,7 @@ Current widgets:
 | `chat-branches` | Branches | `git-branch` | `ChatBranchesWidget` | Every stored branch of the chat: title, depth, message count, child branches and head timestamp, with a click that switches the visible branch |
 | `chat-references` | References | `link` | `ChatReferencesWidget` | The files, directories, images, uploads, skills, diffs, chats and projects the messages named, added up over the whole chat or the last turn, each with a click that shows its earliest message |
 | `chat-models` | Models | `cpu` | `ChatModelsWidget` | Which models answered the chat and how many answer requests each served, for the whole chat or the last turn |
+| `chat-team` | Team | `users` | `ChatTeamWidget` | The branches that sent team messages into the visible branch, with what each sent: messages, asides and intents, for the whole chat or the last turn, each with a click that shows its latest message |
 
 ## UX
 
@@ -701,3 +702,50 @@ Which models answered the chat (`ChatModelsWidget`, `IChatModelStatisticsCalcula
   The widget is a `ChatWidget` with `Summary`, `ChatWidgetScopeSwitch`, the shared count headline
   and `chat-usage-*` building blocks; the rows use `chat-models-*` and reuse
   `chat-usage-share-track` for the bar.
+
+## Team widget
+
+Which branches are working with this one (`ChatTeamWidget`, `IChatTeamStatisticsCalculator`).
+
+- **Scope.** Whole chat or last turn, with the same switch as the other widgets. The visible branch
+  is split into turns by the same rule the Models and Branches widgets use, so "the last turn" means
+  the same thing in all of them; the headline says "so far" while it runs.
+- **Source of truth.** `ChatMessageView.Sender` — the `{ ChatId, BranchId, Intent }` the Host records
+  beside a message from the sending run's own context (see `docs/34-asides-and-team-messages.md`).
+  A message without a sender is the person's or this branch's own and is not counted. Nothing is
+  inferred from message text, from the branch list or from `Sender.ChatId`: a message naming another
+  chat is still a message into this branch and is counted as one.
+- **What it shows.**
+  - **Headline.** Number of participating branches, and the scope's team messages on the right.
+  - **Legend.** Intent totals for the scope, in the protocol's order
+    (`question`, `answer`, `decision`, `blocker`, `status`, `done`), then any the protocol does not
+    define, in their own spelling.
+  - **Rows.** Most messages first, then by title. Each row: the branch title, its message count, how
+    many of those were asides, its intent counts and the arrival time of its latest message in
+    scope. A click shows that message in the transcript.
+  - **Footer.** "In X of Y turns team messages arrived", and a note that every figure comes from the
+    recorded sender and that arrival times are message timestamps.
+- **Honesty rules.**
+  - **Only branches that sent something appear.** The widget reports what happened, not who was
+    invited: a teammate that has sent no message yet is not listed, and work a branch did without
+    reporting it is invisible here.
+  - **Arrival times are approximate and marked "≈".** They come from `ChatMessageView.CreatedAt`,
+    which is when the Host stored the message, not when the sending branch wrote it. The tooltip
+    says so, and so does the footer note.
+  - **Intent words come from the sender**, quoted as the sending run named them. An intent this
+    build does not know keeps its own spelling instead of being folded into a bucket, and the
+    tooltip says the build has no wording of its own for it.
+  - **No cost or token data.** The widget deliberately states nothing about what the team spent.
+- **Empty state.** "Branches that send team messages into this one appear here."; in the last-turn
+  scope with data elsewhere, "The last turn exchanged no team messages."
+- **Folded summary.** `N branch/branches · M`; null when no branch took part.
+- **Data.** The visible branch and the chat's stored branches, the second only to name a sending
+  branch — a branch the chat no longer stores is still listed, under the `Branch` fallback the
+  Branches widget uses. No presentation service is injected.
+- **Architecture.** `IChatTeamStatisticsCalculator` in `src/AI.Web/Widgets` returns a
+  `ChatTeamStatistics` record holding one `ChatTeamBranchSummary` per branch, each with its
+  `ChatTeamIntentCount` list; a pure function over the branch. Bound in `Composition.cs` and tested
+  in `tests/AI.Web.Tests/Widgets`. The widget is a `ChatWidget` with `Summary`,
+  `ChatWidgetScopeSwitch`, the shared count headline and `chat-usage-*` building blocks; the rows
+  use `chat-team-*`. A blocker wears the warning status token, and its word stays in the text, so
+  colour never carries the meaning alone.

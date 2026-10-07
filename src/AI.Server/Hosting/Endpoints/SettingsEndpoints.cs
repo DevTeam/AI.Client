@@ -110,7 +110,7 @@ public sealed class SettingsEndpoints : IEndpointModule
             if (!request.Server.Enabled || request.Server.Policy == "Deny")
                 return Results.Problem("Enable the server and choose Ask or Allow before discovery.", statusCode: 400);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            timeout.CancelAfter(TimeSpan.FromSeconds(50));
             try
             {
                 var id = request.Server.Id;
@@ -122,7 +122,7 @@ public sealed class SettingsEndpoints : IEndpointModule
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                return Results.Problem("MCP tool discovery timed out after 15 seconds.", statusCode: 504);
+                return Results.Problem("MCP tool discovery timed out after 50 seconds.", statusCode: 504);
             }
             catch (Exception error) when (error is not OperationCanceledException)
             {

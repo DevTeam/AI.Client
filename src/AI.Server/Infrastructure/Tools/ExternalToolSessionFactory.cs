@@ -76,10 +76,14 @@ public sealed class ExternalToolSessionFactory(
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        timeout.CancelAfter(TimeSpan.FromSeconds(45));
         // External stdio servers can take longer than the SDK's five-second discover probe to start.
         // Falling back to initialize on that same connection fails once a modern server begins serving it.
-        var options = new McpClientOptions { DiscoverProbeTimeout = TimeSpan.FromSeconds(12) };
+        var options = new McpClientOptions
+        {
+            DiscoverProbeTimeout = TimeSpan.FromSeconds(30),
+            ProtocolVersion = server.ModernProtocolOnly ? "2026-07-28" : null
+        };
         var client = await McpClient.CreateAsync(transport, options, cancellationToken: timeout.Token);
         try
         {

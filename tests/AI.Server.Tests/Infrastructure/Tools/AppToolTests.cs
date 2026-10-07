@@ -243,6 +243,25 @@ public sealed class AppToolTests
     }
 
     [Fact]
+    public async Task RunsToolShouldAssignTheIdWhenTheModelGivesNone()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var result = await AppFixture.CallAsync(session, "app_runs", new
+        {
+            operation = "Submit", projectId = fixture.ProjectId, chatId = fixture.ChatId,
+            content = "Team charter", mode = "Aside", intent = "Decision"
+        });
+
+        // The id the application chose is handed back, so the caller can fork from that message.
+        var messageId = result.GetProperty("messageId").GetGuid();
+        messageId.ShouldNotBe(Guid.Empty);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.ShouldHaveSingleItem().Id.ShouldBe(messageId);
+    }
+
+    [Fact]
     public async Task ProjectToolShouldDescribeDirectoryBasedNameSuggestion()
     {
         await using var fixture = await AppFixture.CreateAsync();

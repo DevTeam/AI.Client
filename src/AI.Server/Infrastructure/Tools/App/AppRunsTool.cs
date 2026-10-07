@@ -106,7 +106,9 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
                               + "call returns as soon as the message is accepted and the answer is read later with 'app_read'; with 'wait' "
                               + "true it returns when that run stops, or reports the run's current status if 'waitTimeoutMs' runs out first. "
                               + "Waiting is also bounded by this tool's own policy timeout, so a long wait can be cut short from outside. "
-                              + "'operationId' must be a fresh UUID per distinct message and the same UUID when repeating one. "
+                              + "Omit 'operationId' and the application assigns one; the result's messageId is the new message's id, "
+                              + "and for a Fork also the new branch's id. Pass an id back only to repeat a call that may already have "
+                              + "landed; an id used for a different message is refused. "
                               + "Submit may include resource references returned by app_resources Create; these add no file contents to the message. "
                               + "A submitted message is marked as sent by this run's branch, and 'intent' says what it is to the branch "
                               + "that reads it. Mode Aside starts no turn: use it for status and other information that needs no answer. "
@@ -120,7 +122,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             RunOperation operation,
             Guid projectId,
             Guid chatId,
-            Guid operationId,
+            Guid? operationId = null,
             Guid? branchId = null,
             string? content = null,
             SubmitMode mode = SubmitMode.Send,
@@ -144,7 +146,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         RunOperation operation,
         Guid projectId,
         Guid chatId,
-        Guid operationId,
+        Guid? requestedOperationId,
         Guid? branchId,
         string? content,
         SubmitMode mode,
@@ -160,6 +162,10 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         int waitTimeoutMs,
         CancellationToken cancellationToken)
     {
+        // Models cannot draw a random UUID; asked for one they write a pattern, and two teams of one
+        // chat end up with the same "fresh" ids. The application assigns it unless a call is being
+        // repeated, and the result hands it back.
+        var operationId = requestedOperationId ?? Guid.CreateVersion7();
         // The main branch carries the chat's own id, so an omitted branch means "the chat itself".
         var branch = branchId ?? chatId;
         // A run outside any chat (a subtask) has no branch to answer to, so its messages carry no sender.

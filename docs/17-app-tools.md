@@ -146,7 +146,7 @@ There are **no restrictions** on chat spawning depth, child run budget, or write
 - **`dryRun` by default** for destructive operations — chat, branch, and project deletion. Other operations ignore the flag. The planned call describes the effect and writes nothing.
 - **Revisions are required.** On a mismatch, an `isError` is returned with the `Conflict` status, the current revision, and the current document; the model decides whether to retry. There is no automatic retry. Chat mutations do not distinguish "no chat" from "someone wrote earlier", so the chat is re-read to tell them apart.
 - **Idempotency by `operationId`.** A repeat call with the same identifier returns the previous result with the `replayed` flag and writes nothing. Only applied mutations are remembered: a dry run and a rejected call did not change anything. The journal lives within the Host process — it closes the loop inside a run and deliberately does not survive a restart.
-- `app_runs Submit` passes `operationId` to the dispatcher as the message ID, so a repeat does not create a second message with a different identity.
+- `app_runs Submit` passes `operationId` to the dispatcher as the message ID, so a repeat does not create a second message with a different identity. In `app_runs` the id is optional: models cannot draw a random UUID and write patterns that collide, so when it is omitted the application assigns one and returns it as `messageId` (for a Fork also the new branch's id). An id reused for a different message is refused instead of being answered with the earlier result.
 
 Snapshots with rollback, diff in the confirmation card, and an audit with before/after hash are not in scope.
 

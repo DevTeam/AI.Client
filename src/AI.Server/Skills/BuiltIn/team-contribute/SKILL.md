@@ -40,7 +40,7 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    say so. Committing and integrating are the lead's. Read-only git (status, diff, log) is fine.
    A question another skill would put to the user goes to the lead first; use `ask_user` only for
    a decision the charter leaves to the user, and say in it that you are asking as <role>.
-4. Write to the lead with `app_runs` Submit, `branchId` = `chatId`, a fresh `operationId`,
+4. Write to the lead with `app_runs` with `operation` `Submit`, `branchId` = `chatId`, no `operationId` (the application assigns it),
    `wait` false:
    - progress worth knowing: mode Aside, intent `Status`, at most once per phase;
    - something only the lead or the user can settle: mode Send, intent `Question`; then carry on

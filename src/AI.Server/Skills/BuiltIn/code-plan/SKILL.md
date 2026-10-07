@@ -40,7 +40,8 @@ data or repository files. Report any unavailable evidence instead of treating it
 5. Produce an ordered implementation plan with affected files/symbols, what changes in each
    step, meaningful verification and any migration or rollback needed. Identify dependencies
    between steps, open decisions and what constitutes completion. Do not promise an estimate
-   unsupported by the investigation.
+   unsupported by the investigation. When the plan splits into substantial parts that can run at
+   the same time on disjoint files, say in one line that team-assemble could carry it out as a team.
 6. The final answer contains the complete plan, the recommendation and its rationale, links to
    the relevant source, acceptance checks and unresolved questions. Do not implement the plan
    unless the user requests implementation; that request then belongs to `code-feature-implement`.

@@ -404,7 +404,8 @@ public sealed class ChatExecutionTests
 
         var call = await fixture.NextCallAsync();
         call.Request.ContextMessages!.Single(item => item.MessageId == question).ForModel
-            .ShouldStartWith($"[From a branch (branchId {teammate}) (question)]");
+            .ShouldStartWith($"[From a branch (branchId {teammate}) (question); "
+                + "team message to the lead: handle it with the team-coordinate protocol]");
         call.Answer.SetResult("8080");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
 

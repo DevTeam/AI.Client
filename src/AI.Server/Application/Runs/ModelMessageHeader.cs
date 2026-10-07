@@ -13,7 +13,17 @@ public sealed class ModelMessageHeader : IModelMessageHeader
     {
         if (message.Role != "User") return content;
         var parts = new List<string>();
-        if (message.Sender is { } sender) parts.Add(From(sender, chat));
+        if (message.Sender is { } sender)
+        {
+            parts.Add(From(sender, chat));
+            // Only team messages carry an intent. Lead and teammates exchange them as ordinary user
+            // messages, which push the loaded team playbook out of the active-skill window after a
+            // few rounds, so each one names the protocol to keep following.
+            if (sender.Intent is { Length: > 0 } && sender.ChatId == chat.Id)
+                parts.Add(sender.BranchId == chat.Id
+                    ? "team message from the lead: keep to the team-contribute protocol"
+                    : "team message to the lead: handle it with the team-coordinate protocol");
+        }
         switch (message.Delivery)
         {
             case MessageDelivery.InTurn:

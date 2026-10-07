@@ -32,7 +32,9 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    Record decisions in your answer too, so this branch stays the team's record.
 4. When every teammate of a phase is done, start the next phase: one Send per teammate with intent
    `Decision` and what the phase expects of it. After the last phase, integrate: check that the
-   parts fit together (build, tests, the contracts at their boundaries), then report.
+   parts fit together (build, tests, the contracts at their boundaries), then report. Teammates
+   never commit or otherwise change the git state of the shared working directory; when the user
+   wants the result committed, do it here once the team is done, with the git skills.
 5. Never edit a teammate's owned paths yourself, and do not send acknowledgements, thanks or
    restatements: every message to a branch costs that teammate a turn.
 6. Answer with a short status table (role, state, last report, open question) and what you decided

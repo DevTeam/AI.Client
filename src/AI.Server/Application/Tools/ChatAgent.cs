@@ -53,7 +53,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         Func<ContextUsage, CancellationToken, Task>? contextUsage = null,
         Func<string, CancellationToken, Task>? draftToolCall = null,
         bool overlayPromptsAllowed = true,
-        Func<CancellationToken, Task<IReadOnlyList<ChatCompletionMessage>>>? asides = null)
+        Func<CancellationToken, Task<IReadOnlyList<ChatCompletionMessage>>>? asides = null,
+        Func<string, CancellationToken, Task>? stalledReport = null)
     {
         var estimator = tokenEstimator.ForModel(request.Model);
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -213,6 +214,29 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             return !result.IsError;
         }
 
+        // Told to stop calling tools, the model called one anyway. It still owes the reader an
+        // account of the turn, so it is asked once more with no tools to call; the canned text is
+        // only for an endpoint that cannot give even that.
+        async Task<string> StalledReportAsync(IReadOnlyList<ChatCompletionMessage> messages)
+        {
+            await Draft(null);
+            var report = new StringBuilder();
+            try
+            {
+                await foreach (var chunk in completion.StreamAsync(request with { ContextMessages = messages, Tools = [] }, token))
+                {
+                    if (chunk.Content.Length == 0) continue;
+                    report.Append(chunk.Content);
+                    await Draft(chunk.Content);
+                }
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                return StalledAnswer;
+            }
+            return string.IsNullOrWhiteSpace(report.ToString()) ? StalledAnswer : report.ToString();
+        }
+
         while (true)
         {
             if (session is not null)
@@ -300,6 +324,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 }
                 if (compacted)
                 {
+                    // What was read before is now a summary, so reading it again is not a repeat.
+                    observedResults.Clear();
                     modelContext = checkpoints.Apply(run, context);
                     composition = instructionComposer.Compose(run, modelContext, configuredConnection);
                 }
@@ -347,6 +373,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     // Unkept, the summary still serves this run; later turns write their own.
                 }
                 checkpoints.PinHistory(run, kept);
+                observedResults.Clear();
             }
             await Usage(plan);
             if (!plan.Fits) throw new ContextWindowExceededException(plan);
@@ -413,7 +440,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
 
             // Told to stop calling tools, the model called one anyway: the loop ends here rather than
             // going round again.
-            if (stalled) return await FinishAsync(StalledAnswer);
+            if (stalled)
+            {
+                var report = await StalledReportAsync(plan.Messages);
+                if (stalledReport is not null) await stalledReport(report, token);
+                return await FinishAsync(report);
+            }
 
             continuedAnswer.Clear();
             var preamble = content.ToString();
@@ -427,6 +459,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             context.Add(assistant);
             checkpoints.Update(run, context);
             var toolImages = new List<string>();
+            // A step is stalled only when none of its calls told the model anything new. An error
+            // is information too, unless it is the same error for the same call again.
+            var learned = false;
             for (var index = 0; index < calls.Count; index++)
             {
                 var call = calls[index];
@@ -534,11 +569,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 toolImages.AddRange(result.Content.Where(item => item.Kind == ToolContentKind.Image)
                     .Select(item => item.AssetId).OfType<string>());
                 await activity(null, token);
-                if (!result.IsError && observedResults.Add((call.Name, call.Arguments, result.ModelContent)))
-                    stalledSteps = 0;
-                else
-                    stalledSteps++;
+                learned |= observedResults.Add((call.Name, call.Arguments, result.ModelContent));
             }
+            stalledSteps = learned ? 0 : stalledSteps + 1;
             if (toolImages.Count > 0 && configuredConnection?.ImageInput != ImageInputMode.Disabled)
                 context.Add(new ChatCompletionMessage("user", "Images returned by the preceding tools:",
                     IsContextSummary: true, ImageAssetIds: toolImages));
@@ -595,7 +628,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// </summary>
     private const int MaxTruncatedTurns = 5;
 
-    private const int MaxStalledSteps = 4;
+    /// <summary>Steps in a row in which no call told the model anything new.</summary>
+    private const int MaxStalledSteps = 3;
     private const string StalledAnswer =
         "I stopped after several steps produced no new information. The request may be incomplete. "
         + "Please review the tool results and provide missing information or a different approach.";

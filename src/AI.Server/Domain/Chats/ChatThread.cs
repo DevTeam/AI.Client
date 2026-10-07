@@ -234,7 +234,8 @@ public sealed class ChatThread
     private static bool IsActivity(ChatMessage message) =>
         message.Role != ChatMessageRole.Tool && message.ToolCalls is not { Count: > 0 };
 
-    public void AddMessage(ChatMessage message, DateTimeOffset updatedAt, Guid? branchId = null, Guid? parentBranchId = null)
+    public void AddMessage(ChatMessage message, DateTimeOffset updatedAt, Guid? branchId = null, Guid? parentBranchId = null,
+        string? branchTitle = null)
     {
         ArgumentNullException.ThrowIfNull(message);
         if (message.ParentId is { } parentId && !_messages.ContainsKey(parentId))
@@ -261,7 +262,8 @@ public sealed class ChatThread
                 throw new DomainException("Parent branch does not exist in this chat.");
             }
             var id = branchId ?? message.Id.Value;
-            branch = new ChatBranch(id, message.ParentId, message.Content[..Math.Min(48, message.Content.Length)],
+            branch = new ChatBranch(id, message.ParentId,
+                branchTitle is { Length: > 0 } title ? title.Trim() : message.Content[..Math.Min(48, message.Content.Length)],
                 parentBranch?.Id ?? Id.Value, message.Id);
         }
         else if (branch.HeadMessageId != message.ParentId)

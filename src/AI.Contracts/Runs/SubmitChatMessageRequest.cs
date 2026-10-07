@@ -13,4 +13,6 @@ public sealed record SubmitChatMessageRequest(Guid OperationId, Guid MessageId, 
     ChatSubmitMode Mode = ChatSubmitMode.Send, Guid? BranchId = null,
     MessageParentMode ParentMode = MessageParentMode.BranchHead, Guid? ParentMessageId = null,
     Guid? ReplaceSourceId = null, long? ExpectedBranchRevision = null,
-    IReadOnlyList<Resources.ChatResource>? Resources = null);
+    IReadOnlyList<Resources.ChatResource>? Resources = null,
+    // The title of the branch a Fork creates; without one it is named after its first message.
+    string? BranchTitle = null);

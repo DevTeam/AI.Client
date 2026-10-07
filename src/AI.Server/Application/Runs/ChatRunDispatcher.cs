@@ -244,7 +244,7 @@ public sealed class ChatRunDispatcher(
         runtime.State.Enqueue(request.OperationId, new QueuedRunMessage(request.MessageId, request.Content.Trim(), clock.UtcNow,
             parentMode, parentId, replaceId, request.Mode == ChatSubmitMode.Fork ? sourceBranchId : null,
             sourceBranch.Revision, Resources: ResourceReferences.ToDomain(validatedResources), Interactive: interactive,
-            Sender: sender));
+            Sender: sender, BranchTitle: request.Mode == ChatSubmitMode.Fork ? request.BranchTitle : null));
         if (request.Mode == ChatSubmitMode.Queue)
         {
             runtime.ResumeRequested = false;
@@ -373,6 +373,33 @@ public sealed class ChatRunDispatcher(
         }
         taken.Reverse();
         return taken;
+    }
+
+    /// <summary>
+    /// A teammate whose turn stopped for lack of progress tells the lead, who would otherwise learn
+    /// of it only by looking. A teammate's branch is one that a team message of the main branch
+    /// started (docs/34-asides-and-team-messages.md); any other branch keeps the report to itself.
+    /// </summary>
+    private async Task ReportStalledTeammateAsync(Runtime runtime, string report, CancellationToken token)
+    {
+        var (projectId, chatId, branchId) = (runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId);
+        if (branchId == chatId) return;
+        var chat = await chats.GetAsync(projectId, chatId, token);
+        var root = chat?.Branches?.SingleOrDefault(branch => branch.Id == branchId)?.RootMessageId is { } rootId
+            ? chat.Messages.SingleOrDefault(message => message.Id == rootId)
+            : null;
+        if (root?.Sender is not { Intent.Length: > 0 } brief || brief.ChatId != chatId || brief.BranchId != chatId) return;
+        var id = ids.Create();
+        // The teammate's own answer is the report either way; a lead that cannot be told now is
+        // no reason to fail the turn that is telling it.
+        try
+        {
+            await SubmitCoreAsync(projectId, chatId, new SubmitChatMessageRequest(id, id,
+                    "Stopped: several steps in a row produced nothing new.\n\n" + report, ChatSubmitMode.Send, chatId),
+                true, token, new ChatMessageSender(chatId, branchId, "blocker"));
+        }
+        catch (Exception error) when (error is InvalidOperationException or ArgumentException or IOException
+            or UnauthorizedAccessException or Domain.Common.DomainException) { }
     }
 
     private static MessageSender? ToContract(ChatMessageSender? sender) =>
@@ -592,7 +619,8 @@ public sealed class ChatRunDispatcher(
                             new AppendChatMessageRequest(queued.Id, parent, "User", queued.Content, chat.Revision,
                                 BranchId: runtime.State.BranchId, ParentBranchId: queued.ParentBranchId,
                                 ReplaceSourceId: queued.ReplaceSourceId,
-                                Resources: ResourceReferences.ToContract(queued.Resources), Sender: ToContract(queued.Sender)),
+                                Resources: ResourceReferences.ToContract(queued.Resources), Sender: ToContract(queued.Sender),
+                                BranchTitle: queued.BranchTitle),
                             RetainedMessageIds(chat.Id, queued.Id), token)
                             ?? throw new InvalidOperationException("Message conflict.");
                         TrackMessage(runtime, baseRevision, chat, queued.Id);
@@ -656,7 +684,8 @@ public sealed class ChatRunDispatcher(
                     contextUsage: (usage, ct) => ReportContextAsync(runtime, usage, ct),
                     draftToolCall: (name, ct) => ReportDraftToolCallAsync(runtime, name, ct),
                     overlayPromptsAllowed: queued.Interactive,
-                    asides: ct => TakeAsidesIntoTurnAsync(runtime, ct));
+                    asides: ct => TakeAsidesIntoTurnAsync(runtime, ct),
+                    stalledReport: (report, ct) => ReportStalledTeammateAsync(runtime, report, ct));
                 var suggestTitle = false;
                 Guid? answeredHead = null;
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))

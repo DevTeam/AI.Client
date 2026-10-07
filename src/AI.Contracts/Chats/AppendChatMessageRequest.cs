@@ -15,4 +15,5 @@ public sealed record AppendChatMessageRequest(
     Workspace.WorkspaceChangeSet? WorkspaceChanges = null,
     IReadOnlyList<Resources.ChatResource>? Resources = null,
     MessageDelivery Delivery = MessageDelivery.Turn,
-    MessageSender? Sender = null);
+    MessageSender? Sender = null,
+    string? BranchTitle = null);

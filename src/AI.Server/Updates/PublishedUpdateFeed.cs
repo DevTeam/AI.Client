@@ -4,28 +4,24 @@ using AI.Contracts.Updates;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
-public sealed class GitHubUpdateFeed(HttpClient http) : IUpdateFeed
+/// <summary>Reads the release catalog published with the public Web application.</summary>
+public sealed class PublishedUpdateFeed(HttpClient http) : IUpdateFeed
 {
+    private const string CatalogUrl = "https://ai.dev-team.org/updates/releases.json";
+
     public async Task<(UpdateRelease? Release, bool StableAvailable)> FindAsync(string product, string runtime,
         string current, UpdateChannel channel, CancellationToken token)
     {
         var extension = runtime.StartsWith("win-", StringComparison.Ordinal) ? "exe"
             : runtime.StartsWith("osx-", StringComparison.Ordinal) ? "pkg" : "deb";
         var name = $"AI.{product}-{runtime}.{extension}";
-        var releases = new List<Release>();
-        // Follow pagination: prereleases must not hide an older stable release.
-        for (var page = 1; ; page++)
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get,
-                $"https://api.github.com/repos/DevTeam/AI.Client/releases?per_page=100&page={page}");
-            request.Headers.UserAgent.ParseAdd("AI.Client-Updater/1.0");
-            request.Headers.Accept.ParseAdd("application/vnd.github+json");
-            using var response = await http.SendAsync(request, token);
-            response.EnsureSuccessStatusCode();
-            var batch = await response.Content.ReadFromJsonAsync<Release[]>(token) ?? [];
-            releases.AddRange(batch.Where(release => !release.Draft));
-            if (batch.Length < 100) break;
-        }
+        using var response = await http.GetAsync(CatalogUrl, token);
+        response.EnsureSuccessStatusCode();
+        var catalog = await response.Content.ReadFromJsonAsync<Catalog>(token)
+            ?? throw new InvalidDataException("The update catalog is empty.");
+        if (catalog.SchemaVersion != 1 || catalog.Releases is null)
+            throw new InvalidDataException("The update catalog format is not supported.");
+        var releases = catalog.Releases.Where(release => !release.Draft).ToArray();
         var stable = releases.Any(release => !release.Prerelease && release.Assets.Any(asset => asset.Name == name));
         var installed = UpdateVersion.Parse(current) ?? throw new InvalidOperationException("The installed version is not valid.");
         var candidates = releases.Where(release => channel == UpdateChannel.Preview || !release.Prerelease)
@@ -56,4 +52,5 @@ public sealed class GitHubUpdateFeed(HttpClient http) : IUpdateFeed
     public sealed record Release([property: JsonPropertyName("tag_name")] string Tag,
         bool Draft, bool Prerelease, [property: JsonPropertyName("html_url")] string Url, Asset[] Assets);
     public sealed record Asset(string Name, [property: JsonPropertyName("browser_download_url")] string Url, string? Digest, long Size);
+    public sealed record Catalog(int SchemaVersion, Release[] Releases);
 }

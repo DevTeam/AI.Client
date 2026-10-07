@@ -48,7 +48,7 @@ internal sealed partial class UiComposition
             .Arg<DesktopStart>("start")
             .Singleton(_ => new HttpClient { Timeout = TimeSpan.FromMinutes(30) })
             .Singleton<App>()
-            .Transient<UpdateManagerFactory, GitHubUpdateFeed, UpdateInstaller, UpdateInstallationProvider,
+            .Transient<UpdateManagerFactory, PublishedUpdateFeed, UpdateInstaller, UpdateInstallationProvider,
                 MainWindow, ProcessSignals, DesktopUpdates, JsonWindowPlacementStore, JsonWorkspaceLocationStore,
                 JsonThemePreferenceStore, JsonClientSettingsStore, WindowsTaskbarBadge, WindowsFrameTheme, WebView2FileDropBridge>();
 }

@@ -94,7 +94,7 @@ internal sealed class Composition
             // Bindings: one call per lifetime and tag. Order inside a call carries no meaning; a call
             // carries at most the number of type parameters Pure.DI declares for one binding method.
             // Request handling, storage layout and workspace access.
-            .Transient<ChatArchiveService, UpdateManagerFactory, GitHubUpdateFeed, UpdateInstaller,
+            .Transient<ChatArchiveService, UpdateManagerFactory, PublishedUpdateFeed, UpdateInstaller,
                 UpdateInstallationProvider, AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor,
                 ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, InstalledDesktop, ProjectStorageLocation,
                 DataDirectoryLock, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths,

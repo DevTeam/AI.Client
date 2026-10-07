@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   package:
@@ -69,8 +70,15 @@ jobs:
           else
             tag="v${INPUT_VERSION#v}"
           fi
+          prerelease=false
+          if [[ "$tag" == *-* ]]; then prerelease=true; fi
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" artifacts/release-packages/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --prerelease="$prerelease"
           else
-            gh release create "$tag" artifacts/release-packages/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$tag" --generate-notes
+            gh release create "$tag" artifacts/release-packages/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$tag" --generate-notes --prerelease="$prerelease"
           fi
+      - name: Refresh public update catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref master

@@ -7,4 +7,7 @@ public sealed record QueuedRunMessage(Guid Id, string Content, DateTimeOffset Cr
     IReadOnlyList<AI.Domain.Resources.ChatResource>? Resources = null, bool Interactive = true,
     // An aside is delivered at the running turn's next step boundary, or after its reply, and
     // never starts a turn of its own; see docs/34-asides-and-team-messages.md.
-    bool IsAside = false, AI.Domain.Chats.ChatMessageSender? Sender = null, string? BranchTitle = null);
+    bool IsAside = false, AI.Domain.Chats.ChatMessageSender? Sender = null, string? BranchTitle = null,
+    // A message another branch's run sent that needs a reply: a turn in flight takes it at its
+    // next step boundary like an aside, and only when no turn does it runs as one of its own.
+    bool JoinsTurn = false);

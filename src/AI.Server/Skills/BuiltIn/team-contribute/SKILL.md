@@ -37,7 +37,8 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
      same thing again and again stops the turn as making no progress;
    - stuck with no way forward: mode Send, intent `Blocker`, with what you tried;
    - a decision others must follow that your scope lets you make: mode Aside, intent `Decision`.
-   Every message is self-contained — what, why, and what you need back. No acknowledgements, no
+   The lead reads each message under a header naming your branch and its intent, added by the
+   application: do not open it with your role or status. Every message is self-contained — what, why, and what you need back. No acknowledgements, no
    thanks, and no messages to other teammates: the lead routes them.
 5. When the deliverable meets its definition of done, check it once more against the charter's
    contracts, then send intent `Done` (mode Send) with what changed (paths), how it was verified,

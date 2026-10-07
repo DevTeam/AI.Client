@@ -92,6 +92,14 @@ and the HTTP API never accepts one from a client. An optional **intent** says wh
 costs the lead nothing until its next step or turn, and sends `question`, `blocker` and `done` as
 ordinary messages that wake the lead.
 
+A message another branch's run sends as an ordinary message (`question`, `answer`, `blocker`,
+`done`) **joins a turn in flight**: while the receiving branch has a command in flight, the turn
+takes it at its next step boundary exactly like an aside, so a busy lead reads a report before its
+next step instead of polling for it and then spending a whole turn on it afterwards. If that turn
+ends before another boundary, the message stays queued and runs as a turn of its own, because it
+needs an answer. The queue row names the sending branch and the intent. A person's messages keep
+their order in the queue.
+
 The model reads a message with a sender under a header naming the sending branch by its current
 title and the intent, for example `[From branch "Backend — orders API" · question]`. The transcript
 shows such a message as a card of that branch instead of a bubble of the person: the branch title,

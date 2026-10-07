@@ -618,6 +618,33 @@
         </div>
         </div>
         <footer class="workspace-composer">
+            @if (GetPendingResourceAccess() is { } access)
+            {
+                <div class="composer-access" role="status" @key="access">
+                    <span class="composer-access-badge"><AppIcon Name="lock" /></span>
+                    <div class="composer-access-text">
+                        <strong>@ResourceDisplayName(access.Path) is outside this project</strong>
+                        @if (access.Folder is { } folder)
+                        {
+                            <span>To add it, let the project read <code class="composer-access-path" title="@folder">@folder</code> and its subfolders.</span>
+                        }
+                        else
+                        {
+                            <span>It lies at the root of a drive, and a whole drive is never shared. Add one of its folders under Directories instead.</span>
+                        }
+                    </div>
+                    <div class="composer-access-actions">
+                        @if (access.Folder is not null)
+                        {
+                            <button type="button" class="composer-access-allow" disabled="@_isGrantingResourceAccess" @onclick="AllowResourceAccessAsync">
+                                @if (_isGrantingResourceAccess) { <AppIcon Name="spinner" Class="tool-row-spinner" /> } else { <AppIcon Name="folder-plus" /> }
+                                Allow and add
+                            </button>
+                        }
+                        <button type="button" class="icon-action composer-access-dismiss" title="Not now" aria-label="Dismiss" @onclick="DismissResourceAccess"><AppIcon Name="x" /></button>
+                    </div>
+                </div>
+            }
             @if (_draftResources.Any(item => item.Mention is null))
             {
                 <div class="composer-resource-list" aria-label="Attached resources">
@@ -6398,7 +6425,7 @@ else if (_guideInvitation is { } guideInvitation)
         foreach (var item in found.Except(notGranted))
         {
             _chatError = null;
-            await AddDraftResourceAsync([item.Kind!.Value], item.Path!, notifyErrors: false);
+            await AddDraftResourceAsync([item.Kind!.Value], item.Path!, notifyErrors: false, offerAccess: false);
             if (_chatError is not null) failures.Add($"{GetDirectoryDisplayNameSuggestion(item.Path!)} ({_chatError})");
         }
         _chatError = null;
@@ -6538,7 +6565,7 @@ else if (_guideInvitation is { } guideInvitation)
     /// tried in turn and the first the Host accepts wins; when none is, the first refusal is shown.
     /// </summary>
     private async Task AddDraftResourceAsync(IReadOnlyList<ChatResourceKind> kinds, string path, bool notifyErrors = true,
-        ChatLineRange? lines = null, string? mention = null, bool includeContent = false)
+        ChatLineRange? lines = null, string? mention = null, bool includeContent = false, bool offerAccess = true)
     {
         if (_selectedProject is null) return;
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -6594,9 +6621,12 @@ else if (_guideInvitation is { } guideInvitation)
             await WorkspaceStateService.SetLastBrowsedDirectoryAsync(resource.Kind == ChatResourceKind.Directory
                 ? resource.Path : Path.GetDirectoryName(resource.Path) ?? resource.Path);
             _chatError = null;
+            if (_pendingResourceAccess is { } pending && string.Equals(pending.Path, resource.Path, comparison)) _pendingResourceAccess = null;
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
+            // A path outside the project is a question of access, not a failure: the composer asks.
+            if (offerAccess && await OfferResourceAccessAsync(projectId, draftKey, path, lines, mention, includeContent)) return;
             _chatError = $"Could not add the resource: {error.Message}";
             if (notifyErrors) Notifications.ShowError(_chatError);
         }

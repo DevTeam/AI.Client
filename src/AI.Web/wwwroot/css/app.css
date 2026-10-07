@@ -6572,7 +6572,19 @@ textarea {
     .workspace-undo-label { display: none; }
     .workspace-undo-action, .review-workspace-undo { width: var(--chat-card-action-size); padding: 0; }
 }
-.review-error { margin: .35rem 1rem; padding: .5rem .65rem; border: 1px solid var(--color-danger-border); border-radius: var(--radius-md); color: var(--color-danger-text); }
+/* An error in the review or a file preview: a slim banner in the status tint, at the size of the
+   text around it (the global p rule would make it a heading). The workspace's own one has an icon
+   and can be dismissed. */
+.review-error { margin: .5rem .75rem; padding: .4rem .65rem; border: 1px solid var(--color-danger-border); border-left-width: 3px; border-radius: var(--radius-sm); background: var(--color-danger-bg); color: var(--color-danger-text); font-family: var(--font-sans); font-size: var(--font-size-sm); line-height: 1.4; }
+.review-workspace-error { display: flex; align-items: center; gap: .5rem; padding-block: .25rem; padding-right: .25rem; }
+.review-workspace-error > .app-icon { flex: none; width: .95rem; height: .95rem; color: var(--color-danger); }
+.review-workspace-error > span { flex: 1; min-width: 0; }
+.review-workspace-error > .icon-action { flex: none; color: var(--color-danger-text); }
+.review-workspace-error > .icon-action:hover { background: var(--color-danger-bg-hover); color: var(--color-danger-text-strong); }
+/* A review with nothing to show says so in the middle of the drawer, quietly. */
+.review-empty { display: grid; place-items: center; align-content: center; gap: .6rem; flex: 1; min-height: 100%; box-sizing: border-box; padding: 2rem; color: var(--color-text-subtle); font-family: var(--font-sans); text-align: center; }
+.review-empty > .app-icon { width: 2rem; height: 2rem; color: var(--color-text-faint); }
+.review-empty > p { color: inherit; font-size: var(--font-size-base); }
 .review-legacy-summary { max-width: 48rem; margin: 1rem; color: var(--color-text-muted); font-size: var(--font-size-md); }
 .review-legacy-summary section { padding: .5rem 0; border-top: 1px solid var(--color-border); }
 .review-legacy-summary strong { color: var(--color-text-secondary); font-weight: 500; }
@@ -6678,24 +6690,36 @@ textarea {
 .review-comment-icon-action.is-save { color: var(--color-accent); }
 .review-comment-icon-action.is-danger:hover:not(:disabled), .review-comment-icon-action.is-danger:focus-visible { background: var(--color-danger-bg-hover); color: var(--color-danger-text); }
 .review-comment-icon-action:disabled { opacity: .4; cursor: default; }
-.review-tree-row { display: flex; align-items: center; gap: .2rem; min-width: 0; min-height: 1.6rem; padding: .1rem; font-size: var(--font-size-sm); line-height: 1.2; }
-.review-tree-row:hover { background: var(--color-fill-active); }
-.review-tree-row input[type=checkbox] { flex: 0 0 .8rem; width: .8rem; height: .8rem; margin: 0 .1rem 0 0; vertical-align: middle; }
-.review-tree-row a { display: inline-flex; align-items: center; gap: .25rem; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--color-text-secondary); text-decoration: none; }
-.review-tree-row a:hover { text-decoration: underline; }
-.review-tree-file-chevron { flex: none; width: .72rem; height: .72rem; color: var(--color-text-subtle); }
-.review-tree-file-status { flex: 0 0 .8rem; color: var(--color-text-subtle); font-family: var(--font-mono); font-size: var(--font-size-xs); text-align: center; text-decoration: none; }
+/* The file tree: rounded rows like a Settings list. The kind letter takes its status colour, the
+   file whose diff is open is marked like a selected row, and files left out of the review fade. */
+.review-tree-row, .review-tree-folder-toggle { display: flex; align-items: center; gap: .3rem; min-width: 0; min-height: 1.75rem; padding: .1rem .35rem; border-radius: var(--radius-sm); font-size: var(--font-size-sm); line-height: 1.2; transition: background-color var(--duration-fast) ease; }
+.review-tree-row:hover, .review-tree-folder-toggle:hover:not(:disabled) { background: var(--color-fill-hover); }
+.review-tree-row.is-open { background: var(--color-fill-active); }
+.review-tree-row.is-open .review-tree-file-name { color: var(--color-text-strong); font-weight: 500; }
+.review-tree-row input[type=checkbox] { flex: none; width: .85rem; height: .85rem; margin: 0; accent-color: var(--color-accent); cursor: pointer; }
+.review-tree-row input[type=checkbox]:disabled { cursor: not-allowed; opacity: .55; }
+.review-tree-row a { display: inline-flex; align-items: center; gap: .3rem; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--color-text-secondary); text-decoration: none; }
+.review-tree-row a:hover { color: var(--color-text); }
+.review-tree-row.is-excluded .review-tree-file-name { color: var(--color-text-faint); text-decoration: line-through; text-decoration-color: var(--color-border-strong); }
+.review-tree-row.is-excluded .review-tree-file-status, .review-tree-row.is-excluded .review-tree-counts { opacity: .5; }
+.review-tree-file-chevron { flex: none; width: .72rem; height: .72rem; color: var(--color-text-faint); }
+.review-tree-file-status { flex: none; display: grid; place-items: center; width: 1rem; height: 1rem; border-radius: var(--radius-2xs); background: var(--color-fill); color: var(--color-text-subtle); font-family: var(--font-mono); font-size: var(--font-size-2xs); font-weight: 600; }
+.review-tree-file-status.is-added { background: color-mix(in srgb, var(--color-success) 16%, transparent); color: var(--color-success-text); }
+.review-tree-file-status.is-deleted { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.review-tree-file-status.is-modified { background: color-mix(in srgb, var(--color-warning) 16%, transparent); color: var(--color-warning-text); }
+.review-tree-file-status.is-renamed { background: var(--color-accent-bg); color: var(--color-accent-text); }
 .review-tree-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .review-tree-counts { display: inline-grid; grid-template-columns: 2rem 2rem; align-items: center; gap: .2rem; flex: none; margin-left: auto; font-size: var(--font-size-xs); font-variant-numeric: tabular-nums; }
 .review-tree-counts .workspace-added, .review-tree-counts .workspace-removed { min-width: 0; }
 .review-tree-counts .workspace-added { grid-column: 1; }
 .review-tree-counts .workspace-removed { grid-column: 2; }
 .review-tree-comments { flex: none; font-size: var(--font-size-xs); line-height: 1; }
-.review-tree-folder-toggle { display: flex; align-items: center; gap: .2rem; width: 100%; min-width: 0; padding: .1rem; border: 0; background: transparent; color: var(--color-text-secondary); text-align: left; font-size: var(--font-size-sm); cursor: pointer; }
-.review-tree-folder-toggle:hover { background: var(--color-fill-active); }
-.review-tree-folder-toggle .app-icon { flex: none; width: .72rem; height: .72rem; color: var(--color-text-subtle); }
+.review-tree-folder-toggle { width: 100%; border: 0; background: transparent; color: var(--color-text-muted); text-align: left; cursor: pointer; }
+.review-tree-folder-toggle:disabled { color: var(--color-text-muted); cursor: default; opacity: 1; }
+.review-tree-folder-toggle .app-icon { flex: none; width: .72rem; height: .72rem; color: var(--color-text-faint); }
+.review-tree-folder-toggle .review-tree-folder-icon { width: .9rem; height: .9rem; color: var(--color-accent); }
 .review-tree-folder-toggle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.review-tree-children { margin-left: .4rem; border-left: 1px solid var(--color-border); padding-left: .2rem; }
+.review-tree-children { margin-left: .7rem; padding-left: .25rem; border-left: 1px solid var(--color-border-subtle); }
 @media (width <= 900px) { .review-workspace { left: 0; width: 100vw; } .review-workspace-body { grid-template-columns: minmax(0, 1fr); } .review-diff-scroll { grid-column: 1; } .review-file-tree, .review-tree-resizer { display: none; } }
 
 /* Memory: the person's entries and the open project's, one list beside the entry being edited. */

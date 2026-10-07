@@ -59,10 +59,17 @@
             <button type="button" disabled="@_undoBusy" @onclick="() => _confirmingUndo = false">Cancel</button>
         </div>
     }
-    @if (_error is { Length: > 0 }) { <p class="review-error" role="alert">@_error</p> }
+    @if (_error is { Length: > 0 })
+    {
+        <div class="review-error review-workspace-error" role="alert">
+            <AppIcon Name="error" />
+            <span>@_error</span>
+            <button class="icon-action" type="button" title="Dismiss" aria-label="Dismiss error" @onclick="() => _error = null"><AppIcon Name="x" /></button>
+        </div>
+    }
     @if (_current is null)
     {
-        <p class="review-error">Review is unavailable.</p>
+        <div class="review-empty"><AppIcon Name="diff" /><p>Review is unavailable.</p></div>
     }
     else if ((_current.SourceChanges ?? SourceOf(_current)?.WorkspaceChanges) is { } changes)
     {
@@ -116,7 +123,7 @@
             }
         </div>
     }
-    else { <p class="review-error">The reviewed message is no longer available.</p> }
+    else { <div class="review-empty"><AppIcon Name="diff" /><p>The reviewed message is no longer available.</p></div> }
 </section>
 
 @code {
@@ -254,7 +261,19 @@
             }
         }
         SortTree(roots);
-        return roots;
+        return roots.Select(Compact).ToList();
+    }
+
+    private static FileTreeNode Compact(FileTreeNode node)
+    {
+        while (node.File is null && node.Children is [{ File: null } only])
+        {
+            var merged = new FileTreeNode(node.Name + "/" + only.Name, only.Path);
+            merged.Children.AddRange(only.Children);
+            node = merged;
+        }
+        for (var index = 0; index < node.Children.Count; index++) node.Children[index] = Compact(node.Children[index]);
+        return node;
     }
 
     private static void SortTree(List<FileTreeNode> nodes)
@@ -277,14 +296,18 @@
     private RenderFragment RenderTreeNode(FileTreeNode node) => @<text>
         @if (node.File is { } file)
         {
-            <div class="review-tree-row" @key="file.Path"
+            var included = _current!.Files.Contains(file.Path, StringComparer.Ordinal);
+            var lockReason = ExcludeBlockedReason(file.Path);
+            <div class="review-tree-row @(included ? null : "is-excluded") @(_expandedFiles.Contains(file.Path) ? "is-open" : null)" @key="file.Path"
                  @onmouseenter="() => HoverFileAsync(file.Path)"
                  @onmouseleave="() => _hoveredFilePath = null">
-                <input type="checkbox" checked="@_current!.Files.Contains(file.Path, StringComparer.Ordinal)" aria-label="Include @file.Path" @onchange="() => ToggleFileAsync(file.Path)" />
+                <input type="checkbox" checked="@included" disabled="@(lockReason is not null)"
+                       title="@(lockReason ?? (included ? "Exclude from this review" : "Include in this review"))"
+                       aria-label="Include @file.Path" @onchange="() => ToggleFileAsync(file.Path)" />
                 <a href="#@FileId(file.Path)" title="@file.Path" aria-expanded="@_expandedFiles.Contains(file.Path)"
                    @onclick="() => ToggleExpandedFile(file.Path)">
                     <AppIcon Name="@(_expandedFiles.Contains(file.Path) ? "chevron-down" : "chevron-right")" Class="review-tree-file-chevron" />
-                    <span class="review-tree-file-status" title="@FileKindTitle(file.Kind)">@FileKindGlyph(file.Kind)</span>
+                    <span class="review-tree-file-status is-@file.Kind.ToString().ToLowerInvariant()" title="@FileKindTitle(file.Kind)">@FileKindGlyph(file.Kind)</span>
                     <span class="review-tree-file-name"><SettingsFilterText Text="@node.Name" Query="@_fileFilter" /></span>
                 </a>
                 @if (StateFor(file.Path) == WorkspaceUndoFileState.Ready)
@@ -316,7 +339,8 @@
                 <button class="review-tree-folder-toggle" type="button" aria-expanded="@FolderOpen(node.Path)"
                         disabled="@Filtering" @onclick="() => ToggleFolder(node.Path)">
                     <AppIcon Name="@(FolderOpen(node.Path) ? "chevron-down" : "chevron-right")" />
-                    <span><SettingsFilterText Text="@node.Name" Query="@_fileFilter" /></span>
+                    <AppIcon Name="folder" Class="review-tree-folder-icon" />
+                    <span title="@node.Path"><SettingsFilterText Text="@node.Name" Query="@_fileFilter" /></span>
                 </button>
                 @if (FolderOpen(node.Path))
                 {
@@ -340,6 +364,14 @@
     private void ToggleFolder(string path)
     {
         if (!_collapsedFolders.Add(path)) _collapsedFolders.Remove(path);
+    }
+
+    // Why a file cannot leave the review, shown on its disabled checkbox rather than as an error after the click.
+    private string? ExcludeBlockedReason(string path)
+    {
+        if (_current is null || !_current.Files.Contains(path, StringComparer.Ordinal)) return null;
+        if (_current.Comments.Any(item => item.Path == path)) return "Remove the file's comments to exclude it";
+        return _current.Files.Count == 1 ? "A review needs at least one file" : null;
     }
 
     private async Task ToggleFileAsync(string path)

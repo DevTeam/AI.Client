@@ -52,6 +52,11 @@
             {
                 <p class="chat-usage-note context-note-critical" role="alert">@_error</p>
             }
+            else if (Calendar.Validate(draft) is { } invalid && !string.IsNullOrWhiteSpace(draft.Task))
+            {
+                @* Says why Save is unavailable; an empty task needs no words, its box is right there. *@
+                <p class="chat-usage-note context-note-warning">@invalid</p>
+            }
             <div class="chat-schedule-actions">
                 <button class="compact-action chat-schedule-primary" type="button" disabled="@(_busy || Calendar.Validate(draft) is not null)"
                         title="@Calendar.Validate(draft)" @onclick="SaveAsync">

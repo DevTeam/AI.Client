@@ -28,6 +28,12 @@ public interface IScheduleCalendar
     /// <summary>The id to store for the time zone this process runs in.</summary>
     string LocalTimeZoneId { get; }
 
+    /// <summary>
+    /// The IANA id for a Windows one, so a zone reads the same everywhere; the browser does not know
+    /// Windows ids. Anything else is returned trimmed.
+    /// </summary>
+    string CanonicalTimeZoneId(string timeZone);
+
     /// <summary>A moment in the wall-clock time of <paramref name="timeZone"/>.</summary>
     DateTime ToLocal(DateTimeOffset moment, string timeZone);
 }
@@ -40,8 +46,13 @@ public sealed class ScheduleCalendar : IScheduleCalendar
 
     // IANA where the platform names zones the Windows way, so a schedule set on the host reads the
     // same as one set in the browser ("Europe/Moscow", not "Russian Standard Time").
-    public string LocalTimeZoneId => TimeZoneInfo.TryConvertWindowsIdToIanaId(TimeZoneInfo.Local.Id, out var iana)
-        ? iana : TimeZoneInfo.Local.Id;
+    public string LocalTimeZoneId => CanonicalTimeZoneId(TimeZoneInfo.Local.Id);
+
+    public string CanonicalTimeZoneId(string timeZone)
+    {
+        var id = timeZone.Trim();
+        return TimeZoneInfo.TryConvertWindowsIdToIanaId(id, out var iana) ? iana : id;
+    }
 
     public DateTimeOffset? NextAfter(ScheduleRecurrence recurrence, string timeZone, DateTimeOffset after) =>
         Upcoming(recurrence, timeZone, after, 1) is [var next] ? next : null;

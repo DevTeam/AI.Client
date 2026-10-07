@@ -187,7 +187,7 @@ public sealed class ChatScheduleService(
         {
             Task = settings.Task?.Trim() ?? string.Empty,
             SuccessCriteria = string.IsNullOrWhiteSpace(settings.SuccessCriteria) ? null : settings.SuccessCriteria.Trim(),
-            TimeZone = string.IsNullOrWhiteSpace(settings.TimeZone) ? calendar.LocalTimeZoneId : settings.TimeZone.Trim(),
+            TimeZone = string.IsNullOrWhiteSpace(settings.TimeZone) ? calendar.LocalTimeZoneId : calendar.CanonicalTimeZoneId(settings.TimeZone),
             Retry = settings.Retry is { } retry
                 ? retry with { Condition = string.IsNullOrWhiteSpace(retry.Condition) ? null : retry.Condition.Trim() } : null
         };

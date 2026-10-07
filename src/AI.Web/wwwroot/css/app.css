@@ -3398,6 +3398,71 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     margin-bottom: .45rem;
 }
 
+/* A linked path the project cannot read yet: the composer asks for access instead of failing.
+   Warning-tinted, because it holds the reference back until the user decides. */
+.composer-access {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .55rem .75rem;
+    margin-bottom: .6rem;
+    padding: .6rem .6rem .6rem .7rem;
+    border: 1px solid color-mix(in srgb, var(--color-warning) 35%, var(--color-border-subtle));
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--color-warning) 7%, var(--color-surface));
+    animation: chat-tip-in var(--duration-slow) var(--ease-emphasized) both;
+}
+
+.composer-access-badge {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+    color: var(--color-warning);
+}
+
+.composer-access-badge .app-icon { width: 1rem; height: 1rem; }
+.composer-access-text { display: grid; flex: 1 1 16rem; gap: .12rem; min-width: 0; }
+.composer-access-text > strong { color: var(--color-text-strong); font-size: var(--font-size-base); font-weight: 600; overflow-wrap: anywhere; }
+.composer-access-text > span { color: var(--color-text-muted); font-size: var(--font-size-md); line-height: 1.45; }
+
+.composer-access-path {
+    padding: 0 .3rem;
+    border-radius: var(--radius-xs);
+    background: var(--color-fill);
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    font-size: .95em;
+    overflow-wrap: anywhere;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+}
+
+.composer-access-actions { display: flex; align-items: center; gap: .3rem; margin-left: auto; }
+
+.composer-access-allow {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .32rem .7rem;
+    border-color: transparent;
+    border-radius: var(--radius-md);
+    background: var(--color-accent-fill);
+    color: var(--color-on-accent);
+    font-size: var(--font-size-md);
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background-color var(--duration-fast) ease;
+}
+
+.composer-access-allow:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent-fill) 88%, var(--color-text-strong)); color: var(--color-on-accent); }
+.composer-access-allow:disabled { opacity: .7; }
+.composer-access-allow .app-icon { width: .95rem; height: .95rem; }
+.composer-access-dismiss { color: var(--color-text-subtle); }
+
 /* The picture under the pointer while any path is dragged (chatComposer.js): the chip it becomes
    in the composer. Drawn off screen only for the browser's snapshot. */
 .path-drag-image { position: fixed; top: -1000px; left: -1000px; max-width: 18rem; pointer-events: none; }

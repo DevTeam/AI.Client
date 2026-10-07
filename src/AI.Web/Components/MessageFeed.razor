@@ -2381,7 +2381,9 @@
                 var started = ScheduleCalendar.ToLocal(run.StartedAt, schedule.Settings.TimeZone)
                     .ToString("d MMM HH:mm", System.Globalization.CultureInfo.InvariantCulture);
                 var tag = run.Manual ? "manual" : run.Attempt > 1 ? $"retry {run.Attempt - 1}" : null;
-                return new BranchPickerItem(option, $"#{run.Number} · {started}", "git-branch", null,
+                var status = GetOptionStatusClass(option);
+                return new BranchPickerItem(option, $"#{run.Number} · {started}", "git-branch",
+                    status is { Length: > 0 } and not "run-status-generating" ? status : null,
                     $"{branch.Title}{(run.Summary is { Length: > 0 } summary ? $" · {summary}" : null)}",
                     IsOptionActive(option), false, run.Status, run.Number, tag);
             }

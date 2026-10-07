@@ -3081,6 +3081,18 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 .branch-runs-counts .branch-run-dot { width: 0.4rem; height: 0.4rem; margin: 0; }
 .branch-run-row .branch-link { font-variant-numeric: tabular-nums; }
 .branch-run-row .branch-run-dot { flex: none; }
+/* A run the person has not opened since it finished or stopped: a ring in its status colour round the
+   outcome dot and a stronger title, in the sidebar and in the branch picker alike. */
+.branch-run-dot.run-status-unread { outline: 1.5px solid var(--color-unread); outline-offset: 1.5px; }
+.branch-run-dot.run-status-attention { outline: 1.5px solid var(--color-warning); outline-offset: 1.5px; }
+.branch-run-dot.run-status-failed { outline: 1.5px solid var(--color-danger); outline-offset: 1.5px; }
+.branch-run-dot.run-status-interrupted { outline: 1.5px solid var(--color-text-faint); outline-offset: 1.5px; }
+.branch-run-row.is-unseen .nav-item-label,
+.branch-picker-row.is-unseen .branch-option-text { color: var(--color-text-strong); font-weight: 600; }
+.branch-runs-new { flex: none; color: var(--color-unread); font-size: var(--font-size-xs); font-weight: 600; }
+.branch-runs-new.run-status-attention { color: var(--color-warning-text); }
+.branch-runs-new.run-status-failed { color: var(--color-danger-text); }
+.branch-runs-new.run-status-interrupted { color: var(--color-text-faint); }
 .branch-runs-more .nav-item-label { color: var(--color-accent-text); font-size: var(--font-size-sm); }
 
 .branch-picker-empty { padding: 0.6rem; color: var(--color-text-subtle); font-size: var(--font-size-sm); }

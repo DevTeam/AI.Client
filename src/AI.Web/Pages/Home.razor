@@ -220,7 +220,7 @@
                                     runsHeaderShown = true;
                                     @RunsGroupHeader(runRows)
                                 }
-                                <div class="chat-nav-row branch-nav-row @(branch.Run is not null ? "branch-run-row" : null) @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" data-branch-id="@branch.RootId" title="@(branch.RunTooltip ?? GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
+                                <div class="chat-nav-row branch-nav-row @(branch.Run is not null ? "branch-run-row" : null) @(branch.Run is not null && IsUnseenRun(chat.Id, branch) ? "is-unseen" : null) @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" data-branch-id="@branch.RootId" title="@(branch.RunTooltip ?? GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
                                     <span class="branch-tree-line" aria-hidden="true"></span>
                                     @if (_editingBranchId == branch.RootId)
                                     {
@@ -1295,6 +1295,12 @@ else if (_guideInvitation is { } guideInvitation)
                     title="@(RunsGroupExpanded ? "Hide the scheduled runs" : "Show the scheduled runs")" @onclick="() => { _runsGroupToggled = !RunsGroupExpanded; _runsGroupShowAll = false; }">
                 <AppIcon Name="chevron-right" Class="branch-runs-chevron" />
                 <span class="nav-item-label">Runs</span>
+                @if (UnseenRuns(runRows) is { Count: > 0 } unseen)
+                {
+                    @* What the person has not looked at yet; those rows stay shown even while folded. *@
+                    <span class="branch-runs-new @GetRunStatusClass(GetBranchRun(_selectedChat!.Id, unseen[0]))"
+                          title="@($"{unseen.Count} {(unseen.Count == 1 ? "run" : "runs")} you have not opened yet")">@unseen.Count new</span>
+                }
                 <span class="branch-runs-counts">
                     @foreach (var outcome in runRows.GroupBy(item => item.Run!.Status).OrderBy(group => (int)group.Key))
                     {
@@ -1320,9 +1326,26 @@ else if (_guideInvitation is { } guideInvitation)
         var runs = items.Where(item => item.Run is not null).OrderByDescending(item => item.Run!.Number).ToArray();
         if (runs.Length == 0) return items;
         var selected = GetSelectedBranchId();
-        var shown = runs.Where((item, position) => item.RootId == selected
+        var chatId = _selectedChat?.Id ?? Guid.Empty;
+        var shown = runs.Where((item, position) => item.RootId == selected || IsUnseenRun(chatId, item)
             || RunsGroupExpanded && (_runsGroupShowAll || position < SidebarRuns));
         return [.. items.Where(item => item.Run is null), .. shown];
+    }
+
+    /// <summary>
+    /// A run whose branch carries a status the person has not seen — an unread answer, a question,
+    /// a failure — the same one the chat row's branch count is coloured by.
+    /// </summary>
+    private bool IsUnseenRun(Guid chatId, BranchTreeItem item) =>
+        item.Run is not null && GetRunStatusClass(chatId, item.RootId, GetBranchRun(chatId, item)) is { Length: > 0 } status
+        && status != "run-status-generating";
+
+    /// <summary>The unseen runs, the most urgent first.</summary>
+    private List<BranchTreeItem> UnseenRuns(IEnumerable<BranchTreeItem> runRows)
+    {
+        var chatId = _selectedChat?.Id ?? Guid.Empty;
+        return runRows.Where(item => IsUnseenRun(chatId, item))
+            .OrderBy(item => GetBranchRun(chatId, item) is { } run ? GetProjectRunPriority(run) : int.MaxValue).ToList();
     }
 
     private readonly List<ProjectSummary> _projects = [];

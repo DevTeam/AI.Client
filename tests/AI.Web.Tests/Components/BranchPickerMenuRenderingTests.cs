@@ -54,6 +54,22 @@ public sealed class BranchPickerMenuRenderingTests
         text.ShouldContain("branch-run-dot is-failed");
     }
 
+    [Fact]
+    public async Task ShouldShowAndMarkRunsNotSeenYetEvenWhenOlderThanTheNewest()
+    {
+        var items = new List<BranchPickerItem> { new(0, "Daily rate", "message-circle", null, null, true, true) };
+        for (var number = 1; number <= 10; number++)
+            items.Add(new BranchPickerItem(number, $"#{number} · 8 Oct 09:00", "git-branch", number == 1 ? "run-status-unread" : null, null,
+                Selected: false, EndsHere: false, ScheduleRunStatus.Succeeded, number));
+
+        var text = WebUtility.HtmlDecode(await RenderAsync(items));
+
+        text.ShouldContain("#1 · ");
+        text.ShouldNotContain("#2 · ");
+        text.ShouldContain("branch-run-dot is-succeeded run-status-unread");
+        text.ShouldContain("is-unseen");
+    }
+
     private static async Task<string> RenderAsync(IReadOnlyList<BranchPickerItem> items)
     {
         await using var services = new ServiceCollection().BuildServiceProvider();

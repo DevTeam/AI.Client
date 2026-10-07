@@ -8,6 +8,7 @@ public readonly record struct ChatKind
     public static readonly ChatKind Conversation = new("conversation");
     public static readonly ChatKind Guide = new("guide");
     public static readonly ChatKind Demo = new("demo");
+    public static readonly ChatKind TeamDemo = new("team-demo");
 
     public ChatKind(string value)
     {

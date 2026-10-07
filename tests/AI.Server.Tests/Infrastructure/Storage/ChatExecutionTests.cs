@@ -541,6 +541,27 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task TheGuidesTeamDemoShouldHoldAWorkingTeamWithoutAModel()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+
+        var chat = await fixture.Chats.CreateAsync(fixture.ProjectId,
+            new CreateChatRequest(AI.Application.Chats.TeamDemoChatKindPolicy.Title, Kind: "team-demo"), CancellationToken.None);
+
+        fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
+        chat.Branches!.Where(branch => branch.Member is not null).Select(branch => branch.Title)
+            .ShouldBe(["Ada · Backend", "Bo · Tests"]);
+        var roster = new ChatTeamRosterCalculator().Calculate(chat, [], chat.Id);
+        roster.Task!.Text.ShouldStartWith("Add a CSV export of orders");
+        roster.Charter.ShouldNotBeNull();
+        roster.Done.ShouldBe(1);
+        roster.Members.Single(member => member.Name == "Bo").Open!.Intent.ShouldBe("question");
+        // The lead's branch ends on Bo's open question; each teammate's on its own reply.
+        chat.Messages.Single(message => message.Id == chat.Branches!.Single(branch => branch.Id == chat.Id).HeadMessageId)
+            .Sender!.Intent.ShouldBe("question");
+    }
+
+    [Fact]
     public async Task ATeammatesFailedTurnShouldBeReportedToTheLead()
     {
         await using var fixture = await Fixture.CreateAsync();

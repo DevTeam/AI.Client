@@ -31,6 +31,13 @@ public interface IGuideChats
     Task<ChatDetails> CreateDemoAsync(Guid projectId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// A visible chat holding a small team at work — a lead, two teammates, their reports and an open
+    /// question — written without a model, so team work has something to show. It is removed with
+    /// the tour unless the person has added to it.
+    /// </summary>
+    Task<ChatDetails> CreateTeamDemoAsync(Guid projectId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Deletes the project's guide chats that have no run in progress, except <paramref name="keep"/>,
     /// and its demo chats nobody has written in. A tour still running, in this window or another,
     /// is left alone.
@@ -50,6 +57,14 @@ public sealed class GuideChats(IChatRepository repository, IChatRunDispatcher ru
     {
         var chat = await chats.CreateAsync(projectId, new CreateChatRequest(DemoTitle, Kind: ChatKind.Demo.Value), cancellationToken);
         // The window learns about chats a tool made from this signal, and lists the new one.
+        changes.Notify();
+        return chat;
+    }
+
+    public async Task<ChatDetails> CreateTeamDemoAsync(Guid projectId, CancellationToken cancellationToken)
+    {
+        var chat = await chats.CreateAsync(projectId,
+            new CreateChatRequest(TeamDemoChatKindPolicy.Title, Kind: ChatKind.TeamDemo.Value), cancellationToken);
         changes.Notify();
         return chat;
     }

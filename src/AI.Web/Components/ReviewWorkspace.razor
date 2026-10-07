@@ -6,6 +6,7 @@
 @inject IWorkspaceUndoState UndoState
 @inject INotificationService Notifications
 @inject IJSRuntime JsRuntime
+@inject ISettingsListFilter ListFilter
 @implements IDisposable
 
 <section class="review-workspace" aria-label="Review changes">
@@ -89,8 +90,13 @@
             <div class="review-tree-resizer" role="separator" tabindex="0" aria-label="Resize review file tree"
                  aria-orientation="vertical" aria-valuemin="180" aria-valuemax="600" aria-valuenow="352"></div>
             <aside class="review-file-tree" aria-label="Review files">
-                <input type="search" value="@_fileFilter" @oninput="e => _fileFilter = e.Value?.ToString() ?? string.Empty" placeholder="Filter files" aria-label="Filter review files" />
-                @foreach (var node in BuildFileTree(changes.Files, _fileFilter)) { @RenderTreeNode(node) }
+                @{ var shownFiles = FilesInTreeOrder(BuildFileTree(changes.Files, _fileFilter)).ToList(); }
+                <SettingsFilterField @bind-Value="_fileFilter" Placeholder="Filter files" Shown="@shownFiles.Count" Total="@changes.Files.Count"
+                                     Submitted="() => OpenFile(shownFiles[0].Path)" />
+                <div class="review-file-tree-list">
+                    @if (shownFiles.Count == 0 && changes.Files.Count > 0) { <p class="empty-hint">No files match “@_fileFilter.Trim()”.</p> }
+                    @foreach (var node in BuildFileTree(changes.Files, _fileFilter)) { @RenderTreeNode(node) }
+                </div>
             </aside>
         </div>
     }
@@ -229,11 +235,11 @@
         public List<FileTreeNode> Children { get; } = [];
     }
 
-    private static IReadOnlyList<FileTreeNode> BuildFileTree(IReadOnlyList<FileChange> files, string? filter)
+    // The filter matches every word of the query against the whole path, as the Settings lists do.
+    private IReadOnlyList<FileTreeNode> BuildFileTree(IReadOnlyList<FileChange> files, string? filter)
     {
         var roots = new List<FileTreeNode>();
-        foreach (var file in files.Where(item => string.IsNullOrWhiteSpace(filter)
-                     || item.Path.Contains(filter, StringComparison.OrdinalIgnoreCase)))
+        foreach (var file in files.Where(item => ListFilter.Matches(filter ?? string.Empty, item.Path)))
         {
             var segments = file.Path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
             var siblings = roots;
@@ -279,7 +285,7 @@
                    @onclick="() => ToggleExpandedFile(file.Path)">
                     <AppIcon Name="@(_expandedFiles.Contains(file.Path) ? "chevron-down" : "chevron-right")" Class="review-tree-file-chevron" />
                     <span class="review-tree-file-status" title="@FileKindTitle(file.Kind)">@FileKindGlyph(file.Kind)</span>
-                    <span class="review-tree-file-name">@node.Name</span>
+                    <span class="review-tree-file-name"><SettingsFilterText Text="@node.Name" Query="@_fileFilter" /></span>
                 </a>
                 @if (StateFor(file.Path) == WorkspaceUndoFileState.Ready)
                 {
@@ -307,18 +313,29 @@
         else
         {
             <div class="review-tree-folder" @key="node.Path">
-                <button class="review-tree-folder-toggle" type="button" aria-expanded="@(!_collapsedFolders.Contains(node.Path))"
-                        @onclick="() => ToggleFolder(node.Path)">
-                    <AppIcon Name="@(_collapsedFolders.Contains(node.Path) ? "chevron-right" : "chevron-down")" />
-                    <span>@node.Name</span>
+                <button class="review-tree-folder-toggle" type="button" aria-expanded="@FolderOpen(node.Path)"
+                        disabled="@Filtering" @onclick="() => ToggleFolder(node.Path)">
+                    <AppIcon Name="@(FolderOpen(node.Path) ? "chevron-down" : "chevron-right")" />
+                    <span><SettingsFilterText Text="@node.Name" Query="@_fileFilter" /></span>
                 </button>
-                @if (!_collapsedFolders.Contains(node.Path))
+                @if (FolderOpen(node.Path))
                 {
                     <div class="review-tree-children">@foreach (var child in node.Children) { @RenderTreeNode(child) }</div>
                 }
             </div>
         }
     </text>;
+
+    private bool Filtering => ListFilter.Words(_fileFilter).Count > 0;
+
+    // A filtered tree shows every folder that holds a match, whatever was collapsed before.
+    private bool FolderOpen(string path) => Filtering || !_collapsedFolders.Contains(path);
+
+    private void OpenFile(string path)
+    {
+        _expandedFiles.Add(path);
+        _revealPath = path;
+    }
 
     private void ToggleFolder(string path)
     {

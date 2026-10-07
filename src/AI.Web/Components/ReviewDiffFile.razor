@@ -153,37 +153,53 @@ else if (DetailsId is not null)
             ? item.OldEnd == line.OldLine && item.NewStart is null
             : item.NewEnd == line.NewLine && item.OldStart is null)).ToArray();
 
-    private RenderFragment CommentCard(ReviewComment comment) => @<div class="review-comment @(_editingCommentId == comment.Id ? "is-editing" : null)" @key="comment.Id">
-        @if (RangeLabel(comment) is { } label) { <div class="review-comment-anchor">@label</div> }
+    private RenderFragment CommentCard(ReviewComment comment) => @<article class="review-comment @(_editingCommentId == comment.Id ? "is-editing" : null)" @key="comment.Id">
         @if (_editingCommentId == comment.Id) { @CommentEditor() }
         else
         {
+            <header class="review-comment-header">
+                <AppIcon Name="message-circle" />
+                <span class="review-comment-anchor">@RangeLabel(comment.OldStart, comment.OldEnd, comment.NewStart, comment.NewEnd)</span>
+                <span class="review-comment-actions">
+                    <button class="review-comment-icon-action" type="button" title="Edit comment" aria-label="Edit comment" @onclick="() => EditComment(comment)"><AppIcon Name="edit" /></button>
+                    <button class="review-comment-icon-action is-danger" type="button" title="Delete comment" aria-label="Delete comment" @onclick="() => DeleteCommentAsync(comment)"><AppIcon Name="trash" /></button>
+                </span>
+            </header>
             <button class="review-comment-body" type="button" title="Edit comment" aria-label="Edit comment" @onclick="() => EditComment(comment)">@comment.Body</button>
-            <div class="review-comment-actions">
-                <button class="review-comment-icon-action" type="button" title="Edit comment" aria-label="Edit comment" @onclick="() => EditComment(comment)"><AppIcon Name="edit" /></button>
-                <button class="review-comment-icon-action is-danger" type="button" title="Delete comment" aria-label="Delete comment" @onclick="() => DeleteCommentAsync(comment)"><AppIcon Name="trash" /></button>
-            </div>
         }
-    </div>;
+    </article>;
 
-    private static string? RangeLabel(ReviewComment comment) => comment switch
-    {
-        { NewStart: { } start, NewEnd: { } end } when start != end => $"New lines {start}–{end}",
-        { OldStart: { } start, OldEnd: { } end } when start != end => $"Old lines {start}–{end}",
-        _ => null,
-    };
+    // Lines on the new side are the file as it is now, so they go without a qualifier.
+    private static string RangeLabel(int? oldStart, int? oldEnd, int? newStart, int? newEnd) =>
+        (newStart, newEnd, oldStart, oldEnd) switch
+        {
+            ({ } start, { } end, _, _) when start != end => $"Lines {start}–{end}",
+            ({ } line, _, _, _) => $"Line {line}",
+            (_, _, { } start, { } end) when start != end => $"Old lines {start}–{end}",
+            (_, _, { } line, _) => $"Old line {line}",
+            _ => "Whole file",
+        };
+
+    private bool PendingIsSingleLine => _pendingOldStart == _pendingOldEnd && _pendingNewStart == _pendingNewEnd
+        && (_pendingOldStart ?? _pendingNewStart) is not null;
 
     private RenderFragment CommentEditor() => @<div class="review-comment-editor" @onkeydown="HandleCommentKeyDown">
-        @if (_rangeStart is not null && _pendingOldStart == _pendingOldEnd && _pendingNewStart == _pendingNewEnd)
-        {
-            <small class="review-comment-range-hint">Shift-click another line to select a range.</small>
-        }
+        <header class="review-comment-header">
+            <AppIcon Name="@(_editingCommentId is null ? "plus" : "edit")" />
+            <span class="review-comment-anchor">@RangeLabel(_pendingOldStart, _pendingOldEnd, _pendingNewStart, _pendingNewEnd)</span>
+            @if (_editingCommentId is null && _rangeStart is not null && PendingIsSingleLine)
+            {
+                <small class="review-comment-range-hint"><kbd>Shift</kbd> + click another line for a range</small>
+            }
+        </header>
         <ReviewCommentInput @ref="_commentInput" @bind-Value="_commentBody" OnKeyDown="HandleCommentTextKeyDownAsync" Suggest="SuggestCommentAsync" />
-        <div class="review-comment-actions">
-            <button class="review-comment-icon-action" type="button" title="Suggest a comment (Ctrl+Space)" aria-label="Suggest a comment" aria-keyshortcuts="Control+Space" disabled="@_saving" @onclick="() => _commentInput?.RequestAsync() ?? Task.CompletedTask"><AppIcon Name="lightbulb" /></button>
-            <button class="review-comment-icon-action is-save" type="button" title="Save comment (Enter)" aria-label="Save comment" aria-keyshortcuts="Enter" disabled="@(_saving || string.IsNullOrWhiteSpace(_commentBody))" @onclick="SaveCommentAsync"><AppIcon Name="check" /></button>
-            <button class="review-comment-icon-action" type="button" title="Cancel (Esc)" aria-label="Cancel comment" aria-keyshortcuts="Escape" @onclick="CancelComment"><AppIcon Name="x" /></button>
-        </div>
+        <footer class="review-comment-footer">
+            <button class="review-comment-suggest" type="button" title="Suggest a comment (Ctrl+Space)" aria-keyshortcuts="Control+Space" disabled="@_saving"
+                    @onclick="() => _commentInput?.RequestAsync() ?? Task.CompletedTask"><AppIcon Name="lightbulb" /><span>Suggest</span></button>
+            <button class="review-comment-cancel" type="button" title="Cancel (Esc)" aria-keyshortcuts="Escape" @onclick="CancelComment">Cancel</button>
+            <button class="review-comment-save" type="button" title="Save comment (Enter)" aria-keyshortcuts="Enter"
+                    disabled="@(_saving || string.IsNullOrWhiteSpace(_commentBody))" @onclick="SaveCommentAsync">@(_editingCommentId is null ? "Comment" : "Save")</button>
+        </footer>
     </div>;
 
     private void EditComment(ReviewComment comment)

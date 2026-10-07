@@ -12,7 +12,7 @@ else if (Line.Kind != DiffLineKind.Hunk)
         @if (ReviewMode)
         {
             <button class="diff-line-comment" type="button" title="Comment on line; Shift-click another line to select a range"
-                    aria-label="Comment on line" @onclick="OnComment" @onclick:stopPropagation="true">+</button>
+                    aria-label="Comment on line" @onclick="OnComment" @onclick:stopPropagation="true"><span class="diff-line-comment-glyph" aria-hidden="true">+</span></button>
         }
         <span class="diff-gutter" aria-hidden="true">@Line.OldLine</span>
         <span class="diff-gutter" aria-hidden="true">@Line.NewLine</span>

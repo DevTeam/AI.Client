@@ -10,6 +10,7 @@
 @inject IClientSettingsService ClientSettings
 @inject IClientMode ClientMode
 @inject IHostConnection HostConnection
+@inject AI.Web.Updates.IPublishedDownloadLinks PublishedDownloads
 @inject ISettingsTransferCodec TransferCodec
 @inject ISettingsImportPlanner ImportPlanner
 @inject IJSRuntime JsRuntime
@@ -58,7 +59,10 @@
                                     {
                                         <div class="settings-row">
                                             <span class="settings-row-text"><span class="settings-row-label">Desktop app</span><span class="settings-row-hint">A separate window with the same projects and chats</span></span>
-                                            <a href="https://github.com/DevTeam/AI.Client/releases/latest" target="_blank" rel="noopener noreferrer">Get it</a>
+                                            @if (_desktopReleaseUrl is not null)
+                                            {
+                                                <a href="@_desktopReleaseUrl" target="_blank" rel="noopener noreferrer">Get it</a>
+                                            }
                                         </div>
                                     }
                                 </div>
@@ -473,6 +477,7 @@
     private bool _loaded;
     private bool _saving;
     private bool _disconnectingHost;
+    private string? _desktopReleaseUrl;
     private bool _saveFailed;
     // What was loaded, in the editor's shape; closing without edits must not write
     // (and toast) anything, and secrets never appear here, so they are checked separately.
@@ -596,6 +601,11 @@
         _guideIdleMinutes = clientSettings.GuideIdleMinutes;
         _guideCompletedCount = clientSettings.CompletedGuideTopics.Count;
         await LoadGlobalSettingsAsync();
+        if (ClientMode.PublicWeb)
+        {
+            try { _desktopReleaseUrl = (await PublishedDownloads.LoadAsync()).DesktopReleaseUrl; }
+            catch (Exception error) when (error is HttpRequestException or System.Text.Json.JsonException or InvalidDataException) { }
+        }
     }
     protected override void OnParametersSet()
     {

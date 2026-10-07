@@ -7,6 +7,7 @@
 @inject IHostConnection HostConnection
 @inject IJSRuntime Js
 @inject NavigationManager Navigation
+@inject AI.Web.Updates.IPublishedDownloadLinks PublishedDownloads
 
 <UpdateRestartNotice />
 
@@ -79,24 +80,45 @@ else if (ClientMode.PublicWeb && _stage != Stage.Ready)
                         {
                             <button class="host-gate-primary" type="button" disabled="@_updatingHost" @onclick="UpdateHostAsync">@(_updatingHost ? "Scheduling update…" : "Update Host")</button>
                         }
-                        <a class="@(_workspaceOpened && _stage == Stage.Install ? "host-gate-download" : "host-gate-primary")" href="@AssetUrl("AI.Host", _runtime)"><AppIcon Name="download" />@(_workspaceOpened && _stage == Stage.Install ? "Install Host" : $"Download for {OsName(_runtime)}")</a>
-                        <span class="host-gate-meta">@ArchitectureName(_runtime) · @Extension(_runtime)</span>
+                        @if (AssetUrl("AI.Host", _runtime) is { } hostUrl)
+                        {
+                            <a class="@(_workspaceOpened && _stage == Stage.Install ? "host-gate-download" : "host-gate-primary")" href="@hostUrl"><AppIcon Name="download" />@(_workspaceOpened && _stage == Stage.Install ? "Install Host" : $"Download for {OsName(_runtime)}")</a>
+                            <span class="host-gate-meta">@ArchitectureName(_runtime) · @Extension(_runtime)</span>
+                        }
                     </div>
                 }
                 <p class="host-gate-waiting" role="status"><span aria-hidden="true"></span>@(_stage == Stage.OtherApp ? "Waiting for the address to free up…" : "Waiting for Host on this computer…")</p>
-                @if (_stage != Stage.OtherApp)
+                @if (_stage != Stage.OtherApp && _downloads is not null)
                 {
                     <details class="host-gate-more">
                         <summary><AppIcon Name="chevron-right" /><span>Other platforms</span></summary>
                         <ul>
                             @foreach (var runtime in Runtimes)
                             {
-                                <li><a href="@AssetUrl("AI.Host", runtime)">@OsName(runtime) · @ArchitectureName(runtime)</a><span>@Extension(runtime)</span></li>
+                                @if (AssetUrl("AI.Host", runtime) is { } platformUrl)
+                                {
+                                    <li><a href="@platformUrl">@OsName(runtime) · @ArchitectureName(runtime)</a><span>@Extension(runtime)</span></li>
+                                }
                             }
                         </ul>
                     </details>
-                    <p class="host-gate-note">Prefer a separate window? <a href="@AssetUrl("AI.Desktop", _runtime)">Get the Desktop app</a>. It shares projects and chats with the Host.</p>
+                    @if (AssetUrl("AI.Desktop", _runtime) is { } desktopUrl)
+                    {
+                        <p class="host-gate-note">Prefer a separate window? <a href="@desktopUrl">Get the Desktop app</a>. It shares projects and chats with the Host.</p>
+                    }
                     <p class="host-gate-note">If the browser asks to access devices on your local network, allow it.</p>
+                }
+                else if (_stage != Stage.OtherApp)
+                {
+                    <p class="host-gate-note" role="status">@(_downloadError is null ? "Loading installer links…" : _downloadError)</p>
+                    @if (_downloadError is not null)
+                    {
+                        <div class="host-gate-actions"><button type="button" @onclick="LoadDownloadsAsync">Retry downloads</button></div>
+                    }
+                }
+                @if (_downloads is not null && _downloadError is not null)
+                {
+                    <p class="host-gate-error" role="alert">@_downloadError</p>
                 }
                 break;
         }
@@ -120,6 +142,8 @@ else if (ClientMode.PublicWeb && _stage != Stage.Ready)
     private bool _updatingHost;
     private string? _error;
     private string _runtime = "win-x64";
+    private AI.Web.Updates.PublishedDownloadCatalog? _downloads;
+    private string? _downloadError;
 
     private enum Stage { Checking, Redirecting, Ready, Insecure, Install, Update, OtherApp, Blocked, Connect }
 
@@ -178,7 +202,26 @@ else if (ClientMode.PublicWeb && _stage != Stage.Ready)
         if (returned.StartsWith("pair:", StringComparison.Ordinal))
             await PairAsync(returned[5..]);
 
+        _ = LoadDownloadsAsync();
         _ = WaitForHostAsync(_disposed.Token);
+    }
+
+    private async Task LoadDownloadsAsync()
+    {
+        _downloads = null;
+        _downloadError = null;
+        try
+        {
+            _downloads = await PublishedDownloads.LoadAsync(_disposed.Token);
+            if (AssetUrl("AI.Host", _runtime) is null)
+                _downloadError = "No installer is published for this platform.";
+        }
+        catch (Exception error) when (error is HttpRequestException or System.Text.Json.JsonException or InvalidDataException or TaskCanceledException)
+        {
+            if (_disposed.IsCancellationRequested) return;
+            _downloadError = "Installer links are unavailable. Try again.";
+        }
+        await InvokeAsync(StateHasChanged);
     }
 
     private void OnHostConnectionChanged() => _ = InvokeAsync(async () =>
@@ -346,8 +389,7 @@ else if (ClientMode.PublicWeb && _stage != Stage.Ready)
 
     private void Reload() => Navigation.Refresh(forceReload: true);
 
-    private string AssetUrl(string product, string runtime) =>
-        $"https://github.com/DevTeam/AI.Client/releases/latest/download/{product}-{runtime}.{Extension(runtime).TrimStart('.')}";
+    private string? AssetUrl(string product, string runtime) => _downloads?.AssetUrl(product, runtime);
 
     private string Extension(string runtime) => runtime.Split('-')[0] switch
     {

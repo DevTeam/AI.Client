@@ -786,7 +786,14 @@ public sealed class ChatRunDispatcher(
             await CommitPartialAnswerAsync(runtime);
             // Clear can empty the queue while a cancelled worker is still unwinding. Keep the
             // Idle state established by Clear instead of changing the empty queue back to Paused.
-            if (error is OperationCanceledException)
+            // A Host shutdown cancels the same token as Stop. Pausing here made a restart look as
+            // if the user had stopped the run; it is an interruption, like a crash after restart.
+            if (error is OperationCanceledException && _shutdown.IsCancellationRequested
+                && runtime.State.Status == RunStatus.Generating)
+            {
+                runtime.State.Interrupt();
+            }
+            else if (error is OperationCanceledException)
             {
                 if (runtime.State.Queue.Count > 0) runtime.State.Pause();
             }

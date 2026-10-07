@@ -22,7 +22,7 @@
                     @foreach (var widget in Widgets)
                     {
                         if (Catalog.Find(widget.Id) is not { } definition) continue;
-                        <label @key="widget.Id" class="chat-widgets-menu-item">
+                        <label @key="widget.Id" class="chat-widgets-menu-item" title="@definition.Description">
                             <input type="checkbox" checked="@(!widget.Hidden)" @onchange="args => SetShownAsync(widget.Id, args)" />
                             <AppIcon Name="@definition.Icon" />
                             <span><strong>@definition.Title</strong><small>@definition.Description</small></span>

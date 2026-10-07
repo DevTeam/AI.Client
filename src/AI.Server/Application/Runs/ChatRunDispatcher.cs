@@ -33,7 +33,7 @@ public sealed class ChatRunDispatcher(
     ISkillRunner skillRunner, ISkillCatalog skillCatalog, IChatReplySuggestions replySuggestions,
     IToolAutoApprover autoApprover, ITokenUsageMeter usageMeter, ITokenUsageAggregator usageAggregator,
     IHistoryCheckpointService historyCheckpoints, IConnectionChoice connectionChoice,
-    IChatKindPolicyRegistry kindPolicies, IModelMessageHeader headers)
+    IChatKindPolicyRegistry kindPolicies, IModelMessageHeader headers, ITeamStatusBrief teamStatus)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -684,7 +684,9 @@ public sealed class ChatRunDispatcher(
                             : await historyCheckpoints.ApplyAsync(chat.ProjectId, chat.Id,
                                 await contextBuilder.BuildAsync(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id), token), token),
                         Kind: new ChatKind(chat.Kind), KindState: chat.KindState,
-                        KindStateVersion: chat.KindStateVersion, ProjectId: runtime.State.ProjectId);
+                        KindStateVersion: chat.KindStateVersion, ProjectId: runtime.State.ProjectId,
+                        TeamStatus: teamStatus.Describe(chat, runtime.State.BranchId, _runtimes.Values
+                            .Where(item => item.State.ChatId == chat.Id).Select(item => item.Snapshot).ToArray()));
                     if (connection.ImageInput == AI.Contracts.Settings.ImageInputMode.Disabled)
                         request = request with { ContextMessages = request.ContextMessages?
                             .Select(item => item with { ImageAssetIds = null }).ToArray() };

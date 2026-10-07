@@ -116,7 +116,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatReferenceStatisticsCalculator>()
             .Root<IChatModelStatisticsCalculator>()
             .Root<IChatTeamStatisticsCalculator>()
-            .Root<IChatTeamRosterCalculator>()
+            .Root<AI.Contracts.Chats.IChatTeamRosterCalculator>()
             .Root<IChatUnfinishedStatisticsCalculator>()
             .Root<IChatUsageStore>()
             .Root<IHistoryCheckpointApi>()
@@ -136,7 +136,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 ChatWidgetCatalog, ChatWidgetLayout, ChatFileStatisticsCalculator, ChatToolStatisticsCalculator,
                 ChatPerformanceCalculator, ChatKnowledgeStatisticsCalculator, ChatSubtaskStatisticsCalculator,
                 ChatTimelineStatisticsCalculator, ChatBranchesStatisticsCalculator, ChatReferenceStatisticsCalculator,
-                ChatModelStatisticsCalculator, ChatTeamStatisticsCalculator, ChatTeamRosterCalculator, ChatUnfinishedStatisticsCalculator,
+                ChatModelStatisticsCalculator, ChatTeamStatisticsCalculator, ChatUnfinishedStatisticsCalculator,
                 ChatUsageApi, HistoryCheckpointApi,
                 DelayedBusyIndicatorFactory, ApiBaseUrl, ClientMode, ClientMetadata, ChatComposerService,
                 ChatMessageDeltaMerger, ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi,

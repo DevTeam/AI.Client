@@ -510,6 +510,37 @@ public sealed class ChatExecutionTests
     }
 
     [Fact]
+    public async Task TheLeadsTurnShouldStartWithTheTeamStatus()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Team charter"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Forking the team.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var head = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.Messages[^1].Id;
+        var ada = Guid.NewGuid();
+        await fixture.Dispatcher.SubmitFromRunAsync(fixture.ProjectId, fixture.ChatId,
+            new SubmitChatMessageRequest(ada, ada, "You are Ada.", ChatSubmitMode.Fork, fixture.ChatId,
+                MessageParentMode.Explicit, head, BranchMember: new TeamMember("Ada", "Backend")),
+            new AI.Domain.Chats.ChatMessageSender(fixture.ChatId, fixture.ChatId, "decision"), CancellationToken.None);
+        (await fixture.NextCallAsync()).Answer.SetResult("Working on it.");
+        await fixture.WaitAsync(run => run.BranchId == ada && run.Status == ChatRunStatus.Completed);
+
+        var question = Guid.NewGuid();
+        await fixture.Dispatcher.SubmitFromRunAsync(fixture.ProjectId, fixture.ChatId,
+            new SubmitChatMessageRequest(question, question, "Which port?"),
+            new AI.Domain.Chats.ChatMessageSender(fixture.ChatId, ada, "question"), CancellationToken.None);
+
+        var lead = await fixture.NextCallAsync();
+        // The lead is handed the team's state instead of reading branches to rebuild it.
+        lead.Request.ContextMessages!.ShouldContain(message => message.ForModel.Contains(
+            $"- Ada · Backend (branchId {ada}): idle; latest report question: \"Which port?\"; "
+            + "waiting for your answer to its question: \"Which port?\"", StringComparison.Ordinal));
+        lead.Answer.SetResult("Port 8080.");
+        await fixture.WaitAsync(run => run.BranchId == fixture.ChatId && run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task ATeammatesFailedTurnShouldBeReportedToTheLead()
     {
         await using var fixture = await Fixture.CreateAsync();

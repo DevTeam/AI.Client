@@ -33,5 +33,5 @@ internal sealed class Composition
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AskUserPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppNavigatePresentationAdapter>()
             .Transient<ToolPresentations, ToolResultModelProjector, ToolResultCodec, ConnectionContextLimitsResolver,
-                UnifiedDiff>();
+                UnifiedDiff, Chats.ChatTeamRosterCalculator>();
 }

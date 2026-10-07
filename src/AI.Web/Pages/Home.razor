@@ -218,22 +218,7 @@
                                 @if (branch.Run is not null && !runsHeaderShown)
                                 {
                                     runsHeaderShown = true;
-                                    @* The runs of a scheduled chat fold under one row, as in the branch picker: the
-                                       newest are a click away, the current one is always shown. *@
-                                    <div class="chat-nav-row branch-nav-row branch-runs-group" style="--branch-depth: 1">
-                                        <span class="branch-tree-line" aria-hidden="true"></span>
-                                        <button class="workspace-nav-item chat-link branch-link" type="button" data-stays-in-drawer aria-expanded="@(_runsGroupExpanded ? "true" : "false")"
-                                                title="@(_runsGroupExpanded ? "Hide the scheduled runs" : "Show the scheduled runs")" @onclick="() => { _runsGroupExpanded = !_runsGroupExpanded; _runsGroupShowAll = false; }">
-                                            <AppIcon Name="chevron-right" Class="branch-runs-chevron" />
-                                            <span class="nav-item-label">Runs</span>
-                                            <span class="branch-runs-counts">
-                                                @foreach (var outcome in runRows.GroupBy(item => item.Run!.Status).OrderBy(group => (int)group.Key))
-                                                {
-                                                    <span title="@($"{outcome.Count()} {outcome.Key.ToString().ToLowerInvariant()}")"><i class="branch-run-dot is-@outcome.Key.ToString().ToLowerInvariant()" aria-hidden="true"></i>@outcome.Count()</span>
-                                                }
-                                            </span>
-                                        </button>
-                                    </div>
+                                    @RunsGroupHeader(runRows)
                                 }
                                 <div class="chat-nav-row branch-nav-row @(branch.Run is not null ? "branch-run-row" : null) @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" data-branch-id="@branch.RootId" title="@(branch.RunTooltip ?? GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
                                     <span class="branch-tree-line" aria-hidden="true"></span>
@@ -300,7 +285,12 @@
                                     }
                                 </div>
                             }
-                            @if (_runsGroupExpanded && runRows.Length > SidebarRuns)
+                            @* Folded with the main line open, no run row is visible: the group row still is. *@
+                            @if (!runsHeaderShown && runRows.Length > 0)
+                            {
+                                @RunsGroupHeader(runRows)
+                            }
+                            @if (RunsGroupExpanded && runRows.Length > SidebarRuns)
                             {
                                 <div class="chat-nav-row branch-nav-row branch-runs-more" style="--branch-depth: 2">
                                     <span class="branch-tree-line" aria-hidden="true"></span>
@@ -1294,7 +1284,29 @@ else if (_guideInvitation is { } guideInvitation)
     private sealed record BranchTreeItem(Guid RootId, string Title, int Depth, Guid LeafId,
         AI.Contracts.Schedules.ScheduleRunRecord? Run = null, string? RunTooltip = null);
 
-    private bool _runsGroupExpanded;
+    /// <summary>
+    /// The row the runs of a scheduled chat fold under, as in the branch picker: the newest are a
+    /// click away, the current one is always shown.
+    /// </summary>
+    private RenderFragment RunsGroupHeader(IReadOnlyList<BranchTreeItem> runRows) =>
+        @<div class="chat-nav-row branch-nav-row branch-runs-group" style="--branch-depth: 1">
+            <span class="branch-tree-line" aria-hidden="true"></span>
+            <button class="workspace-nav-item chat-link branch-link" type="button" data-stays-in-drawer aria-expanded="@(RunsGroupExpanded ? "true" : "false")"
+                    title="@(RunsGroupExpanded ? "Hide the scheduled runs" : "Show the scheduled runs")" @onclick="() => { _runsGroupToggled = !RunsGroupExpanded; _runsGroupShowAll = false; }">
+                <AppIcon Name="chevron-right" Class="branch-runs-chevron" />
+                <span class="nav-item-label">Runs</span>
+                <span class="branch-runs-counts">
+                    @foreach (var outcome in runRows.GroupBy(item => item.Run!.Status).OrderBy(group => (int)group.Key))
+                    {
+                        <span title="@($"{outcome.Count()} {outcome.Key.ToString().ToLowerInvariant()}")"><i class="branch-run-dot is-@outcome.Key.ToString().ToLowerInvariant()" aria-hidden="true"></i>@outcome.Count()</span>
+                    }
+                </span>
+            </button>
+        </div>;
+
+    // Null until the person folds or unfolds the runs: a few runs show unfolded, many fold.
+    private bool? _runsGroupToggled;
+    private bool RunsGroupExpanded => _runsGroupToggled ?? GetBranchTreeItems().Count(item => item.Run is not null) <= SidebarRuns;
     private bool _runsGroupShowAll;
     private const int SidebarRuns = 6;
 
@@ -1309,7 +1321,7 @@ else if (_guideInvitation is { } guideInvitation)
         if (runs.Length == 0) return items;
         var selected = GetSelectedBranchId();
         var shown = runs.Where((item, position) => item.RootId == selected
-            || _runsGroupExpanded && (_runsGroupShowAll || position < SidebarRuns));
+            || RunsGroupExpanded && (_runsGroupShowAll || position < SidebarRuns));
         return [.. items.Where(item => item.Run is null), .. shown];
     }
 

@@ -159,8 +159,10 @@ recognised from the schedule (`runs[].branchId`), never from their titles.
   *Show all*; the current line is always shown. A run reads `#12 · 8 Oct 09:00` with an outcome dot
   and word and a `manual` or `retry n` tag; its full title and summary are the tooltip. The menu never
   grows wider than the feed it opens in.
-- **Sidebar**: the runs fold under one *Runs* row with a dot and count per outcome. Unfolded, it shows
-  the newest six and *Show all N runs*; folded, only the current run stays visible. Today's runs show
+- **Sidebar**: the runs sit under one *Runs* row with a dot and count per outcome, which is always
+  shown while the chat has runs. Up to six runs show unfolded; more fold until the row is clicked, and
+  a click on the row folds or unfolds them from then on. Unfolded, it shows the newest six and
+  *Show all N runs*; folded, only the current run stays visible. Today's runs show
   their time alone, older ones their date as well. Folding, unfolding and *Show all* keep the phone drawer open (`data-stays-in-drawer`);
   opening a run closes it as any navigation does.
 - **Clearing them out**: the chat's menu offers *Delete all branches (N)* — every branch, the main

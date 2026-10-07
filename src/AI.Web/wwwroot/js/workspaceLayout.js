@@ -60,7 +60,10 @@ const peekEdge = 12;
 const peekDelay = 200;
 const peekLeaveDelay = 300;
 // Rows that take the person somewhere else; on phone width the drawer they sit in steps aside.
+// A row marked data-stays-in-drawer only changes the list itself (folds or unfolds it), so the
+// drawer stays where it is.
 const navigationSelector = ".chat-link, .search-nav-action, .archive-nav-item, .sidebar-global-nav .workspace-nav-item";
+const staysInDrawerSelector = "[data-stays-in-drawer]";
 
 /**
  * The left panel's visibility is a layout preference kept here, as the sidebar-collapsed class.
@@ -350,7 +353,8 @@ export function attach(workspace, callbacks, saved) {
             toggle("left", !isOpen("left"));
         } else if (event.target.closest(".workspace-phone-scrim")) {
             openDrawer(null);
-        } else if (phone.matches && event.target.closest(".workspace-sidebar") && event.target.closest(navigationSelector)) {
+        } else if (phone.matches && event.target.closest(".workspace-sidebar") && event.target.closest(navigationSelector)
+            && !event.target.closest(staysInDrawerSelector)) {
             openDrawer(null);
         }
     });

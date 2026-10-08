@@ -24,7 +24,7 @@ using System.Collections.Concurrent;
 using System.Threading.Channels;
 
 public sealed class ChatRunDispatcher(
-    IChatRunRepository repository, IChatService chats, IChatMutations chatMutations, Func<IProjectService> projects,
+    IChatRunRepository repository, IChatService chats, IChatMutations chatMutations, IProjectService projects,
     IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, IChatAgent agent,
     IGlobalSecretStore secretStore, IClock clock, IIdGenerator ids, IChatSynchronization synchronization,
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies,
@@ -182,7 +182,7 @@ public sealed class ChatRunDispatcher(
             await AwaitStopAsync(projectId, chatId, request.BranchId ?? chatId, cancellationToken);
         using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         if (_maintenance.ContainsKey(chatId) || _deletingProjects.ContainsKey(projectId)) throw new InvalidOperationException("Chat is being changed.");
-        _ = await projects().GetAsync(projectId, cancellationToken) ?? throw new InvalidOperationException("Project not found.");
+        _ = await projects.GetAsync(projectId, cancellationToken) ?? throw new InvalidOperationException("Project not found.");
         var chat = await chats.GetAsync(projectId, chatId, cancellationToken) ?? throw new InvalidOperationException("Chat not found.");
         _ = kindPolicies().Resolve(new ChatKind(chat.Kind));
         var branchId = request.Mode == ChatSubmitMode.Fork ? request.MessageId : request.BranchId ?? chat.Id;
@@ -672,7 +672,7 @@ public sealed class ChatRunDispatcher(
                         continue;
                     }
                     await SaveAsync(runtime, chat, token);
-                    var project = await projects().GetAsync(chat.ProjectId, token) ?? throw new InvalidOperationException("Project not found.");
+                    var project = await projects.GetAsync(chat.ProjectId, token) ?? throw new InvalidOperationException("Project not found.");
                     var global = await settings.LoadAsync(token);
                     // The chain honours a chat-level override first, then the project's
                     // connection, then the global default. A project left on 'Default' (no
@@ -957,12 +957,12 @@ public sealed class ChatRunDispatcher(
                 if (await chats.SetToolPolicyAsync(projectId, chatId, chatPolicy, token) is null) return false;
                 break;
             case ToolApprovalAction.AllowForProject:
-                var project = await projects().GetAsync(projectId, token);
+                var project = await projects.GetAsync(projectId, token);
                 var projectExisting = project?.ToolPolicies.SingleOrDefault(item => item.ServerId == approval.ServerId
                     && item.Name == approval.Name && item.SchemaHash == approval.SchemaHash);
                 var projectPolicy = new ToolPolicySettings(approval.ServerId, approval.Name, approval.SchemaHash,
                     "Allow", projectExisting?.MaxCallsPerRun, projectExisting?.TimeoutSeconds);
-                if (await projects().SetToolPolicyAsync(projectId, projectPolicy, token) is null) return false;
+                if (await projects.SetToolPolicyAsync(projectId, projectPolicy, token) is null) return false;
                 break;
             case ToolApprovalAction.AllowGlobally:
                 var global = await settings.LoadAsync(token);
@@ -1512,12 +1512,12 @@ public sealed class ChatRunDispatcher(
         if (!_deletingProjects.TryAdd(projectId, 0)) throw new InvalidOperationException("Project is being changed.");
         try
         {
-            var project = await projects().GetAsync(projectId, cancellationToken);
+            var project = await projects.GetAsync(projectId, cancellationToken);
             if (project is null) return ProjectDeleteResult.NotFound();
             if (project.Revision != revision) return ProjectDeleteResult.Conflict(project.Revision);
             foreach (var chat in await chats.ListAsync(projectId, cancellationToken))
                 await PauseWorkersAsync(projectId, chat.Id, cancellationToken);
-            var result = await projects().DeleteAsync(projectId, revision, cancellationToken);
+            var result = await projects.DeleteAsync(projectId, revision, cancellationToken);
             if (result.IsDeleted) await DeleteProjectAsync(projectId, CancellationToken.None);
             return result;
         }

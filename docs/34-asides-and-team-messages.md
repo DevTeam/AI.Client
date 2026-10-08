@@ -160,7 +160,8 @@ Users rarely ask for a team by name, so `team-assemble` is reached in four ways:
 `evals/AI.Routing.Evals` measures the router on messages that should and should not reach it (see
 [Context request budgets and quality evaluation](31-context-evaluation.md#opt-in-model-quality-evaluation)).
 
-The team can choose separate Git worktrees when the repository, clean integration checkout,
+The team can choose separate Git worktrees when every teammate can finish its edits from the same
+committed base and the repository, clean integration checkout,
 directory grants and ignored worktree paths allow them, or when the user grants a suitable
 destination directory. `team-assemble` includes that choice in
 the team proposal. Each teammate then edits only its assigned worktree and commits only its owned

@@ -492,7 +492,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                         ?? throw new ArgumentException(toolGuidance.ForUnavailableCall(call.Name, selectedTools, permitted));
                     var arguments = session!.ValidateArguments(tool, call.Arguments);
                     var policy = await PolicyAsync(projectId, chatId, tool, token);
-                    if (tool.OriginalName is "process_run" or "cs_run")
+                    if (tool.OriginalName is "process_run" or "cs_run" or "trigger_wait")
                     {
                         var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
                         var policyTimeoutMs = (int)policy.TimeoutSeconds * 1000;

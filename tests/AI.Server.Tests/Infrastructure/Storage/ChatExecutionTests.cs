@@ -1248,15 +1248,24 @@ public sealed partial class ChatExecutionTests
     [InlineData("cs_run", 90, null, 90000)]
     [InlineData("cs_run", 90, 600000, 90000)]
     [InlineData("cs_run", 600, 120000, 120000)]
+    [InlineData("trigger_wait", 90, null, 90000)]
+    [InlineData("trigger_wait", 90, 600000, 90000)]
+    [InlineData("trigger_wait", 600, 120000, 120000)]
     public async Task ExecutionTimeoutShouldUsePolicyAndHonorShorterExplicitDeadline(
         string toolName, int? policySeconds, int? requestedMs, int expectedMs)
     {
         await using var fixture = await Fixture.CreateAsync();
         fixture.Tools.OfferCSharp = toolName == "cs_run";
+        fixture.Tools.OfferTrigger = toolName == "trigger_wait";
         await fixture.SetPolicyAsync("Allow", timeoutSeconds: policySeconds, toolName: toolName);
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        var name = toolName == "cs_run" ? "mcp_csharp__cs_run" : "mcp_built_in__process_run";
+        var name = toolName switch
+        {
+            "cs_run" => "mcp_csharp__cs_run",
+            "trigger_wait" => "mcp_built_in__trigger_wait",
+            _ => "mcp_built_in__process_run"
+        };
         var arguments = requestedMs is { } ms ? JsonSerializer.Serialize(new { timeoutMs = ms }) : "{}";
         first.ToolCalls = [new ChatToolCall("call-1", name, arguments)];
         first.Answer.SetResult("");
@@ -2538,7 +2547,13 @@ public sealed partial class ChatExecutionTests
             ToolDescriptor.Basic("mcp_csharp__cs_run", "cs_run", "Run script", JsonSerializer.Deserialize<JsonElement>("{}")),
             CSharpMcpServer.Id, "cs_run", "schema");
 
+        private static readonly AgentTool TriggerWait = new(
+            new ChatToolDefinition("mcp_built_in__trigger_wait", "Wait for trigger", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_built_in__trigger_wait", "trigger_wait", "Wait for trigger", JsonSerializer.Deserialize<JsonElement>("{}")),
+            DefaultMcpServer.Id, "trigger_wait", "schema");
+
         public bool OfferCSharp { get; set; }
+        public bool OfferTrigger { get; set; }
         public string? LastExecutionArguments { get; private set; }
 
         /// <summary>
@@ -2570,7 +2585,8 @@ public sealed partial class ChatExecutionTests
         public List<string> SkillRuns { get; } = [];
 
         public IReadOnlyList<AgentTool> Tools =>
-            [ProcessRun, .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
+            [ProcessRun, .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. OfferTrigger ? [TriggerWait] : Array.Empty<AgentTool>(),
+                .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
                 .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>()];
 
         /// <summary>Set to route an ask_user call to the run that is waiting on it.</summary>
@@ -2600,7 +2616,7 @@ public sealed partial class ChatExecutionTests
         public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
         {
             CallCount++;
-            if (tool.OriginalName is "process_run" or "cs_run") LastExecutionArguments = arguments;
+            if (tool.OriginalName is "process_run" or "cs_run" or "trigger_wait") LastExecutionArguments = arguments;
             if (tool.OriginalName == "tool_search")
                 return _codec.Read("{\"structuredContent\":{\"tools\":[{\"name\":\"mcp_built_in__process_run\","
                     + "\"description\":\"Read files through a shell command\"}],\"guidance\":\"Use an offered definition from the current request.\"}}");

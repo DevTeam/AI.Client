@@ -2,13 +2,14 @@
 
 ## Composition
 
-The built-in server ships 21 tools. All of them receive the `Ask` policy on first discovery, like any new tool.
+The built-in server ships 22 tools. All of them receive the `Ask` policy on first discovery, like any new tool.
 
 In addition, the Host ships a second built-in server — [App tools](17-app-tools.md) with five tools over the application's own data.
 
 | Tool | Purpose | Required capability grant |
 |---|---|---|
 | `process_run` | launch a program and wait for completion | — (not restricted by grants) |
+| `trigger_wait` | wait for a time, file, or process condition during the current chat run | `read` for file paths |
 | `fetch` | download an http/https URL as Markdown | — (network) |
 | `list_allowed_directories` | enumerate the current session's directory grants | — |
 | `read_text_file` | read a text file, `head`/`tail` options | `read` |
@@ -65,6 +66,30 @@ The structured result contains `exitCode`, `stdout`, `stderr`, `durationMs`, `ti
 Limits: up to 256 arguments, up to 65536 characters of arguments JSON on the Host side, up to 65535 calls of a single tool per run by default, up to 600 seconds per process and up to one hour for the agent loop, excluding time waiting for a person. There is no separate model-iteration limit; the number of parallel `tool_calls` in a single assistant message is capped at 1024. Tool policies inherit chat -> project -> global, with a default timeout of 600 seconds and an allowed range of 1..600 seconds. Saved shorter timeouts remain in effect.
 
 For `process_run` and the optional C# server's `cs_run`, `timeoutMs` accepts 1..600000 milliseconds and defaults to 600000. Omit it to use the effective tool policy; an explicit value can shorten the run but cannot exceed that policy. The Host passes the effective run timeout to the server before confirmation. Other tools use the policy as a silence timeout renewed by progress, subject to their own internal limits. `fetch` retains its 30-second HTTP timeout, and `app_runs` accepts a wait window of up to 600 seconds.
+
+## trigger_wait
+
+`trigger_wait` waits for the first of one to eight conditions during the current chat run. It does
+not register a persistent trigger; stopping the run cancels the wait and disposes its observers.
+The result is `triggered` with a zero-based `conditionIndex`, or `timeout`. Cancellation of the
+chat run cancels the call. `timeoutMs` accepts 1..600000 and is capped by the effective tool
+policy, like `process_run`.
+
+Conditions use `type` and type-specific fields:
+
+| Type | Required fields | Meaning |
+| --- | --- | --- |
+| `delay` | `afterMs` | Elapsed time reaches the interval. |
+| `file_exists`, `file_missing`, `file_changed` | `path` | File state or a change after observation starts. The absolute path needs a read grant. |
+| `process_exit` | `processId` | The named process exits. It must exist when observation starts. |
+| `process_cpu_below`, `process_cpu_above` | `processId`, `cpuPercent` | Sampled CPU usage crosses a 0..100 percent threshold, normalized across logical processors. |
+| `process_memory_below`, `process_memory_above` | `processId`, `memoryBytes` | The named process's working set crosses a byte threshold. |
+
+`stableForMs` (0..60000) can require a file or metric condition to remain true before it fires.
+File observation combines `FileSystemWatcher` notifications with a bounded periodic check so a
+missed notification does not leave the call waiting indefinitely. The result reports
+`watcherOverflow` if the watcher reported an error. Process observation reads only the named PID;
+it neither enumerates processes nor stops them.
 
 ## FileSystem tools
 

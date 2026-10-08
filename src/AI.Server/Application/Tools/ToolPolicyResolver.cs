@@ -47,7 +47,7 @@ public sealed class ToolPolicyResolver(IProjectService projects, IChatService ch
         var decision = server is not { Enabled: true } || server.Policy == "Deny" || binding is { Enabled: false } || policyDecision == "Deny"
             ? "Deny" : policyDecision == "Allow" ? "Allow" : "Ask";
         var maxCalls = chatPolicy?.MaxCallsPerRun ?? projectPolicy?.MaxCallsPerRun
-            ?? globalPolicy?.MaxCallsPerRun ?? 65535;
+            ?? globalPolicy?.MaxCallsPerRun ?? McpToolPolicySettings.DefaultMaxCallsPerRun;
         var maxCallsScope = chatPolicy?.MaxCallsPerRun is not null ? "chat"
             : projectPolicy?.MaxCallsPerRun is not null ? "project"
             : globalPolicy?.MaxCallsPerRun is not null ? "global" : "default";

@@ -25,8 +25,8 @@ public sealed class TriggerWaitTool(ITriggerWaiter waiter, IBuiltInToolReply rep
         UseStructuredContent = true, OutputSchemaType = typeof(TriggerWaitResult))]
     private async Task<CallToolResult> WaitAsync(
         [Description("One to eight conditions; the first satisfied condition wins.")] TriggerCondition[] conditions,
-        [Description("Maximum wait in milliseconds, 1 to 600000. The effective tool policy may shorten it.")]
-        [Range(1, 600000)] int timeoutMs = 600000,
+        [Description("Maximum wait in milliseconds, 1 to 3600000; defaults to 600000. The effective tool policy may shorten it.")]
+        [Range(1, TriggerWaiter.MaxTimeoutMs)] int timeoutMs = 600000,
         CancellationToken cancellationToken = default)
     {
         try

@@ -32,7 +32,7 @@ The three limiters had to be separated explicitly:
 | Limiter | What is done |
 |---|---|
 | `Patience` — tool silence (20–60 s from policy) | not applied to `ask_user`: a tool waiting on a human has not "gone silent" |
-| `MaxCallDuration` = 30 min | not hit: the question's own timeout is 15 minutes |
+| `MaxCallDuration` = 60 min | not hit: the question's own timeout is 15 minutes |
 | Turn deadline = 60 min | the time waiting for the human is returned to the budget (`TurnDeadline`). **Fixed for confirmations too**: a turn standing on a card has not "gone wrong", and the longer the human thought, the more likely it was to be killed |
 
 The 15-minute expiry is not an error: `outcome: expired`, the turn continues without an answer. A person who stepped away has not refused.

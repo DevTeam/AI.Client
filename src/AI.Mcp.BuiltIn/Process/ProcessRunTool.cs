@@ -27,7 +27,7 @@ public sealed class ProcessRunTool(IProcessRunner processRunner, IBuiltInToolRep
         [Description("Path to the executable to run. A name with no directory separator is always resolved through PATH, even when `workingDirectory` is given — pass `./name` or an absolute path to run a file inside `workingDirectory`. A relative path containing a separator is resolved against `workingDirectory`; an absolute path is used as is.")] [MaxLength(4096)] string executable,
         [Description("Command-line arguments passed to the executable. Each element becomes one argv entry, with no shell parsing, glob expansion, or environment-variable substitution. Empty array or null means no extra arguments.")] [MaxLength(256)] string[]? arguments = null,
         [Description("Working directory for the process. Not a sandbox — the process can read and write anything the host user can. Empty means inherit the server's working directory.")] [MaxLength(4096)] string? workingDirectory = null,
-        [Description("Timeout in milliseconds before the process tree is killed. Must be in [1, 600000]; defaults to 600000. Omit it to use the configured tool timeout; set a smaller value only when the command needs a shorter deadline.")] [Range(1, ProcessRunner.MaxTimeoutMs)] int timeoutMs = ProcessRunner.MaxTimeoutMs,
+        [Description("Timeout in milliseconds before the process tree is killed. Must be in [1, 3600000]; defaults to 600000. Omit it to use the configured tool timeout; set a smaller value only when the command needs a shorter deadline.")] [Range(1, ProcessRunner.MaxTimeoutMs)] int timeoutMs = ProcessRunner.DefaultTimeoutMs,
         CancellationToken cancellationToken = default)
     {
         ProcessResult result;

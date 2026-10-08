@@ -41,9 +41,15 @@ public sealed class ToolPolicyResolverTests
 
         (await DecisionAsync()).ShouldBe("Allow");
         (await DecisionAsync("new_tool")).ShouldBe("Ask");
+        var defaultPolicy = await resolver.ResolveAsync(projectId, chatId, serverId, name, schema, CancellationToken.None);
+        defaultPolicy.MaxCalls.ShouldBe(McpToolPolicySettings.DefaultMaxCallsPerRun);
+        defaultPolicy.MaxCallsScope.ShouldBe("default");
+        defaultPolicy.TimeoutSeconds.ShouldBe(McpToolPolicySettings.DefaultTimeoutSeconds);
 
         global = global with { ToolPolicies = [new McpToolPolicySettings(serverId, name, schema, "Deny", 3, 30)] };
         (await DecisionAsync()).ShouldBe("Deny");
+        (await resolver.ResolveAsync(projectId, chatId, serverId, name, schema, CancellationToken.None))
+            .MaxCalls.ShouldBe(3);
 
         project = project with { ToolPolicies = [new ToolPolicySettings(serverId, name, schema, "Ask", null, null)] };
         (await DecisionAsync()).ShouldBe("Ask");

@@ -6,7 +6,7 @@ using Grants;
 public sealed class TriggerWaiter(IPathGuard guard) : ITriggerWaiter
 {
     public const int MaxConditions = 8;
-    public const int MaxTimeoutMs = 600000;
+    public const int MaxTimeoutMs = 3600000;
     private const int PollIntervalMs = 250;
     private const int MaxStableForMs = 60000;
 

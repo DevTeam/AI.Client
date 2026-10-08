@@ -46,7 +46,7 @@ internal sealed partial class UiComposition
             .Hint(Hint.ThreadSafe, "Off")
             .Root<App>(nameof(App))
             .Arg<DesktopStart>("start")
-            .Singleton(_ => new HttpClient { Timeout = TimeSpan.FromMinutes(30) })
+            .Singleton(_ => new HttpClient { Timeout = TimeSpan.FromMinutes(65) })
             .Singleton<App>()
             .Transient<UpdateManagerFactory, PublishedUpdateFeed, UpdateInstaller, UpdateInstallationProvider,
                 MainWindow, ProcessSignals, DesktopUpdates, JsonWindowPlacementStore, JsonWorkspaceLocationStore,

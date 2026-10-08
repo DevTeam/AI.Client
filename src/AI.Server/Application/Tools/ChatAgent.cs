@@ -928,7 +928,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// The longest any one call may run, however talkative it is. A tool that keeps reporting keeps
     /// its patience renewed, so without this a wedged loop that says so every second would never end.
     /// </summary>
-    private static readonly TimeSpan MaxCallDuration = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan MaxCallDuration = TimeSpan.FromHours(1);
 
     /// <summary>
     /// How long a call may stay silent. The policy timeout used to measure the call's whole

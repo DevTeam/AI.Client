@@ -969,7 +969,8 @@ public sealed class ChatRunDispatcher(
                 var globalExisting = global.ToolPolicies.SingleOrDefault(item => item.ServerId == approval.ServerId
                     && item.Name == approval.Name && item.SchemaHash == approval.SchemaHash);
                 await globalSettings.SetToolPolicyAsync(new McpToolPolicySettings(approval.ServerId,
-                    approval.Name, approval.SchemaHash, "Allow", globalExisting?.MaxCallsPerRun ?? 65535,
+                    approval.Name, approval.SchemaHash, "Allow",
+                    globalExisting?.MaxCallsPerRun ?? McpToolPolicySettings.DefaultMaxCallsPerRun,
                     globalExisting?.TimeoutSeconds ?? approval.TimeoutSeconds), token);
                 break;
             default:

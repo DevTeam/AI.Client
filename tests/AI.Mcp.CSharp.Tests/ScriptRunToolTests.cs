@@ -50,7 +50,7 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
         tool.ProtocolTool.InputSchema.GetProperty("properties").TryGetProperty("code", out _).ShouldBeTrue();
         var timeoutSchema = tool.ProtocolTool.InputSchema.GetProperty("properties").GetProperty("timeoutMs");
         timeoutSchema.GetProperty("default").GetInt32().ShouldBe(600000);
-        timeoutSchema.GetProperty("maximum").GetInt32().ShouldBe(600000);
+        timeoutSchema.GetProperty("maximum").GetInt32().ShouldBe(3600000);
         tool.Description.ShouldNotBeNullOrWhiteSpace();
     }
 
@@ -162,7 +162,7 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
 
     [Theory]
     [InlineData(0)]
-    [InlineData(600001)]
+    [InlineData(3600001)]
     public async Task RejectsScriptTimeoutOutsideSupportedRange(int timeoutMs)
     {
         var result = await CallAsync(new { code = "42", timeoutMs });

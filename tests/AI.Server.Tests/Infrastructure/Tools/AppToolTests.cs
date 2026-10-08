@@ -1464,6 +1464,7 @@ public sealed partial class AppToolTests
         var read = session.Tools.Single(tool => tool.OriginalName == "app_read");
         var runSkill = session.Tools.Single(tool => tool.OriginalName == "run_skill");
         var search = session.Tools.Single(tool => tool.OriginalName == "tool_search");
+        var security = session.Tools.Single(tool => tool.OriginalName == "app_security");
         ChatCompletionMessage[] context = [.. preview.Layers.Where(layer => layer.Content.Length > 0)
                 .Select(layer => new ChatCompletionMessage("system", layer.Content)),
             new("system", "Finish the project setup and follow the active playbook."),
@@ -1485,6 +1486,18 @@ public sealed partial class AppToolTests
         continued.Tools.ShouldContain(read);
         continued.SelectedTokens.ShouldBeLessThanOrEqualTo(continued.BudgetTokens);
         (estimator.EstimateMessages(afterSearch) + continued.SelectedTokens)
+            .ShouldBeLessThan(policy.Resolve(connection).UsableTokens);
+
+        var afterSecuritySearch = afterSearch.Concat([
+            new ChatCompletionMessage("assistant", "", [new ModelChatToolCall("read-call", read.ModelDefinition.Name, "{}")]),
+            new ChatCompletionMessage("tool", "Project settings are empty", ToolCallId: "read-call"),
+            new ChatCompletionMessage("assistant", "", [new ModelChatToolCall("security-search", search.ModelDefinition.Name, "{}")]),
+            new ChatCompletionMessage("tool", "Found mcp_app__app_security", ToolCallId: "security-search")]).ToArray();
+        var withSecurity = policy.Choose(connection, "Настрой проект", afterSecuritySearch, session.Tools,
+            new HashSet<string>([security.ModelDefinition.Name]), continued.Tools);
+
+        withSecurity.Tools.ShouldContain(security);
+        (estimator.EstimateMessages(afterSecuritySearch) + withSecurity.SelectedTokens)
             .ShouldBeLessThan(policy.Resolve(connection).UsableTokens);
     }
 

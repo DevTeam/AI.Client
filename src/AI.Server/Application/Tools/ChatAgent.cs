@@ -146,7 +146,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             return changes;
         }
         var context = request.ContextMessages?.ToList() ?? [new ChatCompletionMessage("user", request.Message)];
-        var runStart = context.FindLastIndex(message => message.Role == "user" && !message.IsContextSummary);
+        var runStart = context.FindLastIndex(message => message.StartsTurn);
         var counts = context.Skip(Math.Max(0, runStart)).SelectMany(message => message.ToolCalls ?? [])
             .GroupBy(call => call.Name, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
         var seenIds = context.SelectMany(message => message.ToolCalls ?? []).Select(call => call.Id).ToHashSet(StringComparer.Ordinal);

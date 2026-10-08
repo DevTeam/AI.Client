@@ -185,6 +185,42 @@ public sealed class AdaptiveContextPolicyTests
     }
 
     [Fact]
+    public void ShouldKeepTheTurnsToolsWhenAMessageJoinsTheTurn()
+    {
+        var submit = Tool("app_runs", new string('r', 3_000), app: true);
+        var read = Tool("app_read", new string('a', 3_000), app: true);
+        var others = Enumerable.Range(0, 20).Select(index => Tool($"other_{index}", new string('x', 1_000))).ToArray();
+        // The charter the lead submitted joins its own turn; the history is past the window.
+        ChatCompletionMessage[] messages = [new("user", "/team " + new string('u', 400_000)),
+            new("assistant", "", [new ChatToolCall("call-1", submit.ModelDefinition.Name, "{}")]),
+            new("tool", "queued", ToolCallId: "call-1"), new("user", "Team charter", JoinsTurn: true),
+            new("assistant", "", [new ChatToolCall("call-2", read.ModelDefinition.Name, "{}")]),
+            new("tool", "messages", ToolCallId: "call-2")];
+
+        var selection = Policy().Choose(Connection(131_072), "/team", messages, [submit, read, .. others]);
+
+        selection.Tools.ShouldContain(submit);
+        selection.Tools.ShouldContain(read);
+    }
+
+    [Fact]
+    public void ShouldKeepAFloorOfToolsWhenHistoryAloneExceedsTheWindow()
+    {
+        var search = Tool("tool_search", "Find capabilities", app: true);
+        var ask = Tool("ask_user", "Ask the person", app: true);
+        var others = Enumerable.Range(0, 20).Select(index => Tool($"other_{index}", new string('x', 200))).ToArray();
+        // The planner summarizes such a history after the choice; the turn must still have tools then.
+        ChatCompletionMessage[] messages = [new("user", "request"), new("assistant", new string('h', 600_000))];
+
+        var selection = Policy().Choose(Connection(131_072), "request", messages, [search, ask, .. others]);
+
+        selection.BudgetTokens.ShouldBeGreaterThan(0);
+        selection.Tools.ShouldContain(search);
+        selection.Tools.ShouldContain(ask);
+        selection.SelectedTokens.ShouldBeLessThanOrEqualTo(selection.BudgetTokens);
+    }
+
+    [Fact]
     public void ShouldReleaseProtocolDefinitionsAfterACheckpointRemovesTheirCalls()
     {
         var policy = Policy();

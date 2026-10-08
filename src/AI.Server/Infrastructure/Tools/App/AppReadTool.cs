@@ -101,6 +101,7 @@ public sealed class AppReadTool(
                               + "activityBefore (exclusive) and activityAfter (inclusive), with explicit time zone offsets, filtering LastActivityAt before paging. "
                               + "'Projects' and 'Settings' need no ids. 'Project', 'Chats', 'Resources', 'Chat', 'Messages', "
                               + "'Reviews' and 'Review' use projectId; the last four also use chatId, and 'Review' needs resourceId. "
+                              + "'Messages' omits the body of tool results (contentOmitted); pass a message id as resourceId to read that one message whole. "
                               + "'ConnectionModels' fetches the provider's model catalog: resourceId selects a saved connection "
                               + "and uses its stored key and URL; otherwise query must be an absolute HTTP Base URL and no key is sent. "
                               + "'McpTools' needs resourceId of an enabled MCP server from Settings and lists its declared tools "
@@ -260,7 +261,14 @@ public sealed class AppReadTool(
             case AppResource.Messages:
             {
                 var chat = await LoadChatAsync(projectId, chatId, cancellationToken);
-                return Paging.Page("Messages", Branch(chat, branchId), cursor, limit, reply.Json);
+                // A tool's output goes without its body, as in the transcript: one file read or an
+                // earlier read of this branch is easily larger than the rest of the page, and each
+                // read would carry the previous one inside it. resourceId reads one message whole.
+                if (resourceId is { } messageId)
+                    return Paging.Page("Messages", [chat.Messages.SingleOrDefault(message => message.Id == messageId)
+                        ?? throw new InvalidOperationException("Message not found.")], cursor, limit, reply.Json);
+                return Paging.Page("Messages", Branch(chat, branchId).Select(message => message is { Role: "Tool", Content.Length: > 0 }
+                    ? message with { Content = string.Empty, ContentOmitted = true } : message).ToArray(), cursor, limit, reply.Json);
             }
             case AppResource.Runs:
             {
@@ -269,6 +277,7 @@ public sealed class AppReadTool(
                     .Where(run => projectId is not { } project || run.ProjectId == project)
                     .Where(run => chatId is not { } chat || run.ChatId == chat)
                     .Where(run => branchId is not { } branch || run.BranchId == branch)
+                    .Select(RunSnapshotView.Compact)
                     .ToArray();
                 return Paging.Page("Runs", filtered, cursor, limit, reply.Json);
             }

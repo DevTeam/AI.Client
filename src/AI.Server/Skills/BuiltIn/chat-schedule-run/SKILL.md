@@ -16,12 +16,18 @@ tools: ["app_schedule","app_read","ask_user","tool_search"]
    branch, and stop.
 3. You are the run. The messages above this one are the conversation that set the task up; the
    first message of this branch states the run number, the task, the success criteria and the retry
-   condition. Carry out the task with the tools it needs, discovering them with `tool_search`. No
-   one is watching a scheduled run: ask with `ask_user` only when the task cannot go on without a
-   person's decision — the run waits, and the chat shows that it needs attention.
+   condition. Carry out the task with the tools it needs, discovering them with `tool_search`. The
+   schedule was set up so that those tools and the directories they touch were already allowed for
+   this chat, so work within them: prefer a way the run can take alone over one that waits for a
+   person. Never try to give yourself more access: permission changes stay `Ask` for this tool, and
+   changing the chat's own policies is not the run's job. No one is watching a scheduled run: ask with `ask_user`
+   only when the task cannot go on without a person's decision — the run waits, the chat shows that
+   it needs attention, and the person can answer it there or from the widget.
 4. Check the success criteria against what actually happened, with evidence: output, files, a
    response, a measured value. Without criteria, success means the task was done completely.
-   Never report success for work that was skipped, failed or only planned.
+   Never report success for work that was skipped, failed or only planned. A call still waiting for
+   approval, or a path the project does not grant, is not a failure of the task: say in the summary
+   which tool or directory was missing, so the schedule can be fixed with `chat-schedule-edit`.
 5. Call `app_schedule` operation `ReportRun` with `succeeded`, a one-line `summary` of the result
    (at most 200 characters, in the user's language) and, on failure, `retry`: false when the retry
    condition says this failure is not worth retrying, true otherwise.

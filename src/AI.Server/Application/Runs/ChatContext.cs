@@ -23,7 +23,8 @@ public sealed class ChatContext(IToolResultCodec toolResultCodec, IResourceModel
             if (role == "user") modelContent = headers.Apply(message, chat, resources.Project(message.Content, message.Resources));
             path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent, message.Id,
                 ImageAssetIds: message.Resources?.Where(item => item.Kind == AI.Contracts.Resources.ChatResourceKind.Image)
-                    .Select(item => item.AssetId).OfType<string>().ToArray()));
+                    .Select(item => item.AssetId).OfType<string>().ToArray(),
+                JoinsTurn: message.Delivery == MessageDelivery.InTurn));
             current = message.ParentId;
         }
         path.Reverse();
@@ -47,7 +48,8 @@ public sealed class ChatContext(IToolResultCodec toolResultCodec, IResourceModel
                 chat.Id, message.Content, message.Resources, cancellationToken));
             path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent, message.Id,
                 ImageAssetIds: message.Resources?.Where(item => item.Kind == AI.Contracts.Resources.ChatResourceKind.Image)
-                    .Select(item => item.AssetId).OfType<string>().ToArray()));
+                    .Select(item => item.AssetId).OfType<string>().ToArray(),
+                JoinsTurn: message.Delivery == MessageDelivery.InTurn));
             current = message.ParentId;
         }
         path.Reverse();

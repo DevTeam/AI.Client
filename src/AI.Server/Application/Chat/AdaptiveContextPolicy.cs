@@ -143,12 +143,15 @@ public sealed partial class AdaptiveContextPolicy(
         ArgumentNullException.ThrowIfNull(availableTools);
         var estimator = tokenEstimator.ForModel(connection?.Model);
         var profile = Resolve(connection);
-        var lastUser = context.ToList().FindLastIndex(message => message.Role == "user" && !message.IsContextSummary);
+        var lastUser = context.ToList().FindLastIndex(message => message.StartsTurn);
         var current = context.Skip(Math.Max(0, lastUser)).ToArray();
         var requiredNames = current.SelectMany(message => message.ToolCalls ?? []).Select(call => call.Name).ToHashSet(StringComparer.Ordinal);
         // Reserve the complete projected history and guidance, with at least a quarter of the
-        // usable window for messages. History pressure can shrink the schema allowance.
-        var budget = Math.Min(profile.ToolTokens, Math.Max(0, profile.UsableTokens
+        // usable window for messages. History pressure can shrink the schema allowance, but not
+        // below a floor: history that does not fit is summarized by the planner after this choice,
+        // and a turn left without its working tools cannot carry on once it is.
+        var floor = Math.Min(profile.ToolTokens, profile.UsableTokens / 10);
+        var budget = Math.Min(profile.ToolTokens, Math.Max(floor, profile.UsableTokens
             - Math.Max(profile.UsableTokens / 4, estimator.EstimateMessages(context) + Math.Max(0, trailingInstructionTokens))));
         var query = Words(request).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var candidates = availableTools.GroupBy(tool => tool.ModelDefinition.Name, StringComparer.Ordinal).Select(group => group.First())

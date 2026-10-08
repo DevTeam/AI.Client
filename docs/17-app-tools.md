@@ -54,7 +54,9 @@ Resources: `Projects`, `Project`, `Chats`, `Chat`, `Messages`, `Runs`, `Settings
 
 `Reviews` lists the named review resources of one chat, across its branches; `Review` reads one resource with bounded comments. `app_resources CreateReview` selects files from one saved assistant change set. `UpdateReview` changes its name, selected files, and comments using the current revision as a concurrency check. Review resources are mutable; a later model request resolves their current comments.
 
-`Chat` is returned without messages: they are a separate resource, otherwise reading a heading would drag the entire history in. `Messages` with `branchId` returns the chain from the branch head to the root — exactly the context the model sees.
+`Chat` is returned without messages: they are a separate resource, otherwise reading a heading would drag the entire history in. `Messages` with `branchId` returns the chain from the branch head to the root — exactly the context the model sees. Tool results come without their body (`contentOmitted: true`), as in the transcript: a single file read, or an earlier read of the same branch, is easily larger than the rest of the page, and each read would otherwise carry the previous one inside it. `resourceId` set to a message id returns that one message whole.
+
+`Runs`, and the `current` run that `app_runs` returns, are compact: the open page's message tail, draft, diffs and turn usage are left out, and queued messages, the arguments of tools in flight and the streaming answer are clipped. A run submitting a long message would otherwise return that message again in its own result.
 
 A page is bounded simultaneously by the number of items (`limit`, default 100, max 1000) and by a budget of 262144 characters — the same as for the file tools. The cursor is the decimal offset of the next item, opaque by contract: the caller returns what it received and never computes it on its own. The first item of the page is always included, otherwise a document larger than the budget would become unreachable.
 

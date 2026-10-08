@@ -61,4 +61,8 @@ Compare final repository status with the baseline and remove only scratch artifa
 this task. Never discard unrelated local or remote work.
 
 8. Report configuration files, service dependencies, ports/persistence, setup steps and checks.
-   State whether a stack was actually started and identify task-owned resources retained.
+   When the stack has multiple meaningful service dependencies, add one compact `mermaid` fenced
+   topology diagram based on the validated configuration. Label connection direction accurately;
+   keep ports, persistence, secret references, setup and checks in text. Omit the diagram when it
+   adds no clarity or delays validation. State whether a stack was actually started and identify
+   task-owned resources retained.

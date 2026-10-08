@@ -43,5 +43,9 @@ data or repository files. Report any unavailable evidence instead of treating it
    unsupported by the investigation. When the plan splits into substantial parts that can run at
    the same time on disjoint files, say in one line that team-assemble could carry it out as a team.
 6. The final answer contains the complete plan, the recommendation and its rationale, links to
-   the relevant source, acceptance checks and unresolved questions. Do not implement the plan
+   the relevant source, acceptance checks and unresolved questions. When several components or
+   steps have meaningful dependencies, add one compact `mermaid` fenced diagram to make those
+   relationships visible. Derive its edges from the investigation; distinguish parallel work
+   from required sequence. Keep affected files, decisions and checks explicit in text, and omit
+   the diagram when it adds no clarity or slows delivery. Do not implement the plan
    unless the user requests implementation; that request then belongs to `code-feature-implement`.

@@ -1,6 +1,7 @@
 namespace AI.Server.Hosting.Endpoints;
 
 using Application.Chats;
+using Application.Projects;
 using Application.Runs;
 using Contracts.Chats;
 using Contracts.Projects;
@@ -147,6 +148,19 @@ public sealed class ChatEndpoints : IEndpointModule
         routes.MapGet(
             "/api/projects/{projectId:guid}/chats",
             (Guid projectId, IChatService service, CancellationToken cancellationToken) => service.ListAsync(projectId, cancellationToken));
+
+        // The sidebar's Recents: the chats with the latest activity across every project, as the
+        // chat list of each project shows them (no archived chat, no chat without a message yet).
+        routes.MapGet("/api/chats/recent", async (int? limit, IProjectService projects, IChatService service,
+            CancellationToken cancellationToken) =>
+        {
+            var recent = new List<ChatSummary>();
+            foreach (var project in await projects.ListAsync(cancellationToken))
+                recent.AddRange((await service.ListAsync(project.Id, cancellationToken))
+                    .Where(chat => chat.ArchivedAt is null && !chat.IsEmpty));
+            return recent.OrderByDescending(chat => chat.LastActivityAt)
+                .Take(Math.Clamp(limit ?? 10, 1, 50)).ToArray();
+        });
 
         routes.MapGet(
             "/api/projects/{projectId:guid}/chats/{chatId:guid}",

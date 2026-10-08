@@ -9,6 +9,9 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
     public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken) =>
         await httpClient.GetFromJsonAsync<IReadOnlyList<ChatSummary>>($"api/projects/{projectId}/chats", cancellationToken) ?? [];
 
+    public async Task<IReadOnlyList<ChatSummary>> ListRecentAsync(int limit, CancellationToken cancellationToken) =>
+        await httpClient.GetFromJsonAsync<IReadOnlyList<ChatSummary>>($"api/chats/recent?limit={limit}", cancellationToken) ?? [];
+
     public async Task<ChatSearchResult> SearchAsync(string query, Guid? projectId, CancellationToken cancellationToken, bool includeArchived = false)
     {
         var scope = projectId is { } id ? $"&projectId={id}" : string.Empty;

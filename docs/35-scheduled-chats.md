@@ -203,6 +203,15 @@ not opened yet are always listed, even while the sidebar's Runs row is folded or
 the newest few, and the Runs row says how many there are ("2 new", coloured by the most urgent one).
 Opening a run clears its status.
 
+## In the sidebar
+
+The sidebar's **Scheduled** section lists the scheduled chats the Host will act on within the next
+day, across every project, the soonest first — the soonest of a requested run, a retry and the next
+occurrence, the dispatcher's own due rule. A row leads with how long is left (`now`, `~33s`, `~5m`,
+`~3h`, `~2d`) and opens the chat like a Recents row; the section folds, pages and is configured in
+Settings → Sidebar → Scheduled chats, and it is absent while nothing is coming. A scheduled chat is
+never listed by Recents, which drops it at the Host before counting its places.
+
 ## From the message box
 
 Typing a request and pressing Enter starts a turn, which is wrong for a task meant to run later.

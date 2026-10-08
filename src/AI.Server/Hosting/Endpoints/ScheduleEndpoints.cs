@@ -25,9 +25,25 @@ public sealed class ScheduleEndpoints : IEndpointModule
             CancellationToken token) => await GuardAsync(() => schedules.PauseAsync(projectId, chatId, false, revision, token)));
         routes.MapPost(Route + "/run", async (Guid projectId, Guid chatId, IChatScheduleService schedules, CancellationToken token) =>
             Found(await schedules.RunNowAsync(projectId, chatId, token)));
+        MapSoon(routes);
     }
 
     private static IResult Found(ChatScheduleView? view) => view is null ? Results.NotFound() : Results.Ok(view);
+
+    /// <summary>
+    /// The sidebar's Scheduled: the scheduled chats of every project that come due within the next
+    /// day, soonest first, so a run that is about to start is visible before it starts.
+    /// </summary>
+    private static readonly string SoonRoute = "/api/scheduled-chats/soon";
+
+    private static void MapSoon(IEndpointRouteBuilder routes) =>
+        routes.MapGet(SoonRoute, async (int? limit, int? horizonMinutes, IScheduledChatQuery query,
+            CancellationToken token) =>
+            Results.Ok(await query.SoonAsync(
+                TimeSpan.FromMinutes(Math.Clamp(horizonMinutes ?? ScheduledChats.DefaultHorizonMinutes,
+                    ScheduledChats.MinHorizonMinutes, ScheduledChats.MaxHorizonMinutes)),
+                Math.Clamp(limit ?? ScheduledChats.DefaultCount, ScheduledChats.MinCount, ScheduledChats.MaxCount),
+                token)));
 
     /// <summary>A stale revision answers 409 with the schedule as it is now, so the widget can show it.</summary>
     private static async Task<IResult> GuardAsync(Func<Task<ChatScheduleView?>> change)

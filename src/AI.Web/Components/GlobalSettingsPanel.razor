@@ -114,6 +114,24 @@
                                         }
                                     </select>
                                 </label>
+                                <label class="settings-row">
+                                    <span class="settings-row-text"><span class="settings-row-label">Notification chats</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.sidebar.notifications")</span></span>
+                                    <select @attributes="@(ControlHints.Attributes("settings.sidebar.notifications"))" value="@_notifiedChatCount" @onchange="SetNotifiedChatCountAsync">
+                                        @for (var count = AI.Web.Settings.ClientSettings.MinNotifiedChatCount; count <= AI.Web.Settings.ClientSettings.MaxNotifiedChatCount; count++)
+                                        {
+                                            <option value="@count">@count</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label class="settings-row">
+                                    <span class="settings-row-text"><span class="settings-row-label">Scheduled chats</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.sidebar.scheduled")</span></span>
+                                    <select @attributes="@(ControlHints.Attributes("settings.sidebar.scheduled"))" value="@_scheduledChatCount" @onchange="SetScheduledChatCountAsync">
+                                        @for (var count = AI.Web.Settings.ClientSettings.MinSoonChatCount; count <= AI.Web.Settings.ClientSettings.MaxSoonChatCount; count++)
+                                        {
+                                            <option value="@count">@count</option>
+                                        }
+                                    </select>
+                                </label>
                             </div>
                         </section>
                         <section class="settings-group" aria-labelledby="settings-chat">
@@ -484,6 +502,8 @@
     [Parameter] public EventCallback<bool> TurnTokensChanged { get; set; }
     [Parameter] public EventCallback<int> LiveNoteCountChanged { get; set; }
     [Parameter] public EventCallback<int> RecentChatCountChanged { get; set; }
+    [Parameter] public EventCallback<int> NotifiedChatCountChanged { get; set; }
+    [Parameter] public EventCallback<int> ScheduledChatCountChanged { get; set; }
     /// <summary>The project whose memory and skills the ProjectMemory and ProjectSkills sections edit.</summary>
     [Parameter] public Guid? ProjectId { get; set; }
     private MemoryEditor? _memoryEditor;
@@ -563,6 +583,8 @@
     private bool _showTurnTokens;
     private int _liveNoteCount = AI.Web.Settings.ClientSettings.DefaultLiveNoteCount;
     private int _recentChatCount = AI.Web.Settings.ClientSettings.DefaultRecentChatCount;
+    private int _notifiedChatCount = AI.Web.Settings.ClientSettings.DefaultNotifiedChatCount;
+    private int _scheduledChatCount = AI.Web.Settings.ClientSettings.DefaultSoonChatCount;
     private bool _guideSuggestionsEnabled = true;
     private int _guideIdleMinutes = 5;
     private int _guideCompletedCount;
@@ -614,6 +636,7 @@
         _showTurnTokens = clientSettings.ShowTurnTokens;
         _liveNoteCount = clientSettings.LiveNoteCount;
         _recentChatCount = clientSettings.RecentChatCount;
+        _notifiedChatCount = clientSettings.NotifiedChatCount;
         _guideSuggestionsEnabled = clientSettings.GuideSuggestionsEnabled;
         _guideIdleMinutes = clientSettings.GuideIdleMinutes;
         _guideCompletedCount = clientSettings.CompletedGuideTopics.Count;
@@ -740,6 +763,22 @@
         _recentChatCount = Math.Clamp(count, AI.Web.Settings.ClientSettings.MinRecentChatCount, AI.Web.Settings.ClientSettings.MaxRecentChatCount);
         await ClientSettings.UpdateAsync(current => current with { RecentChatCount = _recentChatCount });
         await RecentChatCountChanged.InvokeAsync(_recentChatCount);
+    }
+
+    private async Task SetNotifiedChatCountAsync(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var count)) return;
+        _notifiedChatCount = Math.Clamp(count, AI.Web.Settings.ClientSettings.MinNotifiedChatCount, AI.Web.Settings.ClientSettings.MaxNotifiedChatCount);
+        await ClientSettings.UpdateAsync(current => current with { NotifiedChatCount = _notifiedChatCount });
+        await NotifiedChatCountChanged.InvokeAsync(_notifiedChatCount);
+    }
+
+    private async Task SetScheduledChatCountAsync(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var count)) return;
+        _scheduledChatCount = Math.Clamp(count, AI.Web.Settings.ClientSettings.MinSoonChatCount, AI.Web.Settings.ClientSettings.MaxSoonChatCount);
+        await ClientSettings.UpdateAsync(current => current with { SoonChatCount = _scheduledChatCount });
+        await ScheduledChatCountChanged.InvokeAsync(_scheduledChatCount);
     }
 
     private async Task SetShowTurnTokensAsync(ChangeEventArgs args)

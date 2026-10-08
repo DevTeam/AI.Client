@@ -40,6 +40,20 @@ public sealed record ClientSettings
     /// <summary>How many chats the sidebar's Recents shows before "Show more".</summary>
     public int RecentChatCount { get; init; } = DefaultRecentChatCount;
 
+    public const int MinNotifiedChatCount = 1;
+    public const int MaxNotifiedChatCount = 10;
+    public const int DefaultNotifiedChatCount = 3;
+
+    /// <summary>How many chats the sidebar's Notifications shows before "Show more".</summary>
+    public int NotifiedChatCount { get; init; } = DefaultNotifiedChatCount;
+
+    public const int MinSoonChatCount = 1;
+    public const int MaxSoonChatCount = 10;
+    public const int DefaultSoonChatCount = 3;
+
+    /// <summary>How many scheduled chats the sidebar's Scheduled shows before "Show more".</summary>
+    public int SoonChatCount { get; init; } = DefaultSoonChatCount;
+
     /// <summary>Whether the column of chat widgets is open beside the conversation.</summary>
     public bool ChatWidgetsOpen { get; init; }
 

@@ -1192,6 +1192,27 @@ body {
 .nav-notice-dot.is-error { background: var(--color-danger); }
 .nav-notice-dot.is-action { background: var(--color-warning); }
 
+/* The title line of a chat row: an optional lead, then the title. It is the row's shrinkable flex
+   item, so a long title ellipsizes exactly as it did while the label itself was that item —
+   without this the row grows past the sidebar and the sidebar scrolls sideways. */
+.chat-title-line {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* How long is left before a Scheduled row's run starts, before its title: a quiet, tabular figure
+   so the numbers line up down the column and the title still reads first. */
+.chat-soon-lead {
+    flex: none;
+    margin-right: 0.3rem;
+    color: var(--color-accent-text);
+    font-size: var(--font-size-sm);
+    font-variant-numeric: tabular-nums;
+}
+
 /* The chevron takes the icon slot, so the label still starts where chat titles do. */
 .chat-list-more.recent-chat-pager {
     padding-left: 0.55rem;

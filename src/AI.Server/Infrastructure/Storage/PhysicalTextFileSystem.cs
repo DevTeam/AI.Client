@@ -3,12 +3,11 @@ namespace AI.Infrastructure.Storage;
 public sealed class PhysicalTextFileSystem : ITextFileSystem
 {
     /// <summary>
-    /// How many times a read may find the document mid-replacement before giving up. Five attempts
-    /// spaced 1, 2, 3 and 4 milliseconds apart outlast that window many times over, and a document
-    /// that is genuinely absent pays those ten milliseconds once.
+    /// Wait up to one second for a sharing violation caused by another process temporarily opening
+    /// a stored document exclusively. A missing document is reported immediately.
     /// </summary>
-    private const int MaxReadAttempts = 5;
-
+    private const int MaxReadAttempts = 41;
+    private static readonly TimeSpan ReadRetryDelay = TimeSpan.FromMilliseconds(25);
 
     public Task<IReadOnlyList<string>> ListFilesRecursivelyAsync(string directoryPath, string searchPattern, CancellationToken cancellationToken)
     {
@@ -52,19 +51,31 @@ public sealed class PhysicalTextFileSystem : ITextFileSystem
                 using var reader = new StreamReader(stream);
                 return await reader.ReadToEndAsync(cancellationToken);
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            catch (FileNotFoundException)
             {
-                // Replacing a document makes it briefly unopenable, and briefly absent — a reader
-                // arriving inside that window is told the file is in use, or that there is no such
-                // file, neither of which is true a moment later. The window is a fraction of a
-                // millisecond, so waiting it out is the whole answer; only a failure that outlasts
-                // every attempt is reported, and only then does a missing file read as missing.
-                if (attempt == MaxReadAttempts)
-                    return error is FileNotFoundException or DirectoryNotFoundException ? null : throw Named(error, path);
-                await Task.Delay(attempt, cancellationToken);
+                return null;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return null;
+            }
+            catch (IOException error) when (IsSharingViolation(error) && attempt < MaxReadAttempts)
+            {
+                await Task.Delay(ReadRetryDelay, cancellationToken);
+            }
+            catch (IOException error)
+            {
+                throw new IOException($"'{path}' could not be read: {error.Message}", error);
+            }
+            catch (UnauthorizedAccessException error)
+            {
+                throw new UnauthorizedAccessException($"'{path}' could not be read: {error.Message}", error);
             }
         }
     }
+
+    private static bool IsSharingViolation(IOException error) =>
+        OperatingSystem.IsWindows() && (error.HResult & 0xFFFF) is 32 or 33;
 
     public async Task WriteTextAsync(string path, string content, CancellationToken cancellationToken)
     {

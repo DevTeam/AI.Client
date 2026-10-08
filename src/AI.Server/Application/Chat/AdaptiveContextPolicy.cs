@@ -157,8 +157,8 @@ public sealed partial class AdaptiveContextPolicy(
         // A discovered capability must have room to join the request. Preserve that larger share
         // on later steps while it still fits, so consuming the discovery pin cannot evict it.
         var schemaShare = pinnedTools is { Count: > 0 }
-            ? profile.UsableTokens / 3 : Math.Max(profile.ToolTokens, retainedTokens);
-        var budget = Math.Min(Math.Min(profile.UsableTokens / 3, schemaShare), Math.Max(floor, profile.UsableTokens
+            ? profile.UsableTokens / 2 : Math.Max(profile.ToolTokens, retainedTokens);
+        var budget = Math.Min(Math.Min(profile.UsableTokens / 2, schemaShare), Math.Max(floor, profile.UsableTokens
             - Math.Max(profile.UsableTokens / 4, estimator.EstimateMessages(context) + Math.Max(0, trailingInstructionTokens))));
         // Prioritized tools, especially those pinned by a routed skill, need only a few unrelated
         // schemas beside them. An omitted capability can be added through tool_search when needed.

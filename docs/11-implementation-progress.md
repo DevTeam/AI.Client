@@ -674,3 +674,17 @@ remembered, a chat whose next run is further away than the window keeping its ro
 both coming due and finished being listed once as pending, the remembered chats following what is
 still coming with the latest of them leading, a remembered chat never pushing a run that is about to
 start out of the window, and one being forgotten once newer entries push it past it.
+
+## 2026-10-08 — Sidebar settings fit in one row
+
+Settings → Sidebar had three full rows that repeated the same hint. They are now one row,
+**Chats per section** ("Listed before Show more"), with three labelled lists side by side: Recents,
+Notifications and Scheduled. The navigation targets keep their ids and are named "Chats in
+Recents", "Chats in Notifications" and "Chats in Scheduled".
+
+Files: `src/AI.Web/Components/GlobalSettingsPanel.razor`, `src/AI.Web/wwwroot/css/app.css`
+(`.section-count-options`), `src/AI.Contracts/Navigation/AppNavigationTargets.cs`,
+`docs/12-ux-decisions.md`, `docs/35-scheduled-chats.md`.
+
+Checks: `AI.Web` builds; the panel was checked in the settings drawer in the dark and light themes
+with the orange accent, and changing a list still saves its count.

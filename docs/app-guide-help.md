@@ -47,3 +47,13 @@ that a tool or model operation succeeded.
 
 Verification covers all catalogue hints, widget variants, actual rendered controls, dynamic
 labels/tooltips, absence of field-value collection and the navigation tool's JSON response.
+
+A guide step never repeats what the person already did. The client watches the control of every
+step that would act on it (`click`, `set_value`) as well as of the steps that ask the person to try
+it. Once the person has clicked a `click` step's control themselves, the step counts as applied and
+the guide goes on at once. A step whose control the person used is not performed again on Continue
+or when its timer runs out, and the virtual pointer does not press a control the person has just
+pressed. A click step of the offline connection setup tour is also done once the next step's
+control appears, whichever button the person used: the empty Connections panel has its own
+`Add connection` button besides the one the step points at, and pressing the step's button again
+used to add a second connection.

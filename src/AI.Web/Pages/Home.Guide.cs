@@ -154,6 +154,37 @@ public partial class Home
     private AppNavigation Offline(string target, string action) =>
         new(Guid.Empty, Target: target, Action: action, Comment: GuideTargets.Find(target)?.Hint, WaitForContinue: true);
 
+    private AppNavigation? NextOfflineStep() =>
+        _bootstrapStep > 0 && _bootstrapStep < _offlineSteps.Count ? _offlineSteps[_bootstrapStep] : null;
+
+    /// <summary>
+    /// A click step of the offline tour is done once what it leads to is on screen, whichever
+    /// control the person used for it: the empty Connections panel has its own "Add connection"
+    /// button besides the one the step points at, and pressing the step's one again on Continue
+    /// would add a second connection.
+    /// </summary>
+    private async Task WatchOfflineOutcomeAsync(IJSObjectReference module, AppNavigation step, AppNavigation next, CancellationToken token)
+    {
+        try
+        {
+            // Already there before anything was clicked: it says nothing about the person.
+            if (await module.InvokeAsync<bool>("isAvailable", token, next)) return;
+            while (_guideStep == step)
+            {
+                await Task.Delay(250, token);
+                if (!await module.InvokeAsync<bool>("isAvailable", token, next)) continue;
+                await InvokeAsync(async () =>
+                {
+                    if (_guideStep != step) return;
+                    _guideTargetUsed = true;
+                    await ContinueGuideStepAsync();
+                });
+                return;
+            }
+        }
+        catch (Exception error) when (error is OperationCanceledException or JSException or JSDisconnectedException) { }
+    }
+
     private Task ShowOfflineStepAsync(int number)
     {
         _bootstrapStep = number;
@@ -236,7 +267,9 @@ public partial class Home
                 if (_guideStep != target || _guidePaused) return;
                 if (error is not null) { await FinishGuideStepAsync("unavailable", error); return; }
             }
-            if (target.WaitForUser) await module.InvokeVoidAsync("watchTarget", target, _dotNetReference);
+            if (WatchesGuideTarget(target)) await module.InvokeVoidAsync("watchTarget", target, _dotNetReference);
+            if (target.Action == "click" && NextOfflineStep() is { } next && _guideDeadline is { } deadline)
+                _ = WatchOfflineOutcomeAsync(module, target, next, deadline.Token);
             if (!target.WaitForContinue && !target.WaitForUser && string.IsNullOrWhiteSpace(target.Comment))
             {
                 await ContinueGuideStepAsync();
@@ -326,7 +359,8 @@ public partial class Home
         try
         {
             var module = _guideModule!;
-            if (target.Action is not ("show" or "hover"))
+            // What the person already did with the control is not done again on Continue.
+            if (target.Action is not ("show" or "hover") && !_guideTargetUsed)
             {
                 var domainTarget = target.Target is "project" or "chat" or "branch";
                 var error = await module.InvokeAsync<string?>("perform", target, !domainTarget);
@@ -447,18 +481,29 @@ public partial class Home
         else if (_guideStep is { } target && _guideModule is not null)
         {
             await _guideModule.InvokeAsync<bool>("show", target);
-            if (target.WaitForUser) await _guideModule.InvokeVoidAsync("watchTarget", target, _dotNetReference);
+            if (WatchesGuideTarget(target)) await _guideModule.InvokeVoidAsync("watchTarget", target, _dotNetReference);
             await _guideModule.InvokeAsync<string?>("perform", target with { Action = target.Action == "hover" ? "hover" : "show" });
             await _guideModule.InvokeVoidAsync("position", target);
         }
     }
 
     [JSInvokable] public Task OnGuideEscape() => StopGuideAsync();
-    [JSInvokable] public Task OnGuideTargetUsed(Guid requestId)
+    [JSInvokable] public Task OnGuideTargetUsed(Guid requestId) => InvokeAsync(async () =>
     {
-        if (_guideStep?.RequestId == requestId) _guideTargetUsed = true;
-        return InvokeAsync(StateHasChanged);
-    }
+        if (_guideStep is not { } step || step.RequestId != requestId) return;
+        _guideTargetUsed = true;
+        // A step that asks for a click is done once the person clicked: it goes on at once instead
+        // of waiting for its timer to click the same control again.
+        if (step.Action == "click") await ContinueGuideStepAsync();
+        else StateHasChanged();
+    });
+
+    /// <summary>
+    /// Steps whose control the person may use themselves: the ones that ask them to, and the ones
+    /// that would act on it, so the guide never repeats what the person already did.
+    /// </summary>
+    private static bool WatchesGuideTarget(AppNavigation target) =>
+        target.WaitForUser || target.Action is "click" or "set_value";
 
     private async Task CompleteGuideTopicAsync(string topic)
     {

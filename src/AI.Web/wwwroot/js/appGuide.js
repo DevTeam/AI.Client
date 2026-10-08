@@ -5,6 +5,9 @@ let positionedRequest = null;
 let cursorPosition = null;
 let pointerPosition = null;
 let pointedRequest = null;
+// The control of the current step once the person has used it themselves: the guide must not
+// press it a second time (a second "Add connection" adds a second connection).
+let usedTarget = null;
 let layoutObserver = null;
 let lastActivity = Date.now();
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -182,6 +185,11 @@ export async function waitForTarget(request) {
     return false;
 }
 
+// Whether a step's control is on screen now, without waiting or opening anything for it.
+export function isAvailable(request) {
+    return !!available(request);
+}
+
 export function cancelAnimation() {
     clear();
 }
@@ -255,8 +263,11 @@ export function watchTarget(request, reference) {
     const element = target(request);
     if (!element || !active) return;
     const signal = active.signal;
+    usedTarget = null;
     const onUsed = event => {
-        if (event.isTrusted) void reference.invokeMethodAsync("OnGuideTargetUsed", request.requestId);
+        if (!event.isTrusted) return;
+        usedTarget = element;
+        void reference.invokeMethodAsync("OnGuideTargetUsed", request.requestId);
     };
     for (const type of ["click", "input", "change"]) element.addEventListener(type, onUsed, { signal });
 }
@@ -330,7 +341,7 @@ export async function perform(request, activate = true) {
         } else if (request.action === "click") {
             pressCursor(cursor, element);
             await delay(200, signal);
-            if (activate) input.click();
+            if (activate && usedTarget !== element) input.click();
             await delay(450, signal);
         } else if (request.action === "focus") input.focus();
         else if (request.action === "set_value") {

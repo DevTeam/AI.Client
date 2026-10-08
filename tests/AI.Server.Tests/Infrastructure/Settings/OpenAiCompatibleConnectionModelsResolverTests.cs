@@ -149,8 +149,46 @@ public class OpenAiCompatibleConnectionModelsResolverTests
         var error = await Should.ThrowAsync<InvalidOperationException>(() => CreateInstance()
             .ResolveAsync("https://llm.example/v1", "bad", CancellationToken.None));
 
-        error.Message.ShouldContain("401");
-        error.Message.ShouldContain("Invalid API key");
+        error.Message.ShouldBe("The endpoint rejected the API key. 401 Unauthorized: Invalid API key");
+    }
+
+    [Fact]
+    public async Task ShouldAskForAnApiKeyWhenTheEndpointRefusesARequestWithoutOne()
+    {
+        _handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.Unauthorized)
+            {
+                Content = new StringContent(
+                    """{"error":{"message":"Token not found","type":"invalid_request_error","param":"Authorization","code":"401"}}""",
+                    Encoding.UTF8, "application/json")
+            });
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(() => CreateInstance()
+            .ResolveAsync("https://llm.example/v1", null, CancellationToken.None));
+
+        error.Message.ShouldBe("The endpoint requires an API key. 401 Unauthorized: Token not found");
+    }
+
+    [Theory]
+    [InlineData("""{"error":"Model catalog is disabled"}""", "Model catalog is disabled")]
+    [InlineData("""{"detail":"Model catalog is disabled"}""", "Model catalog is disabled")]
+    [InlineData("""{"status":"down"}""", """{"status":"down"}""")]
+    public async Task ShouldShowTheMessageOfAJsonErrorEnvelope(string body, string expectedDetail)
+    {
+        _handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            });
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(() => CreateInstance()
+            .ResolveAsync("https://llm.example/v1", null, CancellationToken.None));
+
+        error.Message.ShouldBe($"The endpoint returned 400 (Bad Request). {expectedDetail}");
     }
 
     [Theory]

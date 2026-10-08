@@ -48,7 +48,7 @@ public sealed partial class OpenAiCompatibleConnectionModelsResolver(HttpClient 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException(FormatError(response, body));
+            throw new InvalidOperationException(FormatError(response, body, !string.IsNullOrWhiteSpace(apiKey)));
         }
 
         if (string.IsNullOrWhiteSpace(body))
@@ -135,27 +135,76 @@ public sealed partial class OpenAiCompatibleConnectionModelsResolver(HttpClient 
         }
     }
 
-    private static string FormatError(HttpResponseMessage response, string body)
+    private static string FormatError(HttpResponseMessage response, string body, bool hasApiKey)
     {
-        var prefix = $"The endpoint returned {(int)response.StatusCode} ({response.ReasonPhrase}).";
-        var trimmed = body.Trim();
-        if (trimmed.Length == 0) return prefix;
-        // An HTML page, usually from a proxy in between ("the requested URL could not be
-        // retrieved"), is kilobytes of markup and styles; its title is the part a person can read.
-        if (IsHtml(response, trimmed))
+        var detail = ErrorDetail(response, body.Trim());
+        // A refused key is the usual first-run failure; say what to fix before the provider's wording.
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            var title = HtmlTitle().Match(trimmed);
-            return title.Success
-                ? $"{prefix} {WebUtility.HtmlDecode(title.Groups[1].Value).ReplaceLineEndings(" ").Trim()}"
-                : prefix;
+            var hint = hasApiKey ? "The endpoint rejected the API key." : "The endpoint requires an API key.";
+            var status = $"{(int)response.StatusCode} {response.ReasonPhrase}";
+            return detail is null ? $"{hint} ({status})" : $"{hint} {status}: {detail}";
         }
 
-        var oneLine = trimmed.ReplaceLineEndings(" ");
-        var preview = oneLine.Length > ErrorBodyPreviewCharacters
+        var prefix = $"The endpoint returned {(int)response.StatusCode} ({response.ReasonPhrase}).";
+        return detail is null ? prefix : $"{prefix} {detail}";
+    }
+
+    private static string? ErrorDetail(HttpResponseMessage response, string body)
+    {
+        if (body.Length == 0) return null;
+        // An HTML page, usually from a proxy in between ("the requested URL could not be
+        // retrieved"), is kilobytes of markup and styles; its title is the part a person can read.
+        if (IsHtml(response, body))
+        {
+            var title = HtmlTitle().Match(body);
+            return title.Success
+                ? WebUtility.HtmlDecode(title.Groups[1].Value).ReplaceLineEndings(" ").Trim()
+                : null;
+        }
+
+        // A JSON error envelope carries a readable message among type, param and code fields that
+        // mean nothing to a person; show the message alone when one is there.
+        var message = JsonErrorMessage(body);
+        if (message is not null) return message;
+
+        var oneLine = body.ReplaceLineEndings(" ");
+        return oneLine.Length > ErrorBodyPreviewCharacters
             ? oneLine[..ErrorBodyPreviewCharacters] + "…"
             : oneLine;
-        return $"{prefix} {preview}";
     }
+
+    // Accepts the OpenAI shape { "error": { "message": ... } } and the common variants
+    // { "error": "..." }, { "message": "..." } and { "detail": "..." }.
+    private static string? JsonErrorMessage(string body)
+    {
+        if (body[0] != '{') return null;
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return null;
+            var source = root.TryGetProperty("error", out var error) ? error : root;
+            if (source.ValueKind == JsonValueKind.String) return NonEmpty(source.GetString());
+            if (source.ValueKind != JsonValueKind.Object) return null;
+            foreach (var name in (string[])["message", "detail"])
+            {
+                if (source.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String)
+                {
+                    return NonEmpty(value.GetString());
+                }
+            }
+
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? NonEmpty(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.ReplaceLineEndings(" ").Trim();
 
     private static bool IsHtml(HttpResponseMessage response, string body) =>
         response.Content.Headers.ContentType?.MediaType is "text/html" or "application/xhtml+xml"

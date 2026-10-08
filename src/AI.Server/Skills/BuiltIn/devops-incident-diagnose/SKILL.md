@@ -5,7 +5,7 @@ icon: devops-incident-diagnose
 kind: playbook
 description: Investigate an operational incident using logs, metrics, configuration and recent changes, report supported causes and a concrete recovery plan; changes nothing.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The affected environment"},"service":{"type":"string","description":"The affected service"},"symptom":{"type":"string","description":"The symptom, alert or observed failure"},"since":{"type":"string","description":"The incident time window"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Configuration files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","trigger_wait","ask_user"]
 ---
 
 For large diagnostic logs or traces, use the `purpose: "chatTemporary"` root from
@@ -48,7 +48,11 @@ If a diagnostic would mutate state, report that limitation and the proposed next
 
 4. Establish impact, time window and affected endpoints/users from supplied evidence. Correlate
    timestamps/time zones and deployment/configuration history. Query bounded relevant logs,
-   metrics/traces and status through existing tools, redacting secrets and personal data.
+   metrics/traces and status through existing tools, redacting secrets and personal data. For a
+   known local PID or read-granted log file already under observation, use one bounded
+   `trigger_wait` call when offered for exit, metric threshold or change instead of repeated
+   polling. It ends with this chat run; inspect the actual log or metric after it fires. Use provider-native
+   status tools for remote services.
 5. Follow request paths and dependencies. Distinguish application errors, resource exhaustion,
    networking/DNS/TLS, credentials, data stores, capacity and provider incidents. Compare with a
    healthy instance or baseline where available. Test one hypothesis at a time with read-only

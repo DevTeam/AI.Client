@@ -8,9 +8,9 @@
            type="text"
            autocomplete="off"
            aria-label="@AriaLabel"
-           class="text-input model-picker-input @(Error is null ? string.Empty : "model-picker-input-error")"
+           class="text-input model-picker-input @(Error is null && !Invalid ? string.Empty : "model-picker-input-error")"
            disabled="@Disabled"
-           aria-invalid="@(Error is null ? "false" : "true")"
+           aria-invalid="@(Error is null && !Invalid ? "false" : "true")"
            placeholder="@Placeholder"
            value="@Value"
            @oninput="OnInput"
@@ -140,6 +140,11 @@
     /// attempt starts.</summary>
     [Parameter]
     public EventCallback OnRetry { get; set; }
+
+    /// <summary>Marks the input as refused by the form around it, which explains why beside it;
+    /// unlike <see cref="Error"/>, the catalog stays available in the list.</summary>
+    [Parameter]
+    public bool Invalid { get; set; }
 
     private string ToggleTitle => Loading
         ? "Loading models…"

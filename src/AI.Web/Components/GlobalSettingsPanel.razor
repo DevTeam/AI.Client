@@ -159,9 +159,17 @@
                                 <details class="settings-disclosure">
                                     <summary @attributes="@(ControlHints.Attributes("settings.chat.helpers"))" class="settings-row">
                                         <span class="settings-row-text"><span class="settings-row-label">Model helpers</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.chat.helpers")</span></span>
-                                        <span class="settings-row-value">@ChatHelpersOn of 4</span>
+                                        <span class="settings-row-value">@(_loadError is null ? $"{ChatHelpersOn} of 4" : "Unavailable")</span>
                                         <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                                     </summary>
+                                    @if (_loadError is not null)
+                                    {
+                                        <div class="settings-row settings-inline-error" role="alert">
+                                            <AppIcon Name="error" />
+                                            <span>Could not read these from the Host. @_loadError</span>
+                                            <button class="compact-action" type="button" disabled="@_reloading" @onclick="ReloadAsync">@(_reloading ? "Loading…" : "Try again")</button>
+                                        </div>
+                                    }
                                     <label @attributes="@(ControlHints.Attributes("settings.chat.auto_title"))" class="settings-row">
                                         <span class="settings-row-label">Name new chats after the first answer</span>
                                         <input class="settings-switch" type="checkbox" role="switch" checked="@_chatAutomation.AutoTitle" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { AutoTitle = args.Value is true })" />
@@ -226,15 +234,30 @@
                 }
                 case "Connections":
                 {
+                    if (_loadError is not null)
+                    {
+                        <SettingsLoadError What="connections" Message="@_loadError" Retrying="@_reloading" Retry="ReloadAsync" />
+                        break;
+                    }
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
                             <SettingsFilterField @bind-Value="_connectionFilter" Placeholder="Filter connections" Shown="@ShownConnections.Count" Total="@_connections.Count" Submitted="() => SelectFirst(ShownConnections.Select(item => item.Id), SelectConnection)" />
-                            <nav class="settings-list">@if (_connections.Count > 0 && ShownConnections.Count == 0) { <p class="empty-hint">No connections match “@_connectionFilter.Trim()”.</p> }@foreach (var connectionItem in ShownConnections) { <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span><SettingsFilterText Text="@connectionItem.Name" Query="@_connectionFilter" /></span><small><SettingsFilterText Text="@ConnectionStatus(connectionItem)" Query="@_connectionFilter" /></small></button>@if (connectionItem.Id == _selectedConnectionId) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without the key)" aria-label="Copy connection as JSON" @onclick="() => CopyConnectionAsync(connectionItem)"><AppIcon Name="copy" /></button><button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button></span> }</div> }</nav>
+                            <nav class="settings-list">@if (_connections.Count > 0 && ShownConnections.Count == 0) { <p class="empty-hint">No connections match “@_connectionFilter.Trim()”.</p> }@foreach (var connectionItem in ShownConnections) { var itemProblems = ShownProblems(ConnectionProblems(connectionItem)).Count; <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span><SettingsFilterText Text="@connectionItem.Name" Query="@_connectionFilter" /></span>@if (itemProblems > 0) { <small class="settings-list-problem"><AppIcon Name="error" />@FixFields(itemProblems)</small> } else { <small><SettingsFilterText Text="@ConnectionStatus(connectionItem)" Query="@_connectionFilter" /></small> }</button>@if (connectionItem.Id == _selectedConnectionId) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without the key)" aria-label="Copy connection as JSON" @onclick="() => CopyConnectionAsync(connectionItem)"><AppIcon Name="copy" /></button><button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button></span> }</div> }</nav>
                             <button @attributes="@(ControlHints.Attributes("settings.connections.add", "Add connection"))" class="icon-action settings-list-add" type="button" aria-label="Add connection" @onclick="AddConnection"><AppIcon Name="plus" /></button>
                         </div>
-                        @if (GetSelectedConnection() is { } connection)
+                        @if (_loaded && _connections.Count == 0)
+                        {
+                            <div class="settings-empty">
+                                <AppIcon Name="connection" />
+                                <strong>No connections yet</strong>
+                                <span>Add an OpenAI-compatible endpoint, or paste one copied as JSON with Ctrl+V.</span>
+                                <button class="compact-action primary" type="button" @onclick="AddConnection"><AppIcon Name="plus" /><span>Add connection</span></button>
+                            </div>
+                        }
+                        else if (GetSelectedConnection() is { } connection)
                         {
                             var limits = EffectiveLimits(connection);
+                            var problems = ShownProblems(ConnectionProblems(connection));
                             <form class="global-form settings-form" autocomplete="off" @onsubmit:preventDefault="true">
                                 <div class="settings-card">
                                     <label @attributes="@(ControlHints.Attributes("settings.connection.enabled"))" class="settings-row">
@@ -253,14 +276,15 @@
                                 <section class="settings-group" aria-labelledby="connection-endpoint">
                                     <h3 id="connection-endpoint">Endpoint</h3>
                                     <div class="settings-card">
-                                        <label class="settings-row settings-field"><span class="settings-row-label">Name</span><InputText autocomplete="off" @bind-Value="connection.Name" /></label>
-                                        <label @attributes="@(ControlHints.Attributes("settings.connection.url"))" class="settings-row settings-field"><span class="settings-row-label">Base URL</span><input type="url" autocomplete="url" class="text-input" placeholder="https://api.openai.com/v1" @bind="connection.BaseUrl" @bind:event="oninput" @bind:after="() => OnEndpointChanged(connection.Id)" /></label>
+                                        <label class="settings-row settings-field @ErrorClass(problems, NameField)"><span class="settings-row-label">Name</span><InputText autocomplete="off" @bind-Value="connection.Name" aria-invalid="@Invalid(problems, NameField)" /><SettingsFieldError Message="@problems.GetValueOrDefault(NameField)" /></label>
+                                        <label @attributes="@(ControlHints.Attributes("settings.connection.url"))" class="settings-row settings-field @ErrorClass(problems, UrlField)"><span class="settings-row-label">Base URL</span><input type="url" autocomplete="url" class="text-input" placeholder="https://api.openai.com/v1" aria-invalid="@Invalid(problems, UrlField)" @bind="connection.BaseUrl" @bind:event="oninput" @bind:after="() => OnEndpointChanged(connection.Id)" /><SettingsFieldError Message="@problems.GetValueOrDefault(UrlField)" /></label>
                                         <label @attributes="@(ControlHints.Attributes("settings.connection.credential"))" class="settings-row settings-field"><span class="settings-row-label">API key</span><InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" @bind-Value:after="() => OnEndpointChanged(connection.Id)" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : connection.KeyMissing ? "Needed: imported without its key" : "Optional")" class="@(connection.NeedsKey ? "needs-key" : null)" /></label>
                                         @* A div, not a label: a label refocuses the picker on any click inside it. *@
-                                        <div @attributes="@(ControlHints.Attributes("settings.connection.model"))" class="settings-row settings-field">
+                                        <div @attributes="@(ControlHints.Attributes("settings.connection.model"))" class="settings-row settings-field @ErrorClass(problems, ModelField)">
                                             <span class="settings-row-label">Model</span>
-                                            <span class="settings-field-control"><ModelPicker @bind-Value="connection.Model" @bind-Value:after="() => InvalidateImageTest(connection)" AriaLabel="Model" Models="@(_resolvedModels.TryGetValue(connection.Id, out var list) ? list : null)" Loading="@(_resolvingModelsForId == connection.Id)" Error="@(_resolvedErrors.TryGetValue(connection.Id, out var err) ? err : null)" OnRetry="@(() => LoadModelsIfStaleAsync(connection.Id, force: true))" Placeholder="@ModelPickerPlaceholder(connection)" EmptyHint="@ModelPickerEmptyHint(connection)" /></span>
+                                            <span class="settings-field-control"><ModelPicker @bind-Value="connection.Model" @bind-Value:after="() => InvalidateImageTest(connection)" AriaLabel="Model" Models="@(_resolvedModels.TryGetValue(connection.Id, out var list) ? list : null)" Loading="@(_resolvingModelsForId == connection.Id)" Error="@(!problems.ContainsKey(UrlField) && _resolvedErrors.TryGetValue(connection.Id, out var err) ? err : null)" OnRetry="@(() => LoadModelsIfStaleAsync(connection.Id, force: true))" Placeholder="@ModelPickerPlaceholder(connection)" EmptyHint="@ModelPickerEmptyHint(connection)" Invalid="@problems.ContainsKey(ModelField)" /></span>
                                             @if (_resolvingModelsForId == connection.Id) { <span class="model-loading" aria-label="Loading models" role="status"><AppIcon Name="spinner" Class="tool-row-spinner" /></span> }
+                                            <SettingsFieldError Message="@problems.GetValueOrDefault(ModelField)" />
                                         </div>
                                         @{ var testingImage = _testingImageForId == connection.Id; }
                                         <div class="settings-row settings-field image-input-row">
@@ -302,8 +326,8 @@
                                                 <span class="settings-row-value" title="@($"Context window: {limits.ContextWindowTokens} tokens ({SourceLabel(limits.ContextWindowSource)}). Reserved output: {limits.ReservedOutputTokens} tokens ({SourceLabel(limits.ReservedOutputSource)})")">@FormatTokens(limits.ContextWindowTokens) / @FormatTokens(limits.ReservedOutputTokens)</span>
                                                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                                             </summary>
-                                            <label @attributes="@(ControlHints.Attributes("settings.connection.context_window"))" class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Context window</span><span class="settings-row-hint">@limits.ContextWindowTokens tokens, @SourceLabel(limits.ContextWindowSource)</span></span><input type="number" min="1024" max="4000000" step="1" title="@ControlHints.GetHint("settings.connection.context_window")" placeholder="@limits.ContextWindowTokens" @bind="connection.ContextWindowTokens" /></label>
-                                            <label @attributes="@(ControlHints.Attributes("settings.connection.reserved_output"))" class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Reserved output</span><span class="settings-row-hint">@limits.ReservedOutputTokens tokens, @SourceLabel(limits.ReservedOutputSource)</span></span><input type="number" min="256" max="1000000" step="1" title="@ControlHints.GetHint("settings.connection.reserved_output")" placeholder="@limits.ReservedOutputTokens" @bind="connection.ReservedOutputTokens" /></label>
+                                            <label @attributes="@(ControlHints.Attributes("settings.connection.context_window"))" class="settings-row settings-field @ErrorClass(problems, WindowField)"><span class="settings-row-text"><span class="settings-row-label">Context window</span><span class="settings-row-hint">@limits.ContextWindowTokens tokens, @SourceLabel(limits.ContextWindowSource)</span></span><input type="number" min="1024" max="4000000" step="1" title="@ControlHints.GetHint("settings.connection.context_window")" placeholder="@limits.ContextWindowTokens" aria-invalid="@Invalid(problems, WindowField)" @bind="connection.ContextWindowTokens" /><SettingsFieldError Message="@problems.GetValueOrDefault(WindowField)" /></label>
+                                            <label @attributes="@(ControlHints.Attributes("settings.connection.reserved_output"))" class="settings-row settings-field @ErrorClass(problems, ReservedField)"><span class="settings-row-text"><span class="settings-row-label">Reserved output</span><span class="settings-row-hint">@limits.ReservedOutputTokens tokens, @SourceLabel(limits.ReservedOutputSource)</span></span><input type="number" min="256" max="1000000" step="1" title="@ControlHints.GetHint("settings.connection.reserved_output")" placeholder="@limits.ReservedOutputTokens" aria-invalid="@Invalid(problems, ReservedField)" @bind="connection.ReservedOutputTokens" /><SettingsFieldError Message="@problems.GetValueOrDefault(ReservedField)" /></label>
                                         </details>
                                         <details class="settings-disclosure">
                                             <summary class="settings-row">
@@ -311,9 +335,9 @@
                                                 <span class="settings-row-value">@PriceSummary(connection)</span>
                                                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                                             </summary>
-                                            <label @attributes="@(ControlHints.Attributes("settings.connection.input_price"))" class="settings-row settings-field"><span class="settings-row-label">Input</span><input type="number" min="0" max="10000" step="0.01" title="@ControlHints.GetHint("settings.connection.input_price")" @bind="connection.InputPrice" /></label>
-                                            <label @attributes="@(ControlHints.Attributes("settings.connection.output_price"))" class="settings-row settings-field"><span class="settings-row-label">Output</span><input type="number" min="0" max="10000" step="0.01" title="@ControlHints.GetHint("settings.connection.output_price")" @bind="connection.OutputPrice" /></label>
-                                            <label @attributes="@(ControlHints.Attributes("settings.connection.cached_price"))" class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Cached input</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.connection.cached_price")</span></span><input type="number" min="0" max="10000" step="0.01" title="@ControlHints.GetHint("settings.connection.cached_price")" @bind="connection.CachedInputPrice" /></label>
+                                            <label @attributes="@(ControlHints.Attributes("settings.connection.input_price"))" class="settings-row settings-field @ErrorClass(problems, InputPriceField)"><span class="settings-row-label">Input</span><input type="number" min="0" max="10000" step="0.01" title="@ControlHints.GetHint("settings.connection.input_price")" aria-invalid="@Invalid(problems, InputPriceField)" @bind="connection.InputPrice" /><SettingsFieldError Message="@problems.GetValueOrDefault(InputPriceField)" /></label>
+                                            <label @attributes="@(ControlHints.Attributes("settings.connection.output_price"))" class="settings-row settings-field @ErrorClass(problems, OutputPriceField)"><span class="settings-row-label">Output</span><input type="number" min="0" max="10000" step="0.01" title="@ControlHints.GetHint("settings.connection.output_price")" aria-invalid="@Invalid(problems, OutputPriceField)" @bind="connection.OutputPrice" /><SettingsFieldError Message="@problems.GetValueOrDefault(OutputPriceField)" /></label>
+                                            <label @attributes="@(ControlHints.Attributes("settings.connection.cached_price"))" class="settings-row settings-field @ErrorClass(problems, CachedPriceField)"><span class="settings-row-text"><span class="settings-row-label">Cached input</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.connection.cached_price")</span></span><input type="number" min="0" max="10000" step="0.01" title="@ControlHints.GetHint("settings.connection.cached_price")" aria-invalid="@Invalid(problems, CachedPriceField)" @bind="connection.CachedInputPrice" /><SettingsFieldError Message="@problems.GetValueOrDefault(CachedPriceField)" /></label>
                                         </details>
                                     </div>
                                 </section>
@@ -324,22 +348,29 @@
                 }
                 default:
                 {
+                    if (_loadError is not null)
+                    {
+                        <SettingsLoadError What="MCP servers" Message="@_loadError" Retrying="@_reloading" Retry="ReloadAsync" />
+                        break;
+                    }
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
                             <SettingsFilterField @bind-Value="_mcpFilter" Placeholder="Filter servers and tools" Shown="@ShownMcpServers.Count" Total="@_globalMcpServers.Count" Hotkey="@(_mcpTab != McpTab.Tools || GetSelectedMcpServer() is null)" Submitted="() => SelectFirst(ShownMcpServers.Select(item => item.Id), SelectFilteredMcpServer)" />
-                            <nav class="settings-list">@if (_globalMcpServers.Count > 0 && ShownMcpServers.Count == 0) { <p class="empty-hint">No servers or tools match “@_mcpFilter.Trim()”.</p> }@foreach (var serverItem in ShownMcpServers) { <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectFilteredMcpServer(serverItem.Id)"><span><SettingsFilterText Text="@serverItem.Name" Query="@_mcpFilter" /></span><small>@if (MatchingToolCount(serverItem) is > 0 and var toolMatches) { <span class="settings-filter-tools">@Plural(toolMatches, "matching tool")</span> } else { <SettingsFilterText Text="@McpServerStatus(serverItem)" Query="@_mcpFilter" /> }</small></button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without secrets)" aria-label="Copy MCP server as JSON" @onclick="() => CopyMcpServerAsync(serverItem)"><AppIcon Name="copy" /></button>@if (serverItem.Id != CSharpMcpServer.Id) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</span> }</div> }</nav>
+                            <nav class="settings-list">@if (_globalMcpServers.Count > 0 && ShownMcpServers.Count == 0) { <p class="empty-hint">No servers or tools match “@_mcpFilter.Trim()”.</p> }@foreach (var serverItem in ShownMcpServers) { var itemProblems = McpProblemCount(serverItem); <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectFilteredMcpServer(serverItem.Id)"><span><SettingsFilterText Text="@serverItem.Name" Query="@_mcpFilter" /></span>@if (itemProblems > 0) { <small class="settings-list-problem"><AppIcon Name="error" />@FixFields(itemProblems)</small> } else { <small>@if (MatchingToolCount(serverItem) is > 0 and var toolMatches) { <span class="settings-filter-tools">@Plural(toolMatches, "matching tool")</span> } else { <SettingsFilterText Text="@McpServerStatus(serverItem)" Query="@_mcpFilter" /> }</small> }</button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without secrets)" aria-label="Copy MCP server as JSON" @onclick="() => CopyMcpServerAsync(serverItem)"><AppIcon Name="copy" /></button>@if (serverItem.Id != CSharpMcpServer.Id) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</span> }</div> }</nav>
                             <button class="icon-action settings-list-add" type="button" title="Add MCP server" aria-label="Add MCP server" @onclick="AddGlobalMcpServer"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedMcpServer() is { } server)
                         {
                             var hostProvided = IsHostProvided(server.Id);
                             var tools = _toolPolicies.Where(item => item.ServerId == server.Id).ToList();
+                            var problems = ShownProblems(McpServerProblems(server));
+                            var toolProblems = tools.Count(tool => ShownProblems(ToolProblems(tool)).Count > 0);
                             <form class="global-form settings-form" autocomplete="off" @onsubmit:preventDefault="true">
                                 @* The tool list can run to dozens of rows, so it gets a page of its own
                                    rather than burying the server's few fields under it. *@
                                 <div class="settings-page-tabs" role="tablist" aria-label="@server.Name">
-                                    <button type="button" role="tab" class="theme-option @(_mcpTab == McpTab.Server ? "selected" : null)" aria-selected="@(_mcpTab == McpTab.Server)" @onclick="() => _mcpTab = McpTab.Server">Server</button>
-                                    <button type="button" role="tab" class="theme-option @(_mcpTab == McpTab.Tools ? "selected" : null)" aria-selected="@(_mcpTab == McpTab.Tools)" @onclick="() => _mcpTab = McpTab.Tools">Tools <span class="settings-tab-count">@tools.Count</span></button>
+                                    <button type="button" role="tab" class="theme-option @(_mcpTab == McpTab.Server ? "selected" : null)" aria-selected="@(_mcpTab == McpTab.Server)" @onclick="() => _mcpTab = McpTab.Server">Server @if (problems.Count > 0) { <AppIcon Name="error" Class="settings-tab-problem" /> }</button>
+                                    <button type="button" role="tab" class="theme-option @(_mcpTab == McpTab.Tools ? "selected" : null)" aria-selected="@(_mcpTab == McpTab.Tools)" @onclick="() => _mcpTab = McpTab.Tools">Tools <span class="settings-tab-count">@tools.Count</span>@if (toolProblems > 0) { <AppIcon Name="error" Class="settings-tab-problem" /> }</button>
                                 </div>
                                 @if (_mcpTab == McpTab.Server)
                                 {
@@ -356,7 +387,7 @@
                                     <section class="settings-group" aria-labelledby="mcp-connection">
                                         <h3 id="mcp-connection">Connection</h3>
                                         <div class="settings-card">
-                                            <label class="settings-row settings-field"><span class="settings-row-label">Name</span><InputText autocomplete="off" @bind-Value="server.Name" readonly="@hostProvided" /></label>
+                                            <label class="settings-row settings-field @ErrorClass(problems, NameField)"><span class="settings-row-label">Name</span><InputText autocomplete="off" @bind-Value="server.Name" readonly="@hostProvided" aria-invalid="@Invalid(problems, NameField)" /><SettingsFieldError Message="@problems.GetValueOrDefault(NameField)" /></label>
                                             <label class="settings-row settings-field"><span class="settings-row-label">Transport</span><select disabled="@hostProvided" @bind="server.Transport"><option>StreamableHttp</option><option>Stdio</option>@if (hostProvided) { <option>InProcess</option> }</select></label>
                                             @if (!hostProvided)
                                             {
@@ -364,12 +395,12 @@
                                             }
                                             @if (!hostProvided && server.Transport == "StreamableHttp")
                                             {
-                                                <label class="settings-row settings-field"><span class="settings-row-label">URL</span><InputText autocomplete="url" @bind-Value="server.Url" /></label>
+                                                <label class="settings-row settings-field @ErrorClass(problems, UrlField)"><span class="settings-row-label">URL</span><InputText autocomplete="url" @bind-Value="server.Url" placeholder="https://example.com/mcp" aria-invalid="@Invalid(problems, UrlField)" /><SettingsFieldError Message="@problems.GetValueOrDefault(UrlField)" /></label>
                                                 <label class="settings-row settings-field"><span class="settings-row-label">Credential</span><InputText type="password" autocomplete="new-password" @bind-Value="server.Secret" placeholder="@(server.HasCredential ? "Saved; enter to replace" : server.CredentialMissing ? "Needed: imported without it" : "Optional")" class="@(server.MissingSecrets.Count > 0 ? "needs-key" : null)" /></label>
                                             }
                                             else if (!hostProvided)
                                             {
-                                                <label class="settings-row settings-field"><span class="settings-row-label">Command</span><span class="settings-field-control settings-path-row"><InputText class="settings-path-input" @bind-Value="server.Command" placeholder="Path to the executable" /><button class="secondary-action compact-action" type="button" title="Browse for the command executable" aria-label="Browse for the command executable" @onclick="() => OpenMcpCommandPicker(server)">Browse…</button></span></label>
+                                                <label class="settings-row settings-field @ErrorClass(problems, CommandField)"><span class="settings-row-label">Command</span><span class="settings-field-control settings-path-row"><InputText class="settings-path-input" @bind-Value="server.Command" placeholder="Path to the executable" aria-invalid="@Invalid(problems, CommandField)" /><button class="secondary-action compact-action" type="button" title="Browse for the command executable" aria-label="Browse for the command executable" @onclick="() => OpenMcpCommandPicker(server)">Browse…</button></span><SettingsFieldError Message="@problems.GetValueOrDefault(CommandField)" /></label>
                                                 <label class="settings-row settings-field"><span class="settings-row-label">Arguments</span><InputText @bind-Value="server.ArgumentsText" placeholder="One argument per line" /></label>
                                                 <label class="settings-row settings-field"><span class="settings-row-label">Working directory</span><span class="settings-field-control settings-path-row"><InputText class="settings-path-input" @bind-Value="server.WorkingDirectory" placeholder="Path to a directory" /><button class="secondary-action compact-action" type="button" title="Browse for a working directory" aria-label="Browse for a working directory" @onclick="() => OpenMcpWorkingDirectoryPicker(server)">Browse…</button></span></label>
                                                 <label class="settings-row is-stacked">
@@ -396,6 +427,14 @@
                                         <button class="compact-action" type="button" disabled="@(_discoveringTools || _saving || !server.Enabled || server.Policy == "Deny")" title="Fetch the server's current tool list and schemas" @onclick="DiscoverToolsAsync">@(_discoveringTools ? "Discovering…" : "Discover")</button>
                                     </div>
                                     <p class="settings-note">Defaults for every project unless it overrides them. @ToolDecisionSummary(tools)</p>
+                                    @if (_discoverError is { } discoverError && _discoverErrorServerId == server.Id)
+                                    {
+                                        <div class="settings-inline-error" role="alert">
+                                            <AppIcon Name="error" />
+                                            <span><strong>Could not discover tools.</strong> @discoverError</span>
+                                            <button class="icon-action" type="button" title="Dismiss" aria-label="Dismiss" @onclick="() => _discoverError = null"><AppIcon Name="x" /></button>
+                                        </div>
+                                    }
                                     @if (tools.Count == 0)
                                     {
                                         <p class="empty-hint">No tools discovered. Unknown tools will ask for approval.</p>
@@ -409,11 +448,13 @@
                                         <div class="settings-card">
                                             @foreach (var policy in shown)
                                             {
+                                                var limitProblems = ShownProblems(ToolProblems(policy));
                                                 var expanded = _expandedTool == policy.Name;
                                                 <div class="settings-row mcp-tool-row">
                                                     <span class="settings-row-text">
                                                         <span class="settings-row-label mcp-tool-title" title="@policy.SchemaHash"><SettingsFilterText Text="@policy.Name" Query="@_toolFilter" /></span>
-                                                        @if (ToolLimitsSummary(policy) is { } limitsSummary) { <span class="settings-row-hint">@limitsSummary</span> }
+                                                        @if (limitProblems.Count > 0) { <span class="settings-row-hint settings-list-problem"><AppIcon Name="error" />Limits: @FixFields(limitProblems.Count).ToLowerInvariant()</span> }
+                                                        else if (ToolLimitsSummary(policy) is { } limitsSummary) { <span class="settings-row-hint">@limitsSummary</span> }
                                                     </span>
                                                     <select @attributes="@(ControlHints.Attributes("settings.tools.decision"))" class="mcp-tool-decision is-@policy.Decision.ToLowerInvariant()" @bind="policy.Decision" aria-label="Policy for @policy.Name"><option>Ask</option><option>Allow</option><option>Deny</option></select>
                                                     <button class="icon-action mcp-tool-limits-toggle @(expanded ? "selected" : null)" type="button" title="Limits" aria-label="Limits for @policy.Name" aria-expanded="@expanded" @onclick="() => _expandedTool = expanded ? null : policy.Name"><AppIcon Name="@(expanded ? "chevron-up" : "chevron-down")" /></button>
@@ -421,8 +462,8 @@
                                                 @if (expanded)
                                                 {
                                                     <div class="settings-row mcp-tool-limits">
-                                                        <label>Calls per run<input type="number" min="1" max="2147483647" title="Maximum invocations of this tool in one run; empty leaves this limit unset" @bind="policy.MaxCallsPerRun" /></label>
-                                                        <label>Timeout, sec<input type="number" min="1" max="@McpToolPolicySettings.MaxTimeoutSeconds" title="Timeout for one call, in seconds; progress renews the wait, and execution tools also apply it to their run" @bind="policy.TimeoutSeconds" /></label>
+                                                        <label>Calls per run<input type="number" min="1" max="2147483647" title="Maximum invocations of this tool in one run; empty leaves this limit unset" aria-invalid="@Invalid(limitProblems, CallsField)" @bind="policy.MaxCallsPerRun" /><SettingsFieldError Message="@limitProblems.GetValueOrDefault(CallsField)" /></label>
+                                                        <label>Timeout, sec<input type="number" min="1" max="@McpToolPolicySettings.MaxTimeoutSeconds" title="Timeout for one call, in seconds; progress renews the wait, and execution tools also apply it to their run" aria-invalid="@Invalid(limitProblems, TimeoutField)" @bind="policy.TimeoutSeconds" /><SettingsFieldError Message="@limitProblems.GetValueOrDefault(TimeoutField)" /></label>
                                                     </div>
                                                 }
                                             }
@@ -436,11 +477,25 @@
                 }
             }
     </div>
-    <footer>
-        @if (_saveFailed)
+    @{ var failure = ShownSaveFailure(); }
+    <footer class="@(failure is null ? null : "has-error")">
+        @if (failure is not null)
         {
-            <span class="settings-drawer-error" role="alert">Not saved. Fix the fields or discard.</span>
-            <button class="secondary-action permissions-reset-all" type="button" disabled="@_saving" @onclick="DiscardAndCloseAsync">Discard changes</button>
+            <div class="settings-save-error" role="alert">
+                <AppIcon Name="error" />
+                <span><strong>Not saved.</strong> @failure.Detail</span>
+            </div>
+            <span class="settings-save-actions">
+                <button class="compact-action" type="button" disabled="@_saving" title="Close and drop every unsaved change" @onclick="DiscardAndCloseAsync">Discard changes</button>
+                @if (failure.Kind == SaveFailureKind.Conflict)
+                {
+                    <button class="compact-action primary" type="button" disabled="@(_saving || _reloading)" title="Drop the changes made here and show what is saved now" @onclick="ReloadAsync">Load saved</button>
+                }
+                else if (failure.Kind == SaveFailureKind.Host)
+                {
+                    <button class="compact-action primary" type="button" disabled="@_saving" @onclick="RetrySaveAsync">@(_saving ? "Saving…" : "Try again")</button>
+                }
+            </span>
         }
         else
         {
@@ -523,7 +578,15 @@
     private bool _saving;
     private bool _disconnectingHost;
     private string? _desktopReleaseUrl;
-    private bool _saveFailed;
+    private SaveFailure? _saveFailure;
+    // Field problems stay hidden until a save is refused over them: a new connection is blank by
+    // design, and it should not open covered in red. After that they follow every keystroke.
+    private bool _validationShown;
+    private bool _focusInvalid;
+    private string? _loadError;
+    private bool _reloading;
+    private string? _savingItem;
+    private IJSObjectReference? _fieldsModule;
     // What was loaded, in the editor's shape; closing without edits must not write
     // (and toast) anything, and secrets never appear here, so they are checked separately.
     private string? _loadedSnapshot;
@@ -650,7 +713,7 @@
         _guideSuggestionsEnabled = clientSettings.GuideSuggestionsEnabled;
         _guideIdleMinutes = clientSettings.GuideIdleMinutes;
         _guideCompletedCount = clientSettings.CompletedGuideTopics.Count;
-        await LoadGlobalSettingsAsync();
+        await TryLoadGlobalSettingsAsync();
         if (ClientMode.PublicWeb)
         {
             try { _desktopReleaseUrl = (await PublishedDownloads.LoadAsync()).DesktopReleaseUrl; }
@@ -686,10 +749,52 @@
         if (_globalMcpServers.All(item => item.Id != _selectedMcpServerId)) _selectedMcpServerId = _globalMcpServers.FirstOrDefault()?.Id;
         _loadedSnapshot = Snapshot();
         CaptureLoadedItems(settings);
-        _saveFailed = false;
+        _saveFailure = null;
+        _validationShown = false;
         _loaded = true;
         SelectLinkedTool();
     }
+
+    /// <summary>
+    /// A Host that cannot hand the settings over leaves an explanation and a retry in their place;
+    /// nothing is shown as editable, so closing never writes an empty list over the saved one.
+    /// </summary>
+    private async Task TryLoadGlobalSettingsAsync()
+    {
+        try
+        {
+            await LoadGlobalSettingsAsync();
+            _loadError = null;
+        }
+        catch (Exception error) when (IsHostFailure(error))
+        {
+            _loaded = false;
+            _loadError = DescribeHostFailure(error);
+        }
+    }
+
+    /// <summary>Retries a failed load; after a refused save it also drops the edits for what is saved now.</summary>
+    private async Task ReloadAsync()
+    {
+        if (_reloading) return;
+        _reloading = true;
+        try { await TryLoadGlobalSettingsAsync(); }
+        finally { _reloading = false; }
+    }
+
+    private static bool IsHostFailure(Exception error) =>
+        error is HttpRequestException or InvalidOperationException or JsonException or OperationCanceledException;
+
+    /// <summary>The Host's own explanation when it gave one; otherwise what the user can check.</summary>
+    private static string DescribeHostFailure(Exception error) => error switch
+    {
+        SettingsRequestException refusal => refusal.Message,
+        HttpRequestException { StatusCode: { } status } => $"The Host answered {(int)status} {status}.",
+        HttpRequestException => "The Host did not answer. Make sure it is running.",
+        OperationCanceledException => "The Host did not answer in time.",
+        JsonException => "The Host sent a reply this window could not read. It may be a different version; reload the page.",
+        _ => error.Message
+    };
 
     /// <summary>The footer line, counted the way the permissions drawer counts its overrides.</summary>
     private int ChatHelpersOn => new[] { _chatAutomation.AutoTitle, _chatAutomation.SuggestReplies, _chatAutomation.SuggestComments, _chatAutomation.RouteSkills }.Count(value => value);
@@ -697,6 +802,8 @@
     private string Stats => Section switch
     {
         "Settings" => "Applied right away",
+        // Counts of a list that never arrived would read as "you have none".
+        "Connections" or "MCP" when _loadError is not null => string.Empty,
         "Memory" or "ProjectMemory" => _memoryEditor?.Stats ?? string.Empty,
         "Skills" or "ProjectSkills" => _skillEditor?.Stats ?? string.Empty,
         "Connections" => $"{Plural(_connections.Count, "connection")} · {_connections.Count(item => item.Enabled)} enabled",
@@ -808,10 +915,10 @@
             _chatAutomation = (await GlobalSettingsApi.SetChatAutomationAsync(automation, CancellationToken.None)).ChatAutomation
                 ?? automation;
         }
-        catch (HttpRequestException error)
+        catch (Exception error) when (IsHostFailure(error))
         {
             _chatAutomation = previous;
-            Notifications.ShowError($"Could not save the chat setting: {error.Message}");
+            Notifications.ShowError($"Could not save the model helper. {DescribeHostFailure(error)}");
         }
     }
 
@@ -838,30 +945,39 @@
     private async Task SaveChangedItemsAsync()
     {
         foreach (var id in _loadedConnections.Keys.Where(id => _connections.All(item => item.Id != id)).ToArray())
+        {
+            _savingItem = _loadedConnections[id].Name;
             CaptureLoadedItems(await GlobalSettingsApi.RemoveConnectionAsync(id, _loadedConnections[id], CancellationToken.None));
+        }
 
         foreach (var editor in _connections)
         {
             var item = editor.ToSettings();
             _loadedConnections.TryGetValue(item.Id, out var expected);
             if (expected is not null && JsonSerializer.Serialize(item) == JsonSerializer.Serialize(expected)) continue;
+            _savingItem = item.Name;
             CaptureLoadedItems(await GlobalSettingsApi.UpsertConnectionAsync(item, expected, CancellationToken.None));
         }
 
         foreach (var id in _loadedMcpServers.Keys.Where(id => _globalMcpServers.All(item => item.Id != id)).ToArray())
+        {
+            _savingItem = _loadedMcpServers[id].Name;
             CaptureLoadedItems(await GlobalSettingsApi.RemoveMcpServerAsync(id, _loadedMcpServers[id], CancellationToken.None));
+        }
 
         foreach (var editor in _globalMcpServers)
         {
             var item = editor.ToSettings();
             _loadedMcpServers.TryGetValue(item.Id, out var expected);
             if (expected is not null && McpSnapshot(item) == McpSnapshot(expected)) continue;
+            _savingItem = item.Name;
             CaptureLoadedItems(await GlobalSettingsApi.UpsertMcpServerAsync(item, expected, CancellationToken.None));
         }
 
         foreach (var key in _loadedToolPolicies.Keys.Where(key => _toolPolicies.All(item =>
                      item.ServerId != key.ServerId || item.Name != key.Name || item.SchemaHash != key.SchemaHash)).ToArray())
         {
+            _savingItem = key.Name;
             CaptureLoadedItems(await GlobalSettingsApi.RemoveToolPolicyAsync(
                 key.ServerId, key.Name, key.SchemaHash, CancellationToken.None));
         }
@@ -870,8 +986,11 @@
         {
             var item = editor.ToSettings();
             if (_loadedToolPolicies.TryGetValue(PolicyKey(item), out var expected) && expected == item) continue;
+            _savingItem = item.Name;
             CaptureLoadedItems(await GlobalSettingsApi.SetToolPolicyAsync(item, CancellationToken.None));
         }
+
+        _savingItem = null;
     }
 
     private string Snapshot() => JsonSerializer.Serialize(new
@@ -987,7 +1106,8 @@
     /// the form currently says. Called automatically when the user selects a connection in the left
     /// column and again, debounced, after they edit its BaseUrl or key; those calls show a failure
     /// only inline in the picker, since a toast per typing pause would be noise. Retry passes
-    /// <paramref name="force"/>, which also reloads a fresh catalog and raises a toast on failure.
+    /// <paramref name="force"/>, which also reloads a fresh catalog; its failure lands in the same
+    /// place, right under the Retry the user just pressed.
     /// </summary>
     private async Task LoadModelsIfStaleAsync(Guid id, bool force = false)
     {
@@ -1059,13 +1179,10 @@
             // HttpClient's own timeout also surfaces as a cancellation, but not ours; it is a
             // failure like any other. The Host's message already says what went wrong; we add a
             // leading note so the text says what we were trying to do.
-            var message = ex is OperationCanceledException
-                ? "Could not load models. The Host did not answer in time."
-                : $"Could not load models. {ex.Message}";
+            var message = $"Could not load models. {DescribeHostFailure(ex)}";
             _resolvedModels.Remove(id);
             _resolvedEndpoints.Remove(id);
             _resolvedErrors[id] = message;
-            if (force) Notifications.ShowError(message);
         }
         finally
         {
@@ -1141,6 +1258,7 @@
             }
 
             if (_transferModule is not null) await _transferModule.DisposeAsync();
+            if (_fieldsModule is not null) await _fieldsModule.DisposeAsync();
         }
         catch (JSDisconnectedException)
         {
@@ -1368,12 +1486,15 @@
         id == AI.Contracts.Settings.DefaultMcpServer.Id || id == AI.Contracts.Settings.AppMcpServer.Id;
 
     private bool _discoveringTools;
+    private string? _discoverError;
+    private Guid? _discoverErrorServerId;
 
     private async Task DiscoverToolsAsync()
     {
         if (_discoveringTools || GetSelectedMcpServer() is not { } server) return;
         var request = new DiscoverMcpToolsRequest(server.ToSettings(), server.Secret);
         _discoveringTools = true;
+        _discoverError = null;
         try
         {
             var tools = await GlobalSettingsApi.DiscoverMcpToolsAsync(request, CancellationToken.None);
@@ -1389,15 +1510,34 @@
             if (tools.Count == 0) Notifications.ShowInfo("No tools were found.");
             else Notifications.ShowSuccess($"Discovered {tools.Count} tool(s).");
         }
-        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        catch (Exception error) when (IsHostFailure(error))
         {
-            Notifications.ShowError($"Could not discover tools for {server.Name}: {error.Message}");
+            // Shown above the list it failed to fill, until dismissed or the next attempt; the
+            // Host's refusal already names the step ("Could not discover MCP tools: ...").
+            _discoverError = error is SettingsRequestException
+                ? error.Message
+                : $"Could not discover MCP tools. {DescribeHostFailure(error)}";
+            _discoverErrorServerId = server.Id;
         }
         finally { _discoveringTools = false; }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_focusInvalid)
+        {
+            _focusInvalid = false;
+            try
+            {
+                _fieldsModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/settingsFields.js");
+                await _fieldsModule.InvokeVoidAsync("focusFirstInvalid", _drawer);
+            }
+            catch (Exception error) when (error is JSException or JSDisconnectedException)
+            {
+                // The fields are marked either way; focus is only the shortcut to them.
+            }
+        }
+
         if (!firstRender) return;
         try
         {
@@ -1536,18 +1676,30 @@
     /// <summary>Saves pending edits; <c>true</c> when there is nothing left unsaved.</summary>
     public async Task<bool> SaveAsync()
     {
-        if (_memoryEditor is not null && !await _memoryEditor.SaveAsync())
+        if (_memoryEditor is not null && !await _memoryEditor.SaveAsync()
+            || _skillEditor is not null && !await _skillEditor.SaveAsync())
         {
-            _saveFailed = true;
+            _saveFailure = new SaveFailure(SaveFailureKind.Editor, "Fix the marked entry, or discard the changes.");
+            StateHasChanged();
             return false;
         }
-        if (_skillEditor is not null && !await _skillEditor.SaveAsync())
+        if (!_loaded) return true;
+        // What the Host would refuse is caught here, before anything is sent, so the drawer can
+        // point at the fields instead of relaying the Host's one sentence about all of them.
+        var problems = CollectProblems();
+        if (problems.Count > 0)
         {
-            _saveFailed = true;
+            _validationShown = true;
+            _saveFailure = new SaveFailure(SaveFailureKind.Invalid, string.Empty);
+            problems[0].Reveal();
+            _focusInvalid = true;
+            // Home calls this on Escape and on switching sections, outside this component's events.
+            StateHasChanged();
             return false;
         }
-        if (!_loaded || !HasChanges()) return true;
+        if (!HasChanges()) return true;
         _saving = true;
+        _saveFailure = null;
         StateHasChanged();
         try
         {
@@ -1564,13 +1716,17 @@
             Notifications.ShowSuccess(successMessage);
             return true;
         }
-        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        catch (Exception error) when (IsHostFailure(error))
         {
-            // A save that fails silently is worse than no toast at all: the previous footer text
-            // was easy to miss next to the Save button, and this panel is now the only place where
-            // an endpoint's base URL / model / credentials are typed in.
-            Notifications.ShowError($"Could not save {Title}: {error.Message}");
-            _saveFailed = true;
+            // The footer keeps the reason with Discard and the way forward beside it until the
+            // edits are saved or dropped; a toast would leave the drawer open with no reason.
+            var item = string.IsNullOrWhiteSpace(_savingItem) ? null : $"“{_savingItem.Trim()}”";
+            _saveFailure = error is SettingsRequestException { IsConflict: true }
+                ? new SaveFailure(SaveFailureKind.Conflict,
+                    $"{item ?? "An item"} was changed in another window after this one opened. Load the saved settings, then make the change again.")
+                : new SaveFailure(SaveFailureKind.Host, item is null || error is not SettingsRequestException
+                    ? DescribeHostFailure(error)
+                    : $"{item}: {DescribeHostFailure(error)}");
             return false;
         }
         finally
@@ -1598,6 +1754,202 @@
             : addedServers == 1 && removedServers == 0 ? "MCP server added."
             : "MCP settings updated.";
     }
+
+    private enum SaveFailureKind
+    {
+        /// <summary>Fields the Host would refuse; nothing was sent.</summary>
+        Invalid,
+        /// <summary>The memory or skill editor refused and marks the entry itself.</summary>
+        Editor,
+        /// <summary>The Host refused or did not answer; the same edits can be sent again.</summary>
+        Host,
+        /// <summary>The item changed elsewhere; sending the same edits again would be refused again.</summary>
+        Conflict
+    }
+
+    private sealed record SaveFailure(SaveFailureKind Kind, string Detail);
+
+    /// <summary>An item with fields to fix, and how to bring the first of them into view.</summary>
+    private sealed record ItemProblems(string Name, string Kind, int Count, Action Reveal);
+
+    private const string NameField = "name";
+    private const string UrlField = "url";
+    private const string ModelField = "model";
+    private const string WindowField = "context-window";
+    private const string ReservedField = "reserved-output";
+    private const string InputPriceField = "input-price";
+    private const string OutputPriceField = "output-price";
+    private const string CachedPriceField = "cached-price";
+    private const string CommandField = "command";
+    private const string CallsField = "calls";
+    private const string TimeoutField = "timeout";
+    private static readonly IReadOnlyDictionary<string, string> NoProblems = new Dictionary<string, string>();
+
+    /// <summary>A refusal over fields is recounted on every render: it shrinks as they are fixed and goes with the last one.</summary>
+    private SaveFailure? ShownSaveFailure()
+    {
+        if (_saveFailure is not { Kind: SaveFailureKind.Invalid }) return _saveFailure;
+        var items = CollectProblems();
+        if (items.Count == 0) return null;
+        var first = items[0];
+        var who = string.IsNullOrWhiteSpace(first.Name) ? $"an unnamed {first.Kind}" : $"“{first.Name.Trim()}”";
+        var others = items.Count switch { 1 => string.Empty, 2 => " and one more item", _ => $" and {items.Count - 1} more items" };
+        return _saveFailure with { Detail = $"{FixFields(items.Sum(item => item.Count))} in {who}{others}." };
+    }
+
+    private IReadOnlyDictionary<string, string> ShownProblems(IReadOnlyDictionary<string, string> problems) =>
+        _validationShown ? problems : NoProblems;
+
+    private static string? ErrorClass(IReadOnlyDictionary<string, string> problems, string field) =>
+        problems.ContainsKey(field) ? "has-error" : null;
+
+    /// <summary>Null drops the attribute; the stylesheet and the focus script look for "true".</summary>
+    private static string? Invalid(IReadOnlyDictionary<string, string> problems, string field) =>
+        problems.ContainsKey(field) ? "true" : null;
+
+    private static string FixFields(int count) => count == 1 ? "Fix 1 field" : $"Fix {count} fields";
+
+    private List<ItemProblems> CollectProblems()
+    {
+        var items = new List<ItemProblems>();
+        foreach (var connection in _connections)
+        {
+            if (ConnectionProblems(connection) is { Count: > 0 } problems)
+                items.Add(new ItemProblems(connection.Name, "connection", problems.Count, () => RevealConnection(connection.Id)));
+        }
+
+        foreach (var server in _globalMcpServers)
+        {
+            var serverProblems = McpServerProblems(server).Count;
+            var tools = _toolPolicies.Where(item => item.ServerId == server.Id && ToolProblems(item).Count > 0).ToArray();
+            var count = serverProblems + tools.Sum(item => ToolProblems(item).Count);
+            if (count > 0)
+                items.Add(new ItemProblems(server.Name, "MCP server", count,
+                    () => RevealMcpServer(server.Id, serverProblems > 0 ? null : tools[0].Name)));
+        }
+
+        return items;
+    }
+
+    private void RevealConnection(Guid id)
+    {
+        if (ShownConnections.All(item => item.Id != id)) _connectionFilter = string.Empty;
+        if (_selectedConnectionId != id) SelectConnection(id);
+    }
+
+    /// <summary>Opens the server on the page that holds the problem: its fields, or the limits of a tool.</summary>
+    private void RevealMcpServer(Guid id, string? tool)
+    {
+        if (ShownMcpServers.All(item => item.Id != id)) _mcpFilter = string.Empty;
+        SelectMcpServer(id);
+        _mcpTab = tool is null ? McpTab.Server : McpTab.Tools;
+        if (tool is null) return;
+        _toolFilter = string.Empty;
+        _expandedTool = tool;
+    }
+
+    /// <summary>
+    /// What the Host would refuse in this connection, by field, in words about that field. A
+    /// connection loaded as it is skips the check: the Host took it already, and an old entry must
+    /// not block saving an unrelated one.
+    /// </summary>
+    private IReadOnlyDictionary<string, string> ConnectionProblems(ConnectionEditor connection)
+    {
+        // A lone price never reaches the Host (ToSettings drops it), so it is always a fresh edit
+        // that would otherwise vanish without a word.
+        var lonePrice = connection.InputPrice is null != connection.OutputPrice is null
+            || connection is { CachedInputPrice: not null, InputPrice: null, OutputPrice: null };
+        if (!lonePrice && _loadedConnections.TryGetValue(connection.Id, out var saved)
+            && JsonSerializer.Serialize(connection.ToSettings()) == JsonSerializer.Serialize(saved))
+            return NoProblems;
+
+        var problems = new Dictionary<string, string>();
+        if (string.IsNullOrWhiteSpace(connection.Name)) problems[NameField] = "Enter a name.";
+        else if (_connections.Any(item => item.Id != connection.Id && SameName(item.Name, connection.Name)))
+            problems[NameField] = "Another connection already has this name.";
+
+        var baseUrl = connection.BaseUrl.Trim();
+        if (baseUrl.Length == 0) problems[UrlField] = "Enter the endpoint's base URL, for example https://api.openai.com/v1.";
+        else if (!IsHttpUrl(baseUrl)) problems[UrlField] = "Start with http:// or https://, for example https://api.openai.com/v1.";
+
+        if (string.IsNullOrWhiteSpace(connection.Model)) problems[ModelField] = "Pick a model from the list or type its id.";
+
+        if (connection.ContextWindowTokens is < 1_024 or > 4_000_000)
+            problems[WindowField] = "Use 1,024 to 4,000,000 tokens, or leave it empty for the model's default.";
+        if (connection.ReservedOutputTokens is < 256 or > 1_000_000)
+            problems[ReservedField] = "Use 256 to 1,000,000 tokens, or leave it empty for the model's default.";
+        if (problems.Count(item => item.Key is WindowField or ReservedField) == 0
+            && EffectiveLimits(connection) is var limits && limits.ReservedOutputTokens >= limits.ContextWindowTokens)
+        {
+            if (connection.ReservedOutputTokens is not null)
+                problems[ReservedField] = $"Must be less than the context window, {limits.ContextWindowTokens:N0} tokens.";
+            else
+                problems[WindowField] = $"Must be more than the reserved output, {limits.ReservedOutputTokens:N0} tokens.";
+        }
+
+        CheckPrice(problems, InputPriceField, connection.InputPrice);
+        CheckPrice(problems, OutputPriceField, connection.OutputPrice);
+        CheckPrice(problems, CachedPriceField, connection.CachedInputPrice);
+        if (connection is { InputPrice: null, OutputPrice: not null }) problems.TryAdd(InputPriceField, "Needed with the output price.");
+        if (connection is { OutputPrice: null, InputPrice: not null }) problems.TryAdd(OutputPriceField, "Needed with the input price.");
+        if (connection is { CachedInputPrice: not null, InputPrice: null, OutputPrice: null })
+            problems.TryAdd(CachedPriceField, "Needs the input and output prices too.");
+        return problems;
+    }
+
+    private static void CheckPrice(Dictionary<string, string> problems, string field, decimal? price)
+    {
+        if (price is < 0 or > 10_000) problems[field] = "Use 0 to 10,000 per million tokens.";
+    }
+
+    private static bool SameName(string left, string right) =>
+        string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The Host's own rules for a server, plus the one it leaves to the first run: an enabled
+    /// server needs somewhere to connect to. Servers the Host provides are not the user's to fix.
+    /// </summary>
+    private IReadOnlyDictionary<string, string> McpServerProblems(GlobalMcpServerEditor server)
+    {
+        if (IsHostProvided(server.Id)
+            || _loadedMcpServers.TryGetValue(server.Id, out var saved) && McpSnapshot(server.ToSettings()) == McpSnapshot(saved))
+            return NoProblems;
+
+        var problems = new Dictionary<string, string>();
+        if (string.IsNullOrWhiteSpace(server.Name)) problems[NameField] = "Enter a name.";
+        else if (_globalMcpServers.Any(item => item.Id != server.Id && SameName(item.Name, server.Name)))
+            problems[NameField] = "Another MCP server already has this name.";
+
+        if (server.Transport == "StreamableHttp")
+        {
+            var url = server.Url?.Trim() ?? string.Empty;
+            if (url.Length > 0 && !IsHttpUrl(url)) problems[UrlField] = "Start with http:// or https://.";
+            else if (url.Length == 0 && server.Enabled) problems[UrlField] = "Enter the server's URL, or turn the server off.";
+        }
+        else if (server.Transport == "Stdio" && server.Enabled && string.IsNullOrWhiteSpace(server.Command))
+        {
+            problems[CommandField] = "Enter the program that starts the server, or turn the server off.";
+        }
+
+        return problems;
+    }
+
+    private static IReadOnlyDictionary<string, string> ToolProblems(McpToolPolicyEditor tool)
+    {
+        if (tool.MaxCallsPerRun >= 1 && tool.TimeoutSeconds is >= 1 and <= McpToolPolicySettings.MaxTimeoutSeconds)
+            return NoProblems;
+        var problems = new Dictionary<string, string>();
+        if (tool.MaxCallsPerRun < 1) problems[CallsField] = "At least 1.";
+        if (tool.TimeoutSeconds is < 1 or > McpToolPolicySettings.MaxTimeoutSeconds)
+            problems[TimeoutField] = $"From 1 to {McpToolPolicySettings.MaxTimeoutSeconds:N0} seconds.";
+        return problems;
+    }
+
+    private int McpProblemCount(GlobalMcpServerEditor server) => !_validationShown ? 0
+        : McpServerProblems(server).Count + _toolPolicies.Where(item => item.ServerId == server.Id).Sum(item => ToolProblems(item).Count);
+
+    /// <summary>The same edits again; closing is the save, so success also closes the drawer.</summary>
+    private Task RetrySaveAsync() => RequestCloseAsync();
 
     [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]
     [SuppressMessage("ReSharper", "MemberCanBePrivate.Local")]

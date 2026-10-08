@@ -14,7 +14,7 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
     {
         using var response = await httpClient.PostAsJsonAsync("api/mcp/tools/discover", request, cancellationToken);
         if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException(await ReadProblemDetailAsync(response, cancellationToken));
+            await ThrowRefusalAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<McpToolInfo[]>(cancellationToken) ?? [];
     }
     public async Task<GlobalSettings> GetAsync(CancellationToken cancellationToken) =>
@@ -55,7 +55,7 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
     private static async Task<GlobalSettings> ReadSettingsItemResponseAsync(HttpResponseMessage response, CancellationToken token)
     {
         if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException(await ReadProblemDetailAsync(response, token));
+            await ThrowRefusalAsync(response, token);
         return await response.Content.ReadFromJsonAsync<GlobalSettings>(token)
             ?? throw new InvalidOperationException("Global settings response is empty.");
     }
@@ -63,7 +63,7 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
     public async Task<GlobalSettings> SetChatAutomationAsync(ChatAutomationSettings automation, CancellationToken cancellationToken)
     {
         using var response = await httpClient.PutAsJsonAsync("api/settings/chat-automation", automation, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode) await ThrowRefusalAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<GlobalSettings>(cancellationToken)
                ?? throw new InvalidOperationException("Global settings response is empty.");
     }
@@ -78,7 +78,7 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
     {
         var url = $"api/settings/mcp/{serverId}/tool-policies?name={Uri.EscapeDataString(name)}&schemaHash={Uri.EscapeDataString(schemaHash)}";
         using var response = await httpClient.DeleteAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode) await ThrowRefusalAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<GlobalSettings>(cancellationToken)
             ?? throw new InvalidOperationException("Global settings response is empty.");
     }
@@ -87,12 +87,7 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
         Guid id, ResolveConnectionModelsRequest request, CancellationToken cancellationToken)
     {
         using var response = await httpClient.PostAsJsonAsync($"api/settings/connections/{id}/models", request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            // The Host explains the failure in the problem's detail ("Could not reach ...", "The
-            // endpoint returned 401 ..."); the bare status line would hide the part the user can act on.
-            throw new InvalidOperationException(await ReadProblemDetailAsync(response, cancellationToken));
-        }
+        if (!response.IsSuccessStatusCode) await ThrowRefusalAsync(response, cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<ResolvedModelInfo[]>(cancellationToken) ?? [];
     }
@@ -102,10 +97,15 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
     {
         using var response = await httpClient.PostAsJsonAsync($"api/settings/connections/{id}/image-test", request, cancellationToken);
         if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException(await ReadProblemDetailAsync(response, cancellationToken));
+            await ThrowRefusalAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<ImageProbeResult>(cancellationToken)
             ?? throw new InvalidOperationException("The image test returned no result.");
     }
+
+    // The Host explains a refusal in the problem's detail ("Could not reach ...", "The endpoint
+    // returned 401 ..."); the bare status line would hide the part the user can act on.
+    private static async Task ThrowRefusalAsync(HttpResponseMessage response, CancellationToken cancellationToken) =>
+        throw new SettingsRequestException(await ReadProblemDetailAsync(response, cancellationToken), response.StatusCode);
 
     private static async Task<string> ReadProblemDetailAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
@@ -131,6 +131,6 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
     private async Task SetSecretAsync(string url, string? value, CancellationToken cancellationToken)
     {
         using var response = await httpClient.PutAsJsonAsync(url, new UpdateSecretRequest(value), cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode) await ThrowRefusalAsync(response, cancellationToken);
     }
 }

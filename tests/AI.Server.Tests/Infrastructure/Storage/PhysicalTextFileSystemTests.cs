@@ -112,6 +112,17 @@ public sealed class PhysicalTextFileSystemTests : IDisposable
     }
 
     [Fact]
+    public async Task DeletingADocumentInAMissingDirectoryShouldSucceed()
+    {
+        var system = new PhysicalTextFileSystem();
+        var path = Path.Combine(_directory, "resources", "project.json");
+
+        await system.DeleteAsync(path, CancellationToken.None);
+
+        Directory.Exists(Path.GetDirectoryName(path)!).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task AnOrdinaryRenameShouldStayOrdinary()
     {
         var system = new PhysicalTextFileSystem();

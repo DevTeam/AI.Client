@@ -9,6 +9,7 @@ using Moq;
 using Shouldly;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class FilePreviewServiceTests
 {
     [Theory]

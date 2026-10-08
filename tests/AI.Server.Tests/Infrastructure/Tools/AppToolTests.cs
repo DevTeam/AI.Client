@@ -37,6 +37,7 @@ using Xunit;
 /// Nothing here reaches into a tool class directly, so a schema or transport regression fails here
 /// rather than in production.
 /// </summary>
+[Trait("Category", "Integration")]
 public sealed partial class AppToolTests
 {
     [Fact]
@@ -497,8 +498,8 @@ public sealed partial class AppToolTests
 
         var result = await AppFixture.CallAsync(session, "app_chats", new
         {
-            operation = "Rename", projectId = fixture.ProjectId, chatId = fixture.ChatId,
-            operationId = Guid.NewGuid(), title = "Renamed", revision = 999L,
+            operation = "Pin", projectId = fixture.ProjectId, chatId = fixture.ChatId,
+            operationId = Guid.NewGuid(), isPinned = true, revision = 999L,
         }, expectError: true);
 
         result.GetProperty("status").GetString().ShouldBe("Conflict");

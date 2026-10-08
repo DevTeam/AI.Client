@@ -78,6 +78,7 @@ public sealed class TrigramIndexTests
     [InlineData("ru")]
     [InlineData("fr")]
     [InlineData("es")]
+    [Trait("Category", "Slow")]
     public void BundledIndexMatchesTheOriginalDictionary(string language)
     {
         var source = new EmbeddedTextDictionaries().All.Single(dictionary => dictionary.LanguageId == language);

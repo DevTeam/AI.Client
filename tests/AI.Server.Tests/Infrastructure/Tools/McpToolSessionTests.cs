@@ -10,6 +10,7 @@ using Shouldly;
 using System.Text.Json;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class McpToolSessionTests
 {
     [Theory]

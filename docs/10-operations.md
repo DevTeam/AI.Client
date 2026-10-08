@@ -15,10 +15,12 @@ All repeatable operations are launched through a dedicated build application in 
 ```powershell
 dotnet run --project build -- build
 dotnet run --project build -- test
+dotnet run --project build -- test-all
 dotnet run --project build -- verify
 dotnet run --project build -- publish --output artifacts/publish
 ```
 
+`test` runs fast unit tests, and `test-all` also runs tests marked `Category=Integration` or `Category=Slow`.
 `verify` is the mandatory check before submitting changes: it stops at the first failure and runs the build before executing the fast unit tests. The output of child `dotnet` processes is written to `artifacts/logs`; the directory is not under source control.
 
 ## Verifying an OpenAI-compatible endpoint

@@ -19,6 +19,7 @@ using Moq;
 using Shouldly;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class AppSkillsToolTests
 {
     private const string CustomSkill = """

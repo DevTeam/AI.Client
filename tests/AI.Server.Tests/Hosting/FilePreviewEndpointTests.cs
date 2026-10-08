@@ -10,6 +10,7 @@ using AI.Server.Hosting;
 using Shouldly;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class FilePreviewEndpointTests
 {
     [Fact]

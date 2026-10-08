@@ -3,6 +3,7 @@ namespace AI.TextCorrection.Tests;
 using Shouldly;
 using Xunit;
 
+[Trait("Category", "Slow")]
 public sealed class HunspellWordLexiconTests
 {
     private readonly HunspellWordLexicon _lexicon = new(new WordLexicon(), new EmbeddedTextDictionaries());

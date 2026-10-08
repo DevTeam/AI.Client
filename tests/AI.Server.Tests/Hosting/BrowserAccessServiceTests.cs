@@ -6,6 +6,7 @@ using AI.Server.Hosting;
 using Shouldly;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class BrowserAccessServiceTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "ai-browser-access-" + Guid.NewGuid().ToString("N"));

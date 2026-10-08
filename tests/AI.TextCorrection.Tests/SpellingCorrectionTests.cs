@@ -77,6 +77,7 @@ public sealed class SpellingCorrectionTests
     [InlineData("ru", "правопсиание", "правописание")]
     [InlineData("fr", "bonojur", "bonjour")]
     [InlineData("es", "espñaol", "español")]
+    [Trait("Category", "Slow")]
     public async Task UsesTheRealEmbeddedDictionary(string language, string word, string expected)
     {
         var composition = new TextCorrectionComposition();

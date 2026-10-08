@@ -14,6 +14,7 @@ using Moq;
 using Shouldly;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class WorkspaceUndoServiceTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("aiclient-undo").FullName;

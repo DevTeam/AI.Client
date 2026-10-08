@@ -23,7 +23,7 @@ public enum ChatOperation
     /// <summary>Restore chats archived by archiveOperationId.</summary>
     UndoArchive,
 
-    /// <summary>Change a chat's title. Needs 'chatId', 'title' and 'revision'.</summary>
+    /// <summary>Change a chat's title. Needs 'chatId' and 'title'; a stale 'revision' does not block a rename.</summary>
     Rename,
 
     /// <summary>Pin or unpin a chat in the sidebar. Needs 'chatId', 'isPinned' and 'revision'.</summary>

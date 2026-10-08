@@ -144,7 +144,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 ChatModelStatisticsCalculator, ChatTeamStatisticsCalculator, ChatUnfinishedStatisticsCalculator,
                 ChatSchedulePresentation, ChatScheduleApi,
                 ChatUsageApi, HistoryCheckpointApi, PublishedDownloadLinks,
-                DelayedBusyIndicatorFactory, ApiBaseUrl, ClientMode, ClientMetadata, ChatComposerService,
+                SystemBusyIndicatorTime, DelayedBusyIndicatorFactory, ApiBaseUrl, ClientMode, ClientMetadata, ChatComposerService,
                 ChatMessageDeltaMerger, ProjectApi, ChatHistoryApi, GlobalSettingsApi, ChatRunsApi, FileSystemApi,
                 GitApi, ResourceApi, ReviewApi, WorkspaceUndoApi, MemoryApi, SkillApi, FilePreviewApi, FilePreviewViewers,
                 FileMarkdownRenderer>()

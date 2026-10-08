@@ -268,6 +268,7 @@ public class OpenAiCompatibleChatCompletionClientTests
     private static HttpResponseMessage CreateResponse(HttpStatusCode statusCode, string content) =>
         new(statusCode) { Content = new StringContent(content, Encoding.UTF8, "application/json") };
     [Fact]
+    [Trait("Category", "Slow")]
     public async Task ShouldFailWhenResponseHeadersDoNotArriveInTime()
     {
         _handler
@@ -285,6 +286,7 @@ public class OpenAiCompatibleChatCompletionClientTests
     }
 
     [Fact]
+    [Trait("Category", "Slow")]
     public async Task ShouldFailWhenFirstTokenDoesNotArriveInTime()
     {
         _handler

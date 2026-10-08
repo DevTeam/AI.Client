@@ -12,10 +12,10 @@ using AI.Domain.Chats;
 /// with the Host.
 /// </summary>
 /// <remarks>
-/// The scheduler arrives as a factory: it depends on the run dispatcher, which depends on the
-/// registry this policy belongs to.
+/// The schedule store and scheduler arrive as factories: both depend on services that resolve
+/// the registry this policy belongs to.
 /// </remarks>
-public sealed class ScheduledChatKindPolicy(IChatScheduleStore store, IScheduleCalendar calendar, Func<IChatScheduler> scheduler,
+public sealed class ScheduledChatKindPolicy(Func<IChatScheduleStore> store, IScheduleCalendar calendar, Func<IChatScheduler> scheduler,
     Func<IScheduleDemo> demo)
     : IChatKindPolicy
 {
@@ -25,7 +25,7 @@ public sealed class ScheduledChatKindPolicy(IChatScheduleStore store, IScheduleC
     public void ValidateState(JsonElement? state, int version)
     {
         if (version != ChatSchedule.StateVersion) throw new ArgumentException("Unsupported schedule state version.");
-        var schedule = store.Parse(state) ?? throw new ArgumentException("A scheduled chat needs a schedule.");
+        var schedule = store().Parse(state) ?? throw new ArgumentException("A scheduled chat needs a schedule.");
         if (calendar.Validate(schedule.Settings) is { } error) throw new ArgumentException(error);
     }
 

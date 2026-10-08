@@ -122,6 +122,7 @@ public class ChatCompletionSseParserTests
     }
 
     [Fact]
+    [Trait("Category", "Slow")]
     public async Task ShouldKeepAStreamAliveWhileTheModelReasonsBetweenTextAndAToolCall()
     {
         var pipe = new System.IO.Pipelines.Pipe();
@@ -131,9 +132,9 @@ public class ChatCompletionSseParserTests
         {
             await Write(pipe, """data: {"choices":[{"delta":{"content":"Creating the files now."}}]}""");
             // Thinking for well past the idle timeout, in deltas the parser does not show.
-            for (var step = 0; step < 8; step++)
+            for (var step = 0; step < 12; step++)
             {
-                await Task.Delay(100, TestContext.Current.CancellationToken);
+                await Task.Delay(50, TestContext.Current.CancellationToken);
                 await Write(pipe, """data: {"choices":[{"delta":{"reasoning_content":"..."}}]}""");
             }
             await Write(pipe, """data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"one","function":{"name":"write_file","arguments":"{}"}}]}}]}""");

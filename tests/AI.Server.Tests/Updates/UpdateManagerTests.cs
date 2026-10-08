@@ -10,6 +10,7 @@ using System.Net;
 using System.Security.Cryptography;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class UpdateManagerTests
 {
     [Theory]

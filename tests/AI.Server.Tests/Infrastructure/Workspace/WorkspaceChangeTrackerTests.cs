@@ -10,6 +10,7 @@ using Shouldly;
 using Moq;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class WorkspaceChangeTrackerTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("aiclient-workspace").FullName;

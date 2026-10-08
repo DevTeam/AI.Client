@@ -7,9 +7,9 @@ using AI.Domain.Chats;
 using AI.Domain.Projects;
 using AI.Domain.Runs;
 
-/// <summary>Uses the chat's storage lifetime for its run state as well.</summary>
+/// <summary>Uses the chat's storage lifetime for its run state as well, resolving kind policies after composition.</summary>
 public sealed class ChatRunRepositoryRouter(IPersistentChatRunRepository durable,
-    IHostLifetimeChatRunRepository hostLifetime, IChatRepository chats, IChatKindPolicyRegistry kinds)
+    IHostLifetimeChatRunRepository hostLifetime, IChatRepository chats, Func<IChatKindPolicyRegistry> kinds)
     : IChatRunRepository
 {
     private readonly ConcurrentDictionary<(Guid ProjectId, Guid ChatId), ChatPersistence> _locations = new();
@@ -63,7 +63,7 @@ public sealed class ChatRunRepositoryRouter(IPersistentChatRunRepository durable
         if (_locations.TryGetValue((projectId, chatId), out var location)) return location;
         var chat = await chats.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken)
             ?? throw new InvalidOperationException("Chat not found for run storage.");
-        location = kinds.Resolve(chat.Chat.Kind).Behavior.Persistence;
+        location = kinds().Resolve(chat.Chat.Kind).Behavior.Persistence;
         return _locations.GetOrAdd((projectId, chatId), location);
     }
 }

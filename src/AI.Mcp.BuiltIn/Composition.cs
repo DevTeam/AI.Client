@@ -9,6 +9,7 @@ using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Process;
+using Triggers;
 using Pure.DI;
 using Web;
 
@@ -22,11 +23,11 @@ internal sealed partial class Composition
             .Hint(Hint.ThreadSafe, "Off")
             .Root<Program>(nameof(Root))
             // Tools
-            .Transient<ProcessRunTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ReadImageFileTool,
+            .Transient<ProcessRunTool, TriggerWaitTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ReadImageFileTool,
                 ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,
                 DeleteFileTool, DeleteDirectoryTool, ZipListTool, ZipReadTool, ZipExtractTool, ZipCreateTool>(Tag.Unique)
-            .Transient<ProcessRunner, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()
+            .Transient<ProcessRunner, TriggerWaiter, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()
             .Transient(_ => new WebFetcher(WebFetcher.CreateDefaultHandler()))
             .Transient((IEnumerable<IToolFactory> toolFactories) =>
             {

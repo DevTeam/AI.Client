@@ -58,7 +58,7 @@ public sealed class BuiltInToolTests
         await using var session = await CreateFactory().OpenAsync([], ToolRunContext.None, timeout.Token);
         session.Tools.Select(item => item.OriginalName).ShouldBe(
         [
-            "process_run", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "read_image_file", "list_directory",
+            "process_run", "trigger_wait", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "read_image_file", "list_directory",
             "directory_tree", "search_files", "grep_files", "get_file_info", "write_file", "edit_file", "create_directory",
             "move_file", "delete_file", "delete_directory", "zip_list", "zip_read", "zip_extract", "zip_create"
         ], ignoreOrder: true);
@@ -76,6 +76,12 @@ public sealed class BuiltInToolTests
         result.StructuredContent.ShouldNotBeNull();
         result.StructuredContent!.Value.GetProperty("exitCode").GetInt32().ShouldBe(0);
         result.StructuredContent!.Value.GetProperty("stdout").GetString().ShouldNotBeNullOrWhiteSpace();
+        var trigger = await Structured(session, "trigger_wait", new
+        {
+            conditions = new[] { new { type = "delay", afterMs = 10 } }, timeoutMs = 1000
+        }, timeout.Token);
+        trigger.GetProperty("outcome").GetString().ShouldBe("triggered");
+        trigger.GetProperty("conditionIndex").GetInt32().ShouldBe(0);
         var canonical = session.ValidateArguments(tool, "{\"executable\":\"dotnet\"}");
         using var canonicalJson = JsonDocument.Parse(canonical);
         canonicalJson.RootElement.GetProperty("executable").GetString().ShouldBe("dotnet");

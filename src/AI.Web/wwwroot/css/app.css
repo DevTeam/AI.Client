@@ -1398,6 +1398,11 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .settings-row.is-stacked { flex-direction: column; align-items: flex-start; gap: .45rem; padding-block: .6rem; }
 .settings-row.is-stacked > .theme-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-self: stretch; }
 .settings-row.is-stacked .theme-option { text-align: center; white-space: nowrap; }
+/* The sidebar's section limits share one row: one label, one hint, a counter per section. */
+.section-count-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; align-self: stretch; }
+.section-count-option { display: grid; gap: .2rem; min-width: 0; color: var(--color-text-muted); font-size: var(--font-size-sm); cursor: pointer; }
+.section-count-option > span { overflow: hidden; padding-left: .15rem; text-overflow: ellipsis; white-space: nowrap; }
+.section-count-option > select { width: 100%; min-height: 0; padding: .3rem .5rem; font-size: var(--font-size-md); }
 .theme-options { display: inline-flex; flex: none; flex-wrap: wrap; gap: 0.2rem; padding: 0.2rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
 /* The radio stays in the tab order for keyboard users, but the pill is what shows the choice. */
 .theme-option { position: relative; display: block; padding: 0.25rem 0.7rem; border-radius: var(--radius-sm); color: var(--color-text-muted); font-size: var(--font-size-base); cursor: pointer; }

@@ -105,33 +105,38 @@
                         <section class="settings-group" aria-labelledby="settings-sidebar">
                             <h3 id="settings-sidebar">Sidebar</h3>
                             <div class="settings-card">
-                                <label class="settings-row">
-                                    <span class="settings-row-text"><span class="settings-row-label">Recent chats</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.sidebar.recents")</span></span>
-                                    <select @attributes="@(ControlHints.Attributes("settings.sidebar.recents"))" value="@_recentChatCount" @onchange="SetRecentChatCountAsync">
-                                        @for (var count = AI.Web.Settings.ClientSettings.MinRecentChatCount; count <= AI.Web.Settings.ClientSettings.MaxRecentChatCount; count++)
-                                        {
-                                            <option value="@count">@count</option>
-                                        }
-                                    </select>
-                                </label>
-                                <label class="settings-row">
-                                    <span class="settings-row-text"><span class="settings-row-label">Notification chats</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.sidebar.notifications")</span></span>
-                                    <select @attributes="@(ControlHints.Attributes("settings.sidebar.notifications"))" value="@_notifiedChatCount" @onchange="SetNotifiedChatCountAsync">
-                                        @for (var count = AI.Web.Settings.ClientSettings.MinNotifiedChatCount; count <= AI.Web.Settings.ClientSettings.MaxNotifiedChatCount; count++)
-                                        {
-                                            <option value="@count">@count</option>
-                                        }
-                                    </select>
-                                </label>
-                                <label class="settings-row">
-                                    <span class="settings-row-text"><span class="settings-row-label">Scheduled chats</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.sidebar.scheduled")</span></span>
-                                    <select @attributes="@(ControlHints.Attributes("settings.sidebar.scheduled"))" value="@_scheduledChatCount" @onchange="SetScheduledChatCountAsync">
-                                        @for (var count = AI.Web.Settings.ClientSettings.MinSoonChatCount; count <= AI.Web.Settings.ClientSettings.MaxSoonChatCount; count++)
-                                        {
-                                            <option value="@count">@count</option>
-                                        }
-                                    </select>
-                                </label>
+                                <div class="settings-row is-stacked" role="group" aria-labelledby="settings-sidebar-counts">
+                                    <span class="settings-row-text"><span class="settings-row-label" id="settings-sidebar-counts">Chats per section</span><span class="settings-row-hint">Listed before Show more</span></span>
+                                    <span class="section-count-options">
+                                        <label class="section-count-option">
+                                            <span>Recents</span>
+                                            <select @attributes="@(ControlHints.Attributes("settings.sidebar.recents"))" value="@_recentChatCount" @onchange="SetRecentChatCountAsync">
+                                                @for (var count = AI.Web.Settings.ClientSettings.MinRecentChatCount; count <= AI.Web.Settings.ClientSettings.MaxRecentChatCount; count++)
+                                                {
+                                                    <option value="@count">@count</option>
+                                                }
+                                            </select>
+                                        </label>
+                                        <label class="section-count-option">
+                                            <span>Notifications</span>
+                                            <select @attributes="@(ControlHints.Attributes("settings.sidebar.notifications"))" value="@_notifiedChatCount" @onchange="SetNotifiedChatCountAsync">
+                                                @for (var count = AI.Web.Settings.ClientSettings.MinNotifiedChatCount; count <= AI.Web.Settings.ClientSettings.MaxNotifiedChatCount; count++)
+                                                {
+                                                    <option value="@count">@count</option>
+                                                }
+                                            </select>
+                                        </label>
+                                        <label class="section-count-option">
+                                            <span>Scheduled</span>
+                                            <select @attributes="@(ControlHints.Attributes("settings.sidebar.scheduled"))" value="@_scheduledChatCount" @onchange="SetScheduledChatCountAsync">
+                                                @for (var count = AI.Web.Settings.ClientSettings.MinSoonChatCount; count <= AI.Web.Settings.ClientSettings.MaxSoonChatCount; count++)
+                                                {
+                                                    <option value="@count">@count</option>
+                                                }
+                                            </select>
+                                        </label>
+                                    </span>
+                                </div>
                             </div>
                         </section>
                         <section class="settings-group" aria-labelledby="settings-chat">

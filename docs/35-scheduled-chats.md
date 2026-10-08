@@ -209,7 +209,7 @@ The sidebar's **Scheduled** section lists the scheduled chats the Host will act 
 day, across every project, the soonest first — the soonest of a requested run, a retry and the next
 occurrence, the dispatcher's own due rule. A row leads with how long is left (`now`, `~33s`, `~5m`,
 `~3h`, `~2d`) and opens the chat like a Recents row; the section folds, pages and is configured in
-Settings → Sidebar → Scheduled chats, and it is absent while nothing is coming. A scheduled chat is
+Settings → Sidebar → Chats per section → Scheduled, and it is absent while nothing is coming. A scheduled chat is
 never listed by Recents, which drops it at the Host before counting its places.
 
 ## From the message box

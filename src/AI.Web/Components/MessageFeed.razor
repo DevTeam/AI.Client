@@ -59,33 +59,15 @@
     <div class="history-scroll-hint history-scroll-hint-down" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5" /></svg></div>
 }
 <div class="workspace-messages" @ref="_messagesContainer">
-    @if (!HasSelectedProject)
+    @if (!HasSelectedProject || !HasModel && SelectedChat is null)
     {
-        @* Laid out like a new chat's screen: the same banner and the same cards, here for what
-           comes before the first chat. *@
-        <div class="workspace-empty workspace-empty-start">
-            <h2>Select a project</h2>
-            <p>Choose a project on the left or create a new one.</p>
-            <GuideBanner HasModel="@HasModel" OnStartGuide="@OnStartGuide" />
-            <section class="chat-tips" aria-label="Before the first chat">
-                <div class="chat-tips-grid">
-                    <article class="chat-tip">
-                        <div class="chat-tip-head"><AppIcon Name="project" /><span class="chat-tip-title">Projects</span></div>
-                        <p class="chat-tip-text">A project holds chats together with folder access, memory, skills and tool permissions.</p>
-                        <p class="chat-tip-actions"><button type="button" class="chat-tip-action is-primary" @onclick="OnCreateProject"><AppIcon Name="plus" />New project</button></p>
-                    </article>
-                    <article class="chat-tip">
-                        <div class="chat-tip-head"><AppIcon Name="connection" /><span class="chat-tip-title">Model connections</span></div>
-                        <p class="chat-tip-text">Each connection is an OpenAI-compatible endpoint with its key and model. The default one answers new chats.</p>
-                        <p class="chat-tip-actions"><button type="button" class="chat-tip-action" @onclick='() => OnOpenSettings.InvokeAsync("Connections")'>Connections</button></p>
-                    </article>
-                    <article class="chat-tip">
-                        <div class="chat-tip-head"><AppIcon Name="settings" /><span class="chat-tip-title">Settings</span></div>
-                        <p class="chat-tip-text">Theme and corners, sounds, chat helpers such as reply suggestions, and how often the guide is offered.</p>
-                        <p class="chat-tip-actions"><button type="button" class="chat-tip-action" @onclick='() => OnOpenSettings.InvokeAsync("Settings")'>Settings</button></p>
-                    </article>
-                </div>
-            </section>
+        @* Before the first message can go anywhere: what is still missing, as steps with their
+           actions, instead of tips for a chat that cannot be answered yet. *@
+        <div class="workspace-empty workspace-empty-start workspace-setup">
+            <SetupChecklist @ref="_setupChecklist" HasModel="@HasModel" HasProject="@HasSelectedProject"
+                            ProjectName="@SelectedProjectName" ModelName="@ModelName" ConnectionCount="@ConnectionCount"
+                            OnStartModelSetup="@OnStartGuide" OnOpenConnections='() => OnOpenSettings.InvokeAsync("Connections")'
+                            OnCreateProject="@OnCreateProject" />
         </div>
     }
     else if (SelectedChat is null)
@@ -602,7 +584,17 @@
     [Parameter] public EventCallback OnStartGuide { get; set; }
     /// <summary>Whether any model connection is enabled; without one the first message cannot be answered.</summary>
     [Parameter] public bool HasModel { get; set; } = true;
-    [Parameter] public EventCallback OnCreateProject { get; set; }
+    /// <summary>The enabled connection that answers new chats, as "name · model".</summary>
+    [Parameter] public string? ModelName { get; set; }
+    /// <summary>All connections, enabled or not.</summary>
+    [Parameter] public int ConnectionCount { get; set; }
+    /// <summary>Creates a project with the given name and opens it.</summary>
+    [Parameter] public EventCallback<string> OnCreateProject { get; set; }
+
+    private SetupChecklist? _setupChecklist;
+
+    /// <summary>Focuses the setup card's project name, when the card is shown and asks for one.</summary>
+    public Task FocusProjectNameAsync() => _setupChecklist?.FocusProjectNameAsync() ?? Task.CompletedTask;
     [Parameter] public EventCallback<string> OnStartGuideTopic { get; set; }
     /// <summary>Opens a settings section by name, as the sidebar's settings entries do.</summary>
     [Parameter] public EventCallback<string> OnOpenSettings { get; set; }
@@ -774,6 +766,9 @@
     private int _renderedReviewVersion;
     private int _renderedExpandedTurnsVersion;
     private bool _renderedHasSelectedProject;
+    private bool _renderedHasModel;
+    private string? _renderedModelName;
+    private int _renderedConnectionCount;
     private string? _renderedSelectedProjectName;
     private Guid? _renderedSelectedProjectId;
     private bool _renderedHasProjectDirectories;
@@ -802,6 +797,10 @@
             || _renderedExpandedTurnsVersion != _expandedTurnsVersion
             || _renderedHasSelectedProject != HasSelectedProject
             || _renderedSelectedProjectName != SelectedProjectName
+            // Also read by the setup row at the end of an open chat, not only by the start screen.
+            || _renderedHasModel != HasModel
+            || _renderedModelName != ModelName
+            || _renderedConnectionCount != ConnectionCount
             // The tips exist only while no chat is open, so a chat's feed never re-renders for them.
             || SelectedChat is null
                 && (_renderedSelectedProjectId != SelectedProjectId
@@ -831,6 +830,9 @@
         _renderedExpandedTurnsVersion = _expandedTurnsVersion;
         _renderedHasSelectedProject = HasSelectedProject;
         _renderedSelectedProjectName = SelectedProjectName;
+        _renderedHasModel = HasModel;
+        _renderedModelName = ModelName;
+        _renderedConnectionCount = ConnectionCount;
         _renderedSelectedProjectId = SelectedProjectId;
         _renderedHasProjectDirectories = HasProjectDirectories;
         _renderedIsComposerEmpty = IsComposerEmpty;

@@ -44,6 +44,7 @@ Only these places may keep literal values:
 - Self-contained illustrations whose colours are part of the drawing: the guide's ghost cursor (`.ghost-cursor*`).
 - `z-index` 1–25 for stacking inside one component or inside a component's own stacking context.
 - Durations of choreographed animations that scripts wait for: the guide, the ghost cursor, sidebar and drawer entry and exit, pulses and spinners (see [Motion](#motion)).
+- The nudge of a blocked send (`.composer-setup-hint.is-nudged`): a short shake that is a gesture, not a state change, and is off under reduced motion.
 - Durations of indicators whose motion follows data: the context ring, animated counts, progress bars and the countdowns of timed prompts and guide steps.
 - `em` font sizes inside markdown and code, and the `clamp()` headings of the host gate and hero.
 

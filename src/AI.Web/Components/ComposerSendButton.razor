@@ -4,7 +4,7 @@
        while the tooltip explains them; only a filling window colours it on its own. The figures
        behind it are in the Context widget. *@
     @if (Context is not null) { <ContextRing Context="@Context" Size="50" Thickness="2.5" Gap="9" Class="composer-send-ring" /> }
-    <button @attributes="@(ControlHints.Attributes("chat.send", GetActionLabel(), nativeTooltip: false))" class="composer-send" type="button" disabled="@Disabled" aria-label="@GetAriaLabel()" aria-describedby="composer-send-tooltip" @onclick="OnClick">
+    <button @attributes="@(ControlHints.Attributes("chat.send", GetActionLabel(), nativeTooltip: false))" class="composer-send @(Blocked ? "is-blocked" : null)" type="button" disabled="@Disabled" aria-disabled="@(Blocked ? "true" : null)" aria-label="@GetAriaLabel()" aria-describedby="composer-send-tooltip" @onclick="OnClick">
         @* Keyed by the icon, so a held modifier swaps it with a short entrance instead of a jump. *@
         <AppIcon @key="GetIcon()" Name="@GetIcon()" Class="@(Busy ? "tool-row-spinner" : "composer-send-icon")" />
     </button>
@@ -34,6 +34,13 @@
 
     [Parameter]
     public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Looks disabled because the setup is incomplete, but still takes the click, so the composer
+    /// can point at what is missing instead of ignoring it.
+    /// </summary>
+    [Parameter]
+    public bool Blocked { get; set; }
 
     [Parameter]
     public bool Busy { get; set; }

@@ -23,7 +23,7 @@
         }
         else if (VisiblePolicies.Count == 0)
         {
-            <div class="permissions-empty"><AppIcon Name="tool" /><strong>No overrides</strong><p>Tools use inherited MCP defaults.</p></div>
+            <div class="permissions-empty"><AppIcon Name="tool" /><strong>@(_showAll ? "No tools available" : "No overrides")</strong><p>@(_showAll ? "No effective tool permissions could be listed." : "Tools use inherited permissions; select All effective to see them.")</p></div>
         }
         else
         {
@@ -76,6 +76,7 @@
     private GlobalSettings? _global;
     private ProjectDetails? _project;
     private ChatDetails? _chat;
+    private IReadOnlyList<McpToolInfo> _builtInTools = [];
     private bool _showAll;
     private bool _loading;
     private bool _saving;
@@ -108,6 +109,7 @@
             _project = await ProjectApi.GetAsync(ProjectId, CancellationToken.None);
             _chat = ChatId is { } chatId
                 ? await ChatHistoryApi.GetTranscriptAsync(ProjectId, chatId, CancellationToken.None) : null;
+            _builtInTools = await GlobalSettingsApi.GetDefaultToolsAsync(CancellationToken.None);
         }
         catch (HttpRequestException) { _error = "Permissions could not be loaded."; }
         finally { _loading = false; }
@@ -123,6 +125,15 @@
     private IReadOnlyList<ViewPolicy> BuildEffective()
     {
         var policies = new Dictionary<(Guid, string, string), ViewPolicy>();
+        foreach (var tool in _builtInTools)
+        {
+            var server = _global?.McpServers.SingleOrDefault(item => item.Id == tool.ServerId);
+            if (server is not { Enabled: true } || server.Policy == "Deny"
+                || _project?.McpServers.SingleOrDefault(item => item.Id == tool.ServerId) is { Enabled: false }) continue;
+            policies[(tool.ServerId, tool.Name, tool.SchemaHash)] = new ViewPolicy(
+                tool.ServerId, tool.Name, tool.SchemaHash, ToolDefaults.GetDecision(tool.ServerId, tool.Name),
+                server.Name, "Default", false, null);
+        }
         foreach (var item in _global?.ToolPolicies ?? []) policies[(item.ServerId, item.Name, item.SchemaHash)] =
             new ViewPolicy(item.ServerId, item.Name, item.SchemaHash, item.Decision, ServerName(item.ServerId), "Global", false, null);
         foreach (var item in _project?.ToolPolicies ?? []) policies[(item.ServerId, item.Name, item.SchemaHash)] = View(item, "Project", Scope == "Project", GlobalFallback(item));

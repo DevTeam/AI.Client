@@ -2355,7 +2355,10 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 
 /* Sits in the left gutter of the centred message column, so it never shifts the text.
    Wide enough for a fully bent dash (--history-marker-dash x the peak scale in historyMarkers.js),
-   since the strip clips its own overflow for the internal scroll. */
+   since the strip clips its own overflow for the internal scroll — but never wider than the gutter
+   minus its own inset and a 0.25rem gap to the text. In a narrow chat that caps the strip below
+   a full bend, and historyMarkers.js lowers the peak to the width it is given. --chat-content-inset
+   resolves its percentage against the messages area here, the same width the feed padding uses. */
 .history-markers {
     --history-marker-dash: 0.45rem;
     position: absolute;
@@ -2364,7 +2367,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     bottom: 1.1rem;
     left: 0.5rem;
     display: flex;
-    width: 1.85rem;
+    width: min(2.1rem, var(--chat-content-inset) - 0.75rem);
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
@@ -2752,6 +2755,207 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 /* In an open chat the row sits under the last message, in the transcript's column. */
 .chat-model-setup { width: min(100%, 52rem); margin: 1rem auto; }
 .chat-model-setup > .chat-tips-guide { margin: 0; }
+
+/* The setup card (SetupChecklist.razor): what the first message still needs, as steps. It floats
+   on its own over the empty feed, lit from the corner by the accent, so it reads as the one thing
+   to do on this screen. Done steps turn green and fold to their summary; the step to do next
+   wears the accent and its marker breathes. */
+.workspace-setup { padding: 2.5rem 0; }
+
+.setup-card {
+    position: relative;
+    padding: 1.35rem 1.4rem 0.6rem;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 24%, var(--color-border-subtle));
+    border-radius: var(--radius-2xl);
+    background:
+        radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--color-accent) 13%, transparent), transparent 62%),
+        radial-gradient(70% 60% at 100% 0%, color-mix(in srgb, var(--color-accent-strong) 7%, transparent), transparent 70%),
+        var(--color-surface);
+    box-shadow: var(--shadow-lg);
+    text-align: left;
+    container-type: inline-size;
+    animation: chat-tip-in var(--duration-slow) var(--ease-emphasized) both;
+}
+
+.setup-card-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.95rem;
+}
+
+.setup-card-mark { display: block; width: 2.75rem; height: 2.75rem; }
+.setup-card-heading > h2 { margin: 0; color: var(--color-text-strong); font-size: var(--font-size-3xl); font-weight: 650; line-height: 1.2; }
+.setup-card-heading > p { margin: 0.2rem 0 0; color: var(--color-text-muted); font-size: var(--font-size-base); line-height: 1.45; }
+
+.setup-card-progress { display: grid; justify-items: end; gap: 0.35rem; align-self: start; padding-top: 0.25rem; }
+.setup-card-progress-text { color: var(--color-text-subtle); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.setup-card-progress-track { display: flex; gap: 0.25rem; }
+
+.setup-card-progress-segment {
+    width: 1.6rem;
+    height: 0.3rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-fill-strong);
+    transition: background-color var(--duration-slow) ease;
+}
+
+.setup-card-progress-segment.is-done { background: var(--color-success); }
+
+.setup-steps { display: grid; margin: 1.2rem 0 0; padding: 0; list-style: none; }
+
+.setup-step {
+    position: relative;
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr);
+    column-gap: 0.85rem;
+    padding: 0.7rem 0 0.95rem;
+    border-top: 1px solid var(--color-border-subtle);
+}
+
+/* The rail between markers: green below a step that is done, so progress reads top to bottom. */
+.setup-step:not(:last-child)::before {
+    content: "";
+    position: absolute;
+    top: 2.95rem;
+    bottom: -0.7rem;
+    left: calc(1rem - 1px);
+    width: 2px;
+    border-radius: 1px;
+    background: var(--color-border);
+    transition: background-color var(--duration-slow) ease;
+}
+
+.setup-step.is-done:not(:last-child)::before { background: color-mix(in srgb, var(--color-success) 55%, var(--color-border)); }
+
+.setup-step-marker {
+    position: relative;
+    z-index: 1;
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--color-border);
+    border-radius: 50%;
+    background: var(--color-bg-inset);
+    color: var(--color-text-muted);
+    font-size: var(--font-size-md);
+    font-weight: 650;
+    transition: background-color var(--duration-slow) ease, color var(--duration-slow) ease, border-color var(--duration-slow) ease;
+}
+
+.setup-step-marker .app-icon { width: 1rem; height: 1rem; }
+
+.setup-step.is-current .setup-step-marker {
+    border-color: transparent;
+    background: var(--color-accent-fill);
+    color: var(--color-on-accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 18%, transparent);
+    animation: setup-marker-breathe 2.4s ease-in-out infinite;
+}
+
+.setup-step.is-done .setup-step-marker {
+    border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
+    background: color-mix(in srgb, var(--color-success) 16%, var(--color-surface));
+    color: var(--color-success);
+}
+
+.setup-step.is-done .setup-step-marker .app-icon { animation: setup-marker-done var(--duration-slow) var(--ease-emphasized) both; }
+
+@keyframes setup-marker-breathe { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--color-accent) 8%, transparent); } }
+@keyframes setup-marker-done { from { opacity: 0; transform: scale(0.5); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .setup-step.is-current .setup-step-marker,
+    .setup-step.is-done .setup-step-marker .app-icon { animation: none; }
+}
+
+.setup-step-body { min-width: 0; padding-top: 0.3rem; }
+.setup-step-title { display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
+.setup-step-title > .app-icon { flex: none; width: 0.95rem; height: 0.95rem; color: var(--color-accent); }
+.setup-step-title > strong { color: var(--color-text-strong); font-size: var(--font-size-lg); font-weight: 600; white-space: nowrap; }
+.setup-step.is-upcoming .setup-step-title > strong,
+.setup-step.is-done .setup-step-title > strong { color: var(--color-text-secondary); font-weight: 500; }
+.setup-step.is-upcoming .setup-step-title > .app-icon { color: var(--color-text-subtle); }
+.setup-step.is-done .setup-step-title > .app-icon { color: var(--color-success); }
+
+.setup-step-state {
+    overflow: hidden;
+    min-width: 0;
+    margin-left: auto;
+    padding: 0.1rem 0.55rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-success) 11%, transparent);
+    color: var(--color-success-text);
+    font-size: var(--font-size-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.setup-step-text { margin: 0.35rem 0 0; color: var(--color-text-muted); font-size: var(--font-size-md); line-height: 1.5; }
+.setup-step.is-upcoming .setup-step-text { color: var(--color-text-subtle); }
+
+.setup-step-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.75rem; }
+
+.setup-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.42rem 0.8rem;
+    border-color: var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-fill);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-md);
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background-color var(--duration-fast) ease, border-color var(--duration-fast) ease, color var(--duration-fast) ease, transform var(--duration-base) ease;
+}
+
+.setup-action:hover:not(:disabled) { border-color: var(--color-border-strong); background: var(--color-fill-hover); color: var(--color-text); }
+.setup-action .app-icon { flex: none; width: 0.9rem; height: 0.9rem; }
+
+.setup-action.is-primary {
+    border-color: transparent;
+    background: var(--color-accent-fill);
+    color: var(--color-on-accent);
+    font-weight: 600;
+}
+
+.setup-action.is-primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-accent-fill) 88%, var(--color-text-strong));
+    color: var(--color-on-accent);
+    transform: translateY(-1px);
+}
+
+.setup-action.is-primary:active:not(:disabled) { transform: translateY(0); }
+.setup-action:disabled { opacity: 0.7; }
+
+/* An upcoming step can be done first; its button just waits its turn quietly. */
+.setup-step.is-upcoming .setup-action.is-primary { background: var(--color-accent-bg); color: var(--color-accent-text); }
+.setup-step.is-upcoming .setup-action.is-primary:hover:not(:disabled) { background: var(--color-accent-bg-hover); color: var(--color-accent-text); }
+
+.setup-project-form { display: flex; gap: 0.45rem; max-width: 26rem; margin-top: 0.75rem; }
+
+.setup-project-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.42rem 0.7rem;
+    border-color: var(--color-border);
+    font-size: var(--font-size-base);
+    transition: border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+}
+
+.setup-project-input:focus { border-color: var(--color-accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 20%, transparent); }
+.setup-project-input::placeholder { color: var(--color-text-disabled); }
+
+.setup-step.is-final .setup-step-marker { background: var(--color-fill); }
+.setup-step.is-final.is-current .setup-step-marker { background: var(--color-accent-fill); }
+
+@container (max-width: 30rem) {
+    .setup-card-head { grid-template-columns: auto minmax(0, 1fr); }
+    .setup-card-progress { grid-column: 1 / -1; justify-items: start; }
+}
 /* The start screen's cards carry no disclosure, so their heading is a plain row, not a button. */
 div.chat-tip-head { cursor: default; }
 
@@ -3560,6 +3764,56 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 }
 .composer-prelude > .composer-status:not(:last-child) { margin-bottom: var(--chat-card-spacing); }
 
+/* What blocks sending until the setup is done, with the way out. A blocked send nudges it: a short
+   shake, or with reduced motion only the ring, which stays either way to mark it as the reason. */
+.composer-setup-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    max-width: 100%;
+    padding: 0.22rem 0.25rem 0.22rem 0.6rem;
+    border: 1px solid color-mix(in srgb, var(--color-warning) 35%, var(--color-border-subtle));
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
+    color: var(--color-warning-text);
+    animation: chat-tip-in var(--duration-slow) var(--ease-emphasized) both;
+}
+
+.composer-setup-hint > .app-icon { flex: none; width: 0.9rem; height: 0.9rem; color: var(--color-warning); }
+.composer-setup-hint-text { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+
+.composer-setup-hint-action {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.16rem 0.4rem 0.16rem 0.6rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+    color: var(--color-warning-text);
+    font-size: var(--font-size-md);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.composer-setup-hint-action:hover:not(:disabled) { background: color-mix(in srgb, var(--color-warning) 26%, transparent); color: var(--color-warning-text); }
+.composer-setup-hint-action .app-icon { width: 0.85rem; height: 0.85rem; }
+
+.composer-setup-hint.is-nudged {
+    border-color: color-mix(in srgb, var(--color-warning) 60%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warning) 22%, transparent);
+    animation: composer-setup-nudge 420ms ease both;
+}
+
+@keyframes composer-setup-nudge {
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-2px); }
+    80% { transform: translateX(2px); }
+}
+
+@media (prefers-reduced-motion: reduce) { .composer-setup-hint.is-nudged { animation: none; } }
+
 .composer-generating-status {
     display: inline-block;
     max-width: 100%;
@@ -4240,6 +4494,27 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     color: var(--color-text-disabled);
 }
 
+/* No connection that can answer: the picker turns into the way to set one up. */
+.composer-endpoint-trigger.is-missing { border-radius: var(--radius-md); color: var(--color-warning-text); }
+.composer-endpoint-trigger.is-missing .app-icon { color: var(--color-warning); }
+.composer-endpoint-trigger.is-missing:hover { background: color-mix(in srgb, var(--color-warning) 10%, transparent); color: var(--color-warning-text); }
+
+.composer-endpoint-empty { padding: 0.4rem 0.6rem; color: var(--color-text-subtle); font-size: var(--font-size-sm); }
+
+.composer-endpoint-menu .composer-endpoint-manage {
+    display: flex;
+    align-items: center;
+    margin-top: 0.2rem;
+    border-color: transparent;
+    border-top: 1px solid var(--color-border-subtle);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    color: var(--color-text-secondary);
+    text-align: left;
+}
+
+.composer-endpoint-menu .composer-endpoint-manage .app-icon { flex: none; width: 0.9rem; height: 0.9rem; color: var(--color-text-muted); }
+.composer-endpoint-menu .composer-endpoint-manage:hover { background: var(--color-fill-active); }
+
 .composer-endpoint-menu {
     position: absolute;
     z-index: var(--z-menu-raised);
@@ -4374,6 +4649,16 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     background: var(--color-fill-active);
     color: var(--color-text-disabled);
     opacity: 1;
+}
+
+/* Looks disabled while the setup is incomplete, but a click still explains why (Home.razor). */
+.composer-send.is-blocked,
+.composer-send.is-blocked:hover,
+.composer-send.is-blocked:active {
+    border-color: var(--color-border-strong);
+    background: var(--color-fill-active);
+    color: var(--color-text-disabled);
+    transform: none;
 }
 
 .composer-send .app-icon {

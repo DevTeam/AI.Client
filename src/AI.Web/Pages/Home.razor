@@ -385,6 +385,61 @@
             }
         }
         </div>
+        @if (GetRecentChats(RecentChatsMore) is { Count: > 0 } recentChats)
+        {
+            @* The latest chats of every project, a click away without opening their project first.
+               Rows look and behave like the project's own chat rows; their actions stay there. *@
+            <section class="sidebar-recents" aria-labelledby="sidebar-recents-toggle">
+                <button id="sidebar-recents-toggle" class="sidebar-section-toggle" type="button" aria-expanded="@(_recentsFolded ? "false" : "true")"
+                        aria-controls="recent-chat-list" title="@(_recentsFolded ? "Show recent chats" : "Hide recent chats")" @onclick="ToggleRecentsFoldedAsync">
+                    <span>Recents</span><AppIcon Name="chevron-down" Class="sidebar-section-chevron" />
+                </button>
+                @if (!_recentsFolded)
+                {
+                    var shownRecentCount = _recentsShowMore ? recentChats.Count : Math.Min(RecentChatsShown, recentChats.Count);
+                    <nav id="recent-chat-list" class="workspace-chat-list recent-chat-list" aria-label="Recent chats">
+                        @for (var recentIndex = 0; recentIndex < shownRecentCount; recentIndex++)
+                        {
+                            var chat = recentChats[recentIndex];
+                            var branchCount = GetBranchCount(chat);
+                            var projectName = GetProjectName(chat.ProjectId);
+                            <div @key="chat.Id" class="chat-nav-row @(chat.Id == GetActiveChatId() && GetSelectedBranchId() is null ? "selected" : string.Empty)" data-recent-chat-id="@chat.Id" title="@($"{chat.Title} · {projectName}")">
+                                <button class="workspace-nav-item chat-link" type="button" @onclick="() => OpenRecentChatAsync(chat)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind ? "stopwatch" : chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span><span class="recent-chat-project">@projectName</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }</button>
+                            </div>
+                            @if (_selectedChat?.Id == chat.Id)
+                            {
+                                var recentRunRows = GetBranchTreeItems().Where(item => item.Run is not null).ToArray();
+                                var recentRunsHeaderShown = false;
+                                @foreach (var branch in GetVisibleBranchTreeItems())
+                                {
+                                    @if (branch.Run is not null && !recentRunsHeaderShown)
+                                    {
+                                        recentRunsHeaderShown = true;
+                                        @RunsGroupHeader(recentRunRows)
+                                    }
+                                    <div class="chat-nav-row branch-nav-row @(branch.Run is not null ? "branch-run-row" : null) @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" title="@(branch.RunTooltip ?? GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
+                                        <span class="branch-tree-line" aria-hidden="true"></span>
+                                        <button class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)">@if (branch.Run is { } branchRun) { <BranchRunIcon Outcome="@branchRun.Status" StatusClass="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> } else { <AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> }<MemberDot Member="@_selectedChat?.MemberOf(branch.RootId)" /><span class="nav-item-label">@branch.Title</span></button>
+                                    </div>
+                                }
+                                @if (!recentRunsHeaderShown && recentRunRows.Length > 0)
+                                {
+                                    @RunsGroupHeader(recentRunRows)
+                                }
+                            }
+                        }
+                        @if (recentChats.Count > RecentChatsShown)
+                        {
+                            <div class="chat-list-pager">
+                                <button class="workspace-nav-item chat-list-more recent-chat-pager" type="button" aria-controls="recent-chat-list" aria-expanded="@(_recentsShowMore ? "true" : "false")" @onclick="ToggleRecentsShowMoreAsync">
+                                    <AppIcon Name="chevron-down" Class="recent-chat-pager-chevron" /><span class="nav-item-label">@(_recentsShowMore ? "Show less" : "Show more")</span>
+                                </button>
+                            </div>
+                        }
+                    </nav>
+                }
+            </section>
+        }
         <span class="visually-hidden" role="status" aria-live="polite">@_sidebarAnnouncement</span>
         </div>
         <nav class="global-nav root-nav sidebar-global-nav" aria-label="Application settings">
@@ -2222,6 +2277,7 @@ else if (_guideInvitation is { } guideInvitation)
                 await LoadSecurityAsync(selected.Id);
                 if (_selectedChat is { } chat && _chats.All(item => item.Id != chat.Id)) _selectedChat = null;
             }
+            await RefreshRecentChatsAsync();
         }
         catch (HttpRequestException)
         {
@@ -2395,6 +2451,11 @@ else if (_guideInvitation is { } guideInvitation)
             chatOrderChanged |= await ApplyRunSnapshotAsync(update);
         }
         if (chatOrderChanged) await RefreshChatOrderAsync();
+        if (_recentChatsStale)
+        {
+            _recentChatsStale = false;
+            RefreshRecentChatsInBackground();
+        }
         if (visible || chatOrderChanged) await InvokeAsync(StateHasChanged);
     }
 
@@ -2424,6 +2485,7 @@ else if (_guideInvitation is { } guideInvitation)
         {
             var previous = GetRun(snapshot.ChatId, snapshot.BranchId);
             chatOrderChanged |= MovesChatInList(previous, snapshot);
+            _recentChatsStale |= MovesRecentChat(previous, snapshot);
             await ShowRunNotificationAsync(previous, snapshot);
             StoreRun(snapshot);
             if (snapshot.ChatId == _selectedChat?.Id)
@@ -2847,6 +2909,8 @@ else if (_guideInvitation is { } guideInvitation)
 
         await LoadReviewsAsync();
         await WorkspaceStateService.SetLastProjectIdAsync(project.Id);
+        // The project just left now counts among the others, whose chats Recents reads from the Host.
+        RefreshRecentChatsInBackground();
     }
 
     private void ApplyRememberedChat(

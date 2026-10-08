@@ -5,6 +5,7 @@ using AI.Contracts.Chats;
 public interface IChatHistoryApi
 {
     Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ChatSummary>> ListRecentAsync(int limit, CancellationToken cancellationToken);
     Task<ChatSearchResult> SearchAsync(string query, Guid? projectId, CancellationToken cancellationToken, bool includeArchived = false);
     Task<ChatArchivePreview> PreviewArchiveAsync(Guid projectId, ChatArchivePreviewRequest request, CancellationToken token);
     Task<ChatArchiveResult> ArchiveAsync(Guid projectId, ChatArchiveRequest request, CancellationToken token);

@@ -385,3 +385,10 @@ Duplicate active branch has not been implemented: it makes sense to add it toget
 - Every word of the query must occur, ignoring case and order, in what the row is about: a connection's name, URL, model and "good for"; a server's name, URL, command and status; a memory entry's title and text; a skill's name, id, description, source and aliases. The words are marked in the rows that remain, in the accent tint search results use.
 - An MCP server is also kept by its tools: the row then says how many tools match, and opening it goes to its Tools page filtered by the same words. The Tools page uses the same field.
 - The field shows `shown/total` while it filters. Ctrl+F focuses it, Enter opens the first remaining row, Escape clears the query and only an empty field lets Escape close the drawer. Adding an item clears the filter so the new row is visible.
+
+## Recents in the sidebar (2026-10-08)
+
+- Under the project list, a Recents section lists the chats with the latest activity across every project, three at first. `Show more` opens it to ten and `Show less` folds it back; the heading itself folds the whole section away. Both choices are remembered in the browser (`ai-client.sidebar-recents.v1`).
+- A row is the project's own chat row — icon, branch count, run status — with the project's name at its end, secondary to the title. The open chat carries its branch tree here too, so a branch can be picked from either place. Rename, menus and drag stay on the project's list; Recents is for getting somewhere, not for managing chats.
+- Activity is the same moment that orders a project's list. The Host answers `GET /api/chats/recent` (no archived chats, none without a message yet); the open project's part of the list is taken from its live chat list, so only the other projects are re-read: on switching projects, on a data-changed signal and when a run in another project starts or ends.
+- Opening a chat from another project makes it the project's remembered chat first, so project and chat open in one step instead of passing through the project's empty composer.

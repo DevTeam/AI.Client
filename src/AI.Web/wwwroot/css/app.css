@@ -1073,6 +1073,88 @@ body {
     line-height: 1;
 }
 
+/* Recents (Home.Recents.cs): the latest chats of every project, under the project list. The
+   heading is a quiet fold toggle rather than a title; the rows are the chat rows themselves,
+   minus the indent that nests them under a project and minus their actions. */
+.sidebar-recents {
+    display: grid;
+    margin-top: 0.85rem;
+}
+
+.sidebar-section-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    width: fit-content;
+    padding: 0.25rem 0.55rem;
+    border-color: transparent;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-faint);
+    font-size: var(--font-size-md);
+    font-weight: 500;
+    transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.sidebar-section-toggle:hover,
+.sidebar-section-toggle:focus-visible {
+    background: var(--color-fill-hover);
+    color: var(--color-text-secondary);
+}
+
+.sidebar-section-chevron {
+    width: 0.75rem;
+    height: 0.75rem;
+    flex: none;
+    transition: transform var(--duration-fast) ease;
+}
+
+.sidebar-section-toggle[aria-expanded="false"] .sidebar-section-chevron {
+    transform: rotate(-90deg);
+}
+
+.workspace-chat-list.recent-chat-list {
+    margin: var(--sidebar-group-gap) 0 0;
+}
+
+/* No row actions here, so nothing for the fade to clear room for. */
+.recent-chat-list .chat-nav-row::after {
+    content: none;
+}
+
+/* Which project the chat lives in: secondary to the title, so it gives way first. */
+.recent-chat-project {
+    flex: none;
+    max-width: 40%;
+    margin-left: auto;
+    padding-left: 0.4rem;
+    overflow: hidden;
+    color: var(--color-text-faint);
+    font-size: var(--font-size-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-nav-row.selected .recent-chat-project {
+    color: var(--color-text-subtle);
+}
+
+/* The chevron takes the icon slot, so the label still starts where chat titles do. */
+.chat-list-more.recent-chat-pager {
+    padding-left: 0.55rem;
+}
+
+.recent-chat-pager-chevron {
+    width: var(--nav-mark);
+    height: 0.75rem;
+    flex: none;
+    transition: transform var(--duration-fast) ease;
+}
+
+.recent-chat-pager[aria-expanded="true"] .recent-chat-pager-chevron {
+    transform: rotate(180deg);
+}
+
 .global-nav {
     display: grid;
     gap: 0.05rem;

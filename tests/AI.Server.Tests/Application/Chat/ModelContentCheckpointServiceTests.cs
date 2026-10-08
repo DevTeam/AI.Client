@@ -97,6 +97,45 @@ public sealed class ModelContentCheckpointServiceTests
     }
 
     [Fact]
+    public async Task ShouldKeepTheLoadedSkillInstructionsWhileCompactingLaterSteps()
+    {
+        var instructions = "Follow this skill playbook: " + new string('s', 2_000);
+        var context = new List<ChatCompletionMessage>
+        {
+            new("user", "Configure the project"),
+            new("assistant", "", [new ChatToolCall("skill-1", "skills__run_skill", "{}")]),
+            new("tool", instructions, ToolCallId: "skill-1")
+        };
+        var summaries = 0;
+        using var scope = _service.Begin(_run, "m", 100_000, (_, _) =>
+        {
+            summaries++;
+            return Task.FromResult("Inspected the project files.");
+        });
+        _service.Update(_run, context);
+
+        (await _service.CompactTurnAheadAsync(_run, 1, 100, 500, CancellationToken.None)).Applied.ShouldBeFalse();
+        summaries.ShouldBe(0);
+
+        for (var index = 0; index < 4; index++)
+        {
+            context.Add(new("assistant", "", [new ChatToolCall($"read-{index}", "file_read", "{}")]));
+            context.Add(new("tool", new string('x', 2_000), ToolCallId: $"read-{index}"));
+        }
+        _service.Update(_run, context);
+        var result = await _service.CompactTurnAheadAsync(_run, 1, 100, 500, CancellationToken.None);
+        var projected = _service.Apply(_run, context);
+
+        result.Applied.ShouldBeTrue();
+        summaries.ShouldBe(1);
+        projected[0].ShouldBe(context[0]);
+        projected[1].ShouldBe(context[1]);
+        projected[2].ShouldBe(context[2]);
+        projected[3].Content.ShouldContain("Inspected the project files.");
+        projected.Count.ShouldBeLessThan(context.Count);
+    }
+
+    [Fact]
     public async Task ShouldNotSummarizeTurnStepsTooSmallToBeWorthIt()
     {
         ChatCompletionMessage[] context =
@@ -286,7 +325,7 @@ public sealed class ModelContentCheckpointServiceTests
             calls++;
             return Task.FromResult("Completed the earlier inspections. Continue the current task.");
         });
-        for (var step = 0; step < 80; step++)
+        for (var step = 0; step < (window == 8_192 ? 80 : 160); step++)
         {
             context.Add(new("assistant", "", [new($"call-{step}", "read", "{}") ]));
             context.Add(new("tool", new string('x', 500), ToolCallId: $"call-{step}"));

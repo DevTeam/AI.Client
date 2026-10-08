@@ -57,7 +57,7 @@ public sealed partial class AdaptiveContextPolicy(
         var messages = Math.Max(0, input - Math.Min(input, Math.Max(0, trailingInstructionTokens)));
         var growth = Math.Max(1, messages / 10);
         return new(input, messages, keepMemory ? messages * 4 / 5 : messages,
-            messages * 7 / 10, growth, growth, messages / 5,
+            messages * 9 / 10, growth, growth, messages / 5,
             (int)Math.Min(1_500, messages / 10), (int)Math.Min(3_000, messages / 5));
     }
 

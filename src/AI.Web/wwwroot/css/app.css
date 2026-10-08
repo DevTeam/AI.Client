@@ -2136,8 +2136,6 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     gap: 0.2rem;
     padding: 0.6rem 0;
     overflow: hidden auto;
-    opacity: 0.45;
-    transition: opacity var(--duration-base) ease;
     scrollbar-width: none;
 }
 
@@ -2147,10 +2145,6 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 
 .history-markers.idle {
     display: none;
-}
-
-.messages-area:hover .history-markers {
-    opacity: 1;
 }
 
 /* The button is a comfortable hit target; the visible dash is drawn by ::before,
@@ -2165,16 +2159,16 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--color-text-disabled);
+    /* A dim faint tone at rest that brightens towards the full faint tone along the bulge.
+       historyMarkers.js writes --history-marker-focus (0 far away, 1 at the peak) next to the
+       inline transform; the colour itself stays here, built from the palette. */
+    color: color-mix(in srgb, var(--color-text-faint) calc(45% + var(--history-marker-focus, 0) * 55%), transparent);
     /* Scaled rather than resized: transform stays off the layout path, so scrolling never reflows.
        The actual factor is written by historyMarkers.js as an inline transform.
-       Origin is centred, not left-anchored: the hover fisheye can reach ~1.6x, and centring
-       the growth keeps half of that bulge away from the message text instead of pushing the
-       full amount rightward into the gutter.
-       Resting scale is 1, matching what the JS writes while the cursor is off the strip, so
-       there's no visible jump on first paint before the fisheye module has hooked up. */
+       Left-anchored, so every dash starts on one line and the bulge bends only towards the
+       message column, where user questions are right-aligned and leave the gutter empty. */
     transform: scaleX(1);
-    transform-origin: center center;
+    transform-origin: left center;
     transition: transform var(--duration-fast) ease, color var(--duration-fast) ease;
 }
 
@@ -2187,7 +2181,6 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     transition: height var(--duration-fast) ease;
 }
 
-.history-marker-user { color: var(--color-text-secondary); }
 .history-marker.active { color: var(--color-text-strong); }
 
 /* Hover cannot use transform — the fisheye factor already owns it — so it reacts with colour

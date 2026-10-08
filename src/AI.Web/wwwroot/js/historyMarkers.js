@@ -1,31 +1,20 @@
-// Scroll-driven fisheye: discrete, by marker index distance from the scroll position's marker.
-// The peak now exceeds 1 (the marker's resting width) too, same reasoning as HoverMaxScale below:
-// previously the "active" marker was only ever at its own natural size while everything else
-// shrank around it, which barely read as a bulge at all.
-const ScrollReach = 4;
-const ScrollMinScale = 0.4;
-const ScrollMaxScale = 1.45;
+// The fisheye bend, shared by scroll and hover: by pixel distance from the focus — the scroll
+// position's marker, or the cursor. Dashes are left-anchored (see app.css), so the bend grows only
+// towards the message column, whose user questions are right-aligned and leave the gutter empty.
+// The falloff is linear over about four marker slots, which gives an even ramp on either side of
+// the peak instead of a lone spike, and resting dashes stay clearly visible rather than shrinking
+// to dots.
+const BendReachPx = 64;
+const BendMinScale = 0.55;
+const BendMaxScale = 2;
 
-// Hover-driven fisheye: continuous, by pixel distance from the cursor. The peak exceeds 1 (the
-// marker's resting width) because transform-origin is centred, splitting the extra growth evenly
-// left/right. Every marker in the strip now targets a User message (see BuildHistoryEntries in
-// MessageFeed.razor), and .workspace-message.user is right-aligned with ample empty space to its
-// left, so the growth toward the text side (right) is effectively unconstrained — verified at the
-// narrowest supported width (just above the 720px phone-mode cutoff) with hundreds of px to
-// spare. The real ceiling is on the OTHER side: growth toward the sidebar (left) is bounded by the
-// strip's own 0.5rem inset from its container, and 1.7 sits right at that ceiling — no further
-// margin to give. See docs/12-ux-decisions.md for the worked-out margin.
-const HoverReachPx = 70;
-const HoverMinScale = 0.15;
-const HoverMaxScale = 1.7;
-
-// The very first and last markers read as "start of history" / "current position" boundaries,
-// so they're always at least twice as long as a normal resting marker — a floor, not a
-// multiplier, so an endpoint that's also active/hovered still caps out at the same safe maximum
-// as any other marker (doubling the peak too would push it past the narrow-gutter clearance
-// already tuned into HoverMaxScale).
-const ScrollEndpointFloor = ScrollMinScale * 2;
-const HoverEndpointFloor = HoverMinScale * 2;
+// Writes one marker's bend: the scale, plus the same 0..1 closeness as --history-marker-focus,
+// from which app.css brightens the dashes along the bend.
+const applyBend = (marker, distance) => {
+    const focus = Math.max(0, 1 - distance / BendReachPx);
+    marker.style.transform = `scaleX(${(BendMinScale + (BendMaxScale - BendMinScale) * focus).toFixed(3)})`;
+    marker.style.setProperty("--history-marker-focus", focus.toFixed(3));
+};
 
 // How far the top/bottom fade reaches into the strip.
 const FadeSizePx = 24;
@@ -166,7 +155,6 @@ export function attach(strip, scroller, scrollKey) {
     const hintDown = strip.parentElement.querySelector(":scope > .history-scroll-hint-down");
 
     const markers = () => [...strip.querySelectorAll(".history-marker")];
-    const isEndpoint = (index, count) => index === 0 || index === count - 1;
 
     // offsetTop is cheap and stable as long as the feed layout did not change, so the
     // scroll handler never has to measure every message again.
@@ -324,17 +312,13 @@ export function attach(strip, scroller, scrollKey) {
 
         if (hoverY === null) {
             const active = scrollActiveIndex(list);
-            // Use the same hover-fisheye algorithm as the live-hover branch, just centred on the
+            // Use the same bend as the live-hover branch, just centred on the
             // scroll-active marker instead of the cursor. That keeps the strip's visual
             // vocabulary identical whether the cursor is on it or not — only the centre moves.
             const centers = list.map(marker => marker.offsetTop + marker.offsetHeight / 2);
             const focusY = centers[active];
             for (let index = 0; index < list.length; index++) {
-                const falloff = Math.max(0, 1 - Math.abs(centers[index] - focusY) / HoverReachPx);
-                const eased = falloff * falloff;
-                let scale = HoverMinScale + (HoverMaxScale - HoverMinScale) * eased;
-                if (isEndpoint(index, list.length)) scale = Math.max(scale, HoverEndpointFloor);
-                list[index].style.transform = `scaleX(${scale.toFixed(3)})`;
+                applyBend(list[index], Math.abs(centers[index] - focusY));
                 list[index].classList.toggle("active", index === active);
             }
             hideTip();
@@ -370,11 +354,7 @@ export function attach(strip, scroller, scrollKey) {
                 lastRatchetIndex = nearestIndex;
             }
             for (let index = 0; index < list.length; index++) {
-                const falloff = Math.max(0, 1 - Math.abs(centers[index] - hoverY) / HoverReachPx);
-                const eased = falloff * falloff;
-                let scale = HoverMinScale + (HoverMaxScale - HoverMinScale) * eased;
-                if (isEndpoint(index, list.length)) scale = Math.max(scale, HoverEndpointFloor);
-                list[index].style.transform = `scaleX(${scale.toFixed(3)})`;
+                applyBend(list[index], Math.abs(centers[index] - hoverY));
                 list[index].classList.toggle("active", index === nearestIndex);
             }
             showTip(list[nearestIndex]);

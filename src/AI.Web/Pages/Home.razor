@@ -281,9 +281,11 @@
         }
         @if (GetNotifiedChats() is { Count: > 0 } notifiedChats)
         {
-            @* Chats with unread notifications, on themselves or on their branches, across projects.
-               The branches the notifications are about stand under their chat; the chat opened
-               from here folds its project like Recents does, and shows its whole branch tree. *@
+            @* The chats the notification history remembers, on themselves or on their branches,
+               across projects: the ones with something unread first. Reading a chat keeps its row
+               until newer chats push it past the window the section remembers; the branches the
+               notifications are about stand under their chat, the chat opened from here folds its
+               project like Recents does and shows its whole branch tree. *@
             var visibleNotified = notifiedChats.Take(_notifiedShowMore ? notifiedChats.Count : NotifiedChatsShown).ToList();
             var unreadNotified = notifiedChats.Sum(item => item.Unread);
             <section class="sidebar-recents sidebar-notified" aria-labelledby="sidebar-notified-toggle">
@@ -329,9 +331,10 @@
         }
         @if (GetSoonChats() is { Count: > 0 } allSoonChats)
         {
-            @* The scheduled chats whose run starts within the next day, across projects: how long
-               is left before it starts, the soonest first. A chat opened from here folds its
-               project like Recents does and shows its branches here. *@
+            @* The scheduled chats that come due within the next day, across projects, and under them
+               the chats whose schedule has finished its work: how long is left before a run starts,
+               the soonest first, and no countdown once there is nothing left to run. A chat opened
+               from here folds its project like Recents does and shows its branches here. *@
             var visibleSoon = GetVisibleSoonChats();
             <section class="sidebar-recents sidebar-soon" aria-labelledby="sidebar-soon-toggle">
                 <div class="sidebar-section-header">
@@ -343,7 +346,7 @@
                 </div>
                 @if (!_soonFolded)
                 {
-                    <nav id="soon-chat-list" class="workspace-chat-list recent-chat-list soon-chat-list" aria-label="Scheduled chats that run soon">
+                    <nav id="soon-chat-list" class="workspace-chat-list recent-chat-list soon-chat-list" aria-label="Scheduled chats">
                         @foreach (var soon in visibleSoon)
                         {
                             var chat = soon.Chat;

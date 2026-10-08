@@ -6,9 +6,11 @@ using AI.Contracts.Chats;
 using AI.Contracts.Schedules;
 
 /// <summary>
-/// The scheduled chats that come due soon, across every project, soonest first: what the sidebar
-/// lists so an arriving run is visible before it starts. When a chat is due is the shared rule
-/// <see cref="ScheduledChats"/>, so the sidebar and the dispatcher agree.
+/// The scheduled chats the sidebar lists, across every project: the ones that come due soon, soonest
+/// first, and under them the ones whose schedule has nothing left to do but has run, the run that
+/// finished last first. What the sidebar shows so an arriving run is visible before it starts and
+/// the run that just ended does not vanish the instant it does. When a chat is due is the shared
+/// rule <see cref="ScheduledChats"/>, so the sidebar and the dispatcher agree.
 /// </summary>
 public interface IScheduledChatQuery
 {
@@ -25,7 +27,7 @@ public sealed class ScheduledChatQuery(
         CancellationToken cancellationToken)
     {
         var now = clock.UtcNow;
-        var due = new List<ScheduledChatSummary>();
+        var listed = new List<ScheduledChatSummary>();
         // Every project is walked, as the dispatcher does: a schedule of a project nobody has open
         // still runs, and so still belongs on the list.
         foreach (var project in await projects.ListAsync(cancellationToken))
@@ -33,8 +35,12 @@ public sealed class ScheduledChatQuery(
         {
             if (summary.Kind != ChatSchedule.Kind || summary.ArchivedAt is not null) continue;
             if (await store.ReadAsync(project.Id, summary.Id, cancellationToken) is not { Schedule: { } schedule }) continue;
-            if (ScheduledChats.DueAt(schedule) is { } moment) due.Add(new ScheduledChatSummary(summary, moment));
+            var due = ScheduledChats.DueAt(schedule);
+            var finished = ScheduledChats.FinishedAt(schedule);
+            // Nothing pending and nothing ever run: the guide's demo, or a schedule not started yet.
+            if (due is null && finished is null) continue;
+            listed.Add(new ScheduledChatSummary(summary, due, finished));
         }
-        return ScheduledChats.Soon(due, now, horizon, limit);
+        return ScheduledChats.Soon(listed, now, horizon, limit);
     }
 }

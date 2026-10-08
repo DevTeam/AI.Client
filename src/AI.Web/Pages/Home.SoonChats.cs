@@ -6,9 +6,12 @@ using AI.Contracts.Schedules;
 using Microsoft.AspNetCore.Components.Web;
 
 /// <summary>
-/// The sidebar's Scheduled: the scheduled chats the Host will act on within the next day, across
-/// every project, the soonest first. A row says how long is left before its run starts, the section
-/// folds and pages like Recents, and it is absent while nothing is coming.
+/// The sidebar's Scheduled: the scheduled chats that come due within the next day, across every
+/// project, the soonest first, and under them the chats whose schedule has finished its work, the
+/// run that ended last first. A row says how long is left before its run starts; a chat that has
+/// finished keeps its row, without a countdown, pushed down by the newer ones until it falls past
+/// the window the section remembers. The section folds and pages like Recents, and it is absent
+/// while there is nothing to show.
 /// </summary>
 public partial class Home
 {
@@ -23,8 +26,18 @@ public partial class Home
     private bool _soonFolded;
     private bool _soonShowMore;
 
-    /// <summary>The scheduled chats read from the Host, soonest first.</summary>
-    private List<ScheduledChatSummary> GetSoonChats() => _soonChats;
+    /// <summary>
+    /// The scheduled chats read from the Host, soonest first and finished last, with the chat opened
+    /// from this section on top: its row cannot vanish from under the pointer once newer chats have
+    /// pushed it out of the window, exactly as Notifications keeps the chat opened from it.
+    /// </summary>
+    private List<ScheduledChatSummary> GetSoonChats()
+    {
+        if (!IsFoldedInto(ChatListSurface.Soon) || GetActiveChatId() is not { } opened
+            || _soonChats.Any(item => item.Chat.Id == opened)
+            || _chats.FirstOrDefault(chat => chat.Id == opened) is not { Kind: ChatSchedule.Kind } chat) return _soonChats;
+        return [new ScheduledChatSummary(chat, null), .. _soonChats];
+    }
 
     /// <summary>
     /// The chats the section shows at this moment: the first few, or the longer list once opened,
@@ -32,12 +45,16 @@ public partial class Home
     /// </summary>
     private List<ScheduledChatSummary> GetVisibleSoonChats() => _soonFolded
         ? []
-        : _soonChats.Take(_soonShowMore ? _soonChats.Count : SoonChatsShown).ToList();
+        : GetSoonChats().Take(_soonShowMore ? GetSoonChats().Count : SoonChatsShown).ToList();
 
-    /// <summary>"now", "~33s", "~5m", "~3h": how long is left before the chat's run starts.</summary>
-    private static string GetSoonLead(DateTimeOffset dueAt, DateTimeOffset now)
+    /// <summary>
+    /// "now", "~33s", "~5m", "~3h": how long is left before the chat's run starts, and nothing for
+    /// a chat whose schedule has finished its work — a finished row has no countdown to run down.
+    /// </summary>
+    private static string? GetSoonLead(DateTimeOffset? dueAt, DateTimeOffset now)
     {
-        var left = dueAt - now;
+        if (dueAt is not { } due) return null;
+        var left = due - now;
         if (left <= TimeSpan.Zero) return "now";
         if (left < TimeSpan.FromMinutes(1)) return $"~{Math.Ceiling(left.TotalSeconds):0}s";
         if (left < TimeSpan.FromHours(1)) return $"~{left.Minutes}m";
@@ -45,7 +62,7 @@ public partial class Home
         return $"~{(int)left.TotalDays}d";
     }
 
-    /// <summary>Reads the scheduled chats that come due soon; the Host's own countdown is not needed.</summary>
+    /// <summary>Reads the scheduled chats the section lists; the Host's own countdown is not needed.</summary>
     private async Task RefreshSoonChatsAsync()
     {
         var request = ++_soonChatsRequest;

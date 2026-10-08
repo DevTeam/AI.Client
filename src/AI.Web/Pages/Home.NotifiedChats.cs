@@ -5,9 +5,11 @@ using AI.Contracts.Chats;
 using AI.Web.Notifications;
 
 /// <summary>
-/// The sidebar's Notifications: every chat with an unread notification, on the chat itself or on
-/// one of its branches, across projects, the newest notification first. The branches the
-/// notifications are about stand under their chat, so a fork that finished or failed is opened
+/// The sidebar's Notifications: every chat the notification history still remembers, on the chat
+/// itself or on one of its branches, across projects, the chats with something unread first. A chat
+/// does not leave the section the moment its notification is read: it keeps its row, pushed down by
+/// the chats that come after it, until it falls past the window the section remembers. The branches
+/// the notifications are about stand under their chat, so a fork that finished or failed is opened
 /// without opening its chat first. Unread follows the bell: not seen and not resolved.
 /// </summary>
 public partial class Home
@@ -27,6 +29,13 @@ public partial class Home
     private int NotifiedChatsShown => Math.Clamp(_notifiedChatCount,
         Settings.ClientSettings.MinNotifiedChatCount, Settings.ClientSettings.MaxNotifiedChatCount);
 
+    /// <summary>
+    /// How many chats the section keeps at all: what shows plus the same again, and never fewer
+    /// than ten, exactly as Recents opens. A chat pushed past this is no longer shown — that is
+    /// what the section's own memory costs, and it is bounded whether or not its chat is read.
+    /// </summary>
+    private int NotifiedChatsMore => Math.Max(10, NotifiedChatsShown * 2);
+
     private bool _notifiedFolded;
     private bool _notifiedShowMore;
 
@@ -43,23 +52,30 @@ public partial class Home
         .Where(item => item is { ChatId: not null, ProjectId: not null, IsSeen: false, IsResolved: false });
 
     /// <summary>
-    /// The chats Notifications lists. The chat opened from it stays listed while it is open, even
-    /// once opening it has read its notifications, so the row and its branches do not vanish
-    /// from under the pointer.
+    /// Every notification the history still holds for a chat, whether it has been read or not:
+    /// what the section lists, so reading a chat rearranges it instead of emptying it.
+    /// </summary>
+    private IEnumerable<NotificationMessage> ChatNotifications() => Notifications.History
+        .Where(item => item is { ChatId: not null, ProjectId: not null });
+
+    /// <summary>
+    /// The chats Notifications lists: those with something unread, and, under them, the chats whose
+    /// notifications have just been read and that the section still has room for.
     /// </summary>
     private List<NotifiedChat> GetNotifiedChats()
     {
         var unread = UnreadChatNotifications().ToList();
+        var known = ChatNotifications().ToList();
         var openedHere = IsFoldedInto(ChatListSurface.Notifications) ? GetActiveChatId() : null;
-        if (unread.Count == 0 && openedHere is null) return [];
         var projectIds = _projects.Select(project => project.Id).ToHashSet();
         var result = new List<NotifiedChat>();
-        var chatIds = unread.Select(item => item.ChatId!.Value).Distinct().ToList();
+        var chatIds = known.Select(item => item.ChatId!.Value).Distinct().ToList();
         if (openedHere is { } opened && !chatIds.Contains(opened)) chatIds.Add(opened);
         foreach (var chatId in chatIds)
         {
             var items = unread.Where(item => item.ChatId == chatId).ToList();
-            var projectId = items.FirstOrDefault()?.ProjectId ?? _selectedProject?.Id;
+            var all = known.Where(item => item.ChatId == chatId).ToList();
+            var projectId = all.FirstOrDefault()?.ProjectId ?? _selectedProject?.Id;
             if (projectId is not { } chatProjectId || !projectIds.Contains(chatProjectId)) continue;
             if (FindChatSummary(chatId, chatProjectId) is not { ArchivedAt: null } chat) continue;
             var main = items.Where(item => (item.BranchId ?? chatId) == chatId).ToList();
@@ -72,12 +88,31 @@ public partial class Home
                 .OrderByDescending(pair => pair.Group.Max(item => item.CreatedAt))
                 .Select(pair => new NotifiedBranch(pair.Group.Key, pair.Branch!.Title, GetNoticeClass(pair.Group)))
                 .ToList();
-            // The open chat with nothing unread left orders by the last notification it had.
-            var newest = items.Count > 0 ? items.Max(item => item.CreatedAt)
-                : Notifications.History.Where(item => item.ChatId == chatId).Select(item => item.CreatedAt).DefaultIfEmpty().Max();
+            // A chat that has been read orders by the last notification it had, so it keeps the
+            // place it held and only the chats that came after it push it down. The history is
+            // bounded and the open chat may have outlived its entries; it then orders by its own
+            // activity rather than throwing on an empty list.
+            var newest = all.Count > 0 ? all.Max(item => item.CreatedAt) : chat.LastActivityAt;
             result.Add(new NotifiedChat(chat, main.Count > 0 ? GetNoticeClass(main) : null, forks, items.Count, newest));
         }
-        return result.OrderByDescending(item => item.Newest).ToList();
+        // The chats with something unread first, then the newest notification first, and only as many
+        // chats as the section remembers: everything past that is what the section has forgotten. The
+        // unread ones lead so a read chat can never push one of them out — a notification waiting
+        // below the fold would be a section that hides what it exists for. The chat opened from here
+        // is never one of them either, so its row cannot vanish from under the pointer.
+        var kept = 0;
+        var window = new List<NotifiedChat>();
+        foreach (var item in result.OrderByDescending(item => item.Unread > 0).ThenByDescending(item => item.Newest))
+        {
+            if (item.Chat.Id == openedHere)
+            {
+                window.Add(item);
+                continue;
+            }
+            if (kept++ >= NotifiedChatsMore) continue;
+            window.Add(item);
+        }
+        return window;
     }
 
     // The most demanding notification decides the dot: something to do, then a failure, then news.
@@ -108,8 +143,11 @@ public partial class Home
         var changed = false;
         try
         {
+            // A chat the section keeps is listed whether or not its notification has been read, so
+            // its title and project are needed either way. Branches are read only where a dot shows.
+            var known = ChatNotifications().ToList();
             var unread = UnreadChatNotifications().ToList();
-            var missingProjects = unread
+            var missingProjects = known
                 .Where(item => item.ProjectId != _selectedProject?.Id && _projects.Any(project => project.Id == item.ProjectId)
                     && FindChatSummary(item.ChatId!.Value, item.ProjectId!.Value) is null && _notifiedChatsTried.Add(item.ChatId!.Value))
                 .Select(item => item.ProjectId!.Value).Distinct().ToList();

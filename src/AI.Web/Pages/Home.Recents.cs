@@ -12,8 +12,11 @@ using Microsoft.JSInterop;
 /// </summary>
 public partial class Home
 {
-    private const int RecentChatsShown = 3;
-    private const int RecentChatsMore = 10;
+    // How many show at first is a setting; "Show more" opens twice that, and at least ten.
+    private int _recentChatCount = Settings.ClientSettings.DefaultRecentChatCount;
+    private int RecentChatsShown => Math.Clamp(_recentChatCount,
+        Settings.ClientSettings.MinRecentChatCount, Settings.ClientSettings.MaxRecentChatCount);
+    private int RecentChatsMore => Math.Max(10, RecentChatsShown * 2);
     private const string RecentsStateKey = "ai-client.sidebar-recents.v1";
 
     private sealed record RecentsState(bool Folded, bool ShowMore);
@@ -116,6 +119,14 @@ public partial class Home
         await SelectProjectAsync(project);
         if (_selectedProject?.Id == project.Id && _selectedChat?.Id != chat.Id && _chats.Any(item => item.Id == chat.Id))
             await SelectChatAsync(chat.Id);
+    }
+
+    private void SetRecentChatCount(int count)
+    {
+        var fetched = RecentChatsMore;
+        _recentChatCount = count;
+        // A longer list than the Host was last asked for has to be read again.
+        if (RecentChatsMore > fetched) RefreshRecentChatsInBackground();
     }
 
     private Task ToggleRecentsFoldedAsync()

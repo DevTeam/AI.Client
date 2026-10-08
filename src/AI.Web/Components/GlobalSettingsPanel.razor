@@ -102,6 +102,20 @@
                                 </div>
                             </div>
                         </section>
+                        <section class="settings-group" aria-labelledby="settings-sidebar">
+                            <h3 id="settings-sidebar">Sidebar</h3>
+                            <div class="settings-card">
+                                <label class="settings-row">
+                                    <span class="settings-row-text"><span class="settings-row-label">Recent chats</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.sidebar.recents")</span></span>
+                                    <select @attributes="@(ControlHints.Attributes("settings.sidebar.recents"))" value="@_recentChatCount" @onchange="SetRecentChatCountAsync">
+                                        @for (var count = AI.Web.Settings.ClientSettings.MinRecentChatCount; count <= AI.Web.Settings.ClientSettings.MaxRecentChatCount; count++)
+                                        {
+                                            <option value="@count">@count</option>
+                                        }
+                                    </select>
+                                </label>
+                            </div>
+                        </section>
                         <section class="settings-group" aria-labelledby="settings-chat">
                             <h3 id="settings-chat">Chat</h3>
                             <div class="settings-card">
@@ -469,6 +483,7 @@
     [Parameter] public EventCallback Saved { get; set; }
     [Parameter] public EventCallback<bool> TurnTokensChanged { get; set; }
     [Parameter] public EventCallback<int> LiveNoteCountChanged { get; set; }
+    [Parameter] public EventCallback<int> RecentChatCountChanged { get; set; }
     /// <summary>The project whose memory and skills the ProjectMemory and ProjectSkills sections edit.</summary>
     [Parameter] public Guid? ProjectId { get; set; }
     private MemoryEditor? _memoryEditor;
@@ -547,6 +562,7 @@
     private bool _otherSoundsEnabled = true;
     private bool _showTurnTokens;
     private int _liveNoteCount = AI.Web.Settings.ClientSettings.DefaultLiveNoteCount;
+    private int _recentChatCount = AI.Web.Settings.ClientSettings.DefaultRecentChatCount;
     private bool _guideSuggestionsEnabled = true;
     private int _guideIdleMinutes = 5;
     private int _guideCompletedCount;
@@ -597,6 +613,7 @@
         _otherSoundsEnabled = clientSettings.OtherSoundsEnabled;
         _showTurnTokens = clientSettings.ShowTurnTokens;
         _liveNoteCount = clientSettings.LiveNoteCount;
+        _recentChatCount = clientSettings.RecentChatCount;
         _guideSuggestionsEnabled = clientSettings.GuideSuggestionsEnabled;
         _guideIdleMinutes = clientSettings.GuideIdleMinutes;
         _guideCompletedCount = clientSettings.CompletedGuideTopics.Count;
@@ -715,6 +732,14 @@
         _liveNoteCount = Math.Clamp(count, AI.Web.Settings.ClientSettings.MinLiveNoteCount, AI.Web.Settings.ClientSettings.MaxLiveNoteCount);
         await ClientSettings.UpdateAsync(current => current with { LiveNoteCount = _liveNoteCount });
         await LiveNoteCountChanged.InvokeAsync(_liveNoteCount);
+    }
+
+    private async Task SetRecentChatCountAsync(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var count)) return;
+        _recentChatCount = Math.Clamp(count, AI.Web.Settings.ClientSettings.MinRecentChatCount, AI.Web.Settings.ClientSettings.MaxRecentChatCount);
+        await ClientSettings.UpdateAsync(current => current with { RecentChatCount = _recentChatCount });
+        await RecentChatCountChanged.InvokeAsync(_recentChatCount);
     }
 
     private async Task SetShowTurnTokensAsync(ChangeEventArgs args)

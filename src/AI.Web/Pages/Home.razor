@@ -1116,7 +1116,7 @@ else if (_guideInvitation is { } guideInvitation)
 }
 @if (_globalSection is not null)
 {
-    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ConnectionToEdit="@_connectionToEdit" SkillToEdit="@_linkedSkillId" SkillSource="@_linkedSkillSource" ToolToEdit="@_linkedToolName" LinkSelection="@_linkedSelection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" TurnTokensChanged="value => _showTurnTokens = value" LiveNoteCountChanged="value => _liveNoteCount = value" />
+    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ConnectionToEdit="@_connectionToEdit" SkillToEdit="@_linkedSkillId" SkillSource="@_linkedSkillSource" ToolToEdit="@_linkedToolName" LinkSelection="@_linkedSelection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" TurnTokensChanged="value => _showTurnTokens = value" LiveNoteCountChanged="value => _liveNoteCount = value" RecentChatCountChanged="SetRecentChatCount" />
 }
 
 @if (_permissionsScope is not null && _selectedProject is not null)
@@ -1848,6 +1848,7 @@ else if (_guideInvitation is { } guideInvitation)
         CorrectionLanguages.Changed += OnTextCorrectionChanged;
         _showTurnTokens = clientSettings.ShowTurnTokens;
         _liveNoteCount = clientSettings.LiveNoteCount;
+        _recentChatCount = clientSettings.RecentChatCount;
         _chatWidgetsOpen = clientSettings.ChatWidgetsOpen;
         _chatWidgets = WidgetLayout.Arrange(clientSettings.ChatWidgets);
         Notifications.Changed += OnNotificationsChanged;

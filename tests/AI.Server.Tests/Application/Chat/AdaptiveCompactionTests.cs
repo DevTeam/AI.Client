@@ -48,7 +48,7 @@ public sealed class AdaptiveCompactionTests
         var budget = policy.ResolveCompaction(connection, 123, 77);
         budget.InputLimit.ShouldBe(policy.Resolve(connection).UsableTokens - 123);
         budget.MessageLimit.ShouldBe(budget.InputLimit - 77);
-        budget.AheadThresholdTokens.ShouldBe(budget.MessageLimit * 7 / 10);
+        budget.AheadThresholdTokens.ShouldBe(budget.MessageLimit * 9 / 10);
         budget.TargetTokens.ShouldBe(budget.MessageLimit * 4 / 5);
         budget.MinimumGainTokens.ShouldBe(Math.Max(1, budget.MessageLimit / 10));
         policy.ResolveCompaction(connection, 123, 77, false).TargetTokens.ShouldBe(budget.MessageLimit);

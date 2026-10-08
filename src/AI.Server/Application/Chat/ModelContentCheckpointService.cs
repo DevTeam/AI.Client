@@ -52,8 +52,9 @@ public sealed class ModelContentCheckpointService(
         if (entry.Checkpoint is not { } checkpoint) return context;
         var boundary = FindBoundary(context, checkpoint.BoundaryCallId);
         var user = FindCurrentUser(context, boundary);
-        if (boundary <= user + 1) return context;
-        return context.Take(user + 1)
+        var start = ProtectedStart(context, user, checkpoint.ProtectedCallId);
+        if (boundary <= start) return context;
+        return context.Take(start)
             .Append(new ChatCompletionMessage("user", TurnSummaryPrefix + checkpoint.Summary, IsContextSummary: true))
             .Concat(context.Skip(boundary)).ToArray();
     }
@@ -115,12 +116,14 @@ public sealed class ModelContentCheckpointService(
         for (var index = context.Count - 1; index >= 0 && user < 0; index--)
             if (context[index].Role == "user" && !context[index].IsContextSummary) user = index;
         if (user < 0) return new(0, 0, 0, false, "There is no turn in progress.");
+        var protectedCallId = FirstRunSkillCall(context, user);
+        var protectedStart = ProtectedStart(context, user, protectedCallId);
         var previous = entry.Checkpoint;
-        var start = previous is null ? user + 1 : FindBoundary(context, previous.BoundaryCallId);
+        var start = previous is null ? protectedStart : Math.Max(protectedStart, FindBoundary(context, previous.BoundaryCallId));
         if (start <= user)
         {
             previous = null;
-            start = user + 1;
+            start = protectedStart;
         }
 
         // A boundary is the start of a step: an assistant message with its calls, which stays with
@@ -145,9 +148,9 @@ public sealed class ModelContentCheckpointService(
             : [new ChatCompletionMessage("user", TurnSummaryPrefix + previous.Summary), .. covered];
         var summary = await summaryWriter.WriteAsync(source, targetTokens, new Summarizer(entry.Summarize), cancellationToken, entry.Connection);
         if (summary is null) return new(covered.Length, characters, 0, false, "The compaction task returned no summary.");
-        var candidate = new Checkpoint(context[boundary].ToolCalls![0].Id, summary.Text);
+        var candidate = new Checkpoint(context[boundary].ToolCalls![0].Id, summary.Text, protectedCallId);
         var before = Apply(run, context);
-        IReadOnlyList<ChatCompletionMessage> after = context.Take(user + 1)
+        IReadOnlyList<ChatCompletionMessage> after = context.Take(protectedStart)
             .Append(new ChatCompletionMessage("user", TurnSummaryPrefix + summary.Text, IsContextSummary: true)).Concat(context.Skip(boundary)).ToArray();
         if (entry.History is { } historyCheckpoint) after = history.Apply(after, historyCheckpoint);
         if (!policy.ShouldAcceptCompaction(before, after, minimumTokens, entry.Connection))
@@ -216,6 +219,20 @@ public sealed class ModelContentCheckpointService(
         context.Select((message, index) => (message, index))
             .FirstOrDefault(item => item.message.ToolCalls?.Any(call => call.Id == callId) == true).index;
 
+    private static string? FirstRunSkillCall(IReadOnlyList<ChatCompletionMessage> context, int user) =>
+        context.Skip(user + 1).SelectMany(message => message.ToolCalls ?? [])
+            .FirstOrDefault(call => call.Name.EndsWith("__run_skill", StringComparison.Ordinal))?.Id;
+
+    private static int ProtectedStart(IReadOnlyList<ChatCompletionMessage> context, int user, string? callId)
+    {
+        if (callId is null) return user + 1;
+        var call = FindBoundary(context, callId);
+        if (call <= user) return user + 1;
+        for (var index = call + 1; index < context.Count; index++)
+            if (context[index].Role == "assistant") return index;
+        return context.Count;
+    }
+
     private readonly record struct Key(Guid ProjectId, Guid ChatId, Guid BranchId)
     {
         public static Key Of(ToolRunContext run) => new(run.ProjectId, run.ChatId, run.BranchId);
@@ -238,7 +255,7 @@ public sealed class ModelContentCheckpointService(
         public Task<string> SummarizeAsync(string prompt, CancellationToken cancellationToken) => summarize(prompt, cancellationToken);
     }
 
-    private sealed record Checkpoint(string BoundaryCallId, string Summary);
+    private sealed record Checkpoint(string BoundaryCallId, string Summary, string? ProtectedCallId = null);
     private readonly record struct RangeInfo(int Start, int Count, long Characters, string BoundaryCallId);
 
     private sealed class Scope(Action dispose) : IDisposable

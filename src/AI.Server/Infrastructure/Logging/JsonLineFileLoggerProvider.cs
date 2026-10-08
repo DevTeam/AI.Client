@@ -1,5 +1,6 @@
 namespace AI.Infrastructure.Logging;
 
+using AI.Contracts.FileSystem;
 using Microsoft.Extensions.Logging;
 using Storage;
 using System.Text.Json;
@@ -7,6 +8,7 @@ using System.Text.Json;
 public sealed class JsonLineFileLoggerProvider : ILoggerProvider
 {
     private readonly Lock _sync = new();
+    private readonly IFileSystem _files;
     private readonly string _logsDirectory;
     private readonly int _retentionDays;
 
@@ -14,17 +16,20 @@ public sealed class JsonLineFileLoggerProvider : ILoggerProvider
     /// Production constructor. The container resolves <see cref="IProjectStorageLocation"/> so the
     /// logger and the data repositories agree on the root by construction rather than by accident.
     /// </summary>
-    public JsonLineFileLoggerProvider(IProjectStorageLocation location, int retentionDays = 14)
-        : this(location.RootDirectory, retentionDays)
+    public JsonLineFileLoggerProvider(IProjectStorageLocation location, IFileSystem files, int retentionDays = 14)
+        : this(location.RootDirectory, files, retentionDays)
     {
     }
 
-    /// <summary>String-rooted constructor retained for tests and one-off bootstrap.</summary>
-    public JsonLineFileLoggerProvider(string rootDirectory, int retentionDays = 14)
+    /// <summary>String-rooted constructor retained for one-off bootstrap and tests.</summary>
+    public JsonLineFileLoggerProvider(string rootDirectory, IFileSystem files, int retentionDays = 14)
     {
+        _files = files;
         _logsDirectory = Path.Combine(rootDirectory, "logs");
         _retentionDays = retentionDays;
-        Directory.CreateDirectory(_logsDirectory);
+        // Logging is called from synchronous code, so these two startup operations wait on the
+        // contract rather than reshaping every ILogger call site into an asynchronous one.
+        Wait(_files.CreateDirectoryAsync(_logsDirectory, ownerOnly: false, CancellationToken.None));
         DeleteExpiredLogs();
     }
 
@@ -54,7 +59,7 @@ public sealed class JsonLineFileLoggerProvider : ILoggerProvider
             var path = Path.Combine(_logsDirectory, $"ai-client-{DateTime.UtcNow:yyyyMMdd}.jsonl");
             lock (_sync)
             {
-                File.AppendAllText(path, entry + Environment.NewLine);
+                Wait(_files.AppendTextAsync(path, entry + Environment.NewLine, CancellationToken.None));
             }
         }
         catch
@@ -75,14 +80,23 @@ public sealed class JsonLineFileLoggerProvider : ILoggerProvider
     private void DeleteExpiredLogs()
     {
         var threshold = DateTime.UtcNow.Date.AddDays(-_retentionDays);
-        foreach (var path in Directory.EnumerateFiles(_logsDirectory, "ai-client-*.jsonl"))
+        var files = Wait(_files.ListFilesAsync(_logsDirectory, "ai-client-*.jsonl", CancellationToken.None));
+        foreach (var path in files)
         {
-            if (File.GetLastWriteTimeUtc(path) < threshold)
+            if (Wait(_files.GetLastWriteTimeAsync(path, CancellationToken.None)).UtcDateTime < threshold)
             {
-                File.Delete(path);
+                Wait(_files.DeleteFileAsync(path, CancellationToken.None));
             }
         }
     }
+
+    /// <summary>
+    /// The ILogger pipeline is synchronous, so the contract is awaited here instead of turning
+    /// every call site asynchronous. The wait is bounded by a local append, never by the network.
+    /// </summary>
+    private static T Wait<T>(Task<T> operation) => operation.GetAwaiter().GetResult();
+
+    private static void Wait(Task operation) => operation.GetAwaiter().GetResult();
 
     private sealed class JsonLineFileLogger(
         string category,

@@ -1,31 +1,21 @@
 namespace AI.Application.Resources;
 
+using AI.Contracts.FileSystem;
 using AI.Contracts.Projects;
 using AI.Contracts.Resources;
 
-public sealed class ProjectPathAccess : IProjectPathAccess
+public sealed class ProjectPathAccess(IFileSystem files, IPath paths) : IProjectPathAccess
 {
-    private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
-        ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-
-    public string ResolveLinks(string path)
-    {
-        var full = Path.GetFullPath(path);
-        var root = Path.GetPathRoot(full) ?? throw new ArgumentException("Path has no root.");
-        var current = root;
-        var depth = 0;
-        foreach (var segment in full[root.Length..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
-                     StringSplitOptions.RemoveEmptyEntries))
-        {
-            var next = Path.Combine(current, segment);
-            FileSystemInfo info = Directory.Exists(next) ? new DirectoryInfo(next) : new FileInfo(next);
-            if (info.LinkTarget is null) { current = next; continue; }
-            if (++depth > 40) throw new ArgumentException("Too many links in resource path.");
-            current = info.ResolveLinkTarget(true)?.FullName
-                ?? throw new ArgumentException("Resource path contains a broken link.");
-        }
-        return current;
-    }
+    /// <summary>
+    /// Resolves the path the way the contract's link resolver does: the canonical path with every
+    /// symbolic link on the way already followed. It is the only link-resolution member the frozen
+    /// contract exposes, so a path whose resolved form differs from its own spelling is one that
+    /// leads somewhere else, and the containment checks below then judge where it really leads.
+    /// The enclosing members are synchronous and the resolver completes synchronously on both the
+    /// adapter and the fake, so the completed task is bridged rather than the signature widened.
+    /// </summary>
+    public string ResolveLinks(string path) =>
+        files.ResolveLinkTargetAsync(path, CancellationToken.None).GetAwaiter().GetResult();
 
     public bool CanRead(ProjectDetails project, string path) => AccessOf(project, path) != PathAccess.None;
 
@@ -43,11 +33,5 @@ public sealed class ProjectPathAccess : IProjectPathAccess
         return access;
     }
 
-    private static bool InGrant(string path, string root, bool recursive)
-    {
-        if (string.Equals(path, root, PathComparison)) return true;
-        var prefix = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
-        return path.StartsWith(prefix, PathComparison)
-            && (recursive || string.Equals(Path.GetDirectoryName(path), root, PathComparison));
-    }
+    private bool InGrant(string path, string root, bool recursive) => paths.IsInside(path, root, recursive);
 }

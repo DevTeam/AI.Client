@@ -1,11 +1,20 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using AI.Contracts.FileSystem;
 
 namespace AI.Mcp.BuiltIn.Process;
 
 public sealed class ProcessRunner : IProcessRunner
 {
+    private readonly IFileSystem _files;
+    private readonly IPath _paths;
+
+    public ProcessRunner(IFileSystem? files = null, IPath? paths = null)
+    {
+        _files = files ?? new SystemFileSystem();
+        _paths = paths ?? new SystemPath();
+    }
     private static readonly string[] VariablesNames =
     [
         "PATH",
@@ -48,8 +57,8 @@ public sealed class ProcessRunner : IProcessRunner
         var directory = "";
         if (!string.IsNullOrWhiteSpace(request.WorkingDirectory))
         {
-            directory = Path.GetFullPath(request.WorkingDirectory);
-            if (!Directory.Exists(directory))
+            directory = _paths.GetFullPath(request.WorkingDirectory);
+            if (!await _files.DirectoryExistsAsync(directory, cancellationToken))
             {
                 throw new ArgumentException("Working directory does not exist.", nameof(request));
             }
@@ -57,14 +66,14 @@ public sealed class ProcessRunner : IProcessRunner
 
         string executable;
         if (string.IsNullOrWhiteSpace(request.WorkingDirectory)
-            || Path.IsPathFullyQualified(request.Executable)
-            || (!request.Executable.Contains(Path.DirectorySeparatorChar) && !request.Executable.Contains(Path.AltDirectorySeparatorChar)))
+            || _paths.IsFullyQualified(request.Executable)
+            || (!request.Executable.Contains(_paths.DirectorySeparator) && !request.Executable.Contains(_paths.AltDirectorySeparator)))
         {
             executable = request.Executable;
         }
         else
         {
-            executable = Path.GetFullPath(request.Executable, directory);
+            executable = _paths.GetFullPath(request.Executable, directory);
         }
 
         var start = new ProcessStartInfo(executable)

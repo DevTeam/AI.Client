@@ -1,3 +1,4 @@
+using AI.Contracts.FileSystem;
 namespace AI.Infrastructure.Tests.Storage;
 
 using AI.Application.Projects;
@@ -14,7 +15,7 @@ public sealed class ResourceAssetServiceTests
     [Fact]
     public async Task ShouldKeepImageBytesInsideTheirProjectAndRemoveThemWithIt()
     {
-        var root = Path.Combine(Path.GetTempPath(), "ai-client-image-test-" + Guid.NewGuid().ToString("N"));
+            var root = Path.Combine(Path.GetTempPath(), "ai-client-image-test-" + Guid.NewGuid().ToString("N"));
         var first = Guid.NewGuid();
         var second = Guid.NewGuid();
         var location = new Mock<IProjectStorageLocation>();
@@ -28,7 +29,7 @@ public sealed class ResourceAssetServiceTests
 
         try
         {
-            var service = new ResourceAssetService(location.Object, projects.Object);
+            var service = NewAssets(location.Object, projects.Object);
             var resource = await service.StoreAsync(first, bytes, "example.png", ChatResourceSource.Upload,
                 "example.png", CancellationToken.None);
             var ticket = await service.CreateTicketAsync(first, resource.AssetId!, CancellationToken.None);
@@ -61,5 +62,13 @@ public sealed class ResourceAssetServiceTests
         {
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
+    }
+
+    /// <summary>Supplies the file-system contract the service gained; this test runs on the real disk.</summary>
+    private static ResourceAssetService NewAssets(IProjectStorageLocation location, IProjectService projects)
+    {
+        var files = new SystemFileSystem();
+        return new ResourceAssetService(location, projects, files, new SystemPath(),
+            new AtomicFileWriter(files));
     }
 }

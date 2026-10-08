@@ -1,12 +1,13 @@
 namespace AI.Infrastructure.Settings;
 
 using AI.Application.Settings;
+using AI.Contracts.FileSystem;
 using Credentials;
 using Storage;
 using System.Text;
 
 public sealed class ProtectedGlobalSecretStore(
-    ITextFileSystem fileSystem,
+    IFileSystem fileSystem,
     IGlobalSettingsPaths paths,
     IUserDataProtector protector) : IGlobalSecretStore
 {
@@ -21,7 +22,7 @@ public sealed class ProtectedGlobalSecretStore(
         var path = paths.GetSecretPath(scope, id);
         if (string.IsNullOrWhiteSpace(value))
         {
-            if (await fileSystem.ExistsAsync(path, cancellationToken)) await fileSystem.DeleteAsync(path, cancellationToken);
+            if (await fileSystem.FileExistsAsync(path, cancellationToken)) await fileSystem.DeleteFileAsync(path, cancellationToken);
             return;
         }
 
@@ -30,5 +31,5 @@ public sealed class ProtectedGlobalSecretStore(
     }
 
     public Task<bool> ExistsAsync(string scope, Guid id, CancellationToken cancellationToken) =>
-        fileSystem.ExistsAsync(paths.GetSecretPath(scope, id), cancellationToken);
+        fileSystem.FileExistsAsync(paths.GetSecretPath(scope, id), cancellationToken);
 }

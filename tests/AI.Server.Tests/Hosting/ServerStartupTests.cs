@@ -1,6 +1,7 @@
 namespace AI.Server.Tests.Hosting;
 
 using AI.Application.Projects;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Chats;
 using AI.Contracts.Runs;
 using AI.Contracts.Settings;
@@ -78,7 +79,7 @@ public sealed class ServerStartupTests
             var chatId = Guid.NewGuid();
             var location = new Mock<IProjectStorageLocation>();
             location.SetupGet(item => item.RootDirectory).Returns(directory);
-            var files = new PhysicalTextFileSystem();
+            var files = new SystemFileSystem();
             using (var chats = new JsonChatRepository(files, new ChatStoragePaths(location.Object), new ChatDocumentSerializer()))
             {
                 var chat = new ChatThread(new ChatId(chatId), new ProjectId(projectId), "Chat", DateTimeOffset.UnixEpoch);

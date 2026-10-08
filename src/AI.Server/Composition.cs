@@ -17,6 +17,7 @@ using Application.Skills;
 using Application.Tools;
 using Application.Workspace;
 using Application.Usage;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Workspace;
 using AI.Contracts.Navigation;
 using Hosting;
@@ -45,6 +46,10 @@ internal sealed class Composition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup(kind: CompositionKind.Internal)
+            // The file system and the path semantics every consumer here uses are bound once, in the
+            // shared contract setup: the server graph must be buildable on its own, not only from an
+            // executable that happens to add that setup for it.
+            .DependsOn("AI.Contracts.Composition")
             .Hint(Hint.Comments, "Off")
             // Pure.DI 2.5.4 miscompiles lightweight anonymous roots for this graph: a singleton
             // shared by several deferred factories (AppDataChangeSignal, via AppWrites) is used
@@ -75,7 +80,8 @@ internal sealed class Composition
             .Bind<IHostLifetimeChatRunRepository>().As(Lifetime.Singleton).To<HostLifetimeChatRunRepository>()
             .Bind<IChatRepository>().As(Lifetime.Singleton).To<ChatRepositoryRouter>()
             .Bind<IChatRunRepository>().As(Lifetime.Singleton).To<ChatRunRepositoryRouter>()
-            .Singleton((IProjectStorageLocation location) => new JsonLineFileLoggerProvider(location))
+            .Singleton((IProjectStorageLocation location, IFileSystem files) =>
+                new JsonLineFileLoggerProvider(location, files))
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.
             .Singleton<IUserDataProtector>(ctx =>
@@ -101,7 +107,7 @@ internal sealed class Composition
                 UpdateInstallationProvider, AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor,
                 ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, InstalledDesktop, ProjectStorageLocation,
                 DataDirectoryLock, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths,
-                PhysicalTextFileSystem, PhysicalDirectoryBrowser, ProjectDocumentSerializer, Uuid7IdGenerator,
+                PhysicalDirectoryBrowser, ProjectDocumentSerializer, Uuid7IdGenerator,
                 SystemClock, ProjectService, ChatDocumentSerializer, ChatService, ChatSearchService, PinOrderKeys,
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ProtectedGlobalSecretStore,
                 ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,

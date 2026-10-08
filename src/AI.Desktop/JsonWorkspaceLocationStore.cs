@@ -1,9 +1,10 @@
 namespace AI.Desktop;
 
 using System.Text.Json;
+using AI.Contracts.FileSystem;
 
 /// <summary>Persists the desktop workspace independently of the server's changing port.</summary>
-internal sealed class JsonWorkspaceLocationStore(DesktopStart start) : IWorkspaceLocationStore
+internal sealed class JsonWorkspaceLocationStore(DesktopStart start, IFileSystem files) : IWorkspaceLocationStore
 {
     private readonly string _path = Path.Combine(start.DataDirectory, "workspace-location.json");
 
@@ -11,8 +12,9 @@ internal sealed class JsonWorkspaceLocationStore(DesktopStart start) : IWorkspac
     {
         try
         {
-            if (!File.Exists(_path)) return null;
-            var location = JsonSerializer.Deserialize<WorkspaceLocation>(File.ReadAllText(_path));
+            var json = SynchronousFiles.Complete(() => files.ReadTextAsync(_path, CancellationToken.None));
+            if (json is null) return null;
+            var location = JsonSerializer.Deserialize<WorkspaceLocation>(json);
             if (location?.ProjectId is not { } projectId) return null;
             var query = $"project={projectId:D}";
             if (location.ChatId is { } chatId) query += $"&chat={chatId:D}";
@@ -30,11 +32,11 @@ internal sealed class JsonWorkspaceLocationStore(DesktopStart start) : IWorkspac
     {
         try
         {
-            Directory.CreateDirectory(start.DataDirectory);
             var location = new WorkspaceLocation(projectId, projectId is null ? null : chatId,
                 chatId is null ? null : branchId);
-            File.WriteAllText(_path + ".tmp", JsonSerializer.Serialize(location));
-            File.Move(_path + ".tmp", _path, true);
+            var json = JsonSerializer.Serialize(location);
+            SynchronousFiles.Complete(() => files.WriteTextAsync(_path + ".tmp", json, CancellationToken.None));
+            SynchronousFiles.Complete(() => files.MoveAsync(_path + ".tmp", _path, true, CancellationToken.None));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

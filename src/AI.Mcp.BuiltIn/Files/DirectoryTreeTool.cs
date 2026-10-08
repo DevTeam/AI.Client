@@ -2,13 +2,16 @@ namespace AI.Mcp.BuiltIn.Files;
 
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files, IPath paths) : IToolFactory
 {
+    private readonly IPath _paths = paths;
+
     // Approximate JSON overhead per entry beyond its own path string — quotes/keys/commas for
     // `{"path":"...","kind":"directory","depth":1}`, inflated to account for the result being
     // serialized a second time when it's stored as the tool's chat message (see ResultBudget).
@@ -28,7 +31,7 @@ public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply)
 
     [McpServerTool(Name = "directory_tree", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(DirectoryTreeResult))]
-    private Task<CallToolResult> TreeAsync(
+    private async Task<CallToolResult> TreeAsync(
         [Description("Absolute path of the directory to walk.")] [MaxLength(4096)] string path,
         [Description("Maximum depth to descend, where 1 lists only immediate children.")] [Range(1, FileLimits.TreeDepth)] int maxDepth = FileLimits.TreeDepth,
         [Description("Skip version control and build/dependency directories (.git, bin, obj, artifacts, node_modules, .vs, .idea, .vscode) by default.")]
@@ -42,21 +45,21 @@ public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply)
         }
         catch (GrantException error)
         {
-            return Task.FromResult(reply.Reply(new DirectoryTreeResult(path, [], false, error.Message), true));
+            return reply.Reply(new DirectoryTreeResult(path, [], false, error.Message), true);
         }
 
-        if (!Directory.Exists(resolved))
+        if (!await files.DirectoryExistsAsync(resolved, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new DirectoryTreeResult(resolved, [], false, "Directory does not exist."), true));
+            return reply.Reply(new DirectoryTreeResult(resolved, [], false, "Directory does not exist."), true);
         }
 
         var entries = new List<TreeEntry>();
         var budget = new ResultBudget(FileLimits.TreeCharacters);
-        var truncated = Walk(resolved, resolved, 1, Math.Min(maxDepth, FileLimits.TreeDepth), excludeDefaults, entries, budget, cancellationToken);
-        return Task.FromResult(reply.Reply(new DirectoryTreeResult(resolved, entries.ToArray(), truncated, null)));
+        var truncated = await Walk(resolved, resolved, 1, Math.Min(maxDepth, FileLimits.TreeDepth), excludeDefaults, entries, budget, cancellationToken);
+        return reply.Reply(new DirectoryTreeResult(resolved, entries.ToArray(), truncated, null));
     }
 
-    private static bool Walk(
+    private async Task<bool> Walk(
         string root,
         string current,
         int depth,
@@ -67,21 +70,21 @@ public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply)
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        FileSystemInfo[] children;
+        IReadOnlyList<FileSystemEntry> children;
         try
         {
-            children = new DirectoryInfo(current).GetFileSystemInfos();
+            children = await files.ListEntriesAsync(current, recursive: false, cancellationToken);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return false;
         }
 
-        Array.Sort(children, (left, right) => string.CompareOrdinal(left.Name, right.Name));
+        var ordered = children.OrderBy(entry => entry.Name, StringComparer.Ordinal).ToArray();
         var truncated = false;
-        foreach (var info in children)
+        foreach (var info in ordered)
         {
-            var directory = (info.Attributes & FileAttributes.Directory) != 0;
+            var directory = info.IsDirectory;
             if (directory && excludeDefaults && FileLimits.DefaultExcludedNames.Contains(info.Name))
             {
                 continue;
@@ -92,14 +95,17 @@ public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply)
                 return true;
             }
 
-            var relativePath = Path.GetRelativePath(root, info.FullName);
+            var relativePath = _paths.GetRelativePath(root, info.Path);
             if (!budget.TryReserve(relativePath.Length + EntryOverheadCharacters))
             {
                 return true;
             }
 
             entries.Add(new TreeEntry(relativePath, directory ? "directory" : "file", depth));
-            if (!directory || info.LinkTarget is not null)
+            // A link is never followed: descending through one leads back up the tree. This is the
+            // base behaviour, tested with FileSystemInfo.LinkTarget — a reparse point that resolves
+            // to itself (a cloud-sync placeholder) is a directory like any other and is walked into.
+            if (!directory || await LinkTargets.IsLinkAsync(files, _paths, info.Path, info.Attributes, cancellationToken))
             {
                 continue;
             }
@@ -110,7 +116,7 @@ public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply)
                 continue;
             }
 
-            truncated |= Walk(root, info.FullName, depth + 1, maxDepth, excludeDefaults, entries, budget, cancellationToken);
+            truncated |= await Walk(root, info.Path, depth + 1, maxDepth, excludeDefaults, entries, budget, cancellationToken);
         }
 
         return truncated;

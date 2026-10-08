@@ -1,5 +1,6 @@
 namespace AI.Infrastructure.Tests.Logging;
 
+using AI.Contracts.FileSystem;
 using AI.Infrastructure.Logging;
 using Microsoft.Extensions.Logging;
 using Shouldly;
@@ -19,7 +20,7 @@ public sealed class JsonLineFileLoggerProviderTests
         var root = Path.Combine(Path.GetTempPath(), "AI.Tests", Guid.NewGuid().ToString("N"));
         try
         {
-            using var provider = new JsonLineFileLoggerProvider(root);
+            using var provider = new JsonLineFileLoggerProvider(root, new SystemFileSystem());
             var logger = provider.CreateLogger("Streaming");
 
             LogChunk(logger, Guid.Empty, 42, null);

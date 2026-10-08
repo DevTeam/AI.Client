@@ -5,7 +5,7 @@ namespace AI.Server.Tests;
 using System.Diagnostics;
 using AI.Application.Chat;
 using AI.Application.Settings;
-using AI.Infrastructure.Storage;
+using AI.Contracts.FileSystem;
 using AI.Infrastructure.Tests.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -29,7 +29,9 @@ internal sealed class TestServer
             .Arg<MemoryFileSystem>("fileSystem")
             .Arg<IChatCompletionClient>("completion")
             .Singleton(() => Mock.Of<IGlobalSecretStore>())
-            .Bind<ITextFileSystem>().To((MemoryFileSystem fileSystem) => fileSystem)
+            // The whole server performs its IO through the one file-system contract, so this single
+            // binding puts every repository, the logger and the secret store onto the shared fake.
+            .Bind<IFileSystem>().To((MemoryFileSystem fileSystem) => fileSystem)
             // Outside ASP.NET nothing supplies Microsoft's loggers.
             .Bind<ILogger<TT>>().To(_ => NullLogger<TT>.Instance);
 }

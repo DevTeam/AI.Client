@@ -2,12 +2,13 @@ namespace AI.Infrastructure.Workspace;
 
 using System.Text;
 using AI.Application.Instructions;
+using AI.Contracts.FileSystem;
 
 /// <summary>
 /// Reads AGENTS.md and CLAUDE.md at the root of each granted directory. Only the roots are looked
 /// at: a nested file belongs to a subtree the model reads on its own when it works there.
 /// </summary>
-public sealed class WorkspaceInstructionFileReader : IInstructionFileReader
+public sealed class WorkspaceInstructionFileReader(IFileSystem files, IPath paths) : IInstructionFileReader
 {
     public static readonly IReadOnlyList<string> FileNames = ["AGENTS.md", "CLAUDE.md"];
 
@@ -17,19 +18,20 @@ public sealed class WorkspaceInstructionFileReader : IInstructionFileReader
     public async Task<IReadOnlyList<InstructionFile>> ReadAsync(IReadOnlyList<string> roots, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(roots);
-        var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
         var result = new List<InstructionFile>();
-        foreach (var root in roots.Distinct(comparer))
+        foreach (var root in roots.Distinct(Comparer(paths)))
         foreach (var name in FileNames)
         {
             var path = Path.Combine(root, name);
-            if (!File.Exists(path)) continue;
+            var entry = await files.GetEntryAsync(path, cancellationToken);
+            if (entry is null || entry.IsDirectory) continue;
             try
             {
-                await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                await using var stream = await files.OpenReadAsync(path, cancellationToken);
+                if (stream is null) continue;
                 var buffer = new byte[Math.Min(stream.Length, ReadLimitBytes)];
                 var read = await stream.ReadAtLeastAsync(buffer, buffer.Length, false, cancellationToken);
-                var text = Encoding.UTF8.GetString(buffer, 0, read).TrimStart('﻿').Trim();
+                var text = Encoding.UTF8.GetString(buffer, 0, read).TrimStart('\uFEFF').Trim();
                 if (text.Length > 0) result.Add(new InstructionFile(path, text, stream.Length > ReadLimitBytes));
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -39,4 +41,7 @@ public sealed class WorkspaceInstructionFileReader : IInstructionFileReader
         }
         return result;
     }
+
+    private static StringComparer Comparer(IPath paths) => paths.IsCaseSensitive
+        ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
 }

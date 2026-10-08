@@ -2,6 +2,7 @@ namespace AI.Mcp.BuiltIn.Files;
 
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -12,7 +13,7 @@ using ModelContextProtocol.Server;
 /// file, but not look at what is in it, which is exactly what a multimodal model is asked to do.
 /// </summary>
 [McpServerToolType]
-public sealed class ReadImageFileTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class ReadImageFileTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         ReadAsync,
@@ -41,7 +42,7 @@ public sealed class ReadImageFileTool(IPathGuard guard, IBuiltInToolReply reply)
             return reply.Reply(new ImageFileResult(path, "", 0, null, null, false, error.Message), true);
         }
 
-        if (Directory.Exists(resolved))
+        if (await files.DirectoryExistsAsync(resolved, cancellationToken))
         {
             return reply.Reply(new ImageFileResult(resolved, "", 0, null, null, false, "Path is a directory. Use list_directory."), true);
         }
@@ -49,7 +50,13 @@ public sealed class ReadImageFileTool(IPathGuard guard, IBuiltInToolReply reply)
         byte[] data;
         try
         {
-            var length = new FileInfo(resolved).Length;
+            var entry = await files.GetEntryAsync(resolved, cancellationToken);
+            if (entry is null)
+            {
+                return reply.Reply(new ImageFileResult(resolved, "", 0, null, null, false, "File does not exist."), true);
+            }
+
+            var length = entry.Length;
             if (length == 0)
             {
                 return reply.Reply(new ImageFileResult(resolved, "", 0, null, null, false, "File is empty."), true);
@@ -61,7 +68,13 @@ public sealed class ReadImageFileTool(IPathGuard guard, IBuiltInToolReply reply)
                     $"Image is {length} bytes, which exceeds the {FileLimits.ImageBytes} byte limit."), true);
             }
 
-            data = await File.ReadAllBytesAsync(resolved, cancellationToken);
+            var bytes = await files.ReadBytesAsync(resolved, cancellationToken);
+            if (bytes is null)
+            {
+                return reply.Reply(new ImageFileResult(resolved, "", 0, null, null, false, "File does not exist."), true);
+            }
+
+            data = bytes;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {

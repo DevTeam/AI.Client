@@ -3,6 +3,7 @@
 namespace AI.Mcp.BuiltIn;
 
 using System.Diagnostics;
+using AI.Contracts.FileSystem;
 using Archives;
 using Files;
 using Grants;
@@ -28,6 +29,8 @@ internal sealed partial class Composition
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,
                 DeleteFileTool, DeleteDirectoryTool, ZipListTool, ZipReadTool, ZipExtractTool, ZipCreateTool>(Tag.Unique)
             .Transient<ProcessRunner, TriggerWaiter, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()
+            // File system: the platform is one implementation of the contract, a fake in tests is another.
+            .Singleton<SystemFileSystem, SystemPath>()
             .Transient(_ => new WebFetcher(WebFetcher.CreateDefaultHandler()))
             .Transient((IEnumerable<IToolFactory> toolFactories) =>
             {

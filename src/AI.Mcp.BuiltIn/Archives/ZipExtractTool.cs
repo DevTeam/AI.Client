@@ -3,15 +3,18 @@ namespace AI.Mcp.BuiltIn.Archives;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.IO.Compression;
+using AI.Contracts.FileSystem;
 using Files;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class ZipExtractTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class ZipExtractTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files, IPath paths) : IToolFactory
 {
     private const int EntryOverheadCharacters = 96;
+
+    private readonly IPath _paths = paths;
 
     public McpServerTool Create() => McpServerTool.Create(
         ExtractAsync,
@@ -28,7 +31,7 @@ public sealed class ZipExtractTool(IPathGuard guard, IBuiltInToolReply reply) : 
 
     [McpServerTool(Name = "zip_extract", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(ZipExtractResult))]
-    private Task<CallToolResult> ExtractAsync(
+    private async Task<CallToolResult> ExtractAsync(
         [Description("Absolute path of the zip archive to unpack.")] [MaxLength(4096)] string path,
         [Description("Absolute path of the directory to unpack into. Missing parents are created.")] [MaxLength(4096)] string destination,
         [Description("Optional glob narrowing the entries to unpack: '*' matches within one path segment, '**' crosses segments. "
@@ -46,33 +49,33 @@ public sealed class ZipExtractTool(IPathGuard guard, IBuiltInToolReply reply) : 
         }
         catch (GrantException error)
         {
-            return Task.FromResult(reply.Reply(new ZipExtractResult(path, destination, [], 0, overwrite, false, error.Message), true));
+            return reply.Reply(new ZipExtractResult(path, destination, [], 0, overwrite, false, error.Message), true);
         }
 
-        if (Directory.Exists(resolved))
+        if (await files.DirectoryExistsAsync(resolved, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new ZipExtractResult(resolved, root, [], 0, overwrite, false, "Path is a directory."), true));
+            return reply.Reply(new ZipExtractResult(resolved, root, [], 0, overwrite, false, "Path is a directory."), true);
         }
 
-        if (!File.Exists(resolved))
+        if (!await files.FileExistsAsync(resolved, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new ZipExtractResult(resolved, root, [], 0, overwrite, false, "File does not exist."), true));
+            return reply.Reply(new ZipExtractResult(resolved, root, [], 0, overwrite, false, "File does not exist."), true);
         }
 
-        if (File.Exists(root))
+        if (await files.FileExistsAsync(root, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new ZipExtractResult(resolved, root, [], 0, overwrite, false,
-                "Destination is a file, not a directory."), true));
+            return reply.Reply(new ZipExtractResult(resolved, root, [], 0, overwrite, false,
+                "Destination is a file, not a directory."), true);
         }
 
         try
         {
-            return Task.FromResult(Extract(resolved, root, pattern, overwrite, cancellationToken));
+            return await ExtractCoreAsync(resolved, root, pattern, overwrite, cancellationToken);
         }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return Task.FromResult(reply.Reply(new ZipExtractResult(resolved, root, [], 0, overwrite, false,
-                error is InvalidDataException ? $"Not a valid zip archive: {error.Message}" : error.Message), true));
+            return reply.Reply(new ZipExtractResult(resolved, root, [], 0, overwrite, false,
+                error is InvalidDataException ? $"Not a valid zip archive: {error.Message}" : error.Message), true);
         }
     }
 
@@ -81,14 +84,16 @@ public sealed class ZipExtractTool(IPathGuard guard, IBuiltInToolReply reply) : 
     /// all-or-nothing: every entry is resolved, counted and checked against what is already on disk
     /// before a single directory is created.
     /// </summary>
-    private CallToolResult Extract(string archivePath, string root, string? pattern, bool overwrite, CancellationToken cancellationToken)
+    private async Task<CallToolResult> ExtractCoreAsync(string archivePath, string root, string? pattern, bool overwrite, CancellationToken cancellationToken)
     {
+        // Archive IO stays with System.IO.Compression: a zip is a container format, not a file
+        // operation, so only the calls around it belong to the contract.
         using var archive = ZipFile.OpenRead(archivePath);
         var glob = pattern is { Length: > 0 } ? GlobPattern.Parse(pattern) : null;
         var planned = new List<(ZipArchiveEntry Entry, string FullPath, long Length)>();
         // Two names that differ only in case describe one file on Windows, so the collision check
         // follows the file system rather than the archive's own case sensitivity.
-        var taken = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var taken = new HashSet<string>(_paths.IsCaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase);
         var skipped = 0;
         long total = 0;
         foreach (var entry in archive.Entries)
@@ -96,13 +101,13 @@ public sealed class ZipExtractTool(IPathGuard guard, IBuiltInToolReply reply) : 
             cancellationToken.ThrowIfCancellationRequested();
             if (ArchivePaths.IsDirectoryEntry(entry)) continue;
             var name = ArchivePaths.Normalize(entry.FullName);
-            if (glob is not null && !glob.IsMatch(Path.GetFileName(name), name))
+            if (glob is not null && !glob.IsMatch(_paths.GetFileName(name), name))
             {
                 skipped++;
                 continue;
             }
 
-            if (!ArchivePaths.TryResolve(root, entry.FullName, out var full))
+            if (!ArchivePaths.TryResolve(_paths, root, entry.FullName, out var full))
             {
                 return reply.Reply(new ZipExtractResult(archivePath, root, [], skipped, overwrite, false,
                     $"Entry '{name}' would be written outside the destination directory, so nothing was extracted."), true);
@@ -114,7 +119,7 @@ public sealed class ZipExtractTool(IPathGuard guard, IBuiltInToolReply reply) : 
                     $"Two entries extract to the same path: {full}"), true);
             }
 
-            if (!overwrite && File.Exists(full))
+            if (!overwrite && await files.FileExistsAsync(full, cancellationToken))
             {
                 return reply.Reply(new ZipExtractResult(archivePath, root, [], skipped, overwrite, false,
                     $"File already exists: {full}. Pass overwrite: true to replace it, or unpack into another directory."), true);
@@ -130,27 +135,33 @@ public sealed class ZipExtractTool(IPathGuard guard, IBuiltInToolReply reply) : 
             }
         }
 
-        var files = new List<ExtractedFile>();
+        var extracted = new List<ExtractedFile>();
         var budget = new ResultBudget(ArchiveLimits.ListCharacters);
         var truncated = false;
         long written = 0;
         foreach (var (entry, full, length) in planned)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (Path.GetDirectoryName(full) is { Length: > 0 } parent) Directory.CreateDirectory(parent);
+            // The destination directory of an entry is asked for explicitly: a zip entry carries no
+            // directories of its own, so without this an entry in a subdirectory would fail.
+            if (_paths.GetDirectoryName(full) is { Length: > 0 } parent)
+            {
+                await files.CreateDirectoryAsync(parent, ownerOnly: false, cancellationToken);
+            }
+
             entry.ExtractToFile(full, overwrite);
             written += length;
 
             if (truncated) continue;
-            if (files.Count == ArchiveLimits.ResultEntries || !budget.TryReserve(full.Length + EntryOverheadCharacters))
+            if (extracted.Count == ArchiveLimits.ResultEntries || !budget.TryReserve(full.Length + EntryOverheadCharacters))
             {
                 truncated = true;
                 continue;
             }
 
-            files.Add(new ExtractedFile(full, length));
+            extracted.Add(new ExtractedFile(full, length));
         }
 
-        return reply.Reply(new ZipExtractResult(archivePath, root, files.ToArray(), skipped, overwrite, truncated, null));
+        return reply.Reply(new ZipExtractResult(archivePath, root, extracted.ToArray(), skipped, overwrite, truncated, null));
     }
 }

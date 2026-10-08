@@ -2,12 +2,13 @@ namespace AI.Mcp.BuiltIn.Files;
 
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class CreateDirectoryTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class CreateDirectoryTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         CreateAsync,
@@ -19,7 +20,7 @@ public sealed class CreateDirectoryTool(IPathGuard guard, IBuiltInToolReply repl
 
     [McpServerTool(Name = "create_directory", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(CreateDirectoryResult))]
-    private Task<CallToolResult> CreateAsync(
+    private async Task<CallToolResult> CreateAsync(
         [Description("Absolute path of the directory to create.")] [MaxLength(4096)] string path,
         CancellationToken cancellationToken = default)
     {
@@ -31,22 +32,22 @@ public sealed class CreateDirectoryTool(IPathGuard guard, IBuiltInToolReply repl
         }
         catch (GrantException error)
         {
-            return Task.FromResult(reply.Reply(new CreateDirectoryResult(path, false, error.Message), true));
+            return reply.Reply(new CreateDirectoryResult(path, false, error.Message), true);
         }
 
-        if (Directory.Exists(resolved))
+        if (await files.DirectoryExistsAsync(resolved, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new CreateDirectoryResult(resolved, false, null)));
+            return reply.Reply(new CreateDirectoryResult(resolved, false, null));
         }
 
         try
         {
-            Directory.CreateDirectory(resolved);
-            return Task.FromResult(reply.Reply(new CreateDirectoryResult(resolved, true, null)));
+            await files.CreateDirectoryAsync(resolved, ownerOnly: false, cancellationToken);
+            return reply.Reply(new CreateDirectoryResult(resolved, true, null));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return Task.FromResult(reply.Reply(new CreateDirectoryResult(resolved, false, error.Message), true));
+            return reply.Reply(new CreateDirectoryResult(resolved, false, error.Message), true);
         }
     }
 }

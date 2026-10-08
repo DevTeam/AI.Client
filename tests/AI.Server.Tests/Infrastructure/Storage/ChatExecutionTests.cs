@@ -6,6 +6,7 @@ using AI.Application.Projects;
 using Application.Runs;
 using AI.Application.Settings;
 using AI.Contracts.Chat;
+using AI.Contracts.FileSystem;
 using Contracts.Chats;
 using AI.Contracts.Projects;
 using Contracts.Runs;
@@ -1971,14 +1972,14 @@ public sealed partial class ChatExecutionTests
     public async Task DeletingAnActiveChatShouldCancelItsWorkerAndRemovePersistedRuns()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var temporary = new ChatTemporaryDirectory(Microsoft.Extensions.Logging.Abstractions.NullLogger<ChatTemporaryDirectory>.Instance);
+        var temporary = NewTemporaryDirectory(fixture.FileSystem);
         var scratch = temporary.GetOrCreate(fixture.ProjectId, fixture.ChatId);
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"));
         var call = await fixture.NextCallAsync();
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         var result = await fixture.Dispatcher.DeleteChatAsync(fixture.ProjectId, fixture.ChatId, chat!.Revision, CancellationToken.None);
         result.IsDeleted.ShouldBeTrue();
-        Directory.Exists(scratch).ShouldBeFalse();
+        (await fixture.FileSystem.DirectoryExistsAsync(scratch, CancellationToken.None)).ShouldBeFalse();
         call.Answer.TrySetResult("Too late");
         (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None)).ShouldBeNull();
         await fixture.RestartAsync();
@@ -1989,14 +1990,14 @@ public sealed partial class ChatExecutionTests
     public async Task DeletingAProjectShouldRemoveItsChatTemporaryDirectories()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var temporary = new ChatTemporaryDirectory(Microsoft.Extensions.Logging.Abstractions.NullLogger<ChatTemporaryDirectory>.Instance);
+        var temporary = NewTemporaryDirectory(fixture.FileSystem);
         var scratch = temporary.GetOrCreate(fixture.ProjectId, fixture.ChatId);
         var project = await fixture.GetProjectAsync();
 
         var result = await fixture.Dispatcher.DeleteProjectAsync(fixture.ProjectId, project!.Revision, CancellationToken.None);
 
         result.IsDeleted.ShouldBeTrue();
-        Directory.Exists(scratch).ShouldBeFalse();
+        (await fixture.FileSystem.DirectoryExistsAsync(scratch, CancellationToken.None)).ShouldBeFalse();
     }
 
     [Fact]
@@ -2159,6 +2160,11 @@ public sealed partial class ChatExecutionTests
         next.Answer.SetResult("Done");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
     }
+
+    /// <summary>The scratch directory over the real file system, as the deletion tests assert on disk.</summary>
+    private static ChatTemporaryDirectory NewTemporaryDirectory(MemoryFileSystem files) =>
+        new(Microsoft.Extensions.Logging.Abstractions.NullLogger<ChatTemporaryDirectory>.Instance,
+            files, files.Path);
 
     private static async Task<Guid> StartRunAfterTwoToolBatchesAsync(Fixture fixture)
     {
@@ -2475,7 +2481,8 @@ public sealed partial class ChatExecutionTests
         public Guid ChatId { get; private set; }
         private Fixture(IWorkspaceChangeTracker? workspace = null)
         {
-            Workspace = workspace ?? new WorkspaceChangeTracker(new LineDiff(), Mock.Of<IWorkspaceUndoService>());
+            Workspace = workspace ?? new WorkspaceChangeTracker(new LineDiff(), Mock.Of<IWorkspaceUndoService>(),
+                FileSystem, FileSystem.Path);
             _composition = NewComposition();
         }
 

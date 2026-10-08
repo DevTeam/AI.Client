@@ -2,6 +2,7 @@ namespace AI.Infrastructure.Storage;
 
 using System.Text.Json;
 using AI.Application.Memory;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Memory;
 
 /// <summary>
@@ -9,7 +10,7 @@ using AI.Contracts.Memory;
 /// <c>memory/projects/{projectId}.json</c>. One gate covers all catalogs: they are small and
 /// written rarely, so a single boundary is simpler than one lock per file.
 /// </summary>
-public sealed class JsonMemoryRepository(IProjectStorageLocation location, ITextFileSystem files) : IMemoryRepository, IDisposable
+public sealed class JsonMemoryRepository(IProjectStorageLocation location, IFileSystem files) : IMemoryRepository, IDisposable
 {
     private readonly AsyncGate _gate = new();
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
@@ -66,7 +67,7 @@ public sealed class JsonMemoryRepository(IProjectStorageLocation location, IText
     public async Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken)
     {
         using var lease = await _gate.EnterAsync(cancellationToken);
-        await files.DeleteAsync(PathFor(projectId), cancellationToken);
+        await files.DeleteFileAsync(PathFor(projectId), cancellationToken);
     }
 
     private async Task<IReadOnlyList<MemoryEntry>> LoadAsync(Guid? projectId, CancellationToken token)

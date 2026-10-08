@@ -1,16 +1,17 @@
 namespace AI.Server.CommandLine;
 
+using AI.Contracts.FileSystem;
 using System.CommandLine;
 using Hosting;
 
-public sealed class ServerCommandLine : IServerCommandLine
+public sealed class ServerCommandLine(IPath paths) : IServerCommandLine
 {
-    private readonly Option<DirectoryInfo> _dataDirectory = new("--data-dir")
+    private readonly Option<string> _dataDirectory = new("--data-dir")
     {
         Description = "Directory for projects, chats, settings and logs. Defaults to AI_CLIENT_DATA_DIRECTORY, then to the local application data folder.",
-        DefaultValueFactory = _ => new DirectoryInfo(
+        DefaultValueFactory = _ =>
             Environment.GetEnvironmentVariable("AI_CLIENT_DATA_DIRECTORY")
-            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AI"))
+            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AI")
     };
 
     private readonly Option<bool> _noBrowse = new("--no-browse")
@@ -25,7 +26,7 @@ public sealed class ServerCommandLine : IServerCommandLine
     }
 
     public ServerOptions Bind(ParseResult result, string? urls, bool serveWeb) => new(
-        result.GetValue(_dataDirectory)!.FullName,
+        paths.GetFullPath(result.GetValue(_dataDirectory)!),
         urls,
         BrowseEnabled: !result.GetValue(_noBrowse),
         ServeWeb: serveWeb);

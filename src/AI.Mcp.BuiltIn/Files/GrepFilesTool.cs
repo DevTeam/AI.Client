@@ -4,13 +4,16 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.RegularExpressions;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files, IPath paths) : IToolFactory
 {
+    private readonly IPath _paths = paths;
+
     // Approximate JSON overhead per reported match and per reported file, inflated the same way
     // SearchFilesTool inflates its own — the result is serialized a second time when it is stored
     // as the tool's chat message (see ResultBudget).
@@ -105,13 +108,13 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : I
             return Failure(resolved, query, error.Message);
         }
 
-        var single = File.Exists(resolved);
-        if (!single && !Directory.Exists(resolved))
+        var single = await files.FileExistsAsync(resolved, cancellationToken);
+        if (!single && !await files.DirectoryExistsAsync(resolved, cancellationToken))
         {
             return Failure(resolved, query, "Path does not exist.");
         }
 
-        var scan = new Scan(matcher, contextLines, maxMatchesPerFile);
+        var scan = new Scan(files, matcher, contextLines, maxMatchesPerFile);
         try
         {
             if (single)
@@ -131,7 +134,7 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : I
         return scan.ToResult(resolved, query);
     }
 
-    private static async Task WalkAsync(
+    private async Task WalkAsync(
         Scan scan, string root, GlobPattern? include, GlobPattern[] excludes, bool excludeDefaults, CancellationToken cancellationToken)
     {
         var queue = new Queue<string>();
@@ -140,10 +143,10 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : I
         {
             cancellationToken.ThrowIfCancellationRequested();
             var current = queue.Dequeue();
-            IEnumerable<FileSystemInfo> children;
+            IReadOnlyList<FileSystemEntry> children;
             try
             {
-                children = new DirectoryInfo(current).EnumerateFileSystemInfos();
+                children = await files.ListEntriesAsync(current, recursive: false, cancellationToken);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
@@ -157,13 +160,13 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : I
                     break;
                 }
 
-                var directory = (info.Attributes & FileAttributes.Directory) != 0;
+                var directory = info.IsDirectory;
                 if (directory && excludeDefaults && FileLimits.DefaultExcludedNames.Contains(info.Name))
                 {
                     continue;
                 }
 
-                var relative = Path.GetRelativePath(root, info.FullName);
+                var relative = _paths.GetRelativePath(root, info.Path);
                 if (excludes.Any(exclude => exclude.IsMatch(info.Name, relative)))
                 {
                     continue;
@@ -171,9 +174,12 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : I
 
                 if (directory)
                 {
-                    if (info.LinkTarget is null)
+                    // A link is never followed: a scan that walks out of the granted root reports
+                    // files the caller was not given access to. A reparse point that resolves to
+                    // itself is not a link and is descended into.
+                    if (!await LinkTargets.IsLinkAsync(files, _paths, info.Path, info.Attributes, cancellationToken))
                     {
-                        queue.Enqueue(info.FullName);
+                        queue.Enqueue(info.Path);
                     }
 
                     continue;
@@ -181,7 +187,7 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : I
 
                 if (include is null || include.IsMatch(info.Name, relative))
                 {
-                    await scan.FileAsync(info.FullName, cancellationToken);
+                    await scan.FileAsync(info.Path, cancellationToken);
                 }
             }
         }
@@ -245,7 +251,7 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : I
     /// the total match cap, the scanned file cap or the size budget is spent — the walk ends and
     /// the result is reported as truncated.
     /// </summary>
-    private sealed class Scan(LineMatcher matcher, int contextLines, int maxMatchesPerFile)
+    private sealed class Scan(IFileSystem files, LineMatcher matcher, int contextLines, int maxMatchesPerFile)
     {
         private readonly List<TextFileMatches> _files = [];
         private readonly ResultBudget _budget = new(FileLimits.GrepCharacters);
@@ -264,11 +270,18 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : I
                 return;
             }
 
-            FileStream stream;
+            // Opened through the contract with the sharing and the sequential buffer this scan
+            // needs: a document somebody is saving stays readable, and a large file is walked
+            // through one buffer instead of many small reads.
+            var options = new FileReadOptions(
+                Share: FileShare.ReadWrite | FileShare.Delete,
+                BufferSize: 65536,
+                Options: FileOptions.SequentialScan | FileOptions.Asynchronous);
+            Stream stream;
             try
             {
-                stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 65536,
-                    FileOptions.SequentialScan | FileOptions.Asynchronous);
+                stream = await files.OpenReadAsync(path, options, cancellationToken)
+                         ?? throw new FileNotFoundException($"File does not exist: {path}", path);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
             {
@@ -278,13 +291,20 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : I
 
             await using (stream)
             {
-                if (stream.Length > FileLimits.GrepFileBytes || await IsBinaryAsync(stream, cancellationToken))
+                // Both answers come from the stream itself, so a stream that cannot rewind is
+                // reported as skipped rather than silently scanned from the wrong place.
+                var length = stream.CanSeek ? stream.Length : 0;
+                if (length > FileLimits.GrepFileBytes || await IsBinaryAsync(stream, cancellationToken))
                 {
                     _skipped++;
                     return;
                 }
 
-                stream.Position = 0;
+                if (stream.CanSeek)
+                {
+                    stream.Position = 0;
+                }
+
                 _scanned++;
                 try
                 {
@@ -303,7 +323,7 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : I
             return new GrepFilesResult(path, query, _files.ToArray(), _scanned, _skipped, _total, Stopped, null);
         }
 
-        private static async Task<bool> IsBinaryAsync(FileStream stream, CancellationToken cancellationToken)
+        private static async Task<bool> IsBinaryAsync(Stream stream, CancellationToken cancellationToken)
         {
             var length = (int)Math.Min(stream.Length, FileLimits.BinaryProbeBytes);
             if (length == 0)
@@ -316,7 +336,7 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply) : I
             return probe.AsSpan(0, read).Contains((byte)0);
         }
 
-        private async Task LinesAsync(string path, FileStream stream, CancellationToken cancellationToken)
+        private async Task LinesAsync(string path, Stream stream, CancellationToken cancellationToken)
         {
             using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
             var matches = new List<TextMatch>();

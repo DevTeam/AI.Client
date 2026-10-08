@@ -2,12 +2,13 @@ namespace AI.Mcp.BuiltIn.Files;
 
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class ListDirectoryTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class ListDirectoryTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files) : IToolFactory
 {
     // Approximate JSON overhead per entry beyond its own name — quotes/keys/commas for
     // `{"name":"...","kind":"file","size":123,"modifiedAt":"..."}`, inflated to account for the
@@ -27,7 +28,7 @@ public sealed class ListDirectoryTool(IPathGuard guard, IBuiltInToolReply reply)
 
     [McpServerTool(Name = "list_directory", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(DirectoryListResult))]
-    private Task<CallToolResult> ListAsync(
+    private async Task<CallToolResult> ListAsync(
         [Description("Absolute path of the directory to list.")] [MaxLength(4096)] string path,
         CancellationToken cancellationToken = default)
     {
@@ -38,12 +39,12 @@ public sealed class ListDirectoryTool(IPathGuard guard, IBuiltInToolReply reply)
         }
         catch (GrantException error)
         {
-            return Task.FromResult(reply.Reply(new DirectoryListResult(path, [], false, error.Message), true));
+            return reply.Reply(new DirectoryListResult(path, [], false, error.Message), true);
         }
 
-        if (!Directory.Exists(resolved))
+        if (!await files.DirectoryExistsAsync(resolved, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new DirectoryListResult(resolved, [], false, "Directory does not exist."), true));
+            return reply.Reply(new DirectoryListResult(resolved, [], false, "Directory does not exist."), true);
         }
 
         try
@@ -51,7 +52,7 @@ public sealed class ListDirectoryTool(IPathGuard guard, IBuiltInToolReply reply)
             var entries = new List<DirectoryEntryInfo>();
             var budget = new ResultBudget(FileLimits.DirectoryCharacters);
             var truncated = false;
-            foreach (var info in new DirectoryInfo(resolved).EnumerateFileSystemInfos())
+            foreach (var info in await files.ListEntriesAsync(resolved, recursive: false, cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (entries.Count == FileLimits.DirectoryEntries || !budget.TryReserve(info.Name.Length + EntryOverheadCharacters))
@@ -60,20 +61,19 @@ public sealed class ListDirectoryTool(IPathGuard guard, IBuiltInToolReply reply)
                     break;
                 }
 
-                var directory = (info.Attributes & FileAttributes.Directory) != 0;
                 entries.Add(new DirectoryEntryInfo(
                     info.Name,
-                    directory ? "directory" : "file",
-                    directory ? null : (info as FileInfo)?.Length,
-                    info.LastWriteTimeUtc));
+                    info.IsDirectory ? "directory" : "file",
+                    info.IsDirectory ? null : info.Length,
+                    await files.GetLastWriteTimeAsync(info.Path, cancellationToken)));
             }
 
             entries.Sort((left, right) => string.CompareOrdinal(left.Name, right.Name));
-            return Task.FromResult(reply.Reply(new DirectoryListResult(resolved, entries.ToArray(), truncated, null)));
+            return reply.Reply(new DirectoryListResult(resolved, entries.ToArray(), truncated, null));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return Task.FromResult(reply.Reply(new DirectoryListResult(resolved, [], false, error.Message), true));
+            return reply.Reply(new DirectoryListResult(resolved, [], false, error.Message), true);
         }
     }
 }

@@ -2,12 +2,13 @@ namespace AI.Infrastructure.Storage;
 
 using AI.Application.Projects;
 using AI.Application.Skills;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Skills;
 using Pure.DI;
 
 /// <summary>Built-in, user and project SKILL.md files. Writes replace one file atomically.</summary>
 public sealed class SkillCatalog([Tag("built-in")] ISkillCatalog builtIns, IProjectStorageLocation location,
-    ITextFileSystem files, IProjectService projects) : ISkillCatalog, IDisposable
+    IFileSystem files, IProjectService projects) : ISkillCatalog, IDisposable
 {
     private readonly AsyncGate _gate = new();
 
@@ -71,7 +72,7 @@ public sealed class SkillCatalog([Tag("built-in")] ISkillCatalog builtIns, IProj
         if (current is null) return new("NotFound");
         if (current.Revision != revision)
             return new("Conflict", current, "The skill revision changed. Reload it before deleting.");
-        await files.DeleteAsync(PathFor(scope, projectId, id), cancellationToken);
+        await files.DeleteFileAsync(PathFor(scope, projectId, id), cancellationToken);
         return new("Deleted", current);
     }
 
@@ -80,7 +81,7 @@ public sealed class SkillCatalog([Tag("built-in")] ISkillCatalog builtIns, IProj
         using var lease = await _gate.EnterAsync(cancellationToken);
         foreach (var file in await files.ListFilesRecursivelyAsync(DirectoryFor("Project", projectId),
                      "SKILL.md", cancellationToken))
-            await files.DeleteAsync(file, cancellationToken);
+            await files.DeleteFileAsync(file, cancellationToken);
     }
 
     private async Task<IReadOnlyList<SkillDefinition>> LoadScopeAsync(string scope, Guid? projectId,

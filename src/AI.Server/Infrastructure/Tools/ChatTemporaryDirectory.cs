@@ -2,11 +2,15 @@ namespace AI.Infrastructure.Tools;
 
 using System.Security.Cryptography;
 using System.Text;
+using AI.Contracts.FileSystem;
 using Application.Tools;
 using Microsoft.Extensions.Logging;
 
 /// <summary>Creates chat scratch space below the current user's OS temporary directory.</summary>
-public sealed partial class ChatTemporaryDirectory(ILogger<ChatTemporaryDirectory> logger) : IChatTemporaryDirectory
+public sealed partial class ChatTemporaryDirectory(
+    ILogger<ChatTemporaryDirectory> logger,
+    IFileSystem files,
+    IPath paths) : IChatTemporaryDirectory
 {
     private const UnixFileMode PrivateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
@@ -46,15 +50,24 @@ public sealed partial class ChatTemporaryDirectory(ILogger<ChatTemporaryDirector
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..16];
     }
 
-    private static void EnsurePrivateDirectory(string path)
+    private void EnsurePrivateDirectory(string path)
     {
-        if (Directory.Exists(path) && new DirectoryInfo(path).Attributes.HasFlag(FileAttributes.ReparsePoint))
+        if (files.DirectoryExistsAsync(path, CancellationToken.None).GetAwaiter().GetResult() && IsLink(path))
             throw new IOException("The chat temporary directory cannot be a link.");
 
-        if (OperatingSystem.IsWindows()) Directory.CreateDirectory(path);
-        else Directory.CreateDirectory(path, PrivateMode);
+        if (OperatingSystem.IsWindows())
+        {
+            // The single-argument form of the platform's CreateDirectory, behind the contract.
+            files.CreateDirectoryAsync(path, ownerOnly: false, CancellationToken.None).GetAwaiter().GetResult();
+        }
+        else
+        {
+            // A private POSIX mode is the documented exception the frozen contract has no member for:
+            // the directory is created with it here and asserted again below.
+            Directory.CreateDirectory(path, PrivateMode);
+        }
 
-        if (new DirectoryInfo(path).Attributes.HasFlag(FileAttributes.ReparsePoint))
+        if (IsLink(path))
             throw new IOException("The chat temporary directory cannot be a link.");
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, PrivateMode);
     }
@@ -63,10 +76,10 @@ public sealed partial class ChatTemporaryDirectory(ILogger<ChatTemporaryDirector
     {
         try
         {
-            if (!Directory.Exists(_root)) return;
-            if (new DirectoryInfo(_root).Attributes.HasFlag(FileAttributes.ReparsePoint))
+            if (!files.DirectoryExistsAsync(_root, CancellationToken.None).GetAwaiter().GetResult()) return;
+            if (IsLink(_root))
                 throw new IOException("The chat temporary root is a link.");
-            if (Directory.Exists(path)) DeleteTree(new DirectoryInfo(path));
+            if (files.DirectoryExistsAsync(path, CancellationToken.None).GetAwaiter().GetResult()) DeleteTree(path);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -74,16 +87,44 @@ public sealed partial class ChatTemporaryDirectory(ILogger<ChatTemporaryDirector
         }
     }
 
-    private static void DeleteTree(DirectoryInfo directory)
+    /// <summary>
+    /// Removes a tree without ever following a link. The walk is kept instead of a recursive delete
+    /// because refusing to follow a reparse point is the point of it: a link inside the scratch
+    /// space is removed as a link, never as the directory it points at.
+    /// </summary>
+    private void DeleteTree(string directory)
     {
-        if (!directory.Exists) return;
-        if (!directory.Attributes.HasFlag(FileAttributes.ReparsePoint))
-            foreach (var entry in directory.EnumerateFileSystemInfos())
-            {
-                if (entry is DirectoryInfo child) DeleteTree(child);
-                else entry.Delete();
-            }
-        directory.Delete();
+        foreach (var entry in files.ListEntriesAsync(directory, recursive: false, CancellationToken.None)
+                     .GetAwaiter().GetResult())
+        {
+            if (entry.IsDirectory && !IsLink(entry.Path)) DeleteTree(entry.Path);
+            else if (entry.IsDirectory)
+                files.DeleteDirectoryAsync(entry.Path, recursive: false, CancellationToken.None).GetAwaiter().GetResult();
+            else files.DeleteFileAsync(entry.Path, CancellationToken.None).GetAwaiter().GetResult();
+        }
+        files.DeleteDirectoryAsync(directory, recursive: false, CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Whether the path is a link. The contract reports a link's target attributes and never a link
+    /// flag, so a path whose canonical resolution differs from its own spelling is one that leads
+    /// somewhere other than where it stands — exactly what these guards have to refuse.
+    /// </summary>
+    private bool IsLink(string path)
+    {
+        try
+        {
+            var full = paths.TrimEndingDirectorySeparator(paths.GetFullPath(path));
+            var resolved = paths.TrimEndingDirectorySeparator(
+                files.ResolveLinkTargetAsync(path, CancellationToken.None).GetAwaiter().GetResult());
+            return !string.Equals(resolved, full, paths.Comparison);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException
+                                          or ArgumentException or NotSupportedException)
+        {
+            // A path that cannot be resolved is treated as one this walk must not follow.
+            return true;
+        }
     }
 
     [LoggerMessage(EventId = 1, Level = LogLevel.Warning,

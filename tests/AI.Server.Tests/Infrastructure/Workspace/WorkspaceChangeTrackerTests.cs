@@ -3,6 +3,7 @@ namespace AI.Infrastructure.Tests.Workspace;
 using System.Text.Json;
 using AI.Application.Tools;
 using AI.Application.Workspace;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Tools;
 using AI.Contracts.Workspace;
 using AI.Infrastructure.Workspace;
@@ -23,7 +24,8 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
 
     private async Task<WorkspaceChangeTracker> StartAsync(params string[] roots)
     {
-        var tracker = new WorkspaceChangeTracker(new LineDiff(), Mock.Of<IWorkspaceUndoService>());
+        var tracker = new WorkspaceChangeTracker(new LineDiff(), Mock.Of<IWorkspaceUndoService>(),
+            new SystemFileSystem(), new SystemPath());
         await BeginAsync(tracker, _run, null, roots);
         return tracker;
     }

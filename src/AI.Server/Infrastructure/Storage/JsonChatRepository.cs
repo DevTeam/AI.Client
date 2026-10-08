@@ -1,13 +1,14 @@
 namespace AI.Infrastructure.Storage;
 
 using Application.Chats;
+using AI.Contracts.FileSystem;
 using Contracts.Chats;
 using Domain.Chats;
 using AI.Domain.Projects;
 using System.Text.Json.Nodes;
 
 public sealed class JsonChatRepository(
-    ITextFileSystem fileSystem,
+    IFileSystem fileSystem,
     IChatStoragePaths paths,
     IChatDocumentSerializer serializer) : IPersistentChatRepository, IDisposable
 {
@@ -100,9 +101,9 @@ public sealed class JsonChatRepository(
         if (current is null) return new ChatDeleteResult(false, 0);
         var revision = JsonNode.Parse(current)!["Revision"]!.GetValue<long>();
         if (revision != expectedRevision) return new ChatDeleteResult(false, revision);
-        await fileSystem.DeleteAsync(path, cancellationToken);
-        await fileSystem.DeleteAsync(paths.GetChatSummaryPath(id, projectId), cancellationToken);
-        await fileSystem.DeleteAsync(paths.GetHistoryCheckpointsPath(id, projectId), cancellationToken);
+        await fileSystem.DeleteFileAsync(path, cancellationToken);
+        await fileSystem.DeleteFileAsync(paths.GetChatSummaryPath(id, projectId), cancellationToken);
+        await fileSystem.DeleteFileAsync(paths.GetHistoryCheckpointsPath(id, projectId), cancellationToken);
         return new ChatDeleteResult(true, revision);
     }
 }

@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using AI.Application.Chat;
 using AI.Contracts.Chats;
+using AI.Contracts.FileSystem;
 using AI.Domain.Chats;
 using AI.Domain.Projects;
 
@@ -12,7 +13,7 @@ using AI.Domain.Projects;
 /// the chat document on purpose: they are the model's view of the history, not the history, and
 /// losing the file only means the next request is built from the full branch again.
 /// </summary>
-public sealed class JsonHistoryCheckpointRepository(IChatStoragePaths paths, ITextFileSystem files)
+public sealed class JsonHistoryCheckpointRepository(IChatStoragePaths paths, IFileSystem files)
     : IHistoryCheckpointRepository, IDisposable
 {
     private static readonly JsonSerializerOptions Json = new()
@@ -40,7 +41,7 @@ public sealed class JsonHistoryCheckpointRepository(IChatStoragePaths paths, ITe
         var path = Path(projectId, chatId);
         if (next.Length == 0)
         {
-            await files.DeleteAsync(path, cancellationToken);
+            await files.DeleteFileAsync(path, cancellationToken);
             return next;
         }
 

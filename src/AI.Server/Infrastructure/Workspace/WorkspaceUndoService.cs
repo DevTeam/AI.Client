@@ -5,13 +5,14 @@ using System.Text.Json;
 using AI.Application.Projects;
 using AI.Application.Resources;
 using AI.Application.Workspace;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Projects;
 using AI.Contracts.Resources;
 using AI.Contracts.Workspace;
 using AI.Infrastructure.Storage;
 
 /// <summary>Stores private Undo manifests beside the project's resource assets.</summary>
-public sealed class WorkspaceUndoService(IProjectStorageLocation location, ITextFileSystem files,
+public sealed class WorkspaceUndoService(IProjectStorageLocation location, IFileSystem files,
     IResourceAssetService assets, IProjectService projects, IProjectPathAccess paths)
     : IWorkspaceUndoService, IDisposable
 {
@@ -86,17 +87,23 @@ public sealed class WorkspaceUndoService(IProjectStorageLocation location, IText
                         errorMessage = $"The saved original content for {entry.Path} is unavailable.";
                         break;
                     }
+                    // The restore keeps the temporary-then-move sequence: a reader of the file sees
+                    // the old content or the restored one, never a half-written file.
                     var directory = Path.GetDirectoryName(entry.Path)!;
-                    Directory.CreateDirectory(directory);
+                    await files.CreateDirectoryAsync(directory, ownerOnly: false, cancellationToken);
                     var temporary = Path.Combine(directory, "." + Path.GetFileName(entry.Path) + ".undo-" + Guid.NewGuid().ToString("N"));
                     try
                     {
-                        await File.WriteAllBytesAsync(temporary, bytes, cancellationToken);
-                        File.Move(temporary, entry.Path, true);
+                        await files.WriteBytesAsync(temporary, bytes, cancellationToken);
+                        await files.MoveAsync(temporary, entry.Path, true, cancellationToken);
                     }
-                    finally { if (File.Exists(temporary)) File.Delete(temporary); }
+                    finally
+                    {
+                        if (await files.FileExistsAsync(temporary, CancellationToken.None))
+                            await files.DeleteFileAsync(temporary, CancellationToken.None);
+                    }
                 }
-                else File.Delete(entry.Path);
+                else await files.DeleteFileAsync(entry.Path, cancellationToken);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
@@ -127,14 +134,16 @@ public sealed class WorkspaceUndoService(IProjectStorageLocation location, IText
         if (file.Undone) return WorkspaceUndoFileState.Undone;
         if (!file.Available) return WorkspaceUndoFileState.Unavailable;
         if (project is null || !MayWrite(project, file.Path)) return WorkspaceUndoFileState.Unavailable;
-        if (File.Exists(file.Path) != file.AfterExists || Directory.Exists(file.Path))
-            return WorkspaceUndoFileState.Conflict;
+        var stillAFile = await files.FileExistsAsync(file.Path, token);
+        var becameDirectory = await files.DirectoryExistsAsync(file.Path, token);
+        if (stillAFile != file.AfterExists || becameDirectory) return WorkspaceUndoFileState.Conflict;
         if (!file.AfterExists) return WorkspaceUndoFileState.Ready;
         try
         {
-            var info = new FileInfo(file.Path);
-            if (info.Length > 8 * 1024 * 1024) return WorkspaceUndoFileState.Conflict;
-            var bytes = await File.ReadAllBytesAsync(file.Path, token);
+            var entry = await files.GetEntryAsync(file.Path, token);
+            if (entry is null || entry.Length > 8 * 1024 * 1024) return WorkspaceUndoFileState.Conflict;
+            var bytes = await files.ReadBytesAsync(file.Path, token);
+            if (bytes is null) return WorkspaceUndoFileState.Conflict;
             var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
             return hash == file.AfterAsset ? WorkspaceUndoFileState.Ready : WorkspaceUndoFileState.Conflict;
         }
@@ -176,7 +185,7 @@ public sealed class WorkspaceUndoService(IProjectStorageLocation location, IText
             await files.WriteTextAsync(temporary, JsonSerializer.Serialize(manifest), token);
             await files.MoveAsync(temporary, path, true, token);
         }
-        finally { await files.DeleteAsync(temporary, CancellationToken.None); }
+        finally { await files.DeleteFileAsync(temporary, CancellationToken.None); }
     }
 
     private string PathFor(Guid projectId, Guid id) => Path.Combine(location.RootDirectory, "assets",

@@ -3,6 +3,7 @@
 namespace AI.Mcp.CSharp;
 
 using System.Diagnostics;
+using AI.Contracts.FileSystem;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Pure.DI;
@@ -20,6 +21,8 @@ internal sealed partial class Composition
             // Tools
             .Transient<ScriptRunTool>(Tag.Unique)
             .Transient<ScriptRunner, ToolReply>()
+            // File system: the platform is one implementation of the contract, a fake in tests is another.
+            .Singleton<SystemFileSystem, SystemPath>()
             .Transient((IEnumerable<IToolFactory> toolFactories) =>
             {
                 var tools = new McpServerPrimitiveCollection<McpServerTool>();

@@ -1,11 +1,12 @@
 namespace AI.Infrastructure.Settings;
 
 using AI.Application.Settings;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Settings;
 using Storage;
 using System.Text.Json;
 
-public sealed class JsonGlobalSettingsRepository(ITextFileSystem fileSystem, IGlobalSettingsPaths paths) : IGlobalSettingsRepository, IDisposable
+public sealed class JsonGlobalSettingsRepository(IFileSystem fileSystem, IGlobalSettingsPaths paths) : IGlobalSettingsRepository, IDisposable
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
     private readonly AsyncGate _writes = new();

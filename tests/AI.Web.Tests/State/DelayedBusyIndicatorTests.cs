@@ -118,6 +118,18 @@ public sealed class DelayedBusyIndicatorTests
         condition().ShouldBeTrue("the scheduled transition should complete without waiting on wall-clock time");
     }
 
+    /// <summary>
+    /// The clock the indicator is driven by, advanced by the test rather than by wall-clock time.
+    /// </summary>
+    /// <remarks>
+    /// A completion released here runs its continuation inline, on the thread calling
+    /// <see cref="AdvanceAsync"/>, and the loop keeps releasing whatever that continuation schedules
+    /// in turn. That is what makes the tests deterministic: with the default task-completion source
+    /// the indicator's continuation ran on the thread pool, so "the clock has moved" and "the timer
+    /// has fired" were not ordered against each other, and a second <c>End</c> could be observed
+    /// while the indicator was still deciding that its first hide was superseded. The product code is
+    /// untouched by this: it is the double's scheduling that had to stop depending on a thread pool.
+    /// </remarks>
     private sealed class ManualBusyIndicatorTime : IBusyIndicatorTime
     {
         private long _ticks;
@@ -128,26 +140,24 @@ public sealed class DelayedBusyIndicatorTests
 
         public Task DelayAsync(TimeSpan delay)
         {
-            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var completion = new TaskCompletionSource();
             _scheduled.Add((_ticks + delay.Ticks, completion));
             return completion.Task;
         }
 
-        public async Task AdvanceAsync(TimeSpan elapsed)
+        public Task AdvanceAsync(TimeSpan elapsed)
         {
             _ticks += elapsed.Ticks;
             while (true)
             {
                 var due = _scheduled.Where(item => item.Due <= _ticks).ToArray();
-                if (due.Length == 0) break;
+                if (due.Length == 0) return Task.CompletedTask;
                 foreach (var item in due)
                 {
                     _scheduled.Remove(item);
                     item.Completion.SetResult();
                 }
-                await Task.Yield();
             }
-            await Task.Yield();
         }
     }
 }

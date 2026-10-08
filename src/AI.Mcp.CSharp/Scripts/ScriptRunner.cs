@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
+using AI.Contracts.FileSystem;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
@@ -19,10 +20,13 @@ using Microsoft.CodeAnalysis.Scripting;
 /// can: the file system, the network, the environment. The working directory and the environment
 /// handed to the script are a convenience for the code being written, not a boundary.
 /// </summary>
-public sealed class ScriptRunner : IScriptRunner
+public sealed class ScriptRunner(IFileSystem files, IPath paths) : IScriptRunner
 {
+    /// <summary>Guards the two process-wide caches below; composition access is serialized.</summary>
+    private static readonly object Gate = new();
+
     /// <summary>
-    /// Every assembly of the runtime the server itself runs on, resolved once. Roslyn's
+    /// Every assembly of the runtime the server itself runs on, resolved once per process. Roslyn's
     /// <see cref="ScriptOptions.Default"/> references almost nothing — a script written with the
     /// default imports (<c>System.Linq</c>, <c>System.Text.Json</c>, …) fails to compile with
     /// "The type or namespace name 'Linq' does not exist in the namespace 'System'" unless these
@@ -30,30 +34,17 @@ public sealed class ScriptRunner : IScriptRunner
     /// ones is what makes a script able to use a namespace the server has not happened to touch
     /// yet, such as <c>System.Xml.Linq</c>.
     /// </summary>
-    private static readonly Lazy<PortableExecutableReference[]> RuntimeReferences =
-        new(() => LoadRuntimeReferences());
+    /// <remarks>
+    /// The set belongs to the process, not to one run, so it is computed through the contract once
+    /// and then shared: building it per run would re-read every platform assembly for every script.
+    /// </remarks>
+    private static Task<PortableExecutableReference[]>? _runtimeReferences;
 
     /// <summary>Simple assembly name to file path, for resolving a reference named at call time.</summary>
-    private static readonly Lazy<Dictionary<string, string>> RuntimeAssemblyPaths = new(() =>
-    {
-        var paths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var reference in RuntimeReferences.Value)
-        {
-            // A later duplicate never wins: the first is the one the runtime itself loads.
-            if (Path.GetFileNameWithoutExtension(reference.FilePath) is { Length: > 0 } named
-                && reference.FilePath is { Length: > 0 } file)
-                paths.TryAdd(named, file);
-        }
+    private static Task<IReadOnlyDictionary<string, string>>? _runtimeAssemblyPaths;
 
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            if (!assembly.IsDynamic && assembly.GetName().Name is { Length: > 0 } name
-                && assembly.Location is { Length: > 0 } location)
-                paths.TryAdd(name, location);
-        }
-
-        return paths;
-    });
+    private readonly IFileSystem _files = files;
+    private readonly IPath _paths = paths;
 
     public async Task<ScriptResult> RunAsync(ScriptRequest request, CancellationToken cancellationToken)
     {
@@ -76,7 +67,7 @@ public sealed class ScriptRunner : IScriptRunner
             return Failure(stopwatch, $"Script code exceeds {ScriptLimits.CodeCharacters} characters.");
         }
 
-        var options = BuildOptions(request, diagnostics);
+        var options = await BuildOptionsAsync(request, diagnostics);
         var globals = new ScriptGlobals { Args = request.Arguments, Globals = request.Globals };
         var stdout = new BoundedTextWriter(ScriptLimits.OutputCharacters);
         var stderr = new BoundedTextWriter(ScriptLimits.OutputCharacters);
@@ -90,7 +81,7 @@ public sealed class ScriptRunner : IScriptRunner
         timeout.CancelAfter(request.TimeoutMs);
         try
         {
-            before.Capture(request);
+            await before.CaptureAsync(request, _files, _paths);
             // Console and the current directory are process-wide, so the run is only thread-safe as
             // long as one script runs at a time; the server handles one request at a time.
             Console.SetOut(stdout);
@@ -154,22 +145,22 @@ public sealed class ScriptRunner : IScriptRunner
     /// diagnostic and skipped rather than failing the call, so one wrong name does not hide the
     /// rest of the script's problems.
     /// </summary>
-    private static ScriptOptions BuildOptions(ScriptRequest request, List<ScriptDiagnostic> diagnostics)
+    private async Task<ScriptOptions> BuildOptionsAsync(ScriptRequest request, List<ScriptDiagnostic> diagnostics)
     {
         var options = ScriptOptions.Default
-            .WithReferences(RuntimeReferences.Value)
+            .WithReferences(await RuntimeReferencesAsync())
             .WithImports(ScriptLimits.DefaultImports.Concat(request.Imports))
             .WithLanguageVersion(LanguageVersion.Latest)
             .WithOptimizationLevel(OptimizationLevel.Debug);
         if (!string.IsNullOrWhiteSpace(request.WorkingDirectory))
         {
-            options = options.WithFilePath(Path.Combine(request.WorkingDirectory, "script.csx"));
+            options = options.WithFilePath(_paths.Combine(request.WorkingDirectory, "script.csx"));
         }
 
         var references = new List<MetadataReference>();
         foreach (var reference in request.References)
         {
-            var resolved = Resolve(reference);
+            var resolved = await ResolveAsync(reference);
             if (resolved is null)
             {
                 diagnostics.Add(new ScriptDiagnostic("Warning", "CSX0003",
@@ -187,19 +178,19 @@ public sealed class ScriptRunner : IScriptRunner
     /// Accepts either an absolute path to an assembly file or a simple or full assembly name, which
     /// is looked up among the assemblies already loaded in this process.
     /// </summary>
-    private static PortableExecutableReference? Resolve(string reference)
+    private async Task<PortableExecutableReference?> ResolveAsync(string reference)
     {
         if (string.IsNullOrWhiteSpace(reference))
         {
             return null;
         }
 
-        if (File.Exists(reference))
+        if (await _files.FileExistsAsync(reference, CancellationToken.None))
         {
-            return MetadataReference.CreateFromFile(Path.GetFullPath(reference));
+            return MetadataReference.CreateFromFile(_paths.GetFullPath(reference));
         }
 
-        if (RuntimeAssemblyPaths.Value.TryGetValue(reference, out var path))
+        if ((await RuntimeAssemblyPathsAsync()).TryGetValue(reference, out var path))
         {
             return MetadataReference.CreateFromFile(path);
         }
@@ -220,22 +211,65 @@ public sealed class ScriptRunner : IScriptRunner
         return null;
     }
 
-    private static PortableExecutableReference[] LoadRuntimeReferences()
+    private Task<PortableExecutableReference[]> RuntimeReferencesAsync() =>
+        Cache(ref _runtimeReferences, LoadRuntimeReferencesAsync);
+
+    private Task<IReadOnlyDictionary<string, string>> RuntimeAssemblyPathsAsync() =>
+        Cache(ref _runtimeAssemblyPaths,
+            async () =>
+            {
+                var paths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var reference in await LoadRuntimeReferencesAsync())
+                {
+                    // A later duplicate never wins: the first is the one the runtime itself loads.
+                    if (reference.FilePath is { Length: > 0 } file
+                        && _paths.GetFileNameWithoutExtension(file) is { Length: > 0 } named)
+                        paths.TryAdd(named, file);
+                }
+
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (!assembly.IsDynamic && assembly.GetName().Name is { Length: > 0 } name
+                        && assembly.Location is { Length: > 0 } location)
+                        paths.TryAdd(name, location);
+                }
+
+                return (IReadOnlyDictionary<string, string>)paths;
+            });
+
+    /// <summary>
+    /// Answers from the process-wide cache, starting the computation once when it has not run yet.
+    /// The two caches describe the running process rather than one run, so they are kept across
+    /// instances and guarded by <see cref="Gate"/>; the composition serializes access to this runner
+    /// anyway. A cached load is not tied to a caller's token, because one cancelled run must not
+    /// leave the process with a cache that failed forever.
+    /// </summary>
+    private static Task<T> Cache<T>(ref Task<T>? slot, Func<Task<T>> compute)
+        where T : class
+    {
+        lock (Gate)
+        {
+            return slot ??= compute();
+        }
+    }
+
+    private async Task<PortableExecutableReference[]> LoadRuntimeReferencesAsync()
     {
         // Deduplicated by path: the platform assembly list and the loaded assemblies overlap
         // almost completely, and a reference added twice is compiled twice.
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string platform)
         {
-            foreach (var path in platform.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            foreach (var path in platform.Split(_paths.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
-                if (File.Exists(path)) paths.Add(path);
+                if (await _files.FileExistsAsync(path, CancellationToken.None)) paths.Add(path);
             }
         }
 
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
-            if (!assembly.IsDynamic && assembly.Location is { Length: > 0 } location && File.Exists(location))
+            if (!assembly.IsDynamic && assembly.Location is { Length: > 0 } location
+                && await _files.FileExistsAsync(location, CancellationToken.None))
             {
                 paths.Add(location);
             }
@@ -331,7 +365,9 @@ public sealed class ScriptRunner : IScriptRunner
 
     /// <summary>
     /// The process-wide state a run changes and has to put back: the current directory, the
-    /// environment entries the call asked for, and the two console writers.
+    /// environment entries the call asked for, and the two console writers. The current directory
+    /// itself keeps its platform call — a C# script that does not inherit the process's own working
+    /// directory is not scriptable, and that is one of the ADR's documented exceptions.
     /// </summary>
     private sealed class ProcessState
     {
@@ -340,7 +376,7 @@ public sealed class ScriptRunner : IScriptRunner
         private TextWriter? _out;
         private TextWriter? _error;
 
-        public void Capture(ScriptRequest request)
+        public async Task CaptureAsync(ScriptRequest request, IFileSystem files, IPath paths)
         {
             _out = Console.Out;
             _error = Console.Error;
@@ -352,9 +388,10 @@ public sealed class ScriptRunner : IScriptRunner
                 Environment.SetEnvironmentVariable(name, value);
             }
 
-            if (!string.IsNullOrWhiteSpace(request.WorkingDirectory) && Directory.Exists(request.WorkingDirectory))
+            if (!string.IsNullOrWhiteSpace(request.WorkingDirectory)
+                && await files.DirectoryExistsAsync(request.WorkingDirectory, CancellationToken.None))
             {
-                Directory.SetCurrentDirectory(Path.GetFullPath(request.WorkingDirectory));
+                Directory.SetCurrentDirectory(paths.GetFullPath(request.WorkingDirectory));
             }
         }
 

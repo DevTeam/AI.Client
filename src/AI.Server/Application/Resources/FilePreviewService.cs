@@ -3,11 +3,13 @@ namespace AI.Application.Resources;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using AI.Application.Projects;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Resources;
 using Microsoft.AspNetCore.StaticFiles;
 
 public sealed class FilePreviewService(IProjectService projects, IWorkspacePathResolver resolver,
-    IProjectPathAccess access, IFilePreviewFormats formats, IFilePreviewTextReader text) : IFilePreviewService
+    IProjectPathAccess access, IFilePreviewFormats formats, IFilePreviewTextReader text, IFileSystem files)
+    : IFilePreviewService
 {
     private readonly ConcurrentDictionary<string, (Guid Project, string Path, DateTimeOffset Expires)> _tickets = new();
     private readonly FileExtensionContentTypeProvider _types = new();
@@ -18,9 +20,13 @@ public sealed class FilePreviewService(IProjectService projects, IWorkspacePathR
         var project = await projects.GetAsync(projectId, cancellationToken)
             ?? throw new FileNotFoundException("Project not found.");
         _types.TryGetContentType(canonical, out var contentType);
+        // One lookup each, so a format never has to ask the file system whether the path is a
+        // directory or how large it is.
+        var isDirectory = await files.DirectoryExistsAsync(canonical, cancellationToken);
+        var entry = isDirectory ? null : await files.GetEntryAsync(canonical, cancellationToken);
         var preview = await formats.DescribeAsync(new FilePreviewContext(project, canonical,
-            contentType ?? "application/octet-stream"), cancellationToken);
-        if (Directory.Exists(canonical)) return preview;
+            contentType ?? "application/octet-stream", isDirectory, entry?.Length ?? 0), cancellationToken);
+        if (isDirectory) return preview;
 
         foreach (var ticket in _tickets.Where(item => item.Value.Expires <= DateTimeOffset.UtcNow))
             _tickets.TryRemove(ticket.Key, out _);
@@ -35,7 +41,7 @@ public sealed class FilePreviewService(IProjectService projects, IWorkspacePathR
         if (!_tickets.TryGetValue(ticket, out var value) || value.Expires <= DateTimeOffset.UtcNow) return null;
         // A ticket carries only one file and never bypasses a revoked grant or a changed symlink.
         var path = await ReadablePathAsync(value.Project, value.Path, cancellationToken);
-        return File.Exists(path) ? path : null;
+        return await files.FileExistsAsync(path, cancellationToken) ? path : null;
     }
 
     public async Task<FilePreviewText> ReadTextAsync(Guid projectId, string path, int offset, CancellationToken cancellationToken)

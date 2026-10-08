@@ -1,9 +1,11 @@
 namespace AI.Application.Resources;
 
+using System.Text;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Resources;
 using Microsoft.AspNetCore.StaticFiles;
 
-public sealed class FilePreviewTextReader : IFilePreviewTextReader
+public sealed class FilePreviewTextReader(IFileSystem files) : IFilePreviewTextReader
 {
     private readonly FileExtensionContentTypeProvider _types = new();
 
@@ -12,7 +14,9 @@ public sealed class FilePreviewTextReader : IFilePreviewTextReader
         if (offset is < 0 or > 20_000_000) throw new ArgumentException("Text preview offset is out of range.");
         var canonical = path;
         if (!await IsTextAsync(canonical, cancellationToken)) throw new ArgumentException("This file is not supported as text.");
-        using var reader = File.OpenText(canonical);
+        await using var stream = await files.OpenReadAsync(canonical, cancellationToken)
+            ?? throw new FileNotFoundException($"'{canonical}' was not found.", canonical);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         var buffer = new char[32768];
         var skipped = 0;
         while (skipped < offset)
@@ -37,7 +41,9 @@ public sealed class FilePreviewTextReader : IFilePreviewTextReader
         if (_types.TryGetContentType(path, out var type) && (type.StartsWith("image/", StringComparison.Ordinal)
             || type.StartsWith("video/", StringComparison.Ordinal) || type.StartsWith("audio/", StringComparison.Ordinal)
             || type == "application/pdf")) return false;
-        using var reader = File.OpenText(path);
+        await using var stream = await files.OpenReadAsync(path, cancellationToken)
+            ?? throw new FileNotFoundException($"'{path}' was not found.", path);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         var buffer = new char[4096];
         var length = await reader.ReadAsync(buffer.AsMemory(), cancellationToken);
         for (var index = 0; index < length; index++)

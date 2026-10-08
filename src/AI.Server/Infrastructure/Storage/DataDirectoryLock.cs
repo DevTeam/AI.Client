@@ -1,16 +1,22 @@
 namespace AI.Infrastructure.Storage;
 
+using AI.Contracts.FileSystem;
+
 /// <summary>
 /// Holds <c>&lt;data&gt;/.lock</c> open without sharing (a sharing lock on Windows, <c>flock</c> on
 /// macOS and Linux). The operating system releases it when the process ends however it ends, so a
 /// crash never leaves the directory locked. The file itself stays: deleting it on close would let
 /// a second process lock a fresh file while a third still holds the unlinked one.
 /// </summary>
-public sealed class DataDirectoryLock(IProjectStorageLocation location) : IDataDirectoryLock
+public sealed class DataDirectoryLock(IProjectStorageLocation location, IFileSystem files) : IDataDirectoryLock
 {
     public IDisposable Acquire()
     {
-        Directory.CreateDirectory(location.RootDirectory);
+        // The directory the lock file lives in has to exist before the platform lock can be taken.
+        // The lock itself stays a platform call: single-instance protection is a cross-process
+        // guarantee that no in-process fake can model — see the documented exceptions.
+        files.CreateDirectoryAsync(location.RootDirectory, ownerOnly: false, CancellationToken.None)
+            .GetAwaiter().GetResult();
         var path = Path.Combine(location.RootDirectory, ".lock");
         try
         {

@@ -3,18 +3,21 @@ namespace AI.Mcp.BuiltIn.Archives;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.IO.Compression;
+using AI.Contracts.FileSystem;
 using Files;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class ZipListTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class ZipListTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files, IPath paths) : IToolFactory
 {
     // Approximate JSON overhead per entry beyond its own path — quotes, keys, commas, the sizes and
     // the timestamp — inflated the same way ListDirectoryTool inflates it, because the result is
     // serialized once as the tool's structured content and again as the chat message it is stored in.
     private const int EntryOverheadCharacters = 128;
+
+    private readonly IPath _paths = paths;
 
     public McpServerTool Create() => McpServerTool.Create(
         ListAsync,
@@ -30,7 +33,7 @@ public sealed class ZipListTool(IPathGuard guard, IBuiltInToolReply reply) : ITo
 
     [McpServerTool(Name = "zip_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(ZipListResult))]
-    private Task<CallToolResult> ListAsync(
+    private async Task<CallToolResult> ListAsync(
         [Description("Absolute path of the zip archive.")] [MaxLength(4096)] string path,
         [Description("Optional glob narrowing the entries: '*' matches within one path segment, '**' crosses segments and '?' matches one character. "
                      + "A pattern without a separator is matched against the entry name.")] [MaxLength(512)] string? pattern = null,
@@ -43,21 +46,23 @@ public sealed class ZipListTool(IPathGuard guard, IBuiltInToolReply reply) : ITo
         }
         catch (GrantException error)
         {
-            return Task.FromResult(reply.Reply(new ZipListResult(path, [], 0, 0, 0, false, error.Message), true));
+            return reply.Reply(new ZipListResult(path, [], 0, 0, 0, false, error.Message), true);
         }
 
-        if (Directory.Exists(resolved))
+        if (await files.DirectoryExistsAsync(resolved, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new ZipListResult(resolved, [], 0, 0, 0, false, "Path is a directory."), true));
+            return reply.Reply(new ZipListResult(resolved, [], 0, 0, 0, false, "Path is a directory."), true);
         }
 
-        if (!File.Exists(resolved))
+        if (!await files.FileExistsAsync(resolved, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new ZipListResult(resolved, [], 0, 0, 0, false, "File does not exist."), true));
+            return reply.Reply(new ZipListResult(resolved, [], 0, 0, 0, false, "File does not exist."), true);
         }
 
         try
         {
+            // Archive IO stays with System.IO.Compression: a zip is a container format, not a file
+            // operation, so only the calls around it belong to the contract.
             using var archive = ZipFile.OpenRead(resolved);
             var glob = pattern is { Length: > 0 } ? GlobPattern.Parse(pattern) : null;
             var entries = new List<ArchiveEntryInfo>();
@@ -81,7 +86,9 @@ public sealed class ZipListTool(IPathGuard guard, IBuiltInToolReply reply) : ITo
                 compressed += entry.CompressedLength;
 
                 if (display.Length == 0 || truncated) continue;
-                if (glob is not null && !glob.IsMatch(Path.GetFileName(display), display)) continue;
+                // The entry name is an archive's own name, not a path on this machine, so it is cut
+                // apart with the contract's path semantics rather than the platform's.
+                if (glob is not null && !glob.IsMatch(_paths.GetFileName(display), display)) continue;
                 if (entries.Count == ArchiveLimits.Entries
                     || !budget.TryReserve(display.Length + EntryOverheadCharacters))
                 {
@@ -94,13 +101,13 @@ public sealed class ZipListTool(IPathGuard guard, IBuiltInToolReply reply) : ITo
             }
 
             entries.Sort((left, right) => string.CompareOrdinal(left.Path, right.Path));
-            return Task.FromResult(reply.Reply(new ZipListResult(resolved, entries.ToArray(), count, total, compressed,
-                truncated, null)));
+            return reply.Reply(new ZipListResult(resolved, entries.ToArray(), count, total, compressed,
+                truncated, null));
         }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return Task.FromResult(reply.Reply(new ZipListResult(resolved, [], 0, 0, 0, false,
-                error is InvalidDataException ? $"Not a valid zip archive: {error.Message}" : error.Message), true));
+            return reply.Reply(new ZipListResult(resolved, [], 0, 0, 0, false,
+                error is InvalidDataException ? $"Not a valid zip archive: {error.Message}" : error.Message), true);
         }
     }
 }

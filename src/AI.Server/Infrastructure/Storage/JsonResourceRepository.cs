@@ -2,10 +2,11 @@ namespace AI.Infrastructure.Storage;
 
 using System.Text.Json;
 using AI.Application.Resources;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Resources;
 
 /// <summary>Small per-project resource catalog. Immutable chat turns keep their own reference snapshots.</summary>
-public sealed class JsonResourceRepository(IProjectStorageLocation location, ITextFileSystem files) : IResourceRepository, IDisposable
+public sealed class JsonResourceRepository(IProjectStorageLocation location, IFileSystem files) : IResourceRepository, IDisposable
 {
     private readonly AsyncGate _gate = new();
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
@@ -53,7 +54,7 @@ public sealed class JsonResourceRepository(IProjectStorageLocation location, ITe
     public async Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken)
     {
         using var lease = await _gate.EnterAsync(cancellationToken);
-        await files.DeleteAsync(PathFor(projectId), cancellationToken);
+        await files.DeleteFileAsync(PathFor(projectId), cancellationToken);
     }
 
     private async Task<IReadOnlyList<ResourceDefinition>> LoadAsync(Guid projectId, CancellationToken token)

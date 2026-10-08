@@ -1,3 +1,4 @@
+using AI.Contracts.FileSystem;
 namespace AI.Application.Tests.Resources;
 
 using AI.Application.Chats;
@@ -24,11 +25,11 @@ public sealed class ResourceServiceTests
         var assets = new Mock<IResourceAssetService>();
         assets.Setup(service => service.ReadAsync(projectId, assetId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResourceAsset([65, 66], "text/plain"));
-        var service = new ResourceService(new Mock<IProjectService>().Object,
-            new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object,
-            new Mock<IReviewService>().Object, new ProjectPathAccess(), new Mock<ISkillCatalog>().Object,
+        var service = NewService(new Mock<IProjectService>().Object,
+            new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()), new Mock<IResourceRepository>().Object,
+            new Mock<IReviewService>().Object, new ProjectPathAccess(new SystemFileSystem(), new SystemPath()), new Mock<ISkillCatalog>().Object,
             new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object,
-            new FileExcerptReader(), assets.Object);
+            new FileExcerptReader(new SystemFileSystem(), new SystemPath()), assets.Object);
         var reference = new ChatResource(Guid.NewGuid(), ChatResourceKind.File, "note.txt", "note.txt",
             Source: ChatResourceSource.Upload, AssetId: assetId);
 
@@ -59,9 +60,9 @@ public sealed class ResourceServiceTests
                 .ReturnsAsync(project);
             var location = new Mock<IProjectStorageLocation>();
             location.SetupGet(item => item.RootDirectory).Returns(root);
-            using var repository = new JsonResourceRepository(location.Object, new PhysicalTextFileSystem());
-            var service = new ResourceService(projects.Object, new PhysicalDirectoryBrowser(), repository,
-                new Mock<IReviewService>().Object, new ProjectPathAccess(), new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
+            using var repository = new JsonResourceRepository(location.Object, new SystemFileSystem());
+            var service = NewService(projects.Object, new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()), repository,
+                new Mock<IReviewService>().Object, new ProjectPathAccess(new SystemFileSystem(), new SystemPath()), new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(new SystemFileSystem(), new SystemPath()), new Mock<IResourceAssetService>().Object);
 
             var first = await service.CreateAsync(projectId, ChatResourceKind.File, source, token);
             var second = await service.CreateAsync(projectId, ChatResourceKind.File, source, token);
@@ -99,9 +100,9 @@ public sealed class ResourceServiceTests
         var otherChatId = Guid.NewGuid();
         reviews.Setup(item => item.ListAsync(projectId, otherChatId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
-        var service = new ResourceService(new Mock<IProjectService>().Object,
-            new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object, reviews.Object, new ProjectPathAccess(),
-            new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
+        var service = NewService(new Mock<IProjectService>().Object,
+            new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()), new Mock<IResourceRepository>().Object, reviews.Object, new ProjectPathAccess(new SystemFileSystem(), new SystemPath()),
+            new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(new SystemFileSystem(), new SystemPath()), new Mock<IResourceAssetService>().Object);
         var token = TestContext.Current.CancellationToken;
 
         var validated = await service.ValidateForChatAsync(projectId, chatId,
@@ -126,9 +127,9 @@ public sealed class ResourceServiceTests
         var reviews = new Mock<IReviewService>();
         reviews.Setup(item => item.ListAsync(projectId, chatId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([review]);
-        var service = new ResourceService(new Mock<IProjectService>().Object,
-            new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object, reviews.Object, new ProjectPathAccess(),
-            new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
+        var service = NewService(new Mock<IProjectService>().Object,
+            new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()), new Mock<IResourceRepository>().Object, reviews.Object, new ProjectPathAccess(new SystemFileSystem(), new SystemPath()),
+            new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(new SystemFileSystem(), new SystemPath()), new Mock<IResourceAssetService>().Object);
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId, chatId,
             [new ChatResource(review.Id, ChatResourceKind.Review, string.Empty)],
@@ -145,9 +146,9 @@ public sealed class ResourceServiceTests
             .ReturnsAsync(Skill("project-name", "Project name", true));
         catalog.Setup(item => item.GetByIdAsync("off", projectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Skill("off", "Off", false));
-        var service = new ResourceService(new Mock<IProjectService>().Object, new PhysicalDirectoryBrowser(),
-            new Mock<IResourceRepository>().Object, new Mock<IReviewService>().Object, new ProjectPathAccess(),
-            catalog.Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
+        var service = NewService(new Mock<IProjectService>().Object, new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()),
+            new Mock<IResourceRepository>().Object, new Mock<IReviewService>().Object, new ProjectPathAccess(new SystemFileSystem(), new SystemPath()),
+            catalog.Object, new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(new SystemFileSystem(), new SystemPath()), new Mock<IResourceAssetService>().Object);
         var token = TestContext.Current.CancellationToken;
 
         var validated = await service.ValidateForChatAsync(projectId, chatId,
@@ -189,10 +190,10 @@ public sealed class ResourceServiceTests
             var projects = ProjectsWith(projectId, root);
             var location = new Mock<IProjectStorageLocation>();
             location.SetupGet(item => item.RootDirectory).Returns(root);
-            using var repository = new JsonResourceRepository(location.Object, new PhysicalTextFileSystem());
-            var service = new ResourceService(projects.Object, new PhysicalDirectoryBrowser(), repository,
-                new Mock<IReviewService>().Object, new ProjectPathAccess(), new Mock<ISkillCatalog>().Object,
-                new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
+            using var repository = new JsonResourceRepository(location.Object, new SystemFileSystem());
+            var service = NewService(projects.Object, new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()), repository,
+                new Mock<IReviewService>().Object, new ProjectPathAccess(new SystemFileSystem(), new SystemPath()), new Mock<ISkillCatalog>().Object,
+                new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(new SystemFileSystem(), new SystemPath()), new Mock<IResourceAssetService>().Object);
             var created = await service.CreateAsync(projectId, ChatResourceKind.File, source, token);
 
             var validated = await service.ValidateForChatAsync(projectId, Guid.NewGuid(),
@@ -230,11 +231,11 @@ public sealed class ResourceServiceTests
             var projects = ProjectsWith(projectId, root);
             var location = new Mock<IProjectStorageLocation>();
             location.SetupGet(item => item.RootDirectory).Returns(root);
-            using var repository = new JsonResourceRepository(location.Object, new PhysicalTextFileSystem());
-            var assets = new ResourceAssetService(location.Object, projects.Object);
-            var service = new ResourceService(projects.Object, new PhysicalDirectoryBrowser(), repository,
-                new Mock<IReviewService>().Object, new ProjectPathAccess(), new Mock<ISkillCatalog>().Object,
-                new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(), assets);
+            using var repository = new JsonResourceRepository(location.Object, new SystemFileSystem());
+            var assets = NewAssets(location.Object, projects.Object);
+            var service = NewService(projects.Object, new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()), repository,
+                new Mock<IReviewService>().Object, new ProjectPathAccess(new SystemFileSystem(), new SystemPath()), new Mock<ISkillCatalog>().Object,
+                new Mock<IChatService>().Object, new Mock<IWorkspaceDiffReader>().Object, new FileExcerptReader(new SystemFileSystem(), new SystemPath()), assets);
             var created = await service.CreateAsync(projectId, ChatResourceKind.File, source, token);
             var createdEmpty = await service.CreateAsync(projectId, ChatResourceKind.File, empty, token);
 
@@ -286,9 +287,9 @@ public sealed class ResourceServiceTests
             var diffs = new Mock<IWorkspaceDiffReader>();
             diffs.Setup(item => item.FindRepository(It.IsAny<string>())).Returns(root);
             diffs.Setup(item => item.ReadDiff(It.IsAny<string>())).Returns("diff --git a/x b/x");
-            var service = new ResourceService(projects.Object, new PhysicalDirectoryBrowser(), new Mock<IResourceRepository>().Object,
-                new Mock<IReviewService>().Object, new ProjectPathAccess(), new Mock<ISkillCatalog>().Object,
-                chats.Object, diffs.Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
+            var service = NewService(projects.Object, new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()), new Mock<IResourceRepository>().Object,
+                new Mock<IReviewService>().Object, new ProjectPathAccess(new SystemFileSystem(), new SystemPath()), new Mock<ISkillCatalog>().Object,
+                chats.Object, diffs.Object, new FileExcerptReader(new SystemFileSystem(), new SystemPath()), new Mock<IResourceAssetService>().Object);
 
             var validated = await service.ValidateForChatAsync(projectId, chatId, [
                 new ChatResource(Guid.NewGuid(), ChatResourceKind.Chat, otherChatId.ToString(), "Stale", Mention: "@chat:\"Deploy fix\""),
@@ -333,9 +334,9 @@ public sealed class ResourceServiceTests
             diffs.Setup(item => item.ChangedFiles(first)).Returns(["x.cs"]);
             diffs.Setup(item => item.ChangedFiles(second)).Returns(["y.cs", "z.cs"]);
             diffs.Setup(item => item.ChangedFiles(clean)).Returns([]);
-            var service = new ResourceService(ProjectsWith(projectId, root).Object, new PhysicalDirectoryBrowser(),
-                new Mock<IResourceRepository>().Object, new Mock<IReviewService>().Object, new ProjectPathAccess(),
-                new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, diffs.Object, new FileExcerptReader(), new Mock<IResourceAssetService>().Object);
+            var service = NewService(ProjectsWith(projectId, root).Object, new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()),
+                new Mock<IResourceRepository>().Object, new Mock<IReviewService>().Object, new ProjectPathAccess(new SystemFileSystem(), new SystemPath()),
+                new Mock<ISkillCatalog>().Object, new Mock<IChatService>().Object, diffs.Object, new FileExcerptReader(new SystemFileSystem(), new SystemPath()), new Mock<IResourceAssetService>().Object);
 
             var sources = await service.ListDiffSourcesAsync(projectId, token);
 
@@ -377,4 +378,15 @@ public sealed class ResourceServiceTests
 
     private static SkillDefinition Skill(string id, string name, bool enabled) =>
         new(id, name, "Description", "User", "---", enabled, System.Text.Json.JsonDocument.Parse("{}").RootElement);
+
+    /// <summary>Supplies the file-system contract the service gained; these tests exercise the real disk.</summary>
+    private static ResourceService NewService(IProjectService projects, IDirectoryBrowser browser,
+        IResourceRepository repository, IReviewService reviews, IProjectPathAccess access, ISkillCatalog skills,
+        IChatService chats, IWorkspaceDiffReader diffs, IFileExcerptReader excerpts, IResourceAssetService assets) =>
+        new(projects, browser, repository, reviews, access, skills, chats, diffs, excerpts, assets,
+            new SystemFileSystem());
+
+    private static ResourceAssetService NewAssets(IProjectStorageLocation location, IProjectService projects) =>
+        new(location, projects, new SystemFileSystem(), new SystemPath(),
+            new AtomicFileWriter(new SystemFileSystem()));
 }

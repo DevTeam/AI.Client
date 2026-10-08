@@ -1,32 +1,36 @@
 namespace AI.Updates;
 
+using AI.Contracts.FileSystem;
 using AI.Contracts.Updates;
 using System.Diagnostics;
 using System.Text.Json;
 
-public sealed class UpdateInstaller : IUpdateInstaller
+public sealed class UpdateInstaller(IFileSystem files) : IUpdateInstaller
 {
     public async Task LaunchAsync(UpdateState state, string directory, string package, string result, CancellationToken token)
     {
         var executable = Environment.ProcessPath ?? throw new InvalidOperationException("The application executable could not be located.");
         var installDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+        var hasCSharpTools = await files.DirectoryExistsAsync(Path.Combine(installDirectory, "mcp-csharp"), token);
+        var hasCompanionPackage = OperatingSystem.IsLinux()
+            && await files.DirectoryExistsAsync("/opt/ai-client-csharp-mcp", token);
         var plan = new InstallationPlan(Environment.ProcessId, state.Product, state.Release!.Version, package,
             state.Release.Sha256, result, executable, installDirectory, Environment.GetCommandLineArgs().Skip(1).ToArray(),
-            Directory.Exists(Path.Combine(installDirectory, "mcp-csharp")),
-            OperatingSystem.IsLinux() && Directory.Exists("/opt/ai-client-csharp-mcp") ? Path.Combine(directory, "companion.deb") : null,
+            hasCSharpTools,
+            hasCompanionPackage ? Path.Combine(directory, "companion.deb") : null,
             state.Release.CompanionSha256);
         var script = Path.Combine(directory, OperatingSystem.IsWindows() ? "install.ps1" : "install.sh");
         var resource = "AI.Updates." + Path.GetFileName(script);
         await using (var stream = typeof(UpdateInstaller).Assembly.GetManifestResourceStream(resource)
             ?? throw new InvalidOperationException("The update helper is missing."))
-        await using (var file = File.Create(script))
+        await using (var file = await files.OpenWriteAsync(script, token))
             await stream.CopyToAsync(file, token);
 
         ProcessStartInfo start;
         if (OperatingSystem.IsWindows())
         {
             var planPath = Path.Combine(directory, "plan.json");
-            await File.WriteAllTextAsync(planPath, JsonSerializer.Serialize(plan), token);
+            await files.WriteTextAsync(planPath, JsonSerializer.Serialize(plan), token);
             start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe"))
             { UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden };
             foreach (var argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-PlanPath", planPath }) start.ArgumentList.Add(argument);

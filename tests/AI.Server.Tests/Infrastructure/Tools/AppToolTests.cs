@@ -912,13 +912,13 @@ public sealed partial class AppToolTests
         var result = await AppFixture.CallAsync(session, "ask_user", new
         {
             questions = new[] { new { id = "git", text = "Choose Git changes", options = Array.Empty<object>(),
-                pickerKind = kind, repositoryPath = Path.GetTempPath(), revision = "main", multiSelect = multiple, allowOther = false } }
+                pickerKind = kind, repositoryPath = Path.GetFullPath("repository"), revision = "main", multiSelect = multiple, allowOther = false } }
         });
         result.GetProperty("answers")[0].GetProperty("values").EnumerateArray().Select(item => item.GetString())
             .ShouldBe(multiple ? ["refs/heads/Fix", "refs/heads/fix"] : ["refs/heads/Fix"]);
         var question = fixture.Broker.LastRequest!.Questions[0];
         question.PickerKind.ShouldBe(kind);
-        question.RepositoryPath.ShouldBe(Path.GetTempPath());
+        question.RepositoryPath.ShouldBe(Path.GetFullPath("repository"));
         question.Revision.ShouldBe("main");
         result.GetProperty("guidance").GetString().ShouldBe("Proceed on these answers.");
     }
@@ -934,7 +934,7 @@ public sealed partial class AppToolTests
         var result = await AppFixture.CallAsync(session, "ask_user", new
         {
             questions = new[] { new { id = "git", text = "Choose", options = Array.Empty<object>(), pickerKind = kind,
-                repositoryPath = pathKind is null ? "relative-path" : Path.GetTempPath(), pathKind, allowOther = false } }
+                repositoryPath = pathKind is null ? "relative-path" : Path.GetFullPath("repository"), pathKind, allowOther = false } }
         }, expectError: true);
         result.GetProperty("outcome").GetString().ShouldBe("invalid");
         fixture.Broker.LastRequest.ShouldBeNull();

@@ -1,5 +1,6 @@
 namespace AI.Updates;
 
+using AI.Contracts.FileSystem;
 using AI.Contracts.Updates;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -9,6 +10,8 @@ public sealed class UpdateManager : IUpdateManager
 {
     private readonly HttpClient _http;
     private readonly IUpdateFeed _feed;
+    private readonly IFileSystem _files;
+    private readonly IAtomicFileWriter _atomic;
     private readonly SemaphoreSlim _gate = new(1);
     private readonly string _directory;
     private readonly string _stateFile;
@@ -23,10 +26,13 @@ public sealed class UpdateManager : IUpdateManager
     private FileStream? _owner;
     private volatile UpdateState _state;
 
-    public UpdateManager(string product, string dataDirectory, HttpClient http, IUpdateFeed feed, IUpdateInstaller installer, InstalledUpdateProduct installation,
+    public UpdateManager(string product, string dataDirectory, HttpClient http, IFileSystem files,
+        IAtomicFileWriter atomic, IUpdateFeed feed, IUpdateInstaller installer, InstalledUpdateProduct installation,
         Func<CancellationToken, Task<bool>> tryEnterMaintenance, Action leaveMaintenance, Action shutdown)
     {
         _http = http;
+        _files = files;
+        _atomic = atomic;
         _feed = feed;
         _tryEnterMaintenance = tryEnterMaintenance;
         _leaveMaintenance = leaveMaintenance;
@@ -39,21 +45,24 @@ public sealed class UpdateManager : IUpdateManager
         _installer = installer;
         var supported = installation.Supported;
         _state = new UpdateState(product, version, runtime, new UpdatePreferences(InstallAutomatically: product == "Host"), Supported: supported);
-        if (File.Exists(_stateFile))
+        // Startup reads the saved state once, before anything is served, so a bounded wait on the
+        // contract is simpler than making the whole graph asynchronous for this one call. An absent
+        // file reads as null rather than throwing, which is nothing saved: the defaults stand.
+        if (ReadText(_stateFile) is { } savedJson)
         {
             try
             {
-                var saved = JsonSerializer.Deserialize<UpdateState>(File.ReadAllText(_stateFile));
+                var saved = JsonSerializer.Deserialize<UpdateState>(savedJson);
                 if (saved is not null)
                 {
                     _state = _state with { Preferences = saved.Preferences, LastChecked = saved.LastChecked,
                         InstalledVersion = saved.InstalledVersion == version ? saved.InstalledVersion : null,
                         FailedVersion = saved.FailedVersion, Error = saved.FailedVersion is null ? null : saved.Error };
                     if (saved.Release is { } release && UpdateVersion.Parse(release.Version)?.CompareTo(UpdateVersion.Parse(version)) > 0)
-                        _state = _state with { Release = release, Phase = File.Exists(PackagePath(release)) ? UpdatePhase.Ready : UpdatePhase.Available };
+                        _state = _state with { Release = release, Phase = Exists(PackagePath(release)) ? UpdatePhase.Ready : UpdatePhase.Available };
                     if (_state.Release?.Version == saved.FailedVersion && saved.FailedVersion is not null)
                         _state = _state with { Phase = UpdatePhase.Failed };
-                    if (saved.Phase == UpdatePhase.Installing && !File.Exists(_resultFile) && saved.Release?.Version != version)
+                    if (saved.Phase == UpdatePhase.Installing && !Exists(_resultFile) && saved.Release?.Version != version)
                         _state = _state with { Error = "The previous update did not complete. You can retry.", Phase = UpdatePhase.Failed };
                 }
             }
@@ -68,7 +77,7 @@ public sealed class UpdateManager : IUpdateManager
 
     public async Task RunAsync(CancellationToken token)
     {
-        Directory.CreateDirectory(_directory);
+        await _files.CreateDirectoryAsync(_directory, ownerOnly: false, token);
         try { _owner = new FileStream(Path.Combine(_directory, "owner.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
         catch (IOException) { _state = _state with { Supported = false, Error = "Another instance manages updates for this product." }; return; }
         try
@@ -153,7 +162,8 @@ public sealed class UpdateManager : IUpdateManager
         timeout.CancelAfter(TimeSpan.FromSeconds(60));
         var (release, stable) = await _feed.FindAsync(_state.Product, _state.Runtime, _state.CurrentVersion, _state.Preferences.Channel, timeout.Token);
         _state = _state with { Release = release, StableAvailable = stable, LastChecked = DateTimeOffset.UtcNow,
-            Phase = release is null ? UpdatePhase.Idle : File.Exists(PackagePath(release)) ? UpdatePhase.Ready : UpdatePhase.Available };
+            Phase = release is null ? UpdatePhase.Idle
+                : await _files.FileExistsAsync(PackagePath(release), token) ? UpdatePhase.Ready : UpdatePhase.Available };
         if (release is not null && release.Version == _state.FailedVersion)
             _state = _state with { Phase = UpdatePhase.Failed, Error = previousError };
         else _state = _state with { FailedVersion = null };
@@ -167,7 +177,7 @@ public sealed class UpdateManager : IUpdateManager
         var release = _state.Release ?? throw new InvalidOperationException("Check for a new version first.");
         _state = _state with { Phase = UpdatePhase.Downloading, Error = null };
         await DownloadFileAsync(release.PackageUrl, release.Sha256, PackagePath(release), token);
-        if (OperatingSystem.IsLinux() && Directory.Exists("/opt/ai-client-csharp-mcp"))
+        if (OperatingSystem.IsLinux() && await _files.DirectoryExistsAsync("/opt/ai-client-csharp-mcp", token))
         {
             if (release.CompanionUrl is null || release.CompanionSha256 is null)
                 throw new InvalidOperationException("This release has no update for the installed C# scripting tools.");
@@ -179,20 +189,21 @@ public sealed class UpdateManager : IUpdateManager
 
     private async Task DownloadFileAsync(string url, string digest, string path, CancellationToken token)
     {
-        if (File.Exists(path) && await VerifyAsync(path, digest, token)) return;
+        if (await _files.FileExistsAsync(path, token) && await VerifyAsync(path, digest, token)) return;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromMinutes(30));
         using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         response.EnsureSuccessStatusCode();
-        await using (var file = new FileStream(path + ".partial", FileMode.Create, FileAccess.Write, FileShare.None, 81920, true))
+        await using (var file = await _files.OpenWriteAsync(path + ".partial", timeout.Token))
             await response.Content.CopyToAsync(file, timeout.Token);
         if (!await VerifyAsync(path + ".partial", digest, token)) throw new InvalidOperationException("The update package failed its SHA-256 check.");
-        File.Move(path + ".partial", path, true);
+        await _files.MoveAsync(path + ".partial", path, overwrite: true, token);
     }
 
-    private static async Task<bool> VerifyAsync(string path, string digest, CancellationToken token)
+    private async Task<bool> VerifyAsync(string path, string digest, CancellationToken token)
     {
-        await using var file = File.OpenRead(path);
+        await using var file = await _files.OpenReadAsync(path, token);
+        if (file is null) return false;
         return string.Equals(Convert.ToHexString(await SHA256.HashDataAsync(file, token)), digest, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -216,10 +227,11 @@ public sealed class UpdateManager : IUpdateManager
 
     private async Task ReadResultAsync(CancellationToken token)
     {
-        if (!File.Exists(_resultFile)) return;
+        if (!await _files.FileExistsAsync(_resultFile, token)) return;
         try
         {
-            var result = JsonSerializer.Deserialize<UpdateResult>(await File.ReadAllTextAsync(_resultFile, token));
+            var content = await _files.ReadTextAsync(_resultFile, token);
+            var result = content is null ? null : JsonSerializer.Deserialize<UpdateResult>(content);
             if (result is null) return;
             if (_maintenance) { _leaveMaintenance(); _maintenance = false; }
             var successful = result.Success && result.Version == _state.CurrentVersion;
@@ -228,7 +240,7 @@ public sealed class UpdateManager : IUpdateManager
                 Phase = successful ? UpdatePhase.Idle : UpdatePhase.Failed, Release = successful ? null : _state.Release,
                 FailedVersion = successful ? null : result.Version };
             await SaveAsync(token);
-            File.Delete(_resultFile);
+            await _files.DeleteFileAsync(_resultFile, token);
         }
         catch (JsonException) { /* The helper may still be writing its result. */ }
     }
@@ -244,10 +256,20 @@ public sealed class UpdateManager : IUpdateManager
 
     private async Task SaveAsync(CancellationToken token)
     {
-        Directory.CreateDirectory(_directory);
-        await File.WriteAllTextAsync(_stateFile + ".tmp", JsonSerializer.Serialize(_state), token);
-        File.Move(_stateFile + ".tmp", _stateFile, true);
+        await _files.CreateDirectoryAsync(_directory, ownerOnly: false, token);
+        // The atomic writer replaces the state in one step, which is what the temporary sibling and
+        // its move used to spell out here.
+        await _atomic.WriteTextAsync(_stateFile, JsonSerializer.Serialize(_state), token);
     }
+
+    private bool Exists(string path) => RunSynchronously(() => _files.FileExistsAsync(path, CancellationToken.None));
+
+    private string? ReadText(string path) => RunSynchronously(() => _files.ReadTextAsync(path, CancellationToken.None));
+
+    // The constructor also runs on the desktop UI thread. Start async file operations on the pool
+    // so their continuations do not need the UI context while it waits for the saved state.
+    private static T RunSynchronously<T>(Func<Task<T>> operation) =>
+        Task.Run(operation).GetAwaiter().GetResult();
 
     public ValueTask DisposeAsync()
     {

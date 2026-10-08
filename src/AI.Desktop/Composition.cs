@@ -41,6 +41,7 @@ internal sealed partial class UiComposition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
+            .DependsOn("AI.Contracts.Composition")
             .Hint(Hint.Comments, "Off")
             .Hint(Hint.Resolve, "Off")
             .Hint(Hint.ThreadSafe, "Off")

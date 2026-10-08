@@ -3,6 +3,7 @@ namespace AI.Infrastructure.Workspace;
 using System.Collections.Concurrent;
 using AI.Application.Projects;
 using AI.Application.Resources;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Projects;
 using AI.Contracts.Resources;
 
@@ -17,7 +18,12 @@ using AI.Contracts.Resources;
 /// </list>
 /// An index older than <see cref="IndexLifetime"/> keeps answering while its replacement is built.
 /// </summary>
-public sealed class WorkspaceFileSearch(IProjectService projects, IProjectPathAccess access, IClock clock) : IWorkspaceFileSearch
+public sealed class WorkspaceFileSearch(
+    IProjectService projects,
+    IProjectPathAccess access,
+    IClock clock,
+    IFileSystem files,
+    IPath paths) : IWorkspaceFileSearch
 {
     /// <summary>Build output, dependencies and tool state: never what a person means by a name.</summary>
     private static readonly HashSet<string> SkippedDirectories = new(StringComparer.OrdinalIgnoreCase)
@@ -28,13 +34,21 @@ public sealed class WorkspaceFileSearch(IProjectService projects, IProjectPathAc
     private const int EntryLimit = 100_000;
     private const int PublishEvery = 4_000;
     private static readonly TimeSpan IndexLifetime = TimeSpan.FromSeconds(30);
-    private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
-        ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-    private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
-        ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-    private static readonly EnumerationOptions ListingOptions = new() { IgnoreInaccessible = true, AttributesToSkip = FileAttributes.System };
 
-    private readonly ConcurrentDictionary<string, Index> _indexes = new(PathComparer);
+    /// <summary>
+    /// One directory's listing: system entries are left out, and one entry nobody may read does not
+    /// cost the caller every other one. Both rules come from the enumeration contract rather than
+    /// from a hand-kept copy of the platform's enumeration defaults.
+    /// </summary>
+    private static readonly FileEnumerationOptions ListingOptions =
+        new(SkipInaccessible: true, AttributesToSkip: FileAttributes.System);
+
+    private readonly StringComparison _comparison = paths.Comparison;
+    private readonly StringComparer _comparer = StringComparer.FromComparison(paths.Comparison);
+    private readonly IFileSystem _files = files;
+    private readonly IPath _paths = paths;
+    private readonly ConcurrentDictionary<string, Index> _indexes =
+        new(StringComparer.FromComparison(paths.Comparison));
 
     public async Task Warm(Guid projectId, CancellationToken cancellationToken)
     {
@@ -75,7 +89,7 @@ public sealed class WorkspaceFileSearch(IProjectService projects, IProjectPathAc
             .ThenBy(item => item.Suggestion.RelativePath.Count(character => character == '/'))
             .ThenBy(item => item.Suggestion.RelativePath.Length)
             .ThenBy(item => item.Suggestion.RelativePath, StringComparer.OrdinalIgnoreCase)
-            .DistinctBy(item => item.Suggestion.Path, PathComparer)
+            .DistinctBy(item => item.Suggestion.Path, _comparer)
             .Take(limit)
             .Select(item => item.Suggestion)
             .ToArray();
@@ -90,7 +104,8 @@ public sealed class WorkspaceFileSearch(IProjectService projects, IProjectPathAc
             try
             {
                 var path = access.ResolveLinks(grant.CanonicalRoot);
-                if (Directory.Exists(path)) roots.Add(new Root(path, grant.DisplayName, grant.Recursive));
+                if (_files.DirectoryExistsAsync(path, CancellationToken.None).GetAwaiter().GetResult())
+                    roots.Add(new Root(path, grant.DisplayName, grant.Recursive));
             }
             catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException)
             {
@@ -124,27 +139,32 @@ public sealed class WorkspaceFileSearch(IProjectService projects, IProjectPathAc
     /// <summary>The children of one directory under a root, filtered by the start of <paramref name="name"/>.</summary>
     private List<(ResourceSuggestion, int)> List(ProjectDetails project, Root root, string directory, string prefix, string name)
     {
-        var full = Path.GetFullPath(directory);
+        var full = _paths.GetFullPath(directory);
         // A ".." in what was typed must not climb out of the directory the project may read.
-        if (!Inside(full, root.Path) || !Directory.Exists(full) || !root.Recursive && !string.Equals(full, root.Path, PathComparison))
+        if (!_paths.IsInside(full, root.Path, recursive: true)
+            || !_files.DirectoryExistsAsync(full, CancellationToken.None).GetAwaiter().GetResult()
+            || !root.Recursive && !string.Equals(full, root.Path, _comparison))
             return [];
-        FileSystemInfo[] children;
-        try { children = new DirectoryInfo(full).EnumerateFileSystemInfos("*", ListingOptions).ToArray(); }
+        IReadOnlyList<FileSystemEntry> children;
+        try
+        {
+            children = _files.ListEntriesAsync(full, ListingOptions, CancellationToken.None).GetAwaiter().GetResult();
+        }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return []; }
         var result = new List<(ResourceSuggestion, int)>();
         var rootAccess = access.AccessOf(project, root.Path);
         foreach (var child in children)
         {
-            var isDirectory = child is DirectoryInfo;
+            var isDirectory = child.IsDirectory;
             if (isDirectory && SkippedDirectories.Contains(child.Name)) continue;
             int rank;
             if (name.Length == 0) rank = isDirectory ? 0 : 1;
             else if (child.Name.StartsWith(name, StringComparison.OrdinalIgnoreCase)) rank = isDirectory ? 0 : 1;
             else if (child.Name.Contains(name, StringComparison.OrdinalIgnoreCase)) rank = 2;
             else continue;
-            var relative = prefix + Path.GetRelativePath(root.Path, child.FullName).Replace(Path.DirectorySeparatorChar, '/');
+            var relative = prefix + _paths.GetRelativePath(root.Path, child.Path).Replace(_paths.DirectorySeparator, '/');
             result.Add((new ResourceSuggestion(isDirectory ? ChatResourceKind.Directory : ChatResourceKind.File,
-                child.FullName, relative, rootAccess), rank));
+                child.Path, relative, rootAccess), rank));
         }
         return result;
     }
@@ -164,7 +184,7 @@ public sealed class WorkspaceFileSearch(IProjectService projects, IProjectPathAc
             {
                 if (Rank(entry, query) is not { } rank) continue;
                 found.Add((new ResourceSuggestion(entry.IsDirectory ? ChatResourceKind.Directory : ChatResourceKind.File,
-                    Path.Combine(root.Path, entry.RelativePath.Replace('/', Path.DirectorySeparatorChar)), entry.RelativePath,
+                    _paths.Combine(root.Path, entry.RelativePath.Replace('/', _paths.DirectorySeparator)), entry.RelativePath,
                     rootAccess), rank));
             }
         }
@@ -175,17 +195,17 @@ public sealed class WorkspaceFileSearch(IProjectService projects, IProjectPathAc
     /// Lower is better; null leaves the entry out. A query with a slash is a path: it matches from
     /// the start of the relative path, then from the start of any segment. Otherwise it is a name.
     /// </summary>
-    private static int? Rank(Entry entry, string query)
+    private int? Rank(Entry entry, string query)
     {
         var path = entry.RelativePath;
         if (query.Contains('/'))
         {
-            if (path.StartsWith(query, PathComparison)) return 0;
-            if (path.Contains("/" + query, PathComparison)) return 1;
-            return path.Contains(query, PathComparison) ? 2 : null;
+            if (path.StartsWith(query, _comparison)) return 0;
+            if (path.Contains("/" + query, _comparison)) return 1;
+            return path.Contains(query, _comparison) ? 2 : null;
         }
         var name = entry.Name;
-        if (name.Equals(query, PathComparison)) return 0;
+        if (name.Equals(query, _comparison)) return 0;
         if (name.StartsWith(query, StringComparison.OrdinalIgnoreCase)) return 1;
         for (var at = name.IndexOf(query, StringComparison.OrdinalIgnoreCase); at > 0;
              at = name.IndexOf(query, at + 1, StringComparison.OrdinalIgnoreCase))
@@ -215,17 +235,13 @@ public sealed class WorkspaceFileSearch(IProjectService projects, IProjectPathAc
     {
         var key = $"{root.Recursive}|{root.Path}";
         var now = clock.UtcNow;
-        var current = _indexes.GetOrAdd(key, _ => Index.Start(root, now, null, _indexes, key));
+        var current = _indexes.GetOrAdd(key, _ => Index.Start(root, now, null, _indexes, key, _files, _paths));
         if (current.IsStale(now, IndexLifetime)) current.Refresh(root, now, _indexes, key);
         return current;
     }
 
-    private static string Combine(string root, string relative) =>
-        relative.Length == 0 ? root : Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
-
-    private static bool Inside(string path, string root) =>
-        string.Equals(path, root, PathComparison)
-        || path.StartsWith(Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar, PathComparison);
+    private string Combine(string root, string relative) =>
+        relative.Length == 0 ? root : _paths.Combine(root, relative.Replace('/', _paths.DirectorySeparator));
 
     private sealed record Root(string Path, string Name, bool Recursive);
 
@@ -237,11 +253,18 @@ public sealed class WorkspaceFileSearch(IProjectService projects, IProjectPathAc
     /// </summary>
     private sealed class Index
     {
+        private readonly IFileSystem _files;
+        private readonly IPath _paths;
         private Entry[] _published = [];
         private volatile bool _complete;
         private int _refreshing;
 
-        private Index(DateTimeOffset startedAt) => StartedAt = startedAt;
+        private Index(DateTimeOffset startedAt, IFileSystem files, IPath paths)
+        {
+            StartedAt = startedAt;
+            _files = files;
+            _paths = paths;
+        }
 
         private DateTimeOffset StartedAt { get; }
 
@@ -255,9 +278,9 @@ public sealed class WorkspaceFileSearch(IProjectService projects, IProjectPathAc
         public bool IsStale(DateTimeOffset now, TimeSpan lifetime) => _complete && now - StartedAt >= lifetime;
 
         public static Index Start(Root root, DateTimeOffset now, Index? previous,
-            ConcurrentDictionary<string, Index> indexes, string key)
+            ConcurrentDictionary<string, Index> indexes, string key, IFileSystem files, IPath paths)
         {
-            var index = new Index(now);
+            var index = new Index(now, files, paths);
             _ = Task.Run(() =>
             {
                 try { index.Walk(root); }
@@ -274,7 +297,7 @@ public sealed class WorkspaceFileSearch(IProjectService projects, IProjectPathAc
 
         public void Refresh(Root root, DateTimeOffset now, ConcurrentDictionary<string, Index> indexes, string key)
         {
-            if (Interlocked.Exchange(ref _refreshing, 1) == 0) Start(root, now, this, indexes, key);
+            if (Interlocked.Exchange(ref _refreshing, 1) == 0) Start(root, now, this, indexes, key, _files, _paths);
         }
 
         /// <summary>Breadth first, so a directory too large to list whole still offers its upper levels.</summary>
@@ -286,24 +309,52 @@ public sealed class WorkspaceFileSearch(IProjectService projects, IProjectPathAc
             var published = 0;
             while (pending.TryDequeue(out var current) && entries.Count < EntryLimit)
             {
-                FileSystemInfo[] children;
-                try { children = new DirectoryInfo(current.Directory).EnumerateFileSystemInfos("*", ListingOptions).ToArray(); }
+                IReadOnlyList<FileSystemEntry> children;
+                try
+                {
+                    children = _files.ListEntriesAsync(current.Directory, ListingOptions, CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException) { continue; }
                 foreach (var child in children)
                 {
                     var relative = current.Relative.Length == 0 ? child.Name : $"{current.Relative}/{child.Name}";
-                    var isDirectory = child is DirectoryInfo;
+                    var isDirectory = child.IsDirectory;
                     if (isDirectory && SkippedDirectories.Contains(child.Name)) continue;
                     entries.Add(new Entry(child.Name, relative, isDirectory, current.Depth));
                     // A link is listed but not followed: it can lead outside the grant, or in a circle.
-                    if (isDirectory && root.Recursive && child.LinkTarget is null)
-                        pending.Enqueue((child.FullName, relative, current.Depth + 1));
-                }
+                    if (isDirectory && root.Recursive && !IsLink(child))
+                        pending.Enqueue((child.Path, relative, current.Depth + 1));                }
                 if (entries.Count - published < PublishEvery) continue;
                 Volatile.Write(ref _published, entries.ToArray());
                 published = entries.Count;
             }
             Volatile.Write(ref _published, entries.ToArray());
+        }
+
+        /// <summary>
+        /// Whether the entry is a link this walk must not enter. The reparse attribute is only the
+        /// cheap pre-filter: a Windows cloud-sync placeholder carries it with nothing to resolve,
+        /// and skipping on the attribute alone would stop descending into directories the product
+        /// walked before. The decision is the resolved path differing from the entry's own
+        /// canonical one, and the walk is synchronous, so the completed task is bridged here.
+        /// </summary>
+        private bool IsLink(FileSystemEntry entry)
+        {
+            if ((entry.Attributes & FileAttributes.ReparsePoint) == 0) return false;
+            try
+            {
+                var own = _paths.TrimEndingDirectorySeparator(_paths.GetFullPath(entry.Path));
+                var resolved = _paths.TrimEndingDirectorySeparator(
+                    _files.ResolveLinkTargetAsync(entry.Path, CancellationToken.None).GetAwaiter().GetResult());
+                return !string.Equals(resolved, own, _paths.Comparison);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException
+                                              or ArgumentException or NotSupportedException)
+            {
+                // A path that cannot be resolved is treated as one this walk must not enter.
+                return true;
+            }
         }
     }
 }

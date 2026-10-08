@@ -1,11 +1,12 @@
 // ReSharper disable UseCollectionExpression
 namespace AI.Infrastructure.Storage;
 
+using AI.Contracts.FileSystem;
 using Application.Runs;
 using Domain.Runs;
 using System.Text.Json;
 
-public sealed class JsonChatRunRepository(ITextFileSystem fileSystem, IChatRunStoragePaths paths) : IPersistentChatRunRepository, IDisposable
+public sealed class JsonChatRunRepository(IFileSystem fileSystem, IChatRunStoragePaths paths) : IPersistentChatRunRepository, IDisposable
 {
     public void Dispose() => _writes.Dispose();
 
@@ -63,7 +64,7 @@ public sealed class JsonChatRunRepository(ITextFileSystem fileSystem, IChatRunSt
                 var state = json is null ? null : Deserialize(json);
                 if (state is not null && retainedBranchIds.Contains(state.BranchId)) continue;
             }
-            await fileSystem.DeleteAsync(file, cancellationToken);
+            await fileSystem.DeleteFileAsync(file, cancellationToken);
         }
     }
 

@@ -3,14 +3,17 @@ namespace AI.Mcp.BuiltIn.Archives;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.IO.Compression;
+using AI.Contracts.FileSystem;
 using Files;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class ZipCreateTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class ZipCreateTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files, IPath paths) : IToolFactory
 {
+    private readonly IPath _paths = paths;
+
     public McpServerTool Create() => McpServerTool.Create(
         CreateAsync,
         new McpServerToolCreateOptions
@@ -26,7 +29,7 @@ public sealed class ZipCreateTool(IPathGuard guard, IBuiltInToolReply reply) : I
 
     [McpServerTool(Name = "zip_create", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(ZipCreateResult))]
-    private Task<CallToolResult> CreateAsync(
+    private async Task<CallToolResult> CreateAsync(
         [Description("Absolute path of the zip archive to create. Its parent directory must already exist.")] [MaxLength(4096)] string path,
         [Description("Absolute paths of the files and directories to pack. A directory is packed recursively.")]
         [MinLength(1)] [MaxLength(ArchiveLimits.Sources)] string[] paths,
@@ -43,57 +46,59 @@ public sealed class ZipCreateTool(IPathGuard guard, IBuiltInToolReply reply) : I
         }
         catch (GrantException error)
         {
-            return Task.FromResult(reply.Reply(new ZipCreateResult(path, 0, 0, 0, false, error.Message), true));
+            return reply.Reply(new ZipCreateResult(path, 0, 0, 0, false, error.Message), true);
         }
 
-        if (Directory.Exists(resolved))
+        if (await files.DirectoryExistsAsync(resolved, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new ZipCreateResult(resolved, 0, 0, 0, false, "Path is a directory."), true));
+            return reply.Reply(new ZipCreateResult(resolved, 0, 0, 0, false, "Path is a directory."), true);
         }
 
-        var parent = Path.GetDirectoryName(resolved);
-        if (string.IsNullOrEmpty(parent) || !Directory.Exists(parent))
+        var parent = _paths.GetDirectoryName(resolved);
+        if (string.IsNullOrEmpty(parent) || !await files.DirectoryExistsAsync(parent, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new ZipCreateResult(resolved, 0, 0, 0, false, "Parent directory does not exist."), true));
+            return reply.Reply(new ZipCreateResult(resolved, 0, 0, 0, false, "Parent directory does not exist."), true);
         }
 
-        var exists = File.Exists(resolved);
+        var exists = await files.FileExistsAsync(resolved, cancellationToken);
         if (exists && !overwrite)
         {
-            return Task.FromResult(reply.Reply(new ZipCreateResult(resolved, 0, 0, 0, false,
-                "Archive already exists. Pass overwrite: true to replace it."), true));
+            return reply.Reply(new ZipCreateResult(resolved, 0, 0, 0, false,
+                "Archive already exists. Pass overwrite: true to replace it."), true);
         }
 
         List<PackEntry> entries;
         try
         {
-            entries = Collect(paths, excludeDefaults, cancellationToken);
+            entries = await Collect(paths, excludeDefaults, cancellationToken);
         }
         catch (GrantException error)
         {
-            return Task.FromResult(reply.Reply(new ZipCreateResult(resolved, 0, 0, 0, exists, error.Message), true));
+            return reply.Reply(new ZipCreateResult(resolved, 0, 0, 0, exists, error.Message), true);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return Task.FromResult(reply.Reply(new ZipCreateResult(resolved, 0, 0, 0, exists, error.Message), true));
+            return reply.Reply(new ZipCreateResult(resolved, 0, 0, 0, exists, error.Message), true);
         }
 
         if (entries.Count == 0)
         {
-            return Task.FromResult(reply.Reply(new ZipCreateResult(resolved, 0, 0, 0, exists,
-                "None of the given paths contains a file to pack."), true));
+            return reply.Reply(new ZipCreateResult(resolved, 0, 0, 0, exists,
+                "None of the given paths contains a file to pack."), true);
         }
 
         var total = entries.Sum(entry => entry.Length);
         if (total > ArchiveLimits.TransferBytes)
         {
-            return Task.FromResult(reply.Reply(new ZipCreateResult(resolved, 0, total, 0, exists,
-                $"{total} bytes exceed the packing limit of {ArchiveLimits.TransferBytes} bytes. Pack a part of the paths instead."), true));
+            return reply.Reply(new ZipCreateResult(resolved, 0, total, 0, exists,
+                $"{total} bytes exceed the packing limit of {ArchiveLimits.TransferBytes} bytes. Pack a part of the paths instead."), true);
         }
 
         // Everything is written to a temporary sibling and moved into place at the end: a failure
-        // half way through then leaves neither a corrupt archive nor a destroyed previous one.
-        var temporary = Path.Combine(parent, Path.GetFileName(resolved) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+        // half way through then leaves neither a corrupt archive nor a destroyed previous one. The
+        // final move relies on the contract's replace semantics, which is what lets it succeed on
+        // Windows while something still holds the old archive open.
+        var temporary = _paths.Combine(parent, _paths.GetFileName(resolved) + "." + Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
             using (var archive = ZipFile.Open(temporary, ZipArchiveMode.Create))
@@ -105,17 +110,17 @@ public sealed class ZipCreateTool(IPathGuard guard, IBuiltInToolReply reply) : I
                 }
             }
 
-            File.Move(temporary, resolved, overwrite: true);
-            return Task.FromResult(reply.Reply(new ZipCreateResult(resolved, entries.Count, total,
-                new FileInfo(resolved).Length, exists, null)));
+            await files.MoveAsync(temporary, resolved, overwrite: true, cancellationToken);
+            var written = await files.GetEntryAsync(resolved, cancellationToken);
+            return reply.Reply(new ZipCreateResult(resolved, entries.Count, total, written?.Length ?? 0, exists, null));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
         {
-            return Task.FromResult(reply.Reply(new ZipCreateResult(resolved, 0, total, 0, exists, error.Message), true));
+            return reply.Reply(new ZipCreateResult(resolved, 0, total, 0, exists, error.Message), true);
         }
         finally
         {
-            TryDelete(temporary);
+            await TryDeleteAsync(temporary, cancellationToken);
         }
     }
 
@@ -124,55 +129,64 @@ public sealed class ZipCreateTool(IPathGuard guard, IBuiltInToolReply reply) : I
     /// is checked against the grants here rather than trusted, including each file found under a
     /// directory, because a directory grant is what decides what may leave the machine.
     /// </summary>
-    private List<PackEntry> Collect(string[] paths, bool excludeDefaults, CancellationToken cancellationToken)
+    private async Task<List<PackEntry>> Collect(string[] paths, bool excludeDefaults, CancellationToken cancellationToken)
     {
         var entries = new List<PackEntry>();
-        var taken = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var taken = new HashSet<string>(_paths.IsCaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase);
         foreach (var path in paths)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var resolved = guard.Resolve(path, GrantCapability.Read);
-            if (File.Exists(resolved))
+            if (await files.FileExistsAsync(resolved, cancellationToken))
             {
-                Add(entries, taken, resolved, Path.GetFileName(resolved));
+                await AddAsync(entries, taken, resolved, _paths.GetFileName(resolved), cancellationToken);
                 continue;
             }
 
-            if (!Directory.Exists(resolved))
+            if (!await files.DirectoryExistsAsync(resolved, cancellationToken))
             {
                 throw new GrantException($"Path does not exist: {resolved}");
             }
 
-            var prefix = Path.GetFileName(resolved.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            var options = new EnumerationOptions
-            {
-                RecurseSubdirectories = true,
-                // Links are not followed: a pack should not be able to walk out of a granted
-                // directory through a junction, nor spin on a cycle.
-                AttributesToSkip = FileAttributes.ReparsePoint,
-                IgnoreInaccessible = true,
-            };
-            foreach (var file in Directory.EnumerateFiles(resolved, "*", options))
+            var prefix = _paths.GetFileName(_paths.TrimEndingDirectorySeparator(resolved));
+            // Links are not followed: a pack should not be able to walk out of a granted directory
+            // through a junction, nor spin on a cycle. The options say so explicitly, the same way
+            // the file tools do, instead of relying on the platform's enumeration defaults.
+            var options = new FileEnumerationOptions(
+                Recursive: true,
+                SearchPattern: "*",
+                SkipInaccessible: true,
+                AttributesToSkip: FileAttributes.ReparsePoint);
+            foreach (var entry in await files.ListEntriesAsync(resolved, options, cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var relative = Path.GetRelativePath(resolved, file);
+                if (entry.IsDirectory)
+                {
+                    continue;
+                }
+
+                var relative = _paths.GetRelativePath(resolved, entry.Path);
                 if (excludeDefaults && IsExcluded(relative)) continue;
                 var name = prefix.Length == 0 ? relative : prefix + "/" + relative;
-                Add(entries, taken, guard.Resolve(file, GrantCapability.Read), name.Replace('\\', '/'));
+                await AddAsync(entries, taken, guard.Resolve(entry.Path, GrantCapability.Read),
+                    name.Replace('\\', '/'), cancellationToken);
             }
         }
 
         return entries;
     }
 
-    private static void Add(List<PackEntry> entries, HashSet<string> taken, string source, string name)
+    private async Task AddAsync(
+        List<PackEntry> entries, HashSet<string> taken, string source, string name, CancellationToken cancellationToken)
     {
         if (!taken.Add(name))
         {
             throw new GrantException($"Two paths would be packed as the same entry: {name}");
         }
 
-        entries.Add(new PackEntry(source, name, new FileInfo(source).Length));
+        var entry = await files.GetEntryAsync(source, cancellationToken)
+                    ?? throw new GrantException($"Path does not exist: {source}");
+        entries.Add(new PackEntry(source, name, entry.Length));
     }
 
     /// <summary>True when any directory of the relative path is one the file tools skip by default.</summary>
@@ -184,11 +198,11 @@ public sealed class ZipCreateTool(IPathGuard guard, IBuiltInToolReply reply) : I
         return false;
     }
 
-    private static void TryDelete(string path)
+    private async Task TryDeleteAsync(string path, CancellationToken cancellationToken)
     {
         try
         {
-            if (File.Exists(path)) File.Delete(path);
+            await files.DeleteFileAsync(path, cancellationToken);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {

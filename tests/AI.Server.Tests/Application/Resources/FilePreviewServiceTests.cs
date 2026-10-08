@@ -1,3 +1,4 @@
+using AI.Contracts.FileSystem;
 namespace AI.Application.Tests.Resources;
 
 using AI.Application.Projects;
@@ -142,13 +143,18 @@ public sealed class FilePreviewServiceTests
                 [new DirectoryGrantSettings(Guid.NewGuid(), "Files", Root, true, ["read"])], [], []);
             var projects = new Mock<IProjectService>();
             projects.Setup(service => service.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(() => Project);
-            var access = new ProjectPathAccess();
-            var text = new FilePreviewTextReader();
-            var formats = new FilePreviewFormats([new DirectoryFilePreviewFormat(access), new ArchiveFilePreviewFormat(),
+            var access = new ProjectPathAccess(new SystemFileSystem(), new SystemPath());
+            var text = new FilePreviewTextReader(new SystemFileSystem());
+            var formats = new FilePreviewFormats([new DirectoryFilePreviewFormat(access, new SystemFileSystem()), new ArchiveFilePreviewFormat(),
                 new MediaFilePreviewFormat(), new MarkupFilePreviewFormat(text)], new TextFilePreviewFormat(text));
-            Service = new FilePreviewService(projects.Object, new WorkspacePathResolver(projects.Object, new PhysicalDirectoryBrowser(), access),
+            Service = NewPreviewService(projects.Object, new WorkspacePathResolver(projects.Object, new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()), access),
                 access, formats, text);
         }
         public void Dispose() => Directory.Delete(Root, true);
+
+        /// <summary>Supplies the file-system contract the service gained; this fixture runs on the real disk.</summary>
+        private static FilePreviewService NewPreviewService(IProjectService projects,
+            IWorkspacePathResolver resolver, IProjectPathAccess access, IFilePreviewFormats formats,
+            IFilePreviewTextReader text) => new(projects, resolver, access, formats, text, new SystemFileSystem());
     }
 }

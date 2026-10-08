@@ -1,3 +1,4 @@
+using AI.Contracts.FileSystem;
 namespace AI.Infrastructure.Tests.Tools;
 
 using AI.Application.Settings;
@@ -27,7 +28,7 @@ public sealed class ExternalToolSessionTests
     public async Task DiscoveryEndpointUsesUnsavedConfigurationWithoutSavingOrCallingTools()
     {
         var repository = new Mock<IGlobalSettingsRepository>(MockBehavior.Strict);
-        var external = new ExternalToolSessionFactory(Mock.Of<IGlobalSecretStore>(), new ToolResultModelProjector());
+        var external = NewFactory(Mock.Of<IGlobalSecretStore>(), new ToolResultModelProjector());
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton<IGlobalSettingsService>(Mock.Of<IGlobalSettingsService>());
@@ -77,7 +78,7 @@ public sealed class ExternalToolSessionTests
         repository.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GlobalSettings([], [first, second], []));
         var factory = new CompositeToolSessionFactory([], repository.Object,
-            new ExternalToolSessionFactory(secrets.Object, new ToolResultModelProjector()),
+            NewFactory(secrets.Object, new ToolResultModelProjector()),
             Mock.Of<AI.Application.Resources.IResourceAssetService>(), new ToolResultModelProjector());
 
         await using var session = await factory.OpenAsync([], new HashSet<Guid> { first.Id, second.Id },
@@ -144,7 +145,7 @@ public sealed class ExternalToolSessionTests
         var secrets = new Mock<IGlobalSecretStore>();
         secrets.Setup(item => item.GetAsync("mcp", server.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync("saved-token");
-        var factory = new ExternalToolSessionFactory(secrets.Object, new ToolResultModelProjector());
+        var factory = NewFactory(secrets.Object, new ToolResultModelProjector());
         await using (var session = await factory.OpenAsync(server, Token, entered ? "entered-token" : null))
         {
             var tool = session.Tools.ShouldHaveSingleItem();
@@ -165,11 +166,16 @@ public sealed class ExternalToolSessionTests
     public async Task DoesNotStartDisabledOrDeniedServers(bool enabled, string policy)
     {
         var server = Server("Stdio", "does-not-exist") with { Enabled = enabled, Policy = policy };
-        var factory = new ExternalToolSessionFactory(Mock.Of<IGlobalSecretStore>(), new ToolResultModelProjector());
+        var factory = NewFactory(Mock.Of<IGlobalSecretStore>(), new ToolResultModelProjector());
         var error = await Should.ThrowAsync<InvalidOperationException>(() => factory.OpenAsync(server, Token));
         error.Message.ShouldContain("not started");
     }
 
     private static McpServerSettings Server(string transport, string? command = null, string? directory = null) =>
         new(Guid.NewGuid(), "CSharp", transport, true, "Ask", null, command, [], directory, [], false);
+
+    /// <summary>Supplies the path algebra and file-system contract the factory gained.</summary>
+    private static ExternalToolSessionFactory NewFactory(IGlobalSecretStore secrets,
+        IToolResultModelProjector projector) =>
+        new(secrets, new SystemFileSystem(), new SystemPath(), projector);
 }

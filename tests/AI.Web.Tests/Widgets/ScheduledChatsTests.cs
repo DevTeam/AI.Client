@@ -6,8 +6,9 @@ using Shouldly;
 using Xunit;
 
 /// <summary>
-/// The shared rule of what counts as coming soon: which moments make a scheduled chat due, the
-/// window it has to fall in, and the order the list comes back in.
+/// The shared rule of what the sidebar's Scheduled section lists: which moments make a scheduled
+/// chat due, which finished runs stay listed, the window they have to fall in, and the order the
+/// list comes back in.
 /// </summary>
 public sealed class ScheduledChatsTests
 {
@@ -73,12 +74,108 @@ public sealed class ScheduledChatsTests
         ScheduledChats.Soon(chats, Now, TimeSpan.FromHours(24), 500).Count.ShouldBe(ScheduledChats.MaxCount);
     }
 
+    [Fact]
+    public void AFinishedRunIsRememberedWhenNothingElseIsPending()
+    {
+        var finished = Now.AddMinutes(-5);
+
+        ScheduledChats.FinishedAt(Schedule() with { Runs = [Run(finished)] }).ShouldBe(finished);
+    }
+
+    [Fact]
+    public void ARunStillGoingOrWaitingForAPersonHasNotFinished()
+    {
+        // A blocked run still has work for the dispatcher, and DueAt speaks for it instead.
+        ScheduledChats.FinishedAt(Schedule() with { Runs = [Run(null)] }).ShouldBeNull();
+        ScheduledChats.FinishedAt(Schedule() with
+        {
+            Runs = [Run(null, ScheduleRunStatus.Blocked), Run(Now.AddMinutes(-1), ScheduleRunStatus.Succeeded)]
+        }).ShouldBe(Now.AddMinutes(-1));
+    }
+
+    [Fact]
+    public void AScheduleThatHasNeverRunHasNothingToRemember()
+    {
+        ScheduledChats.FinishedAt(Schedule()).ShouldBeNull();
+    }
+
+    [Fact]
+    public void TheGuidesDemoIsNeverRemembered()
+    {
+        ScheduledChats.FinishedAt(Schedule() with { Demo = true, Runs = [Run(Now.AddMinutes(-5))] }).ShouldBeNull();
+    }
+
+    [Fact]
+    public void AChatWhoseNextRunIsFartherAwayThanTheWindowStillKeepsItsRow()
+    {
+        // A weekly schedule just ran: its next occurrence is a week off, outside the window.
+        var weekly = Summary(Now.AddDays(7)) with { FinishedAt = Now.AddMinutes(-2) };
+
+        var listed = ScheduledChats.Soon([weekly], Now, TimeSpan.FromHours(24), 10);
+
+        listed.ShouldHaveSingleItem().Chat.Id.ShouldBe(weekly.Chat.Id);
+    }
+
+    [Fact]
+    public void AChatBothComingDueAndFinishedIsListedOnceAsPending()
+    {
+        var chat = Summary(Now.AddMinutes(2)) with { FinishedAt = Now.AddMinutes(-2) };
+
+        ScheduledChats.Soon([chat], Now, TimeSpan.FromHours(24), 10).ShouldHaveSingleItem().ShouldBe(chat);
+    }
+
+    [Fact]
+    public void FinishedChatsFollowWhatIsStillComingAndTheLatestOfThemLeads()
+    {
+        var soon = Summary(Now.AddMinutes(2));
+        var older = Finished(Now.AddMinutes(-30));
+        var newer = Finished(Now.AddMinutes(-5));
+
+        var listed = ScheduledChats.Soon([older, newer, soon], Now, TimeSpan.FromHours(24), 10);
+
+        listed.ShouldBe([soon, newer, older]);
+    }
+
+    [Fact]
+    public void AFinishedChatNeverPushesARunThatIsAboutToStartOutOfTheWindow()
+    {
+        var soon = Summary(Now.AddMinutes(2));
+        var finished = Enumerable.Range(0, ScheduledChats.MaxCount)
+            .Select(index => Finished(Now.AddMinutes(-index - 1))).ToList();
+
+        var listed = ScheduledChats.Soon([.. finished, soon], Now, TimeSpan.FromHours(24), 3);
+
+        listed[0].Chat.Id.ShouldBe(soon.Chat.Id);
+    }
+
+    [Fact]
+    public void AFinishedChatIsForgottenOnceNewerOnesPushItPastTheWindow()
+    {
+        var oldest = Finished(Now.AddMinutes(-60));
+        var middle = Finished(Now.AddMinutes(-30));
+        var newest = Finished(Now.AddMinutes(-5));
+        // A schedule that has not run yet is not listed at all: there is nothing to remember.
+        var pending = Summary(Now.AddMinutes(90));
+
+        var listed = ScheduledChats.Soon([oldest, middle, newest], Now, TimeSpan.FromHours(24), 2);
+
+        listed.ShouldBe([newest, middle]);
+        ScheduledChats.Soon([pending with { DueAt = null }], Now, TimeSpan.FromHours(24), 10).ShouldBeEmpty();
+    }
+
     private static ChatSchedule Schedule(DateTimeOffset? next = null, DateTimeOffset? retry = null,
         DateTimeOffset? requested = null, bool paused = false) =>
         new(new ChatScheduleSettings("Nightly build",
                 new ScheduleRecurrence(ScheduleFrequency.Daily, "2026-10-01", "03:00"), "Europe/Moscow"),
             paused, NextRunAt: next, RetryAt: retry, RunRequestedAt: requested);
 
+    private static ScheduleRunRecord Run(DateTimeOffset? finishedAt,
+        ScheduleRunStatus status = ScheduleRunStatus.Succeeded) =>
+        new(Guid.NewGuid(), Guid.NewGuid(), 1, Now.AddHours(-1), Now.AddHours(-1), 1, status, FinishedAt: finishedAt);
+
     private static ScheduledChatSummary Summary(DateTimeOffset dueAt) =>
         new(new ChatSummary(Guid.NewGuid(), Guid.NewGuid(), "Chat", Now, 1, Now, Kind: ChatSchedule.Kind), dueAt);
+
+    private static ScheduledChatSummary Finished(DateTimeOffset finishedAt) =>
+        new(new ChatSummary(Guid.NewGuid(), Guid.NewGuid(), "Chat", Now, 1, Now, Kind: ChatSchedule.Kind), null, finishedAt);
 }

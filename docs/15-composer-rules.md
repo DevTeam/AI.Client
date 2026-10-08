@@ -11,7 +11,7 @@ and empties the field. The keys claim the composer only while the field is empty
 they move the caret as usual, so a half-written message is never replaced by an older one. Up goes
 into the history only on the first line of the field and Down leaves it only on the last, so a
 multiline message stays navigable. Editing an inserted entry returns the field to
-a normal draft. Details — in [UX decisions](12-ux-decisions.md#история-ввода).
+a normal draft. Details — in [UX decisions](12-ux-decisions.md#input-history).
 
 The selected branch is passed as a stable ID regardless of the temporary view position during editing. Replacement uses the chat revision. An error leaves the text for fixing and resending.
 

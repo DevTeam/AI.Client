@@ -14,8 +14,9 @@ public interface IChatScheduleApi
     Task<ChatScheduleView> RunNowAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The scheduled chats of every project the dispatcher will act on within the next day,
-    /// soonest first: what the sidebar's Scheduled section lists.
+    /// The scheduled chats of every project the sidebar's Scheduled section lists: the ones the
+    /// dispatcher will act on within the next day, soonest first, and under them the ones whose
+    /// schedule has finished its work, the run that ended last first.
     /// </summary>
     Task<IReadOnlyList<ScheduledChatSummary>> ListSoonAsync(int limit, CancellationToken cancellationToken);
 

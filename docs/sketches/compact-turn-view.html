@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <title>Compact turn view — sketch</title>
@@ -140,27 +140,27 @@
 </head>
 <body>
 
-<h1>Компактное представление хода — состояния строки</h1>
+<h1>Compact turn view — row states</h1>
 
-<h2>Ход идёт: текущее действие модели и время, лента не растёт</h2>
+<h2>Turn in progress: the model's current action and time, the feed does not grow</h2>
 <div class="feed">
-    <div class="user-message">Посмотри где классы используются без интерфейсов и без DI</div>
+    <div class="user-message">Check where classes are used without interfaces and without DI</div>
     <button class="turn-summary" type="button" aria-expanded="false">
         <svg class="spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9" /></svg>
-        <span class="turn-summary-text">Соберу данные по использованию конкретных классов в Web/Cli/Host… · 12s</span>
+        <span class="turn-summary-text">I'll gather data on the use of specific classes in Web/Cli/Host… · 12s</span>
         <svg class="turn-summary-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
     </button>
 </div>
-<p class="note">Текст берётся из последнего промежуточного сообщения модели и обрезается до одной строки. Высота строки постоянна.</p>
+<p class="note">The text is taken from the model's latest intermediate message and truncated to one line. The row height is constant.</p>
 
-<h2>Ход завершён: только время</h2>
+<h2>Turn completed: time only</h2>
 <div class="feed">
-    <div class="user-message">Посмотри где классы используются без интерфейсов и без DI</div>
+    <div class="user-message">Check where classes are used without interfaces and without DI</div>
     <button class="turn-summary" type="button" aria-expanded="false">
         <span class="turn-summary-text">Worked for 1m 13s</span>
         <svg class="turn-summary-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
     </button>
-    <div class="answer">Без интерфейсов и вне DI создаются 7 классов. Из них 4 можно вынести в композицию без изменения поведения…</div>
+    <div class="answer">Without interfaces and outside DI, 7 classes are created. Of them, 4 could be moved into the composition without changing behavior…</div>
     <div class="workspace-changes">
         <span class="workspace-changes-icon">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
@@ -170,9 +170,9 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8d8d8d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
     </div>
 </div>
-<p class="note">Ни числа шагов, ни числа вызовов, ни бейджа ошибок в свёрнутом виде. Карточка изменений файлов видна всегда.</p>
+<p class="note">No step count, no call count, no error badge while collapsed. The file changes card is always visible.</p>
 
-<h2>Ход остановлен или упал</h2>
+<h2>Turn stopped or failed</h2>
 <div class="feed">
     <button class="turn-summary" type="button" aria-expanded="false" style="margin-bottom:0.5rem">
         <span class="turn-summary-text">Stopped after 22s</span>
@@ -183,18 +183,18 @@
         <svg class="turn-summary-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
     </button>
 </div>
-<p class="note">Причину и кнопки Retry / Continue / Discard по-прежнему несёт карточка turn-status ниже — строка только называет исход.</p>
+<p class="note">The reason and the Retry / Continue / Discard buttons are still carried by the turn-status card below — the row only names the outcome.</p>
 
-<h2>Ход раскрыт: строка становится заголовком, ниже — сегодняшняя разметка без изменений</h2>
+<h2>Turn expanded: the row becomes a heading, and below it today's markup, unchanged</h2>
 <div class="feed">
-    <div class="user-message">Посмотри где классы используются без интерфейсов и без DI</div>
+    <div class="user-message">Check where classes are used without interfaces and without DI</div>
     <button class="turn-summary is-expanded" type="button" aria-expanded="true">
         <span class="turn-summary-text">Worked for 1m 13s</span>
         <svg class="turn-summary-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
     </button>
 
     <div class="cycle">
-        <div class="preamble">Изучу структуру и точки регистрации DI.</div>
+        <div class="preamble">I'll look at the structure and the DI registration points.</div>
         <div class="tool-row">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7" /></svg>
             <span class="tool-row-title">Tools finished</span>
@@ -204,7 +204,7 @@
     </div>
 
     <div class="cycle">
-        <div class="preamble">Соберу данные по использованию конкретных классов в Web/Cli/Host.</div>
+        <div class="preamble">I'll gather data on the use of specific classes in Web/Cli/Host.</div>
         <div class="tool-row">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7" /></svg>
             <span class="tool-row-title">Tools finished</span>
@@ -213,9 +213,9 @@
         </div>
     </div>
 
-    <div class="answer">Без интерфейсов и вне DI создаются 7 классов. Из них 4 можно вынести в композицию без изменения поведения…</div>
+    <div class="answer">Without interfaces and outside DI, 7 classes are created. Of them, 4 could be moved into the composition without changing behavior…</div>
 </div>
-<p class="note">Раскрытие накопительное: несколько ходов держатся раскрытыми одновременно. При переоткрытии чата всё снова свёрнуто.</p>
+<p class="note">Expansion is cumulative: several turns stay expanded at once. When the chat is reopened, everything is collapsed again.</p>
 
 </body>
 </html>

@@ -33,7 +33,8 @@ public sealed class ChatRunDispatcher(
     ISkillRunner skillRunner, ISkillCatalog skillCatalog, IChatReplySuggestions replySuggestions,
     IToolAutoApprover autoApprover, ITokenUsageMeter usageMeter, ITokenUsageAggregator usageAggregator,
     IHistoryCheckpointService historyCheckpoints, IConnectionChoice connectionChoice,
-    IChatKindPolicyRegistry kindPolicies, IModelMessageHeader headers, ITeamStatusBrief teamStatus)
+    IChatKindPolicyRegistry kindPolicies, IModelMessageHeader headers, ITeamStatusBrief teamStatus,
+    IChatTemporaryDirectory temporaryDirectory)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -1421,6 +1422,7 @@ public sealed class ChatRunDispatcher(
         await memory.DeleteProjectAsync(projectId, cancellationToken);
         await skillCatalog.DeleteProjectAsync(projectId, cancellationToken);
         await projectInstructions.DeleteProjectAsync(projectId, cancellationToken);
+        temporaryDirectory.DeleteProject(projectId);
     }
 
     public async Task<ChatDeleteResult> DeleteChatAsync(Guid projectId, Guid chatId, long revision, CancellationToken cancellationToken)
@@ -1437,6 +1439,7 @@ public sealed class ChatRunDispatcher(
             {
                 await RemoveAsync(projectId, chatId, null, CancellationToken.None);
                 await reviews.DeleteChatAsync(projectId, chatId, CancellationToken.None);
+                temporaryDirectory.DeleteChat(projectId, chatId);
             }
             return result;
         }

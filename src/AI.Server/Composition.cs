@@ -105,6 +105,7 @@ internal sealed class Composition
                 SystemClock, ProjectService, ChatDocumentSerializer, ChatService, ChatSearchService, PinOrderKeys,
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ProtectedGlobalSecretStore,
                 ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,
+                ChatTemporaryDirectory,
                 MemoryService, ProjectInstructionsService, FilePreviewFormats, FilePreviewTextReader,
                 TextFilePreviewFormat, WorkspaceUndoGuard>()
             .Transient<DirectoryFilePreviewFormat, ArchiveFilePreviewFormat, MediaFilePreviewFormat,

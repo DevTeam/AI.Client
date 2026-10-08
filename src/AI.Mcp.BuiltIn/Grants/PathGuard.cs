@@ -1,7 +1,7 @@
 namespace AI.Mcp.BuiltIn.Grants;
 
 /// <summary>
-/// Enforces project directory grants on file system tool arguments: canonicalizes the path,
+/// Enforces session directory grants on file system tool arguments: canonicalizes the path,
 /// resolves reparse points along every existing component and then checks containment.
 /// </summary>
 public sealed class PathGuard : IPathGuard
@@ -71,7 +71,7 @@ public sealed class PathGuard : IPathGuard
 
         var name = capability.ToString().ToLowerInvariant();
         throw new GrantException(_grants.Length == 0
-            ? $"No directory grant is configured for this project, so '{name}' access is denied. Use list_allowed_directories."
+            ? $"No directory grant is configured for this session, so '{name}' access is denied. Use list_allowed_directories."
             : $"No directory grant allows '{name}' access to {canonical}. Use list_allowed_directories.");
     }
 

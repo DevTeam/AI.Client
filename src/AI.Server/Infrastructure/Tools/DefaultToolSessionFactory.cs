@@ -10,14 +10,13 @@ using System.Text.Json;
 /// Connects to the built-in tool server, which ships alongside the application and runs as a child
 /// process over stdio.
 /// </summary>
-public sealed class DefaultToolSessionFactory(IToolResultModelProjector modelProjector) : IMcpServerConnection
+public sealed class DefaultToolSessionFactory(IToolResultModelProjector modelProjector, IChatTemporaryDirectory temporaryDirectory) : IMcpServerConnection
 {
     public Guid ServerId => DefaultMcpServer.Id;
 
     /// <summary>Name of the environment variable through which the built-in server receives its directory grants.</summary>
     public const string DirectoryGrantsVariable = "AI_CLIENT_DIRECTORY_GRANTS";
 
-    /// <summary>The run context means nothing here: this server is a child process reaching the file system, not the conversation.</summary>
     public async Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, ToolRunContext run, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(directoryGrants);
@@ -26,9 +25,12 @@ public sealed class DefaultToolSessionFactory(IToolResultModelProjector modelPro
         foreach (var name in new[] { "SystemRoot", "WINDIR", "TEMP", "TMP", "LOCALAPPDATA", "APPDATA", "PATHEXT", "DOTNET_ROOT",
                      "PROCESSOR_ARCHITECTURE", "PROCESSOR_ARCHITEW6432", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData", "ALLUSERSPROFILE", "COMSPEC", "HOMEDRIVE", "HOMEPATH" })
             if (Environment.GetEnvironmentVariable(name) is { } value) environment[name] = value;
-        // File system tools stay closed unless the project granted a directory, so an empty set is passed through as such.
+        var effectiveGrants = directoryGrants.ToList();
+        if (run.ProjectId != Guid.Empty && run.ChatId != Guid.Empty)
+            effectiveGrants.Add(new ToolDirectoryGrant(temporaryDirectory.GetOrCreate(run.ProjectId, run.ChatId),
+                true, ["read", "write", "edit", "delete"]));
         environment[DirectoryGrantsVariable] = JsonSerializer.Serialize(
-            directoryGrants.Select(grant => new { root = grant.Root, recursive = grant.Recursive, capabilities = grant.Capabilities }));
+            effectiveGrants.Select(grant => new { root = grant.Root, recursive = grant.Recursive, capabilities = grant.Capabilities }));
         var transport = new StdioClientTransport(new StdioClientTransportOptions
         {
             Name = "Default tools", Command = executable,

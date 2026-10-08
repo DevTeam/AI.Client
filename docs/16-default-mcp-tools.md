@@ -10,7 +10,7 @@ In addition, the Host ships a second built-in server — [App tools](17-app-tool
 |---|---|---|
 | `process_run` | launch a program and wait for completion | — (not restricted by grants) |
 | `fetch` | download an http/https URL as Markdown | — (network) |
-| `list_allowed_directories` | enumerate project directory grants | — |
+| `list_allowed_directories` | enumerate the current session's directory grants | — |
 | `read_text_file` | read a text file, `head`/`tail` options | `read` |
 | `read_multiple_files` | batch read up to 32 files | `read` |
 | `read_image_file` | read an image and return the picture itself as an image block | `read` |
@@ -68,9 +68,9 @@ For `process_run` and the optional C# server's `cs_run`, `timeoutMs` accepts 1..
 
 ## FileSystem tools
 
-Project directory grants are passed to the server when the session is opened through the environment variable `AI_CLIENT_DIRECTORY_GRANTS` as JSON: `[{"root":"C:\\Projects\\Demo","recursive":true,"capabilities":["read","write","edit","delete"]}]`. Capability names match the `ToolNames` in `DirectoryGrant` written by the UI: `Read only` yields `read`, `Read/write` yields `read, write, edit, delete`.
+Project directory grants are passed to the server when the session is opened through the environment variable `AI_CLIENT_DIRECTORY_GRANTS` as JSON: `[{"root":"C:\\Projects\\Demo","recursive":true,"capabilities":["read","write","edit","delete"]}]`. For a chat run, the Host also creates a private chat directory under the current user's OS temporary directory and adds a recursive `read, write, edit, delete` grant for it. All branches of the chat share that directory, and deleting the chat or project removes it. Capability names match the `ToolNames` in `DirectoryGrant` written by the UI: `Read only` yields `read`, `Read/write` yields `read, write, edit, delete`.
 
-A missing variable, an empty list, and unreadable JSON all mean no access: every FileSystem tool returns an error, and `list_allowed_directories` returns an empty list. This is fail-closed by default, including for `GET /api/mcp/default/tools`, where grants are not passed.
+A missing variable, an empty list, and unreadable JSON all mean no access: every FileSystem tool returns an error, and `list_allowed_directories` returns an empty list. Tool discovery and sessions without a chat receive no automatic temporary grant. This is fail-closed by default, including for `GET /api/mcp/default/tools`, where grants are not passed.
 
 Path check in `PathGuard`:
 

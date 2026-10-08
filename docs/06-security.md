@@ -108,7 +108,7 @@ Server-side checks:
 - size and result count limits;
 - prohibition of broad roots without explicit confirmation.
 
-Implemented in the built-in server: `ToolNames` are treated as a capability (`read`, `write`, `edit`, `delete`) and passed to the server when opening a session; `PathGuard` performs canonicalization, reparse point resolution along the entire chain, containment with regard to `Recursive`, and capability verification. The absence of grants means rejection of all FileSystem tools. `IncludePatterns`/`ExcludePatterns`, a dedicated delete tool, and the prohibition of broad roots are not yet implemented. Details and limits: [default tools](16-default-mcp-tools.md).
+Implemented in the built-in server: `ToolNames` are treated as a capability (`read`, `write`, `edit`, `delete`) and passed to the server when opening a session; `PathGuard` performs canonicalization, reparse point resolution along the entire chain, containment with regard to `Recursive`, and capability verification. The Host adds a private OS temporary directory grant for the current chat, even when the project has no directory grants. Sessions without a chat still reject FileSystem access when grants are absent. `IncludePatterns`/`ExcludePatterns`, a dedicated delete tool, and the prohibition of broad roots are not yet implemented. Details and limits: [default tools](16-default-mcp-tools.md).
 
 ## Approval dialog
 

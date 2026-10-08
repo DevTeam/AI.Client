@@ -5,7 +5,7 @@ icon: qa-test-data-prepare
 kind: playbook
 description: Prepare reproducible synthetic test datasets and fixtures for selected cases, validate their setup and define safe task-owned cleanup; never alters live data.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"The cases and data conditions to support"},"environment":{"type":"string","description":"The isolated destination, when data will be loaded"},"seed":{"type":"string","description":"The requested reproducibility seed"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","tool_search","run_skill","write_file","edit_file","create_directory","move_file","delete_file"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","tool_search","run_skill","write_file","edit_file","create_directory","move_file","delete_file"]
 ---
 
 The user's instructions take precedence. Follow project instructions, test conventions and
@@ -47,6 +47,9 @@ only when the user requests it. Never stage, commit, push, deploy or alter live 
 5. Choose the existing fixture/factory/seeding mechanism. Generate minimal valid normal datasets
    and explicit negative/boundary datasets, labeling expected outcomes. Keep cases independent
    and distinguish invalid input fixtures from states the application cannot legitimately create.
+   Use the `purpose: "chatTemporary"` root from `list_allowed_directories` for disposable generated
+   inputs when available. Keep reusable fixtures and requested deliverables in their intended
+   project or output location; remove task-created scratch data after validation.
 6. Write authorized fixture/generator files and validate relationships/schema and repeatability.
    Loading data is a separate state mutation: prepare the exact isolated target, collision rules,
    effects, checks and cleanup, and obtain authorization if not already supplied. Never default

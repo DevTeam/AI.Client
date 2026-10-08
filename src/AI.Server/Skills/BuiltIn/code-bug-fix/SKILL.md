@@ -5,8 +5,13 @@ icon: bug
 kind: playbook
 description: Find and fix the root cause of a bug, error or failing test: reproduce it, add a test that fails, fix, rerun the tests, remove leftovers and summarize; never commits.
 parameters: {"type":"object","properties":{"problem":{"type":"string","description":"The symptom, error text or failing test, in the user's words"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","delete_file","process_run","ask_user","spawn_subtask","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","delete_file","list_allowed_directories","process_run","ask_user","spawn_subtask","run_skill"]
 ---
+
+For verbose diagnostics or intermediate files, use the `purpose: "chatTemporary"` root
+from `list_allowed_directories` when available. Preserve command exit codes, inspect only
+relevant excerpts of saved output, and keep final artifacts in their intended location.
+Remove task-created scratch files during cleanup.
 
 The project instructions and instruction files win over these steps where they differ.
 

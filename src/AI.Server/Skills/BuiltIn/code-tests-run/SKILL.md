@@ -5,8 +5,13 @@ icon: flask
 kind: playbook
 description: Run the project's tests with the right tool — process_run for quick focused suites, spawn_subtask for long or broad ones — and report passed, failed and skipped with the cause of each failure; changes nothing unless the user then asks for a fix.
 parameters: {"type":"object","properties":{"filter":{"type":"string","description":"Test project, file, class or name pattern, if the user named one"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","process_run","spawn_subtask","ask_user","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","list_allowed_directories","process_run","spawn_subtask","ask_user","run_skill"]
 ---
+
+For verbose test output, use the `purpose: "chatTemporary"` root from
+`list_allowed_directories` for task-only logs or reports when available. Keep the console
+summary concise, preserve exit codes and failure counts, and inspect relevant failure excerpts.
+Remove task-created scratch files when finished.
 
 1. Find how the project runs its tests, in this order: the project instructions and instruction
    files, README or CONTRIBUTING, CI workflow files, then manifests (package.json `test` script,

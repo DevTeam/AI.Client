@@ -5,7 +5,7 @@ icon: diff
 kind: playbook
 description: Review the uncommitted changes before a commit: summarize them, find stray files, debug leftovers, unrelated edits and likely bugs, and clean up only what the user approves.
 parameters: {"type":"object","properties":{"base":{"type":"string","description":"Branch or commit to compare with instead of the last commit, if the user named one"}},"additionalProperties":false}
-tools: ["list_directory","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","edit_file","delete_file","process_run","ask_user"]
+tools: ["list_directory","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","edit_file","delete_file","list_allowed_directories","process_run","ask_user"]
 ---
 
 1. Find the repository root among the granted directories; without `.git`, say that this skill
@@ -14,6 +14,9 @@ tools: ["list_directory","search_files","grep_files","read_text_file","read_mult
    `["diff","--stat"]` and `["diff","--stat","--cached"]` (with `base`: `["diff","--stat",base]`).
    Read the diff of each changed file with `["diff","--",path]` or `["diff","--cached","--",path]`,
    and read untracked files in full unless they are large or binary.
+   For an oversized diff, use the `purpose: "chatTemporary"` root from
+   `list_allowed_directories` for a task-only copy when available. Inspect relevant hunks and
+   remove that scratch copy after review; never mistake it for an untracked project change.
 3. Check every path and hunk for:
    - stray files: scratch or debug scripts, logs, dumps, `*.orig`, `*.rej`, `*.bak`, temp output,
      editor or OS files, local settings, build output that `.gitignore` should cover;

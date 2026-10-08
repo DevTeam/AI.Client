@@ -87,17 +87,32 @@ public sealed class PhysicalTextFileSystemTests : IDisposable
     [Fact]
     public async Task ALockThatOutlastsEveryAttemptShouldBeReportedWithItsPath()
     {
-        // Reads retry, because replacing a document makes it unopenable for a fraction of a
-        // millisecond. Retrying has to end somewhere: a file genuinely held by something else is
-        // reported rather than waited on forever, and the report names the file.
+        // A persistent external lock is reported with the path and the failed operation.
         var system = new PhysicalTextFileSystem();
         var path = Path.Combine(_directory, "locked.json");
         await File.WriteAllTextAsync(path, "{}", TestContext.Current.CancellationToken);
 
         await using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
-        (await Should.ThrowAsync<IOException>(
-            () => system.ReadTextAsync(path, CancellationToken.None))).Message.ShouldContain("locked.json");
+        var error = await Should.ThrowAsync<IOException>(
+            () => system.ReadTextAsync(path, CancellationToken.None));
+        error.Message.ShouldContain("locked.json");
+        error.Message.ShouldContain("could not be read");
+    }
+
+    [Fact]
+    public async Task AReadShouldResumeWhenAnExclusiveLockIsReleased()
+    {
+        var system = new PhysicalTextFileSystem();
+        var path = Path.Combine(_directory, "chat.json");
+        await File.WriteAllTextAsync(path, "saved", TestContext.Current.CancellationToken);
+
+        await using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        var read = system.ReadTextAsync(path, TestContext.Current.CancellationToken);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+        await exclusive.DisposeAsync();
+
+        (await read).ShouldBe("saved");
     }
 
     [Fact]

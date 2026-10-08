@@ -382,7 +382,7 @@ public sealed class ChatRunDispatcher(
             taken.Add(new ChatCompletionMessage("user", message.Content,
                 ModelContent: headers.Apply(message, chat, projected), MessageId: message.Id,
                 ImageAssetIds: message.Resources?.Where(item => item.Kind == AI.Contracts.Resources.ChatResourceKind.Image)
-                    .Select(item => item.AssetId).OfType<string>().ToArray()));
+                    .Select(item => item.AssetId).OfType<string>().ToArray(), JoinsTurn: true));
         }
         return taken;
     }

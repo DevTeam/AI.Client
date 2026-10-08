@@ -120,12 +120,36 @@ the widget uses.
 
 | id | What it does |
 | --- | --- |
-| `chat-schedule-create` | Turns this chat, or a new one, into a scheduled chat. It reads what the user already said and asks with `ask_user` only for what is missing — date, time or recurrence through the pickers, success criteria, retry, run-branch rules, chat deletion — never filling a value in silently; a dismissed or unanswered question schedules nothing |
-| `chat-schedule-edit` | Changes, pauses or resumes a schedule, asking only for values not named, and confirms old and new values side by side unless the user gave them exactly |
+| `chat-schedule-create` | Turns this chat, or a new one, into a scheduled chat. It reads what the user already said and asks with `ask_user` only for what is missing — date, time or recurrence through the pickers, success criteria, retry, run-branch rules, chat deletion — never filling a value in silently; a dismissed or unanswered question schedules nothing. It also works out which tools and directories each run needs, and asks once to allow them for the chat (`app_security` `SetChatToolPolicy` and `AddDirectoryGrant`), so the run does not wait for a person |
+| `chat-schedule-edit` | Changes, pauses or resumes a schedule, asking only for values not named, and confirms old and new values side by side unless the user gave them exactly. When the change touches what a run does, it repeats the readiness check and asks once to allow the new tools and directories |
 | `chat-schedule-delete` | Removes the schedule (keeping the chat), pauses it instead, or deletes the chat, after one confirmation |
-| `chat-schedule-run` | In a run branch: carries out the task, checks the success criteria with evidence and reports with `ReportRun`. Anywhere else: starts a run now. The dispatcher puts it on every run message |
+| `chat-schedule-run` | In a run branch: carries out the task with the tools and directories the schedule was set up to allow, checks the success criteria with evidence and reports with `ReportRun`. Anywhere else: starts a run now. The dispatcher puts it on every run message |
 
 Each has its own stopwatch icon in the shared skill icon set.
+
+## Making a run able to finish alone
+
+A run is submitted as an ordinary interactive run, so its approvals and its `ask_user` wait for a
+person as in any chat, and a pending approval or question is what makes a run **Blocked**. When
+nobody is near the application, a run reaches that state and stays there. So a schedule is not
+finished business until the run can do its work by itself:
+
+- **Tools.** Every tool a run calls must be effectively `Allow`. `Ask` stops the run at the card and
+  `Deny` refuses it. `chat-schedule-create` and `chat-schedule-edit` work out which tools the task
+  needs, read the effective decision (chat policy overrides project overrides global; a disabled or
+  denied server denies its tools; an unknown tool is `Ask`) and, with one confirmation, set the chat
+  scope with `app_security` `SetChatToolPolicy` using the exact `(serverId, name, schemaHash)` from
+  `app_read resource=McpTools` and the same starting limits the tool-configuration skills use
+  (128 calls and 120 s for a bounded read, 32 for a write, 8 for something destructive, 600 s for
+  `process_run`, `cs_run` and `trigger_wait`). A tool that manages its own permissions, such as
+  `app_security`, stays `Ask`, and an inherited `Deny` is never shadowed.
+- **Directories.** A path outside the project's recursive grants fails the call, and a grant without
+  `write` or `edit` fails a change. Missing paths and capabilities are asked for with the directory
+  picker and added with `app_security` `AddDirectoryGrant`, so the run does not need the user.
+- **The mode is untouched.** The chat's approval mode (Ask for approval, Approve for me, Full
+  access) is not changed by these skills: a run is made safe by allowing exactly the tools it needs,
+  not by turning confirmation off. A tool the user keeps at `Ask` is reported as a run that will
+  wait for them, and the user decides whether to schedule it anyway.
 
 ## Widget
 

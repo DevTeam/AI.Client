@@ -18,10 +18,18 @@ using AI.Contracts.Chat;
 /// <param name="IsContextSummary">
 /// Application-only origin marker. A synthetic user-role summary does not start a new user turn.
 /// </param>
+/// <param name="JoinsTurn">
+/// A user-role message taken by a turn in flight at a step boundary — an aside or a team message.
+/// It adds information to that turn; it does not start a new one.
+/// </param>
 public sealed record ChatCompletionMessage(string Role, string Content,
     IReadOnlyList<ChatToolCall>? ToolCalls = null, string? ToolCallId = null, string? ModelContent = null,
-    Guid? MessageId = null, bool IsContextSummary = false, IReadOnlyList<string>? ImageAssetIds = null)
+    Guid? MessageId = null, bool IsContextSummary = false, IReadOnlyList<string>? ImageAssetIds = null,
+    bool JoinsTurn = false)
 {
+    /// <summary>Whether this message opens a user turn: what the tools a turn has called count from.</summary>
+    public bool StartsTurn => Role == "user" && !IsContextSummary && !JoinsTurn;
+
     /// <summary>The text to put on the wire for this message.</summary>
     public string ForModel => ModelContent ?? Content;
 }

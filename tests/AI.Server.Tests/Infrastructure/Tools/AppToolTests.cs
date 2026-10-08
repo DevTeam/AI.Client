@@ -688,6 +688,53 @@ public sealed partial class AppToolTests
     }
 
     [Fact]
+    public async Task ShouldReadMessagesWithoutToolBodiesUnlessOneMessageIsAskedFor()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var user = await fixture.Chats.AppendMessageAsync(fixture.ProjectId, fixture.ChatId,
+            new(null, null, "User", "read the file", chat!.Revision), CancellationToken.None);
+        var callerId = Guid.NewGuid();
+        var caller = await fixture.Chats.AppendMessageAsync(fixture.ProjectId, fixture.ChatId,
+            new(callerId, user!.Messages[^1].Id, "Assistant", "", user.Revision,
+                ToolCalls: [new AI.Contracts.Chat.ChatToolCall("call-1", "mcp_built_in__read_text_file", "{}")]), CancellationToken.None);
+        var body = new string('x', 50_000);
+        var tool = await fixture.Chats.AppendMessageAsync(fixture.ProjectId, fixture.ChatId,
+            new(null, callerId, "Tool", body, caller!.Revision, ToolCallId: "call-1"), CancellationToken.None);
+        var toolId = tool!.Messages[^1].Id;
+        await using var session = await fixture.OpenAsync();
+
+        var page = await AppFixture.CallAsync(session, "app_read", new { resource = "Messages" });
+        var items = page.GetProperty("items").EnumerateArray().ToArray();
+        items.Length.ShouldBe(3);
+        var omitted = items.Single(item => item.GetProperty("id").GetGuid() == toolId);
+        omitted.GetProperty("content").GetString().ShouldBeEmpty();
+        omitted.GetProperty("contentOmitted").GetBoolean().ShouldBeTrue();
+        items.Single(item => item.GetProperty("role").GetString() == "User").GetProperty("content").GetString().ShouldBe("read the file");
+
+        var whole = await AppFixture.CallAsync(session, "app_read", new { resource = "Messages", resourceId = toolId });
+        whole.GetProperty("items").EnumerateArray().ShouldHaveSingleItem().GetProperty("content").GetString().ShouldBe(body);
+    }
+
+    [Fact]
+    public async Task RunsToolShouldReturnACompactRunInsteadOfTheSubmittedTextAgain()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var content = new string('c', 20_000);
+
+        var result = await AppFixture.CallAsync(session, "app_runs", new
+        {
+            operation = "Submit", projectId = fixture.ProjectId, chatId = fixture.ChatId, content, wait = false
+        });
+
+        // The queued message, the page's message tail and the tool in flight each used to repeat it.
+        result.GetRawText().Length.ShouldBeLessThan(content.Length);
+        if (result.GetProperty("current").TryGetProperty("messageDelta", out var delta))
+            delta.ValueKind.ShouldBe(JsonValueKind.Null);
+    }
+
+    [Fact]
     public async Task ShouldReadTheCurrentChatWhenNoChatIsNamed()
     {
         await using var fixture = await AppFixture.CreateAsync();

@@ -35,7 +35,7 @@ public sealed class SkillGuide(ISkillCatalog catalog) : ISkillGuide
             var message = context[index];
             if (message.Role == "user")
             {
-                users++;
+                if (!message.JoinsTurn) users++;
                 continue;
             }
             if (message is not { Role: "assistant", ToolCalls: { Count: > 0 } calls }) continue;

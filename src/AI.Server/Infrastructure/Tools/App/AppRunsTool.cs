@@ -228,10 +228,10 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             return builder.Applied(snapshot.Queue.Any(item => item.Id == operationId)
                     ? "Queued the aside; the turn in flight reads it at its next step, or it follows the reply."
                     : "Added the aside to the branch; no turn was started.", projectId, chatId, snapshot.BranchId, operationId,
-                snapshot.ChatRevision, snapshot.Status.ToString(), Element(snapshot, reply.Json));
+                snapshot.ChatRevision, snapshot.Status.ToString(), Element(RunSnapshotView.Compact(snapshot), reply.Json));
         if (wait) snapshot = await AwaitStopAsync(snapshot, waitTimeoutMs, cancellationToken);
         return builder.Applied(Effect(snapshot, wait), projectId, chatId, snapshot.BranchId, operationId,
-            snapshot.ChatRevision, snapshot.Status.ToString(), Element(snapshot, reply.Json));
+            snapshot.ChatRevision, snapshot.Status.ToString(), Element(RunSnapshotView.Compact(snapshot), reply.Json));
     }
 
     private static string Effect(ChatRunSnapshot snapshot, bool waited)
@@ -291,7 +291,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             ? $" The run is still waiting for a person to confirm '{approval.Name}'."
             : string.Empty;
         return builder.Applied(effect + blocked, projectId, chatId, snapshot.BranchId, revision: snapshot.ChatRevision,
-            status: snapshot.Status.ToString(), current: Element(snapshot, reply.Json));
+            status: snapshot.Status.ToString(), current: Element(RunSnapshotView.Compact(snapshot), reply.Json));
     }
 
     private static JsonElement Element<T>(T value, JsonSerializerOptions options) => JsonSerializer.SerializeToElement(value, options);

@@ -53,7 +53,12 @@ turn's user message. An `Aside` message stands between turns as an item of its o
 answer. Title generation counts only `Turn` messages.
 
 The model-facing context is not regrouped: there an in-turn message is an ordinary user message
-after complete tool results, which is a valid boundary for history checkpoints and compaction.
+after complete tool results, which is a valid boundary for history checkpoints and compaction. It
+is marked as joining the turn (`ChatCompletionMessage.JoinsTurn`), though, wherever "the current
+turn" decides what the model can still do: the tools called since the turn's user message stay
+protected in the tool selection, repeated calls keep counting, and the active playbook stays
+active. Otherwise a lead whose charter joined its own turn lost `app_runs` under context pressure
+and could not start the team it had just described.
 
 ## Composer
 

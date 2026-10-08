@@ -5,6 +5,7 @@ using Application.Projects;
 using Application.Runs;
 using Contracts.Chats;
 using Contracts.Projects;
+using Contracts.Schedules;
 using Contracts.Resources;
 using Application.Resources;
 using Application.Workspace;
@@ -151,13 +152,15 @@ public sealed class ChatEndpoints : IEndpointModule
 
         // The sidebar's Recents: the chats with the latest activity across every project, as the
         // chat list of each project shows them (no archived chat, no chat without a message yet).
+        // A scheduled chat is left out: the sidebar's Scheduled section lists it instead, and if it
+        // stayed here it would also spend one of the few places on a chat nothing has happened in.
         routes.MapGet("/api/chats/recent", async (int? limit, IProjectService projects, IChatService service,
             CancellationToken cancellationToken) =>
         {
             var recent = new List<ChatSummary>();
             foreach (var project in await projects.ListAsync(cancellationToken))
                 recent.AddRange((await service.ListAsync(project.Id, cancellationToken))
-                    .Where(chat => chat.ArchivedAt is null && !chat.IsEmpty));
+                    .Where(chat => chat.ArchivedAt is null && !chat.IsEmpty && chat.Kind != ChatSchedule.Kind));
             return recent.OrderByDescending(chat => chat.LastActivityAt)
                 .Take(Math.Clamp(limit ?? 10, 1, 50)).ToArray();
         });

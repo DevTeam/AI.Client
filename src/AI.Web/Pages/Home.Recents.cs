@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text.Json;
 using AI.Contracts.Chats;
 using AI.Contracts.Runs;
+using AI.Contracts.Schedules;
 using AI.Web.Widgets;
 using Microsoft.JSInterop;
 
@@ -21,10 +22,14 @@ public partial class Home
     private const string RecentsStateKey = "ai-client.sidebar-recents.v1";
 
     // Notifications' fold and page are kept with Recents': entries written before it read as unfolded.
-    private sealed record RecentsState(bool Folded, bool ShowMore, bool NotificationsFolded = false, bool NotificationsShowMore = false);
+    private sealed record RecentsState(bool Folded, bool ShowMore, bool NotificationsFolded = false,
+        bool NotificationsShowMore = false, bool SoonFolded = false, bool SoonShowMore = false);
 
-    /// <summary>Where in the sidebar a chat row stands: its project's list, Recents or Notifications.</summary>
-    private enum ChatListSurface { Project, Recents, Notifications }
+    /// <summary>
+    /// Where in the sidebar a chat row stands: its project's list, Recents, Notifications or
+    /// Scheduled.
+    /// </summary>
+    private enum ChatListSurface { Project, Recents, Notifications, Soon }
 
     // What the Host last said about every project. The open project's own chats are live in
     // _chats and replace its part of this list, so only the other projects can be behind.
@@ -62,6 +67,9 @@ public partial class Home
         return _recentChats
             .Where(chat => chat.ProjectId != selectedProjectId && projectIds.Contains(chat.ProjectId))
             .Concat(openProjectChats)
+            // A scheduled chat is listed by the Scheduled section instead: it is not the latest
+            // thing that happened, it is work the Host is going to start on its own.
+            .Where(chat => chat.Kind != ChatSchedule.Kind)
             .OrderByDescending(chat => chat.LastActivityAt)
             .Take(count)
             .ToList();
@@ -93,6 +101,8 @@ public partial class Home
         _notifiedChatsTried.Clear();
         _notifiedBranchesTried.Clear();
         await LoadNotifiedChatDataAsync();
+        // The Scheduled section is part of the same read: both answer "what is happening soon".
+        await RefreshSoonChatsAsync();
     }
 
     // Reading the list must not hold up whatever asked for it, a project switch above all.
@@ -121,6 +131,7 @@ public partial class Home
     {
         ChatListSurface.Recents => OpenRecentChatAsync(chat),
         ChatListSurface.Notifications => OpenNotifiedChatRowAsync(chat),
+        ChatListSurface.Soon => OpenSoonChatRowAsync(chat),
         _ => SelectChatAsync(chat.Id)
     };
 
@@ -227,6 +238,8 @@ public partial class Home
             _recentsShowMore = state.ShowMore;
             _notifiedFolded = state.NotificationsFolded;
             _notifiedShowMore = state.NotificationsShowMore;
+            _soonFolded = state.SoonFolded;
+            _soonShowMore = state.SoonShowMore;
         }
         catch (JsonException)
         {
@@ -236,5 +249,6 @@ public partial class Home
 
     private Task SaveRecentsStateAsync() =>
         JsRuntime.InvokeVoidAsync("localStorage.setItem", RecentsStateKey,
-            JsonSerializer.Serialize(new RecentsState(_recentsFolded, _recentsShowMore, _notifiedFolded, _notifiedShowMore))).AsTask();
+            JsonSerializer.Serialize(new RecentsState(_recentsFolded, _recentsShowMore, _notifiedFolded,
+                _notifiedShowMore, _soonFolded, _soonShowMore))).AsTask();
 }

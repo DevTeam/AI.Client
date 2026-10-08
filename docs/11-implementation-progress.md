@@ -550,3 +550,61 @@ final answer, Send after Stop, Queue on an idle branch, a message ending `trigge
 test of the class from starting; skill descriptions may now be up to 1000 characters. Web:
 595 of 597 pass; the two `SettingsControlsShouldRenderTheSameHelpTheGuideReceives` cases fail on a
 missing `IPublishedDownloadLinks` registration, unrelated to the composer.
+
+## 2026-10-08 — Scheduled in the sidebar
+
+The left sidebar gained a **Scheduled** section: the scheduled chats
+the Host will act on within the next day, across every project, the soonest first. Its rows are the
+shared chat row (`RenderChatNavRow`) leading with how long is left (`now`, `~33s`, `~5m`, `~3h`,
+`~2d`); opening one folds the project into the section and shows the open chat's branch tree there as
+Recents does. It folds and pages like Recents, is absent while nothing is coming, and is configured
+by Settings → Sidebar → Scheduled chats (`ClientSettings.SoonChatCount`, 1–10, three by default).
+
+Scheduled chats are no longer listed by Recents: `GET /api/chats/recent` drops them next to archived
+and empty chats, before its `Take`, so they cannot spend one of the few Recents places. The section
+reads the Host's new `GET /api/scheduled-chats/soon` (`limit`, `horizonMinutes`), which uses the
+dispatcher's own due rule (`ScheduledChats.DueAt`) — the soonest of a requested run, a retry and the
+next occurrence — so the sidebar and the scheduler always agree about what comes next.
+
+Files: `src/AI.Contracts/Schedules/ScheduledChatSummary.cs` (the shared due rule and clamps),
+`src/AI.Server/Application/Schedules/ScheduledChatQuery.cs` and the route in
+`ScheduleEndpoints.cs`, the registration in `src/AI.Server/Composition.cs`, `ChatEndpoints.cs`
+(the Recents exclusion), `src/AI.Web/Chats/ChatScheduleApi.cs`, `src/AI.Web/Pages/Home.SoonChats.cs`,
+`Home.razor` and `Home.Recents.cs` (`ChatListSurface.Soon`), `Settings/ClientSettings.cs`,
+`Components/GlobalSettingsPanel.razor` and `wwwroot/css/app.css`.
+
+Checks: `AI.Web` and `AI.Server` build with no warnings; the new Web tests
+(`Widgets/ScheduledChatsTests.cs`, `HomeRecentsExclusionTests.cs`) pass, and `dotnet run --project
+build -- test` reports 1331 tests, all passing on a second run (the first run failed only
+`DelayedBusyIndicatorTests`, a timing test that passes on rerun); the styling was checked with the
+"Show more" pager and a scheduled chat in a dark and a light theme and with a non-blue accent.
+
+## 2026-10-08 — Notification chats setting
+
+The sidebar's **Notifications** section pages by a setting of its own, as Recents and Scheduled
+already did: Settings → Sidebar → **Notification chats** (`ClientSettings.NotifiedChatCount`, 1–10,
+three by default) sets how many chats with unread notifications show before `Show more`, which opens
+the rest. Before this it borrowed the Recents count, so the two sections could not be sized
+separately. Its guide target is `settings.sidebar.notifications`.
+
+Files: `src/AI.Web/Settings/ClientSettings.cs`, `src/AI.Web/Pages/Home.NotifiedChats.cs`,
+`Home.razor` (the section and the panel's callback), `Components/GlobalSettingsPanel.razor`,
+`src/AI.Contracts/Navigation/AppNavigationTargets.cs`, `docs/12-ux-decisions.md` and the new
+`tests/AI.Web.Tests/HomeNotifiedChatsTests.cs`.
+
+## 2026-10-08 — Sidebar chat rows stop scrolling sideways and follow Settings order
+
+Two sidebar defects found while checking the new sections. A long chat title pushed the sidebar
+wider than its column and produced a horizontal scrollbar: the row's title and its optional lead had
+been wrapped in a `<span class="chat-title-line">`, and that wrapper — unlike the `.nav-item-label`
+it replaced as the row's flex item — had no rules, so it never shrank. It now takes
+`display: flex; flex: 1 1 auto; min-width: 0; overflow: hidden`, which makes it the shrinkable item
+and restores ellipsis on the title.
+
+The sections under the project list now read top to bottom as Settings → Sidebar does: Recents,
+Notifications, Scheduled. Notifications and Scheduled had been swapped relative to the settings rows.
+
+Files: `src/AI.Web/wwwroot/css/app.css`, `src/AI.Web/Pages/Home.razor`.
+
+Checks: `AI.Web` builds with no warnings; `dotnet run --project build -- test` reports 1339 tests,
+all passing.

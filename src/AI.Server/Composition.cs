@@ -121,7 +121,7 @@ internal sealed class Composition
                 RateLimitHeaderReader, ContextSummaryWriter, HistoryCheckpointService, ChatHistoryCompaction,
                 ToolAutoApprover, GuideChats, ConnectionChoice, ReviewCommentSuggestions, AppToolReply,
                 GenericSkillExecutor, SkillGuide, SkillRouting, AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>()
-            .Transient<ChatScheduleStore, ChatScheduleService, ScheduledChatPass, ScheduleDemo>()
+            .Transient<ChatScheduleStore, ChatScheduleService, ScheduledChatPass, ScheduleDemo, ScheduledChatQuery>()
             .Transient<IKeyringMasterKeyStore>(ctx =>
             {
                 if (OperatingSystem.IsMacOS())
@@ -182,6 +182,7 @@ internal sealed class AspNetComposition
             .Root<IChatKindPolicyRegistry>()
             .Root<IChatArchiveService>()
             .Root<IChatScheduleService>()
+            .Root<IScheduledChatQuery>()
             .Root<ISkillCatalog>()
             .Root<ISkillRunner>()
             .Root<IChatSearchService>()

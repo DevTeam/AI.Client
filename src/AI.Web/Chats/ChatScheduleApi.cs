@@ -13,6 +13,12 @@ public interface IChatScheduleApi
     Task<ChatScheduleView> RemoveAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task<ChatScheduleView> RunNowAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The scheduled chats of every project the dispatcher will act on within the next day,
+    /// soonest first: what the sidebar's Scheduled section lists.
+    /// </summary>
+    Task<IReadOnlyList<ScheduledChatSummary>> ListSoonAsync(int limit, CancellationToken cancellationToken);
+
     /// <summary>A chat's schedule state, parsed from its kind state; null for a chat that is not scheduled.</summary>
     ChatSchedule? Parse(string kind, JsonElement? state);
 }
@@ -54,6 +60,10 @@ public sealed class ChatScheduleApi(HttpClient httpClient) : IChatScheduleApi
         using var response = await httpClient.PostAsync($"{Route(projectId, chatId)}/run", null, cancellationToken);
         return await ReadAsync(response, cancellationToken);
     }
+
+    public async Task<IReadOnlyList<ScheduledChatSummary>> ListSoonAsync(int limit, CancellationToken cancellationToken) =>
+        await httpClient.GetFromJsonAsync<IReadOnlyList<ScheduledChatSummary>>(
+            $"api/scheduled-chats/soon?limit={limit}", cancellationToken) ?? [];
 
     public ChatSchedule? Parse(string kind, JsonElement? state)
     {

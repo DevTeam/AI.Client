@@ -22,6 +22,11 @@ public partial class Home
 
     private sealed record NotifiedBranch(Guid Id, string Title, string Notice);
 
+    // How many chats show at first is a setting of its own; "Show more" opens the rest.
+    private int _notifiedChatCount = Settings.ClientSettings.DefaultNotifiedChatCount;
+    private int NotifiedChatsShown => Math.Clamp(_notifiedChatCount,
+        Settings.ClientSettings.MinNotifiedChatCount, Settings.ClientSettings.MaxNotifiedChatCount);
+
     private bool _notifiedFolded;
     private bool _notifiedShowMore;
 
@@ -170,6 +175,8 @@ public partial class Home
         await NavigateToTargetAsync(new WorkspaceTarget(chat.ProjectId, chat.Id, branchId, newest?.MessageId, false));
         Notifications.MarkChatBranchSeen(chat.Id, branchId);
     }
+
+    private void SetNotifiedChatCount(int count) => _notifiedChatCount = count;
 
     private Task ToggleNotifiedFoldedAsync()
     {

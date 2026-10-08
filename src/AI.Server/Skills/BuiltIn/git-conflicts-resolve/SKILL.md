@@ -19,7 +19,10 @@ tools: ["read_text_file","grep_files","process_run","ask_user","run_skill","read
    explanation and alternatives, the recommendation first. Dismissal delegates only a resolution
    justified by evidence; if none is safe, or on declined/expired/interrupted, leave it paused.
 4. Stage only resolved paths; verify the unmerged index is empty, check for introduced markers
-   and run relevant build/tests. Continue only the operation the user authorized, with its matching
+   and run relevant build/tests. Filter tests to affected projects/modules first; use the full
+   suite as a final relevant check. Select supported quiet/minimal output that retains failures
+   and counts, and set an explicit finite test timeout within the tool limit. Split long suites
+   and report timeouts as incomplete. Continue only the operation the user authorized, with its matching
    `--continue` and the existing commit message. If continuation was not authorized, ask once.
    Repeat for further conflicts; never bypass hooks or skip a failing commit. For stash conflicts
    do not run --continue or make a commit: report the resolved working tree and retained stash.

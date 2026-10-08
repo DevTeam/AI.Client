@@ -50,7 +50,11 @@ run database migrations, stage, commit, checkout, stash, reset or push as part o
    Inspect the dependency graph/diff for unexpected transitive churn, duplicate versions,
    incompatibilities and extra packages; explain necessary changes and avoid unrelated updates.
 7. Verify with the repository's documented commands and tools. Run checks appropriate to the
-actual change, read output and exit codes, and distinguish passed, failed, skipped and zero tests.
+actual change. For tests, start with a project/module/class/test filter; use a wider or full suite
+only as a final check when relevant and feasible. Choose runner-supported quiet/minimal output or
+a concise reporter and short traceback options without losing failures or counts. Set an explicit
+finite timeout for each test run within the effective tool limit; split longer suites and report
+a timeout as incomplete. Read output and exit codes, and distinguish passed, failed, skipped and zero tests.
 Do not disable hooks, weaken tests, suppress useful diagnostics or claim a check was run when it
 was not. Respect an explicit request not to add tests. Compare final status with the baseline;
 remove only scratch files and temporary logging created by this task, preserving unrelated work.

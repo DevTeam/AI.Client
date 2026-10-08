@@ -44,7 +44,10 @@ Follow project instructions. Never fetch or push unless the user separately requ
    If declined, expired, interrupted or still unresolved, leave the operation paused and report
    exact conflicts and the matching `--continue` / `--abort` commands.
 6. Verify no unmerged entries or introduced conflict markers remain; run the relevant build/tests
-   before continuing, and again after completion. Use a noninteractive Git editor only to accept
+   before continuing, and again after completion. Filter tests to affected projects/modules first;
+   reserve the full suite for a final relevant check. Use supported quiet/minimal runner output
+   that retains failures and counts. Set an explicit finite test timeout within the tool limit;
+   split long suites and report timeouts as incomplete. Use a noninteractive Git editor only to accept
    the existing message when continuing. Repeat for each conflicted commit. Never bypass hooks
    or report success after a failed command. Finish with the resulting branch and HEAD, checks,
    resolutions made and the recovery ref, or the precise paused state.

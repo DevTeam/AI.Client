@@ -36,4 +36,7 @@ Follow project instructions. Never fetch or push unless the user separately requ
    offer `git-conflicts-resolve`; leave the operation paused with the matching `--continue`
    and `--abort` commands. Do not skip commits or silently abort.
 6. On success inspect status, history and the resulting diff; run the relevant build/tests.
+   Filter tests to affected projects/modules first; reserve the full suite for a final relevant
+   check. Use supported quiet/minimal runner output that retains failures and counts, and set an
+   explicit finite test timeout within the tool limit. Split long suites; report timeouts as incomplete.
    Finish with the branch and resulting HEAD, checks and recovery ref, or the precise paused state.

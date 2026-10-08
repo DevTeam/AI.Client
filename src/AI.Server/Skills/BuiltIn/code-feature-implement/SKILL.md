@@ -32,7 +32,11 @@ steps where they differ: their build, test and style rules are the ones to follo
    project has tests.
 6. Verify. Take the build and test commands from the instructions, README, CI files or manifests
    (package.json scripts, *.sln or *.csproj, pyproject.toml, Cargo.toml, go.mod, Makefile). Build,
-   run the tests nearest to the change, then the wider suite when it finishes within the timeout.
+   run the tests nearest to the change with a project/module/class/test filter, then the wider or
+   full suite as a final check when relevant and feasible within the timeout. Use the runner's
+   supported quiet/minimal output or concise reporter and short traceback options while keeping
+   failure details and counts available. Set an explicit finite timeout for each test run within
+   the effective tool limit; split or delegate longer suites, and report a timeout as incomplete.
    Read the output and exit code; on a failure fix the cause and run again, at most three rounds
    per failure. Never skip, weaken or delete a test to get green. Claim only what you ran: "should
    work" is not a result. When something cannot be run, say what and why.

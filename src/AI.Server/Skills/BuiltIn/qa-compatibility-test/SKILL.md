@@ -57,7 +57,11 @@ Clean up only task-created records/resources using recorded identifiers and auth
    native OS behavior or every browser engine. Preserve evidence for platform-specific defects.
 7. For every scenario/check distinguish passed, failed, blocked and not run; pending/running is
 not passed. Attach the expected/actual outcome and evidence to the actual revision/environment.
-Read exit codes and test counts: a runner that found zero tests or could not start is not a pass.
+For automated runs, filter to the relevant matrix cell/module/tests first; use the wider or full
+suite only for final coverage when relevant. Select runner-supported quiet/minimal output or a
+concise reporter that retains failures and counts. Set an explicit finite timeout within the tool
+limit; split long suites and mark timeouts incomplete. Read exit codes and test counts: a runner
+that found zero tests or could not start is not a pass.
 Do not suppress failures, disable tests, replace assertions with snapshots blindly or claim
 complete coverage from absence of findings. Compare final status with the baseline and remove
 only task-created scratch artifacts; preserve unrelated work.

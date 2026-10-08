@@ -7,9 +7,11 @@ using AI.Application.Notifications;
 using AI.Application.Projects;
 using AI.Application.Runs;
 using AI.Application.Settings;
+using AI.Application.Skills;
 using AI.Application.Tools;
 using AI.Application.Workspace;
 using AI.Contracts.Chats;
+using AI.Contracts.Chat;
 using AI.Contracts.Navigation;
 using AI.Contracts.Projects;
 using AI.Contracts.Runs;
@@ -30,6 +32,7 @@ using Shouldly;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Xunit;
+using ModelChatToolCall = AI.Contracts.Chat.ChatToolCall;
 
 /// <summary>
 /// Exercises the application server the way the Host does: over a real MCP session, through the
@@ -1443,6 +1446,46 @@ public sealed partial class AppToolTests
         plan.Fits.ShouldBeTrue();
         selection.SelectedTokens.ShouldBeLessThanOrEqualTo(selection.BudgetTokens);
         selection.Tools.ShouldContain(tool => tool.OriginalName == "tool_search");
+    }
+
+    [Fact]
+    public async Task ShouldKeepAppReadAvailableAfterProjectSetupDiscoversItAtDefaultContext()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var connection = new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.test/v1", "model", true, true, false,
+            ContextWindowTokens: 32_768, ReservedOutputTokens: 4_096);
+        var preview = await fixture.Standing.BuildAsync(fixture.ProjectId, true, TestContext.Current.CancellationToken, connection);
+        var playbook = new BuiltInSkillCatalog().List().Single(skill => skill.Id == "project-configure");
+        var policy = new AdaptiveContextPolicy(new ContextTokenEstimator(), new ConnectionContextLimitsResolver());
+        var working = new[] { "app_read", "ask_user", "skill_search", "tool_search", "run_skill" };
+        var pins = session.Tools.Where(tool => working.Contains(tool.OriginalName))
+            .Select(tool => tool.ModelDefinition.Name).ToHashSet(StringComparer.Ordinal);
+        var read = session.Tools.Single(tool => tool.OriginalName == "app_read");
+        var runSkill = session.Tools.Single(tool => tool.OriginalName == "run_skill");
+        var search = session.Tools.Single(tool => tool.OriginalName == "tool_search");
+        ChatCompletionMessage[] context = [.. preview.Layers.Where(layer => layer.Content.Length > 0)
+                .Select(layer => new ChatCompletionMessage("system", layer.Content)),
+            new("system", "Finish the project setup and follow the active playbook."),
+            new("user", "Настрой проект"),
+            new("assistant", "", [new ModelChatToolCall("skill-call", runSkill.ModelDefinition.Name, "{}")]),
+            new("tool", playbook.Content, ToolCallId: "skill-call")];
+
+        var initial = policy.Choose(connection, "Настрой проект", context, session.Tools, pins);
+        initial.Tools.ShouldContain(read);
+        var estimator = new ContextTokenEstimator();
+        (estimator.EstimateMessages(context) + initial.SelectedTokens)
+            .ShouldBeLessThan(policy.Resolve(connection).UsableTokens);
+        var afterSearch = context.Concat([
+            new ChatCompletionMessage("assistant", "", [new ModelChatToolCall("search-call", search.ModelDefinition.Name, "{}")]),
+            new ChatCompletionMessage("tool", "Found mcp_app__app_read", ToolCallId: "search-call")]).ToArray();
+        var continued = policy.Choose(connection, "Настрой проект", afterSearch, session.Tools,
+            new HashSet<string>([read.ModelDefinition.Name]), initial.Tools);
+
+        continued.Tools.ShouldContain(read);
+        continued.SelectedTokens.ShouldBeLessThanOrEqualTo(continued.BudgetTokens);
+        (estimator.EstimateMessages(afterSearch) + continued.SelectedTokens)
+            .ShouldBeLessThan(policy.Resolve(connection).UsableTokens);
     }
 
     private sealed class AppFixture : IAsyncDisposable

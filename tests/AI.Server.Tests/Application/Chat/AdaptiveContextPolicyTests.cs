@@ -63,7 +63,7 @@ public sealed class AdaptiveContextPolicyTests
         var exhausted = Policy().Resolve(Connection(1_024, 1_000));
         exhausted.ToolTokens.ShouldBe(0);
         exhausted.InstructionTokens.ShouldBe(0);
-        Policy().Resolve(Connection(32_768, 1_000)).Compact.ShouldBeFalse();
+        Policy().Resolve(Connection(32_768, 1_000)).Compact.ShouldBeTrue();
         Policy().Resolve(Connection(32_768, 20_000)).Compact.ShouldBeTrue();
     }
 

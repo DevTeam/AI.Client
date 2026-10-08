@@ -80,7 +80,7 @@ public sealed partial class AdaptiveContextPolicy(
         var usable = Math.Max(0, limits.ContextWindowTokens - limits.ReservedOutputTokens - ProtocolOverhead - safety);
         return new(limits.ContextWindowTokens, limits.ReservedOutputTokens, ProtocolOverhead + safety,
             usable, Math.Min(24_576, usable * 3 / 5), Math.Min(2_048, usable / 10),
-            Math.Min(24_576, usable / 5), usable < 8_192 ? 8 : usable < 65_536 ? 16 : 64, usable < 16_384);
+            Math.Min(24_576, usable / 5), usable < 8_192 ? 8 : usable < 65_536 ? 16 : 64, usable < 32_768);
     }
 
     public ModelContextPreview PrepareStanding(ModelContextPreview preview, ConnectionSettings? connection, bool appToolsAvailable)
@@ -103,7 +103,8 @@ public sealed partial class AdaptiveContextPolicy(
         var remaining = Math.Max(0, standingBudget - layers.Sum(layer => layer.Tokens));
         foreach (var layer in preview.Layers.Where(layer => layer.Key is StandingInstructions.MemoryKey or StandingInstructions.SkillsKey))
         {
-            var allowance = layer.Key == StandingInstructions.MemoryKey ? Math.Min(2_048, remaining / 4) : remaining;
+            var allowance = layer.Key == StandingInstructions.MemoryKey ? Math.Min(2_048, remaining / 4)
+                : compact ? Math.Min(4_096, remaining) : remaining;
             var optional = FitIndex(layer, allowance, compact, connection?.Model);
             layers.Add(optional);
             remaining = Math.Max(0, remaining - optional.Tokens);
@@ -151,7 +152,13 @@ public sealed partial class AdaptiveContextPolicy(
         // below a floor: history that does not fit is summarized by the planner after this choice,
         // and a turn left without its working tools cannot carry on once it is.
         var floor = Math.Min(profile.ToolTokens, profile.UsableTokens / 10);
-        var budget = Math.Min(profile.ToolTokens, Math.Max(floor, profile.UsableTokens
+        var retainedTokens = previousTools is { Count: > 0 }
+            ? estimator.EstimateTools(previousTools.Select(tool => tool.ModelDefinition).ToArray()) : 0;
+        // A discovered capability must have room to join the request. Preserve that larger share
+        // on later steps while it still fits, so consuming the discovery pin cannot evict it.
+        var schemaShare = pinnedTools is { Count: > 0 }
+            ? profile.UsableTokens / 3 : Math.Max(profile.ToolTokens, retainedTokens);
+        var budget = Math.Min(Math.Min(profile.UsableTokens / 3, schemaShare), Math.Max(floor, profile.UsableTokens
             - Math.Max(profile.UsableTokens / 4, estimator.EstimateMessages(context) + Math.Max(0, trailingInstructionTokens))));
         // Prioritized tools, especially those pinned by a routed skill, need only a few unrelated
         // schemas beside them. An omitted capability can be added through tool_search when needed.

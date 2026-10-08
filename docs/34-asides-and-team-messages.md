@@ -153,10 +153,20 @@ Users rarely ask for a team by name, so `team-assemble` is reached in four ways:
 `evals/AI.Routing.Evals` measures the router on messages that should and should not reach it (see
 [Context request budgets and quality evaluation](31-context-evaluation.md#opt-in-model-quality-evaluation)).
 
-The protocol lives in these three playbooks only; other skills stay unaware of teams. Where a
-general skill would conflict, the team playbook overrides it: a teammate never changes the git
-state of the shared working directory (committing is the lead's, at integration) and takes
-questions to the lead before the user. `code-plan` mentions `team-assemble` when its plan splits
+The team can choose separate Git worktrees when the repository, clean integration checkout,
+directory grants and ignored worktree paths allow them, or when the user grants a suitable
+destination directory. `team-assemble` includes that choice in
+the team proposal. Each teammate then edits only its assigned worktree and commits only its owned
+paths on its local branch. The lead verifies and cherry-picks those commits, checks the integrated
+result, and removes clean worktrees while retaining branches for recovery. `git-manage-worktree`
+creates and removes the worktrees; it never pushes or deletes branches. If worktrees are not
+usable, the team offers the shared directory.
+
+The coordination protocol lives in the three team playbooks. Where a general skill would
+conflict, the team playbook overrides it: in shared-directory mode a teammate never changes the
+Git state of the shared working directory (committing is the lead's, at integration); in worktree
+mode its Git changes stay on its own branch. A teammate takes questions to the lead before the
+user. `code-plan` mentions `team-assemble` when its plan splits
 into parallel parts on disjoint files, and the help of the send button and the branch row tells
 the guide about asides and team branches.
 
@@ -235,8 +245,10 @@ nor wait for someone to press Retry:
 
 ### Known limits
 
-- Branches share the project's working directory. The charter assigns owned paths to each role;
-  nothing in code enforces them.
+- Chat branches share the project's directory grants. In shared-directory mode they edit the same
+  checkout; in worktree mode each teammate uses the absolute worktree path in the charter. The
+  charter assigns owned paths to each role; nothing in code enforces that ownership or the
+  per-branch worktree choice.
 - The connection is chosen per chat, not per branch.
 - A tool with an `Ask` policy stops a teammate branch until the person answers; the sidebar marks the
   branch as needing attention.

@@ -24,7 +24,13 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    you work, before your next step.
 3. Do the work. Start each skill your brief names with `run_skill` in this turn and follow its
    steps; with none named, follow the project's conventions and its checks. Change only your owned
-   paths. A change anywhere else, or to a contract, is a question to the lead.
+   paths. A change anywhere else, or to a contract, is a question to the lead. Read the charter's
+   workspace mode before touching files. In worktree mode, verify the assigned absolute worktree
+   path, Git branch and base commit against `git worktree list --porcelain` and use that path for
+   every file operation and command. Resolve owned repository-relative paths inside that worktree;
+   never edit the lead's checkout or another teammate's worktree. If a tool cannot reach the
+   assigned path under the project's grants, report a blocker to the lead rather than using a
+   process to bypass the grant.
    Make the first change early: as soon as the contracts and one example of the project's style
    are known, write the smallest real part of the deliverable in your owned paths — the files,
    types and signatures the contracts fix — and grow it from there. Reading on without changing
@@ -34,10 +40,15 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    disagree, do not settle it yourself and do not stop for it: send a question at once with the
    exact case and both readings, then carry on by the charter's contract, which holds until the
    lead decides.
-   The team shares one working directory, so other teammates' unfinished work is on disk next to
-   yours: never change the git index or working tree as a whole — no commit, stash, checkout,
-   reset, restore, clean, rebase, merge, cherry-pick or revert, even when another skill's steps
-   say so. Committing and integrating are the lead's. Read-only git (status, diff, log) is fine.
+   In shared-directory mode, other teammates' unfinished work is on disk next to yours: never
+   change the Git index or working tree as a whole — no commit, stash, checkout, reset, restore,
+   clean, rebase, merge, cherry-pick or revert, even when another skill's steps say so. Committing
+   and integrating are the lead's. In worktree mode, the user's choice authorizes local commits
+   for integration: after checking the diff, stage only owned paths with `git add -- <paths>`,
+   verify the staged paths, and commit on your assigned branch. Do not change Git state outside
+   that worktree, use `git add -A` or `.`, rewrite history, merge, rebase, cherry-pick, push, or
+   remove any worktree. Report a hook failure or unexpected status to the lead without bypassing
+   it. Read-only Git (status, diff, log) is fine in either mode.
    A question another skill would put to the user goes to the lead first; use `ask_user` only for
    a decision the charter leaves to the user, and say in it that you are asking as <role>.
 4. Write to the lead with `app_runs` with `operation` `Submit`, `branchId` = `chatId`, no `operationId` (the application assigns it),
@@ -54,5 +65,7 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    thanks, and no messages to other teammates: the lead routes them.
 5. When the deliverable meets its definition of done, check it once more against the charter's
    contracts, then send intent `Done` (mode Send) with what changed (paths), how it was verified,
-   and anything left open.
+   and anything left open. In worktree mode include the worktree path, branch, base commit, ordered
+   commit hashes and clean/dirty status so the lead can integrate the exact result. Do not call
+   the result done while assigned changes remain uncommitted.
 6. Answer in this branch with the same summary, or with what you are waiting for and why.

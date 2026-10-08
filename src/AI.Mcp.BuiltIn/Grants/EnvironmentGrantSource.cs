@@ -4,7 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 /// <summary>
-/// Reads project directory grants handed over by the Host through <see cref="Variable"/>.
+/// Reads session directory grants handed over by the Host through <see cref="Variable"/>.
 /// Absent or malformed configuration yields no grants, so file system tools stay closed.
 /// </summary>
 public sealed class EnvironmentGrantSource : IGrantSource

@@ -11,7 +11,7 @@ public sealed class ListAllowedDirectoriesTool(IPathGuard guard, IBuiltInToolRep
         List,
         new McpServerToolCreateOptions
         {
-            Description = "List the directory grants of the current project: canonical root, whether it covers subdirectories and which of "
+            Description = "List the project directory grants and the current chat's temporary directory: canonical root, whether each covers subdirectories and which of "
                           + "'read', 'write', 'edit' and 'delete' it allows. File system tools reject any path outside these roots, so call "
                           + "this first when a path is uncertain. An empty list means no file system access is granted."
         });

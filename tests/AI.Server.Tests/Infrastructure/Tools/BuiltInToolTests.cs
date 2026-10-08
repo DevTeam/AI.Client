@@ -10,6 +10,7 @@ using AI.Contracts.Tools;
 using AI.Infrastructure.Tools;
 using Shouldly;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 public sealed class BuiltInToolTests
@@ -54,7 +55,7 @@ public sealed class BuiltInToolTests
     public async Task ShouldDiscoverValidateAndRunOverStdio()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync([], ToolRunContext.None, timeout.Token);
+        await using var session = await CreateFactory().OpenAsync([], ToolRunContext.None, timeout.Token);
         session.Tools.Select(item => item.OriginalName).ShouldBe(
         [
             "process_run", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "read_image_file", "list_directory",
@@ -79,6 +80,46 @@ public sealed class BuiltInToolTests
         using var canonicalJson = JsonDocument.Parse(canonical);
         canonicalJson.RootElement.GetProperty("executable").GetString().ShouldBe("dotnet");
         canonicalJson.RootElement.TryGetProperty("workingDirectory", out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ShouldGrantAndCleanUpOnlyTheCurrentChatTemporaryDirectory()
+    {
+        var temporary = new ChatTemporaryDirectory(NullLogger<ChatTemporaryDirectory>.Instance);
+        var projectId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var otherChatId = Guid.NewGuid();
+        var directory = temporary.GetOrCreate(projectId, chatId);
+        var otherDirectory = temporary.GetOrCreate(projectId, otherChatId);
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await using (var session = await new DefaultToolSessionFactory(new ToolResultModelProjector(), temporary)
+                             .OpenAsync([], new ToolRunContext(projectId, chatId, chatId, true), timeout.Token))
+            {
+                var grants = (await Structured(session, "list_allowed_directories", new { }, timeout.Token))
+                    .GetProperty("directories").EnumerateArray().ToArray();
+                grants.Length.ShouldBe(1);
+                grants[0].GetProperty("root").GetString().ShouldBe(directory);
+                grants[0].GetProperty("capabilities").EnumerateArray()
+                    .Select(item => item.GetString()).ShouldBe(["delete", "edit", "read", "write"]);
+
+                var file = Path.Combine(directory, "output.txt");
+                (await Structured(session, "write_file", new { path = file, content = "result" }, timeout.Token))
+                    .GetProperty("created").GetBoolean().ShouldBeTrue();
+                (await Structured(session, "read_text_file", new { path = file }, timeout.Token))
+                    .GetProperty("content").GetString().ShouldBe("result");
+                (await Structured(session, "read_text_file", new { path = Path.Combine(otherDirectory, "secret.txt") }, timeout.Token))
+                    .GetProperty("error").GetString()!.ShouldContain("No directory grant");
+            }
+
+            temporary.DeleteChat(projectId, chatId);
+            Directory.Exists(directory).ShouldBeFalse();
+            Directory.Exists(otherDirectory).ShouldBeTrue();
+            temporary.DeleteProject(projectId);
+            Directory.Exists(otherDirectory).ShouldBeFalse();
+        }
+        finally { temporary.DeleteProject(projectId); }
     }
 
     [Fact]
@@ -199,7 +240,7 @@ public sealed class BuiltInToolTests
             File.WriteAllText(Path.Combine(root, ".git", "HEAD"), "ref: refs/heads/master");
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
+            await using var session = await CreateFactory().OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -246,7 +287,7 @@ public sealed class BuiltInToolTests
             }
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
+            await using var session = await CreateFactory().OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -287,7 +328,7 @@ public sealed class BuiltInToolTests
             await File.WriteAllTextAsync(file, text, TestContext.Current.CancellationToken);
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
+            await using var session = await CreateFactory().OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var tool = session.Tools.Single(item => item.OriginalName == "read_text_file");
             var result = await session.CallAsync(tool, JsonSerializer.Serialize(new { path = file }), null, timeout.Token);
@@ -308,7 +349,7 @@ public sealed class BuiltInToolTests
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
+            await using var session = await CreateFactory().OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read", "write", "edit", "delete"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -388,7 +429,7 @@ public sealed class BuiltInToolTests
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
             // Read/write is not delete: an ordinary editing grant must not be able to unlink a file.
-            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
+            await using var session = await CreateFactory().OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read", "write", "edit"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -408,7 +449,7 @@ public sealed class BuiltInToolTests
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
+            await using var session = await CreateFactory().OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read", "write", "edit", "delete"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -476,7 +517,7 @@ public sealed class BuiltInToolTests
             File.WriteAllText(Path.Combine(root, "b.md"), "Needle in another file\n");
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
+            await using var session = await CreateFactory().OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -539,7 +580,7 @@ public sealed class BuiltInToolTests
             File.WriteAllText(Path.Combine(root, "busy.txt"), string.Concat(Enumerable.Repeat("needle\n", 40)));
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
+            await using var session = await CreateFactory().OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -587,7 +628,7 @@ public sealed class BuiltInToolTests
             await File.WriteAllTextAsync(Path.Combine(skipped.FullName, "HEAD"), "ref: refs/heads/master", TestContext.Current.CancellationToken);
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
+            await using var session = await CreateFactory().OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read", "write", "edit", "delete"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
@@ -703,7 +744,7 @@ public sealed class BuiltInToolTests
         Directory.CreateDirectory(root);
         try
         {
-            await using var session = await new DefaultToolSessionFactory(new ToolResultModelProjector()).OpenAsync(
+            await using var session = await CreateFactory().OpenAsync(
                 [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
             var tool = session.Tools.Single(item => item.OriginalName == "read_image_file");
@@ -749,6 +790,9 @@ public sealed class BuiltInToolTests
         }
         finally { Directory.Delete(root, true); }
     }
+
+    private static DefaultToolSessionFactory CreateFactory() =>
+        new(new ToolResultModelProjector(), new ChatTemporaryDirectory(NullLogger<ChatTemporaryDirectory>.Instance));
 
     private sealed class Grants(params DirectoryGrantSpec[] grants) : IGrantSource
     {

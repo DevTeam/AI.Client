@@ -14,6 +14,7 @@ using Projects;
 using Settings;
 using AI.Infrastructure.Storage;
 using AI.Infrastructure.Chat;
+using AI.Infrastructure.Tools;
 using Moq;
 using Shouldly;
 using Xunit;
@@ -1831,15 +1832,32 @@ public sealed partial class ChatExecutionTests
     public async Task DeletingAnActiveChatShouldCancelItsWorkerAndRemovePersistedRuns()
     {
         await using var fixture = await Fixture.CreateAsync();
+        var temporary = new ChatTemporaryDirectory(Microsoft.Extensions.Logging.Abstractions.NullLogger<ChatTemporaryDirectory>.Instance);
+        var scratch = temporary.GetOrCreate(fixture.ProjectId, fixture.ChatId);
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Question"));
         var call = await fixture.NextCallAsync();
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         var result = await fixture.Dispatcher.DeleteChatAsync(fixture.ProjectId, fixture.ChatId, chat!.Revision, CancellationToken.None);
         result.IsDeleted.ShouldBeTrue();
+        Directory.Exists(scratch).ShouldBeFalse();
         call.Answer.TrySetResult("Too late");
         (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None)).ShouldBeNull();
         await fixture.RestartAsync();
         (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task DeletingAProjectShouldRemoveItsChatTemporaryDirectories()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var temporary = new ChatTemporaryDirectory(Microsoft.Extensions.Logging.Abstractions.NullLogger<ChatTemporaryDirectory>.Instance);
+        var scratch = temporary.GetOrCreate(fixture.ProjectId, fixture.ChatId);
+        var project = await fixture.GetProjectAsync();
+
+        var result = await fixture.Dispatcher.DeleteProjectAsync(fixture.ProjectId, project!.Revision, CancellationToken.None);
+
+        result.IsDeleted.ShouldBeTrue();
+        Directory.Exists(scratch).ShouldBeFalse();
     }
 
     [Fact]

@@ -2324,8 +2324,9 @@ else if (_guideInvitation is { } guideInvitation)
 
     /// <summary>
     /// Walks the project's sent-message history: -1 towards older entries, +1 back towards newer
-    /// ones and finally back to the draft the user started from. Returns null when the press
-    /// changes nothing, so the JS side leaves the textarea untouched.
+    /// ones and finally back to the empty field the walk started from. Returns null when the press
+    /// changes nothing (the field holds the user's own text, or an end of the history is reached),
+    /// so the JS side leaves the textarea untouched.
     /// </summary>
     [JSInvokable]
     public ComposerHistoryMove? MoveComposerHistory(int direction)
@@ -2336,7 +2337,7 @@ else if (_guideInvitation is { } guideInvitation)
             : _composerHistoryNavigator.MoveNewer(history);
         if (text is null) return null;
         // Deliberately not saved as a draft: browsing is transient, and persisting each entry the
-        // user walks past would overwrite the unsent text they still expect to find here.
+        // user walks past would overwrite the draft they still expect to find afterwards.
         _chat.Message = text;
         StateHasChanged();
         return new ComposerHistoryMove(text, _composerHistoryNavigator.IsActive);

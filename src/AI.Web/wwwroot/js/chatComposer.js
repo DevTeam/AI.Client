@@ -221,12 +221,17 @@ export function attach(textarea, dotNetReference) {
         if (event.key === "ArrowUp" || event.key === "ArrowDown") {
             pushModifiers(event.ctrlKey, event.altKey, event.shiftKey);
             if (event.ctrlKey || event.altKey || event.shiftKey) return;
+            // History is entered from an empty field only: with text in it Up belongs to the
+            // caret, and substituting an older message would lose what the user is writing. The
+            // rule guards entering history, not walking it — while an entry is on screen the field
+            // holds that entry, so the mirror is what tells the two apart.
+            const value = textarea.value;
+            if (!historyActive && value.length > 0) return;
             // History takes the arrow key only at the edge line — Up on the first line, Down on
             // the last — so a multi-line message stays navigable line by line. Deliberately the
             // edge LINE and not the very first/last character: an entry lands with the caret at
             // its end, and requiring the caret to reach position 0 first would make every second
             // Up press do nothing but move the caret on a one-line entry.
-            const value = textarea.value;
             const onFirstLine = !value.slice(0, textarea.selectionStart).includes("\n");
             const onLastLine = !value.slice(textarea.selectionEnd).includes("\n");
             if (event.key === "ArrowUp" ? !onFirstLine : !(historyActive && onLastLine)) return;

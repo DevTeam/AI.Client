@@ -7,7 +7,9 @@ The tooltip is a table: an icon, the action and its keys aligned on the right �
 During generation the composer stays available. Enter adds the message to the turn: the server marks it `JoinsTurn`, puts it ahead of what was queued for later, and the turn reads it after its next tool batch ([Asides and team messages](34-asides-and-team-messages.md)); a `trigger_wait` in flight ends early so the message is read now. A turn that ends before it reads the message leaves it as the very next turn. Ctrl+Enter queues the message behind the turn without stopping it; on a branch with nothing running it holds the queue (Paused), so several messages can be written before any runs, and Resume or the next sent message lets them go. Esc stops the turn — only when nothing in the composer takes the key first (the `/` and `@` lists, the suggested reply, history browsing) and not while the turn waits on an `ask_user` question, whose answer is being written there. A message sent after Stop starts afresh: the stopped turn keeps its user message and partial answer in the transcript but is not run again ahead of the new message; one sent while the stop is still unwinding waits for it. Resume is still how a stopped turn is continued. The composer performs a single Submit command. The server chooses the context, changes the history and manages the queue. The Web does not delete the subtree before sending and does not duplicate the CLI execution.
 
 `↑` and `↓` without modifiers scroll through the project's history of sent messages, `Esc` leaves it
-and returns the typed text. The key goes into the history only on the last line of the field, so a
+and empties the field. The keys claim the composer only while the field is empty: with text in it
+they move the caret as usual, so a half-written message is never replaced by an older one. Up goes
+into the history only on the first line of the field and Down leaves it only on the last, so a
 multiline message stays navigable. Editing an inserted entry returns the field to
 a normal draft. Details — in [UX decisions](12-ux-decisions.md#история-ввода).
 

@@ -27,12 +27,14 @@ The goal of the interface is a compact desktop workspace, visually and behaviora
 ## Input history
 
 - `↑` on the first line opens the history of sent messages, `↓` on the last line returns to the
-  newer ones. The key fires exactly on the edge line, not on the edge character: the entry is
+  newer ones. History opens only while the field is empty: with text in it `↑` belongs to the
+  caret and moves between lines, so a half-written message is never replaced. The key fires
+  exactly on the edge line, not on the edge character: the entry is
   substituted with the caret at the end, and a requirement to reach position 0 would consume
   every second press on a single-line entry. Inside a multi-line entry the arrows still move
   between lines.
-- The typed text is saved as position zero: `↓` past the newest entry returns it, `Esc` returns
-  it immediately. While paging, the draft in localStorage is not rewritten — browsing history
+- The field was empty when the walk started, so that is what `↓` past the newest entry and `Esc`
+  return to. While paging, the draft in localStorage is not rewritten — browsing history
   must cost nothing.
 - Editing the substituted text detaches it from history: the counter goes blank, the text
   becomes a draft again, and the next `↑` starts the walk over from the newest entry.

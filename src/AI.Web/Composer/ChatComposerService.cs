@@ -13,10 +13,8 @@ public sealed class ChatComposerService(IChatHistoryApi chatHistory, IChatRunsAp
         if (string.IsNullOrWhiteSpace(request.Message) && request.Resources is not { Count: > 0 })
             return new ComposerSubmitOutcome.Rejected("The composer is empty.");
         var mode = ResolveMode(request);
-        // Send-now and replacement both resolve a stuck run by abandoning its old command; an
-        // aside starts no command, so a stuck run does not stand in its way.
-        if (request.SelectedRun is { Status: ChatRunStatus.Failed, CanRetry: false }
-            && mode is not ChatSubmitMode.SendNow and not ChatSubmitMode.Replace and not ChatSubmitMode.Aside)
+        // Replacement resolves a stuck run by abandoning its old command.
+        if (request.SelectedRun is { Status: ChatRunStatus.Failed, CanRetry: false } && mode != ChatSubmitMode.Replace)
             return new ComposerSubmitOutcome.Rejected("Resolve or skip the failed queued message before sending another one.");
         try
         {
@@ -47,13 +45,8 @@ public sealed class ChatComposerService(IChatHistoryApi chatHistory, IChatRunsAp
                     ReplaceSourceId: request.ReplaceSourceId,
                     ExpectedBranchRevision: mode is ChatSubmitMode.Replace or ChatSubmitMode.Fork ? branchRevision : null,
                     Resources: request.Resources), cancellationToken);
-            // An aside the idle branch took at once is its new head; one waiting for a running turn
-            // arrives with that turn, like the turn's own messages.
-            var leaf = mode == ChatSubmitMode.Aside && snapshot.Queue.All(item => item.Id != messageId)
-                ? snapshot.HeadMessageId ?? request.BranchLeafId
-                : parent ?? request.BranchLeafId;
             return new ComposerSubmitOutcome.Accepted(chat, snapshot, snapshot.BranchId,
-                leaf, snapshot.Status == ChatRunStatus.Paused);
+                parent ?? request.BranchLeafId, snapshot.Status == ChatRunStatus.Paused);
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
@@ -64,9 +57,7 @@ public sealed class ChatComposerService(IChatHistoryApi chatHistory, IChatRunsAp
     private static ChatSubmitMode ResolveMode(ComposerSubmitRequest request) =>
         request.ReplaceSourceId is not null ? ChatSubmitMode.Replace
         : request.ForkSourceId is not null || request.Mode == ComposerSubmitMode.Fork ? ChatSubmitMode.Fork
-        : request.Mode == ComposerSubmitMode.Queue ? ChatSubmitMode.Queue
-        : request.Mode == ComposerSubmitMode.Aside ? ChatSubmitMode.Aside
-        : request.Mode == ComposerSubmitMode.SendNow ? ChatSubmitMode.SendNow : ChatSubmitMode.Send;
+        : request.Mode == ComposerSubmitMode.Queue ? ChatSubmitMode.Queue : ChatSubmitMode.Send;
 }
 
 internal static class BranchLeafHelpers

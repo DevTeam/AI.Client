@@ -153,7 +153,7 @@ Paths, each a block of 2–3 steps:
 - Who is who: branch (a teammate's row, its colour dot and "Name · Role") → widgets.chat-team
   (the roster: state and latest report per member, the task and the charter).
 - Talking: chat.team_message (sender, colour, intent; the application signs it) → chat.send
-  (Alt+Enter adds an aside: a running turn reads it at its next step, without a turn of its own).
+  (Enter during a running turn adds the message to it: the turn reads it at its next step).
 - Following: widgets.chat-team from a teammate's branch (open it with a branch step) — the same
   task and roster, "this branch" on the open one, and who waits for the lead.
 - Starting a team: explain beside chat.composer that a large task spanning several independent

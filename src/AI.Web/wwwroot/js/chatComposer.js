@@ -26,6 +26,10 @@ export function attach(textarea, dotNetReference) {
     // call made here, so a local mirror is always in step with the component.
     let historyActive = false;
 
+    // Whether the branch is generating, pushed by the component: Escape stops the turn then, and
+    // has to know synchronously whether the key is its to take.
+    let turnRunning = false;
+
     const applyHistoryText = text => {
         if (text === null || text === undefined) return;
         // Same reason as reset() below: the bound value takes a render to reach the DOM, and the
@@ -232,13 +236,22 @@ export function attach(textarea, dotNetReference) {
         }
         if (event.key === "Escape") {
             pushModifiers(event.ctrlKey, event.altKey, event.shiftKey);
-            if (!historyActive) return;
-            // Swallowed so the first Escape means "put my own text back" and nothing else picks
-            // it up as "close whatever is open".
+            // Each Escape closes the topmost thing: the lists and the suggestion above took theirs,
+            // history browsing comes next, and only with nothing open does it stop the turn.
+            if (historyActive) {
+                // Swallowed so the first Escape means "put my own text back" and nothing else
+                // picks it up as "close whatever is open".
+                event.preventDefault();
+                event.stopPropagation();
+                historyActive = false;
+                dotNetReference.invokeMethodAsync("ExitComposerHistory").then(applyHistoryText);
+                return;
+            }
+            if (!turnRunning || event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
             event.preventDefault();
             event.stopPropagation();
-            historyActive = false;
-            dotNetReference.invokeMethodAsync("ExitComposerHistory").then(applyHistoryText);
+            turnRunning = false;
+            dotNetReference.invokeMethodAsync("StopFromKeyboard");
             return;
         }
         if (event.key !== "Enter") {
@@ -246,29 +259,26 @@ export function attach(textarea, dotNetReference) {
             return;
         }
         historyActive = false;
-        // Shift+Enter is a newline, but Ctrl+Shift+Enter is "interrupt and send now" — so the
-        // combination has to be recognised before Shift is treated as "the user is typing".
-        const interrupting = event.ctrlKey && event.shiftKey && !event.altKey;
-        // Alt+Shift+Enter keeps the text for a schedule instead of sending it: the Alt family is
-        // "no reply now", as Alt+Enter is for an aside.
+        // Shift+Enter is a newline, but Alt+Shift+Enter keeps the text for a schedule instead of
+        // sending it, and Ctrl+Shift+Enter sends — so both have to be recognised before Shift is
+        // treated as "the user is typing".
         const scheduling = event.altKey && event.shiftKey && !event.ctrlKey;
-        if (event.shiftKey && !interrupting && !scheduling) {
+        const formerSendNow = event.ctrlKey && event.shiftKey && !event.altKey;
+        if (event.shiftKey && !scheduling && !formerSendNow) {
             pushModifiers(event.ctrlKey, event.altKey, event.shiftKey);
             return;
         }
         event.preventDefault();
         sending = true;
-        const method = interrupting
-            ? "SendNowFromKeyboard"
-            : scheduling
-                ? "ScheduleFromKeyboard"
+        // Alt+Enter once added an aside and Ctrl+Shift+Enter interrupted the turn; both send as
+        // Enter does now, so an old habit still delivers the message to the turn in flight.
+        const method = scheduling
+            ? "ScheduleFromKeyboard"
             : event.ctrlKey && event.altKey
                 ? "ForkFromKeyboard"
-                : event.ctrlKey
+                : event.ctrlKey && !formerSendNow
                     ? "QueueFromKeyboard"
-                    : event.altKey
-                        ? "AsideFromKeyboard"
-                        : "SendFromKeyboard";
+                    : "SendFromKeyboard";
         dotNetReference.invokeMethodAsync(method).finally(() => { sending = false; });
     };
 
@@ -419,6 +429,7 @@ export function attach(textarea, dotNetReference) {
         resize,
         setSkillList: open => { skillListOpen = open; paintSuggestion(); },
         setMentionList: open => { mentionListOpen = open; paintSuggestion(); },
+        setTurnRunning: running => { turnRunning = running; },
         setSuggestion: text => {
             suggestion = text ?? "";
             resize();

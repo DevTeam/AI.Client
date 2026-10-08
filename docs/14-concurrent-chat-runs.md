@@ -1,6 +1,6 @@
 # Concurrent runs
 
-SubmitChatMessageRequest passes OperationId, MessageId, Content and the mode Send, Queue, Fork, Replace or SendNow. BranchId determines the branch, ParentMessageId the branch point, ReplaceSourceId the root of the replacement. The Queue mode defers execution; there is no separate parallel flag for the queue state.
+SubmitChatMessageRequest passes OperationId, MessageId, Content and the mode Send, Queue, Fork, Replace or SendNow. BranchId determines the branch, ParentMessageId the branch point, ReplaceSourceId the root of the replacement. The Queue mode defers execution without stopping the turn in flight, and holds an idle branch (Paused) until the next Send or Resume; there is no separate parallel flag for the queue state. A person's Send while the branch generates joins that turn (`JoinsTurn`), and a Send on a branch the person stopped drops the stopped command instead of running it again first.
 
 A repeated OperationId does not add the command a second time. The queue is persisted until the answer is committed. Branch generations run in parallel, chat changes go through ChatSynchronization. An HTTP request does not hold the lock.
 

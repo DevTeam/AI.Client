@@ -54,7 +54,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         Func<string, CancellationToken, Task>? draftToolCall = null,
         bool overlayPromptsAllowed = true,
         Func<CancellationToken, Task<IReadOnlyList<ChatCompletionMessage>>>? asides = null,
-        Func<string, CancellationToken, Task>? stalledReport = null)
+        Func<string, CancellationToken, Task>? stalledReport = null,
+        Func<CancellationToken>? joinSignal = null)
     {
         var estimator = tokenEstimator.ForModel(request.Model);
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -522,6 +523,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                         else
                         {
                             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                            // A wait gives way to a message joining the turn: the model waits for
+                            // something to happen, and the person writing to it is that something.
+                            var joined = tool.OriginalName == "trigger_wait"
+                                ? joinSignal?.Invoke() ?? CancellationToken.None
+                                : CancellationToken.None;
+                            using var wake = joined.Register(timeout.Cancel);
                             // A tool that is waiting on a person is not a tool that has gone quiet.
                             // Both clocks are off while it waits: the silence timer, which would
                             // kill the question in under a minute, and the turn's own hour, which
@@ -556,6 +563,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                             // it and ended the run, so one slow server took the whole batch with
                             // it. The run's own cancellation still does exactly that, which is the
                             // difference this guard draws.
+                            catch (OperationCanceledException) when (!token.IsCancellationRequested && joined.IsCancellationRequested)
+                            {
+                                result = Text("The wait ended early because a new message joined this turn. "
+                                    + "It follows these results; read it before deciding whether to wait again.");
+                            }
                             catch (OperationCanceledException) when (!token.IsCancellationRequested)
                             {
                                 result = Error($"The tool went silent for {policy.TimeoutSeconds} seconds. "
@@ -968,6 +980,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     {
         var content = new[] { ToolContent.OfText(message) };
         return new ToolCallResult(content, null, null, true, modelProjector.Project(content, null, true));
+    }
+
+    private ToolCallResult Text(string message)
+    {
+        var content = new[] { ToolContent.OfText(message) };
+        return new ToolCallResult(content, null, null, false, modelProjector.Project(content, null, false));
     }
 
     private ToolCallResult ToolCallLimitError(string tool, int count, EffectiveToolPolicy policy)

@@ -15,9 +15,9 @@ The goal of the interface is a compact desktop workspace, visually and behaviora
 
 ## Composer
 
-- `Enter` sends the message; `Shift+Enter` adds a line; `Ctrl+Enter` queues it;
-  `Ctrl+Alt+Enter` forks the branch and runs it immediately; `Ctrl+Shift+Enter` interrupts the
-  current run and replies to the message first.
+- `Enter` sends the message, or adds it to the turn in progress; `Shift+Enter` adds a line;
+  `Ctrl+Enter` queues it; `Ctrl+Alt+Enter` forks the branch and runs it immediately; `Esc` stops
+  the turn in progress. The keys follow Claude Code and Codex, so nobody has to relearn them.
 - During IME composition the message is not sent.
 - After sending the composer is cleared and keeps focus.
 - Streaming and Stop are implemented as a separate stage.
@@ -41,7 +41,7 @@ The goal of the interface is a compact desktop workspace, visually and behaviora
   its muted prefix. The regular hint is not shown in that case.
 - History belongs to the project, not the chat: formulations repeat ("run the tests", "do the
   recommended thing"), and they migrate between chats of the project. Only an accepted send
-  (Send, Queue, Fork, Send now) lands there; a rejected one already stayed in the field.
+  (Send, Queue, Fork) lands there; a rejected one already stayed in the field.
   A repeat moves to the top instead of duplicating, 100 entries are stored in localStorage.
 - The only key hint is `↑ for history` in the status line, when the field is empty and the
   history is non-empty. There is no history search (`Ctrl+R`) yet.
@@ -61,7 +61,7 @@ The goal of the interface is a compact desktop workspace, visually and behaviora
 - Any server rejection is shown to the user as the text the server returned. Earlier the client
   silently swallowed them, and the rejection was indistinguishable from inaction.
 - Interruption preserves the already-written part of the answer as an incomplete message: both
-  regular Stop and `Ctrl+Shift+Enter` behave the same way. A retry replaces this fragment with
+  Stop, `Esc` and the queue's "send now" behave the same way. A retry replaces this fragment with
   the full answer.
 - An error stops the entire queue: the following messages usually depend on the previous answer.
 

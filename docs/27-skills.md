@@ -15,8 +15,8 @@ closes, and a failed save keeps the drawer open with "Discard changes". Saving c
 the `id` saves a new skill and deletes the old one. Built-in skills stay read-only. Project skills
 are deleted with their project.
 
-Frontmatter requires `id`, `name`, `description` and a JSON Schema object on the `parameters`
-line. Optional `aliases` is a JSON array of up to 8 short commands spelled like an id, for example
+Frontmatter requires `id`, `name` (up to 120 characters), `description` (up to 1000, so it can
+list the phrasings routing matches) and a JSON Schema object on the `parameters` line. Optional `aliases` is a JSON array of up to 8 short commands spelled like an id, for example
 `aliases: ["compact"]`: typing one in full after `/` puts the skill first in the list. A row found
 by an alias (in full, by its start, or by its letters in order, so `/coma` still finds it) leads with
 the best matching `/alias`, highlighted, and names the skill after it; the chip keeps the name. Also,
@@ -52,6 +52,12 @@ application permissions, and every write still goes through tool approval.
 - Playbooks confirm every change with `ask_user` unless the exact value came from the user, put
   the recommended option first with " (Recommended)", say what a dismissed, expired or
   interrupted question does, and end with a one-line report without ids or revisions.
+- A playbook that can start a process never stops, kills or restarts one without permission. A
+  timeout, a hang, a locked file, a process the run did not start and an earlier approval for other
+  work are not permission: the model names the exact process or PID in `ask_user` and acts only on
+  an explicit affirmative answer, while a declined, dismissed, expired or interrupted answer leaves
+  the process running. A playbook that waits on a process rather than ending it still follows the
+  same rule.
 
 `BuiltInSkillCatalogTests` checks the naming of every bundled skill.
 

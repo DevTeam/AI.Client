@@ -656,7 +656,7 @@
             @if (_composerHistoryNavigator.Index is { } historyIndex) { <span class="composer-history-counter" title="Position in your sent-message history; ↑ on the first line goes back, ↓ on the last line goes forward, Esc restores your draft">History @(historyIndex + 1)/@GetComposerHistory().Count</span> }
             @* Held states carry no status word: the turn chip above already names the state and,
                for a failure, its reason. This line says only what the Enter key will do. *@
-            @if (_isSendingNowFromComposer || _sendingQueuedNowId is not null) { <span class="queue-transition-status"><AppIcon Name="spinner" Class="tool-row-spinner" />Interrupting and sending…</span> }
+            @if (_sendingQueuedNowId is not null) { <span class="queue-transition-status"><AppIcon Name="spinner" Class="tool-row-spinner" />Interrupting and sending…</span> }
             else if (_isClearingEverything) { <span class="queue-transition-status"><AppIcon Name="spinner" Class="tool-row-spinner" />Stopping and clearing…</span> }
             else if (GetSelectedRun()?.Status == ChatRunStatus.Generating && _chat.Message.Length > 0) { <span>@GetComposerHint()</span> }
             else if (GetSelectedRun()?.Status == ChatRunStatus.Generating && GetGeneratingStatusText() is { Length: > 0 } generatingStatus) { <span class="composer-generating-status">@generatingStatus</span> }
@@ -824,8 +824,8 @@
                         </span>
                     }
                 </div>
-                @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation" aria-label="Stop generation" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> }
-                <ComposerSendButton ActiveMode="@GetComposerSendMode()" CanAside="@(_selectedChat is not null && !_isForking && _replaceSourceId is null)" CanSchedule="@CanScheduleComposerText()" TurnInFlight="@IsTurnInFlight()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
+                @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation (Esc)" aria-label="Stop generation" aria-keyshortcuts="Escape" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> }
+                <ComposerSendButton ActiveMode="@GetComposerSendMode()" CanSchedule="@CanScheduleComposerText()" TurnInFlight="@IsTurnInFlight()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
             </div>
             @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
         </footer>
@@ -1454,6 +1454,7 @@ else if (_guideInvitation is { } guideInvitation)
     private int? _mentionDismissedAt;
     private bool? _mentionListPushed;
     private string? _mentionTokensPushed;
+    private bool? _turnRunningPushed;
     private bool _scrollMention;
     // The draft's file link the caret is in, whose path-or-content switch shows over it.
     private Guid? _mentionBubbleId;
@@ -1568,7 +1569,6 @@ else if (_guideInvitation is { } guideInvitation)
     private double? _queueHeaderTop;
     private bool _isConfirmingQueueClearAll;
     private bool _isSubmittingMessage;
-    private bool _isSendingNowFromComposer;
     private bool _queueActionPending;
     private bool _hidePendingQueue;
     private bool _isClearingEverything;
@@ -1965,6 +1965,7 @@ else if (_guideInvitation is { } guideInvitation)
                 _skillListPushed = null;
                 _mentionTokensPushed = null;
                 _replySuggestionPushed = null;
+                _turnRunningPushed = null;
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException)
             {
@@ -2047,8 +2048,24 @@ else if (_guideInvitation is { } guideInvitation)
             _scrollMention = false;
         }
 
+        // Escape in the composer stops the turn, and decides on the spot whether the key is its own.
+        if (_composerHandle is not null && _turnRunningPushed != CanStopFromKeyboard())
+        {
+            var handle = _composerHandle;
+            var running = CanStopFromKeyboard();
+            try
+            {
+                await handle.InvokeVoidAsync("setTurnRunning", running);
+                _turnRunningPushed = running;
+            }
+            catch (Exception error) when (error is JSException or ObjectDisposedException)
+            {
+                if (ReferenceEquals(_composerHandle, handle)) _composerHandle = null;
+            }
+        }
+
         // The "@" links the draft holds, for the composer to draw under its text.
-        var mentionTokens = _draftResources.Select(item => item.Mention).OfType<string>().ToArray();
+        var mentionTokens =_draftResources.Select(item => item.Mention).OfType<string>().ToArray();
         var contentTokens = _draftResources.Where(item => item.IncludeContent).Select(item => item.Mention).OfType<string>().ToArray();
         var mentionTokensKey = string.Join('\n', mentionTokens) + "\0" + string.Join('\n', contentTokens);
         if (_composerHandle is not null && mentionTokensKey != _mentionTokensPushed)
@@ -2114,11 +2131,16 @@ else if (_guideInvitation is { } guideInvitation)
     [JSInvokable]
     public Task ForkFromKeyboard() => SubmitComposerAsync(ComposerSubmitMode.Fork);
 
+    /// <summary>Escape in the composer with nothing open in it while the turn generates.</summary>
     [JSInvokable]
-    public Task SendNowFromKeyboard() => SubmitComposerAsync(ComposerSubmitMode.SendNow);
+    public Task StopFromKeyboard() => InvokeAsync(async () =>
+    {
+        if (CanStopFromKeyboard()) await StopGenerationAsync();
+    });
 
-    [JSInvokable]
-    public Task AsideFromKeyboard() => SubmitComposerAsync(ComposerSubmitMode.Aside);
+    // Not while the turn waits on a question: the person is writing its answer in the composer,
+    // and an Escape there is far more likely meant for the text than for the turn.
+    private bool CanStopFromKeyboard() => IsTurnInFlight() && GetSelectedRun()?.PendingPrompt is null;
 
     [JSInvokable]
     public Task ScheduleFromKeyboard() => InvokeAsync(OpenScheduleDraftAsync);
@@ -3032,13 +3054,10 @@ else if (_guideInvitation is { } guideInvitation)
         // the composer was left in.
         if (_selectedChat is null) ResetBranchOperationState();
 
-        // An aside needs a conversation to join; the first message of a new chat is its first turn.
         var effectiveMode = _isForking ? ComposerSubmitMode.Fork
             : _replaceSourceId is not null ? ComposerSubmitMode.Send
-            : mode == ComposerSubmitMode.Aside && _selectedChat is null ? ComposerSubmitMode.Send
             : mode;
         _isSubmittingMessage = true;
-        _isSendingNowFromComposer = effectiveMode == ComposerSubmitMode.SendNow;
         _chatError = null;
         ComposerSubmitOutcome.Accepted? pendingUiUpdate = null;
         // Keep the key that owns the submitted text. A first message changes the current
@@ -3117,7 +3136,6 @@ else if (_guideInvitation is { } guideInvitation)
         finally
         {
             _isSubmittingMessage = false;
-            _isSendingNowFromComposer = false;
         }
 
         if (pendingUiUpdate is not null)
@@ -3230,9 +3248,10 @@ else if (_guideInvitation is { } guideInvitation)
         // shows its own status text for those instead (see GetHeldRunEnterHint for their Enter
         // hint suffix).
         if (_composerAltDown && _composerCtrlDown) return $"{baseHint} · fork on Enter";
-        if (_composerCtrlDown && _composerShiftDown) return $"{baseHint} · interrupt and send now on Enter";
-        if (_composerCtrlDown) return $"{baseHint} · queue on Enter";
+        if (_composerCtrlDown && !_composerShiftDown)
+            return IsTurnInFlight() ? $"{baseHint} · queue on Enter, runs after this turn" : $"{baseHint} · queue on Enter, stays paused";
         if (_composerAltDown && _composerShiftDown) return $"{baseHint} · schedule it on Enter, nothing is sent";
+        if (IsTurnInFlight()) return $"{baseHint} · Enter adds to this turn, Esc stops it";
         // The only affordance history has: nothing in the composer points at the Up key, and an
         // empty composer is exactly the moment the key is worth mentioning.
         return _chat.Message.Length == 0 && GetComposerHistory().Count > 0 ? $"{baseHint} · ↑ for history" : baseHint;
@@ -3242,9 +3261,12 @@ else if (_guideInvitation is { } guideInvitation)
     {
         if (run.Status == ChatRunStatus.Failed && !run.CanRetry) return "Retry, rebase or discard the message above";
         if (_composerAltDown && _composerCtrlDown) return "Fork on Enter, starts immediately";
-        if (_composerCtrlDown && _composerShiftDown) return "Discard the stopped message and send on Enter";
-        if (_composerCtrlDown) return "Queue on Enter, stays paused";
-        return run.Queue.Count > 0 ? "Resume queue and send on Enter" : "Resume and send on Enter";
+        if (_composerCtrlDown && !_composerShiftDown) return "Queue on Enter, stays paused";
+        // The server drops a stopped turn rather than run it again ahead of a new message.
+        var stopped = run.Status == ChatRunStatus.Paused && run.Queue.Any(item => item.Stage == QueuedMessageStage.UserCommitted);
+        var waiting = run.Queue.Any(item => item.Stage == QueuedMessageStage.Prepared);
+        if (stopped) return waiting ? "Send on Enter after the queue; the stopped turn stays stopped" : "Send on Enter; the stopped turn stays stopped";
+        return waiting ? "Resume queue and send on Enter" : "Resume and send on Enter";
     }
 
     private ComposerContext GetComposerContext() => ContextPresentation.Build(GetSelectedRun()?.Context,
@@ -3461,12 +3483,12 @@ else if (_guideInvitation is { } guideInvitation)
     }
 
     /// <summary>
-    /// Whether the selected branch has a command in flight — generating, or stopped with its message
-    /// already sent — which is what an aside then joins instead of standing on its own.
+    /// Whether the selected branch is generating a turn: Enter then adds to that turn, and Escape
+    /// stops it. A stopped turn is not in flight; a message sent after it starts a new one.
     /// </summary>
-    private bool IsTurnInFlight() => GetSelectedRun() is { } run
-        && (run.Status == ChatRunStatus.Generating || run.Queue.Any(item => item.Stage == QueuedMessageStage.UserCommitted));
+    private bool IsTurnInFlight() => _selectedChat is not null && GetSelectedRun()?.Status == ChatRunStatus.Generating;
 
+    // Mirrors chatComposer.js: Ctrl+Shift+Enter and Alt+Enter, once their own actions, send.
     private ComposerSendButton.SendMode GetComposerSendMode() =>
         _replaceSourceId is not null
             ? ComposerSendButton.SendMode.Replace
@@ -3474,15 +3496,11 @@ else if (_guideInvitation is { } guideInvitation)
                 ? ComposerSendButton.SendMode.EditFork
                 : _composerAltDown && _composerCtrlDown
                     ? ComposerSendButton.SendMode.Fork
-                    : _composerCtrlDown && _composerShiftDown
-                        ? ComposerSendButton.SendMode.SendNow
-                        : _composerCtrlDown
-                            ? ComposerSendButton.SendMode.Queue
-                            : _composerAltDown && _composerShiftDown
-                                ? ComposerSendButton.SendMode.Schedule
-                                : _composerAltDown && _selectedChat is not null
-                                    ? ComposerSendButton.SendMode.Aside
-                                    : ComposerSendButton.SendMode.Send;
+                    : _composerCtrlDown && !_composerShiftDown
+                        ? ComposerSendButton.SendMode.Queue
+                        : _composerAltDown && _composerShiftDown
+                            ? ComposerSendButton.SendMode.Schedule
+                            : ComposerSendButton.SendMode.Send;
 
     // The button does whatever its tooltip is highlighting, so pressing it and pressing the keys
     // it shows can never mean two different things.
@@ -3494,21 +3512,17 @@ else if (_guideInvitation is { } guideInvitation)
         ComposerSendButton.SendMode.EditFork => ComposerSubmitMode.Fork,
         ComposerSendButton.SendMode.Replace => ComposerSubmitMode.Send,
         ComposerSendButton.SendMode.Queue => ComposerSubmitMode.Queue,
-        ComposerSendButton.SendMode.SendNow => ComposerSubmitMode.SendNow,
-        ComposerSendButton.SendMode.Aside => ComposerSubmitMode.Aside,
         _ => ComposerSubmitMode.Send
     });
 
     /// <summary>
-    /// What Enter does while the branch is generating. Plain Enter still queues the message
-    /// behind the answer being written; interrupting is a deliberate, separate chord.
+    /// What a held chord does while the branch is generating. Plain Enter adds the message to the
+    /// turn, which the send button already says; only the chords that do something else are named.
     /// </summary>
     private string GetGeneratingEnterHint()
     {
         if (_composerAltDown && _composerCtrlDown) return " · fork on Enter";
-        if (_composerCtrlDown && _composerShiftDown) return " · interrupt and send now on Enter";
-        if (_composerCtrlDown) return " · queue on Enter, stays paused";
-        if (_composerAltDown) return " · add to this turn on Enter";
+        if (_composerCtrlDown && !_composerShiftDown) return " · queue on Enter, runs after this turn";
         return "";
     }
 
@@ -4791,7 +4805,7 @@ else if (_guideInvitation is { } guideInvitation)
     private Task MarkTipsUsedAsync(ComposerSubmitMode mode, IReadOnlyList<ChatResource>? resources)
     {
         var tips = new List<string>();
-        if (mode is ComposerSubmitMode.Queue or ComposerSubmitMode.SendNow) tips.Add(AI.Web.Components.ChatTips.Send);
+        if (mode == ComposerSubmitMode.Queue) tips.Add(AI.Web.Components.ChatTips.Send);
         if (mode == ComposerSubmitMode.Fork) tips.Add(AI.Web.Components.ChatTips.Branches);
         if (resources is { Count: > 0 }) tips.Add(AI.Web.Components.ChatTips.Context);
         return Task.WhenAll(tips.Select(ChatTips.MarkUsedAsync));
@@ -6365,6 +6379,7 @@ else if (_guideInvitation is { } guideInvitation)
         _replaceSourceId is not null ? "Edit the message to replace this branch..."
         : _isForking ? "Write the first message in the new branch..."
         : GetSelectedRun() is { PendingPrompt: not null } ? "Answer the question above..."
+        : IsTurnInFlight() ? "Add to the current turn, Esc to stop..."
         : _draftResources.Any(item => item.Kind == ChatResourceKind.Skill) ? "What should the skill do? (optional)"
         : "Message the assistant, / for skills, @ to add context...";
 

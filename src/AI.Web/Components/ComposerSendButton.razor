@@ -10,8 +10,8 @@
     </button>
     @* The shared help stays on the button as data-app-hint, where the guide reads it; the panel
        keeps only what the current send mode adds: one row per action, its keys aligned on the
-       right, the action the keys held now would take highlighted. Actions that start a reply come
-       first, those that only put the text somewhere follow. *@
+       right, the action the keys held now would take highlighted. While a turn is generating,
+       Esc stopping it is listed last; it is no way of sending, so it is never highlighted. *@
     <span class="composer-send-tooltip" id="composer-send-tooltip" role="tooltip">
         @if (ActiveMode is SendMode.EditFork or SendMode.Replace)
         {
@@ -19,13 +19,7 @@
         }
         else
         {
-            <span class="composer-send-tooltip-heading" data-app-tooltip-hint>Reply</span>
-            @foreach (var row in ReplyRows())
-            {
-                @Row(row)
-            }
-            <span class="composer-send-tooltip-heading" data-app-tooltip-hint>No reply now</span>
-            @foreach (var row in QuietRows())
+            @foreach (var row in Rows())
             {
                 @Row(row)
             }
@@ -47,11 +41,7 @@
     [Parameter, EditorRequired]
     public EventCallback OnClick { get; set; }
 
-    /// <summary>Whether there is a conversation an aside could join; a new chat starts with a turn.</summary>
-    [Parameter]
-    public bool CanAside { get; set; }
-
-    /// <summary>Whether a turn is in flight on the branch, which is what an aside then joins.</summary>
+    /// <summary>Whether the branch is generating a turn: Enter then adds to it and Esc stops it.</summary>
     [Parameter]
     public bool TurnInFlight { get; set; }
 
@@ -59,26 +49,21 @@
     [Parameter]
     public bool CanSchedule { get; set; } = true;
 
-    private string AsideLabel => TurnInFlight ? "Add to the current turn" : "Add as an aside, no reply";
+    private string SendLabel => TurnInFlight ? "Add to the current turn" : "Send";
 
     /// <summary>How the context window is filled; no ring is drawn without it.</summary>
     [Parameter]
     public ComposerContext? Context { get; set; }
 
-    private sealed record TooltipRow(SendMode Mode, string Icon, string Label, string[] Keys);
+    private sealed record TooltipRow(SendMode? Mode, string Icon, string Label, string[] Keys);
 
-    private IEnumerable<TooltipRow> ReplyRows()
+    private IEnumerable<TooltipRow> Rows()
     {
-        yield return new(SendMode.Send, "arrow-up", "Send", ["Enter"]);
+        yield return new(SendMode.Send, TurnInFlight ? "send-aside" : "arrow-up", SendLabel, ["Enter"]);
         yield return new(SendMode.Queue, "send-queue", "Queue for later", ["Ctrl", "Enter"]);
         yield return new(SendMode.Fork, "send-fork", "Send in a forked session", ["Ctrl", "Alt", "Enter"]);
-        yield return new(SendMode.SendNow, "send-now", "Interrupt and send now", ["Ctrl", "Shift", "Enter"]);
-    }
-
-    private IEnumerable<TooltipRow> QuietRows()
-    {
-        if (CanAside) yield return new(SendMode.Aside, "send-aside", AsideLabel, ["Alt", "Enter"]);
         if (CanSchedule) yield return new(SendMode.Schedule, "send-schedule", "Schedule instead of sending", ["Alt", "Shift", "Enter"]);
+        if (TurnInFlight) yield return new(null, "stop", "Stop the turn", ["Esc"]);
     }
 
     private RenderFragment Row(TooltipRow row) =>
@@ -99,14 +84,12 @@
 
     private string GetActionLabel() => ActiveMode switch
     {
-        SendMode.SendNow => "Interrupt and send now",
         SendMode.EditFork => "Create edited branch",
         SendMode.Replace => "Replace branch now",
         SendMode.Queue => "Queue for later",
         SendMode.Fork => "Send in a forked session",
-        SendMode.Aside => AsideLabel,
         SendMode.Schedule => "Schedule instead of sending",
-        _ => "Send message"
+        _ => TurnInFlight ? "Add to the current turn" : "Send message"
     };
 
     private string GetIcon() => Busy ? "spinner" : ActiveMode switch
@@ -114,13 +97,11 @@
         // Every way of sending is the send arrow, varied; editing a branch keeps its own icons.
         SendMode.Queue => "send-queue",
         SendMode.Fork => "send-fork",
-        SendMode.SendNow => "send-now",
         SendMode.EditFork => "fork",
         SendMode.Replace => "edit-replace",
-        SendMode.Aside => "send-aside",
         SendMode.Schedule => "send-schedule",
-        _ => "arrow-up"
+        _ => TurnInFlight ? "send-aside" : "arrow-up"
     };
 
-    public enum SendMode { Send, Queue, Fork, SendNow, EditFork, Replace, Aside, Schedule }
+    public enum SendMode { Send, Queue, Fork, EditFork, Replace, Schedule }
 }

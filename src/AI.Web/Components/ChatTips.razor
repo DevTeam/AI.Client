@@ -22,6 +22,7 @@ else if (TipsState.IsHidden)
     <p class="chat-tips-strip">
         <span><kbd>Enter</kbd> send</span>
         <span><kbd>Ctrl</kbd><kbd>Enter</kbd> queue</span>
+        <span><kbd>Esc</kbd> stop</span>
         <span><kbd>@@</kbd> context</span>
         <span><kbd>/</kbd> skills</span>
         <button type="button" class="chat-tips-link" @onclick="() => TipsState.SetHiddenAsync(false)">Show tips</button>
@@ -48,10 +49,9 @@ else
                             <div class="chat-tip-keys">
                                 @* One word per row keeps the card as short as its neighbours; the
                                    send button's tooltip and the expanded text say the rest. *@
-                                <span>Send</span><span><kbd>Enter</kbd></span>
+                                <span title="Send, or add to the turn in progress">Send</span><span><kbd>Enter</kbd></span>
                                 <span title="Queue for later">Queue</span><span><kbd>Ctrl</kbd><kbd>Enter</kbd></span>
-                                <span title="Interrupt and send now">Send now</span><span><kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Enter</kbd></span>
-                                <span title="Add as an aside, no reply">Aside</span><span><kbd>Alt</kbd><kbd>Enter</kbd></span>
+                                <span title="Stop the turn in progress">Stop</span><span><kbd>Esc</kbd></span>
                                 <span title="Schedule instead of sending">Schedule</span><span><kbd>Alt</kbd><kbd>⇧</kbd><kbd>Enter</kbd></span>
                                 <span>New line</span><span><kbd>⇧</kbd><kbd>Enter</kbd></span>
                             </div>
@@ -222,7 +222,7 @@ else
 
     private static string More(string tip) => tip switch
     {
-        Send => "Queued messages wait for the current reply and then run one after another; Send now interrupts it. An aside gets no reply: a running turn reads it before its next step. Schedule sends nothing and keeps the text as the task of a schedule. Up in an empty message brings back what you sent before.",
+        Send => "While a reply is being written, Enter adds your message to it: the assistant reads it at its next step. Queued messages wait for the reply and then run one after another; queued in an idle chat, they wait until you send or resume. Esc stops the reply, and what you send next starts afresh. Schedule sends nothing and keeps the text as the task of a schedule. Up in an empty message brings back what you sent before.",
         Context => "The + button attaches the same things, and files dropped onto the message box are attached too.",
         Branches => "Each message with branches shows a picker under it, so you can switch between the paths at any time.",
         Projects => "Chats are listed under their project on the left. Right-click a project or a chat for its menu.",

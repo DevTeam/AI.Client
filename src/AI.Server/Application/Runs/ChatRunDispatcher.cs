@@ -176,6 +176,10 @@ public sealed class ChatRunDispatcher(
         // queue underneath it would race both.
         if (request.Mode is ChatSubmitMode.SendNow or ChatSubmitMode.Replace)
             await InterruptBranchAsync(projectId, chatId, request.BranchId ?? chatId, request.OperationId, cancellationToken);
+        // A person's message sent while Stop is still unwinding belongs after the stop, not in the
+        // turn being stopped: the stop is let finish first.
+        if (request.Mode == ChatSubmitMode.Send && sender is null)
+            await AwaitStopAsync(projectId, chatId, request.BranchId ?? chatId, cancellationToken);
         using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         if (_maintenance.ContainsKey(chatId) || _deletingProjects.ContainsKey(projectId)) throw new InvalidOperationException("Chat is being changed.");
         _ = await projects.GetAsync(projectId, cancellationToken) ?? throw new InvalidOperationException("Project not found.");
@@ -268,6 +272,10 @@ public sealed class ChatRunDispatcher(
         // committed command or prepared rows from that abandoned tail would either resume the old
         // answer first or later execute messages against a context that no longer exists.
         if (request.Mode == ChatSubmitMode.Replace) runtime.State.Clear();
+        // Sent while a turn is generating, a message is for that turn: it reads it at its next step,
+        // and only if it ends first does the message run as a turn of its own.
+        var generating = runtime.State.Status == RunStatus.Generating;
+        var joinsTurn = request.Mode == ChatSubmitMode.Send && (sender is not null || generating);
         runtime.State.Enqueue(request.OperationId, new QueuedRunMessage(request.MessageId, request.Content.Trim(), clock.UtcNow,
             parentMode, parentId, replaceId, request.Mode == ChatSubmitMode.Fork ? sourceBranchId : null,
             sourceBranch.Revision, Resources: ResourceReferences.ToDomain(validatedResources), Interactive: interactive,
@@ -276,16 +284,26 @@ public sealed class ChatRunDispatcher(
                 ? new ChatBranchMember(member.Name, member.Role, string.Empty) : null,
             // A teammate's report or question waits for no one: a lead busy with a turn reads it
             // there, instead of polling for it and then spending a whole turn on it afterwards.
-            JoinsTurn: sender is not null && request.Mode == ChatSubmitMode.Send));
+            JoinsTurn: joinsTurn));
+        if (joinsTurn && sender is null)
+        {
+            // Ahead of what was queued for later: a turn that ends before reading the message
+            // leaves it as the very next turn, not as one more behind the queue.
+            var position = runtime.State.Queue.TakeWhile(item => item.Stage == QueuedRunStage.UserCommitted
+                || item.IsAside || item.JoinsTurn).Count();
+            runtime.State.Move(request.MessageId, position);
+        }
+        if (joinsTurn && generating) await runtime.JoinSignal.CancelAsync();
         if (request.Mode == ChatSubmitMode.Queue)
         {
-            runtime.ResumeRequested = false;
-            if (runtime.Cancellation is { } cancellation)
-            {
-                await cancellation.CancelAsync();
-            }
-
-            runtime.State.Pause();
+            // Queued for later, the message waits behind the turn in flight without disturbing it.
+            // With nothing running it holds the branch instead, so several messages can be written
+            // before any of them runs; Resume or a sent message lets them go.
+            // A worker still unwinding after its last turn counts as nothing running; one with more
+            // queued work does not, and pausing it would hold that work too.
+            if (runtime.State.Status is RunStatus.Idle or RunStatus.Completed
+                && runtime.State.Queue.All(item => item.Id == request.MessageId || item.IsAside))
+                runtime.State.Pause();
         }
         else if (request.Mode == ChatSubmitMode.SendNow)
         {
@@ -297,6 +315,11 @@ public sealed class ChatRunDispatcher(
         }
         else
         {
+            // After Stop a person's message is the next thing to do, not "go on": the stopped turn
+            // stays as it was stopped instead of being run again ahead of the message.
+            if (request.Mode == ChatSubmitMode.Send && sender is null && runtime.State.Status == RunStatus.Paused
+                && runtime.State.Queue.Any(item => item.Stage == QueuedRunStage.UserCommitted))
+                runtime.State.DropCommitted();
             runtime.ResumeRequested = runtime.Cancellation?.IsCancellationRequested == true;
             runtime.State.Resume();
         }
@@ -368,6 +391,8 @@ public sealed class ChatRunDispatcher(
         using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
         var asides = runtime.State.TurnJoiners;
         if (asides.Count == 0 || runtime.ToolHead is not { } head) return [];
+        // Everything waiting is taken now, so the next wait has nothing to give way to yet.
+        RenewJoinSignal(runtime);
         var chat = await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token)
             ?? throw new InvalidOperationException("Chat not found.");
         chat = await AppendAsidesAsync(runtime, chat, asides, head, ChatMessageDelivery.InTurn, token);
@@ -387,6 +412,13 @@ public sealed class ChatRunDispatcher(
         return taken;
     }
 
+    // Not disposed: the agent may still hold the old token, and a source with no timer owns nothing
+    // that needs releasing.
+    private static void RenewJoinSignal(Runtime runtime)
+    {
+        if (runtime.JoinSignal.IsCancellationRequested) runtime.JoinSignal = new CancellationTokenSource();
+    }
+
     /// <summary>
     /// The asides an attempt took, from its user message to <paramref name="head"/>, as they were
     /// queued: a retry prunes that attempt, and what the person added must not go with it.
@@ -400,9 +432,10 @@ public sealed class ChatRunDispatcher(
         {
             if (message.Delivery == MessageDelivery.InTurn)
             {
-                // A team message that asks for something joined the turn instead of waiting for its
-                // own; on a retry it must still get one if the new attempt ends before taking it.
-                var joins = message.Sender?.Intent is "question" or "answer" or "blocker" or "done";
+                // A person's message, or a team message that asks for something, joined the turn
+                // instead of waiting for its own; on a retry it must still get one if the new
+                // attempt ends before taking it.
+                var joins = message.Sender is null || message.Sender.Intent is "question" or "answer" or "blocker" or "done";
                 taken.Add(new QueuedRunMessage(message.Id, message.Content, message.CreatedAt,
                     Resources: ResourceReferences.ToDomain(message.Resources), IsAside: !joins,
                     Sender: message.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null,
@@ -606,6 +639,7 @@ public sealed class ChatRunDispatcher(
                     runtime.ResumeRequested = false;
                     runtime.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
                     token = runtime.Cancellation.Token;
+                    RenewJoinSignal(runtime);
                     runtime.State.Start();
                     // A previous attempt at this same command may have been cut short, leaving a
                     // truncated answer and its tool messages on the branch. Retrying replaces that
@@ -728,6 +762,7 @@ public sealed class ChatRunDispatcher(
                     draftToolCall: (name, ct) => ReportDraftToolCallAsync(runtime, name, ct),
                     overlayPromptsAllowed: queued.Interactive,
                     asides: ct => TakeAsidesIntoTurnAsync(runtime, ct),
+                    joinSignal: () => runtime.JoinSignal.Token,
                     stalledReport: (report, ct) => ReportToLeadAsync(runtime,
                         "Stopped: several steps in a row produced nothing new.\n\n" + report, ct));
                 var suggestTitle = false;
@@ -1531,6 +1566,23 @@ public sealed class ChatRunDispatcher(
         await worker.WaitAsync(token);
     }
 
+    /// <summary>
+    /// Waits for a branch that is being stopped to finish stopping. A branch that is not being
+    /// stopped is left alone, generating or not.
+    /// </summary>
+    private async Task AwaitStopAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken token)
+    {
+        Task worker;
+        using (await synchronization.EnterAsync(chatId, token))
+        {
+            if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)
+                || runtime.Cancellation is not { IsCancellationRequested: true }
+                || runtime.Worker is not { } running) return;
+            worker = running;
+        }
+        await worker.WaitAsync(token);
+    }
+
     private async Task InterruptMessageAsync(Guid projectId, Guid chatId, Guid branchId, Guid messageId, Guid operationId, CancellationToken token)
     {
         Task worker;
@@ -1699,6 +1751,8 @@ public sealed class ChatRunDispatcher(
         public WorkspaceChangeSet? WorkspaceChanges { get; set; }
         public Task? Worker { get; set; }
         public CancellationTokenSource? Cancellation { get; set; }
+        /// <summary>Cancelled when a message is waiting to join the turn in flight; renewed once it has.</summary>
+        public CancellationTokenSource JoinSignal { get; set; } = new();
         public Guid? ActiveMessageId { get; set; }
         public bool ResumeRequested { get; set; }
         public DateTimeOffset LastPublished { get; set; }

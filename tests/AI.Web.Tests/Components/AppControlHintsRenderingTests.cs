@@ -54,7 +54,6 @@ public sealed class AppControlHintsRenderingTests
     [InlineData(ComposerSendButton.SendMode.Send, "Send message")]
     [InlineData(ComposerSendButton.SendMode.Queue, "Queue for later")]
     [InlineData(ComposerSendButton.SendMode.Fork, "Send in a forked session")]
-    [InlineData(ComposerSendButton.SendMode.SendNow, "Interrupt and send now")]
     [InlineData(ComposerSendButton.SendMode.EditFork, "Create edited branch")]
     [InlineData(ComposerSendButton.SendMode.Replace, "Replace branch now")]
     [InlineData(ComposerSendButton.SendMode.Schedule, "Schedule instead of sending")]
@@ -74,6 +73,31 @@ public sealed class AppControlHintsRenderingTests
             html.ShouldContain($"data-app-hint=\"{HtmlEncoder.Default.Encode(new AppNavigationTargets().Find("chat.send")!.Hint!)}\"");
             html.ShouldNotContain("composer-send-tooltip-help");
             html.ShouldNotContain("title=\"");
+        });
+    }
+
+    [Fact]
+    public async Task SendButtonShouldAddToTheTurnInFlightAndListEscapeAsStop()
+    {
+        await using var services = Services();
+        await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var idle = (await renderer.RenderComponentAsync<ComposerSendButton>(ParameterView.FromDictionary(
+                new Dictionary<string, object?> { [nameof(ComposerSendButton.ActiveMode)] = ComposerSendButton.SendMode.Send }))).ToHtmlString();
+            idle.ShouldContain("aria-label=\"Send message\"");
+            idle.ShouldNotContain("<kbd>Esc</kbd>");
+            idle.ShouldNotContain("aside");
+
+            var running = (await renderer.RenderComponentAsync<ComposerSendButton>(ParameterView.FromDictionary(
+                new Dictionary<string, object?>
+                {
+                    [nameof(ComposerSendButton.ActiveMode)] = ComposerSendButton.SendMode.Send,
+                    [nameof(ComposerSendButton.TurnInFlight)] = true
+                }))).ToHtmlString();
+            running.ShouldContain("aria-label=\"Add to the current turn\"");
+            running.ShouldContain("Stop the turn");
+            running.ShouldContain("<kbd>Esc</kbd>");
         });
     }
 

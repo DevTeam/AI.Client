@@ -56,7 +56,10 @@ Never stage, commit, tag, push, deploy or run database migrations under this pre
    local steps. Rerun only the identified remote job when explicitly authorized, checking the
    provider's current state first; do not create duplicate runs or alter unrelated jobs.
 7. Use the existing documented validators, build/test commands, dry runs and safe checks relevant
-to the task. Read their full result and exit code; distinguish success, failure and unavailable
+to the task. For test commands, filter to the affected project/module/tests first and use a full
+suite only as a final relevant check. Select supported quiet/minimal runner output that preserves
+failure details and counts. Set an explicit finite test timeout within the tool limit; split long
+suites and report timeouts as incomplete. Read results and exit codes; distinguish success, failure and unavailable
 checks. Never disable security checks, weaken tests or claim a validation that did not run.
 Compare final repository status with the baseline and remove only scratch artifacts created by
 this task. Never discard unrelated local or remote work.

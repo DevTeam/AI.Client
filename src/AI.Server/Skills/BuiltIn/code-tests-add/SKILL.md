@@ -44,7 +44,12 @@ run database migrations, stage, commit, checkout, stash, reset or push as part o
    behavior under a request only to add tests. Report a discovered bug with reproduction evidence
    and hand it to `code-bug-fix` only when a fix is authorized.
 6. Verify with the repository's documented commands and tools. Run checks appropriate to the
-actual change, read output and exit codes, and distinguish passed, failed, skipped and zero tests.
+actual change: start with the new tests using a project/module/class/test filter, then run a wider
+or full suite as a final check when relevant and feasible. Use runner-supported quiet/minimal
+output or a concise reporter and short traceback options, retaining failure details and counts.
+Set an explicit finite timeout for each test run within the effective tool limit; split longer
+suites and report a timeout as incomplete. Read output and exit codes, and distinguish passed,
+failed, skipped and zero tests.
 Do not disable hooks, weaken tests, suppress useful diagnostics or claim a check was run when it
 was not. Respect an explicit request not to add tests. Compare final status with the baseline;
 remove only scratch files and temporary logging created by this task, preserving unrelated work.

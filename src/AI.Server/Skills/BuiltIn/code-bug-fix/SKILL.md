@@ -23,8 +23,12 @@ The project instructions and instruction files win over these steps where they d
    the right reason.
 5. Fix the cause with the smallest change, not the symptom: no catch-all exception handlers,
    sleeps, skipped checks or special cases for the test's input. Leave unrelated code alone.
-6. Verify: run the new test, the tests around the change, and the build. Read the output and exit
-   code; claim only what you ran.
+6. Verify: run the new test with a precise filter, then nearby project/module tests, the build,
+   and a wider or full suite as a final check when relevant and feasible. Use the runner's
+   supported quiet/minimal output or concise reporter and short traceback options while keeping
+   failure details and counts available. Set an explicit finite timeout for each test run within
+   the effective tool limit; split longer suites and report a timeout as incomplete. Read the
+   output and exit code; claim only what you ran.
 7. Clean up as in `code-feature-implement`: compare the status with the baseline, delete scratch
    files and debug output you created, remove temporary logging. Never stage, commit, stash, reset
    or push.

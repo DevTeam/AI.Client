@@ -2087,7 +2087,7 @@
         public string Name { get; set; } = string.Empty;
         public string SchemaHash { get; set; } = string.Empty;
         public string Decision { get; set; } = "Ask";
-        public int MaxCallsPerRun { get; set; } = 65535;
+        public int MaxCallsPerRun { get; set; } = McpToolPolicySettings.DefaultMaxCallsPerRun;
         public long TimeoutSeconds { get; set; } = McpToolPolicySettings.DefaultTimeoutSeconds;
 
         public static McpToolPolicyEditor From(McpToolInfo item, string decision) => new()

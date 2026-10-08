@@ -119,7 +119,7 @@ A task with its own connection exists for parallelism. Tools in a single model r
 
 **Limits.** Up to 8 tasks per call; they run in parallel; no more than 8 subtask runs simultaneously across the entire Host. A nested subtask keeps its parent open, so the same counter limits both width and depth: runaway recursion hits it, not machine memory. One task failing does not cancel its neighbors.
 
-The tool's policy timeout measures the call's silence, not its duration. Otherwise a single number would have to suit two addressees at once — reading a file and a fan of subtasks — and the fan would lose: it would die halfway through with all work already started, even though its progress notifications were saying it was working. MCP allows resetting the timeout on a progress notification for exactly this reason. On top sits a hard ceiling of 30 minutes per call, so a looping tool that faithfully reports on itself does not run forever.
+The tool's policy timeout measures the call's silence, not its duration. Otherwise a single number would have to suit two addressees at once — reading a file and a fan of subtasks — and the fan would lose: it would die halfway through with all work already started, even though its progress notifications were saying it was working. MCP allows resetting the timeout on a progress notification for exactly this reason. On top sits a hard ceiling of one hour per call, so a looping tool that faithfully reports on itself does not run forever.
 
 The subtask has its own branch for tracking changes in the working directory, so its file edits are attributed to it, not to the parent's summary; the number of changed files is returned in the result.
 
@@ -193,9 +193,9 @@ For `app_*` calls, dedicated `IToolPresentationAdapter` implementations exist. R
 
 ## Agent loop limits
 
-Limits are not tightened: a value changes only if the new one is larger than the current one.
+The default per-tool call limit is 56535, and the default timeout is 600 seconds with a configurable maximum of 3600 seconds. Explicit chat, project and global limits still override these defaults.
 
-- `ToolPolicy.MaxCallsPerRun` defaults to `65535` — **left as is**; 1024 would be a tightening.
+- `ToolPolicy.MaxCallsPerRun` defaults to `56535`.
 - The cap on parallel `tool_calls` in a single assistant message has been raised from `20` to `1024` (`ChatCompletionSseParser`). This is protection against a malformed stream, not a run limit.
 - There is no separate model iteration limit and none is being introduced: any finite limit would be a tightening.
 

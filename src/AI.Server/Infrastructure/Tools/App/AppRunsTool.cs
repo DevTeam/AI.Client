@@ -88,7 +88,7 @@ public enum MessageIntent
 public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes, IAppToolReply reply) : IAppTool
 {
     /// <summary>Anything longer than this belongs in the chat, not in a wait inside one tool call.</summary>
-    private const int MaxWaitMs = 600_000;
+    private const int MaxWaitMs = 3_600_000;
 
     private const int MinWaitMs = 1_000;
 

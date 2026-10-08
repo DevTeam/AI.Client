@@ -16,7 +16,7 @@ tools: ["app_read","app_security","ask_user"]
    No tool discovery is needed: existing records supply serverId, name and schemaHash, including
    obsolete schemas and disabled servers. Never remove policies from another scope.
 2. Work out the fallback before removing each override. Chat inherits project then global;
-   project inherits global; global falls back to Ask, 65535 calls and 600 seconds. Decision,
+   project inherits global; global falls back to Ask, 56535 calls and 600 seconds. Decision,
    limit and timeout inherit independently, and disabled/denied servers remain denied.
    Reset can increase access: if removing Deny exposes Allow/Ask, or removes tighter limits,
    explain the exact effect and ask only when that increase was not already authorized by the

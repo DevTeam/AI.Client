@@ -67,11 +67,11 @@ public sealed class BuiltInToolTests
         tool.SchemaHash.Length.ShouldBe(64);
         var timeoutSchema = tool.ModelDefinition.InputSchema.GetProperty("properties").GetProperty("timeoutMs");
         timeoutSchema.GetProperty("default").GetInt32().ShouldBe(600000);
-        timeoutSchema.GetProperty("maximum").GetInt32().ShouldBe(600000);
+        timeoutSchema.GetProperty("maximum").GetInt32().ShouldBe(3600000);
         var arguments = JsonSerializer.Serialize(new { executable = "dotnet", arguments = (string[])["--info"], workingDirectory = AppContext.BaseDirectory, timeoutMs = 600000 });
         session.ValidateArguments(tool, arguments).ShouldNotBeNullOrWhiteSpace();
         Should.Throw<ArgumentException>(() => session.ValidateArguments(tool,
-            JsonSerializer.Serialize(new { executable = "dotnet", timeoutMs = 600001 })));
+            JsonSerializer.Serialize(new { executable = "dotnet", timeoutMs = 3600001 })));
         var result = await session.CallAsync(tool, arguments, null, timeout.Token);
         result.IsError.ShouldBeFalse();
         result.StructuredContent.ShouldNotBeNull();
@@ -167,7 +167,7 @@ public sealed class BuiltInToolTests
 
     [Theory]
     [InlineData(0)]
-    [InlineData(600001)]
+    [InlineData(3600001)]
     public async Task ShouldRejectProcessTimeoutOutsideSupportedRange(int timeoutMs)
     {
         await Should.ThrowAsync<ArgumentException>(() => new ProcessRunner().RunAsync(

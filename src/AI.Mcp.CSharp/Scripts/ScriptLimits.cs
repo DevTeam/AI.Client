@@ -12,8 +12,8 @@ internal static class ScriptLimits
     public const int Variables = 64;
     public const int Diagnostics = 64;
     public const int ValueCharacters = 4096;
-    public const int DefaultTimeoutMs = MaxTimeoutMs;
-    public const int MaxTimeoutMs = 600000;
+    public const int DefaultTimeoutMs = 600000;
+    public const int MaxTimeoutMs = 3600000;
 
     /// <summary>
     /// Namespaces every script gets without asking. Deliberately small: they are the ones a script

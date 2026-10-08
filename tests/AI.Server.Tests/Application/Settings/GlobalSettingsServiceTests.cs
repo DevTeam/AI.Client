@@ -217,6 +217,29 @@ public class GlobalSettingsServiceTests
         result.ChatAutomation.ShouldBe(new ChatAutomationSettings(AutoTitle: true, SuggestReplies: true));
     }
 
+    [Fact]
+    public async Task ShouldAllowOneHourToolTimeoutButRejectLonger()
+    {
+        GlobalSettings saved = new([], [], []);
+        _repository.Setup(item => item.UpdateAsync(
+                It.IsAny<Func<GlobalSettings, CancellationToken, Task<GlobalSettings>>>(), CancellationToken.None))
+            .Returns(async (Func<GlobalSettings, CancellationToken, Task<GlobalSettings>> update, CancellationToken token) =>
+            {
+                saved = await update(saved, token);
+                return saved;
+            });
+        _repository.Setup(item => item.LoadAsync(CancellationToken.None)).ReturnsAsync(() => saved);
+        var service = CreateInstance();
+        var policy = new McpToolPolicySettings(Guid.NewGuid(), "tool", "schema", "Ask",
+            McpToolPolicySettings.DefaultMaxCallsPerRun, McpToolPolicySettings.MaxTimeoutSeconds);
+
+        var result = await service.SetToolPolicyAsync(policy, CancellationToken.None);
+        result.ToolPolicies.ShouldHaveSingleItem().TimeoutSeconds.ShouldBe(3600);
+
+        await Should.ThrowAsync<ArgumentException>(() =>
+            service.SetToolPolicyAsync(policy with { TimeoutSeconds = 3601 }, CancellationToken.None));
+    }
+
     private async Task<GlobalSettings> SaveAsync(params ConnectionSettings[] connections)
     {
         GlobalSettings? saved = null;

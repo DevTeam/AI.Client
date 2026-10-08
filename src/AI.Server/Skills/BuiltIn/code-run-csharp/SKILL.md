@@ -47,7 +47,7 @@ tool for simple operations. A normal C# development request does not require exe
    prepare concrete targets and ask only for missing authorization for irreversible actions
    outside the request. Declined stops that action; unresolved approval never authorizes it.
 4. Plan duration before starting. Work can take hours and exceed both tool and client timeouts.
-   The known cs_run contract accepts `timeoutMs` from 1 to 600000, default 600000; the current
+   The known cs_run contract accepts `timeoutMs` from 1 to 3600000, default 600000; the current
    schema wins. Omit it to use the effective tool policy; set a smaller value only for an
    intentionally shorter deadline. Never pass a value above its maximum. For long work, use bounded batches with
    persisted checkpoints and resumable progress, or a genuinely available managed long-running

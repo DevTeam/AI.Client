@@ -132,7 +132,7 @@
                     @for (var chatIndex = 0; chatIndex < visibleChatCount; chatIndex++)
                     {
                         var chat = orderedChats[chatIndex];
-                        RenderChatNavRow(__builder, chat, inRecents: false);
+                        RenderChatNavRow(__builder, chat, ChatListSurface.Project);
                         @if (_selectedChat?.Id == chat.Id)
                         {
                             RenderChatBranchRows(__builder, chat);
@@ -222,6 +222,54 @@
             }
         }
         </div>
+        @if (GetNotifiedChats() is { Count: > 0 } notifiedChats)
+        {
+            @* Chats with unread notifications, on themselves or on their branches, across projects.
+               The branches the notifications are about stand under their chat; the chat opened
+               from here folds its project like Recents does, and shows its whole branch tree. *@
+            var visibleNotified = notifiedChats.Take(_notifiedShowMore ? notifiedChats.Count : RecentChatsShown).ToList();
+            var unreadNotified = notifiedChats.Sum(item => item.Unread);
+            <section class="sidebar-recents sidebar-notified" aria-labelledby="sidebar-notified-toggle">
+                <div class="sidebar-section-header">
+                    <button id="sidebar-notified-toggle" class="sidebar-section-toggle" type="button" aria-expanded="@(_notifiedFolded ? "false" : "true")"
+                            aria-controls="notified-chat-list" title="@(_notifiedFolded ? "Show chats with notifications" : "Hide chats with notifications")" @onclick="ToggleNotifiedFoldedAsync">
+                        <span>Notifications</span>@if (unreadNotified > 0) { <span class="sidebar-section-count" title="@(unreadNotified == 1 ? "1 unread notification" : $"{unreadNotified} unread notifications")">@unreadNotified</span> }<AppIcon Name="chevron-down" Class="sidebar-section-chevron" />
+                    </button>
+                </div>
+                @if (!_notifiedFolded)
+                {
+                    <nav id="notified-chat-list" class="workspace-chat-list recent-chat-list notified-chat-list" aria-label="Chats with notifications">
+                        @foreach (var notified in visibleNotified)
+                        {
+                            var chat = notified.Chat;
+                            RenderChatNavRow(__builder, chat, ChatListSurface.Notifications, notified.MainNotice);
+                            @if (_selectedChat?.Id == chat.Id && IsFoldedInto(ChatListSurface.Notifications))
+                            {
+                                RenderChatBranchRows(__builder, chat);
+                            }
+                            else
+                            {
+                                @foreach (var branch in notified.Branches)
+                                {
+                                    <div class="chat-nav-row branch-nav-row notified-branch-row @(GetActiveChatId() == chat.Id && GetSelectedBranchId() == branch.Id ? "selected" : string.Empty)" title="@branch.Title" style="--branch-depth: 1">
+                                        <span class="branch-tree-line" aria-hidden="true"></span>
+                                        <button class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => OpenNotifiedBranchAsync(chat, branch.Id)"><AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.Id, GetRun(chat.Id, branch.Id))" /><span class="nav-item-label">@branch.Title</span><span class="nav-notice-dot @branch.Notice" aria-hidden="true"></span><span class="visually-hidden">, unread notification</span></button>
+                                    </div>
+                                }
+                            }
+                        }
+                        @if (notifiedChats.Count > RecentChatsShown)
+                        {
+                            <div class="chat-list-pager">
+                                <button class="workspace-nav-item chat-list-more recent-chat-pager" type="button" aria-controls="notified-chat-list" aria-expanded="@(_notifiedShowMore ? "true" : "false")" @onclick="ToggleNotifiedShowMoreAsync">
+                                    <AppIcon Name="chevron-down" Class="recent-chat-pager-chevron" /><span class="nav-item-label">@(_notifiedShowMore ? "Show less" : "Show more")</span>
+                                </button>
+                            </div>
+                        }
+                    </nav>
+                }
+            </section>
+        }
         @if (GetRecentChats(RecentChatsMore) is { Count: > 0 } recentChats)
         {
             @* The latest chats of every project, a click away without opening their project first.
@@ -259,8 +307,8 @@
                         @for (var recentIndex = 0; recentIndex < shownRecentCount; recentIndex++)
                         {
                             var chat = recentChats[recentIndex];
-                            RenderChatNavRow(__builder, chat, inRecents: true);
-                            @if (_selectedChat?.Id == chat.Id && IsProjectTreeFolded)
+                            RenderChatNavRow(__builder, chat, ChatListSurface.Recents);
+                            @if (_selectedChat?.Id == chat.Id && IsFoldedInto(ChatListSurface.Recents))
                             {
                                 RenderChatBranchRows(__builder, chat);
                             }
@@ -1208,25 +1256,27 @@ else if (_guideInvitation is { } guideInvitation)
         </div>;
 
     /// <summary>
-    /// One chat row, the same in a project's chat list and in Recents: icon, branch count, rename
-    /// and menu. A Recents row opens its chat across projects, has no drag or pin-order handles,
-    /// and keeps its own menu and rename editor, so a chat listed in both places opens one of each.
+    /// One chat row, the same in a project's chat list, Recents and Notifications: icon, branch
+    /// count, rename and menu. A row outside the project's list opens its chat across projects, has
+    /// no drag or pin-order handles, and keeps its own menu and rename editor, so a chat listed in
+    /// several places opens one of each. A dot marks an unread notification on the chat itself.
     /// </summary>
-    private void RenderChatNavRow(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder __builder, ChatSummary chat, bool inRecents)
+    private void RenderChatNavRow(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder __builder, ChatSummary chat, ChatListSurface surface, string? noticeClass = null)
     {
         var branchCount = GetBranchCount(chat);
-        var actionsHere = _chatActionsInRecents == inRecents;
-        <div @key="chat.Id" class="chat-nav-row @(chat.Id == GetActiveChatId() && GetSelectedBranchId() is null ? "selected" : string.Empty)" data-chat-id="@(inRecents ? null : chat.Id.ToString())" data-recent-chat-id="@(inRecents ? chat.Id.ToString() : null)" data-pinned="@(inRecents ? null : chat.IsPinned ? "true" : "false")" title="@GetChatRowTitle(chat, inRecents)" @oncontextmenu="() => OnChatContextMenu(chat.Id, inRecents)" @oncontextmenu:preventDefault="true">
+        var actionsHere = _chatActionsSurface == surface;
+        var inList = surface != ChatListSurface.Project;
+        <div @key="chat.Id" class="chat-nav-row @(chat.Id == GetActiveChatId() && GetSelectedBranchId() is null ? "selected" : string.Empty)" data-chat-id="@(inList ? null : chat.Id.ToString())" data-recent-chat-id="@(surface == ChatListSurface.Recents ? chat.Id.ToString() : null)" data-notified-chat-id="@(surface == ChatListSurface.Notifications ? chat.Id.ToString() : null)" data-pinned="@(inList ? null : chat.IsPinned ? "true" : "false")" title="@GetChatRowTitle(chat, surface)" @oncontextmenu="() => OnChatContextMenu(chat.Id, surface)" @oncontextmenu:preventDefault="true">
             @if (_editingChatId == chat.Id && actionsHere)
             {
                 <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveChatTitleAsync(chat))" @onblur="() => SaveChatTitleAsync(chat)" aria-label="Chat name" />
             }
             else
             {
-                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(inRecents ? null : chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P" : "Alt+P")" @onkeydown="e => inRecents ? Task.CompletedTask : HandleChatItemKeyDownAsync(e, chat)" @onclick="() => inRecents ? OpenRecentChatAsync(chat) : SelectChatAsync(chat.Id)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind ? "stopwatch" : chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }</button>
+                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(inList ? null : chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P" : "Alt+P")" @onkeydown="e => inList ? Task.CompletedTask : HandleChatItemKeyDownAsync(e, chat)" @onclick="() => OpenChatRowAsync(chat, surface)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind ? "stopwatch" : chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }@if (noticeClass is not null) { <span class="nav-notice-dot @noticeClass" aria-hidden="true"></span><span class="visually-hidden">, unread notification</span> }</button>
             }
-            <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat, inRecents)"><AppIcon Name="edit" /></button>
-            <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id && actionsHere ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenuAsync(chat, inRecents)"><AppIcon Name="more" /></button>
+            <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat, surface)"><AppIcon Name="edit" /></button>
+            <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id && actionsHere ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenuAsync(chat, surface)"><AppIcon Name="more" /></button>
             @if (_chatMenuId == chat.Id && actionsHere)
             {
                 <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
@@ -1842,7 +1892,12 @@ else if (_guideInvitation is { } guideInvitation)
         if (!_notificationsOpen) await ToggleNotificationsAsync();
         StateHasChanged();
     });
-    private void OnNotificationsChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnNotificationsChanged() => _ = InvokeAsync(async () =>
+    {
+        StateHasChanged();
+        // A notification may name a chat or a branch the sidebar's Notifications cannot title yet.
+        if (await LoadNotifiedChatDataAsync()) StateHasChanged();
+    });
     private bool _hostWasOffline;
 
     private void OnHostStatusChanged() => _ = InvokeAsync(async () =>
@@ -4844,12 +4899,12 @@ else if (_guideInvitation is { } guideInvitation)
         _confirmingReviewDeleteId = null;
     }
 
-    private async Task ToggleChatMenuAsync(ChatSummary chat, bool inRecents = false)
+    private async Task ToggleChatMenuAsync(ChatSummary chat, ChatListSurface surface = ChatListSurface.Project)
     {
         var chatId = chat.Id;
         CloseReviewSubmenu();
-        _chatMenuId = _chatMenuId == chatId && _chatActionsInRecents == inRecents ? null : chatId;
-        _chatActionsInRecents = inRecents;
+        _chatMenuId = _chatMenuId == chatId && _chatActionsSurface == surface ? null : chatId;
+        _chatActionsSurface = surface;
         _isConfirmingChatDelete = false;
         _isProjectMenuOpen = false;
         _isConfirmingProjectDelete = false;
@@ -4945,11 +5000,11 @@ else if (_guideInvitation is { } guideInvitation)
         ? FormattableString.Invariant($"top: clamp(0.5rem, {anchor.Y + 8}px, calc(100vh - 16rem)); left: clamp(0.5rem, {anchor.X - 16}px, calc(100vw - 16rem));")
         : null;
 
-    private void BeginChatRename(ChatSummary chat, bool inRecents = false)
+    private void BeginChatRename(ChatSummary chat, ChatListSurface surface = ChatListSurface.Project)
     {
         CancelInlineEdit();
         _editingChatId = chat.Id;
-        _chatActionsInRecents = inRecents;
+        _chatActionsSurface = surface;
         _editingTitle = chat.Title;
         _focusEditingInputPending = true;
         CloseContextMenus();
@@ -5231,10 +5286,10 @@ else if (_guideInvitation is { } guideInvitation)
         _isConfirmingDirectoryDelete = false;
     }
 
-    private void OnChatContextMenu(Guid chatId, bool inRecents = false)
+    private void OnChatContextMenu(Guid chatId, ChatListSurface surface = ChatListSurface.Project)
     {
         _chatMenuId = chatId;
-        _chatActionsInRecents = inRecents;
+        _chatActionsSurface = surface;
         _isConfirmingChatDelete = false;
         _isProjectMenuOpen = false;
         _isConfirmingProjectDelete = false;

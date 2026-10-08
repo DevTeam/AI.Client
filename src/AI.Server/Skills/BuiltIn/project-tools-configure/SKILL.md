@@ -24,6 +24,9 @@ user's language. Use another scope only when the user explicitly requested it.
    Select supplied tool names exactly, or all discovered tools when none were specified. Policies
    use the returned (serverId, name, schemaHash), never the model's prefixed function name.
    A new schema hash is a new identity: reassess it and leave old-schema records unchanged.
+   Each discovered tool includes `defaultDecision`. Project, Chat and Settings list saved
+   overrides only. If no matching rule exists, the discovered default applies; the server's
+   `Ask` policy does not turn every tool into `Ask`.
 3. Choose the recommendation from what the tool can do, including every operation in its schema:
    - Allow: clearly understood bounded reads, search, listing or inspection within the user's
      authorized data and project grants, with no mutation, arbitrary execution or external delivery.
@@ -55,7 +58,10 @@ user's language. Use another scope only when the user explicitly requested it.
    earlier recommended 120-second timeouts with the 600-second default. Timeouts must be
    1..3600 seconds and call limits positive integers. Explain exceptional limits briefly.
 4. Re-read the relevant policy documents before writing and use the latest values. Skip identical
-   policies and changes no longer needed. If the selected tools include `app_security`, update
+   policies and changes no longer needed. Do not save a project rule when the inherited global
+   rule or discovered default already supplies the recommended decision and default limits.
+   For a new project, this normally leaves built-in read tools at their default `Allow` without
+   creating project overrides. If the selected tools include `app_security`, update
    its call limit first so later writes can finish. Apply each changed policy with `app_security`
    operation=SetProjectToolPolicy, projectId from the current project, a fresh operationId per distinct
    change, and toolPolicy containing serverId, name, schemaHash, decision, maxCallsPerRun and
@@ -64,7 +70,8 @@ user's language. Use another scope only when the user explicitly requested it.
    never bypass it. On refusal stop writes; on an uncertain result read the policy before retrying,
    reusing the operationId for the same payload. Do not loop on failures.
 5. Re-read the saved scope and compare the exact identity, decision and limits for each changed
-   policy. Report verified counts for Allow/Ask/Deny, unchanged and failed/skipped items, and a
+   policy. Report effective counts for Allow/Ask/Deny, how many overrides were saved, unchanged
+   defaults and failed/skipped items, and a
    short explanation of choices. Distinguish saved overrides from effective access: chat overrides
    project overrides global, with independent fallback for limits and timeout. Disabled/denied
    servers remain inaccessible. Narrower chat overrides may mask project recommendations.

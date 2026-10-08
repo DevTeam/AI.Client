@@ -1,0 +1,149 @@
+@* The start screen while something the first message needs is missing: a model to answer it and
+   a project to keep it in. One card lists both as steps, in the order they are best done, with
+   the action for each right in its row. Either step can be done first; the first one not done
+   yet is the one the card points at. The last step is the message itself, written below. *@
+
+<section class="setup-card" aria-labelledby="setup-card-title">
+    <header class="setup-card-head">
+        <img class="setup-card-mark" src="app-icon.svg" width="44" height="44" alt="" />
+        <div class="setup-card-heading">
+            <h2 id="setup-card-title">@Title</h2>
+            <p>@Subtitle</p>
+        </div>
+        <span class="setup-card-progress" role="progressbar" aria-label="Setup progress"
+              aria-valuemin="0" aria-valuemax="2" aria-valuenow="@DoneCount">
+            <span class="setup-card-progress-text">@DoneCount of 2</span>
+            <span class="setup-card-progress-track" aria-hidden="true">
+                <span class="setup-card-progress-segment @(DoneCount >= 1 ? "is-done" : null)"></span>
+                <span class="setup-card-progress-segment @(DoneCount >= 2 ? "is-done" : null)"></span>
+            </span>
+        </span>
+    </header>
+
+    <ol class="setup-steps">
+        <li class="setup-step @StepClass(HasModel, current: !HasModel)">
+            <span class="setup-step-marker" aria-hidden="true">@if (HasModel) { <AppIcon Name="check" /> } else { <span>1</span> }</span>
+            <div class="setup-step-body">
+                <div class="setup-step-title">
+                    <AppIcon Name="connection" />
+                    <strong>Connect a model</strong>
+                    @if (HasModel) { <span class="setup-step-state">@(ModelName is { Length: > 0 } ? ModelName : "Connected")</span> }
+                </div>
+                @if (!HasModel)
+                {
+                    <p class="setup-step-text">
+                        @if (ConnectionCount > 0)
+                        {
+                            @($"You have {ConnectionCount} connection{(ConnectionCount == 1 ? string.Empty : "s")}, but none is turned on. Turn one on or add another.")
+                        }
+                        else
+                        {
+                            @("The assistant's replies come from a model you connect: an OpenAI-compatible address, a key and a model name.")
+                        }
+                    </p>
+                    <div class="setup-step-actions">
+                        @if (ConnectionCount > 0)
+                        {
+                            <button type="button" class="setup-action is-primary" @onclick="OnOpenConnections"><AppIcon Name="connection" />Open connections</button>
+                            <button type="button" class="setup-action" @onclick="OnStartModelSetup">Add another, step by step</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="setup-action is-primary" @onclick="OnStartModelSetup"><AppIcon Name="sparkles" />Set up a model<AppIcon Name="chevron-right" /></button>
+                            <button type="button" class="setup-action" @onclick="OnOpenConnections">I know the fields</button>
+                        }
+                    </div>
+                }
+            </div>
+        </li>
+
+        <li class="setup-step @StepClass(HasProject, current: HasModel && !HasProject)">
+            <span class="setup-step-marker" aria-hidden="true">@if (HasProject) { <AppIcon Name="check" /> } else { <span>2</span> }</span>
+            <div class="setup-step-body">
+                <div class="setup-step-title">
+                    <AppIcon Name="project" />
+                    <strong>Create a project</strong>
+                    @if (HasProject) { <span class="setup-step-state">@ProjectName</span> }
+                </div>
+                @if (!HasProject)
+                {
+                    <p class="setup-step-text">A project keeps chats together with the folders the assistant may read, its memory, skills and tool permissions.</p>
+                    <form class="setup-project-form" @onsubmit="CreateProjectAsync" @onsubmit:preventDefault>
+                        <input @ref="_projectInput" class="setup-project-input" value="@_projectName" @oninput="e => _projectName = e.Value?.ToString() ?? string.Empty"
+                               placeholder="@DefaultProjectName" aria-label="Project name" maxlength="120" disabled="@_isCreating" />
+                        <button type="submit" class="setup-action is-primary" disabled="@_isCreating">
+                            @if (_isCreating) { <AppIcon Name="spinner" Class="tool-row-spinner" /> } else { <AppIcon Name="plus" /> }
+                            Create
+                        </button>
+                    </form>
+                }
+            </div>
+        </li>
+
+        <li class="setup-step is-final @(HasModel && HasProject ? "is-current" : "is-upcoming")">
+            <span class="setup-step-marker" aria-hidden="true"><AppIcon Name="message-circle" /></span>
+            <div class="setup-step-body">
+                <div class="setup-step-title"><strong>Say hello</strong></div>
+                <p class="setup-step-text">Then write your first message below. Until then the text you type is kept as a draft.</p>
+            </div>
+        </li>
+    </ol>
+</section>
+
+@code {
+    private const string DefaultProjectName = "My project";
+
+    [Parameter] public bool HasModel { get; set; }
+    [Parameter] public bool HasProject { get; set; }
+    [Parameter] public string? ProjectName { get; set; }
+    /// <summary>The connection that will answer, as "name · model", once one is enabled.</summary>
+    [Parameter] public string? ModelName { get; set; }
+    /// <summary>All connections, enabled or not: with some but none on, the step says so.</summary>
+    [Parameter] public int ConnectionCount { get; set; }
+    [Parameter] public EventCallback OnStartModelSetup { get; set; }
+    [Parameter] public EventCallback OnOpenConnections { get; set; }
+    /// <summary>Creates a project with the name given and opens it.</summary>
+    [Parameter] public EventCallback<string> OnCreateProject { get; set; }
+
+    private ElementReference _projectInput;
+    private string _projectName = string.Empty;
+    private bool _isCreating;
+
+    private int DoneCount => (HasModel ? 1 : 0) + (HasProject ? 1 : 0);
+
+    private string Title => DoneCount == 0 ? "Welcome" : "Almost ready";
+
+    private string Subtitle => (HasModel, HasProject) switch
+    {
+        (false, false) => "Two short steps, and the assistant is ready to work.",
+        (false, true) => "One step left: connect a model so your messages can be answered.",
+        _ => "One step left: create a project to keep your chats in.",
+    };
+
+    private static string StepClass(bool done, bool current) =>
+        done ? "is-done" : current ? "is-current" : "is-upcoming";
+
+    /// <summary>Brings the project name into view and focus, for a send that needs a project first.</summary>
+    public async Task FocusProjectNameAsync()
+    {
+        if (HasProject) return;
+        try { await _projectInput.FocusAsync(); }
+        catch (InvalidOperationException) { /* Not rendered yet. */ }
+    }
+
+    private async Task CreateProjectAsync()
+    {
+        if (_isCreating) return;
+        var name = string.IsNullOrWhiteSpace(_projectName) ? DefaultProjectName : _projectName.Trim();
+        _isCreating = true;
+        try
+        {
+            await OnCreateProject.InvokeAsync(name);
+            _projectName = string.Empty;
+        }
+        finally
+        {
+            _isCreating = false;
+        }
+    }
+}

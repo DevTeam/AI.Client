@@ -1,17 +1,18 @@
 // The hover bend. It is centred on the marker nearest the cursor, not on the cursor itself, and
 // falls off by marker count, so it is always symmetric around the hovered dash: following the raw
 // cursor made it lopsided whenever the pointer sat between two dashes. The peak is four resting
-// dash lengths and the falloff eases out over about four markers on either side. At rest the strip
-// is flat; what is on screen is shown by colour (see .in-view in app.css).
+// dash lengths, or less when a narrow chat leaves the strip a narrower gutter (see app.css), and the
+// falloff eases out over about four markers on either side. At rest the strip is flat; what is on
+// screen is shown by colour (see .in-view in app.css).
 const BendReachMarkers = 5;
 const BendMaxScale = 4;
 const BendCurve = 1.5;
 
 // Writes one marker's bend: the dash scale, plus a 0..1 closeness as --history-marker-focus,
 // from which app.css brightens the dashes along the bend.
-const applyBend = (marker, steps) => {
+const applyBend = (marker, steps, maxScale) => {
     const focus = steps === null ? 0 : Math.max(0, 1 - steps / BendReachMarkers) ** BendCurve;
-    marker.style.setProperty("--history-marker-scale", (1 + (BendMaxScale - 1) * focus).toFixed(3));
+    marker.style.setProperty("--history-marker-scale", (1 + (maxScale - 1) * focus).toFixed(3));
     marker.style.setProperty("--history-marker-focus", focus.toFixed(3));
 };
 
@@ -140,6 +141,8 @@ export function attach(strip, scroller, scrollKey) {
     let offsets = [];
     let measuredHeight = -1;
     let hoverY = null;
+    // The hover peak that still fits the strip, measured when the pointer enters it.
+    let bendMaxScale = BendMaxScale;
     // Sentinel: the nearest marker the cursor was on the LAST time a ratchet tick could have
     // fired. Cleared on mouseleave so the next entry into the strip plays its first tick even
     // when it lands on the same marker the cursor was on before — without this reset, lifting
@@ -320,7 +323,7 @@ export function attach(strip, scroller, scrollKey) {
         if (hoverY === null) {
             const active = scrollActiveIndex(list);
             for (let index = 0; index < list.length; index++) {
-                applyBend(list[index], null);
+                applyBend(list[index], null, bendMaxScale);
                 list[index].classList.toggle("in-view", isTurnInView(index));
                 list[index].classList.remove("active");
             }
@@ -357,7 +360,7 @@ export function attach(strip, scroller, scrollKey) {
                 lastRatchetIndex = nearestIndex;
             }
             for (let index = 0; index < list.length; index++) {
-                applyBend(list[index], Math.abs(index - nearestIndex));
+                applyBend(list[index], Math.abs(index - nearestIndex), bendMaxScale);
                 list[index].classList.toggle("in-view", isTurnInView(index));
                 list[index].classList.toggle("active", index === nearestIndex);
             }
@@ -371,7 +374,18 @@ export function attach(strip, scroller, scrollKey) {
         document.getElementById(marker.dataset.target)?.scrollIntoView({ behavior: "smooth", block: "start" });
     };
 
+    // The strip narrows with the chat's gutter, so the peak is fitted to its current width: the
+    // widest dash (a fork's, shifted right by its branch tick) must still end inside the strip.
+    const fitBend = () => {
+        const marker = strip.querySelector(".history-marker");
+        if (!marker) return;
+        const dash = parseFloat(getComputedStyle(marker, "::before").width);
+        const forkShift = parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.25;
+        if (dash > 0) bendMaxScale = Math.max(1, Math.min(BendMaxScale, (strip.clientWidth - forkShift) / dash));
+    };
+
     const onMouseMove = event => {
+        if (hoverY === null) fitBend();
         hoverY = event.clientY - strip.getBoundingClientRect().top + strip.scrollTop;
         render();
     };

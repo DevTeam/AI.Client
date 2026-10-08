@@ -121,6 +121,31 @@ public sealed partial class AppToolTests
             .ShouldNotBe(tool.GetProperty("name").GetString());
     }
 
+    [Fact]
+    public async Task ShouldExposeDefaultDecisionsForAnUnconfiguredProject()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var project = await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None);
+        project!.ToolPolicies.ShouldBeEmpty();
+
+        var tools = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "McpTools", resourceId = DefaultMcpServer.Id, limit = 100 });
+        var declared = tools.GetProperty("items").EnumerateArray().ToArray();
+        declared.Single(item => item.GetProperty("name").GetString() == "read_text_file")
+            .GetProperty("defaultDecision").GetString().ShouldBe("Allow");
+        declared.Single(item => item.GetProperty("name").GetString() == "write_file")
+            .GetProperty("defaultDecision").GetString().ShouldBe("Ask");
+
+        var appTools = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "McpTools", resourceId = AppMcpServer.Id, limit = 100 });
+        var appDeclared = appTools.GetProperty("items").EnumerateArray().ToArray();
+        appDeclared.Single(item => item.GetProperty("name").GetString() == "app_read")
+            .GetProperty("defaultDecision").GetString().ShouldBe("Allow");
+        appDeclared.Single(item => item.GetProperty("name").GetString() == "app_security")
+            .GetProperty("defaultDecision").GetString().ShouldBe("Ask");
+    }
+
     [Theory]
     [InlineData(false, "Ask")]
     [InlineData(true, "Deny")]

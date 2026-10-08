@@ -461,7 +461,9 @@
             OnCreateSkill='() => OpenGlobalSection("ProjectSkills")'
             OnStartGuide='() => StartGuideTopicAsync(new AppGuideTopicsView.GuideTopicSelection("basic", "show"))'
             HasModel="@HasEnabledModel"
-            OnCreateProject="BeginProjectCreation"
+            ModelName="@GetAnsweringModelName()"
+            ConnectionCount="@_connections.Count"
+            OnCreateProject="CreateProjectNamedAsync"
             OnStartGuideTopic='topic => StartGuideTopicAsync(new AppGuideTopicsView.GuideTopicSelection(topic, "show"))'
             OnOpenSettings="OpenGlobalSection"
             SearchQuery="@_searchQuery"
@@ -661,6 +663,16 @@
             else if (GetSelectedRun() is { Status: ChatRunStatus.Failed } failedRun) { <span class="error">@GetHeldRunEnterHint(failedRun)</span> }
             else if (GetReplaceSource() is { } replaceSource) { <span class="fork-mode replace-mode"><AppIcon Name="edit-replace" /><span>Replacing branch from “@GetMessagePreview(replaceSource.Content)”</span><button class="icon-action" type="button" title="Cancel replacement" aria-label="Cancel replacement" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
             else if (_isForking) { <span class="fork-mode"><AppIcon Name="fork" /><span>@GetForkModeText()</span><button class="icon-action" type="button" title="Cancel fork" aria-label="Cancel fork" @onclick="CancelBranchOperation"><AppIcon Name="x" /></button></span> }
+            else if (!_composerHistoryNavigator.IsActive && GetSendSetupGap() is var setupGap && setupGap != SendSetupGap.None)
+            {
+                @* What still stands between the draft and sending it, with the way to fix it. Keyed
+                   by the nudge count, so every blocked send replays the nudge. *@
+                <span @key="_setupNudgeCount" class="composer-setup-hint @(_setupNudgeCount > 0 ? "is-nudged" : null)">
+                    <AppIcon Name="@(setupGap == SendSetupGap.Project ? "project" : "connection")" />
+                    <span class="composer-setup-hint-text">@GetSetupHintText(setupGap)</span>
+                    <button type="button" class="composer-setup-hint-action" @onclick="() => ResolveSetupGapAsync(setupGap)">@GetSetupHintAction(setupGap)<AppIcon Name="chevron-right" /></button>
+                </span>
+            }
             else if (!_composerHistoryNavigator.IsActive) { <span>@GetComposerHint()</span> }
         </div>
         </div>
@@ -798,14 +810,29 @@
                 <TextCorrectionToggle State="@_textCorrection" OnToggle="ToggleTextCorrectionAsync" />
                 <ApprovalModePicker Mode="@GetApprovalMode()" ModeChanged="SetApprovalModeAsync" Disabled="@(_selectedProject is null)" />
                 <div class="composer-endpoint">
-                    <button class="composer-endpoint-trigger" type="button" title="Endpoint for this chat" aria-label="Endpoint for this chat" aria-haspopup="true" aria-expanded="@(_isEndpointMenuOpen ? "true" : "false")" @onclick="ToggleEndpointMenu" disabled="@(_connections.Count == 0)">
-                        <span>@GetEndpointDisplayName()</span>
-                        <AppIcon Name="chevron-down" />
-                    </button>
+                    @if (_connections.Count == 0)
+                    {
+                        @* Nothing to choose from yet: the picker becomes the way to add the first connection. *@
+                        <button class="composer-endpoint-trigger is-missing" type="button" title="Set up a model connection step by step" @onclick="StartModelSetupAsync">
+                            <AppIcon Name="plus" />
+                            <span>Connect a model</span>
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="composer-endpoint-trigger @(GetSendSetupGap() is SendSetupGap.Model or SendSetupGap.Connection ? "is-missing" : null)" type="button" title="Connection for this chat" aria-label="Connection for this chat" aria-haspopup="true" aria-expanded="@(_isEndpointMenuOpen ? "true" : "false")" @onclick="ToggleEndpointMenu">
+                            <span>@GetEndpointDisplayName()</span>
+                            <AppIcon Name="chevron-down" />
+                        </button>
+                    }
                     @if (_isEndpointMenuOpen)
                     {
                         <div class="context-menu-backdrop" @onclick="CloseEndpointMenu"></div>
                         <span class="composer-endpoint-menu" role="menu">
+                            @if (!_connections.Any(item => item.Enabled))
+                            {
+                                <span class="composer-endpoint-empty">Every connection is turned off.</span>
+                            }
                             @foreach (var connection in _connections.Where(item => item.Enabled))
                             {
                                 var isSelected = connection.Id == _chat.CredentialProfileId;
@@ -818,11 +845,12 @@
                                     <button type="button" role="menuitem" class="icon-action composer-endpoint-edit" title="Edit connection" aria-label="@($"Edit connection {connection.Name}")" @onclick="() => EditChatConnectionAsync(connection.Id)"><AppIcon Name="edit" /></button>
                                 </span>
                             }
+                            <button type="button" role="menuitem" class="composer-endpoint-manage" @onclick="OpenConnectionsFromEndpointMenuAsync"><AppIcon Name="settings" /><span>Manage connections</span></button>
                         </span>
                     }
                 </div>
                 @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation (Esc)" aria-label="Stop generation" aria-keyshortcuts="Escape" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> }
-                <ComposerSendButton ActiveMode="@GetComposerSendMode()" CanSchedule="@CanScheduleComposerText()" TurnInFlight="@IsTurnInFlight()" Disabled="@(!CanSendMessage())" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
+                <ComposerSendButton ActiveMode="@GetComposerSendMode()" CanSchedule="@CanScheduleComposerText()" TurnInFlight="@IsTurnInFlight()" Disabled="@(!CanSendMessage() && GetSendSetupGap() == SendSetupGap.None)" Blocked="@(GetSendSetupGap() != SendSetupGap.None)" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
             </div>
             @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
         </footer>
@@ -2890,10 +2918,19 @@ else if (_guideInvitation is { } guideInvitation)
         }
 
         _isCompletingInlineEdit = true;
+        // Text typed before there was any project has no draft key of its own; the first project
+        // takes it over instead of the switch dropping it.
+        var orphanDraft = _selectedProject is null ? _chat.Message : string.Empty;
         try
         {
             var project = await ProjectApi.CreateAsync(new CreateProjectRequest(name, string.Empty), CancellationToken.None);
             await LoadProjectsAsync(project.Id);
+            if (orphanDraft.Length > 0 && _chat.Message.Length == 0)
+            {
+                _chat.Message = orphanDraft;
+                _composerNeedsResize = true;
+                WorkspaceStateService.QueueComposerDraftSave(GetComposerDraftKey(), orphanDraft);
+            }
             Notifications.ShowSuccess("Project created.");
         }
         catch (HttpRequestException)
@@ -3260,7 +3297,16 @@ else if (_guideInvitation is { } guideInvitation)
 
     private async Task SubmitComposerAsync(ComposerSubmitMode mode)
     {
-        if (_isSubmittingMessage || !CanSendMessage()) return;
+        if (_isSubmittingMessage) return;
+        if (!CanSendMessage())
+        {
+            // A send that cannot go anywhere yet points at the reason instead of doing nothing.
+            if (GetSendSetupGap() == SendSetupGap.None) return;
+            _setupNudgeCount++;
+            // Enter arrives from script, which renders nothing by itself.
+            StateHasChanged();
+            return;
+        }
         // A message that starts a new chat has nothing to replace or fork from, whatever mode
         // the composer was left in.
         if (_selectedChat is null) ResetBranchOperationState();
@@ -3447,10 +3493,83 @@ else if (_guideInvitation is { } guideInvitation)
         _draftResources.Any(item => item.Kind == ChatResourceKind.Image)
         && _connections.FirstOrDefault(item => item.Id == _chat.CredentialProfileId)?.ImageInput == ImageInputMode.Disabled;
 
+    /// <summary>What has to be set up before anything can be sent, apart from the message itself.</summary>
+    private enum SendSetupGap { None, ModelAndProject, Model, Project, Connection }
+
+    private int _setupNudgeCount;
+
+    private SendSetupGap GetSendSetupGap() =>
+        !HasEnabledModel ? (_selectedProject is null ? SendSetupGap.ModelAndProject : SendSetupGap.Model)
+        : _selectedProject is null ? SendSetupGap.Project
+        : string.IsNullOrWhiteSpace(_chat.BaseUrl) || string.IsNullOrWhiteSpace(_chat.Model) ? SendSetupGap.Connection
+        : SendSetupGap.None;
+
+    private string GetSetupHintText(SendSetupGap gap) => gap switch
+    {
+        SendSetupGap.ModelAndProject => "Connect a model and create a project to start chatting",
+        SendSetupGap.Model when _connections.Count > 0 => "Every model connection is turned off, so nothing can be sent",
+        SendSetupGap.Model => "No model is connected yet, so nothing can be sent",
+        SendSetupGap.Project => "Chats live in a project: create one to send",
+        SendSetupGap.Connection when _connections.FirstOrDefault(item => item.Id == _chat.CredentialProfileId) is { } connection
+            => $"“{connection.Name}” cannot answer: it is turned off or has no model",
+        _ => "Choose a connection to answer this chat",
+    };
+
+    private string GetSetupHintAction(SendSetupGap gap) => gap switch
+    {
+        SendSetupGap.ModelAndProject or SendSetupGap.Model => _connections.Count > 0 ? "Open connections" : "Set up a model",
+        SendSetupGap.Project => "Create project",
+        _ => "Choose connection",
+    };
+
+    private async Task ResolveSetupGapAsync(SendSetupGap gap)
+    {
+        switch (gap)
+        {
+            case SendSetupGap.ModelAndProject or SendSetupGap.Model when _connections.Count > 0:
+                await OpenGlobalSection("Connections");
+                break;
+            case SendSetupGap.ModelAndProject or SendSetupGap.Model:
+                await StartModelSetupAsync();
+                break;
+            case SendSetupGap.Project:
+                if (_messageFeed is not null) await _messageFeed.FocusProjectNameAsync();
+                break;
+            default:
+                _isEndpointMenuOpen = true;
+                break;
+        }
+    }
+
+    /// <summary>The guide's walk through a new connection's fields, as the start screen offers it.</summary>
+    private Task StartModelSetupAsync() =>
+        StartGuideTopicAsync(new AppGuideTopicsView.GuideTopicSelection("basic", "show"));
+
+    private async Task OpenConnectionsFromEndpointMenuAsync()
+    {
+        CloseEndpointMenu();
+        if (_globalSection != "Connections") await OpenGlobalSection("Connections");
+    }
+
+    /// <summary>The connection that answers new chats, as "name · model", for the setup card.</summary>
+    private string? GetAnsweringModelName() =>
+        (GetDefaultConnection() ?? _connections.FirstOrDefault(item => item.Enabled)) is { } connection
+            ? string.IsNullOrWhiteSpace(connection.Model) ? connection.Name : $"{connection.Name} · {connection.Model}"
+            : null;
+
+    /// <summary>The setup card's project form: the same creation as the sidebar's inline editor.</summary>
+    private async Task CreateProjectNamedAsync(string name)
+    {
+        CancelInlineEdit();
+        _isCreatingProject = true;
+        _newProjectName = name;
+        await SaveNewProjectAsync();
+    }
+
     private string GetComposerHint()
     {
-        if (_selectedProject is null) return "Select a project";
-        if (string.IsNullOrWhiteSpace(_chat.BaseUrl) || string.IsNullOrWhiteSpace(_chat.Model)) return "Select or configure an endpoint";
+        if (_selectedProject is null) return "Create a project to start chatting";
+        if (string.IsNullOrWhiteSpace(_chat.BaseUrl) || string.IsNullOrWhiteSpace(_chat.Model)) return "Choose a connection to answer this chat";
         if (ImageInputBlocked()) return "This endpoint has image input disabled; choose another endpoint or change its settings";
         var baseHint = _selectedChat is null ? "A new chat will be created on send" : "Continuing selected chat";
         // Mirror the modifier-to-action mapping in chatComposer.js so the hint above the
@@ -3715,7 +3834,9 @@ else if (_guideInvitation is { } guideInvitation)
 
     // The button does whatever its tooltip is highlighting, so pressing it and pressing the keys
     // it shows can never mean two different things.
-    private Task SubmitFromSendButtonAsync() => GetComposerSendMode() == ComposerSendButton.SendMode.Schedule
+    private Task SubmitFromSendButtonAsync() => GetSendSetupGap() != SendSetupGap.None
+        ? SubmitComposerAsync(ComposerSubmitMode.Send)
+        : GetComposerSendMode() == ComposerSendButton.SendMode.Schedule
         ? InvokeAsync(OpenScheduleDraftAsync)
         : SubmitComposerAsync(GetComposerSendMode() switch
     {
@@ -6064,8 +6185,11 @@ else if (_guideInvitation is { } guideInvitation)
 
     private string GetEndpointDisplayName() =>
         _connections.Count == 0
-            ? "No connection"
-            : _connections.SingleOrDefault(item => item.Id == _chat.CredentialProfileId)?.Name ?? "Select connection";
+            ? "Connect a model"
+            : _connections.SingleOrDefault(item => item.Id == _chat.CredentialProfileId)?.Name
+              // Before there is a project nothing is chosen yet; the default is what will answer.
+              ?? (_selectedProject is null ? GetDefaultConnection()?.Name : null)
+              ?? "Choose connection";
 
     private async Task OnComposerInput(ChangeEventArgs args)
     {
@@ -6629,6 +6753,8 @@ else if (_guideInvitation is { } guideInvitation)
         : GetSelectedRun() is { PendingPrompt: not null } ? "Answer the question above..."
         : IsTurnInFlight() ? "Add to the current turn, Esc to stop..."
         : _draftResources.Any(item => item.Kind == ChatResourceKind.Skill) ? "What should the skill do? (optional)"
+        : GetSendSetupGap() is SendSetupGap.ModelAndProject or SendSetupGap.Model ? "Connect a model to start chatting..."
+        : GetSendSetupGap() == SendSetupGap.Project ? "Create a project to start chatting..."
         : "Message the assistant, / for skills, @ to add context...";
 
     private void OpenResourcePicker(DirectoryPickerMode mode)

@@ -10,6 +10,7 @@ using AI.Application.Settings;
 using AI.Application.Skills;
 using AI.Application.Tools;
 using AI.Contracts.Chats;
+using AI.Contracts.Settings;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -68,7 +69,7 @@ public enum AppResource
     /// </summary>
     Skills,
 
-    /// <summary>Declared MCP tools, schemas and hints of one enabled server selected by resourceId; calls no tools.</summary>
+    /// <summary>Declared MCP tools, schemas, hints and default decisions of one enabled server selected by resourceId; calls no tools.</summary>
     McpTools,
 }
 
@@ -86,6 +87,7 @@ public sealed class AppReadTool(
     ISkillCatalog skills,
     Func<IChatRunDispatcher> runs,
     Func<IToolSessionFactory> toolSessions,
+    IToolDefaultDecision toolDefaults,
     IAppToolReply reply) : IAppTool
 {
     public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(this, run, reply).Create();
@@ -105,7 +107,9 @@ public sealed class AppReadTool(
                               + "'ConnectionModels' fetches the provider's model catalog: resourceId selects a saved connection "
                               + "and uses its stored key and URL; otherwise query must be an absolute HTTP Base URL and no key is sent. "
                               + "'McpTools' needs resourceId of an enabled MCP server from Settings and lists its declared tools "
-                              + "with original names, schema hashes, input schemas and annotations for configuring tool policies. "
+                              + "with original names, schema hashes, input schemas, annotations and default decisions for configuring tool policies. "
+                              + "Project, Chat and Settings list saved overrides only; an absent rule uses the tool's default decision. "
+                              + "A server policy of Ask does not make all its tools Ask. "
                               + "Discovery connects to that server but calls no tools and grants no directory access. "
                               + "Omitted chatId for 'Chat', 'Messages' and 'Reviews' means the current chat. "
                               + "'Memory' lists the user's and the project's long-term memory; pass resourceId for one entry or "
@@ -229,6 +233,7 @@ public sealed class AppReadTool(
                     return Paging.Page("McpTools", session.Tools.Select(tool => new
                     {
                         tool.ServerId, Name = tool.OriginalName, tool.SchemaHash,
+                        DefaultDecision = toolDefaults.GetDecision(tool.ServerId, tool.OriginalName),
                         tool.Descriptor.Description, tool.Descriptor.InputSchema, tool.Descriptor.Annotations
                     }).ToArray(), cursor, limit, reply.Json);
                 }

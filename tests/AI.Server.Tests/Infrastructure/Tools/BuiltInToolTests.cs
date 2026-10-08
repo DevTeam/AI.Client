@@ -97,10 +97,15 @@ public sealed class BuiltInToolTests
             await using (var session = await new DefaultToolSessionFactory(new ToolResultModelProjector(), temporary)
                              .OpenAsync([], new ToolRunContext(projectId, chatId, chatId, true), timeout.Token))
             {
+                var description = session.Tools.Single(item => item.OriginalName == "list_allowed_directories")
+                    .ModelDefinition.Description;
+                description.ShouldContain("chat's scratch directory");
+                description.ShouldContain("intermediate files");
                 var grants = (await Structured(session, "list_allowed_directories", new { }, timeout.Token))
                     .GetProperty("directories").EnumerateArray().ToArray();
                 grants.Length.ShouldBe(1);
                 grants[0].GetProperty("root").GetString().ShouldBe(directory);
+                grants[0].GetProperty("purpose").GetString().ShouldBe("chatTemporary");
                 grants[0].GetProperty("capabilities").EnumerateArray()
                     .Select(item => item.GetString()).ShouldBe(["delete", "edit", "read", "write"]);
 
@@ -453,9 +458,10 @@ public sealed class BuiltInToolTests
                 [new ToolDirectoryGrant(root, true, ["read", "write", "edit", "delete"])], ToolRunContext.None, timeout.Token);
             var token = timeout.Token;
 
-            (await Structured(session, "list_allowed_directories", new { }, token))
-                .GetProperty("directories").EnumerateArray().Single()
-                .GetProperty("capabilities").EnumerateArray().Select(item => item.GetString())
+            var listed = (await Structured(session, "list_allowed_directories", new { }, token))
+                .GetProperty("directories").EnumerateArray().Single();
+            listed.GetProperty("purpose").GetString().ShouldBe("project");
+            listed.GetProperty("capabilities").EnumerateArray().Select(item => item.GetString())
                 .ShouldBe(["delete", "edit", "read", "write"]);
 
             var file = Path.Combine(root, "src", "sample.txt");

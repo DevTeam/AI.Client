@@ -70,6 +70,8 @@ For `process_run` and the optional C# server's `cs_run`, `timeoutMs` accepts 1..
 
 Project directory grants are passed to the server when the session is opened through the environment variable `AI_CLIENT_DIRECTORY_GRANTS` as JSON: `[{"root":"C:\\Projects\\Demo","recursive":true,"capabilities":["read","write","edit","delete"]}]`. For a chat run, the Host also creates a private chat directory under the current user's OS temporary directory and adds a recursive `read, write, edit, delete` grant for it. All branches of the chat share that directory, and deleting the chat or project removes it. Capability names match the `ToolNames` in `DirectoryGrant` written by the UI: `Read only` yields `read`, `Read/write` yields `read, write, edit, delete`.
 
+`list_allowed_directories` labels each entry with `purpose: "project"` or `purpose: "chatTemporary"`. The tool description tells the model to use the chat directory for intermediate files and large output inspected in parts, and to keep durable results elsewhere.
+
 A missing variable, an empty list, and unreadable JSON all mean no access: every FileSystem tool returns an error, and `list_allowed_directories` returns an empty list. Tool discovery and sessions without a chat receive no automatic temporary grant. This is fail-closed by default, including for `GET /api/mcp/default/tools`, where grants are not passed.
 
 Path check in `PathGuard`:

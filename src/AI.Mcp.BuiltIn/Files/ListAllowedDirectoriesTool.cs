@@ -11,9 +11,10 @@ public sealed class ListAllowedDirectoriesTool(IPathGuard guard, IBuiltInToolRep
         List,
         new McpServerToolCreateOptions
         {
-            Description = "List the project directory grants and the current chat's temporary directory: canonical root, whether each covers subdirectories and which of "
-                          + "'read', 'write', 'edit' and 'delete' it allows. File system tools reject any path outside these roots, so call "
-                          + "this first when a path is uncertain. An empty list means no file system access is granted."
+            Description = "List allowed directories with their purpose, canonical root, subdirectory coverage and 'read', 'write', 'edit', "
+                          + "'delete' capabilities. The entry with purpose 'chatTemporary' is this chat's scratch directory. Use its root "
+                          + "for intermediate files and large tool output you need to inspect in parts; it is removed when the chat or "
+                          + "project is deleted, so do not use it for durable results. File system tools reject paths outside these roots."
         });
 
     [McpServerTool(Name = "list_allowed_directories", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
@@ -22,5 +23,6 @@ public sealed class ListAllowedDirectoriesTool(IPathGuard guard, IBuiltInToolRep
         guard.Grants.Select(grant => new AllowedDirectory(
             grant.Root,
             grant.Recursive,
-            grant.Capabilities.Select(capability => capability.ToString().ToLowerInvariant()).Order(StringComparer.Ordinal).ToArray())).ToArray()));
+            grant.Capabilities.Select(capability => capability.ToString().ToLowerInvariant()).Order(StringComparer.Ordinal).ToArray(),
+            grant.Purpose)).ToArray()));
 }

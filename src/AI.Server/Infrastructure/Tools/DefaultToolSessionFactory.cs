@@ -25,12 +25,17 @@ public sealed class DefaultToolSessionFactory(IToolResultModelProjector modelPro
         foreach (var name in new[] { "SystemRoot", "WINDIR", "TEMP", "TMP", "LOCALAPPDATA", "APPDATA", "PATHEXT", "DOTNET_ROOT",
                      "PROCESSOR_ARCHITECTURE", "PROCESSOR_ARCHITEW6432", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData", "ALLUSERSPROFILE", "COMSPEC", "HOMEDRIVE", "HOMEPATH" })
             if (Environment.GetEnvironmentVariable(name) is { } value) environment[name] = value;
-        var effectiveGrants = directoryGrants.ToList();
+        var effectiveGrants = directoryGrants.Select(grant => new
+        {
+            root = grant.Root, recursive = grant.Recursive, capabilities = grant.Capabilities, purpose = "project"
+        }).ToList();
         if (run.ProjectId != Guid.Empty && run.ChatId != Guid.Empty)
-            effectiveGrants.Add(new ToolDirectoryGrant(temporaryDirectory.GetOrCreate(run.ProjectId, run.ChatId),
-                true, ["read", "write", "edit", "delete"]));
-        environment[DirectoryGrantsVariable] = JsonSerializer.Serialize(
-            effectiveGrants.Select(grant => new { root = grant.Root, recursive = grant.Recursive, capabilities = grant.Capabilities }));
+            effectiveGrants.Add(new
+            {
+                root = temporaryDirectory.GetOrCreate(run.ProjectId, run.ChatId), recursive = true,
+                capabilities = (IReadOnlyList<string>)["read", "write", "edit", "delete"], purpose = "chatTemporary"
+            });
+        environment[DirectoryGrantsVariable] = JsonSerializer.Serialize(effectiveGrants);
         var transport = new StdioClientTransport(new StdioClientTransportOptions
         {
             Name = "Default tools", Command = executable,

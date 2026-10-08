@@ -86,6 +86,6 @@ public sealed record DeleteFileResult(string Path, bool Deleted, long Bytes, str
 
 public sealed record DeleteDirectoryResult(string Path, bool Deleted, bool Recursive, string? Error);
 
-public sealed record AllowedDirectory(string Root, bool Recursive, string[] Capabilities);
+public sealed record AllowedDirectory(string Root, bool Recursive, string[] Capabilities, string Purpose);
 
 public sealed record AllowedDirectoriesResult(AllowedDirectory[] Directories);

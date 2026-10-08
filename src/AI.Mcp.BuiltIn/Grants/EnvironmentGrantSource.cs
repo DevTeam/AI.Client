@@ -62,11 +62,12 @@ public sealed class EnvironmentGrantSource : IGrantSource
                 continue;
             }
 
-            grants.Add(new DirectoryGrantSpec(entry.Root.Trim(), entry.Recursive, capabilities));
+            grants.Add(new DirectoryGrantSpec(entry.Root.Trim(), entry.Recursive, capabilities,
+                entry.Purpose == "chatTemporary" ? "chatTemporary" : "project"));
         }
 
         return grants;
     }
 
-    private sealed record Entry(string? Root, bool Recursive, string[]? Capabilities);
+    private sealed record Entry(string? Root, bool Recursive, string[]? Capabilities, string? Purpose = null);
 }

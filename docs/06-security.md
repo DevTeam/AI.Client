@@ -10,7 +10,7 @@ Endpoint profile metadata is stored in the project JSON document. API keys are e
 
 Project access settings are changed by a single revisioned operation `PUT /api/projects/{projectId}/security`. One request contains the complete set of directory grants, MCP server bindings, and per-tool policies; the Host validates them as a single state and saves them atomically. A revision mismatch returns `409 Conflict` and does not apply a partial change.
 
-A tool policy can only reference an MCP server that is present in the same settings document. The UI offers `Ask` by default and does not start the MCP transport when configuring it. Tool discovery, server process launch, and actual permission issuance will be added together with the MCP connection manager.
+A tool policy can only reference an MCP server that is present in the same settings document. The UI can discover tools through the MCP connection and offers the Host's built-in defaults for known tools. Unknown and external tools begin at `Ask`.
 
 ## Trust boundaries
 
@@ -44,7 +44,7 @@ Ask  — request confirmation before the call
 Deny — do not show the tool to the model and reject direct calls
 ```
 
-The initial policy for any new or changed tool is `Ask`.
+The initial policy for any new or changed external tool is `Ask`. Known Host tools that only read local files or application data, search, wait, ask the user, or navigate the app have explicit `Allow` defaults. Network fetches, writes, process and script execution, skill execution, and delegation still start at `Ask`. Unknown Host tool names also start at `Ask`.
 
 A change in tool schema hash resets the stored permission. `notifications/tools/list_changed` triggers re-evaluation.
 

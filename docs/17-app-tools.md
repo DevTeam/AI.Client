@@ -23,7 +23,7 @@ The code is laid out as follows:
 
 The tools receive `IChatRunDispatcher` as `Func<IChatRunDispatcher>`: the dispatcher owns the agent, the agent owns the tool session, the session owns these tools. Lazy resolution breaks the construction cycle.
 
-`App tools` is registered as a separate MCP server with a stable ID, the `InProcess` transport, appears in settings next to `Default tools`, and is **enabled by default**. All tools receive the `Ask` policy on first discovery.
+`App tools` is registered as a separate MCP server with a stable ID, the `InProcess` transport, appears in settings next to `Default tools`, and is **enabled by default**. `app_read`, `tool_search`, `skill_search`, `ask_user`, and `app_navigate` default to `Allow`; tools that change data, execute skills, or delegate work default to `Ask`. Saved rules override these defaults. The global tool list offers `Use defaults` for already discovered tools.
 
 `InProcess` is a full value of the domain enum `McpTransportKind`, not just a string in settings: saving a project-level policy binds the server to the project and records its transport. Both servers bundled with the Host appear in settings identically — name and transport are read-only; instead of a command line, the list of tool policies is shown, and they cannot be removed.
 

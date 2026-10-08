@@ -3,6 +3,7 @@
 @inject IChatHistoryApi ChatHistoryApi
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject INotificationService Notifications
+@inject IToolDefaultDecision ToolDefaults
 
 <div class="permissions-drawer-backdrop"></div>
 <aside @attributes="@(ControlHints.Attributes(GuideTarget, nativeTooltip: false))" class="permissions-drawer" aria-label="Tool permissions" @onclick:stopPropagation="true">
@@ -132,7 +133,8 @@
     private ViewPolicy View(ToolPolicySettings item, string source, bool canReset, string? fallback) =>
         new(item.ServerId, item.Name, item.SchemaHash, item.Decision, ServerName(item.ServerId), source, canReset, fallback);
     private string ServerName(Guid id) => _global?.McpServers.SingleOrDefault(item => item.Id == id)?.Name ?? "MCP server";
-    private string? GlobalFallback(ToolPolicySettings item) => _global?.ToolPolicies.SingleOrDefault(policy => Same(policy, item))?.Decision ?? "Ask";
+    private string? GlobalFallback(ToolPolicySettings item) => _global?.ToolPolicies.SingleOrDefault(policy => Same(policy, item))?.Decision
+        ?? ToolDefaults.GetDecision(item.ServerId, item.Name);
     private string? ProjectFallback(ToolPolicySettings item) => _project?.ToolPolicies.SingleOrDefault(policy => Same(policy, item))?.Decision ?? GlobalFallback(item);
     private static bool Same(McpToolPolicySettings left, ToolPolicySettings right) => left.ServerId == right.ServerId && left.Name == right.Name && left.SchemaHash == right.SchemaHash;
     private static bool Same(ToolPolicySettings left, ToolPolicySettings right) => left.ServerId == right.ServerId && left.Name == right.Name && left.SchemaHash == right.SchemaHash;

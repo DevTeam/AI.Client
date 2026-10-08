@@ -12,6 +12,8 @@ MCP ToolAnnotations convey risk hints, but the specification requires treating t
 
 Each project stores `Allow`, `Ask`, or `Deny` separately for a ToolIdentity that combines the configured server ID, the tool name, and the schema hash. A new or changed tool receives `Ask`. Directory grants, OAuth scopes, and server-side ACLs further restrict the call.
 
+Host-provided tools later gained explicit defaults for known read and navigation operations. An unknown tool, including one added to a built-in server, still receives `Ask`. Saved decisions at every scope remain authoritative.
+
 ## Consequences
 
 Positive:

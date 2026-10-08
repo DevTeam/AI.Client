@@ -118,6 +118,7 @@ public sealed class AppControlHintsRenderingTests
             .AddSingleton(preferences.Object)
             .AddSingleton(languages.Object)
             .AddSingleton<IConnectionContextLimitsResolver, ConnectionContextLimitsResolver>()
+            .AddTransient<IToolDefaultDecision, ToolDefaultDecision>()
             .AddSingleton(Mock.Of<ITextCorrectionPreparation>())
             .AddSingleton(Mock.Of<INotificationService>())
             .AddSingleton(Mock.Of<IThemeService>())

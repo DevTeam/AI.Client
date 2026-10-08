@@ -61,7 +61,7 @@ Each file has `SchemaVersion: 1` and is written atomically. Deleting a project d
 - `app_memory Create | Update | Delete` writes memory. `Update` keeps every field the call omits, so correcting a body does not reset a pin.
 - `app_instructions` replaces the whole instructions text and needs the revision the model read.
 
-Both write tools default to `Ask`, like every tool without a policy. The approval card shows the call's arguments, which hold the proposed entry or the full new text, before anything is saved. After the save, the tool row in the transcript states the effect ("Saved a new memory entry.").
+Both write tools default to `Ask`. The approval card shows the call's arguments, which hold the proposed entry or the full new text, before anything is saved. After the save, the tool row in the transcript states the effect ("Saved a new memory entry.").
 
 ## HTTP API
 

@@ -109,14 +109,16 @@
         var matchingRuns = AllRuns.Where(item => Matches(item) && (_outcome is null || item.RunStatus == _outcome)).ToList();
         runTotal = matchingRuns.Count;
         // Collapsed, the newest runs are shown — and always the current one and those not seen yet
-        // (their IconClass carries the unread, attention or failure status), wherever they are.
+        // (their IconClass carries an unread, attention or failure status), wherever they are.
         var collapse = !_expanded && query.Length == 0 && matchingRuns.Count > CollapsedRuns;
         runs = collapse
-            ? matchingRuns.Where((item, position) => position < CollapsedRuns || item.Selected || item.IconClass is not null).ToList()
+            ? matchingRuns.Where((item, position) => position < CollapsedRuns || item.Selected || IsUnseen(item)).ToList()
             : matchingRuns;
         hiddenRuns = runTotal - runs.Count;
         return [.. conversation, .. runs];
     }
+
+    private static bool IsUnseen(BranchPickerItem item) => item.IconClass is { Length: > 0 } status && status != "run-status-generating";
 
     private List<(ScheduleRunStatus Status, int Count)> Outcomes() => AllRuns
         .GroupBy(item => item.RunStatus!.Value)
@@ -148,13 +150,13 @@
     }
 
     private RenderFragment Row(BranchPickerItem item, bool highlighted) =>
-        @<button class="branch-picker-row @(item.Selected ? "selected" : null) @(item.RunStatus is not null && item.IconClass is not null ? "is-unseen" : null) @(highlighted && ShowSearch ? "is-highlighted" : null)"
+        @<button class="branch-picker-row @(item.Selected ? "selected" : null) @(highlighted && ShowSearch ? "is-highlighted" : null)"
                  type="button" role="menuitemradio" aria-checked="@(item.Selected ? "true" : "false")" title="@item.Tooltip"
                  @onclick="() => OnSelect.InvokeAsync(item)">
             @if (item.Selected) { <AppIcon Name="check" Class="branch-picker-check" /> } else { <span class="branch-option-spacer"></span> }
             @if (item.RunStatus is { } status)
             {
-                <i class="branch-run-dot is-@status.ToString().ToLowerInvariant() @item.IconClass" aria-hidden="true"></i>
+                <BranchRunIcon Outcome="@status" StatusClass="@item.IconClass" />
             }
             else
             {

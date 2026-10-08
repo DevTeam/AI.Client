@@ -172,11 +172,12 @@ recognised from the schedule (`runs[].branchId`), never from their titles.
   any depth, the branch itself stays. Both ask once, delete deepest first against the current chat
   revision, and move the view to the remaining branch when the open one was among them.
 
-A run the person has not opened since it finished or stopped — an unread answer, a question or an
-approval, a failure — is marked the same way in both places: a ring in its status colour round the
-outcome dot and a bold title. Such runs are always listed, even while the sidebar's Runs row is folded
-or they are older than the newest few, and the Runs row says how many there are ("2 new", coloured by
-the most urgent one). Opening a run clears its mark.
+A run's branch has its own icon in both places: an outlined play that takes the run status exactly as
+a branch icon does — bright while generating, coloured for an unread answer, a question or an
+approval, a failure — with the run's outcome as a small dot in its corner (none while it runs). Runs
+not opened yet are always listed, even while the sidebar's Runs row is folded or they are older than
+the newest few, and the Runs row says how many there are ("2 new", coloured by the most urgent one).
+Opening a run clears its status.
 
 ## From the message box
 
